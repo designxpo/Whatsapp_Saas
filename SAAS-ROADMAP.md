@@ -9,6 +9,23 @@ The internal `wa-broadcaster` repo stays frozen; changes flow one-way into here.
 
 ---
 
+## Infrastructure separation (do this before any data work)
+The SaaS runs on **its own infrastructure**, fully separate from internal
+`wa-broadcaster`:
+- **Supabase** — a NEW, dedicated SaaS project (its own `NEXT_PUBLIC_SUPABASE_URL`
+  + `SUPABASE_SERVICE_KEY`). Apply migrations `0001`→`0019` (+ `0020` when written)
+  to it. Never share the internal project's DB.
+- **Meta** — a separate **Tech Provider** app (`META_APP_ID`/`META_APP_SECRET`/
+  `META_EMBEDDED_SIGNUP_CONFIG_ID`). No single hardcoded WABA token: each tenant
+  connects its OWN number via Embedded Signup; tokens are stored encrypted
+  per-tenant (`crypto.ts`).
+- **CRM (LeadSquared, etc.)** — per-tenant, stored in the encrypted vault, not
+  global env. The internal `LSQ_*`/`CRM_*` env vars were removed.
+- **Gemini / cron / storage** — the SaaS operator's own keys.
+
+`.env.example` reflects this SaaS shape; the inherited `.env.local` has been
+reset to a blank scaffold so the fork never points at internal infra.
+
 ## Status legend
 ✅ done & typecheck-green · 🟡 partial/foundation · ⬜ not started
 
