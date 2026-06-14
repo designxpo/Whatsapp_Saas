@@ -1,0 +1,141 @@
+import { GoogleGenAI } from "@google/genai";
+import { replaceChunks, setDocStatus, matchChunks, type KbSourceType } from "./store";
+import { errorMessage } from "./errors";
+
+// pdf-parse / mammoth / cheerio are loaded lazily inside the extract functions:
+// they do native/global work that crashes if evaluated at module load inside a
+// bundled route, and listing documents shouldn't pay to load them at all.
+
+// Embedding dimension — MUST match the vector(768) column in 0003_kb.sql.
+export const EMBED_DIM = 768;
+const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001";
+
+let client: GoogleGenAI | null = null;
+function genai(): GoogleGenAI {
+  if (!client) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
+    client = new GoogleGenAI({ apiKey });
+  }
+  return client;
+}
+
+// Embed a batch of texts. taskType tunes the embedding for storage vs. querying.
+export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const out: number[][] = [];
+  for (let i = 0; i < texts.length; i += 100) {
+    const batch = texts.slice(i, i + 100);
+    const res = await genai().models.embedContent({
+      model: EMBED_MODEL,
+      contents: batch,
+      config: { taskType, outputDimensionality: EMBED_DIM },
+    });
+    const embeddings = res.embeddings ?? [];
+    if (embeddings.length !== batch.length) throw new Error(`Embedding count mismatch: got ${embeddings.length} for ${batch.length} inputs`);
+    for (const e of embeddings) {
+      if (!e.values || e.values.length !== EMBED_DIM) throw new Error(`Unexpected embedding dimension: ${e.values?.length ?? 0}`);
+      out.push(e.values);
+    }
+  }
+  return out;
+}
+
+export async function embedQuery(text: string): Promise<number[]> {
+  const [v] = await embedTexts([text], "RETRIEVAL_QUERY");
+  return v;
+}
+
+// ── Text extraction per source type ───────────────────────────────────────────
+async function extractPdf(buffer: Buffer): Promise<string> {
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: new Uint8Array(buffer) });
+  try {
+    const r = await parser.getText();
+    return r.text;
+  } finally {
+    await parser.destroy();
+  }
+}
+
+async function extractDocx(buffer: Buffer): Promise<string> {
+  const mammoth = await import("mammoth");
+  const { value } = await mammoth.extractRawText({ buffer });
+  return value;
+}
+
+async function extractUrl(url: string): Promise<string> {
+  const cheerio = await import("cheerio");
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; wa-broadcaster KB ingest)" } });
+  if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
+  const html = await res.text();
+  const $ = cheerio.load(html);
+  $("script, style, noscript, nav, header, footer, svg").remove();
+  const main = $("main").text() || $("article").text() || $("body").text();
+  return main.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+export async function extractText(sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }): Promise<string> {
+  switch (sourceType) {
+    case "pdf": return extractPdf(payload.buffer!);
+    case "docx": return extractDocx(payload.buffer!);
+    case "url": return extractUrl(payload.url!);
+    case "text": return (payload.text ?? "").trim();
+  }
+}
+
+// ── Chunking: paragraph-aware windows (~1000 chars) with overlap ──────────────
+const TARGET = 1000;     // chars per chunk
+const OVERLAP = 150;     // chars carried into the next chunk for context continuity
+
+export function chunkText(text: string): string[] {
+  const clean = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  if (!clean) return [];
+  const paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const chunks: string[] = [];
+  let buf = "";
+  const flush = () => { if (buf.trim()) chunks.push(buf.trim()); };
+
+  for (const para of paras) {
+    // A single oversized paragraph: hard-split it.
+    if (para.length > TARGET * 1.5) {
+      flush(); buf = "";
+      for (let i = 0; i < para.length; i += TARGET - OVERLAP) {
+        chunks.push(para.slice(i, i + TARGET));
+      }
+      continue;
+    }
+    if (buf.length + para.length + 2 > TARGET && buf) {
+      flush();
+      buf = buf.slice(Math.max(0, buf.length - OVERLAP)) + "\n\n" + para; // carry overlap
+    } else {
+      buf = buf ? buf + "\n\n" + para : para;
+    }
+  }
+  flush();
+  return chunks;
+}
+
+// ── Full ingest: extract → chunk → embed → store. Updates document status. ────
+export async function ingestDocument(docId: string, sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }): Promise<void> {
+  try {
+    const text = await extractText(sourceType, payload);
+    const chunks = chunkText(text);
+    if (chunks.length === 0) {
+      await setDocStatus(docId, "failed", { error: "No extractable text found", chunkCount: 0 });
+      return;
+    }
+    const embeddings = await embedTexts(chunks, "RETRIEVAL_DOCUMENT");
+    const rows = chunks.map((content, i) => ({ content, embedding: embeddings[i] }));
+    const n = await replaceChunks(docId, rows);
+    await setDocStatus(docId, "ready", { chunkCount: n, error: null });
+  } catch (err) {
+    await setDocStatus(docId, "failed", { error: errorMessage(err) });
+  }
+}
+
+// Retrieve top-k business-doc chunks relevant to a query.
+export async function retrieve(query: string, k = 6): Promise<{ content: string; similarity: number }[]> {
+  const emb = await embedQuery(query);
+  return matchChunks(emb, k);
+}

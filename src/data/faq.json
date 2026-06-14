@@ -1,0 +1,1503 @@
+[
+  {
+    "id": 1,
+    "category": "About Company",
+    "question": "What is AnalytixLabs?",
+    "shortAnswer": "AnalytixLabs (ALabs) is India's top-ranked Data Science and AI institute, offering industry-relevant training since 2011.",
+    "detailedAnswer": "AnalytixLabs is a premier Data Science, Artificial Intelligence, and Analytics training institute established in 2011. With over 60,000 candidates trained, 130,000+ training hours delivered, and alumni placed at companies like Amazon, Accenture, Deloitte, EY, and Genpact, AnalytixLabs focuses on building real data careers through practical, industry-driven curriculum and lifetime mentorship. The institute operates from three centers in Noida, Gurgaon, and Bengaluru.",
+    "intentKeywords": ["about", "analytixlabs", "alabs", "company", "institute", "who"],
+    "synonyms": ["ALabs", "AnalytixLabs", "the institute", "the company"],
+    "alternativePhrasings": [
+      "What is ALabs?",
+      "Tell me about AnalytixLabs",
+      "Who is AnalytixLabs?",
+      "What does AnalytixLabs do?",
+      "Give me an overview of ALabs"
+    ]
+  },
+  {
+    "id": 2,
+    "category": "About Company",
+    "question": "When was AnalytixLabs founded?",
+    "shortAnswer": "AnalytixLabs was founded in 2011 and has been operating since 2012.",
+    "detailedAnswer": "AnalytixLabs has been training data professionals since 2011, making it one of the earliest dedicated data science training institutes in India. With over a decade of experience shaping real data careers, the institute has established itself as a trusted name in the analytics education space. Their tagline 'Since 2012' highlights their long-standing commitment to quality education in data science and AI.",
+    "intentKeywords": ["founded", "established", "started", "when", "year", "history"],
+    "synonyms": ["established", "started", "launched", "inception"],
+    "alternativePhrasings": [
+      "When did AnalytixLabs start?",
+      "How long has ALabs been around?",
+      "What year was AnalytixLabs established?",
+      "How old is AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 3,
+    "category": "About Company",
+    "question": "How many students has AnalytixLabs trained?",
+    "shortAnswer": "Over 60,000 candidates have trained with AnalytixLabs, with 15,000+ placed through cohort programs.",
+    "detailedAnswer": "AnalytixLabs has trained over 60,000 candidates since 2011, with 15,000+ candidates successfully completing cohort programs. The institute has delivered more than 130,000 training hours and maintains a 9.7+ average rating from learners. Alumni have been placed at top companies including Amazon, Accenture, Deloitte, EY, McKinsey, American Express, and Genpact.",
+    "intentKeywords": ["students", "trained", "candidates", "how many", "count", "alumni"],
+    "synonyms": ["learners", "participants", "graduates", "trainees"],
+    "alternativePhrasings": [
+      "How many candidates have been trained at ALabs?",
+      "What is the total number of students at AnalytixLabs?",
+      "How many learners have graduated from AnalytixLabs?",
+      "Tell me about ALabs student count"
+    ]
+  },
+  {
+    "id": 4,
+    "category": "About Company",
+    "question": "What is AnalytixLabs' mission?",
+    "shortAnswer": "AnalytixLabs focuses on building careers, not just completing a syllabus — with practical, industry-driven training.",
+    "detailedAnswer": "AnalytixLabs' mission is encapsulated in their tagline: 'Others focus on completing a syllabus. We focus on building a career.' The institute is committed to delivering high-quality, industry-relevant data analytics courses and certifications. They emphasize experiential learning, one-to-one mentorship, industry-driven curriculum, and extensive post-class sessions to ensure students are career-ready, not just certificate holders.",
+    "intentKeywords": ["mission", "vision", "goal", "focus", "purpose", "philosophy"],
+    "synonyms": ["objective", "aim", "purpose", "approach"],
+    "alternativePhrasings": [
+      "What does AnalytixLabs stand for?",
+      "What is the goal of ALabs?",
+      "What is AnalytixLabs' philosophy?",
+      "What makes AnalytixLabs different in approach?"
+    ]
+  },
+  {
+    "id": 5,
+    "category": "About Company",
+    "question": "What is the rating of AnalytixLabs?",
+    "shortAnswer": "AnalytixLabs has a 4.8-star rating from 6,000+ learners and a 9.7+ average rating overall.",
+    "detailedAnswer": "AnalytixLabs is highly rated by its learners. The institute has been rated 4.8 out of 5 stars by over 6,000 learners. Additionally, it maintains an impressive 9.7+ average rating across its programs. These ratings reflect the quality of their curriculum, faculty expertise, mentorship support, and career placement assistance that the institute consistently delivers.",
+    "intentKeywords": ["rating", "reviews", "score", "stars", "feedback", "reputation"],
+    "synonyms": ["reviews", "scores", "rankings", "feedback"],
+    "alternativePhrasings": [
+      "How is AnalytixLabs rated?",
+      "What do students say about ALabs?",
+      "What are AnalytixLabs reviews?",
+      "Is AnalytixLabs good?"
+    ]
+  },
+  {
+    "id": 6,
+    "category": "About Company",
+    "question": "What companies hire AnalytixLabs alumni?",
+    "shortAnswer": "ALabs alumni are placed at Amazon, Accenture, Deloitte, EY, McKinsey, American Express, Genpact, and more.",
+    "detailedAnswer": "AnalytixLabs has a strong placement track record with alumni working at over 50 top companies worldwide. Notable employers include Amazon, Accenture, Deloitte, EY, McKinsey & Company, American Express, Genpact, and Findability Sciences. With 15,000+ candidates placed at top companies, the institute's placement-readiness program ensures graduates are well-prepared for roles in data engineering, data science, artificial intelligence, and business analytics.",
+    "intentKeywords": ["companies", "hire", "placement", "employers", "jobs", "alumni"],
+    "synonyms": ["recruiters", "hiring partners", "employers", "job placement"],
+    "alternativePhrasings": [
+      "Where do ALabs graduates work?",
+      "Which companies recruit from AnalytixLabs?",
+      "What are the placement companies at ALabs?",
+      "Who hires AnalytixLabs students?"
+    ]
+  },
+  {
+    "id": 7,
+    "category": "About Company",
+    "question": "What is AnalytixLabs' value proposition?",
+    "shortAnswer": "ALabs offers one-to-one mentorship, industry-driven curriculum, experiential learning, and extensive post-class sessions.",
+    "detailedAnswer": "AnalytixLabs' value proposition centers around four key pillars: one-to-one mentorship with dedicated faculty guidance, industry-driven curriculum curated by practitioners, experiential learning through real datasets and business problems, and extensive post-class sessions for doubt resolution. Combined with placement commitment, interview readiness programs, lifetime mentorship, and continuous access to updated content, ALabs delivers a comprehensive learning experience.",
+    "intentKeywords": ["value", "proposition", "why", "benefits", "advantage", "unique"],
+    "synonyms": ["USP", "differentiator", "strengths", "benefits"],
+    "alternativePhrasings": [
+      "Why should I choose AnalytixLabs?",
+      "What makes ALabs special?",
+      "What are the benefits of joining AnalytixLabs?",
+      "Why is ALabs better than others?"
+    ]
+  },
+  {
+    "id": 8,
+    "category": "About Company",
+    "question": "Does AnalytixLabs offer dual or co-branded certification?",
+    "shortAnswer": "Yes, ALabs offers dual/co-branded certifications jointly issued with industry partners like IBM and NSDC.",
+    "detailedAnswer": "AnalytixLabs provides dual or co-branded certification for select programs. This means your certificate is jointly issued by AnalytixLabs and an industry partner such as IBM or NSDC (National Skill Development Corporation), giving it broader recognition with employers. This co-branding adds significant credibility to your qualification and enhances your resume when applying for data science and analytics roles across industries.",
+    "intentKeywords": ["certification", "dual", "co-branded", "IBM", "NSDC", "certificate"],
+    "synonyms": ["joint certification", "co-branded certificate", "dual degree", "partner certification"],
+    "alternativePhrasings": [
+      "What certifications does ALabs offer?",
+      "Is the ALabs certificate recognized?",
+      "Does AnalytixLabs partner with IBM for certification?",
+      "Tell me about the co-branded certificate"
+    ]
+  },
+  {
+    "id": 9,
+    "category": "Services",
+    "question": "What courses does AnalytixLabs offer?",
+    "shortAnswer": "ALabs offers courses in Data Science, AI, Generative AI, Agentic AI, Business Analytics, Data Visualization, and Deep Learning.",
+    "detailedAnswer": "AnalytixLabs offers a comprehensive portfolio of courses including: Advanced Certification in Data Science, Certified Data Analytics & AI Course, Low Code Agentic AI Course, Full Stack Applied AI Course (GenAI, Computer Vision & Deep Learning), Generative AI Course, Data Visualization & Analytics, and specialization modules like Analytics Edge and Deep Learning with Python. Courses are available in multiple learning modes including weekday bootcamp, weekday batches, and self-paced blended formats.",
+    "intentKeywords": ["courses", "programs", "training", "offer", "curriculum", "syllabus"],
+    "synonyms": ["programs", "training courses", "certifications", "modules"],
+    "alternativePhrasings": [
+      "What programs does ALabs provide?",
+      "What can I study at AnalytixLabs?",
+      "Tell me about the courses at ALabs",
+      "What training does AnalytixLabs offer?"
+    ]
+  },
+  {
+    "id": 10,
+    "category": "Services",
+    "question": "What is the best course to get started with data analytics?",
+    "shortAnswer": "The Data Analytics certification is the best starting point — it assumes no prior coding background.",
+    "detailedAnswer": "If you're new to analytics, the Data Analytics certification is the most direct path. It assumes no prior coding background and builds fluency progressively through Excel → SQL → Python → BI tools. This structured learning path ensures beginners can gradually develop their skills without feeling overwhelmed. The course includes hands-on projects and real-world case studies to build practical expertise alongside theoretical knowledge.",
+    "intentKeywords": ["best course", "beginner", "start", "data analytics", "first course", "entry"],
+    "synonyms": ["starter course", "beginner program", "introductory course", "first step"],
+    "alternativePhrasings": [
+      "Which course should I take first?",
+      "What's the entry-level course at ALabs?",
+      "I'm a beginner, which course is right for me?",
+      "How do I start learning data analytics at ALabs?"
+    ]
+  },
+  {
+    "id": 11,
+    "category": "AI Solutions",
+    "question": "What is the Agentic AI course at AnalytixLabs?",
+    "shortAnswer": "It's a Low Code Agentic AI course that teaches building and deploying intelligent AI agents.",
+    "detailedAnswer": "The Low Code Agentic AI Course at AnalytixLabs focuses on building and deploying intelligent agents using low-code approaches. Students learn to design, develop, and deploy AI agents that can autonomously make decisions and perform tasks. The course covers agentic AI frameworks, prompt engineering for agents, tool integration, and deployment strategies. It's designed for professionals who want to leverage the latest advancements in autonomous AI systems.",
+    "intentKeywords": ["agentic AI", "agents", "intelligent agents", "low code", "autonomous"],
+    "synonyms": ["AI agents course", "autonomous AI", "intelligent agents training"],
+    "alternativePhrasings": [
+      "Tell me about the Agentic AI program",
+      "What will I learn in the Agentic AI course?",
+      "Does ALabs teach Agentic AI?",
+      "What is the low code AI agent course?"
+    ]
+  },
+  {
+    "id": 12,
+    "category": "AI Solutions",
+    "question": "What is the Full Stack Applied AI course?",
+    "shortAnswer": "It covers GenAI, Computer Vision, and Deep Learning for end-to-end AI mastery.",
+    "detailedAnswer": "The Full Stack Applied AI Course at AnalytixLabs is titled 'Applied AI Mastery — GenAI, Computer Vision & Deep Learning.' It provides comprehensive training in generative AI, computer vision techniques, and deep learning architectures. Students learn to build and deploy complete AI solutions using modern frameworks like TensorFlow and PyTorch. The curriculum includes hands-on projects covering neural networks, CNNs, RNNs, transformers, and model optimization.",
+    "intentKeywords": ["full stack AI", "applied AI", "computer vision", "deep learning", "GenAI"],
+    "synonyms": ["applied AI course", "AI mastery program", "full stack AI training"],
+    "alternativePhrasings": [
+      "What does the Full Stack AI course cover?",
+      "Tell me about the Applied AI Mastery program",
+      "Does ALabs offer a computer vision course?",
+      "What is included in the full stack AI program?"
+    ]
+  },
+  {
+    "id": 13,
+    "category": "AI Solutions",
+    "question": "What is the Generative AI course?",
+    "shortAnswer": "A hands-on training course for career advancement focused on generative AI technologies.",
+    "detailedAnswer": "The Generative AI Course at AnalytixLabs provides hands-on training for career advancement in the rapidly growing field of generative AI. Students learn about large language models (LLMs), prompt engineering, fine-tuning techniques, and practical applications of generative AI in business contexts. The course is designed for working professionals and career changers who want to upskill in cutting-edge AI technologies and stay competitive in the evolving job market.",
+    "intentKeywords": ["generative AI", "GenAI", "LLM", "ChatGPT", "prompt engineering"],
+    "synonyms": ["GenAI course", "generative AI training", "LLM course"],
+    "alternativePhrasings": [
+      "Does ALabs offer GenAI training?",
+      "What will I learn in the Generative AI course?",
+      "Tell me about the GenAI program at AnalytixLabs",
+      "Is there a course on LLMs and generative AI?"
+    ]
+  },
+  {
+    "id": 14,
+    "category": "AI Solutions",
+    "question": "What is Deep Learning with Python?",
+    "shortAnswer": "It covers neural networks, CNNs, RNNs, transformers, and hands-on projects using TensorFlow and PyTorch.",
+    "detailedAnswer": "Deep Learning with Python at AnalytixLabs is a comprehensive module covering neural networks, Convolutional Neural Networks (CNNs), Recurrent Neural Networks (RNNs), transformer architectures, and model training/optimization. Students work on hands-on projects using industry-standard frameworks TensorFlow and PyTorch. The course prepares learners for roles requiring deep learning expertise and provides practical experience in building, training, and deploying deep learning models.",
+    "intentKeywords": ["deep learning", "python", "neural networks", "CNN", "RNN", "transformers", "TensorFlow", "PyTorch"],
+    "synonyms": ["DL course", "neural network training", "deep learning program"],
+    "alternativePhrasings": [
+      "What does the deep learning course include?",
+      "Does ALabs teach TensorFlow and PyTorch?",
+      "Tell me about the neural networks course",
+      "What frameworks are taught in the DL course?"
+    ]
+  },
+  {
+    "id": 15,
+    "category": "AI Solutions",
+    "question": "What is Analytics Edge?",
+    "shortAnswer": "Analytics Edge is a specialization module for working professionals focusing on advanced analytics and BI dashboards.",
+    "detailedAnswer": "Analytics Edge is a specialization module at AnalytixLabs designed specifically for working professionals. It focuses on advanced analytics, BI dashboards, and decision science using real datasets. This module is ideal for professionals already in analytical roles who want to deepen their expertise in business intelligence, data visualization, and strategic decision-making using data-driven approaches. It builds on foundational knowledge to address real-world business challenges.",
+    "intentKeywords": ["analytics edge", "specialization", "BI", "dashboards", "decision science"],
+    "synonyms": ["advanced analytics module", "BI specialization", "analytics specialization"],
+    "alternativePhrasings": [
+      "What is the Analytics Edge module?",
+      "Does ALabs offer BI dashboard training?",
+      "Tell me about the specialization for working professionals",
+      "What advanced analytics courses are available?"
+    ]
+  },
+  {
+    "id": 16,
+    "category": "Services",
+    "question": "What learning modes are available at AnalytixLabs?",
+    "shortAnswer": "ALabs offers Weekday Bootcamp, Weekday Batches, and Self-paced Blended learning modes.",
+    "detailedAnswer": "AnalytixLabs provides three flexible learning modes to match different learning styles and schedules: Weekday Bootcamp — intensive full-day sessions for rapid upskilling ideal for full-time learners; Weekday Batches — regular weekday sessions suitable for working professionals; and Self-paced Blended — a combination of recorded content and live sessions for maximum flexibility. All modes include access to mentors, recorded sessions, and lifetime access to updated content.",
+    "intentKeywords": ["learning modes", "schedule", "format", "batch", "bootcamp", "self-paced", "blended"],
+    "synonyms": ["study format", "class type", "training mode", "batch type"],
+    "alternativePhrasings": [
+      "How can I attend classes at ALabs?",
+      "What class formats does AnalytixLabs offer?",
+      "Is there a self-paced option?",
+      "What are the available batch types?"
+    ]
+  },
+  {
+    "id": 17,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer weekend batches?",
+    "shortAnswer": "Yes, ALabs offers weekend batches along with recorded sessions and lifetime access to content.",
+    "detailedAnswer": "AnalytixLabs offers weekend batches specifically designed for working professionals who cannot attend weekday sessions. These batches are complemented by recorded sessions and lifetime access to updated content, ensuring that professionals can balance their work commitments with upskilling. The weekend format allows continuous learning without disrupting your current job, and mentors remain available throughout for doubt resolution and guidance.",
+    "intentKeywords": ["weekend", "batch", "working professionals", "schedule", "part-time"],
+    "synonyms": ["weekend classes", "Saturday Sunday classes", "weekend training"],
+    "alternativePhrasings": [
+      "Are there weekend classes at ALabs?",
+      "Can working professionals attend ALabs courses?",
+      "Is there a part-time learning option?",
+      "Do you have weekend programs?"
+    ]
+  },
+  {
+    "id": 18,
+    "category": "Services",
+    "question": "What is the Weekday Bootcamp?",
+    "shortAnswer": "Intensive full-day sessions designed for rapid upskilling in data science and AI.",
+    "detailedAnswer": "The Weekday Bootcamp at AnalytixLabs consists of intensive full-day sessions designed for rapid upskilling. This format is ideal for students, freshers, or professionals who can dedicate full-time hours to learning. The bootcamp covers the complete curriculum in a compressed timeline, with daily intensive sessions, hands-on practice, and close mentorship. It's the fastest path to gaining comprehensive data science and AI skills at AnalytixLabs.",
+    "intentKeywords": ["weekday bootcamp", "intensive", "full-time", "rapid", "bootcamp"],
+    "synonyms": ["intensive program", "full-time bootcamp", "accelerated course"],
+    "alternativePhrasings": [
+      "What is the bootcamp format?",
+      "How does the intensive program work?",
+      "Tell me about the full-day sessions",
+      "Is there a fast-track course?"
+    ]
+  },
+  {
+    "id": 19,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer online courses?",
+    "shortAnswer": "Yes, ALabs offers online learning with self-paced blended modes alongside classroom options.",
+    "detailedAnswer": "AnalytixLabs offers online learning options through their self-paced blended learning mode. Students can access recorded sessions, live online classes, and digital resources from anywhere. The online format includes the same quality of mentorship, curriculum, and placement support as classroom programs. You can pick a data science course in Online, Bangalore, Gurgaon, or Noida formats, giving you flexibility in how and where you learn.",
+    "intentKeywords": ["online", "remote", "virtual", "distance", "e-learning"],
+    "synonyms": ["virtual classes", "remote learning", "e-learning", "digital courses"],
+    "alternativePhrasings": [
+      "Can I study online at ALabs?",
+      "Are there virtual classes available?",
+      "Does AnalytixLabs have remote learning?",
+      "Can I take courses from home?"
+    ]
+  },
+  {
+    "id": 20,
+    "category": "Services",
+    "question": "What is the DataScience 360 course?",
+    "shortAnswer": "DataScience 360 is a comprehensive data science program covering the full spectrum of data science skills.",
+    "detailedAnswer": "DataScience 360 is one of AnalytixLabs' flagship programs that provides a comprehensive, end-to-end data science education. The course covers the full spectrum of data science skills from foundational concepts to advanced techniques. It includes modules on statistics, Python programming, machine learning, data visualization, and real-world project work. The program is designed to transform learners into well-rounded data science professionals ready for industry roles.",
+    "intentKeywords": ["DataScience 360", "data science", "comprehensive", "full course"],
+    "synonyms": ["DS360", "complete data science course", "data science program"],
+    "alternativePhrasings": [
+      "What is DS360 at ALabs?",
+      "Tell me about the full data science course",
+      "What does DataScience 360 cover?",
+      "Is there a comprehensive data science program?"
+    ]
+  },
+  {
+    "id": 21,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer corporate training?",
+    "shortAnswer": "Yes, ALabs provides training solutions for corporates, colleges, and universities.",
+    "detailedAnswer": "AnalytixLabs offers dedicated corporate training programs under their 'For Corporates' division. This includes customized training solutions for businesses, colleges, and universities. Corporate programs can be tailored to specific organizational needs in data science, AI, analytics, and related domains. The corporate training leverages ALabs' industry-driven curriculum and expert instructors to upskill teams and organizations in data-driven decision making.",
+    "intentKeywords": ["corporate", "business", "enterprise", "company training", "B2B"],
+    "synonyms": ["enterprise training", "business training", "company programs", "organizational training"],
+    "alternativePhrasings": [
+      "Does ALabs train corporate teams?",
+      "Is there enterprise training available?",
+      "Can my company hire ALabs for training?",
+      "Do you offer training for organizations?"
+    ]
+  },
+  {
+    "id": 22,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer training for colleges and universities?",
+    "shortAnswer": "Yes, ALabs provides specialized training courses for colleges and universities.",
+    "detailedAnswer": "AnalytixLabs offers dedicated training programs for colleges and universities through their corporate division. These programs are designed to bridge the gap between academic curriculum and industry requirements. The training covers data science, AI, analytics, and related fields with curriculum customized to the academic context. Institutions can partner with ALabs to provide their students with industry-relevant skills and certifications.",
+    "intentKeywords": ["colleges", "universities", "academic", "institutional", "campus"],
+    "synonyms": ["academic training", "university programs", "campus training", "institutional courses"],
+    "alternativePhrasings": [
+      "Does ALabs work with universities?",
+      "Can colleges partner with AnalytixLabs?",
+      "Is there academic institutional training?",
+      "Do you train college students?"
+    ]
+  },
+  {
+    "id": 23,
+    "category": "Services",
+    "question": "What is the 6 Months Job Challenge?",
+    "shortAnswer": "ALabs offers a 6 Months Job Challenge that backs their placement commitment with a clear guarantee.",
+    "detailedAnswer": "The 6 Months Job Challenge is AnalytixLabs' placement commitment program. It reflects the institute's confidence in their training quality by promising to help learners land the right role within 6 months of completing their course. The challenge is backed by their comprehensive placement-readiness program that includes resume building, mock interviews, real feedback loops, and dedicated placement support. Put in the work, and they ensure you get placed.",
+    "intentKeywords": ["job challenge", "6 months", "placement guarantee", "job assurance"],
+    "synonyms": ["placement challenge", "job guarantee", "employment promise"],
+    "alternativePhrasings": [
+      "What is the job guarantee at ALabs?",
+      "Tell me about the placement challenge",
+      "Does ALabs guarantee a job?",
+      "What is the 6 month placement program?"
+    ]
+  },
+  {
+    "id": 24,
+    "category": "Support",
+    "question": "What kind of mentorship does AnalytixLabs provide?",
+    "shortAnswer": "ALabs provides lifetime mentorship — support continues even after your batch ends.",
+    "detailedAnswer": "AnalytixLabs offers lifetime mentorship that extends well beyond the course duration. Their mentors stay with you through doubts, career decisions, and professional growth. The mentorship includes one-to-one guidance, structured post-class sessions, doubt resolution, career counseling, and ongoing support for job transitions. Unlike typical courses where support ends at graduation, ALabs' mentors remain accessible for years, helping alumni navigate their entire career journey.",
+    "intentKeywords": ["mentorship", "mentor", "guidance", "support", "help", "lifetime"],
+    "synonyms": ["coaching", "guidance", "tutoring", "career support"],
+    "alternativePhrasings": [
+      "Do I get a mentor at ALabs?",
+      "How long does mentorship last?",
+      "Is there lifetime support after the course?",
+      "What kind of help do students get?"
+    ]
+  },
+  {
+    "id": 25,
+    "category": "Support",
+    "question": "Does AnalytixLabs provide placement assistance?",
+    "shortAnswer": "Yes, ALabs provides comprehensive placement support including resume workshops, mock interviews, and real feedback loops.",
+    "detailedAnswer": "AnalytixLabs provides a robust placement-readiness program that goes beyond typical job placement services. It includes resume workshops, mock interviews, real feedback loops, and interview readiness training designed to make interviews feel familiar. Placement support doesn't stop at offer day — they keep checking in months later, suggest upskilling tracks, and help with internal promotions. Over 15,000 candidates have been placed at top companies through this program.",
+    "intentKeywords": ["placement", "job", "career", "hire", "interview", "resume"],
+    "synonyms": ["job placement", "career support", "hiring assistance", "employment help"],
+    "alternativePhrasings": [
+      "Will ALabs help me get a job?",
+      "What placement support is available?",
+      "Does AnalytixLabs help with job interviews?",
+      "How does the placement program work?"
+    ]
+  },
+  {
+    "id": 26,
+    "category": "Support",
+    "question": "Does AnalytixLabs offer interview preparation?",
+    "shortAnswer": "Yes, ALabs provides mock interviews, resume workshops, and real feedback loops for interview readiness.",
+    "detailedAnswer": "AnalytixLabs offers comprehensive interview readiness support including mock interviews that simulate real hiring processes, resume workshops to craft compelling resumes, and real feedback loops to improve performance iteratively. The program is designed to make interviews feel familiar rather than intimidating. Students practice with industry-standard questions and receive detailed feedback from experienced mentors who understand what hiring managers look for in data science candidates.",
+    "intentKeywords": ["interview", "preparation", "mock", "resume", "practice"],
+    "synonyms": ["interview coaching", "interview practice", "mock interviews", "resume help"],
+    "alternativePhrasings": [
+      "Does ALabs help with interview prep?",
+      "Are there mock interviews at AnalytixLabs?",
+      "How does ALabs prepare students for interviews?",
+      "Is there resume building help?"
+    ]
+  },
+  {
+    "id": 27,
+    "category": "Support",
+    "question": "Do students get access to recorded sessions?",
+    "shortAnswer": "Yes, students get recorded sessions and lifetime access to updated content.",
+    "detailedAnswer": "AnalytixLabs provides all students with access to recorded sessions along with lifetime access to updated content. This is especially beneficial for working professionals who may miss a live session. The recorded content is regularly updated to reflect the latest industry trends and technologies. Combined with weekend batches and self-paced blended modes, this ensures continuous, flexible learning that adapts to each student's schedule.",
+    "intentKeywords": ["recorded", "sessions", "videos", "access", "lifetime", "replay"],
+    "synonyms": ["video lectures", "recorded classes", "session recordings", "replays"],
+    "alternativePhrasings": [
+      "Can I watch classes later?",
+      "Are lectures recorded at ALabs?",
+      "Do I get lifetime access to content?",
+      "Can I replay missed sessions?"
+    ]
+  },
+  {
+    "id": 28,
+    "category": "Support",
+    "question": "Who are the instructors at AnalytixLabs?",
+    "shortAnswer": "ALabs instructors are industry practitioners with years of hands-on experience in analytics roles.",
+    "detailedAnswer": "AnalytixLabs instructors are practitioners first — they bring years of hands-on experience from real analytics roles in the industry. The faculty has real industry tenure and brings practical, real-world knowledge to the classroom. They go deep on the 'why' behind concepts, not just the 'how,' ensuring students understand the reasoning behind techniques. This practitioner-led approach ensures the training is directly applicable to real-world job scenarios.",
+    "intentKeywords": ["instructors", "faculty", "teachers", "trainers", "experts"],
+    "synonyms": ["teachers", "trainers", "professors", "mentors", "faculty"],
+    "alternativePhrasings": [
+      "Who teaches at ALabs?",
+      "What is the faculty background at AnalytixLabs?",
+      "Are the instructors industry professionals?",
+      "Tell me about ALabs faculty"
+    ]
+  },
+  {
+    "id": 29,
+    "category": "Services",
+    "question": "What topics are covered in the Data Visualization & Analytics course?",
+    "shortAnswer": "The course covers data visualization techniques, BI dashboards, and analytics using real datasets.",
+    "detailedAnswer": "The Data Visualization & Analytics course at AnalytixLabs covers comprehensive data visualization techniques, business intelligence dashboard creation, and analytical methods using real-world datasets. Students learn to create impactful visualizations, build interactive BI dashboards, and derive actionable insights from data. The curriculum is designed to build fluency in tools and techniques used across industries for data-driven decision making, making graduates highly employable in analytics roles.",
+    "intentKeywords": ["data visualization", "analytics", "BI", "dashboard", "charts", "graphs"],
+    "synonyms": ["visualization course", "BI training", "analytics program"],
+    "alternativePhrasings": [
+      "What is the data visualization course about?",
+      "Does ALabs teach BI dashboards?",
+      "Tell me about the analytics course",
+      "What visualization tools are taught?"
+    ]
+  },
+  {
+    "id": 30,
+    "category": "Pricing",
+    "question": "Does AnalytixLabs offer any discounts?",
+    "shortAnswer": "ALabs offers merit and referral-based scholarships — speak to an admissions counselor for current offers.",
+    "detailedAnswer": "AnalytixLabs believes in delivering high-quality learning at fair value. Pricing is transparent and identical for every learner — there are no hidden costs. While standard discounts may not always be available, merit and referral-based scholarships are offered. To learn about ongoing offers and scholarship opportunities, students are encouraged to speak to an admissions counselor who can provide personalized information about available financial assistance.",
+    "intentKeywords": ["discount", "offer", "scholarship", "price reduction", "deal"],
+    "synonyms": ["offers", "scholarships", "price cuts", "financial aid", "concessions"],
+    "alternativePhrasings": [
+      "Are there any scholarships at ALabs?",
+      "Can I get a discount on the course fee?",
+      "Does AnalytixLabs offer any financial aid?",
+      "How can I get a reduced price?"
+    ]
+  },
+  {
+    "id": 31,
+    "category": "Pricing",
+    "question": "How is pricing structured at AnalytixLabs?",
+    "shortAnswer": "Pricing is transparent and identical for every learner with no hidden costs.",
+    "detailedAnswer": "AnalytixLabs maintains a transparent pricing structure that is identical for every learner. There are no hidden fees or variable pricing. The institute believes in delivering high-quality learning at fair value. While specific course fees vary by program, all learners receive the same pricing for the same course. Merit and referral-based scholarships are available for eligible candidates. For detailed pricing information, students can contact the admissions team or book a free career consultation.",
+    "intentKeywords": ["pricing", "cost", "fees", "tuition", "payment", "how much"],
+    "synonyms": ["cost", "fee structure", "tuition", "charges"],
+    "alternativePhrasings": [
+      "How much do ALabs courses cost?",
+      "What is the fee structure?",
+      "How much is the tuition at AnalytixLabs?",
+      "What are the course charges?"
+    ]
+  },
+  {
+    "id": 32,
+    "category": "Pricing",
+    "question": "Are there any merit-based scholarships?",
+    "shortAnswer": "Yes, merit-based scholarships are available — contact admissions for eligibility details.",
+    "detailedAnswer": "AnalytixLabs offers merit-based scholarships for deserving candidates. These scholarships recognize academic excellence and potential. To check your eligibility and apply, you should speak to an admissions counselor who can assess your profile and inform you about ongoing scholarship opportunities. The institute is committed to making quality data science education accessible to talented individuals regardless of their financial background.",
+    "intentKeywords": ["merit", "scholarship", "financial aid", "award", "free"],
+    "synonyms": ["academic scholarship", "financial assistance", "merit award", "scholarship program"],
+    "alternativePhrasings": [
+      "Can I get a scholarship at ALabs?",
+      "Are there any financial aid options?",
+      "How do I apply for a merit scholarship?",
+      "Does ALabs have a scholarship program?"
+    ]
+  },
+  {
+    "id": 33,
+    "category": "Pricing",
+    "question": "Is there a referral-based scholarship?",
+    "shortAnswer": "Yes, referral-based scholarships are available — speak to an admissions counselor for details.",
+    "detailedAnswer": "AnalytixLabs offers referral-based scholarships where existing students or alumni can refer new candidates. When a referral leads to enrollment, both the referrer and the new student may benefit from scholarship opportunities. This program encourages the ALabs community to grow while making courses more affordable. Contact an admissions counselor to understand the specific terms, referral process, and discount amounts available under the referral scholarship program.",
+    "intentKeywords": ["referral", "scholarship", "refer", "friend", "discount"],
+    "synonyms": ["referral discount", "refer a friend", "referral program", "referral bonus"],
+    "alternativePhrasings": [
+      "Can I refer a friend for a discount?",
+      "Is there a refer and earn program?",
+      "How does the referral scholarship work?",
+      "Do I get a discount for referring someone?"
+    ]
+  },
+  {
+    "id": 34,
+    "category": "Contact",
+    "question": "How can I contact AnalytixLabs?",
+    "shortAnswer": "Contact via email at info@analytixlabs.co.in, phone at +91 9555219007, or visit any of the three office locations.",
+    "detailedAnswer": "You can contact AnalytixLabs through multiple channels: Email at info@analytixlabs.co.in for general inquiries; Phone at +91 9555219007 for immediate assistance (available 10:00 AM to 07:00 PM); or visit their offices in Noida, Gurgaon, or Bengaluru. You can also fill out the 'Request a Call Back' form on their website with your name, mobile, email, and preferred city, and an admissions counselor will reach out to you.",
+    "intentKeywords": ["contact", "reach", "phone", "email", "call", "talk"],
+    "synonyms": ["reach out", "get in touch", "connect", "communicate"],
+    "alternativePhrasings": [
+      "How do I reach ALabs?",
+      "What is AnalytixLabs' phone number?",
+      "How can I get in touch with ALabs?",
+      "What is the contact email for AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 35,
+    "category": "Contact",
+    "question": "What is AnalytixLabs' email address?",
+    "shortAnswer": "The email address is info@analytixlabs.co.in.",
+    "detailedAnswer": "AnalytixLabs can be reached via email at info@analytixlabs.co.in. This email is for general inquiries about courses, admissions, corporate training, and any other questions. You can expect a prompt response from the admissions team. For faster assistance, you may also call +91 9555219007 during business hours (10:00 AM to 07:00 PM) or fill out the contact form on their website.",
+    "intentKeywords": ["email", "mail", "address", "write", "inbox"],
+    "synonyms": ["email ID", "mail address", "email contact"],
+    "alternativePhrasings": [
+      "What is ALabs' email?",
+      "Where can I email AnalytixLabs?",
+      "What email should I use to contact ALabs?",
+      "Give me the email address of AnalytixLabs"
+    ]
+  },
+  {
+    "id": 36,
+    "category": "Contact",
+    "question": "What is AnalytixLabs' phone number?",
+    "shortAnswer": "You can call AnalytixLabs at +91 9555219007.",
+    "detailedAnswer": "AnalytixLabs' primary phone number is +91 9555219007. This number is shared across all three office locations (Noida, Gurgaon, and Bengaluru). The phone lines are available from 10:00 AM to 07:00 PM. You can call this number for course inquiries, admissions information, scheduling campus visits, or speaking with an expert counselor about your career goals and the right learning path.",
+    "intentKeywords": ["phone", "number", "call", "telephone", "mobile"],
+    "synonyms": ["phone number", "contact number", "telephone", "helpline"],
+    "alternativePhrasings": [
+      "What number do I call for ALabs?",
+      "Can I call AnalytixLabs?",
+      "What is the helpline number?",
+      "Give me ALabs' contact number"
+    ]
+  },
+  {
+    "id": 37,
+    "category": "Contact",
+    "question": "What are AnalytixLabs' office hours?",
+    "shortAnswer": "AnalytixLabs offices are open from 10:00 AM to 07:00 PM.",
+    "detailedAnswer": "AnalytixLabs offices operate from 10:00 AM to 07:00 PM. During these hours, you can call the helpline at +91 9555219007, visit any of their three offices in Noida, Gurgaon, or Bengaluru, or expect responses to email inquiries. For inquiries outside business hours, you can fill out the online contact form or send an email to info@analytixlabs.co.in, and the team will respond during the next working day.",
+    "intentKeywords": ["hours", "timing", "open", "available", "schedule", "working hours"],
+    "synonyms": ["business hours", "working hours", "office timing", "availability"],
+    "alternativePhrasings": [
+      "When is ALabs open?",
+      "What time can I call AnalytixLabs?",
+      "What are the office timings?",
+      "When are the offices available?"
+    ]
+  },
+  {
+    "id": 38,
+    "category": "Contact",
+    "question": "Where is AnalytixLabs' Noida office?",
+    "shortAnswer": "1st Floor, A78, A Block, Sector 2, Metro Gate 3, Noida, UP 201301.",
+    "detailedAnswer": "The AnalytixLabs Noida office is located at 1st Floor, A78, A Block, Sector 2, Metro Gate 3, Noida, Uttar Pradesh 201301. The office is conveniently located near a metro station for easy accessibility. You can reach them at +91 9555219007 and visit during office hours (10:00 AM to 07:00 PM). Directions are available via Google Maps by searching for 'AnalytixLabs Noida.'",
+    "intentKeywords": ["Noida", "office", "address", "location", "directions"],
+    "synonyms": ["Noida branch", "Noida center", "Noida campus"],
+    "alternativePhrasings": [
+      "Where is ALabs in Noida?",
+      "What is the Noida office address?",
+      "How do I reach the Noida center?",
+      "Give me directions to ALabs Noida"
+    ]
+  },
+  {
+    "id": 39,
+    "category": "Contact",
+    "question": "Where is AnalytixLabs' Gurgaon office?",
+    "shortAnswer": "2nd Floor, Sidhartha House, Building No. 6, Sector 44, Gurugram, Haryana 122003.",
+    "detailedAnswer": "The AnalytixLabs Gurgaon (Gurugram) office is at 2nd Floor, Sidhartha House, Building No. 6, Sector 44, Gurugram, Haryana 122003. It's conveniently located just 600 meters from HUDA City Metro station, making it easily accessible via public transport. You can contact them at +91 9555219007 and visit during office hours (10:00 AM to 07:00 PM). Search 'AnalytixLabs Gurgaon' on Google Maps for directions.",
+    "intentKeywords": ["Gurgaon", "Gurugram", "office", "address", "location"],
+    "synonyms": ["Gurgaon branch", "Gurugram center", "Gurgaon campus"],
+    "alternativePhrasings": [
+      "Where is ALabs in Gurgaon?",
+      "What is the Gurugram office address?",
+      "How do I reach the Gurgaon center?",
+      "Is ALabs near HUDA City Metro?"
+    ]
+  },
+  {
+    "id": 40,
+    "category": "Contact",
+    "question": "Where is AnalytixLabs' Bengaluru office?",
+    "shortAnswer": "Bldg 51/2, First Floor, 12th Main Road, Near BDA Complex, Sector 6, HSR Layout, Bengaluru, Karnataka 560102.",
+    "detailedAnswer": "The AnalytixLabs Bengaluru office is located at Building 51/2, First Floor, 12th Main Road, Near BDA Complex, Sector 6, HSR Layout, Bengaluru, Karnataka 560102. Located in the popular HSR Layout area of Bengaluru, it's easily accessible to tech professionals in the city. Contact them at +91 9555219007 during office hours (10:00 AM to 07:00 PM). Search 'AnalytixLabs Bengaluru' on Google Maps for directions.",
+    "intentKeywords": ["Bengaluru", "Bangalore", "office", "address", "location", "HSR"],
+    "synonyms": ["Bangalore branch", "Bengaluru center", "Bangalore campus"],
+    "alternativePhrasings": [
+      "Where is ALabs in Bangalore?",
+      "What is the Bengaluru office address?",
+      "Is there an ALabs center in HSR Layout?",
+      "How do I reach ALabs Bengaluru?"
+    ]
+  },
+  {
+    "id": 41,
+    "category": "Contact",
+    "question": "How can I request a callback from AnalytixLabs?",
+    "shortAnswer": "Fill in your name, email, mobile number, and city on the website's 'Request a Call Back' form.",
+    "detailedAnswer": "To request a callback, visit the AnalytixLabs website and fill out the 'Request a Call Back' form. The form requires your Name, Email address, Mobile number (with country code), and preferred City (Noida, Gurgaon, or Bangalore). An expert counselor will then reach out to gain insights into your profile and strategize your next career move. The process is secure, private, with no spam, and takes only 2 minutes to complete.",
+    "intentKeywords": ["callback", "request", "call back", "schedule", "form"],
+    "synonyms": ["schedule a call", "request call", "call me back", "phone consultation"],
+    "alternativePhrasings": [
+      "Can ALabs call me?",
+      "How do I schedule a call?",
+      "Where do I request a callback?",
+      "How can I speak to a counselor?"
+    ]
+  },
+  {
+    "id": 42,
+    "category": "Contact",
+    "question": "Can I book a free career consultation?",
+    "shortAnswer": "Yes, you can book a free career consultation through the website or by calling +91 9555219007.",
+    "detailedAnswer": "AnalytixLabs offers free career consultations where expert counselors assess your profile and help strategize your career path. You can book one by clicking 'Book Free Career Consultation' on the website, filling out the contact form, or calling +91 9555219007 directly. During the consultation, advisors provide personalized guidance on curriculum, career outcomes, and the best learning path based on your specific goals and background.",
+    "intentKeywords": ["free consultation", "career advice", "counseling", "book", "guidance"],
+    "synonyms": ["career counseling", "free advice", "career guidance session"],
+    "alternativePhrasings": [
+      "How do I get career guidance from ALabs?",
+      "Is there a free counseling session?",
+      "Can I talk to a career advisor?",
+      "How do I book a consultation at AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 43,
+    "category": "Contact",
+    "question": "How many offices does AnalytixLabs have?",
+    "shortAnswer": "AnalytixLabs has three offices — in Noida, Gurgaon, and Bengaluru.",
+    "detailedAnswer": "AnalytixLabs operates from three physical office locations across India: Noida (1st Floor, A78, A Block, Sector 2, near Metro Gate 3), Gurgaon (2nd Floor, Sidhartha House, Sector 44, 600m from HUDA City Metro), and Bengaluru (Bldg 51/2, HSR Layout). All three offices share the same phone number (+91 9555219007) and operate from 10:00 AM to 07:00 PM. Online courses are also available for students who cannot visit in person.",
+    "intentKeywords": ["offices", "locations", "branches", "centers", "how many"],
+    "synonyms": ["branches", "centers", "campuses", "locations"],
+    "alternativePhrasings": [
+      "How many locations does ALabs have?",
+      "Where are ALabs offices located?",
+      "In which cities is AnalytixLabs present?",
+      "Does ALabs have multiple branches?"
+    ]
+  },
+  {
+    "id": 44,
+    "category": "Services",
+    "question": "What is the Advanced Certification in Data Science?",
+    "shortAnswer": "A flagship program offering comprehensive data science certification with industry-recognized credentials.",
+    "detailedAnswer": "The Advanced Certification in Data Science is one of AnalytixLabs' premier programs. It provides a thorough grounding in data science concepts, tools, and techniques. The curriculum covers statistics, Python, SQL, machine learning, and advanced analytics with real-world capstone projects. Upcoming batches are available in Gurgaon and other locations. The certification is industry-recognized and may include dual branding with partners like IBM or NSDC for enhanced credibility.",
+    "intentKeywords": ["advanced certification", "data science", "certification", "flagship"],
+    "synonyms": ["data science certification", "advanced DS course", "data science diploma"],
+    "alternativePhrasings": [
+      "What is the data science certification at ALabs?",
+      "Tell me about the advanced data science program",
+      "What does the data science certification cover?",
+      "How do I get certified in data science?"
+    ]
+  },
+  {
+    "id": 45,
+    "category": "Services",
+    "question": "What is the Certified Data Analytics & AI Course?",
+    "shortAnswer": "A comprehensive certification covering data analytics and AI for professionals and career changers.",
+    "detailedAnswer": "The Certified Data Analytics & AI Course at AnalytixLabs is designed for both experienced professionals and career changers. It covers the full spectrum of data analytics along with AI fundamentals, providing learners with dual competency. The course combines practical analytics skills with AI knowledge, preparing graduates for roles that increasingly require both analytical thinking and AI literacy. Upcoming batches are regularly announced on the website.",
+    "intentKeywords": ["certified", "data analytics", "AI", "certification", "analytics"],
+    "synonyms": ["analytics & AI course", "data analytics certification", "certified analytics program"],
+    "alternativePhrasings": [
+      "What is the analytics and AI course?",
+      "Tell me about the certified data analytics program",
+      "Is there a combined analytics and AI course?",
+      "What does the data analytics certification include?"
+    ]
+  },
+  {
+    "id": 46,
+    "category": "Support",
+    "question": "What distinguishes AnalytixLabs from other institutes?",
+    "shortAnswer": "Faculty with real industry tenure, structured post-class mentorship, capstones mirroring real engagements, and placement-readiness programs.",
+    "detailedAnswer": "AnalytixLabs stands out from competitors through several key differentiators: Faculty with real industry tenure who bring practical experience to teaching; structured post-class mentorship that continues beyond the course; capstone projects that mirror real client engagements rather than toy problems; and a comprehensive placement-readiness program rather than just lectures. Combined with lifetime mentorship, continuous content access, and a 9.7+ average rating, ALabs delivers genuinely career-transforming education.",
+    "intentKeywords": ["different", "distinguish", "better", "unique", "versus", "compare"],
+    "synonyms": ["stand out", "competitive advantage", "USP", "differentiator"],
+    "alternativePhrasings": [
+      "Why is ALabs better than other institutes?",
+      "What makes AnalytixLabs unique?",
+      "How is ALabs different from competitors?",
+      "Why should I choose ALabs over others?"
+    ]
+  },
+  {
+    "id": 47,
+    "category": "Support",
+    "question": "What is the placement commitment at AnalytixLabs?",
+    "shortAnswer": "ALabs backs their training with a clear commitment — put in the work and they ensure you land the right role.",
+    "detailedAnswer": "AnalytixLabs' placement commitment means they back their training with a clear promise: put in the work, and they ensure you land the right role. This isn't just about providing a certificate — it includes comprehensive interview preparation, resume building, mock interviews, real feedback, and active placement support. The commitment extends beyond offer day with continued check-ins, upskilling suggestions, and help with internal promotions, as verified by alumni testimonials.",
+    "intentKeywords": ["placement commitment", "guarantee", "job promise", "placement rate"],
+    "synonyms": ["job guarantee", "placement promise", "career assurance"],
+    "alternativePhrasings": [
+      "Does ALabs guarantee job placement?",
+      "What is the placement success rate?",
+      "How confident is ALabs about placements?",
+      "Will I get a job after completing the course?"
+    ]
+  },
+  {
+    "id": 48,
+    "category": "Services",
+    "question": "What career paths can I pursue after AnalytixLabs training?",
+    "shortAnswer": "Roles in data engineering, data science, artificial intelligence, and business analytics.",
+    "detailedAnswer": "AnalytixLabs training prepares you for diverse career paths including Data Scientist, Data Analyst, Business Analyst, Data Engineer, AI/ML Engineer, Deep Learning Specialist, and BI Analyst roles. Alumni have been placed in positions ranging from Senior Data Analyst at Accenture to Data Scientist at American Express and Business Analyst at McKinsey & Company. The institute's curriculum covers all the skills needed for these roles across industries.",
+    "intentKeywords": ["career", "job roles", "positions", "after course", "paths"],
+    "synonyms": ["job roles", "career options", "employment paths", "job opportunities"],
+    "alternativePhrasings": [
+      "What jobs can I get after ALabs?",
+      "What roles will I qualify for?",
+      "What career options open up after training?",
+      "Which positions can I apply for after the course?"
+    ]
+  },
+  {
+    "id": 49,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer Data Science courses in Delhi?",
+    "shortAnswer": "Yes, courses are available in nearby Noida and Gurgaon locations, plus online from anywhere.",
+    "detailedAnswer": "While AnalytixLabs doesn't have a Delhi city center office, they serve the Delhi-NCR region through their Noida and Gurgaon centers. The Noida office is at Sector 2, near Metro Gate 3, and the Gurgaon office is just 600m from HUDA City Metro — both easily accessible from Delhi. Additionally, online learning modes are available for those who prefer studying from home. Courses include Data Analyst Training and Data Science courses with the same comprehensive curriculum.",
+    "intentKeywords": ["Delhi", "NCR", "location", "data science course", "city"],
+    "synonyms": ["Delhi NCR", "New Delhi", "Delhi region"],
+    "alternativePhrasings": [
+      "Is there an ALabs center in Delhi?",
+      "Can I take data science courses near Delhi?",
+      "Does ALabs have classes in Delhi NCR?",
+      "Where is the nearest ALabs to Delhi?"
+    ]
+  },
+  {
+    "id": 50,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer courses in Bangalore?",
+    "shortAnswer": "Yes, ALabs has a physical center in HSR Layout, Bengaluru, plus online course options.",
+    "detailedAnswer": "AnalytixLabs has a dedicated center in Bengaluru located at Building 51/2, First Floor, 12th Main Road, Near BDA Complex, Sector 6, HSR Layout, Bengaluru, Karnataka 560102. They offer Data Science, AI, Business Analytics, and Artificial Intelligence courses with classroom and blended learning options. The HSR Layout location is in a major tech hub, making it convenient for IT professionals seeking to upskill in data science and AI.",
+    "intentKeywords": ["Bangalore", "Bengaluru", "courses", "center", "location"],
+    "synonyms": ["Bengaluru", "Bangalore center", "Bangalore campus"],
+    "alternativePhrasings": [
+      "Is there an ALabs in Bengaluru?",
+      "Where is the Bangalore center?",
+      "Can I attend ALabs classes in Bangalore?",
+      "What courses are available in Bengaluru?"
+    ]
+  },
+  {
+    "id": 51,
+    "category": "About Company",
+    "question": "How many training hours has AnalytixLabs delivered?",
+    "shortAnswer": "AnalytixLabs has delivered over 130,000 training hours since 2011.",
+    "detailedAnswer": "AnalytixLabs has delivered more than 130,000 training hours across all its programs since 2011. This extensive volume of training reflects the institute's commitment to comprehensive, deep education rather than superficial courses. With 600+ learning hours available across their curriculum, each course is designed to provide thorough coverage of subjects, ensuring students gain the depth of knowledge needed for real-world data science and AI careers.",
+    "intentKeywords": ["training hours", "hours", "volume", "teaching"],
+    "synonyms": ["learning hours", "instruction hours", "teaching hours"],
+    "alternativePhrasings": [
+      "How much training does ALabs provide?",
+      "What is the total learning hours at AnalytixLabs?",
+      "How many hours of content does ALabs have?",
+      "How extensive is the training?"
+    ]
+  },
+  {
+    "id": 52,
+    "category": "About Company",
+    "question": "How many companies hire from AnalytixLabs?",
+    "shortAnswer": "Over 50 companies actively hire AnalytixLabs graduates.",
+    "detailedAnswer": "More than 50 companies actively recruit AnalytixLabs graduates. These include major corporations like Amazon, Accenture, Deloitte, EY, McKinsey & Company, American Express, Genpact, and Findability Sciences. The institute's strong industry connections and placement-readiness program ensure that graduates are well-positioned for roles at these top employers. The number continues to grow as more companies recognize the quality of ALabs-trained professionals.",
+    "intentKeywords": ["companies", "hiring", "recruiters", "partners", "50"],
+    "synonyms": ["hiring companies", "placement partners", "recruiting firms"],
+    "alternativePhrasings": [
+      "How many companies recruit from ALabs?",
+      "What is the number of hiring partners?",
+      "How many employers work with AnalytixLabs?",
+      "Which companies partner with ALabs for hiring?"
+    ]
+  },
+  {
+    "id": 53,
+    "category": "Services",
+    "question": "What is the curriculum at AnalytixLabs?",
+    "shortAnswer": "The curriculum is industry-driven, regularly updated, and covers Data Science, AI, Analytics, and Specializations.",
+    "detailedAnswer": "AnalytixLabs' curriculum is meticulously curated and industry-driven. It covers Artificial Intelligence, Business & Data Analytics, Data Science, and Specialization Modules. The syllabus evolves with the industry and is taught through real datasets and real business problems. Key topics include Python, SQL, Excel, Machine Learning, Deep Learning, NLP, Computer Vision, Generative AI, and BI tools. Capstone projects mirror real client engagements to ensure practical readiness.",
+    "intentKeywords": ["curriculum", "syllabus", "topics", "content", "what is taught"],
+    "synonyms": ["syllabus", "course content", "subjects", "topics covered"],
+    "alternativePhrasings": [
+      "What does the ALabs curriculum include?",
+      "What subjects are taught at AnalytixLabs?",
+      "Tell me about the course content",
+      "What topics does ALabs cover?"
+    ]
+  },
+  {
+    "id": 54,
+    "category": "Services",
+    "question": "Are capstone projects included in the courses?",
+    "shortAnswer": "Yes, capstone projects are a core part of the curriculum, mirroring real client engagements.",
+    "detailedAnswer": "Capstone projects are an integral part of AnalytixLabs' curriculum. These projects mirror real client engagements and feel like actual on-the-job sprints. Students work on real datasets and solve real business problems, building a portfolio of work that demonstrates their practical skills to employers. Testimonials confirm that capstones are challenging and genuinely prepare students for the work environment — one alumnus noted deploying models with confidence by the capstone stage.",
+    "intentKeywords": ["capstone", "project", "hands-on", "practical", "real-world"],
+    "synonyms": ["final project", "practical project", "industry project", "hands-on project"],
+    "alternativePhrasings": [
+      "Are there real projects in the course?",
+      "Does ALabs include practical work?",
+      "What kind of projects do students do?",
+      "Is there a final capstone project?"
+    ]
+  },
+  {
+    "id": 55,
+    "category": "Support",
+    "question": "Is there post-course support available?",
+    "shortAnswer": "Yes, ALabs provides lifetime mentorship and continued support even after course completion.",
+    "detailedAnswer": "AnalytixLabs provides extensive post-course support that sets it apart from competitors. Lifetime mentorship means mentors stay with you through doubts and career decisions even after your batch ends. Placement support doesn't stop at offer day — they keep checking in months later, suggest upskilling tracks, and help prep for internal promotions. Students also retain lifetime access to updated course content, ensuring they stay current with industry developments.",
+    "intentKeywords": ["post-course", "after", "support", "alumni", "continued"],
+    "synonyms": ["after-course support", "alumni support", "ongoing help", "post-graduation support"],
+    "alternativePhrasings": [
+      "What happens after the course ends?",
+      "Is there support after graduation?",
+      "Does ALabs help alumni?",
+      "Can I get help after completing the program?"
+    ]
+  },
+  {
+    "id": 56,
+    "category": "Services",
+    "question": "Who is the ideal student for AnalytixLabs?",
+    "shortAnswer": "Both freshers/students and experienced professionals looking to start, switch, or advance their careers.",
+    "detailedAnswer": "AnalytixLabs caters to two main profiles: Freshers/Students who are starting or preparing to start their career in data science, and Experienced Professionals who are working, switching roles, or restarting their career. The institute has a 'Find Your Perfect Learning Path' feature that helps each learner identify the right program. Whether you have zero coding background or are an experienced professional looking to upskill, ALabs has tailored learning paths for every level.",
+    "intentKeywords": ["who", "target", "audience", "eligibility", "suitable", "ideal"],
+    "synonyms": ["target audience", "ideal candidate", "who should join", "eligibility"],
+    "alternativePhrasings": [
+      "Who should join ALabs?",
+      "Is ALabs for beginners or experienced professionals?",
+      "Am I eligible for ALabs courses?",
+      "Is there a course for freshers?"
+    ]
+  },
+  {
+    "id": 57,
+    "category": "Services",
+    "question": "Can someone with no coding background join AnalytixLabs?",
+    "shortAnswer": "Yes, the Data Analytics certification assumes no prior coding background and builds skills progressively.",
+    "detailedAnswer": "Absolutely. AnalytixLabs welcomes learners with zero coding background. The Data Analytics certification is specifically designed with no prior coding prerequisites and builds skills progressively through Excel → SQL → Python → BI tools. As one alumnus (Rohit Verma, now Data Scientist at American Express) shared: 'I came in with zero coding background. The pacing was honest about that — slow start, real ramp, and by capstone I was deploying models with confidence.'",
+    "intentKeywords": ["no coding", "beginner", "zero experience", "non-technical", "no background"],
+    "synonyms": ["no programming experience", "non-coder", "complete beginner", "zero background"],
+    "alternativePhrasings": [
+      "Can I join without coding skills?",
+      "Is there a course for non-programmers?",
+      "I don't know coding, can I still join?",
+      "Do I need to know Python before joining?"
+    ]
+  },
+  {
+    "id": 58,
+    "category": "Services",
+    "question": "What upcoming batches are available?",
+    "shortAnswer": "Check the 'Upcoming Batches' page on the website for the latest batch schedules and available seats.",
+    "detailedAnswer": "AnalytixLabs regularly announces upcoming batches on their website. Recent batches include the Advanced Certification in Data Science and Certified Data Analytics & AI Course in Gurgaon. Each batch listing shows the location, date, time (e.g., 9:30 AM), and available seats. To get the latest batch schedule, visit the 'Upcoming Batches' page on the website or contact the admissions team at +91 9555219007 for current availability and enrollment details.",
+    "intentKeywords": ["upcoming", "batches", "schedule", "dates", "start", "next"],
+    "synonyms": ["next batch", "upcoming classes", "batch schedule", "start dates"],
+    "alternativePhrasings": [
+      "When does the next batch start?",
+      "What are the upcoming class schedules?",
+      "Are there any batches starting soon?",
+      "When can I join the next course?"
+    ]
+  },
+  {
+    "id": 59,
+    "category": "Contact",
+    "question": "Can I sign up for a demo session?",
+    "shortAnswer": "Yes, you can sign up for a demo through the website's 'Sign up for demo' section or contact page.",
+    "detailedAnswer": "AnalytixLabs offers demo sessions for prospective students. You can sign up through the 'Sign up for demo' section available on the website's contact page. This gives you a firsthand experience of the teaching methodology, course content, and learning environment before committing. You can also call +91 9555219007 or fill out the contact form to arrange a demo session at your preferred location (Noida, Gurgaon, or Bengaluru) or online.",
+    "intentKeywords": ["demo", "trial", "sample", "preview", "try"],
+    "synonyms": ["trial class", "sample session", "preview class", "free demo"],
+    "alternativePhrasings": [
+      "Can I try a class before enrolling?",
+      "Is there a demo session available?",
+      "How do I sign up for a trial?",
+      "Can I attend a sample class?"
+    ]
+  },
+  {
+    "id": 60,
+    "category": "Contact",
+    "question": "How do I create an account on AnalytixLabs?",
+    "shortAnswer": "Visit lms.analytixlabs.co.in/register to create a free account.",
+    "detailedAnswer": "To create a free account on AnalytixLabs, visit their Learning Management System (LMS) at lms.analytixlabs.co.in/register. The registration is free and gives you access to the learning platform. If you already have an account, you can sign in at lms.analytixlabs.co.in. The LMS provides access to course materials, recorded sessions, assignments, and other learning resources once you're enrolled in a program.",
+    "intentKeywords": ["account", "register", "sign up", "create", "login"],
+    "synonyms": ["registration", "sign up", "create profile", "enroll"],
+    "alternativePhrasings": [
+      "How do I register on ALabs?",
+      "Where can I create an account?",
+      "How do I sign up for ALabs LMS?",
+      "Where is the registration page?"
+    ]
+  },
+  {
+    "id": 61,
+    "category": "Contact",
+    "question": "How do I sign in to my AnalytixLabs account?",
+    "shortAnswer": "Sign in at lms.analytixlabs.co.in with your registered credentials.",
+    "detailedAnswer": "To sign in to your AnalytixLabs account, visit lms.analytixlabs.co.in and enter your registered email and password. The LMS (Learning Management System) provides access to your enrolled courses, recorded sessions, assignments, and learning resources. If you're having trouble signing in or have forgotten your credentials, contact the support team at info@analytixlabs.co.in or call +91 9555219007 for assistance.",
+    "intentKeywords": ["sign in", "login", "access", "account", "LMS"],
+    "synonyms": ["log in", "access account", "sign into LMS"],
+    "alternativePhrasings": [
+      "How do I log in to ALabs?",
+      "Where can I access my course?",
+      "What is the LMS login URL?",
+      "How do I access my learning dashboard?"
+    ]
+  },
+  {
+    "id": 62,
+    "category": "Services",
+    "question": "Does AnalytixLabs have a blog?",
+    "shortAnswer": "Yes, ALabs has an active blog covering topics in Data Science, AI, Python, and more.",
+    "detailedAnswer": "AnalytixLabs maintains an active blog at www.analytixlabs.co.in/blog covering a wide range of topics relevant to data science, AI, and analytics learners. Recent posts include 'List vs Tuple in Python: Understanding Key Differences,' 'What is Agentic AI – A Technical Guide for Beginners,' and 'Parametric vs. Non-Parametric Test: Which One to Use for Hypothesis Testing?' The blog also accepts guest post submissions from the community.",
+    "intentKeywords": ["blog", "articles", "resources", "content", "posts"],
+    "synonyms": ["articles", "blog posts", "resources", "educational content"],
+    "alternativePhrasings": [
+      "Where can I read ALabs articles?",
+      "Does AnalytixLabs publish educational content?",
+      "Is there a blog with free resources?",
+      "Where can I find ALabs blog posts?"
+    ]
+  },
+  {
+    "id": 63,
+    "category": "Services",
+    "question": "Can I submit a guest post on the AnalytixLabs blog?",
+    "shortAnswer": "Yes, you can submit a guest post through the blog's guest post submission page.",
+    "detailedAnswer": "AnalytixLabs welcomes guest post submissions on their blog. If you have expertise in data science, AI, analytics, or related topics, you can contribute content by visiting the 'Submit a Guest Post' page on the ALabs blog. This is a great opportunity for professionals and enthusiasts to share knowledge with the broader data science community and gain visibility. Review the submission guidelines on the page before submitting your article.",
+    "intentKeywords": ["guest post", "submit", "blog", "write", "contribute"],
+    "synonyms": ["guest article", "blog submission", "write for us", "contribute"],
+    "alternativePhrasings": [
+      "Can I write for the ALabs blog?",
+      "How do I submit an article to AnalytixLabs?",
+      "Does ALabs accept guest writers?",
+      "Where do I submit a blog post?"
+    ]
+  },
+  {
+    "id": 64,
+    "category": "Services",
+    "question": "Are free resources available on the AnalytixLabs website?",
+    "shortAnswer": "Yes, free resources are available through the blog section tagged under 'resources.'",
+    "detailedAnswer": "AnalytixLabs provides free resources through their blog section. These resources can be accessed by visiting the blog and filtering by the 'resources' tag. The free content includes educational articles, beginner guides, comparison posts, and technical tutorials covering topics in data science, Python, AI, and analytics. These resources complement the paid programs and help prospective students get a taste of the quality of education ALabs provides.",
+    "intentKeywords": ["free", "resources", "materials", "downloads", "learning"],
+    "synonyms": ["free content", "free materials", "open resources", "free learning"],
+    "alternativePhrasings": [
+      "Does ALabs offer any free learning materials?",
+      "Where can I find free resources?",
+      "Are there any free tutorials?",
+      "Can I access free content from AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 65,
+    "category": "Support",
+    "question": "What are the system requirements for AnalytixLabs courses?",
+    "shortAnswer": "System requirements are listed on the About page — visit the requirements section for details.",
+    "detailedAnswer": "AnalytixLabs provides detailed system requirements on their About page under the 'System Requirements' section. These requirements outline the minimum hardware and software specifications needed to effectively participate in courses, run programming environments, and handle data processing tasks. Having the right system setup ensures smooth access to the LMS, running of Python/R environments, and handling of datasets used in coursework.",
+    "intentKeywords": ["system requirements", "hardware", "software", "computer", "specifications"],
+    "synonyms": ["tech requirements", "computer specs", "minimum requirements", "hardware needs"],
+    "alternativePhrasings": [
+      "What computer do I need for ALabs courses?",
+      "What are the technical requirements?",
+      "What laptop specs are needed?",
+      "What software do I need to install?"
+    ]
+  },
+  {
+    "id": 66,
+    "category": "About Company",
+    "question": "Where can I read AnalytixLabs success stories?",
+    "shortAnswer": "Success stories are available on the About page under the 'testimonials' section.",
+    "detailedAnswer": "AnalytixLabs showcases success stories and testimonials on their About page under the testimonials section. These feature real alumni experiences, including career transformations and placement outcomes. Notable testimonials include Piyush Ganar (AGM at Findability Sciences), Anika Sharma (Senior Data Analyst at Accenture), Rohit Verma (Data Scientist at American Express), and Priya Iyer (Business Analyst at McKinsey & Company). These stories demonstrate the real-world impact of ALabs training.",
+    "intentKeywords": ["success stories", "testimonials", "reviews", "alumni", "experiences"],
+    "synonyms": ["alumni stories", "student reviews", "case studies", "testimonials"],
+    "alternativePhrasings": [
+      "Where can I read student testimonials?",
+      "Are there any success stories from ALabs?",
+      "What do alumni say about AnalytixLabs?",
+      "Can I see reviews from past students?"
+    ]
+  },
+  {
+    "id": 67,
+    "category": "About Company",
+    "question": "What do students say about AnalytixLabs?",
+    "shortAnswer": "Students praise the practical curriculum, mentorship quality, and career transformation with a 4.8/5 rating.",
+    "detailedAnswer": "Students consistently rate AnalytixLabs 4.8/5 and share positive experiences. Piyush Ganar praised the easy-to-understand course material and real-time business case studies. Anika Sharma highlighted how mentors went deep on the 'why,' not just the 'how.' Rohit Verma, who started with zero coding background, shared how honest pacing helped him deploy models with confidence. Priya Iyer noted that placement support continued long after offer day, with ongoing upskilling suggestions and promotion prep.",
+    "intentKeywords": ["reviews", "testimonials", "feedback", "students say", "opinion"],
+    "synonyms": ["student feedback", "learner reviews", "alumni opinions", "course reviews"],
+    "alternativePhrasings": [
+      "What is the student feedback for ALabs?",
+      "How do learners rate AnalytixLabs?",
+      "What are the reviews of ALabs courses?",
+      "Tell me about student experiences at AnalytixLabs"
+    ]
+  },
+  {
+    "id": 68,
+    "category": "Security",
+    "question": "Is my personal information secure when I fill out the contact form?",
+    "shortAnswer": "Yes, ALabs ensures secure and private data handling with a no-spam policy.",
+    "detailedAnswer": "AnalytixLabs prioritizes the security and privacy of your personal information. When you fill out the contact or callback form, your data is handled securely with a strict no-spam policy. The website explicitly states 'Secure & Private, No Spam, ever.' Your information is used solely for the purpose of responding to your inquiry and providing relevant course information. The website also has a dedicated Privacy Policy page that outlines data handling practices.",
+    "intentKeywords": ["security", "privacy", "safe", "data protection", "personal information"],
+    "synonyms": ["data safety", "information security", "privacy protection", "data handling"],
+    "alternativePhrasings": [
+      "Is my data safe with ALabs?",
+      "Does AnalytixLabs sell my information?",
+      "Will I get spam after filling the form?",
+      "How does ALabs handle my personal data?"
+    ]
+  },
+  {
+    "id": 69,
+    "category": "Security",
+    "question": "Does AnalytixLabs have a privacy policy?",
+    "shortAnswer": "Yes, a detailed privacy policy is available on the website.",
+    "detailedAnswer": "AnalytixLabs has a comprehensive privacy policy available on their website at the 'Privacy Policy' link in the footer. The policy outlines how personal information is collected, used, stored, and protected. It covers data gathered through contact forms, course enrollments, and website interactions. The institute is committed to maintaining the confidentiality and security of all learner data, adhering to applicable data protection regulations.",
+    "intentKeywords": ["privacy policy", "data policy", "terms", "GDPR", "data handling"],
+    "synonyms": ["data policy", "privacy statement", "data protection policy"],
+    "alternativePhrasings": [
+      "Where is the privacy policy?",
+      "Does ALabs have data protection policies?",
+      "What are ALabs' data handling policies?",
+      "How does AnalytixLabs protect my privacy?"
+    ]
+  },
+  {
+    "id": 70,
+    "category": "Security",
+    "question": "Does AnalytixLabs have terms and conditions?",
+    "shortAnswer": "Yes, terms and conditions are available via the footer link on the website.",
+    "detailedAnswer": "AnalytixLabs maintains detailed terms and conditions that govern the use of their services, website, and learning platform. These can be accessed via the 'Terms and Conditions' link in the website footer. The terms cover enrollment policies, payment terms, course access, intellectual property, and other legal aspects of engaging with AnalytixLabs' services. It's recommended to review these before enrolling in any program.",
+    "intentKeywords": ["terms", "conditions", "legal", "agreement", "policy"],
+    "synonyms": ["T&C", "terms of service", "legal terms", "service agreement"],
+    "alternativePhrasings": [
+      "Where are the terms and conditions?",
+      "What are ALabs' terms of service?",
+      "Is there a legal agreement for enrollment?",
+      "What are the enrollment policies?"
+    ]
+  },
+  {
+    "id": 71,
+    "category": "Deployment",
+    "question": "Where can I access the AnalytixLabs Learning Management System (LMS)?",
+    "shortAnswer": "The LMS is accessible at lms.analytixlabs.co.in for all enrolled students.",
+    "detailedAnswer": "The AnalytixLabs Learning Management System (LMS) is available at lms.analytixlabs.co.in. Enrolled students can sign in to access course materials, recorded sessions, assignments, quizzes, and other learning resources. New users can create a free account at lms.analytixlabs.co.in/register. The LMS is cloud-based and accessible from any device with an internet connection, supporting the self-paced and blended learning modes offered by ALabs.",
+    "intentKeywords": ["LMS", "learning platform", "portal", "access", "login"],
+    "synonyms": ["learning portal", "student portal", "online platform", "course dashboard"],
+    "alternativePhrasings": [
+      "How do I access the learning platform?",
+      "Where is the student portal?",
+      "What is the LMS URL?",
+      "How do I use the online learning system?"
+    ]
+  },
+  {
+    "id": 72,
+    "category": "Deployment",
+    "question": "Can I access AnalytixLabs courses from my mobile device?",
+    "shortAnswer": "Yes, the website and LMS are mobile-responsive and accessible from any device.",
+    "detailedAnswer": "AnalytixLabs' website and Learning Management System are built with mobile responsiveness in mind. The website uses responsive design that adapts to different screen sizes, from desktops to tablets and smartphones. This means you can browse courses, access the LMS, view recorded sessions, and interact with learning materials from your mobile device. The mobile-optimized interface ensures a seamless learning experience regardless of the device you use.",
+    "intentKeywords": ["mobile", "phone", "tablet", "device", "responsive", "app"],
+    "synonyms": ["smartphone", "mobile access", "phone compatibility", "tablet support"],
+    "alternativePhrasings": [
+      "Can I use ALabs on my phone?",
+      "Is there a mobile app for AnalytixLabs?",
+      "Is the website mobile-friendly?",
+      "Can I study on my tablet?"
+    ]
+  },
+  {
+    "id": 73,
+    "category": "Services",
+    "question": "Does AnalytixLabs teach Python?",
+    "shortAnswer": "Yes, Python is a core component of multiple courses including Data Analytics, Data Science, and Deep Learning.",
+    "detailedAnswer": "Python programming is a fundamental part of AnalytixLabs' curriculum. It's taught across multiple courses — from the introductory Data Analytics certification (which builds Python fluency progressively from Excel → SQL → Python → BI) to advanced programs like Deep Learning with Python, Full Stack Applied AI, and Generative AI. Students learn Python for data manipulation, machine learning, deep learning, and AI model development using frameworks like TensorFlow and PyTorch.",
+    "intentKeywords": ["Python", "programming", "coding", "language"],
+    "synonyms": ["Python programming", "Python coding", "Python language"],
+    "alternativePhrasings": [
+      "Is Python included in the curriculum?",
+      "Which courses teach Python?",
+      "Will I learn Python at ALabs?",
+      "Does the course cover Python programming?"
+    ]
+  },
+  {
+    "id": 74,
+    "category": "Services",
+    "question": "Does AnalytixLabs teach SQL?",
+    "shortAnswer": "Yes, SQL is part of the Data Analytics and Data Science curriculum.",
+    "detailedAnswer": "SQL is a core skill taught at AnalytixLabs, particularly in the Data Analytics certification where the learning path progresses from Excel → SQL → Python → BI tools. SQL is essential for data querying, manipulation, and analysis — skills required in virtually every data-related role. Students learn to write complex queries, manage databases, and extract insights from structured data. SQL proficiency is built through hands-on practice with real datasets.",
+    "intentKeywords": ["SQL", "database", "query", "data querying"],
+    "synonyms": ["SQL programming", "database querying", "SQL skills"],
+    "alternativePhrasings": [
+      "Is SQL part of the curriculum?",
+      "Will I learn SQL at ALabs?",
+      "Does the course cover database skills?",
+      "Is SQL included in the data analytics course?"
+    ]
+  },
+  {
+    "id": 75,
+    "category": "Services",
+    "question": "Does AnalytixLabs teach Excel?",
+    "shortAnswer": "Yes, Excel is part of the Data Analytics certification as the starting point of the learning path.",
+    "detailedAnswer": "Excel is included in the Data Analytics certification at AnalytixLabs as the foundation of the learning path. The progression starts with Excel, building a strong base in data handling and basic analytics before moving to SQL, Python, and BI tools. This ensures that even complete beginners develop practical data skills from day one. Excel skills taught include data manipulation, pivot tables, visualization, and basic analytics functions used widely in industry.",
+    "intentKeywords": ["Excel", "spreadsheet", "Microsoft Excel", "data analysis"],
+    "synonyms": ["spreadsheets", "Excel skills", "MS Excel"],
+    "alternativePhrasings": [
+      "Is Excel covered in the course?",
+      "Will I learn Excel at ALabs?",
+      "Does the beginner course include Excel?",
+      "Is Excel part of the analytics program?"
+    ]
+  },
+  {
+    "id": 76,
+    "category": "Services",
+    "question": "Does AnalytixLabs teach Machine Learning?",
+    "shortAnswer": "Yes, Machine Learning is a core component of the Data Science and AI programs.",
+    "detailedAnswer": "Machine Learning is extensively covered across AnalytixLabs' Data Science and AI programs. Students learn supervised and unsupervised learning algorithms, model evaluation, feature engineering, and deployment. The curriculum progresses from basic ML concepts to advanced techniques, with hands-on projects using real datasets. The Full Stack Applied AI course and Advanced Data Science Certification both include comprehensive ML modules that prepare students for ML Engineer and Data Scientist roles.",
+    "intentKeywords": ["machine learning", "ML", "algorithms", "models", "prediction"],
+    "synonyms": ["ML", "machine learning algorithms", "predictive modeling"],
+    "alternativePhrasings": [
+      "Is machine learning included?",
+      "Does ALabs teach ML?",
+      "Which courses cover machine learning?",
+      "Will I learn ML algorithms at AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 77,
+    "category": "Integrations",
+    "question": "What tools and frameworks are taught at AnalytixLabs?",
+    "shortAnswer": "ALabs teaches Python, SQL, Excel, TensorFlow, PyTorch, BI tools, and various AI/ML frameworks.",
+    "detailedAnswer": "AnalytixLabs' curriculum covers a comprehensive toolkit of industry-standard tools and frameworks. Programming languages include Python and SQL. For deep learning, students work with TensorFlow and PyTorch. Business Intelligence tools are covered in analytics courses. Data manipulation libraries, machine learning frameworks, and visualization tools are all part of the practical curriculum. The specific tools vary by course, but all programs emphasize hands-on experience with the tools used in real industry settings.",
+    "intentKeywords": ["tools", "frameworks", "technologies", "software", "stack"],
+    "synonyms": ["tech stack", "software tools", "technologies used", "platforms"],
+    "alternativePhrasings": [
+      "What technologies does ALabs teach?",
+      "Which frameworks are used in the course?",
+      "What software will I learn?",
+      "What is the tech stack covered?"
+    ]
+  },
+  {
+    "id": 78,
+    "category": "Integrations",
+    "question": "Does AnalytixLabs use TensorFlow in its courses?",
+    "shortAnswer": "Yes, TensorFlow is used extensively in the Deep Learning and AI courses.",
+    "detailedAnswer": "TensorFlow is a key framework taught in AnalytixLabs' Deep Learning with Python and Full Stack Applied AI courses. Students gain hands-on experience building, training, and deploying neural networks using TensorFlow. The curriculum covers CNNs, RNNs, transformers, and model optimization using this industry-standard framework. By working with TensorFlow on real projects, students develop the practical skills needed for deep learning and AI roles in the industry.",
+    "intentKeywords": ["TensorFlow", "framework", "Google", "deep learning tool"],
+    "synonyms": ["TF", "TensorFlow framework", "TensorFlow library"],
+    "alternativePhrasings": [
+      "Is TensorFlow part of the curriculum?",
+      "Will I learn TensorFlow at ALabs?",
+      "Does the deep learning course use TensorFlow?",
+      "Is TensorFlow covered in the AI course?"
+    ]
+  },
+  {
+    "id": 79,
+    "category": "Integrations",
+    "question": "Does AnalytixLabs use PyTorch in its courses?",
+    "shortAnswer": "Yes, PyTorch is used alongside TensorFlow in the Deep Learning and AI courses.",
+    "detailedAnswer": "PyTorch is taught alongside TensorFlow in AnalytixLabs' Deep Learning and AI programs. Students learn to build and train neural network models using PyTorch's dynamic computation graphs and intuitive API. The dual-framework approach (TensorFlow + PyTorch) ensures students are versatile and can work with either framework in industry settings. Hands-on projects using PyTorch cover neural networks, CNNs, RNNs, transformers, and model deployment scenarios.",
+    "intentKeywords": ["PyTorch", "framework", "Meta", "deep learning tool"],
+    "synonyms": ["PyTorch framework", "PyTorch library", "PT"],
+    "alternativePhrasings": [
+      "Is PyTorch taught at ALabs?",
+      "Will I learn PyTorch?",
+      "Does the course include PyTorch?",
+      "Is PyTorch covered alongside TensorFlow?"
+    ]
+  },
+  {
+    "id": 80,
+    "category": "Custom Development",
+    "question": "Can AnalytixLabs create customized training programs?",
+    "shortAnswer": "Yes, ALabs offers customized corporate training solutions tailored to organizational needs.",
+    "detailedAnswer": "AnalytixLabs provides fully customized training programs through their corporate training division. These programs can be tailored to specific organizational requirements, industry verticals, and skill levels. Whether it's upskilling a team in data analytics, training developers in AI/ML, or building data literacy across an organization, ALabs can design bespoke programs. Their expert instructors and industry-driven curriculum form the foundation for creating effective custom training solutions.",
+    "intentKeywords": ["customized", "custom", "tailored", "bespoke", "specific"],
+    "synonyms": ["tailored training", "bespoke program", "custom course", "personalized training"],
+    "alternativePhrasings": [
+      "Can ALabs create a custom course for my team?",
+      "Does AnalytixLabs offer tailored training?",
+      "Can I get a customized curriculum?",
+      "Does ALabs design programs for specific needs?"
+    ]
+  },
+  {
+    "id": 81,
+    "category": "Custom Development",
+    "question": "Can AnalytixLabs train my team in specific AI topics?",
+    "shortAnswer": "Yes, corporate training can be customized to focus on specific AI topics like GenAI, Agentic AI, or Deep Learning.",
+    "detailedAnswer": "AnalytixLabs' corporate training division can design programs focused on specific AI topics. Whether your team needs training in Generative AI, Agentic AI, Computer Vision, Deep Learning, NLP, or other specialized areas, ALabs can create a focused curriculum. Their expert instructors bring real industry experience in these domains and can adapt the training to your team's existing skill level and specific use cases, ensuring maximum practical relevance.",
+    "intentKeywords": ["team training", "specific topics", "AI training", "corporate"],
+    "synonyms": ["focused training", "topic-specific program", "specialized corporate training"],
+    "alternativePhrasings": [
+      "Can my team learn Generative AI from ALabs?",
+      "Does ALabs offer focused AI training?",
+      "Can we get training on specific AI topics?",
+      "Can ALabs teach our team deep learning?"
+    ]
+  },
+  {
+    "id": 82,
+    "category": "Services",
+    "question": "What is experiential learning at AnalytixLabs?",
+    "shortAnswer": "Learning through real datasets and real business problems, not just theoretical concepts.",
+    "detailedAnswer": "Experiential learning at AnalytixLabs means the curriculum is taught through real datasets and real business problems rather than purely theoretical instruction. Students work on capstone projects that mirror real client engagements, solve actual business cases, and build practical skills they can immediately apply in the workplace. This approach bridges the gap between academic knowledge and industry requirements, making graduates truly job-ready from day one.",
+    "intentKeywords": ["experiential", "learning", "practical", "hands-on", "real-world"],
+    "synonyms": ["practical learning", "hands-on training", "learning by doing", "applied learning"],
+    "alternativePhrasings": [
+      "What is the practical learning approach at ALabs?",
+      "How is learning done at AnalytixLabs?",
+      "Is the training hands-on?",
+      "Do students work on real problems?"
+    ]
+  },
+  {
+    "id": 83,
+    "category": "Support",
+    "question": "What are the post-class sessions at AnalytixLabs?",
+    "shortAnswer": "Extensive post-class sessions for doubt resolution, practice, and additional guidance from mentors.",
+    "detailedAnswer": "AnalytixLabs offers extensive post-class sessions designed to reinforce learning and resolve doubts. After each class, students can access additional practice sessions, one-on-one doubt resolution with mentors, and extra guidance on challenging topics. These sessions are a key differentiator — they ensure no student is left behind and that everyone achieves the required level of understanding before moving forward. This structured follow-up is part of ALabs' commitment to thorough education.",
+    "intentKeywords": ["post-class", "sessions", "doubt", "extra", "additional"],
+    "synonyms": ["follow-up sessions", "doubt resolution", "extra classes", "supplementary sessions"],
+    "alternativePhrasings": [
+      "What happens after class at ALabs?",
+      "Are there additional practice sessions?",
+      "How are doubts resolved?",
+      "Is there extra help available after lectures?"
+    ]
+  },
+  {
+    "id": 84,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer courses in Artificial Intelligence?",
+    "shortAnswer": "Yes, ALabs offers comprehensive AI courses including Agentic AI, Generative AI, and Full Stack Applied AI.",
+    "detailedAnswer": "Artificial Intelligence is one of AnalytixLabs' core training areas. They offer multiple AI-focused courses: Low Code Agentic AI Course for building intelligent agents, Generative AI Course for hands-on GenAI training, Full Stack Applied AI Course covering GenAI, Computer Vision & Deep Learning, and Deep Learning with Python using TensorFlow and PyTorch. AI is also a component of the Certified Data Analytics & AI Course, making AI skills accessible at various levels.",
+    "intentKeywords": ["artificial intelligence", "AI", "courses", "programs"],
+    "synonyms": ["AI courses", "AI training", "AI programs", "artificial intelligence courses"],
+    "alternativePhrasings": [
+      "Does ALabs teach AI?",
+      "What AI courses are available?",
+      "Can I learn artificial intelligence at AnalytixLabs?",
+      "Tell me about AI training at ALabs"
+    ]
+  },
+  {
+    "id": 85,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer Business Analytics courses?",
+    "shortAnswer": "Yes, Business & Data Analytics is one of the core course categories at AnalytixLabs.",
+    "detailedAnswer": "Business & Data Analytics is a core category at AnalytixLabs. The Business Analyst Course is available in Bangalore, Delhi, and other locations. The curriculum covers business intelligence, data visualization, statistical analysis, and decision-making frameworks. Courses are designed for professionals seeking to transition into business analyst roles or enhance their analytical capabilities. The analytics courses build fluency in Excel, SQL, Python, and BI tools through real business case studies.",
+    "intentKeywords": ["business analytics", "BA", "business analyst", "analytics"],
+    "synonyms": ["BA course", "business analyst training", "analytics program"],
+    "alternativePhrasings": [
+      "Is there a business analytics course?",
+      "Does ALabs offer BA training?",
+      "Can I become a business analyst through ALabs?",
+      "Tell me about the business analytics program"
+    ]
+  },
+  {
+    "id": 86,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer Data Engineering courses?",
+    "shortAnswer": "Data Engineering is one of the career paths that ALabs training prepares you for.",
+    "detailedAnswer": "AnalytixLabs' training prepares students for data engineering roles among other career paths. The comprehensive data science curriculum includes components relevant to data engineering such as SQL, Python, data pipelines, and data processing. While specific data engineering certification details can be obtained from the admissions team, the institute has successfully placed alumni in data engineering roles at top companies. Contact the admissions team for the most current program offerings.",
+    "intentKeywords": ["data engineering", "DE", "pipelines", "ETL", "data infrastructure"],
+    "synonyms": ["data engineer training", "DE course", "data pipeline course"],
+    "alternativePhrasings": [
+      "Does ALabs have a data engineering course?",
+      "Can I become a data engineer through ALabs?",
+      "Is there training for data engineering roles?",
+      "Does the curriculum cover data engineering?"
+    ]
+  },
+  {
+    "id": 87,
+    "category": "Services",
+    "question": "Does AnalytixLabs offer specialization modules?",
+    "shortAnswer": "Yes, specialization modules like Analytics Edge and Deep Learning with Python are available.",
+    "detailedAnswer": "AnalytixLabs offers specialization modules that allow students to deepen their expertise in specific areas. Current specializations include Analytics Edge (focused on advanced analytics, BI dashboards, and decision science for working professionals) and Deep Learning with Python (covering neural networks, CNNs, RNNs, transformers using TensorFlow and PyTorch). These modules can be taken as standalone programs or as additions to core certification courses.",
+    "intentKeywords": ["specialization", "modules", "advanced", "specific", "focused"],
+    "synonyms": ["specialization courses", "advanced modules", "focused training"],
+    "alternativePhrasings": [
+      "What specializations does ALabs offer?",
+      "Are there advanced modules available?",
+      "Can I specialize in a specific area?",
+      "Tell me about specialization options"
+    ]
+  },
+  {
+    "id": 88,
+    "category": "Pricing",
+    "question": "How long does it take to fill the contact form?",
+    "shortAnswer": "The contact form takes only 2 minutes to complete.",
+    "detailedAnswer": "Filling out the AnalytixLabs contact form takes only about 2 minutes. The form requires just a few basic details: your Name, Email address, Mobile number (with country code selection), and preferred City (Noida, Gurgaon, or Bangalore). The process is designed to be quick, secure, and private with no spam. Once submitted, an expert counselor will contact you to discuss your goals and recommend the best learning path.",
+    "intentKeywords": ["form", "time", "fill", "how long", "quick"],
+    "synonyms": ["contact form", "registration form", "inquiry form"],
+    "alternativePhrasings": [
+      "How long does the registration take?",
+      "Is the contact form quick to fill?",
+      "What information do I need to provide?",
+      "How do I fill out the inquiry form?"
+    ]
+  },
+  {
+    "id": 89,
+    "category": "WhatsApp Automation",
+    "question": "Can I contact AnalytixLabs via WhatsApp?",
+    "shortAnswer": "Contact is primarily via phone (+91 9555219007), email, or the website form. Check the website for WhatsApp availability.",
+    "detailedAnswer": "AnalytixLabs primarily offers contact through phone (+91 9555219007), email (info@analytixlabs.co.in), and their website contact form. For instant messaging convenience, you can try reaching out to the phone number via WhatsApp. The institute's support team is available from 10:00 AM to 07:00 PM. For the most current communication channels, visit the contact page of the website or call directly to inquire about WhatsApp support availability.",
+    "intentKeywords": ["WhatsApp", "chat", "message", "instant", "messaging"],
+    "synonyms": ["WhatsApp contact", "chat support", "instant messaging"],
+    "alternativePhrasings": [
+      "Does ALabs have WhatsApp support?",
+      "Can I message AnalytixLabs on WhatsApp?",
+      "Is there a chat option to contact ALabs?",
+      "Can I WhatsApp the admissions team?"
+    ]
+  },
+  {
+    "id": 90,
+    "category": "WhatsApp Automation",
+    "question": "How quickly does AnalytixLabs respond to inquiries?",
+    "shortAnswer": "Expert counselors typically respond promptly during business hours (10 AM - 7 PM).",
+    "detailedAnswer": "AnalytixLabs aims to respond to inquiries promptly during their business hours of 10:00 AM to 07:00 PM. When you submit a contact form or callback request, an expert counselor reaches out to discuss your profile and career goals. For immediate assistance, calling +91 9555219007 is the fastest option. Email inquiries to info@analytixlabs.co.in are typically addressed within business hours. The team is committed to supporting you at every step of your journey.",
+    "intentKeywords": ["response time", "how quickly", "reply", "turnaround", "wait"],
+    "synonyms": ["reply time", "response speed", "turnaround time"],
+    "alternativePhrasings": [
+      "How fast does ALabs respond?",
+      "When will I get a reply?",
+      "How long does it take to hear back?",
+      "What is the response time for inquiries?"
+    ]
+  },
+  {
+    "id": 91,
+    "category": "Support",
+    "question": "Does AnalytixLabs help with resume building?",
+    "shortAnswer": "Yes, resume workshops are part of the placement-readiness program.",
+    "detailedAnswer": "AnalytixLabs includes resume workshops as part of their comprehensive placement-readiness program. These workshops help students craft compelling resumes that highlight their data science skills, projects, and certifications effectively. The resume building support is complemented by mock interviews and real feedback loops, ensuring that every aspect of the job application process is covered. Mentors provide personalized guidance on tailoring resumes for specific roles and companies.",
+    "intentKeywords": ["resume", "CV", "building", "writing", "profile"],
+    "synonyms": ["CV building", "resume writing", "profile creation", "resume help"],
+    "alternativePhrasings": [
+      "Does ALabs help with CV preparation?",
+      "Is resume writing included in the program?",
+      "Will ALabs help me create my resume?",
+      "Is there a resume workshop?"
+    ]
+  },
+  {
+    "id": 92,
+    "category": "Support",
+    "question": "Does AnalytixLabs provide career counseling?",
+    "shortAnswer": "Yes, expert counselors provide personalized career guidance on curriculum, outcomes, and learning paths.",
+    "detailedAnswer": "AnalytixLabs offers dedicated career counseling through expert advisors. These counselors help prospective and current students with personalized guidance on curriculum selection, career outcomes, and the best learning path based on individual goals. The counseling covers career strategy, skill gap analysis, course recommendations, and ongoing career development. The 'Talk to Expert Counselor' feature allows you to connect with advisors who understand the data science job market.",
+    "intentKeywords": ["career counseling", "advisor", "guidance", "counselor", "career path"],
+    "synonyms": ["career advice", "career guidance", "career planning", "career support"],
+    "alternativePhrasings": [
+      "Can I talk to a career advisor?",
+      "Does ALabs offer career guidance?",
+      "How do I get career counseling?",
+      "Is there a career advisor at AnalytixLabs?"
+    ]
+  },
+  {
+    "id": 93,
+    "category": "Services",
+    "question": "In how many cities does AnalytixLabs offer classroom training?",
+    "shortAnswer": "Classroom training is available in 3 cities: Noida, Gurgaon, and Bengaluru.",
+    "detailedAnswer": "AnalytixLabs offers classroom (in-person) training in three Indian cities: Noida (UP), Gurgaon (Haryana), and Bengaluru (Karnataka). Each location has a dedicated center with experienced faculty and all necessary infrastructure. Students can pick their preferred city based on convenience. Additionally, online learning modes are available for students in other cities or those who prefer remote learning. The same quality of curriculum and mentorship is maintained across all locations.",
+    "intentKeywords": ["cities", "classroom", "locations", "offline", "in-person"],
+    "synonyms": ["physical locations", "in-person training cities", "classroom centers"],
+    "alternativePhrasings": [
+      "Where can I attend classes in person?",
+      "Which cities have ALabs classrooms?",
+      "Is there offline training available?",
+      "In which cities can I study at ALabs?"
+    ]
+  },
+  {
+    "id": 94,
+    "category": "Services",
+    "question": "How many learning hours does AnalytixLabs offer?",
+    "shortAnswer": "ALabs offers 600+ learning hours across its curriculum.",
+    "detailedAnswer": "AnalytixLabs provides over 600 learning hours across its comprehensive curriculum. This extensive content covers Data Science, AI, Analytics, and specialization modules. The 600+ hours include live sessions, recorded content, hands-on lab work, capstone projects, and post-class support sessions. This volume of content ensures deep, thorough coverage of each topic rather than superficial overview-level teaching, making graduates truly competent in their chosen specialization.",
+    "intentKeywords": ["learning hours", "content hours", "duration", "600"],
+    "synonyms": ["course hours", "study hours", "training duration", "content volume"],
+    "alternativePhrasings": [
+      "How many hours of content does ALabs offer?",
+      "What is the total course duration?",
+      "How long is the training?",
+      "How much learning content is available?"
+    ]
+  },
+  {
+    "id": 95,
+    "category": "About Company",
+    "question": "Does AnalytixLabs have a sitemap?",
+    "shortAnswer": "Yes, a sitemap is available at the website footer for easy navigation.",
+    "detailedAnswer": "AnalytixLabs provides a sitemap on their website, accessible via the 'Sitemap' link in the footer section. The sitemap helps users navigate all available pages and content on the website, including course pages, about information, contact details, blog posts, and more. This ensures visitors can easily find any information they need about courses, locations, admissions, and other resources offered by AnalytixLabs.",
+    "intentKeywords": ["sitemap", "navigation", "pages", "website structure"],
+    "synonyms": ["site map", "website navigation", "page directory"],
+    "alternativePhrasings": [
+      "Where can I find the sitemap?",
+      "How do I navigate the ALabs website?",
+      "Is there a page directory?",
+      "Where can I see all website pages?"
+    ]
+  },
+  {
+    "id": 96,
+    "category": "Services",
+    "question": "Can experienced professionals benefit from AnalytixLabs courses?",
+    "shortAnswer": "Yes, ALabs has dedicated paths for working professionals switching roles or upskilling.",
+    "detailedAnswer": "AnalytixLabs specifically caters to experienced professionals who are working, switching roles, or restarting their career. The institute offers weekend batches, self-paced blended modes, and continuous access to accommodate working schedules. Specialization modules like Analytics Edge are designed for professionals seeking advanced skills. Alumni like Priya Iyer (Business Analyst at McKinsey) and Anika Sharma (Senior Data Analyst at Accenture) demonstrate the career-transforming impact for experienced professionals.",
+    "intentKeywords": ["experienced", "professional", "working", "upskill", "career switch"],
+    "synonyms": ["working professional", "experienced learner", "career changer", "professional upskilling"],
+    "alternativePhrasings": [
+      "Is ALabs suitable for working professionals?",
+      "Can I upskill while working?",
+      "Are there courses for career changers?",
+      "Is there training for experienced professionals?"
+    ]
+  },
+  {
+    "id": 97,
+    "category": "Services",
+    "question": "Can freshers and students join AnalytixLabs?",
+    "shortAnswer": "Yes, ALabs has dedicated learning paths for freshers and students starting their career.",
+    "detailedAnswer": "AnalytixLabs welcomes freshers and students who are starting or preparing to start their career. The institute has a dedicated 'Fresher/Student' learning path with courses designed from scratch — assuming no prior coding or analytics background. The weekday bootcamp format is particularly suited for full-time students. With the 6 Months Job Challenge and comprehensive placement support, freshers can kickstart their career in data science, AI, or analytics right after training.",
+    "intentKeywords": ["fresher", "student", "beginner", "new", "graduate", "start"],
+    "synonyms": ["new graduate", "fresh graduate", "beginner", "newcomer"],
+    "alternativePhrasings": [
+      "Is ALabs good for freshers?",
+      "Can a fresh graduate join AnalytixLabs?",
+      "Are there courses for students?",
+      "Is there a program for beginners?"
+    ]
+  },
+  {
+    "id": 98,
+    "category": "Integrations",
+    "question": "Does AnalytixLabs partner with IBM?",
+    "shortAnswer": "Yes, ALabs offers co-branded certifications with industry partners including IBM.",
+    "detailedAnswer": "AnalytixLabs partners with IBM to offer dual/co-branded certifications. These jointly issued certificates carry both the AnalytixLabs and IBM branding, providing enhanced credibility and broader recognition with employers. The partnership ensures that the curriculum meets IBM's standards for data science and AI education. This collaboration reflects ALabs' commitment to providing industry-recognized credentials that give graduates a competitive advantage in the job market.",
+    "intentKeywords": ["IBM", "partner", "collaboration", "co-branded"],
+    "synonyms": ["IBM partnership", "IBM certification", "IBM co-branded"],
+    "alternativePhrasings": [
+      "Is ALabs certified by IBM?",
+      "Does AnalytixLabs work with IBM?",
+      "Is there an IBM partnership?",
+      "Can I get an IBM certificate from ALabs?"
+    ]
+  },
+  {
+    "id": 99,
+    "category": "Integrations",
+    "question": "Does AnalytixLabs partner with NSDC?",
+    "shortAnswer": "Yes, ALabs offers co-branded certifications with NSDC (National Skill Development Corporation).",
+    "detailedAnswer": "AnalytixLabs partners with NSDC (National Skill Development Corporation) to offer dual/co-branded certifications. NSDC is a government initiative that promotes skill development in India, and having an NSDC co-branded certificate adds significant institutional recognition to your qualification. This partnership aligns with India's national skilling mission and ensures that ALabs' curriculum meets national standards for data science and analytics education.",
+    "intentKeywords": ["NSDC", "partner", "government", "skill development", "certification"],
+    "synonyms": ["NSDC partnership", "NSDC certification", "government partnership"],
+    "alternativePhrasings": [
+      "Is ALabs recognized by NSDC?",
+      "Does AnalytixLabs have a government partnership?",
+      "Can I get an NSDC certificate?",
+      "Is there a government-recognized certification?"
+    ]
+  },
+  {
+    "id": 100,
+    "category": "Support",
+    "question": "How can I find my perfect learning path at AnalytixLabs?",
+    "shortAnswer": "Use the 'Find Your Perfect Learning Path' feature on the website or consult with an expert counselor.",
+    "detailedAnswer": "AnalytixLabs offers a 'Find Your Perfect Learning Path' feature on their homepage that helps you identify the right program based on your profile — whether you're a Fresher/Student starting your career or an Experienced Professional looking to switch or upskill. You can also book a free career consultation where expert advisors provide personalized guidance on curriculum, career outcomes, and the best path based on your goals. Call +91 9555219007 or visit the contact page to get started.",
+    "intentKeywords": ["learning path", "find", "which course", "recommend", "right course"],
+    "synonyms": ["course recommendation", "program selection", "right path", "course finder"],
+    "alternativePhrasings": [
+      "Which course is right for me?",
+      "How do I choose a program?",
+      "Help me find the right course",
+      "What course should I take at ALabs?"
+    ]
+  }
+]

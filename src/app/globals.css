@@ -1,0 +1,36 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --green-900: #14532d; --green-700: #15803d; --green-600: #16a34a;
+  --green-500: #22c55e; --green-100: #dcfce7; --green-50: #f0fdf4;
+  --ink-950: #0a0a0a; --ink-900: #171717; --ink-600: #525252; --ink-400: #a3a3a3;
+  --border: #e5e7eb; --surface: #ffffff; --canvas: #f4f5f7;
+  --success: #22c55e; --warning: #f59e0b; --danger: #ef4444;
+  --r-card: 16px; --r-control: 10px; --r-pill: 999px;
+  --shadow-float: 0 8px 24px rgba(0, 0, 0, .12);
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--canvas);
+  color: var(--ink-600);
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* KPI numbers / headings: tabular Inter. */
+h1, h2, h3, .tnum { font-variant-numeric: tabular-nums; }
+
+/* Theme-wide green focus ring on form controls. */
+input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: none;
+  border-color: var(--green-700);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, .12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
