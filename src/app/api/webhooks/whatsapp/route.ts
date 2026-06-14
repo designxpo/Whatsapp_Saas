@@ -8,6 +8,7 @@ import {
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { enroll } from "@/lib/sequences";
+import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText } from "@/lib/whatsapp";
 import { getChannelByPhoneNumberId, type Channel } from "@/lib/channels";
 import { respondToConversation } from "@/lib/assistant";
@@ -132,6 +133,19 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound" });
   await touchInbound(conv.id, text);
+
+  // In-chat checkout: a checkout-flow submission (carries a delivery address)
+  // for a contact with an open cart → create the order and confirm.
+  if (answers && Object.keys(answers).some(k => k.includes("address")) && await getOpenCart(from)) {
+    try {
+      const order = await checkoutCart({ phone: from });
+      if (order) {
+        const msg = "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
+        const r = await sendText(from, msg, channel);
+        if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot" }).catch(() => undefined);
+      }
+    } catch (e) { console.error("[webhook] checkout", e); }
+  }
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
   after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead" }));

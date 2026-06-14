@@ -5731,8 +5731,20 @@ function CatalogTab() {
   const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutId, setCheckoutId] = useState<string | null>(null);
   const load = useCallback(() => { fetch("/api/admin/products").then(r => r.json()).then(d => setProducts(d.products ?? [])).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
+
+  async function makeCheckout() {
+    setCheckoutBusy(true); setMsg(null); setCheckoutId(null);
+    try {
+      const res = await fetch("/api/admin/checkout-flow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Checkout" }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Could not create checkout flow");
+      else setCheckoutId(d.id);
+    } finally { setCheckoutBusy(false); }
+  }
 
   async function save() {
     if (!form) return;
@@ -5758,8 +5770,12 @@ function CatalogTab() {
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
           <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>
+          <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
+        </div>
       </div>
+      {checkoutId && <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">Published a multi-screen checkout flow — id <code className="font-mono">{checkoutId}</code>. Use it in a flow&apos;s “WhatsApp form” node; on submit, the order is created from the contact&apos;s open cart.</p>}
 
       {products.map(p => (
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">

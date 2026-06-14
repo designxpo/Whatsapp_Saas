@@ -68,6 +68,82 @@ export function buildFlowJson(title: string, fields: WaFormField[]): Record<stri
   };
 }
 
+// One Flow JSON component for a field (shared by single + multi-screen builders).
+function flowField(f: WaFormField, name: string): Record<string, unknown> {
+  const opts = (f.options ?? []).filter(o => o.trim()).slice(0, 20)
+    .map((o, j) => ({ id: `${j}_${o.trim().slice(0, 20).replace(/[^a-zA-Z0-9]+/g, "_")}`, title: o.trim().slice(0, 30) }));
+  switch (f.type) {
+    case "textarea": return { type: "TextArea", name, label: f.label.slice(0, 20), required: f.required };
+    case "dropdown": return { type: "Dropdown", name, label: f.label.slice(0, 20), required: f.required, "data-source": opts };
+    case "radio": return { type: "RadioButtonsGroup", name, label: f.label.slice(0, 30), required: f.required, "data-source": opts };
+    case "checkbox": return { type: "CheckboxGroup", name, label: f.label.slice(0, 30), required: f.required, "data-source": opts };
+    case "date": return { type: "DatePicker", name, label: f.label.slice(0, 20), required: f.required };
+    case "optin": return { type: "OptIn", name, label: f.label.slice(0, 120), required: f.required };
+    default: return { type: "TextInput", name, label: f.label.slice(0, 20), required: f.required, "input-type": f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" ? "number" : "text" };
+  }
+}
+
+export interface WaFormScreen { title: string; fields: WaFormField[]; cta?: string; bodyText?: string }
+
+// ── Multi-screen Flow JSON ────────────────────────────────────────────────────
+// Each screen collects fields and navigates to the next; prior answers are
+// forwarded via the screen `data` model so the final `complete` payload carries
+// every field. (Single-screen forms keep using buildFlowJson above.)
+export function buildMultiScreenFlowJson(screens: WaFormScreen[]): Record<string, unknown> {
+  const used = new Set<string>();
+  const slug = (label: string, i: number) => {
+    let s = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || `field_${i + 1}`;
+    while (used.has(s)) s = `${s}_${i + 1}`;
+    used.add(s);
+    return s;
+  };
+  // Resolve a stable field name per field, per screen.
+  const perScreen = screens.map(s => s.fields.filter(f => f.label.trim()).map((f, i) => ({ name: slug(f.label, i), field: f })));
+
+  const out = screens.map((s, i) => {
+    const isLast = i === screens.length - 1;
+    const mine = perScreen[i];
+    const prior = perScreen.slice(0, i).flat();
+    const children: Record<string, unknown>[] = [];
+    if (s.bodyText?.trim()) children.push({ type: "TextBody", text: s.bodyText.trim().slice(0, 4096) });
+    for (const m of mine) children.push(flowField(m.field, m.name));
+    // Footer payload: prior answers as ${data.x}, this screen's as ${form.x}.
+    const payload: Record<string, string> = {};
+    for (const p of prior) payload[p.name] = `\${data.${p.name}}`;
+    for (const m of mine) payload[m.name] = `\${form.${m.name}}`;
+    const action = isLast
+      ? { name: "complete", payload }
+      : { name: "navigate", next: { type: "screen", name: `SCREEN_${i + 1}` }, payload };
+    children.push({ type: "Footer", label: (s.cta ?? (isLast ? "Submit" : "Continue")).slice(0, 30), "on-click-action": action });
+
+    const screen: Record<string, unknown> = {
+      id: `SCREEN_${i}`,
+      title: s.title.trim().slice(0, 30) || `Step ${i + 1}`,
+      layout: { type: "SingleColumnLayout", children: [{ type: "Form", name: `form_${i}`, children }] },
+    };
+    // Declare incoming data (everything collected before this screen).
+    if (prior.length) { const data: Record<string, unknown> = {}; for (const p of prior) data[p.name] = { type: "string", __example__: "" }; screen.data = data; }
+    if (isLast) screen.terminal = true;
+    return screen;
+  });
+  return { version: "7.0", screens: out };
+}
+
+// A standard in-chat checkout: delivery details → confirm. The order is created
+// from the contact's open cart when the submission arrives on the webhook.
+export function buildCheckoutFlowJson(): Record<string, unknown> {
+  return buildMultiScreenFlowJson([
+    { title: "Delivery details", cta: "Continue", fields: [
+      { type: "text", label: "Full name", required: true },
+      { type: "phone", label: "Phone", required: true },
+      { type: "textarea", label: "Delivery address", required: true },
+    ] },
+    { title: "Confirm order", cta: "Place order", bodyText: "Review your details and place your order. We'll confirm here on WhatsApp.", fields: [
+      { type: "optin", label: "I confirm my order and delivery details", required: true },
+    ] },
+  ]);
+}
+
 // ── WABA Flows API ────────────────────────────────────────────────────────────
 
 type MetaErr = { error?: { message?: string; error_user_msg?: string } };
