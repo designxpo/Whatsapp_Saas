@@ -11,10 +11,13 @@ export interface TeamUser {
   name: string;
   title: string;             // role/persona label, e.g. "Sales Counsellor"
   role: "admin" | "member";
+  tenantId: string;
   active: boolean;
   lastLoginAt: string | null;
   createdAt: string;
 }
+
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 function mapUser(r: Record<string, unknown>): TeamUser {
   return {
@@ -23,6 +26,7 @@ function mapUser(r: Record<string, unknown>): TeamUser {
     name: (r.name as string) ?? "",
     title: (r.title as string) ?? "",
     role: (r.role as TeamUser["role"]) ?? "member",
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     active: (r.active as boolean) ?? true,
     lastLoginAt: (r.last_login_at as string | null) ?? null,
     createdAt: r.created_at as string,

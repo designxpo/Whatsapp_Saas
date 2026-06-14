@@ -3,10 +3,14 @@ import { cookies } from "next/headers";
 
 const COOKIE = "wa_admin_session";
 
+// Pre-multitenant sessions (and the bootstrap owner) belong to the default tenant.
+export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface SessionUser {
   email: string;
   name: string;
   role: "admin" | "member";
+  tenantId: string;
 }
 
 function secret(): Uint8Array {
@@ -16,7 +20,7 @@ function secret(): Uint8Array {
 }
 
 export async function createSession(user: SessionUser): Promise<string> {
-  return new SignJWT({ sub: user.email, n: user.name, r: user.role })
+  return new SignJWT({ sub: user.email, n: user.name, r: user.role, t: user.tenantId })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -33,6 +37,8 @@ export async function verifySession(token: string | undefined): Promise<SessionU
       name: typeof payload.n === "string" ? payload.n : "",
       // Sessions minted before roles existed are owner sessions → admin.
       role: payload.r === "member" ? "member" : "admin",
+      // Sessions minted before multi-tenancy belong to the default tenant.
+      tenantId: typeof payload.t === "string" && payload.t ? payload.t : DEFAULT_TENANT_ID,
     };
   } catch {
     return null;
@@ -57,6 +63,12 @@ export async function requireAdmin(): Promise<boolean> {
 // True only for admins (the owner account or members with the admin role).
 export async function requireRoleAdmin(): Promise<boolean> {
   return (await currentUser())?.role === "admin";
+}
+
+// The tenant the current request acts within. Returns null when unauthenticated.
+// Every tenant-scoped data access (tdb(...)) MUST be keyed on this value.
+export async function currentTenantId(): Promise<string | null> {
+  return (await currentUser())?.tenantId ?? null;
 }
 
 export const SESSION_COOKIE = COOKIE;

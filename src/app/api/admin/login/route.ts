@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkCredentials, createSession, SESSION_COOKIE, type SessionUser } from "@/lib/auth";
+import { checkCredentials, createSession, SESSION_COOKIE, DEFAULT_TENANT_ID, type SessionUser } from "@/lib/auth";
 import { verifyTeamLogin, logActivity } from "@/lib/team";
 
 export async function POST(req: Request) {
@@ -11,10 +11,10 @@ export async function POST(req: Request) {
   // Owner account (env) first, then team members (wa_users).
   let user: SessionUser | null = null;
   if (checkCredentials(login, password)) {
-    user = { email: login, name: "Owner", role: "admin" };
+    user = { email: login, name: "Owner", role: "admin", tenantId: DEFAULT_TENANT_ID };
   } else {
     const member = await verifyTeamLogin(login, password);
-    if (member) user = { email: member.email, name: member.name || member.email, role: member.role };
+    if (member) user = { email: member.email, name: member.name || member.email, role: member.role, tenantId: member.tenantId };
   }
   if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
