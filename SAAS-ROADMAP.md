@@ -49,8 +49,15 @@ escalates instead of free-chatting; no medical/legal/financial advice).
   `getTenantSecret`/`setTenantSecret`.
 
 **Remaining (the big mechanical lift):**
-1. **Tenant-scope the unique constraints** (migration 0020 — NOT yet written).
-   These are global today and WILL collide or leak across tenants:
+1. ✅ **Tenant-scope the unique constraints** — `0020_tenant_unique_constraints.sql`
+   written. Rescoped uniqueness to include `tenant_id` (composite PK for the
+   three key-as-PK tables; composite unique for the rest) and added a
+   tenant-filtered `match_semantic_cache` RPC — closing the cross-tenant cache
+   leak. The matching `onConflict`/lookup call sites were updated in lockstep
+   (`store.ts`, `router/cache.ts`, `adflow.ts`) using a non-breaking
+   **default-tenant param** pattern: each write takes `tenantId =
+   DEFAULT_TENANT_ID`, so existing callers keep compiling and routes pass a real
+   tenant as they're retrofitted. Original table list:
    | table | current | must become |
    |---|---|---|
    | `contacts` | `unique(phone)` | `unique(tenant_id, phone)` |

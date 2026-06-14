@@ -5,6 +5,8 @@
 import { db } from "@/lib/supabase";
 import { getAdCampaignId } from "@/lib/ads";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export type FlowTriggerScope = "ad" | "campaign";
 export interface FlowTrigger { id: string; flowId: string; scope: FlowTriggerScope; refId: string; label: string | null; createdAt: string }
 
@@ -19,15 +21,15 @@ export async function listFlowTriggers(flowId: string): Promise<FlowTrigger[]> {
 }
 
 // Bind (or rebind) a campaign/ad to a flow. One flow per (scope, ref_id).
-export async function setFlowTrigger(p: { flowId: string; scope: FlowTriggerScope; refId: string; label?: string | null }): Promise<void> {
+export async function setFlowTrigger(p: { flowId: string; scope: FlowTriggerScope; refId: string; label?: string | null; tenantId?: string }): Promise<void> {
   await db().from("wa_ad_flow_triggers").upsert(
-    { flow_id: p.flowId, scope: p.scope, ref_id: p.refId, label: p.label ?? null },
-    { onConflict: "scope,ref_id" },
+    { tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, flow_id: p.flowId, scope: p.scope, ref_id: p.refId, label: p.label ?? null },
+    { onConflict: "tenant_id,scope,ref_id" },
   );
 }
 
-export async function removeFlowTrigger(scope: FlowTriggerScope, refId: string): Promise<void> {
-  await db().from("wa_ad_flow_triggers").delete().eq("scope", scope).eq("ref_id", refId);
+export async function removeFlowTrigger(scope: FlowTriggerScope, refId: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_ad_flow_triggers").delete().eq("tenant_id", tenantId).eq("scope", scope).eq("ref_id", refId);
 }
 
 // ad_id → campaign_id, cached so we don't hit Meta on every inbound message.

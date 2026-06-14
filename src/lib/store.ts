@@ -2,6 +2,10 @@ import { db } from "./supabase";
 import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
 
+// Default tenant — every pre-multitenant caller resolves to it, so existing
+// call sites keep working while routes are retrofitted to pass a real tenantId.
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "sent" | "partial" | "failed";
 export type AutoTrigger = "contact_added" | "tag_added" | "api_event";
@@ -89,14 +93,15 @@ function mapContact(r: Record<string, unknown>): Contact {
 export async function upsertContacts(
   rows: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[],
   source = "import",
+  tenantId = DEFAULT_TENANT_ID,
 ): Promise<{ inserted: number; skipped: number }> {
   const clean = rows
-    .map(r => ({ phone: digits(r.phone), name: (r.name ?? "").trim(), email: r.email?.trim() || null, tags: r.tags ?? [], attributes: r.attributes ?? {}, status: "active", source }))
+    .map(r => ({ tenant_id: tenantId, phone: digits(r.phone), name: (r.name ?? "").trim(), email: r.email?.trim() || null, tags: r.tags ?? [], attributes: r.attributes ?? {}, status: "active", source }))
     .filter(r => r.phone.length >= 10);
   if (clean.length === 0) return { inserted: 0, skipped: rows.length };
   const { data, error } = await db()
     .from("contacts")
-    .upsert(clean, { onConflict: "phone", ignoreDuplicates: true })
+    .upsert(clean, { onConflict: "tenant_id,phone", ignoreDuplicates: true })
     .select("id");
   if (error) throw error;
   const inserted = data?.length ?? 0;
@@ -190,14 +195,14 @@ export async function countContacts(): Promise<number> {
 }
 
 // ── Opt-outs ──────────────────────────────────────────────────────────────────
-export async function addOptout(phone: string, reason?: string): Promise<void> {
-  await db().from("wa_optouts").upsert({ phone: last10(phone), reason: reason ?? null }, { onConflict: "phone" });
-  await db().from("contacts").update({ status: "optedout" }).eq("phone", digits(phone));
+export async function addOptout(phone: string, reason?: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_optouts").upsert({ tenant_id: tenantId, phone: last10(phone), reason: reason ?? null }, { onConflict: "tenant_id,phone" });
+  await db().from("contacts").update({ status: "optedout" }).eq("tenant_id", tenantId).eq("phone", digits(phone));
 }
 
-export async function removeOptout(phone: string): Promise<void> {
-  await db().from("wa_optouts").delete().eq("phone", last10(phone));
-  await db().from("contacts").update({ status: "active" }).eq("phone", digits(phone));
+export async function removeOptout(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_optouts").delete().eq("tenant_id", tenantId).eq("phone", last10(phone));
+  await db().from("contacts").update({ status: "active" }).eq("tenant_id", tenantId).eq("phone", digits(phone));
 }
 
 export async function listOptouts(): Promise<{ phone: string; reason: string | null; createdAt: string }[]> {
@@ -687,8 +692,8 @@ export async function listQuickReplies(): Promise<QuickReply[]> {
   return (data ?? []).map(r => ({ id: r.id as string, shortcut: r.shortcut as string, body: r.body as string, createdAt: r.created_at as string }));
 }
 
-export async function createQuickReply(shortcut: string, body: string): Promise<void> {
-  const { error } = await db().from("wa_quick_replies").upsert({ shortcut: shortcut.trim().toLowerCase(), body: body.trim() }, { onConflict: "shortcut" });
+export async function createQuickReply(shortcut: string, body: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_quick_replies").upsert({ tenant_id: tenantId, shortcut: shortcut.trim().toLowerCase(), body: body.trim() }, { onConflict: "tenant_id,shortcut" });
   if (error) throw error;
 }
 
@@ -698,14 +703,14 @@ export async function deleteQuickReply(id: string): Promise<void> {
 }
 
 // ── Settings (welcome message, working hours, away message) ──────────────────
+// Global helpers resolve to the default tenant; they delegate to the tenant
+// accessors below so the composite (tenant_id, key) conflict target is used.
 export async function getSetting<T>(key: string, fallback: T): Promise<T> {
-  const { data } = await db().from("wa_settings").select("value").eq("key", key).maybeSingle();
-  return (data?.value as T) ?? fallback;
+  return getTenantSetting(DEFAULT_TENANT_ID, key, fallback);
 }
 
 export async function setSetting(key: string, value: unknown): Promise<void> {
-  const { error } = await db().from("wa_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
-  if (error) throw error;
+  return setTenantSetting(DEFAULT_TENANT_ID, key, value);
 }
 
 // ── Tenant-scoped settings + secret vault (SaaS) ─────────────────────────────
