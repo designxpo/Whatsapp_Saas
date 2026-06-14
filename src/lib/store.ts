@@ -1,4 +1,6 @@
 import { db } from "./supabase";
+import { tdb } from "./tenantdb";
+import { encryptSecret, readSecret } from "./crypto";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "sent" | "partial" | "failed";
@@ -704,6 +706,35 @@ export async function getSetting<T>(key: string, fallback: T): Promise<T> {
 export async function setSetting(key: string, value: unknown): Promise<void> {
   const { error } = await db().from("wa_settings").upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
   if (error) throw error;
+}
+
+// ── Tenant-scoped settings + secret vault (SaaS) ─────────────────────────────
+// Per-tenant config and secrets. Secrets (Meta access tokens, API keys) are
+// encrypted at rest via crypto.ts before they ever reach the DB. The wa_settings
+// uniqueness must be (tenant_id, key) — see 0020 constraint migration (pending).
+export async function getTenantSetting<T>(tenantId: string, key: string, fallback: T): Promise<T> {
+  const { data } = await tdb(tenantId).from("wa_settings").select("value").eq("key", key).maybeSingle();
+  return ((data as { value?: T } | null)?.value as T) ?? fallback;
+}
+
+export async function setTenantSetting(tenantId: string, key: string, value: unknown): Promise<void> {
+  const { error } = await tdb(tenantId)
+    .from("wa_settings")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "tenant_id,key" });
+  if (error) throw error;
+}
+
+// Store an encrypted secret under a settings key. Never persists plaintext.
+export async function setTenantSecret(tenantId: string, key: string, plaintext: string): Promise<void> {
+  await setTenantSetting(tenantId, key, { enc: encryptSecret(plaintext) });
+}
+
+// Read + decrypt a secret. Returns null if unset; tolerates legacy plaintext.
+export async function getTenantSecret(tenantId: string, key: string): Promise<string | null> {
+  const v = await getTenantSetting<{ enc?: string } | string | null>(tenantId, key, null);
+  if (!v) return null;
+  if (typeof v === "string") return readSecret(v);          // legacy plaintext
+  return v.enc ? readSecret(v.enc) : null;
 }
 
 // ── Conversation labels / assignment / welcome tracking ──────────────────────
