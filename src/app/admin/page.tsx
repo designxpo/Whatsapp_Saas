@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram } from "lucide-react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp } from "lucide-react";
 
-type Tab = "home" | "livechat" | "broadcast" | "ads" | "assistant" | "flows" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings";
+type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings";
 
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -18,6 +18,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "campaigns", label: "History", icon: <History className="w-[18px] h-[18px]" /> },
       { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" /> },
       { key: "ads", label: "Meta Ads", icon: <Megaphone className="w-[18px] h-[18px]" /> },
+      { key: "instagram", label: "Instagram", icon: <Instagram className="w-[18px] h-[18px]" /> },
     ],
   },
   {
@@ -25,6 +26,9 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
     items: [
       { key: "assistant", label: "AI Knowledge Base", icon: <Bot className="w-[18px] h-[18px]" /> },
       { key: "flows", label: "Chatbot Flows", icon: <Zap className="w-[18px] h-[18px]" /> },
+      { key: "sequences", label: "Sequences", icon: <Workflow className="w-[18px] h-[18px]" /> },
+      { key: "catalog", label: "Catalog", icon: <ShoppingBag className="w-[18px] h-[18px]" /> },
+      { key: "growth", label: "Growth Tools", icon: <TrendingUp className="w-[18px] h-[18px]" /> },
       { key: "aihub", label: "AI Hub", icon: <Sparkles className="w-[18px] h-[18px]" /> },
       { key: "templates", label: "Templates", icon: <LayoutTemplate className="w-[18px] h-[18px]" /> },
       { key: "forms", label: "WhatsApp Forms", icon: <ClipboardList className="w-[18px] h-[18px]" /> },
@@ -39,7 +43,8 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
   },
 ];
 const TAB_TITLES: Record<Tab, string> = {
-  home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
+  home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
+  sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
   contacts: "Contacts", campaigns: "History", optouts: "Opt-outs", settings: "Settings",
 };
@@ -128,8 +133,12 @@ export default function Admin() {
           {tab === "livechat" && <LiveChatTab />}
           {tab === "broadcast" && <BroadcastTab goTo={setTab} />}
           {tab === "ads" && <AdsTab goTo={setTab} />}
+          {tab === "instagram" && <InstagramTab />}
           {tab === "assistant" && <AssistantTab goTo={setTab} />}
           {tab === "flows" && <FlowsTab />}
+          {tab === "sequences" && <SequencesTab />}
+          {tab === "catalog" && <CatalogTab />}
+          {tab === "growth" && <GrowthTab />}
           {tab === "aihub" && <AiHubTab goTo={setTab} />}
           {tab === "templates" && <TemplatesTab />}
           {tab === "forms" && <FormsTab goTo={setTab} />}
@@ -5602,6 +5611,304 @@ function ChannelsManager() {
   );
 }
 
+// ── Sequences (drip) ──────────────────────────────────────────────────────────
+type StepDraft = { delayMinutes: number; action: { type: "text" | "template" | "media"; text?: string; templateName?: string; languageCode?: string; mediaKind?: "image" | "video" | "document" | "audio"; url?: string; caption?: string } };
+type SeqRow = { id: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string | null; channelId: string | null; active: boolean; steps: { delayMinutes: number; action: StepDraft["action"] }[] };
+type SeqDraft = { id?: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string; channelId: string | null; active: boolean; steps: StepDraft[] };
+const SEQ_TRIGGERS: [string, string][] = [["manual", "Manual / API"], ["keyword", "Keyword reply"], ["opt_in", "Opt-in (growth tool)"], ["story_reply", "Instagram story reply"], ["comment", "Comment"], ["tag_added", "Tag added"], ["cart_abandoned", "Cart abandoned"], ["order_placed", "Order placed"], ["ad_referral", "Ad referral"]];
+const EMPTY_SEQ: SeqDraft = { name: "", platform: "whatsapp", triggerKind: "manual", triggerValue: "", channelId: null, active: true, steps: [{ delayMinutes: 0, action: { type: "text", text: "" } }] };
+
+function SequencesTab() {
+  const [seqs, setSeqs] = useState<SeqRow[]>([]);
+  const [form, setForm] = useState<SeqDraft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => { fetch("/api/admin/sequences").then(r => r.json()).then(d => setSeqs(d.sequences ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function editRow(s: SeqRow) {
+    setForm({ id: s.id, name: s.name, platform: s.platform, triggerKind: s.triggerKind, triggerValue: s.triggerValue ?? "", channelId: s.channelId, active: s.active, steps: s.steps.length ? s.steps.map(st => ({ delayMinutes: st.delayMinutes, action: st.action })) : EMPTY_SEQ.steps });
+    setMsg(null);
+  }
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim()) { setMsg("Give the sequence a name."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/sequences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, triggerValue: form.triggerValue || null }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Delete this sequence? Active enrollments stop.")) return;
+    await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+  const setStep = (i: number, patch: Partial<StepDraft>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, ...patch } : s) } : f);
+  const setStepAction = (i: number, patch: Partial<StepDraft["action"]>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, action: { ...s.action, ...patch } } : s) } : f);
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> Sequences</h2>
+          <p className="text-sm text-slate-500">Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</p>
+        </div>
+        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New sequence</button>
+      </div>
+
+      {seqs.map(s => (
+        <div key={s.id} className="bg-white rounded-card border border-line p-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Workflow className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[10px] font-bold text-red-500">· OFF</span>}</p>
+            <p className="text-[11px] text-ink-400">{s.platform} · trigger: {SEQ_TRIGGERS.find(t => t[0] === s.triggerKind)?.[1] ?? s.triggerKind}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
+          </div>
+          <button onClick={() => editRow(s)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
+
+      {form && (
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Sequence name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <select className={inp} value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value as SeqDraft["platform"] })}>
+              <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
+            </select>
+            <select className={inp} value={form.triggerKind} onChange={e => setForm({ ...form, triggerKind: e.target.value })}>
+              {SEQ_TRIGGERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input className={inp} placeholder="Trigger value (keyword / tag / ref id)" value={form.triggerValue} onChange={e => setForm({ ...form, triggerValue: e.target.value })} />
+          </div>
+          <div className="flex items-center gap-3">
+            <ChannelSelect value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel="Channel: default" className={`${inp} !py-1.5 text-xs`} />
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+          </div>
+
+          <p className="text-xs font-bold text-slate-400 uppercase pt-1">Steps</p>
+          {form.steps.map((st, i) => (
+            <div key={i} className="border border-line rounded-control p-2.5 space-y-2">
+              <div className="flex items-center gap-2 text-xs text-ink-500">
+                <span className="font-bold">#{i + 1}</span>
+                <span>wait</span>
+                <input type="number" min={0} className={`${inp} !py-1 w-20`} value={st.delayMinutes} onChange={e => setStep(i, { delayMinutes: Math.max(0, Number(e.target.value) || 0) })} />
+                <span>min, then send</span>
+                <select className={`${inp} !py-1`} value={st.action.type} onChange={e => setStepAction(i, { type: e.target.value as StepDraft["action"]["type"] })}>
+                  <option value="text">Text</option><option value="template">Template</option><option value="media">Media</option>
+                </select>
+                <div className="flex-1" />
+                {form.steps.length > 1 && <button onClick={() => setForm({ ...form, steps: form.steps.filter((_, j) => j !== i) })} className="p-1 text-ink-400 hover:text-red-600"><X className="w-3.5 h-3.5" /></button>}
+              </div>
+              {st.action.type === "text" && <textarea className={`${inp} w-full`} rows={2} placeholder="Message text (sends inside the 24h window)" value={st.action.text ?? ""} onChange={e => setStepAction(i, { text: e.target.value })} />}
+              {st.action.type === "template" && <div className="grid grid-cols-2 gap-2"><input className={inp} placeholder="Template name" value={st.action.templateName ?? ""} onChange={e => setStepAction(i, { templateName: e.target.value })} /><input className={inp} placeholder="Language (e.g. en_US)" value={st.action.languageCode ?? ""} onChange={e => setStepAction(i, { languageCode: e.target.value })} /></div>}
+              {st.action.type === "media" && <div className="grid grid-cols-2 gap-2"><select className={inp} value={st.action.mediaKind ?? "image"} onChange={e => setStepAction(i, { mediaKind: e.target.value as NonNullable<StepDraft["action"]["mediaKind"]> })}><option value="image">Image</option><option value="video">Video</option><option value="document">Document</option></select><input className={inp} placeholder="Media URL" value={st.action.url ?? ""} onChange={e => setStepAction(i, { url: e.target.value })} /></div>}
+            </div>
+          ))}
+          <button onClick={() => setForm({ ...form, steps: [...form.steps, { delayMinutes: 60, action: { type: "text", text: "" } }] })} className="text-xs font-bold text-brand-700 hover:text-brand-600 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add step</button>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save sequence"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+            {msg && <span className="text-xs text-red-500">{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Catalog (commerce) ────────────────────────────────────────────────────────
+type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean };
+const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", description: "", price: "", currency: "INR", imageUrl: "", retailerId: "", metaProductId: "", catalogId: "", available: true };
+
+function CatalogTab() {
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const load = useCallback(() => { fetch("/api/admin/products").then(r => r.json()).then(d => setProducts(d.products ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim()) { setMsg("Product name is required."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: form.id, name: form.name, description: form.description, priceCents: Math.round((Number(form.price) || 0) * 100), currency: form.currency, imageUrl: form.imageUrl || null, retailerId: form.retailerId || null, metaProductId: form.metaProductId || null, catalogId: form.catalogId || null, available: form.available }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Delete this product?")) return;
+    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
+          <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
+        </div>
+        <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
+      </div>
+
+      {products.map(p => (
+        <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
+          {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" /> : <div className="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5 text-ink-300" /></div>}
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
+            <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
+          </div>
+          <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
+
+      {form && (
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <div className="flex gap-2"><input className={inp} placeholder="Price" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
+            <input className={`${inp} col-span-2`} placeholder="Image URL" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
+            <textarea className={`${inp} col-span-2`} rows={2} placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            <input className={inp} placeholder="Your SKU / retailer id" value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
+            <input className={inp} placeholder="Meta catalog product id (optional)" value={form.metaProductId} onChange={e => setForm({ ...form, metaProductId: e.target.value })} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.available} onChange={e => setForm({ ...form, available: e.target.checked })} /> available</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save product"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Growth tools ──────────────────────────────────────────────────────────────
+type GrowthRow = { id: string; name: string; kind: string; slug: string; prefill: string | null; tag: string | null; sequenceId: string | null; config: { number?: string; url?: string; igUsername?: string }; clicks: number; conversions: number; active: boolean };
+const GROWTH_KINDS: [string, string][] = [["ref_link", "Referral link"], ["qr", "QR code"], ["widget_popup", "Website popup"], ["widget_bar", "Website bar"], ["landing", "Landing page"]];
+const EMPTY_GROWTH = { id: undefined as string | undefined, name: "", kind: "ref_link", slug: "", prefill: "", number: "", igUsername: "", url: "", tag: "", sequenceId: "", active: true };
+
+function GrowthTab() {
+  const [tools, setTools] = useState<GrowthRow[]>([]);
+  const [seqs, setSeqs] = useState<{ id: string; name: string }[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_GROWTH | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [origin, setOrigin] = useState("");
+  const load = useCallback(() => { fetch("/api/admin/growth").then(r => r.json()).then(d => setTools(d.tools ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); setOrigin(window.location.origin); }, [load]);
+  useEffect(() => { fetch("/api/admin/sequences").then(r => r.json()).then(d => setSeqs((d.sequences ?? []).map((s: { id: string; name: string }) => ({ id: s.id, name: s.name })))).catch(() => {}); }, []);
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim() || !form.slug.trim()) { setMsg("Name and slug are required."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/growth", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: form.id, name: form.name, kind: form.kind, slug: form.slug, prefill: form.prefill || null, tag: form.tag || null, sequenceId: form.sequenceId || null, config: { number: form.number || undefined, igUsername: form.igUsername || undefined, url: form.url || undefined }, active: form.active }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Delete this growth tool?")) return;
+    await fetch("/api/admin/growth", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Growth Tools</h2>
+          <p className="text-sm text-slate-500">Ref links, QR codes and opt-in widgets that send people into WhatsApp/Instagram with a prefilled message — then start a flow or sequence and tag them.</p>
+        </div>
+        <button onClick={() => { setForm({ ...EMPTY_GROWTH }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New tool</button>
+      </div>
+
+      {tools.map(t => (
+        <div key={t.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><TrendingUp className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{t.name} <span className="text-[10px] font-bold text-ink-400">· {GROWTH_KINDS.find(k => k[0] === t.kind)?.[1] ?? t.kind}</span></p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">{origin}/g/{t.slug} · {t.clicks} clicks · {t.conversions} conv.</p>
+          </div>
+          <button onClick={() => navigator.clipboard.writeText(`${origin}/g/${t.slug}`)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 flex items-center gap-1"><Copy className="w-3 h-3" /> Link</button>
+          <button onClick={() => setForm({ id: t.id, name: t.name, kind: t.kind, slug: t.slug, prefill: t.prefill ?? "", number: t.config?.number ?? "", igUsername: t.config?.igUsername ?? "", url: t.config?.url ?? "", tag: t.tag ?? "", sequenceId: t.sequenceId ?? "", active: t.active })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(t.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {!tools.length && !form && <p className="text-xs text-ink-400">No growth tools yet.</p>}
+
+      {form && (
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <select className={inp} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>{GROWTH_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <input className={inp} placeholder="Slug (used in /g/slug)" value={form.slug} onChange={e => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-") })} />
+            <input className={inp} placeholder="Prefilled opt-in message (e.g. GUIDE)" value={form.prefill} onChange={e => setForm({ ...form, prefill: e.target.value })} />
+            <input className={inp} placeholder="WhatsApp number (e.g. 9198…)" value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} />
+            <input className={inp} placeholder="…or Instagram username" value={form.igUsername} onChange={e => setForm({ ...form, igUsername: e.target.value })} />
+            <input className={`${inp} col-span-2`} placeholder="…or a full custom URL (overrides the above)" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
+            <input className={inp} placeholder="Tag the contact on opt-in (optional)" value={form.tag} onChange={e => setForm({ ...form, tag: e.target.value })} />
+            <select className={inp} value={form.sequenceId} onChange={e => setForm({ ...form, sequenceId: e.target.value })}>
+              <option value="">Enroll in sequence: none</option>
+              {seqs.map(s => <option key={s.id} value={s.id}>Enroll: {s.name}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save tool"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Dedicated Instagram section (its own nav tab).
+function InstagramTab() {
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div>
+        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Instagram className="w-5 h-5 text-pink-600" /> Instagram</h2>
+        <p className="text-sm text-slate-500">Auto-reply to Instagram DMs with your AI, and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs, one reply per comment).</p>
+      </div>
+
+      {/* What you need to connect */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <p className="text-xs font-bold text-slate-400 uppercase">Before you connect</p>
+        <ol className="space-y-2 text-sm text-ink-700">
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>An Instagram <b>Professional</b> account (Business or Creator), <b>linked to a Facebook Page</b>. In the IG app: Settings → Account type → switch to Professional, then link your Page.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>In <b>Instagram → Settings → Messages → Connected Tools</b>, turn ON <i>“Allow access to messages”</i> so the API can read/reply to DMs.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>On your Meta app, add the <code className="font-mono text-[12px]">instagram_manage_messages</code> permission (and <code className="font-mono text-[12px]">instagram_manage_comments</code> for comment-to-DM), and subscribe the Instagram webhook to <code className="font-mono text-[12px]">/api/webhooks/instagram</code> (fields: <i>messages</i>, <i>comments</i>) using your existing verify token.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">4</span><span>Grab two things to paste below: the <b>Instagram account id</b> (the IG professional account / IGSID) and an <b>access token</b> with <code className="font-mono text-[12px]">instagram_manage_messages</code>. The Page id is optional.</span></li>
+        </ol>
+        <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up on Meta&apos;s rules (enforced automatically): you can only DM someone within <b>24 hours</b> of their last message, never cold-DM, and a comment reply is a single message. Staying inside these keeps the account safe from blocks.</p>
+      </section>
+
+      <InstagramManager />
+    </div>
+  );
+}
+
 const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", pageId: "", token: "", agentId: "", active: true, isDefault: false };
 
 function InstagramManager() {
@@ -5681,7 +5988,7 @@ function InstagramManager() {
       {form && (
         <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Label, e.g. @yourbrand" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Label, e.g. @analytixlabs" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Instagram account id (IG professional id)" value={form.igUserId} onChange={e => setForm({ ...form, igUserId: e.target.value.trim() })} />
             <input className={inp} placeholder="Facebook Page id (optional)" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this account">
@@ -5764,7 +6071,6 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       </div>
 
       {isAdmin && <ChannelsManager />}
-      {isAdmin && <InstagramManager />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 
@@ -5850,7 +6156,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 }
 
 // ── Chatbot Flows: list + create (editor opens at /admin/flows/[id]) ──────────
-type FlowSummary = { id: string; name: string; active: boolean; triggerKeywords: string[]; updatedAt: string; graph: { nodes: unknown[] } };
+type FlowSummary = { id: string; name: string; active: boolean; platform?: "whatsapp" | "instagram"; triggerKeywords: string[]; updatedAt: string; graph: { nodes: unknown[] } };
 
 function FlowsTab() {
   const router = useRouter();
@@ -5903,7 +6209,9 @@ function FlowsTab() {
         {flows.map(f => (
           <div key={f.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
             <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="text-left min-w-0 flex-1">
-              <p className="text-sm font-bold text-brand-dark">{f.name}</p>
+              <p className="text-sm font-bold text-brand-dark flex items-center gap-1.5">{f.name}
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${f.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>{f.platform === "instagram" ? "Instagram" : "WhatsApp"}</span>
+              </p>
               <p className="text-[11px] text-slate-400 truncate">
                 {f.triggerKeywords.length ? `triggers: ${f.triggerKeywords.join(", ")}` : "no trigger keywords yet"} · {(f.graph?.nodes?.length ?? 1) - 1} steps
               </p>

@@ -531,8 +531,9 @@ function Editor({ flowId }: { flowId: string }) {
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
   const [active, setActive] = useState(false);
+  const [platform, setPlatform] = useState<"whatsapp" | "instagram">("whatsapp");
   const [channelId, setChannelId] = useState<string | null>(null);
-  const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
+  const [channels, setChannels] = useState<{ id: string; name: string; kind: string }[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState(0);
@@ -546,12 +547,13 @@ function Editor({ flowId }: { flowId: string }) {
   const { screenToFlowPosition } = useReactFlow();
   const counter = useRef(1);
 
-  useEffect(() => { fetch("/api/admin/channels").then(r => r.json()).then(d => setChannels((d.channels ?? []).map((c: { id: string; name: string }) => ({ id: c.id, name: c.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/channels").then(r => r.json()).then(d => setChannels((d.channels ?? []).map((c: { id: string; name: string; kind?: string }) => ({ id: c.id, name: c.name, kind: c.kind ?? "whatsapp" })))).catch(() => {}); }, []);
 
   useEffect(() => {
     fetch(`/api/admin/flows/${flowId}`).then(r => r.json()).then(d => {
       if (!d.flow) return;
       setName(d.flow.name); setActive(d.flow.active); setKeywords((d.flow.triggerKeywords ?? []).join(", "));
+      setPlatform(d.flow.platform === "instagram" ? "instagram" : "whatsapp");
       setChannelId(d.flow.channelId ?? null);
       setNodes((d.flow.graph.nodes ?? []).map((n: { id: string; type: string; position: { x: number; y: number }; data: NodeData }) => ({ ...n, data: n.data ?? {} })));
       setEdges((d.flow.graph.edges ?? []).map((e: Edge) => ({ ...e, animated: true, type: "deletable" })));
@@ -602,6 +604,7 @@ function Editor({ flowId }: { flowId: string }) {
         body: JSON.stringify({
           name: name.trim() || "Untitled flow",
           active,
+          platform,
           channelId,
           triggerKeywords: keywords.split(",").map(k => k.trim()).filter(Boolean),
           graph: {
@@ -644,10 +647,14 @@ function Editor({ flowId }: { flowId: string }) {
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
         <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
         <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 max-w-md bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" value={keywords} onChange={e => setKeywords(e.target.value)} />
-        {channels.length > 0 && (
-          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title="Which number this flow runs on">
-            <option value="">All numbers</option>
-            {channels.map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
+        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 font-medium" value={platform} onChange={e => { setPlatform(e.target.value as "whatsapp" | "instagram"); setChannelId(null); }} title="Which channel this flow runs on">
+          <option value="whatsapp">📱 WhatsApp</option>
+          <option value="instagram">📷 Instagram</option>
+        </select>
+        {channels.filter(c => c.kind === platform).length > 0 && (
+          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${platform === "instagram" ? "account" : "number"} this flow runs on`}>
+            <option value="">All {platform === "instagram" ? "accounts" : "numbers"}</option>
+            {channels.filter(c => c.kind === platform).map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
           </select>
         )}
         <div className="flex-1" />

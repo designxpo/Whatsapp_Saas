@@ -6,6 +6,8 @@ import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistor
 import { getTenantSetting } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, within24hWindow, type IgCreds } from "@/lib/instagram";
+import { getSequenceByTrigger, enroll } from "@/lib/sequences";
+import { handleFlowMessage } from "@/lib/flowengine";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 
@@ -79,7 +81,22 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound" });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
 
+  // Story-reply automation: a reply to one of our stories carries reply_to.story.
+  const repliedToStory = !!(msg?.reply_to as Record<string, unknown> | undefined)?.story;
+  if (repliedToStory) {
+    const seq = await getSequenceByTrigger("story_reply");
+    if (seq && (!seq.triggerValue || text.toLowerCase().includes(seq.triggerValue.toLowerCase()))) {
+      await enroll(seq.id, { phone: senderId, platform: "instagram", conversationId: conv.id });
+      return;
+    }
+  }
+
   if (!conv.botEnabled) return;
+
+  // Chatbot flows (platform='instagram') run first; AI is the fallback.
+  const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
+  if (flowHandled) return;
+
   // Reply only inside the window (touchInbound just set it, so this holds now).
   if (!within24hWindow(new Date().toISOString())) return;
 

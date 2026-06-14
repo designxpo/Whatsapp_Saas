@@ -16,6 +16,7 @@ import {
   sendText, sendButtons, sendList, sendMedia, sendProduct,
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
+import { sendIgMessage } from "./instagram";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
@@ -33,7 +34,8 @@ export interface FlowEdge { id: string; source: string; sourceHandle?: string | 
 export interface FlowGraph { nodes: FlowNode[]; edges: FlowEdge[] }
 export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
-  channelId: string | null;     // scope to one WhatsApp number (null = every number)
+  platform: "whatsapp" | "instagram";   // which channel kind this flow runs on
+  channelId: string | null;     // scope to one number/account (null = every one of that platform)
   graph: FlowGraph; createdAt: string; updatedAt: string;
 }
 
@@ -46,6 +48,7 @@ function mapFlow(r: Record<string, unknown>): Flow {
   return {
     id: r.id as string, name: r.name as string, active: (r.active as boolean) ?? false,
     triggerKeywords: (r.trigger_keywords as string[]) ?? [],
+    platform: (r.platform as Flow["platform"]) ?? "whatsapp",
     channelId: (r.channel_id as string | null) ?? null,
     graph: (r.graph as FlowGraph) ?? { nodes: [], edges: [] },
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
@@ -72,17 +75,18 @@ export async function createFlow(name: string): Promise<Flow> {
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; channelId: string | null; graph: FlowGraph }>): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram"; channelId: string | null; graph: FlowGraph }>): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
   if (p.triggerKeywords !== undefined) patch.trigger_keywords = p.triggerKeywords.map(k => norm(k)).filter(Boolean);
+  if (p.platform !== undefined) patch.platform = p.platform;
   if (p.channelId !== undefined) patch.channel_id = p.channelId;
   if (p.graph !== undefined) patch.graph = p.graph;
   let { error } = await db().from("wa_flows").update(patch).eq("id", id);
-  // channel_id column missing (migration 0013 not applied) — save the rest.
-  if (error && "channel_id" in patch) {
-    delete patch.channel_id;
+  // Optional columns missing (migration not applied) — save the rest.
+  if (error && ("channel_id" in patch || "platform" in patch)) {
+    delete patch.channel_id; delete patch.platform;
     ({ error } = await db().from("wa_flows").update(patch).eq("id", id));
   }
   if (error) throw error;
@@ -140,6 +144,33 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     async media(kind, url, caption) { const r = await sendMedia(phone, kind, url, caption, channel); await log(`[${kind}] ${caption ?? url}`, r.id); return r; },
     async product(body, catalogId, productId) { const r = await sendProduct(phone, body, catalogId, productId, channel); await log(`[product ${productId}] ${body}`, r.id); return r; },
     async waform(body, cta, formId) { const r = await sendWaFormMessage(phone, { formId, bodyText: body, cta }, channel); await log(`${body}\n[form: ${cta}]`, r.id); return r; },
+  };
+}
+
+// Instagram sender — IG messaging is text-only for our purposes, so buttons/
+// lists render as a numbered text menu (branching still works because the user
+// taps/types the option label, which matchOption resolves). Sends respect the
+// 24h window (the flow runs right after the inbound, so it's open).
+function igSender(conversationId: string, phone: string, channel: Channel): FlowSender {
+  const creds = { igUserId: channel.igUserId ?? "", token: channel.token };
+  const log = async (body: string, metaId?: string) => {
+    if (!metaId) return;
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot" }).catch(() => undefined);
+    await touchOutbound(conversationId, body).catch(() => undefined);
+  };
+  const sendIg = async (body: string): Promise<{ id?: string; error?: string }> => {
+    const r = await sendIgMessage(creds, phone, body, { lastInboundAt: new Date().toISOString() });
+    await log(body, r.messageId);
+    return { id: r.messageId, error: r.error };
+  };
+  const menu = (body: string, opts: string[]) => sendIg(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
+  return {
+    async text(body) { return sendIg(body); },
+    async buttons(body, buttons) { return menu(body, buttons.map(b => b.title)); },
+    async list(body, _buttonText, sections) { return menu(body, sections.flatMap(s => s.rows.map(r => r.title))); },
+    async media(_kind, url, caption) { return sendIg(caption ? `${caption}\n${url}` : url); },
+    async product(body) { return sendIg(body); },
+    async waform(body, cta) { return sendIg(`${body}\n(${cta})`); },
   };
 }
 
@@ -338,7 +369,9 @@ export async function handleFlowMessage(
   text: string,
   opts: { sender?: FlowSender; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string } = {},
 ): Promise<boolean> {
-  const send = opts.sender ?? realSender(convKey, phone, opts.channel);
+  const send = opts.sender ?? (opts.channel?.kind === "instagram"
+    ? igSender(convKey, phone, opts.channel)
+    : realSender(convKey, phone, opts.channel));
   const isReal = !opts.sender;
 
   // 1. Continue an in-progress session.
@@ -413,12 +446,14 @@ export async function handleFlowMessage(
     }
   }
 
-  // 2b. No session — does this message trigger a flow? Flows scoped to a
-  // specific number only fire on that number (null channelId = every number).
+  // 2b. No session — does this message trigger a flow? Flows fire only on their
+  // platform (WhatsApp vs Instagram), and number-scoped flows only on that one.
+  const platform = opts.channel?.kind ?? "whatsapp";
   const flows = (opts.onlyFlowId
     ? [await getFlow(opts.onlyFlowId)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
     : (await listFlows()).filter(f => f.active)
-  ).filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
+  ).filter(f => (f.platform ?? "whatsapp") === platform)
+   .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
   const t = norm(text);
   for (const flow of flows) {
     if (!flow.triggerKeywords.some(k => k === t)) continue;

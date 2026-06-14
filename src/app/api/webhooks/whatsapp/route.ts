@@ -4,8 +4,10 @@ import crypto from "crypto";
 import {
   updateLogByMessageId, messageLogged, addOptout, removeOptout, optoutSet, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
-  setContactAttributes,
+  setContactAttributes, addContactTag,
 } from "@/lib/store";
+import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
+import { enroll } from "@/lib/sequences";
 import { sendText } from "@/lib/whatsapp";
 import { getChannelByPhoneNumberId, type Channel } from "@/lib/channels";
 import { respondToConversation } from "@/lib/assistant";
@@ -133,6 +135,17 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
   after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead" }));
+
+  // Growth opt-in: if this message matches a growth tool's prefilled keyword,
+  // apply its action (tag + sequence enrollment) and count the conversion.
+  try {
+    const tool = await growthToolForOptIn(text);
+    if (tool) {
+      if (tool.tag) await addContactTag(from, tool.tag);
+      if (tool.sequenceId) await enroll(tool.sequenceId, { phone: from, platform: "whatsapp", conversationId: conv.id });
+      await recordGrowthConversion(tool.id);
+    }
+  } catch (e) { console.error("[webhook] growth opt-in", e); }
 
   // After the 200 ack: welcome → away notice → AI reply, in that order so the
   // greeting lands before the answer. claimReply/claimWelcome guard double-sends.

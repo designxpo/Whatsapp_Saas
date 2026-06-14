@@ -6,6 +6,8 @@ import { fireScheduledCampaign, drainQueue, drainAutoSends } from "@/lib/campaig
 import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
+import { drainSequences } from "@/lib/sequences";
+import { drainAbandonedCarts } from "@/lib/commerce";
 import { respondToConversation } from "@/lib/assistant";
 
 // POST /api/cron/process-queue — run on a schedule (every 5–15 min).
@@ -51,6 +53,18 @@ export async function POST(req: Request) {
       try { adRules = await drainAdRules(); } catch (e) { console.error("[cron] adrules", e); }
     }
 
+    // Abandoned carts → enroll into the cart-recovery sequence (before draining).
+    let cartRecoveries = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { cartRecoveries = await drainAbandonedCarts(60); } catch (e) { console.error("[cron] cartrecovery", e); }
+    }
+
+    // Drip sequences — advance due enrollments one step (follow-ups, cart recovery).
+    let sequences = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { sequences = await drainSequences(100); } catch (e) { console.error("[cron] sequences", e); }
+    }
+
     // Fallback: AI replies whose fire-and-forget job was dropped.
     let aiReplies = 0;
     if (process.env.LLM_BOT_ENABLED !== "false") {
@@ -61,7 +75,7 @@ export async function POST(req: Request) {
       }
     }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, aiReplies });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, sequences, aiReplies });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
