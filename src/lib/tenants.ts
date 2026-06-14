@@ -123,6 +123,15 @@ export async function createTenantFromSignup(p: {
   return { tenantId, email };
 }
 
+// Hard-delete a tenant and everything it owns (FKs cascade from 0019). The
+// default tenant can never be deleted.
+export async function deleteTenant(id: string): Promise<void> {
+  if (id === "00000000-0000-0000-0000-000000000001") throw new Error("The default tenant cannot be deleted");
+  await db().from("wa_users").delete().eq("tenant_id", id);   // users aren't tenant-FK-cascaded
+  const { error } = await db().from("tenants").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function ownerAudit(actorEmail: string, action: string, tenantId: string | null, detail = ""): Promise<void> {
   try { await db().from("wa_owner_audit").insert({ actor_email: actorEmail, action, tenant_id: tenantId, detail }); }
   catch { /* audit is best-effort */ }

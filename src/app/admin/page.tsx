@@ -55,11 +55,13 @@ export default function Admin() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("home");
   const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
+  const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json()).then(d => {
       const u = d.user ?? null;
       setMe(u);
+      setBanner(d.banner ?? null);
       // The product owner lives in the Owner Portal — not a tenant workspace.
       // They only land here while "viewing" a tenant (impersonating).
       if (u?.isPlatformOwner && (!u.tenantId || u.tenantId === DEFAULT_TENANT_ID)) { router.replace("/admin/owner"); return; }
@@ -138,6 +140,11 @@ export default function Admin() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {banner && (
+          <div className={`shrink-0 px-6 py-2 text-[12px] font-medium text-center ${banner.level === "warning" ? "bg-amber-50 text-amber-800 border-b border-amber-200" : banner.level === "success" ? "bg-emerald-50 text-emerald-800 border-b border-emerald-200" : "bg-brand-50 text-brand-800 border-b border-brand-100"}`}>
+            <b>{banner.title}</b>{banner.body ? ` — ${banner.body}` : ""}
+          </div>
+        )}
         {impersonating && (
           <div className="h-9 shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-3 text-[12px] text-amber-800 font-semibold">
             👀 You&apos;re viewing a tenant&apos;s workspace as the owner

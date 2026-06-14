@@ -14,6 +14,9 @@ type Tenant = {
   features: Features; contacts: number; conversations: number; createdAt: string;
 };
 type Stats = { total: number; active: number; trialing: number; suspended: number; mrrCents: number };
+type PlanLimits = { contacts: number; messages_per_month: number; channels: number; team_seats: number };
+type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean };
+type Ann = { id: string; title: string; body: string; level: "info" | "success" | "warning"; pinned: boolean; active: boolean; createdAt: string };
 const FEATURE_KEYS: (keyof Features)[] = ["whatsapp", "instagram", "sequences", "commerce", "growth", "ai_autoreply", "ads"];
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
 const PLANS = ["trial", "starter", "growth", "scale"];
@@ -29,14 +32,53 @@ export default function OwnerPortal() {
   const [open, setOpen] = useState<string | null>(null);
   const [draft, setDraft] = useState<Tenant | null>(null);
   const [busy, setBusy] = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [anns, setAnns] = useState<Ann[]>([]);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/owner/tenants");
     if (res.status === 403) { setDenied(true); setLoading(false); return; }
     const d = await res.json().catch(() => ({}));
     setTenants(d.tenants ?? []); setStats(d.stats ?? null); setAudit(d.audit ?? []); setLoading(false);
+    fetch("/api/owner/plans").then(r => r.json()).then(p => setPlans(p.plans ?? [])).catch(() => {});
+    fetch("/api/owner/announcements").then(r => r.json()).then(a => setAnns(a.announcements ?? [])).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
+
+  async function removeTenant(t: Tenant) {
+    const name = t.company || t.name;
+    const typed = window.prompt(`Permanently delete "${name}" and ALL its data? Type the name to confirm:`);
+    if (typed === null) return;
+    const res = await fetch("/api/owner/tenants", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, confirmName: typed }) });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Delete failed"); return; }
+    setOpen(null); load();
+  }
+
+  const planMix = plans.length ? plans.map(p => ({ key: p.key, name: p.name, count: tenants.filter(t => t.plan === p.key).length })) : [];
+
+  // ── Plans ──
+  const [planDraft, setPlanDraft] = useState<Plan | null>(null);
+  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true }, sort: plans.length, active: true };
+  async function savePlan() {
+    if (!planDraft || !planDraft.key.trim() || !planDraft.name.trim()) return;
+    await fetch("/api/owner/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planDraft) });
+    setPlanDraft(null); load();
+  }
+  async function delPlan(id: string) { if (!confirm("Delete this plan?")) return; await fetch("/api/owner/plans", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); }
+
+  // ── Announcements ──
+  const [annForm, setAnnForm] = useState<{ title: string; body: string; level: Ann["level"]; pinned: boolean }>({ title: "", body: "", level: "info", pinned: false });
+  async function saveAnn() {
+    if (!annForm.title.trim()) return;
+    await fetch("/api/owner/announcements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(annForm) });
+    setAnnForm({ title: "", body: "", level: "info", pinned: false }); load();
+  }
+  async function setAnn(id: string, patch: Partial<Ann>) {
+    const a = anns.find(x => x.id === id); if (!a) return;
+    await fetch("/api/owner/announcements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, title: a.title, body: a.body, level: a.level, pinned: a.pinned, active: a.active, ...patch }) });
+    load();
+  }
+  async function delAnn(id: string) { await fetch("/api/owner/announcements", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); }
 
   function edit(t: Tenant) { setOpen(open === t.id ? null : t.id); setDraft({ ...t, features: { ...t.features } }); }
 
@@ -84,7 +126,15 @@ export default function OwnerPortal() {
           </div>
         )}
 
+        {planMix.length > 0 && (
+          <div className="bg-white rounded-card border border-line p-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-ink-500">
+            <span className="font-bold uppercase text-ink-400">Plan mix</span>
+            {planMix.map(p => <span key={p.key}>{p.name}: <b className="text-ink-800">{p.count}</b></span>)}
+          </div>
+        )}
+
         <div className="space-y-2">
+          <p className="text-xs font-bold text-slate-400 uppercase">Tenants</p>
           {tenants.map(t => (
             <div key={t.id} className="bg-white rounded-card border border-line">
               <div className="p-4 flex items-center gap-3">
@@ -118,12 +168,65 @@ export default function OwnerPortal() {
                   <textarea className={`${inp} w-full`} rows={2} placeholder="Owner notes (internal)" value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
                   <div className="flex items-center gap-2">
                     <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Save className="w-3.5 h-3.5" /> {busy ? "Saving…" : "Save changes"}</button>
+                    <div className="flex-1" />
+                    <button onClick={() => removeTenant(t)} className="px-3 py-1.5 rounded-control border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold">Delete tenant</button>
                   </div>
                 </div>
               )}
             </div>
           ))}
           {!tenants.length && <p className="text-xs text-ink-400">No tenants yet — they appear here when people sign up.</p>}
+        </div>
+
+        {/* Plans */}
+        <div className="bg-white rounded-card border border-line p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-slate-400 uppercase">Plans & pricing</p>
+            <button onClick={() => setPlanDraft({ ...blankPlan })} className="px-2.5 py-1 rounded-control bg-ink-950 text-white text-xs font-bold">+ New plan</button>
+          </div>
+          {plans.map(p => (
+            <div key={p.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2 text-xs">
+              <div className="min-w-0 flex-1">
+                <p className="font-bold text-ink-900">{p.name} <span className="text-ink-400 font-mono">{p.key}</span> {!p.active && <span className="text-red-500">· off</span>}</p>
+                <p className="text-ink-400">{money(p.priceCents, p.currency)}/{p.interval} · {p.limits.contacts || "∞"} contacts · {p.limits.messages_per_month || "∞"} msgs/mo · {p.limits.channels || "∞"} channels · {p.limits.team_seats || "∞"} seats</p>
+              </div>
+              <button onClick={() => setPlanDraft({ ...p })} className="px-2 py-1 rounded-control border border-line font-bold text-ink-600 hover:bg-canvas">Edit</button>
+              <button onClick={() => delPlan(p.id)} className="px-2 py-1 rounded-control border border-red-200 text-red-600 hover:bg-red-50 font-bold">Del</button>
+            </div>
+          ))}
+          {planDraft && (
+            <div className="border-2 border-brand-700/30 rounded-control p-3 grid grid-cols-2 gap-2">
+              <input className={inp} placeholder="Plan name" value={planDraft.name} onChange={e => setPlanDraft({ ...planDraft, name: e.target.value })} />
+              <input className={inp} placeholder="key (e.g. growth)" value={planDraft.key} onChange={e => setPlanDraft({ ...planDraft, key: e.target.value })} />
+              <label className="text-[11px] text-ink-500">Price/mo (₹) <input type="number" className={`${inp} w-full`} value={Math.round(planDraft.priceCents / 100)} onChange={e => setPlanDraft({ ...planDraft, priceCents: Math.max(0, Number(e.target.value) || 0) * 100 })} /></label>
+              <label className="text-[11px] text-ink-500 flex items-center gap-1.5 pt-4"><input type="checkbox" className="accent-brand-700" checked={planDraft.active} onChange={e => setPlanDraft({ ...planDraft, active: e.target.checked })} /> active</label>
+              <label className="text-[11px] text-ink-500">Contacts (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.contacts} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, contacts: Number(e.target.value) || 0 } })} /></label>
+              <label className="text-[11px] text-ink-500">Messages/mo (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.messages_per_month} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, messages_per_month: Number(e.target.value) || 0 } })} /></label>
+              <label className="text-[11px] text-ink-500">Channels (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.channels} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, channels: Number(e.target.value) || 0 } })} /></label>
+              <label className="text-[11px] text-ink-500">Team seats (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.team_seats} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, team_seats: Number(e.target.value) || 0 } })} /></label>
+              <div className="col-span-2 flex gap-2"><button onClick={savePlan} className="px-4 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold">Save plan</button><button onClick={() => setPlanDraft(null)} className="px-2 text-xs text-ink-400">Cancel</button></div>
+            </div>
+          )}
+        </div>
+
+        {/* Announcements */}
+        <div className="bg-white rounded-card border border-line p-4 space-y-3">
+          <p className="text-xs font-bold text-slate-400 uppercase">Announcements (pinned = banner for all tenants)</p>
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Title" value={annForm.title} onChange={e => setAnnForm({ ...annForm, title: e.target.value })} />
+            <select className={inp} value={annForm.level} onChange={e => setAnnForm({ ...annForm, level: e.target.value as Ann["level"] })}><option value="info">info</option><option value="success">success</option><option value="warning">warning</option></select>
+            <input className={`${inp} col-span-2`} placeholder="Message (optional)" value={annForm.body} onChange={e => setAnnForm({ ...annForm, body: e.target.value })} />
+            <label className="text-[11px] text-ink-500 flex items-center gap-1.5"><input type="checkbox" className="accent-brand-700" checked={annForm.pinned} onChange={e => setAnnForm({ ...annForm, pinned: e.target.checked })} /> pin as global banner</label>
+            <div><button onClick={saveAnn} className="px-4 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold">Post</button></div>
+          </div>
+          {anns.map(a => (
+            <div key={a.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2 text-xs">
+              <div className="min-w-0 flex-1"><p className="font-bold text-ink-900 truncate">{a.title} {a.pinned && <span className="text-brand-700">· pinned</span>}{!a.active && <span className="text-red-500"> · off</span>}</p>{a.body && <p className="text-ink-400 truncate">{a.body}</p>}</div>
+              <button onClick={() => setAnn(a.id, { pinned: !a.pinned })} className="px-2 py-1 rounded-control border border-line font-bold text-ink-600 hover:bg-canvas">{a.pinned ? "Unpin" : "Pin"}</button>
+              <button onClick={() => setAnn(a.id, { active: !a.active })} className="px-2 py-1 rounded-control border border-line font-bold text-ink-600 hover:bg-canvas">{a.active ? "Hide" : "Show"}</button>
+              <button onClick={() => delAnn(a.id)} className="px-2 py-1 rounded-control border border-red-200 text-red-600 hover:bg-red-50 font-bold">Del</button>
+            </div>
+          ))}
         </div>
 
         {audit.length > 0 && (

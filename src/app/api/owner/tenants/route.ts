@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isPlatformOwner, currentUser } from "@/lib/auth";
-import { listTenants, updateTenant, platformStats, listOwnerAudit, ownerAudit, type TenantStatus, type PaymentStatus, type TenantFeatures } from "@/lib/tenants";
+import { listTenants, updateTenant, deleteTenant, getTenant, platformStats, listOwnerAudit, ownerAudit, type TenantStatus, type PaymentStatus, type TenantFeatures } from "@/lib/tenants";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -30,5 +30,23 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0024 is applied` }, { status: 500 });
+  }
+}
+
+// DELETE — permanently remove a tenant (requires exact name confirmation).
+export async function DELETE(req: Request) {
+  if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  let body: { id?: string; confirmName?: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  try {
+    const t = await getTenant(body.id);
+    if (!t) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+    if ((body.confirmName ?? "").trim() !== (t.company || t.name)) return NextResponse.json({ error: "Type the tenant name exactly to confirm deletion" }, { status: 400 });
+    await deleteTenant(body.id);
+    await ownerAudit((await currentUser())?.email ?? "owner", "tenant.delete", null, t.company || t.name);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
