@@ -113,15 +113,36 @@ Per-tenant WABA onboarding so each business connects its OWN WhatsApp number.
 path) through `getTenantSecret` once Embedded Signup stores them; tenant-scoped
 authz lands with the Step 2 route retrofit.
 
-## Step 5 — Instagram as a channel ⬜
+## Step 5 — Instagram as a channel 🟡
 IG Messaging API shares Meta Graph API + webhooks + the channel-agnostic flow
 engine — so it's a channel type, not a new product.
-- Extend `wa_channels` with `kind` ('whatsapp' | 'instagram') + IG asset ids.
-- Request `instagram_manage_messages` in the same Embedded Signup.
-- Handle IG webhook fields (`comments`, `messages`); add a **comment-to-DM**
-  trigger node to the flow builder (one-block opening DM, 24h window — per
-  Meta's IG rules).
-- Reuse inbox, AI router, CRM as-is.
+**Done — compliance-first build:**
+- `0021_instagram_channel.sql`: `wa_channels.kind` + `ig_user_id` + `page_id`
+  (WA-only columns relaxed to nullable); `wa_conversations.platform`.
+- `src/lib/instagram.ts` — the **guardrail core**: official Graph API only;
+  **24-hour window** enforced (`within24hWindow`); **no cold DMs** (a send needs
+  prior interaction or a comment opt-in); **comment-to-DM = single block**
+  (`sendPrivateReply`); **rate pacing** (~200/hr/account); STOP honored.
+- `channels.ts`: IG channel kind, `getChannelByIgId` (inbound routing),
+  `saveInstagramChannel` (token encrypted, tenant-scoped).
+- `POST /api/webhooks/instagram` — signature-verified (app secret); DMs →
+  conversation + grounded **in-window** AI reply; comments → ONE private reply
+  only when a tenant keyword rule is enabled (never blanket auto-reply).
+- `POST /api/admin/onboarding/instagram` — connect an IG account via signup.
+- Reuses inbox, AI RAG, CRM, conversations as-is.
+**Remaining:** request `instagram_manage_messages`/`instagram_manage_comments`
+in the Embedded Signup config; resolve `ig_user_id`/`page_id` server-side from
+the token (`/me/accounts` → page → `instagram_business_account`); inbox UI badge
+for platform; a comment-to-DM rule editor (storage key `ig_comment_dm` already
+read by the webhook).
+
+### Meta compliance checklist (IG) — enforced in code
+- [x] Official Graph API only (no scraping/automation that triggers bans)
+- [x] 24-hour messaging window before any standard DM
+- [x] No cold DMs (structurally impossible without prior interaction/comment)
+- [x] Comment-to-DM opening message is a single block
+- [x] Per-account send pacing to avoid spam flags
+- [x] STOP/opt-out honored; signature-verified webhook
 
 ---
 

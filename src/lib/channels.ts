@@ -15,10 +15,15 @@ export interface ChannelCreds {
   appId?: string | null;
 }
 
+export type ChannelKind = "whatsapp" | "instagram";
+
 export interface Channel extends ChannelCreds {
   id: string;
   tenantId: string;
+  kind: ChannelKind;
   name: string;
+  igUserId: string | null;    // IG professional account id (Messaging API), null for WA
+  pageId: string | null;      // connected Facebook Page id (IG)
   agentId: string | null;     // default AI persona for conversations on this number
   active: boolean;
   isDefault: boolean;
@@ -29,11 +34,14 @@ function mapChannel(r: Record<string, unknown>): Channel {
   return {
     id: r.id as string,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
+    kind: ((r.kind as ChannelKind) ?? "whatsapp"),
     name: r.name as string,
     // Tokens are stored encrypted (crypto.ts); readSecret tolerates legacy plaintext.
     token: readSecret(r.access_token as string) ?? "",
-    phoneId: r.phone_number_id as string,
-    wabaId: r.waba_id as string,
+    phoneId: (r.phone_number_id as string) ?? "",
+    wabaId: (r.waba_id as string) ?? "",
+    igUserId: (r.ig_user_id as string | null) ?? null,
+    pageId: (r.page_id as string | null) ?? null,
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
     active: (r.active as boolean) ?? true,
@@ -62,6 +70,15 @@ export async function getChannelByPhoneNumberId(phoneNumberId: string): Promise<
   if (!phoneNumberId) return null;
   try {
     const { data } = await db().from("wa_channels").select("*").eq("phone_number_id", phoneNumberId).maybeSingle();
+    return data ? mapChannel(data as Record<string, unknown>) : null;
+  } catch { return null; }
+}
+
+// Inbound IG routing: the webhook entry id is the IG professional account id.
+export async function getChannelByIgId(igUserId: string): Promise<Channel | null> {
+  if (!igUserId) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*").eq("ig_user_id", igUserId).maybeSingle();
     return data ? mapChannel(data as Record<string, unknown>) : null;
   } catch { return null; }
 }
@@ -95,6 +112,33 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     is_default: input.isDefault ?? false,
   };
   // Only one default at a time, per tenant.
+  if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
+  const q = input.id
+    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(row).select().single();
+  const { data, error } = await q;
+  if (error) throw error;
+  return mapChannel(data as Record<string, unknown>);
+}
+
+// Save an Instagram channel (no phone/WABA; IG account id + page instead).
+// Token is encrypted at rest and the row is scoped to the tenant.
+export async function saveInstagramChannel(input: {
+  id?: string; tenantId?: string; name: string; igUserId: string; pageId?: string | null;
+  token: string; agentId?: string | null; active?: boolean; isDefault?: boolean;
+}): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const row = {
+    tenant_id: tenantId,
+    kind: "instagram",
+    name: input.name.trim(),
+    ig_user_id: input.igUserId.trim(),
+    page_id: input.pageId?.trim() || null,
+    access_token: encryptSecret(input.token.trim()),
+    agent_id: input.agentId || null,
+    active: input.active ?? true,
+    is_default: input.isDefault ?? false,
+  };
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
   const q = input.id
     ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()

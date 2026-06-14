@@ -432,8 +432,9 @@ function mapConversation(r: Record<string, unknown>): Conversation {
 
 // Find-or-create by phone. Keeps the latest name if provided; stamps the
 // channel (receiving number) on create or when it was unknown.
-export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null): Promise<Conversation> {
-  const p = digits(phone);
+export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: "whatsapp" | "instagram" = "whatsapp"): Promise<Conversation> {
+  // IG uses non-numeric IGSIDs, so only digit-normalize WhatsApp identifiers.
+  const p = platform === "instagram" ? phone.trim() : digits(phone);
   const existing = await db().from("wa_conversations").select("*").eq("phone", p).maybeSingle();
   if (existing.data) {
     const row = existing.data as Record<string, unknown>;
@@ -446,11 +447,11 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     }
     return mapConversation(row);
   }
-  const contact = await getContactByPhone(p);
-  const base: Record<string, unknown> = { phone: p, name: (name ?? contact?.name ?? "").trim(), contact_id: contact?.id ?? null };
+  const contact = platform === "instagram" ? null : await getContactByPhone(p);
+  const base: Record<string, unknown> = { phone: p, name: (name ?? contact?.name ?? "").trim(), contact_id: contact?.id ?? null, platform };
   let ins = await db().from("wa_conversations").insert(channelId ? { ...base, channel_id: channelId } : base).select().single();
-  // channel_id column missing (migration 0013 not applied) — insert without it.
-  if (ins.error && channelId) ins = await db().from("wa_conversations").insert(base).select().single();
+  // channel_id / platform column missing (migration not applied) — retry minimal.
+  if (ins.error) ins = await db().from("wa_conversations").insert({ phone: p, name: (name ?? "").trim() }).select().single();
   if (ins.error) {
     // Race: another inbound created it first — re-read.
     const retry = await db().from("wa_conversations").select("*").eq("phone", p).single();
