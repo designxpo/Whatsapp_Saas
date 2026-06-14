@@ -84,16 +84,26 @@ escalates instead of free-chatting; no medical/legal/financial advice).
    Resolve tenant from the receiving `phone_number_id` / IG asset id
    (`wa_channels` → tenant_id) before doing any data work.
 
-## Step 3 — Meta Tech Provider + Embedded Signup ⬜
+## Step 3 — Meta Tech Provider + Embedded Signup 🟡
 Per-tenant WABA onboarding so each business connects its OWN WhatsApp number.
-- Enroll the Meta app in the **Tech Provider** program; implement **Embedded
-  Signup** (cap: 200 onboards / rolling week).
-- New route `POST /api/admin/onboarding/whatsapp` — exchange the signup code →
-  long-lived token → store via `setTenantSecret(tid, "wa_token", token)` and
-  WABA/phone ids in tenant settings.
-- Webhook subscription per WABA; verify `X-Hub-Signature-256` (already done for
-  the shared webhook — keep per-tenant).
-- The encrypted vault (`crypto.ts`) is ready to receive these tokens.
+**Done (backend):**
+- `src/lib/embeddedsignup.ts` — `exchangeSignupCode` (code → business token),
+  `subscribeWaba` (app → tenant WABA webhooks), `registerPhone`.
+- `POST /api/admin/onboarding/whatsapp` — admin+tenant scoped; exchanges,
+  subscribes, and persists a channel via `saveChannel({ tenantId, ... })`. Token
+  is never returned to the client.
+- Channels (`wa_channels`) are the per-WABA store; `saveChannel` now **encrypts
+  the access token at rest** and scopes by tenant; `mapChannel` decrypts
+  (tolerates legacy plaintext) and exposes `tenantId`.
+**Remaining (needs the Meta app + a little UI):**
+- Enroll the app in the **Tech Provider** program; create an Embedded Signup
+  **configuration** (`META_EMBEDDED_SIGNUP_CONFIG_ID`). Cap: 200 onboards/week.
+- Frontend: load the FB JS SDK, `FB.login({ config_id, response_type: 'code',
+  override_default_response_type: true })`, capture the `message` event's
+  sessionInfo `{ waba_id, phone_number_id }`, POST to the route above.
+- Inbound webhook: attribute each message to a tenant via
+  `getChannelByPhoneNumberId(...).tenantId` (carries tenant now), then pass that
+  tenantId through the flow/store calls (part of the route retrofit).
 
 ## Step 4 — Token vault + tenant-scoped authz 🟡
 **Done:** `src/lib/crypto.ts` (AES-256-GCM envelope encryption) + the encrypted

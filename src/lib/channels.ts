@@ -4,6 +4,9 @@
 // setups keep working with zero configuration.
 
 import { db } from "./supabase";
+import { encryptSecret, readSecret } from "./crypto";
+
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface ChannelCreds {
   token: string;
@@ -14,6 +17,7 @@ export interface ChannelCreds {
 
 export interface Channel extends ChannelCreds {
   id: string;
+  tenantId: string;
   name: string;
   agentId: string | null;     // default AI persona for conversations on this number
   active: boolean;
@@ -24,8 +28,10 @@ export interface Channel extends ChannelCreds {
 function mapChannel(r: Record<string, unknown>): Channel {
   return {
     id: r.id as string,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     name: r.name as string,
-    token: r.access_token as string,
+    // Tokens are stored encrypted (crypto.ts); readSecret tolerates legacy plaintext.
+    token: readSecret(r.access_token as string) ?? "",
     phoneId: r.phone_number_id as string,
     wabaId: r.waba_id as string,
     appId: (r.app_id as string | null) ?? null,
@@ -75,21 +81,23 @@ export async function credsFor(ref?: string | Channel | null): Promise<ChannelCr
   return c ?? undefined;
 }
 
-export async function saveChannel(input: Partial<Channel> & { name: string; phoneId: string; wabaId: string; token: string }): Promise<Channel> {
+export async function saveChannel(input: Partial<Channel> & { name: string; phoneId: string; wabaId: string; token: string; tenantId?: string }): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
+    tenant_id: tenantId,
     name: input.name.trim(),
     phone_number_id: input.phoneId.trim(),
     waba_id: input.wabaId.trim(),
-    access_token: input.token.trim(),
+    access_token: encryptSecret(input.token.trim()),   // encrypted at rest
     app_id: input.appId?.trim() || null,
     agent_id: input.agentId || null,
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
-  // Only one default at a time.
-  if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("is_default", true);
+  // Only one default at a time, per tenant.
+  if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
   const q = input.id
-    ? db().from("wa_channels").update(row).eq("id", input.id).select().single()
+    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(row).select().single();
   const { data, error } = await q;
   if (error) throw error;
