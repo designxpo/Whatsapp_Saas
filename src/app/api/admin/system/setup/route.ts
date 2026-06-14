@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { requireRoleAdmin } from "@/lib/auth";
+import { isPlatformOwner } from "@/lib/auth";
 import { db } from "@/lib/supabase";
 import { getAdsAccountId, getAdsPageId, getAdAccount } from "@/lib/ads";
 
@@ -38,7 +38,8 @@ function readSql(file: string): string {
 // GET — guided-setup diagnostics: which migrations are unapplied (+ their SQL),
 // which env vars are missing/malformed, and live Meta connectivity. Read-only.
 export async function GET() {
-  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  // Internal DB/diagnostics are product-owner only — never exposed to tenants.
+  if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
 
   // Deep link straight to this project's Supabase SQL editor.
   const ref = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").match(/https:\/\/([a-z0-9]+)\.supabase\.co/)?.[1];

@@ -71,4 +71,15 @@ export async function currentTenantId(): Promise<string | null> {
   return (await currentUser())?.tenantId ?? null;
 }
 
+// The PRODUCT OWNER (super-admin) is the env ADMIN_USER account — the only one
+// who can see and control every tenant via the owner portal.
+export function isPlatformOwnerEmail(email: string | null | undefined): boolean {
+  const owner = process.env.ADMIN_USER;
+  return !!owner && !!email && email.toLowerCase() === owner.toLowerCase();
+}
+
+export async function isPlatformOwner(): Promise<boolean> {
+  return isPlatformOwnerEmail((await currentUser())?.email);
+}
+
 export const SESSION_COOKIE = COOKIE;

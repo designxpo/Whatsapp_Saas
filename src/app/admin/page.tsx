@@ -52,8 +52,15 @@ const TAB_TITLES: Record<Tab, string> = {
 export default function Admin() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("home");
-  const [me, setMe] = useState<{ email: string; name: string; role: string } | null>(null);
-  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setMe(d.user ?? null)).catch(() => {}); }, []);
+  const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean } | null>(null);
+  const [showTour, setShowTour] = useState(false);
+  useEffect(() => {
+    fetch("/api/admin/me").then(r => r.json()).then(d => {
+      setMe(d.user ?? null);
+      const welcome = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1";
+      if (d.needsWalkthrough || welcome) setShowTour(true);
+    }).catch(() => {});
+  }, []);
 
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
@@ -106,7 +113,13 @@ export default function Admin() {
               </div>
             </div>
           )}
-          {me?.role !== "member" && (
+          {/* Product-owner only: the owner portal + internal diagnostics. Tenants never see these. */}
+          {me?.isPlatformOwner && (
+            <a href="/admin/owner" className="w-full flex items-center gap-3 h-9 px-3 rounded-full text-[12px] font-bold text-brand-700 hover:bg-brand-50 transition-colors" title="Owner portal — manage all tenants">
+              <ShieldCheck className="w-4 h-4" /> Owner Portal
+            </a>
+          )}
+          {me?.isPlatformOwner && (
             <a href="/admin/setup" className="w-full flex items-center gap-3 h-9 px-3 rounded-full text-[12px] font-medium text-ink-400 hover:bg-canvas hover:text-ink-700 transition-colors" title="Internal setup & diagnostics">
               <Settings className="w-4 h-4" /> System setup
             </a>
@@ -148,6 +161,42 @@ export default function Admin() {
           {tab === "optouts" && <OptoutsTab />}
           {tab === "settings" && <SettingsTab goTo={setTab} />}
         </main>
+      </div>
+      {showTour && <Walkthrough goTo={setTab} onDone={() => setShowTour(false)} />}
+    </div>
+  );
+}
+
+// First-login product walkthrough — a short guided tour. Marks the tenant
+// onboarded on finish/skip so it shows once.
+const TOUR_STEPS: { title: string; body: string; tab?: Tab }[] = [
+  { title: "Welcome to Alabs Connect 👋", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
+  { title: "Connect your channels", body: "Go to Settings to connect a WhatsApp number, and the Instagram section to link an Instagram account. Everything runs from here.", tab: "settings" },
+  { title: "Teach the AI", body: "Add your business docs in AI Knowledge Base — the assistant answers customer questions automatically, grounded in your content.", tab: "assistant" },
+  { title: "Build chatbot flows", body: "Create drag-and-drop flows for WhatsApp or Instagram, triggered by keywords, comments or ads.", tab: "flows" },
+  { title: "Automate follow-ups", body: "Use Sequences for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.", tab: "sequences" },
+  { title: "You're all set 🚀", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
+];
+function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => void }) {
+  const [i, setI] = useState(0);
+  const step = TOUR_STEPS[i];
+  const finish = async () => { await fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {}); onDone(); };
+  const next = () => { const s = TOUR_STEPS[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= TOUR_STEPS.length) finish(); else setI(i + 1); };
+  return (
+    <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4">
+      <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4">
+        <div className="flex gap-1.5">{TOUR_STEPS.map((_, j) => <div key={j} className={`h-1.5 flex-1 rounded-full ${j <= i ? "bg-brand-700" : "bg-line"}`} />)}</div>
+        <div>
+          <h3 className="text-lg font-extrabold text-ink-900">{step.title}</h3>
+          <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{step.body}</p>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <button onClick={finish} className="text-xs font-semibold text-ink-400 hover:text-ink-700">Skip tour</button>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-ink-400">{i + 1} / {TOUR_STEPS.length}</span>
+            <button onClick={next} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{i + 1 >= TOUR_STEPS.length ? "Get started" : "Next"}</button>
+          </div>
+        </div>
       </div>
     </div>
   );
