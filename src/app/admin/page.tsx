@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin } from "lucide-react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram } from "lucide-react";
 
 type Tab = "home" | "livechat" | "broadcast" | "ads" | "assistant" | "flows" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings";
 
@@ -149,7 +149,7 @@ const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-
 const btnPrimary = "px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";
 
 // ── Multi-number channels (shared) ──
-type ChannelRow = { id: string; name: string; phoneId: string; wabaId: string; token: string; appId: string | null; agentId: string | null; active: boolean; isDefault: boolean };
+type ChannelRow = { id: string; kind?: "whatsapp" | "instagram"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; token: string; appId: string | null; agentId: string | null; active: boolean; isDefault: boolean };
 let CHANNELS_CACHE: ChannelRow[] | null = null;
 async function loadChannelList(force = false): Promise<ChannelRow[]> {
   if (!CHANNELS_CACHE || force) {
@@ -5602,6 +5602,127 @@ function ChannelsManager() {
   );
 }
 
+const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", pageId: "", token: "", agentId: "", active: true, isDefault: false };
+
+function InstagramManager() {
+  const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_IG | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  // Comment-to-DM rule
+  const [rule, setRule] = useState<{ enabled: boolean; keyword: string; message: string }>({ enabled: false, keyword: "", message: "" });
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const [ruleSaved, setRuleSaved] = useState(false);
+
+  const load = useCallback(async () => {
+    const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
+    setChannels((d.channels ?? []).filter((c: ChannelRow) => c.kind === "instagram"));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/ig-settings").then(r => r.json()).then(d => d.rule && setRule(d.rule)).catch(() => {}); }, []);
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim() || !form.igUserId.trim()) { setMsg("Label and Instagram account id are required."); return; }
+    if (!form.id && !form.token.trim()) { setMsg("Access token is required to connect."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/instagram", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, pageId: form.pageId || null }),
+      });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Disconnect this Instagram account? Its conversations stay.")) return;
+    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  async function saveRule() {
+    setRuleBusy(true); setRuleSaved(false); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/ig-settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rule) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setRule(d.rule); setRuleSaved(true); setTimeout(() => setRuleSaved(false), 2500); }
+    } finally { setRuleBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p>
+          <p className="text-xs text-slate-500 mt-0.5">Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</p>
+        </div>
+        <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Connect account</button>
+      </div>
+
+      {channels.map(c => (
+        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+          <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">ig {c.igUserId}{c.pageId ? ` · page ${c.pageId}` : ""} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+          </div>
+          <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+
+      {form && (
+        <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Label, e.g. @yourbrand" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Instagram account id (IG professional id)" value={form.igUserId} onChange={e => setForm({ ...form, igUserId: e.target.value.trim() })} />
+            <input className={inp} placeholder="Facebook Page id (optional)" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this account">
+              <option value="">AI persona: global default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+          </div>
+          <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Access token — leave blank to keep the current one" : "Access token (instagram_manage_messages)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save account"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, the <code className="font-mono">instagram_manage_messages</code> permission on your Meta app, and the IG webhook pointed at <code className="font-mono">/api/webhooks/instagram</code>.</p>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+      {!channels.length && !form && <p className="text-xs text-ink-400">No Instagram accounts connected yet.</p>}
+
+      {/* Comment-to-DM rule */}
+      <div className="border-t border-line pt-3 mt-1 space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM</p>
+          <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={rule.enabled} onChange={e => setRule({ ...rule, enabled: e.target.checked })} /> enabled</label>
+        </div>
+        <p className="text-[11px] text-ink-400">When someone comments on a post, send them ONE private DM (Meta allows a single reply per comment). Leave the keyword blank to reply to every comment, or set a trigger word like <i>“GUIDE”</i>.</p>
+        <div className="grid grid-cols-3 gap-2">
+          <input className={inp} placeholder="Trigger keyword (optional)" value={rule.keyword} onChange={e => setRule({ ...rule, keyword: e.target.value })} />
+          <input className={`${inp} col-span-2`} placeholder="DM message, e.g. Here&apos;s the link you asked for: …" value={rule.message} onChange={e => setRule({ ...rule, message: e.target.value })} />
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
+          {ruleSaved && <span className="text-xs text-green-600 font-semibold flex items-center gap-1"><Check className="w-3.5 h-3.5" /> Saved</span>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -5643,6 +5764,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       </div>
 
       {isAdmin && <ChannelsManager />}
+      {isAdmin && <InstagramManager />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 

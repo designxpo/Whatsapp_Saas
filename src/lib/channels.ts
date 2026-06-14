@@ -50,9 +50,11 @@ function mapChannel(r: Record<string, unknown>): Channel {
   };
 }
 
-export async function listChannels(): Promise<Channel[]> {
+export async function listChannels(tenantId?: string): Promise<Channel[]> {
   try {
-    const { data, error } = await db().from("wa_channels").select("*").order("created_at", { ascending: true });
+    let q = db().from("wa_channels").select("*").order("created_at", { ascending: true });
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data, error } = await q;
     if (error) throw error;
     return (data ?? []).map(mapChannel);
   } catch { return []; }     // table missing → env single-number mode

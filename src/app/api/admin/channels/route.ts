@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listChannels, getChannel, saveChannel, deleteChannel, type Channel } from "@/lib/channels";
-import { currentUser, requireRoleAdmin } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -8,10 +8,11 @@ export const dynamic = "force-dynamic";
 
 const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` : "••••");
 
-// GET — all channels with masked tokens (never echo full tokens to the browser).
+// GET — this tenant's channels with masked tokens (never echo full tokens).
 export async function GET() {
   try {
-    const channels = (await listChannels()).map(c => ({ ...c, token: mask(c.token) }));
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const channels = (await listChannels(tid)).map(c => ({ ...c, token: mask(c.token) }));
     const envMode = !!process.env.META_WA_ACCESS_TOKEN && channels.length === 0;
     return NextResponse.json({ channels, envMode });
   } catch (err) {
@@ -35,7 +36,8 @@ export async function POST(req: Request) {
       token = existing.token;
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
-    const saved = await saveChannel({ ...body, name: body.name!, phoneId: body.phoneId!, wabaId: body.wabaId!, token });
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const saved = await saveChannel({ ...body, name: body.name!, phoneId: body.phoneId!, wabaId: body.wabaId!, token, tenantId: tid });
     logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId})`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
   } catch (err) {
