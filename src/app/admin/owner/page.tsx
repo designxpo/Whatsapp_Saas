@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Users, CreditCard, ShieldCheck, Ban, ArrowLeft, LogIn, Save } from "lucide-react";
+import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save } from "lucide-react";
 
 const inp = "border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900";
 type Features = { whatsapp: boolean; instagram: boolean; sequences: boolean; commerce: boolean; growth: boolean; ai_autoreply: boolean; ads: boolean };
@@ -69,7 +69,10 @@ export default function OwnerPortal() {
             <h1 className="text-2xl font-extrabold text-brand-dark flex items-center gap-2"><ShieldCheck className="w-6 h-6" /> Owner Portal</h1>
             <p className="text-sm text-slate-500">Control every tenant — subscriptions, payments, features and access.</p>
           </div>
-          <a href="/admin" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><ArrowLeft className="w-3.5 h-3.5" /> Back to app</a>
+          <div className="flex items-center gap-2">
+            <a href="/admin/setup" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> System setup</a>
+            <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><LogOut className="w-3.5 h-3.5" /> Log out</button>
+          </div>
         </div>
 
         {stats && (

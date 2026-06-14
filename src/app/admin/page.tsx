@@ -49,18 +49,30 @@ const TAB_TITLES: Record<Tab, string> = {
   contacts: "Contacts", campaigns: "History", optouts: "Opt-outs", settings: "Settings",
 };
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export default function Admin() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("home");
-  const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean } | null>(null);
+  const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json()).then(d => {
-      setMe(d.user ?? null);
+      const u = d.user ?? null;
+      setMe(u);
+      // The product owner lives in the Owner Portal — not a tenant workspace.
+      // They only land here while "viewing" a tenant (impersonating).
+      if (u?.isPlatformOwner && (!u.tenantId || u.tenantId === DEFAULT_TENANT_ID)) { router.replace("/admin/owner"); return; }
       const welcome = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1";
       if (d.needsWalkthrough || welcome) setShowTour(true);
     }).catch(() => {});
-  }, []);
+  }, [router]);
+
+  const impersonating = !!me?.isPlatformOwner && !!me?.tenantId && me.tenantId !== DEFAULT_TENANT_ID;
+  async function exitImpersonation() {
+    await fetch("/api/owner/impersonate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reset: true }) }).catch(() => {});
+    router.push("/admin/owner"); router.refresh();
+  }
 
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" });
@@ -113,16 +125,11 @@ export default function Admin() {
               </div>
             </div>
           )}
-          {/* Product-owner only: the owner portal + internal diagnostics. Tenants never see these. */}
-          {me?.isPlatformOwner && (
-            <a href="/admin/owner" className="w-full flex items-center gap-3 h-9 px-3 rounded-full text-[12px] font-bold text-brand-700 hover:bg-brand-50 transition-colors" title="Owner portal — manage all tenants">
-              <ShieldCheck className="w-4 h-4" /> Owner Portal
-            </a>
-          )}
-          {me?.isPlatformOwner && (
-            <a href="/admin/setup" className="w-full flex items-center gap-3 h-9 px-3 rounded-full text-[12px] font-medium text-ink-400 hover:bg-canvas hover:text-ink-700 transition-colors" title="Internal setup & diagnostics">
-              <Settings className="w-4 h-4" /> System setup
-            </a>
+          {/* Owner returning from a tenant they're viewing. Tenants never see this. */}
+          {impersonating && (
+            <button onClick={exitImpersonation} className="w-full flex items-center gap-3 h-9 px-3 rounded-full text-[12px] font-bold text-brand-700 hover:bg-brand-50 transition-colors" title="Back to the Owner Portal">
+              <ShieldCheck className="w-4 h-4" /> Exit to Owner Portal
+            </button>
           )}
           <button onClick={logout} className="w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-ink-600 hover:bg-red-50 hover:text-red-600 transition-colors">
             <LogOut className="w-[18px] h-[18px]" /> Log out
@@ -131,6 +138,12 @@ export default function Admin() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {impersonating && (
+          <div className="h-9 shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-3 text-[12px] text-amber-800 font-semibold">
+            👀 You&apos;re viewing a tenant&apos;s workspace as the owner
+            <button onClick={exitImpersonation} className="px-2 py-0.5 rounded-control bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700">Exit to Owner Portal</button>
+          </div>
+        )}
         {/* Topbar */}
         <header className="h-16 shrink-0 bg-white border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
           <p className="text-[13px] text-ink-400">
