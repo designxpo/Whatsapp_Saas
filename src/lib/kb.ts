@@ -51,6 +51,10 @@ export async function embedQuery(text: string): Promise<number[]> {
 
 // ── Text extraction per source type ───────────────────────────────────────────
 async function extractPdf(buffer: Buffer): Promise<string> {
+  // pdfjs-dist (inside pdf-parse) uses the browser `DOMMatrix` global unguarded;
+  // install a Node polyfill before it loads, or some PDFs fail with
+  // "DOMMatrix is not defined".
+  await import("./dommatrix-polyfill");
   const { PDFParse } = await import("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
