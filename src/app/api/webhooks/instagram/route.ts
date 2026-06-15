@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
@@ -93,6 +93,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     if (display) conv = await getOrCreateConversation(senderId, display, channel.id, "instagram", channel.tenantId);
     if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
+  if (conv.isComment) await setConversationComment(conv.id, false);   // a real DM → move to Chats
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
 
@@ -159,7 +160,12 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
 async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const commentId = String(value.id ?? "");
   const text = String(value.text ?? "");
-  const fromId = String((value.from as Record<string, unknown>)?.id ?? "");
+  const from = (value.from as Record<string, unknown>) ?? {};
+  const fromId = String(from.id ?? "");
+  // Comment webhooks carry the commenter's @username — use it directly so the
+  // inbox shows the handle, not the raw IGSID (the Profile API can't resolve a
+  // commenter who never opened a DM).
+  const fromUsername = String(from.username ?? "");
   const mediaId = String((value.media as Record<string, unknown>)?.id ?? "") || null;
   if (!commentId || !text) return;
   if (fromId && channel.igUserId && fromId === channel.igUserId) return;   // never reply to ourselves
@@ -171,13 +177,18 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // reply + DM), capped + escalating to a human after AI_REPLY_CAP replies.
   if (!rule) {
     if (!(await claimComment(commentId, null, tid))) return;
-    let conv = await getOrCreateConversation(fromId, "", channel.id, "instagram", tid);
+    // Prefer the @username carried in the comment payload; fall back to the
+    // Profile API (works only if they've also DMed) for name + avatar.
+    const handle = fromUsername ? `@${fromUsername}` : "";
+    let conv = await getOrCreateConversation(fromId, handle, channel.id, "instagram", tid);
     if (!conv.name || !conv.avatarUrl) {
       const prof = await getIgProfile(credsOf(channel), fromId);
-      const display = prof.username ? `@${prof.username}` : prof.name;
-      if (display) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
+      const display = handle || (prof.username ? `@${prof.username}` : prof.name);
+      if (display && display !== conv.name) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
       if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
     }
+    // This thread came from a COMMENT → keep it in the Comments section.
+    await setConversationComment(conv.id, true);
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
     await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid });

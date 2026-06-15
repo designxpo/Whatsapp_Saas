@@ -991,7 +991,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
 type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string };
-type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null };
+type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
 
 // Avatar that shows the profile image when available, falling back to the
 // initial if there's no image or it fails to load (IG image URLs can expire).
@@ -1110,6 +1110,7 @@ function LiveChatTab() {
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
   const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram">("all");
+  const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
 
   const load = useCallback(() => {
@@ -1124,12 +1125,16 @@ function LiveChatTab() {
 
   const q = search.trim().toLowerCase();
   const onPlatform = (c: Conversation, p: "whatsapp" | "instagram") => (c.platform ?? "whatsapp") === p;
-  const visible = convos
+  // Split comment threads (IG comment → AI reply) from real DM chats.
+  const chatsCount = convos.filter(c => !c.isComment).length;
+  const commentsCount = convos.filter(c => !!c.isComment).length;
+  const inView = convos.filter(c => view === "comments" ? !!c.isComment : !c.isComment);
+  const visible = inView
     .filter(c => platform === "all" ? true : onPlatform(c, platform))
     .filter(c => filter === "all" ? true : filter === "needs_reply" ? !!c.needsReply : filter === "escalated" ? c.status === "escalated" : !c.botEnabled)
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
-  const waCount = convos.filter(c => onPlatform(c, "whatsapp")).length;
-  const igCount = convos.filter(c => onPlatform(c, "instagram")).length;
+  const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
+  const igCount = inView.filter(c => onPlatform(c, "instagram")).length;
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return "";
@@ -1145,14 +1150,25 @@ function LiveChatTab() {
       {/* Conversation list */}
       <aside className="w-80 shrink-0 border-r border-line flex flex-col min-h-0">
         <div className="p-4 pb-3 space-y-3 border-b border-line">
-          <p className="text-[15px] font-bold text-ink-900">Live Chat <span className="text-xs font-normal text-ink-400">({convos.length})</span></p>
+          <p className="text-[15px] font-bold text-ink-900">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-400">({visible.length})</span></p>
+          {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
+              their own section so they don't clutter real DM conversations. */}
+          <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
+            {([["chats", "Chats", chatsCount], ["comments", "Comments", commentsCount]] as const).map(([k, label, n]) => (
+              <button key={k} onClick={() => { setView(k); setSelected(null); setPlatform("all"); }} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${view === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
+                {k === "chats" ? <MessageSquare className="w-3 h-3" /> : <Instagram className="w-3 h-3 text-pink-600" />}
+                {label} <span className="opacity-60">{n}</span>
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-sm bg-canvas text-ink-900 placeholder:text-ink-400" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          {/* Platform toggle — switch between WhatsApp and Instagram chats. */}
+          {/* Platform toggle — only for Chats; comments are Instagram-only. */}
+          {view === "chats" && (
           <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
-            {([["all", "All", convos.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount]] as const).map(([k, label, n]) => (
+            {([["all", "All", inView.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount]] as const).map(([k, label, n]) => (
               <button key={k} onClick={() => setPlatform(k)} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
                 {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
@@ -1160,6 +1176,7 @@ function LiveChatTab() {
               </button>
             ))}
           </div>
+          )}
           <div className="flex gap-1 flex-wrap">
             {([["all", "All"], ["needs_reply", "Needs reply"], ["escalated", "Escalated"], ["bot_off", "Human"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{label}</button>

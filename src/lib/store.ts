@@ -420,6 +420,7 @@ export interface Conversation {
   aiReplyCount: number;         // AI auto-replies sent so far (capped before human handoff)
   platform: "whatsapp" | "instagram";   // which channel this chat arrived on
   avatarUrl: string | null;     // profile image (Instagram); null for WhatsApp
+  isComment: boolean;           // originated from an IG comment (AI reply flow), not a DM
   channelId: string | null;     // which WhatsApp number this chat lives on
   tenantId: string;             // owning tenant
   createdAt: string;
@@ -452,6 +453,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     aiReplyCount: (r.ai_reply_count as number) ?? 0,
     platform: (r.platform as "whatsapp" | "instagram") ?? "whatsapp",
     avatarUrl: (r.avatar_url as string | null) ?? null,
+    isComment: (r.is_comment as boolean) ?? false,
     channelId: (r.channel_id as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
@@ -461,6 +463,12 @@ function mapConversation(r: Record<string, unknown>): Conversation {
 // Store a conversation's profile image (Instagram). Keyed by id (globally-unique).
 export async function setConversationAvatar(conversationId: string, url: string): Promise<void> {
   await db().from("wa_conversations").update({ avatar_url: url }).eq("id", conversationId).then(() => {}, () => {});
+}
+
+// Flag whether a conversation is an IG comment thread (vs a DM chat). Tolerant
+// of a missing column (pre-0039) so it never breaks the webhook.
+export async function setConversationComment(conversationId: string, isComment: boolean): Promise<void> {
+  await db().from("wa_conversations").update({ is_comment: isComment }).eq("id", conversationId).then(() => {}, () => {});
 }
 
 // Agent opened the chat → mark it read (no longer awaiting our reply).
