@@ -132,7 +132,8 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
     await escalateConversation(conv.id);
   };
 
-  if (conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
+  // The cap applies to comment-triggered AI only; direct DMs are uncapped.
+  if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
 
   const history = await getConvHistory(conv.id, 20);
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, channel.agentId, tid);
@@ -143,8 +144,11 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
     : await sendIgMessage(creds, conv.phone, r.reply, { lastInboundAt: now });
   if (!sent.ok) { console.warn("[ig webhook] ai reply blocked:", sent.blockedBy, sent.error); return; }
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
-  await incAiReplies(conv.id, conv.aiReplyCount);
-  if (commentId) await replyToComment(creds, commentId, r.reply).catch(e => console.error("[ig webhook] public reply", e));
+  // Comment path only: count toward the cap + also post the AI reply publicly.
+  if (commentId) {
+    await incAiReplies(conv.id, conv.aiReplyCount);
+    await replyToComment(creds, commentId, r.reply).catch(e => console.error("[ig webhook] public reply", e));
+  }
 }
 
 // Comment → ManyChat-style automation. Matches the comment against this tenant's
