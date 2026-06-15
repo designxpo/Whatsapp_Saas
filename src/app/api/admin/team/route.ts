@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listUsers, saveUser, deleteUser, logActivity } from "@/lib/team";
+import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,11 @@ export async function POST(req: Request) {
   let body: { id?: string; email?: string; name?: string; title?: string; role?: "admin" | "member"; password?: string; active?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.email?.trim()) return NextResponse.json({ error: "email required" }, { status: 400 });
+  // New seat → enforce the plan's team-seat limit.
+  if (!body.id) {
+    try { await enforceLimit((await currentTenantId()) ?? DEFAULT_TENANT_ID, "seats"); }
+    catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
+  }
   try {
     const user = await saveUser({
       id: body.id,

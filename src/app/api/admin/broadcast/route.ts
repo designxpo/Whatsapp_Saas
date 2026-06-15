@@ -2,8 +2,10 @@ export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { runBroadcast, BroadcastError, type BroadcastInput } from "@/lib/broadcast";
 import { recipientsForAudience } from "@/lib/store";
-import { currentUser } from "@/lib/auth";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
+import { checkLimit } from "@/lib/usage";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +28,12 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: BroadcastInput;
   try { body = (await req.json()) as BroadcastInput; } catch { return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 }); }
+  // Enforce the monthly-message cap before sending (best-effort recipient count).
+  try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const c = await checkLimit(tid, "messages", 0);
+    if (!c.allowed) return NextResponse.json({ success: false, error: `You've reached your plan's monthly message limit (${c.used}/${c.limit}). Upgrade to send more.`, upgrade: true }, { status: 402 });
+  } catch (e) { console.error("[broadcast] limit check", errorMessage(e)); }
   try {
     const result = await runBroadcast(body);
     logActivity(await currentUser(), "broadcast.send", `${body.templateName ?? "campaign"} → ${result.totalRecipients ?? 0} recipients (${result.status ?? ""})`);

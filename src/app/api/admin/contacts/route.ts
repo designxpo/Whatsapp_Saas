@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { listContacts, upsertContacts, getContactByPhone, type ContactAttrFilter } from "@/lib/store";
 import { fireTrigger } from "@/lib/autosend";
-import { currentUser } from "@/lib/auth";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
+import { enforceLimit } from "@/lib/usage";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +44,9 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const rows = Array.isArray(body.contacts) ? body.contacts : [];
   if (rows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
+  // Enforce the plan's contact cap (counts the batch being added).
+  try { await enforceLimit((await currentTenantId()) ?? DEFAULT_TENANT_ID, "contacts", rows.length); }
+  catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   try {
     const result = await upsertContacts(rows, "import");
     // Fire 'contact_added' automation for newly imported contacts.

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { saveInstagramChannel, getChannel } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
+import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,10 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.igUserId?.trim()) {
     return NextResponse.json({ error: "name and Instagram account id are required" }, { status: 400 });
+  }
+  if (!body.id) {
+    try { await enforceLimit(tenantId, "channels"); }
+    catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   }
   try {
     let token = (body.token ?? "").trim();

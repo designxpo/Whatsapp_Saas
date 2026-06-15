@@ -6115,6 +6115,42 @@ function InstagramManager() {
   );
 }
 
+// Tenant-facing plan + usage card (consumption vs plan limits).
+function UsageCard() {
+  const [u, setU] = useState<{ usage: { contacts: number; messages: number; channels: number; seats: number }; limits: { contacts: number; messages_per_month: number; channels: number; team_seats: number }; plan: string; status: string; trialEndsAt: string | null } | null>(null);
+  useEffect(() => { fetch("/api/admin/usage").then(r => r.json()).then(d => { if (!d.error) setU(d); }).catch(() => {}); }, []);
+  if (!u) return null;
+  const rows: [string, number, number][] = [
+    ["Contacts", u.usage.contacts, u.limits.contacts],
+    ["Messages this month", u.usage.messages, u.limits.messages_per_month],
+    ["Channels", u.usage.channels, u.limits.channels],
+    ["Team seats", u.usage.seats, u.limits.team_seats],
+  ];
+  const trialLeft = u.trialEndsAt ? Math.max(0, Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)) : null;
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Plan &amp; usage</p>
+          <p className="text-sm font-semibold text-ink-900 capitalize">{u.plan} plan {u.status === "trialing" && trialLeft !== null && <span className="text-[11px] font-bold text-amber-600">· {trialLeft} days left in trial</span>}</p>
+        </div>
+      </div>
+      <div className="space-y-2.5">
+        {rows.map(([label, used, limit]) => {
+          const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          const near = limit > 0 && used / limit >= 0.8;
+          return (
+            <div key={label}>
+              <div className="flex justify-between text-[11px] mb-0.5"><span className="text-ink-500">{label}</span><span className={`font-mono ${near ? "text-amber-600 font-bold" : "text-ink-400"}`}>{used.toLocaleString()} / {limit > 0 ? limit.toLocaleString() : "∞"}</span></div>
+              <div className="h-1.5 rounded-full bg-canvas overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-red-500" : near ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${limit > 0 ? pct : 4}%` }} /></div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -6155,6 +6191,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <p className="text-sm text-slate-500">WhatsApp numbers, automatic messages, and canned responses.</p>
       </div>
 
+      <UsageCard />
       {isAdmin && <ChannelsManager />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
