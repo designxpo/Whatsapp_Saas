@@ -4,7 +4,7 @@ import { FeatureGrid, ThreeSteps, IntegrationsStrip, StatsBand, CtaBand } from "
 import { ChatFlowDiagram, SequenceFlowDiagram } from "../_components/flows";
 
 export const metadata: Metadata = {
-  title: "Features — Alabs Connect",
+  title: "Features — Talko AI",
   description: "AI replies, broadcasts, chatbot flows, drip sequences, catalog checkout, Instagram automation and a unified inbox — everything in one platform.",
 };
 
@@ -15,7 +15,7 @@ export default function FeaturesPage() {
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-20 pb-4">
           <SectionTitle eyebrow="Features" title="Powerful features for modern messaging"
-            subtitle="From the first hello to repeat purchases — Alabs Connect automates the whole conversation across WhatsApp and Instagram." />
+            subtitle="From the first hello to repeat purchases — Talko AI automates the whole conversation across WhatsApp and Instagram." />
         </Container>
       </section>
 

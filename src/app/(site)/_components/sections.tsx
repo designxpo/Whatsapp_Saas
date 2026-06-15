@@ -42,7 +42,7 @@ export function ThreeSteps() {
   return (
     <Container className="py-16">
       <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
-        <SectionTitle title="Get started in three easy steps" subtitle="Going live can feel overwhelming — Alabs Connect makes it simple." />
+        <SectionTitle title="Get started in three easy steps" subtitle="Going live can feel overwhelming — Talko AI makes it simple." />
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {STEPS.map((s, i) => {
             const Icon = STEP_ICONS[i] ?? Search;
@@ -61,16 +61,16 @@ export function ThreeSteps() {
   );
 }
 
-// "Why teams choose Alabs Connect" — split: visual + pastel benefit cards.
+// "Why teams choose Talko AI" — split: visual + pastel benefit cards.
 export function WhyChoose() {
   return (
     <Container className="py-16">
       <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
-        <SectionTitle title="Why teams choose Alabs Connect" subtitle="Alabs Connect learns your business and works the way your customers already chat." />
+        <SectionTitle title="Why teams choose Talko AI" subtitle="Talko AI learns your business and works the way your customers already chat." />
         <div className="mt-12 grid items-center gap-10 lg:grid-cols-2">
           <WhyVisual />
           <div>
-            <h3 className="text-xl font-extrabold text-slate-900">Why <span className="text-[#1877F2]">Alabs Connect</span>?</h3>
+            <h3 className="text-xl font-extrabold text-slate-900">Why <span className="text-[#1877F2]">Talko AI</span>?</h3>
             <p className="mt-2 text-sm text-slate-500">Reply faster, capture every lead, and run conversations at scale without growing your team.</p>
             <div className="mt-6 space-y-4">
               {WHY.map(b => {
@@ -103,7 +103,7 @@ function WhyVisual() {
       <div className="absolute bottom-5 left-5 w-[72%] max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
         <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1877F2] text-white"><Bot className="h-3.5 w-3.5" /></span>
-          <span className="text-xs font-bold text-slate-900">Chat with Alabs Connect</span>
+          <span className="text-xs font-bold text-slate-900">Chat with Talko AI</span>
         </div>
         <div className="space-y-2 pt-3">
           <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-1.5 text-xs text-slate-700">Is the Pro plan available?</div>
@@ -147,7 +147,7 @@ export function Testimonials() {
   const t = TESTIMONIALS[0];
   return (
     <Container className="py-16">
-      <SectionTitle title="People love growing with Alabs Connect" subtitle="Here's what teams say about automating their conversations." />
+      <SectionTitle title="People love growing with Talko AI" subtitle="Here's what teams say about automating their conversations." />
       <div className="mx-auto mt-10 max-w-2xl rounded-[28px] bg-slate-50 p-8 text-center sm:p-12">
         <div className="mx-auto flex w-fit gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-5 w-5 fill-current" />)}</div>
         <p className="mt-5 text-balance text-lg font-medium leading-relaxed text-slate-700">“{t.quote}”</p>

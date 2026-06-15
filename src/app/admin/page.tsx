@@ -91,8 +91,8 @@ export default function Admin() {
             <MessageSquare className="w-[18px] h-[18px] text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-[15px] font-bold text-ink-900 leading-tight truncate">Alabs Connect</p>
-            <p className="text-[11px] text-ink-400 leading-tight">WhatsApp Platform</p>
+            <p className="text-[15px] font-bold text-ink-900 leading-tight truncate">Talko AI</p>
+            <p className="text-[11px] text-ink-400 leading-tight truncate">AI conversations for WhatsApp &amp; Instagram</p>
           </div>
         </div>
 
@@ -170,7 +170,7 @@ export default function Admin() {
         {/* Topbar */}
         <header className="h-16 shrink-0 bg-white border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
           <p className="text-[13px] text-ink-400">
-            Alabs Connect <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{TAB_TITLES[tab]}</span>
+            Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{TAB_TITLES[tab]}</span>
           </p>
           <button onClick={() => setTab("broadcast")} className={btnPrimary}>
             <Send className="w-4 h-4" /> New broadcast
@@ -206,7 +206,7 @@ export default function Admin() {
 // First-login product walkthrough — a short guided tour. Marks the tenant
 // onboarded on finish/skip so it shows once.
 const TOUR_STEPS: { title: string; body: string; tab?: Tab }[] = [
-  { title: "Welcome to Alabs Connect 👋", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
+  { title: "Welcome to Talko AI 👋", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
   { title: "Connect your channels", body: "Go to Settings to connect a WhatsApp number, and the Instagram section to link an Instagram account. Everything runs from here.", tab: "settings" },
   { title: "Teach the AI", body: "Add your business docs in AI Knowledge Base — the assistant answers customer questions automatically, grounded in your content.", tab: "assistant" },
   { title: "Build chatbot flows", body: "Create drag-and-drop flows for WhatsApp or Instagram, triggered by keywords, comments or ads.", tab: "flows" },
@@ -2398,7 +2398,7 @@ function AnalyticsTab() {
     <div className="max-w-5xl space-y-5">
       <div>
         <h2 className="text-xl font-semibold text-ink-900">Overview</h2>
-        <p className="text-[13px] text-ink-400">Messaging performance across your WhatsApp platform</p>
+        <p className="text-[13px] text-ink-400">Messaging performance across WhatsApp &amp; Instagram</p>
       </div>
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
       {data && (

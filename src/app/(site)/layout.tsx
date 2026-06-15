@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteNav, SiteFooter } from "./_components/chrome";
 
 export const metadata: Metadata = {
-  title: "Alabs Connect — WhatsApp & Instagram automation with AI",
+  title: "Talko AI — AI conversations for WhatsApp & Instagram",
   description:
     "Automate WhatsApp & Instagram with AI replies, broadcasts, chatbot flows, drip sequences and catalog checkout. One inbox for every conversation. Start a free 14-day trial.",
 };

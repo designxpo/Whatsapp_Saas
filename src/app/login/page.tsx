@@ -31,8 +31,8 @@ export default function LoginPage() {
             <MessageSquare className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-ink-900">Alabs Connect</h1>
-            <p className="text-sm text-ink-400">Sign in to your WhatsApp platform</p>
+            <h1 className="text-xl font-bold text-ink-900">Talko AI</h1>
+            <p className="text-sm text-ink-400">AI conversations for WhatsApp &amp; Instagram</p>
           </div>
         </div>
         <input className="w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400" placeholder="Username" value={user} onChange={e => setUser(e.target.value)} autoFocus />

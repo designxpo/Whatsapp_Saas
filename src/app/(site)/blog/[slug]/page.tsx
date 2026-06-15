@@ -13,8 +13,8 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const post = POSTS.find(p => p.slug === slug);
-  if (!post) return { title: "Article — Alabs Connect" };
-  return { title: `${post.title} — Alabs Connect`, description: post.excerpt };
+  if (!post) return { title: "Article — Talko AI" };
+  return { title: `${post.title} — Talko AI`, description: post.excerpt };
 }
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {

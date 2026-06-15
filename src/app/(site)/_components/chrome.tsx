@@ -57,7 +57,7 @@ export function SiteFooter() {
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr_1.4fr]">
         <div>
           <Wordmark dark />
-          <p className="mt-3 max-w-xs text-sm text-white/70">{SITE.tagline}. WhatsApp & Instagram automation with AI.</p>
+          <p className="mt-3 max-w-xs text-sm text-white/70">{SITE.tagline}. One inbox for every conversation.</p>
           <p className="mt-5 flex items-center gap-2 text-sm font-semibold"><Phone className="h-4 w-4" /> +1-800-222-8888</p>
         </div>
         <FooterCol title="Company" links={[["About", "/about"], ["Blog", "/blog"], ["Pricing", "/pricing"]]} />

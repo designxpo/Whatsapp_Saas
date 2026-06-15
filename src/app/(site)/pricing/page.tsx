@@ -5,7 +5,7 @@ import { PricingTiers } from "../_components/pricing";
 import { Faq } from "../_components/chrome";
 
 export const metadata: Metadata = {
-  title: "Pricing — Alabs Connect",
+  title: "Pricing — Talko AI",
   description: "Simple, transparent pricing. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
 };
 

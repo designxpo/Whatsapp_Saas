@@ -81,7 +81,7 @@ export function SequenceFlowDiagram() {
     <Container className="py-16">
       <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
         <SectionTitle eyebrow="Drip sequences" title="See how your sequences work"
-          subtitle="Set it once and Alabs Connect nurtures every lead on a timeline — triggered, timed and personalized, fully on autopilot." />
+          subtitle="Set it once and Talko AI nurtures every lead on a timeline — triggered, timed and personalized, fully on autopilot." />
         <Reveal className="relative mt-14">
           <div className="relative grid grid-cols-2 gap-x-6 gap-y-14 md:grid-cols-4 md:gap-x-8">
             {/* horizontal connector sits at the icon centers, behind the ring-masked icons — never crosses the text */}

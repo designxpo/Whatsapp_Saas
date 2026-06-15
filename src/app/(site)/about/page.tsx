@@ -4,8 +4,8 @@ import { StatsBand, CtaBand } from "../_components/sections";
 import { ABOUT } from "../_content/site";
 
 export const metadata: Metadata = {
-  title: "About — Alabs Connect",
-  description: "Alabs Connect helps businesses turn WhatsApp and Instagram conversations into growth — compliantly, transparently, and at scale.",
+  title: "About — Talko AI",
+  description: "Talko AI helps businesses turn WhatsApp and Instagram conversations into growth — compliantly, transparently, and at scale.",
 };
 
 export default function AboutPage() {

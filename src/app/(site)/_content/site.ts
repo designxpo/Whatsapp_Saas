@@ -1,9 +1,9 @@
-// Marketing-site content for Alabs Connect. Single source of truth for all copy
+// Marketing-site content for Talko AI. Single source of truth for all copy
 // so pages stay consistent. Pure data — no JSX — usable from server components.
 
 export const SITE = {
-  name: "Alabs Connect",
-  tagline: "Turn every chat into a customer",
+  name: "Talko AI",
+  tagline: "AI conversations for WhatsApp & Instagram",
   domainCta: { trial: "/signup", login: "/login" },
 };
 
@@ -16,7 +16,7 @@ export const NAV: { label: string; href: string }[] = [
 
 export const HERO = {
   eyebrow: "WhatsApp + Instagram, on autopilot",
-  title: "Enhance your customer conversations with Alabs Connect",
+  title: "Enhance your customer conversations with Talko AI",
   subtitle:
     "The all-in-one platform to automate WhatsApp & Instagram — AI replies in your own voice, broadcasts, chatbot flows, drip sequences, catalog checkout and growth tools. One inbox, every conversation.",
   primary: { label: "Start free 14-day trial", href: "/signup" },
@@ -48,7 +48,7 @@ export const FEATURES: Feature[] = [
 export type Step = { n: string; title: string; body: string };
 export const STEPS: Step[] = [
   { n: "01", title: "Connect your channels", body: "Link a WhatsApp number and an Instagram account in a couple of clicks. Each gets its own AI persona and flows." },
-  { n: "02", title: "Teach your AI", body: "Upload docs, FAQs and product info. Add your own AI key and Alabs Connect grounds every reply on your business." },
+  { n: "02", title: "Teach your AI", body: "Upload docs, FAQs and product info. Add your own AI key and Talko AI grounds every reply on your business." },
   { n: "03", title: "Automate & broadcast", body: "Turn on auto-replies, launch broadcasts, build flows and sequences — then watch conversations convert." },
 ];
 
@@ -97,14 +97,14 @@ export const SEQUENCE_FLOW: SeqStep[] = [
 
 export type Testimonial = { quote: string; name: string; role: string };
 export const TESTIMONIALS: Testimonial[] = [
-  { quote: "We replaced three tools with Alabs Connect. AI replies handle 70% of our DMs and our team finally has one inbox.", name: "Aisha Khan", role: "Founder, Bloom D2C" },
+  { quote: "We replaced three tools with Talko AI. AI replies handle 70% of our DMs and our team finally has one inbox.", name: "Aisha Khan", role: "Founder, Bloom D2C" },
   { quote: "Broadcasts with 95%+ open rates and flows that book demos overnight. Our cost per lead dropped by half.", name: "Rohit Verma", role: "Growth Lead, EduPrime" },
   { quote: "Setup took an afternoon. Bringing our own AI key meant predictable costs and full control over the model.", name: "Sara Mathew", role: "Ops Head, Nest Realty" },
 ];
 
 export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
-  { q: "Do I need my own WhatsApp Business account?", a: "Yes — Alabs Connect connects your own WhatsApp number and Instagram account through Meta's official APIs, so your brand and number stay yours. We guide you through connecting in minutes." },
+  { q: "Do I need my own WhatsApp Business account?", a: "Yes — Talko AI connects your own WhatsApp number and Instagram account through Meta's official APIs, so your brand and number stay yours. We guide you through connecting in minutes." },
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
   { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
@@ -136,7 +136,7 @@ export const POSTS: Post[] = [
     date: "June 5, 2026", category: "Product", readTime: "4 min read",
     body: [
       "Most platforms bundle AI into an opaque per-message fee. It feels simple until volume grows and the bill becomes impossible to predict — or you're stuck on a model you didn't choose.",
-      "We took the opposite approach. You add your own Gemini, OpenAI or Anthropic key, and Alabs Connect uses it for your replies. Usage is billed directly to your provider account, so you see exactly what you spend and can pick the model that fits your budget and quality bar.",
+      "We took the opposite approach. You add your own Gemini, OpenAI or Anthropic key, and Talko AI uses it for your replies. Usage is billed directly to your provider account, so you see exactly what you spend and can pick the model that fits your budget and quality bar.",
       "It also means no lock-in. Switch models or providers whenever you like — your flows, knowledge base and inbox stay exactly the same. Your key is encrypted at rest and never leaves our vault.",
     ],
   },
@@ -148,7 +148,7 @@ export const POSTS: Post[] = [
     body: [
       "Instagram is a goldmine for conversational commerce — but Meta's rules are strict, and ignoring them is the fastest way to lose access. The good news: the rules are sensible, and you can automate aggressively while staying fully compliant.",
       "The core constraints are simple. You can reply to anyone who messaged you within a 24-hour window. You can turn a comment into a single private reply when someone comments on your post. What you cannot do is send cold DMs to people who never interacted with you.",
-      "Alabs Connect enforces these guardrails in code — the 24-hour window, comment-to-DM as a single message, per-account pacing, and opt-out handling are all built in. You get the automation upside without the risk of a ban.",
+      "Talko AI enforces these guardrails in code — the 24-hour window, comment-to-DM as a single message, per-account pacing, and opt-out handling are all built in. You get the automation upside without the risk of a ban.",
     ],
   },
 ];
@@ -158,7 +158,7 @@ export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 // "Works with your favorite tools" strip.
 export const INTEGRATIONS = ["WhatsApp", "Instagram", "Messenger", "Stripe", "Gemini", "OpenAI", "Anthropic", "LeadSquared"];
 
-// "Why teams choose Alabs Connect" — pastel benefit cards.
+// "Why teams choose Talko AI" — pastel benefit cards.
 export type Benefit = { title: string; body: string; tone: "mint" | "sky" | "peach" };
 export const WHY: Benefit[] = [
   { tone: "mint", title: "Replies in your brand voice", body: "Grounded AI answers from your own knowledge base — accurate, on-brand, and instant, not generic canned text." },
@@ -175,7 +175,7 @@ export const ABOUT = {
   eyebrow: "About us",
   title: "We help businesses turn conversations into growth",
   intro:
-    "Alabs Connect was built on a simple belief: the messaging apps your customers already love should be your most powerful sales and support channel — not your most manual one.",
+    "Talko AI was built on a simple belief: the messaging apps your customers already love should be your most powerful sales and support channel — not your most manual one.",
   values: [
     { title: "Customer-obsessed", body: "Every feature starts with a real conversation a business is struggling to handle at scale." },
     { title: "Compliant by design", body: "Official APIs, opt-in respected, guardrails in code. We grow channels, we don't get them blocked." },

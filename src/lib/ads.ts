@@ -289,7 +289,7 @@ export async function searchTargeting(kind: "geo" | "interest" | "locale", q: st
 export async function geocodePlaces(q: string): Promise<{ name: string; context: string; lat: number; lng: number; type: string; countryCode?: string }[]> {
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1&q=${encodeURIComponent(q)}`, {
-      headers: { "User-Agent": "AlabsConnect/1.0 (ads geo search)", "Accept-Language": "en" }, cache: "no-store",
+      headers: { "User-Agent": "TalkoAI/1.0 (ads geo search)", "Accept-Language": "en" }, cache: "no-store",
     });
     if (!r.ok) return [];
     const rows = (await r.json().catch(() => [])) as Record<string, unknown>[];
