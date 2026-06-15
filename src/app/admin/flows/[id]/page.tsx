@@ -374,7 +374,7 @@ function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition,
   const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
   return (
     <>
-      <BaseEdge id={id} path={path} style={{ stroke: selected ? "#0142b0" : "#A3A3A3", strokeWidth: selected ? 2 : 1.5 }} />
+      <BaseEdge id={id} path={path} style={{ stroke: selected ? "#0553ad" : "#A3A3A3", strokeWidth: selected ? 2 : 1.5 }} />
       <EdgeLabelRenderer>
         <button
           onClick={() => setEdges(es => es.filter(e => e.id !== id))}
@@ -737,7 +737,7 @@ function Editor({ flowId }: { flowId: string }) {
               proOptions={{ hideAttribution: true }}>
               <Background variant={BackgroundVariant.Dots} gap={16} size={1.5} color="#D4D4D8" />
               <Controls />
-              <MiniMap pannable zoomable nodeColor={() => "#DCE6FF"} nodeStrokeColor={() => "#0142b0"} maskColor="rgba(244,245,247,0.7)" />
+              <MiniMap pannable zoomable nodeColor={() => "#DCE6FF"} nodeStrokeColor={() => "#0553ad"} maskColor="rgba(244,245,247,0.7)" />
             </ReactFlow>
           </IssuesContext.Provider>
         </div>

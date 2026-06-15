@@ -5,21 +5,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Talko AI blue theme (#0164ff) ──
+        // ── Talko AI blue theme (#0783fd) ──
         brand: {
-          50: "#E6F0FF",
-          100: "#CCE1FF",
-          500: "#3B82FF",  // light accent / dots / links
-          600: "#2A7BFF",  // hover (lighter than the 700 primary)
-          700: "#0164FF",  // PRIMARY — buttons, active states
-          800: "#0150CC",  // darker / pressed
-          900: "#013E9E",
+          50: "#E9F3FF",
+          100: "#CFE6FF",
+          500: "#4DA3FF",  // light accent / dots / links
+          600: "#2A96FF",  // hover (lighter than the 700 primary)
+          700: "#0783FD",  // PRIMARY — buttons, active states
+          800: "#0668D6",  // darker / pressed
+          900: "#084FA3",
           // Legacy aliases (kept so existing class names adopt the palette):
           // `brand-dark` → deep navy for headings/dark accents.
           // `brand-green`/`greenDark` → brand blue (names retained, values blue).
-          dark: "#012E78",
-          green: "#0164FF",
-          greenDark: "#0150CC",
+          dark: "#073B78",
+          green: "#0783FD",
+          greenDark: "#0668D6",
         },
         ink: {
           400: "#A3A3A3",

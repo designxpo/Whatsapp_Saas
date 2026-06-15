@@ -3096,7 +3096,7 @@ function Donut({ pct, label }: { pct: number; label: string }) {
     <div className="relative w-32 h-32">
       <svg viewBox="0 0 110 110" className="w-32 h-32 -rotate-90">
         <circle cx="55" cy="55" r={r} fill="none" stroke="#e2e8f0" strokeWidth="14" />
-        <circle cx="55" cy="55" r={r} fill="none" stroke="#0142b0" strokeWidth="14" strokeLinecap="round"
+        <circle cx="55" cy="55" r={r} fill="none" stroke="#0553ad" strokeWidth="14" strokeLinecap="round"
           strokeDasharray={`${(Math.min(100, Math.max(0, pct)) / 100) * c} ${c}`} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -3127,9 +3127,9 @@ function PerDayChart({ days }: { days: DayPoint[] }) {
             <text x={PX - 5} y={y(maxY * g) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{Math.round(maxY * g)}</text>
           </g>
         ))}
-        <path d={area} fill="#0142b0" opacity="0.25" />
-        <path d={path("clicked")} fill="none" stroke="#0142b0" strokeWidth="2" />
-        <path d={path("read")} fill="none" stroke="#0164ff" strokeWidth="1.5" strokeDasharray="4 3" />
+        <path d={area} fill="#0553ad" opacity="0.25" />
+        <path d={path("clicked")} fill="none" stroke="#0553ad" strokeWidth="2" />
+        <path d={path("read")} fill="none" stroke="#0783fd" strokeWidth="1.5" strokeDasharray="4 3" />
         {days.map((d, i) => i % labelEvery === 0 ? (
           <text key={d.date} x={x(i)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">
             {new Date(d.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
@@ -5773,7 +5773,7 @@ function ChannelsManager() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {whatsappSignupReady() && (
-            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0164ff] hover:bg-[#0153d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
             </button>
           )}
@@ -6343,7 +6343,7 @@ function InstagramManager() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {instagramSignupReady() && (
-            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0164ff] hover:bg-[#0153d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect with Facebook
             </button>
           )}
