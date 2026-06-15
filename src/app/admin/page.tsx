@@ -1305,16 +1305,43 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-canvas/60">
-          {messages.map(m => (
-            <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
-              <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
-                <p className="whitespace-pre-wrap break-words">{m.body}</p>
-                <p className={`text-[10px] mt-1 ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
-                  {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                </p>
+          {messages.map(m => {
+            // Form lifecycle markers render as status cards, not plain bubbles.
+            if (m.body === "[form-abandoned]") {
+              return <div key={m.id} className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div>;
+            }
+            const submitted = m.body.startsWith("[form] ");
+            const sentMatch = m.body.match(/^([\s\S]*?)\n\[form:\s*(.+?)\]\s*$/);
+            return (
+              <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
+                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                  {submitted ? (
+                    <div>
+                      <p className="text-[11px] font-bold text-emerald-700 mb-1">✅ Form submitted</p>
+                      <div className="space-y-0.5">
+                        {m.body.slice(7).split(" · ").map((pair, i) => {
+                          const idx = pair.indexOf(": ");
+                          const k = idx > 0 ? pair.slice(0, idx) : pair;
+                          const v = idx > 0 ? pair.slice(idx + 2) : "";
+                          return <p key={i} className="text-[12px]"><span className="text-ink-400">{k}:</span> <span className="font-medium">{v}</span></p>;
+                        })}
+                      </div>
+                    </div>
+                  ) : sentMatch ? (
+                    <div>
+                      <p className="whitespace-pre-wrap break-words">{sentMatch[1]}</p>
+                      <p className="mt-1 text-[11px] font-bold text-brand-700">📋 Form sent · {sentMatch[2]}</p>
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                  )}
+                  <p className={`text-[10px] mt-1 ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
+                    {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {messages.length === 0 && <p className="text-center text-ink-400 text-sm py-10">No messages yet.</p>}
           <div ref={bottomRef} />
         </div>
@@ -2084,6 +2111,39 @@ const FORM_FIELD_TYPES: { v: UiFormFieldType; label: string }[] = [
 ];
 const isChoice = (t: UiFormFieldType) => t === "dropdown" || t === "radio" || t === "checkbox";
 
+type FormResp = { id: string; phone: string; formId: string | null; status: string; data: Record<string, string> | null; sentAt: string; submittedAt: string | null };
+function FormResponsesPanel() {
+  const [responses, setResponses] = useState<FormResp[]>([]);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(() => { fetch("/api/admin/form-responses").then(r => r.json()).then(d => setResponses(d.responses ?? [])).catch(() => {}); }, []);
+  useEffect(() => { if (open) load(); }, [open, load]);
+  const submitted = responses.filter(r => r.status === "submitted").length;
+  const abandoned = responses.filter(r => r.status === "abandoned").length;
+  const badge = (s: string) => s === "submitted" ? "bg-emerald-50 text-emerald-700" : s === "abandoned" ? "bg-amber-50 text-amber-700" : "bg-canvas text-ink-400";
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between">
+        <span className="text-sm font-bold text-ink-900 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-brand-700" /> Form responses</span>
+        <span className="text-[11px] text-ink-400">{submitted} submitted · {abandoned} abandoned · {open ? "hide" : "show"}</span>
+      </button>
+      {open && (responses.length ? (
+        <div className="space-y-1.5 max-h-96 overflow-y-auto">
+          {responses.map(r => (
+            <div key={r.id} className="border border-line rounded-control px-3 py-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[13px] font-semibold text-ink-900 truncate">{r.phone || "—"}</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${badge(r.status)}`}>{r.status.toUpperCase()}</span>
+              </div>
+              {r.data && Object.keys(r.data).length > 0 && <p className="text-[11px] text-ink-500 mt-0.5 break-words">{Object.entries(r.data).map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>}
+              <p className="text-[10px] text-ink-400 mt-0.5">{new Date(r.submittedAt ?? r.sentAt).toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      ) : <p className="text-xs text-ink-400">No form responses yet.</p>)}
+    </section>
+  );
+}
+
 function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [forms, setForms] = useState<WaFormRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -2173,6 +2233,8 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </button>
         </div>
       </div>
+
+      <FormResponsesPanel />
 
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
       {msg && <div className="bg-brand-50 border border-brand-100 rounded-control px-4 py-3 text-sm text-brand-900">{msg}</div>}

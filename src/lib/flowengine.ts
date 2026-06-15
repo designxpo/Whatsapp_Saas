@@ -23,8 +23,13 @@ import {
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent,
   addContactTag,
 } from "./store";
+import { recordFormSent, markFormAbandoned } from "./formresponses";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
+// Options whose label reads like a human-handoff request — used to auto-escalate
+// when such a button is left unconnected in the builder (instead of dead-ending).
+const AGENT_OPT_RE = /\b(agent|human|representative|support|person|talk to|speak to|connect)\b/i;
 
 export interface FlowNode {
   id: string;
@@ -281,6 +286,7 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         // (the answers are saved to contact attributes by the webhook).
         if (!str(d.formId)) { cur = nextNode(g, cur.id); continue; }
         await send.waform(str(d.text) || "Please fill this quick form:", str(d.cta) || "Open form", str(d.formId));
+        if (isReal) await recordFormSent(convKey, phone, str(d.formId), tenantId).catch(() => undefined);
         await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
@@ -367,6 +373,13 @@ function matchOption(node: FlowNode, text: string): string | null {
   return null;
 }
 
+// The human-readable label of a menu option, for intent checks (e.g. agent).
+function optionLabel(node: FlowNode, optionId: string): string {
+  if (node.type === "buttons") return ((node.data.buttons as { id: string; title: string }[]) ?? []).find(b => b.id === optionId)?.title ?? "";
+  if (node.type === "list") return listSections(node.data).flatMap(s => s.rows).find(r => r.id === optionId)?.title ?? "";
+  return "";
+}
+
 // Main entry — called from the webhook for every inbound message (and from the
 // simulator). Returns true when the flow consumed the message.
 export async function handleFlowMessage(
@@ -420,16 +433,33 @@ export async function handleFlowMessage(
         if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
         return consumed;
       }
-      // Old menu tap → rewind; anything else → AI answers while the form stays open.
+      // Old menu tap → rewind; anything else → the user moved on without
+      // submitting: mark the form abandoned (once) + note it in chat. AI answers.
       const rewound = await rewind();
       if (rewound !== null) return rewound;
+      if (isReal && await markFormAbandoned(convKey, tid)) {
+        await appendConvMessage({ conversationId: convKey, role: "assistant", body: "[form-abandoned]", source: "bot", tenantId: tid }).catch(() => undefined);
+      }
       return false;
     }
 
     const optionId = matchOption(waiting, text);
     if (optionId) {
+      const next = nextNode(flow.graph, waiting.id, optionId);
+      // Safety net: an unconnected "talk to agent/human" option escalates to a
+      // human instead of silently dead-ending back to the menu.
+      if (!next && AGENT_OPT_RE.test(optionLabel(waiting, optionId))) {
+        if (isReal) {
+          await send.text("Connecting you with our team — someone will reply here shortly. 🙌");
+          await setConversationStatus(convKey, "escalated").catch(() => undefined);
+          await setBotEnabled(convKey, false).catch(() => undefined);
+          await claimReply(convKey).catch(() => undefined);
+        }
+        await endSession(convKey);
+        return true;
+      }
       // Branch runs carry the menu node along — dead-ended branches return to it.
-      const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id, optionId), convKey, phone, send, isReal, waiting.id, tid);
+      const consumed = await runFrom(flow, next, convKey, phone, send, isReal, waiting.id, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       return consumed;
     }

@@ -17,6 +17,7 @@ import { pushWaActivity } from "@/lib/leadsquared";
 import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours } from "@/lib/messaging-settings";
 import { loadMemory, saveMemory } from "@/lib/router/memory";
 import { handleFlowMessage } from "@/lib/flowengine";
+import { recordFormSubmitted } from "@/lib/formresponses";
 import { resolveFlowIdForAd } from "@/lib/adflow";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
@@ -136,6 +137,11 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid });
   await touchInbound(conv.id, text);
+
+  // Form submission → record it (sent→submitted) for the Responses view + chat.
+  if (answers && Object.keys(answers).length) {
+    await recordFormSubmitted(conv.id, from, answers, tid).catch(() => undefined);
+  }
 
   // In-chat checkout: a checkout-flow submission (carries a delivery address)
   // for a contact with an open cart → create the order and confirm.
