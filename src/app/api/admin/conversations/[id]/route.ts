@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound,
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
-  setConversationAgent, type ConvStatus,
+  setConversationAgent, markConversationRead, type ConvStatus,
 } from "@/lib/store";
 import { sendText, sendButtons } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
@@ -21,6 +21,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const conversation = await getConversation(id);
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const messages = await getConvHistory(id, 200);
+    // Opening the chat marks it read (clears the "awaiting your reply" flag).
+    if (conversation.needsReply) { await markConversationRead(id); conversation.needsReply = false; }
     return NextResponse.json({ conversation, messages });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

@@ -457,6 +457,11 @@ export async function setConversationAvatar(conversationId: string, url: string)
   await db().from("wa_conversations").update({ avatar_url: url }).eq("id", conversationId).then(() => {}, () => {});
 }
 
+// Agent opened the chat → mark it read (no longer awaiting our reply).
+export async function markConversationRead(conversationId: string): Promise<void> {
+  await db().from("wa_conversations").update({ needs_reply: false }).eq("id", conversationId).then(() => {}, () => {});
+}
+
 // Bump the AI auto-reply counter (used to cap before handing off to a human).
 // Keyed by conversation id (a globally-unique uuid), like touchInbound.
 export async function incAiReplies(conversationId: string, current: number): Promise<void> {

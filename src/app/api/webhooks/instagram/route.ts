@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
@@ -87,7 +87,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
 
   let conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
   // Webhooks only carry the IGSID — resolve the @handle once (while unnamed).
-  if (!conv.name) {
+  if (!conv.name || !conv.avatarUrl) {
     const prof = await getIgProfile(credsOf(channel), senderId);
     const display = prof.username ? `@${prof.username}` : prof.name;
     if (display) conv = await getOrCreateConversation(senderId, display, channel.id, "instagram", channel.tenantId);
@@ -148,6 +148,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   if (!(await deliver(r.reply))) return;
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid });
+  await touchOutbound(conv.id, r.reply);   // AI handled it → clear "awaiting your reply"
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 
@@ -171,7 +172,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (!rule) {
     if (!(await claimComment(commentId, null, tid))) return;
     let conv = await getOrCreateConversation(fromId, "", channel.id, "instagram", tid);
-    if (!conv.name) {
+    if (!conv.name || !conv.avatarUrl) {
       const prof = await getIgProfile(credsOf(channel), fromId);
       const display = prof.username ? `@${prof.username}` : prof.name;
       if (display) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
