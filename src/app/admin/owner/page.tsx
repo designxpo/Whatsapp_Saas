@@ -121,6 +121,7 @@ export default function OwnerPortal() {
             <p className="text-sm text-slate-500">Control every tenant — subscriptions, payments, features and access.</p>
           </div>
           <div className="flex items-center gap-2">
+            <a href="/admin" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><LogIn className="w-3.5 h-3.5" /> App dashboard</a>
             <a href="/admin/setup" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> System setup</a>
             <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><LogOut className="w-3.5 h-3.5" /> Log out</button>
           </div>

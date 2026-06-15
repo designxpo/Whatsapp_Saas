@@ -3,13 +3,15 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet } from "@/lib/store";
-import { getTenantSetting } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
-import { sendIgMessage, sendPrivateReply, within24hWindow, type IgCreds } from "@/lib/instagram";
+import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
+import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, type IgCommentRule } from "@/lib/igcomments";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
+// A user replying to a follow-gate prompt to confirm they followed.
+const CONFIRM_RE = /\b(follow(ed)?|done|finished|ok(ay)?|got\s?it|✅)\b/i;
 
 // GET — Meta webhook verification handshake (shared verify token).
 export async function GET(req: Request) {
@@ -46,7 +48,10 @@ export async function POST(req: Request) {
 
       // Inbound DMs (Instagram messaging uses a Messenger-style `messaging` array).
       for (const ev of (entry.messaging as Record<string, unknown>[]) ?? []) {
-        try { await handleMessage(channel, ev); } catch (e) { console.error("[ig webhook] message", e); }
+        try {
+          if (ev.postback) await handlePostback(channel, ev);
+          else await handleMessage(channel, ev);
+        } catch (e) { console.error("[ig webhook] message", e); }
       }
       // Comment events (field: 'comments').
       for (const change of (entry.changes as Record<string, unknown>[]) ?? []) {
@@ -77,9 +82,19 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }
   if ((await optoutSet(channel.tenantId)).has(senderId.slice(-10))) return;
 
-  const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
+  let conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
+  // Webhooks only carry the IGSID — resolve the @handle once (while unnamed).
+  if (!conv.name) {
+    const prof = await getIgProfile(credsOf(channel), senderId);
+    const display = prof.username ? `@${prof.username}` : prof.name;
+    if (display) conv = await getOrCreateConversation(senderId, display, channel.id, "instagram", channel.tenantId);
+  }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
+
+  // Follow-gate: a waiting user's "done"/"followed" re-checks their follow.
+  const gate = await getFollowGate(senderId, channel.tenantId);
+  if (gate && CONFIRM_RE.test(text)) { await resolveFollowGate(channel, senderId, gate.ruleId); return; }
 
   // Story-reply automation: a reply to one of our stories carries reply_to.story.
   const repliedToStory = !!(msg?.reply_to as Record<string, unknown> | undefined)?.story;
@@ -109,23 +124,80 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
 }
 
-// Comment → optional ONE-TIME private reply, only when a keyword rule is enabled.
-// Never auto-replies to every comment (that risks spam flags). The comment is
-// the user's opt-in; the private reply is a single block (Meta rule).
+// Comment → ManyChat-style automation. Matches the comment against this tenant's
+// rules (account + per-post + keyword), then sends ONE private DM (the comment
+// is the opt-in; Meta allows a single private reply per comment), optionally
+// behind a follow gate, with a link button + optional public reply.
 async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const commentId = String(value.id ?? "");
   const text = String(value.text ?? "");
   const fromId = String((value.from as Record<string, unknown>)?.id ?? "");
+  const mediaId = String((value.media as Record<string, unknown>)?.id ?? "") || null;
   if (!commentId || !text) return;
-  // Don't reply to our own comments.
-  if (fromId && channel.igUserId && fromId === channel.igUserId) return;
+  if (fromId && channel.igUserId && fromId === channel.igUserId) return;   // never reply to ourselves
 
-  const rule = await getTenantSetting<{ enabled?: boolean; keyword?: string; message?: string }>(
-    channel.tenantId, "ig_comment_dm", {},
-  );
-  if (!rule?.enabled || !rule.message) return;
-  // If a keyword is configured, require it (case-insensitive substring).
-  if (rule.keyword && !text.toLowerCase().includes(rule.keyword.toLowerCase())) return;
+  const tid = channel.tenantId;
+  const rule = await matchCommentRule(text, mediaId, tid, channel.id);
+  if (!rule) return;
 
-  await sendPrivateReply(credsOf(channel), commentId, rule.message);
+  // Idempotency: claim the comment so a webhook redelivery can't double-DM.
+  if (!(await claimComment(commentId, rule.id, tid))) return;
+
+  const creds = credsOf(channel);
+  let sent;
+  if (rule.requireFollow && (await getFollowStatus(creds, fromId)) !== true) {
+    sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule));
+    if (sent.ok) await setFollowGate(fromId, rule.id, channel.id, tid);
+  } else {
+    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule));
+  }
+  if (!sent.ok) { console.warn("[ig webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+
+  await bumpRuleMatch(rule.id, rule.matchCount, tid);
+  if (rule.publicReply) {
+    await replyToComment(creds, commentId, rule.publicReply).catch(e => console.error("[ig webhook] public reply", e));
+  }
+}
+
+// Postback button taps (e.g. "I've followed ✅") arrive as messaging events.
+async function handlePostback(channel: Channel, ev: Record<string, unknown>) {
+  const senderId = String((ev.sender as Record<string, unknown>)?.id ?? "");
+  const payload = String((ev.postback as Record<string, unknown>)?.payload ?? "");
+  if (!senderId) return;
+  if (payload.startsWith("FOLLOWCHK:")) await resolveFollowGate(channel, senderId, payload.slice("FOLLOWCHK:".length));
+}
+
+// Re-check follow and deliver the held reward or re-prompt. When Meta can't
+// verify (null, pre-App-Review) we trust the tap so real followers aren't blocked.
+async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string) {
+  const tid = channel.tenantId;
+  const rule = await getCommentRule(ruleId, tid);
+  if (!rule) { await clearFollowGate(igsid, tid); return; }
+  const creds = credsOf(channel);
+  const follows = await getFollowStatus(creds, igsid);
+  const now = new Date().toISOString();
+  if (follows === false) {
+    await sendIgButtons(creds, igsid, "I don't see a follow yet 👀 — tap Visit profile, hit Follow, then tap “I've followed”.", await followButtons(channel, rule), { lastInboundAt: now });
+    return;
+  }
+  const buttons = rewardButtons(rule);
+  const sent = buttons.length
+    ? await sendIgButtons(creds, igsid, rule.dmMessage, buttons, { lastInboundAt: now })
+    : await sendIgMessage(creds, igsid, rule.dmMessage, { lastInboundAt: now });
+  if (sent.ok) { await clearFollowGate(igsid, tid); await bumpRuleMatch(rule.id, rule.matchCount, tid); }
+  else console.warn("[ig webhook] reward blocked:", sent.blockedBy, sent.error);
+}
+
+function rewardButtons(rule: IgCommentRule): IgButton[] {
+  return rule.buttonUrl ? [{ type: "web_url", url: rule.buttonUrl, title: (rule.buttonLabel || "Open link").slice(0, 20) }] : [];
+}
+function followPromptText(rule: IgCommentRule): string {
+  return rule.followPrompt?.trim() || "Almost there! Follow us first, then tap “I've followed” to get your link 🎁";
+}
+async function followButtons(channel: Channel, rule: IgCommentRule): Promise<IgButton[]> {
+  const buttons: IgButton[] = [];
+  const me = await getIgProfile(credsOf(channel), channel.igUserId ?? "");
+  if (me.username) buttons.push({ type: "web_url", url: `https://instagram.com/${me.username}`, title: "Visit profile" });
+  buttons.push({ type: "postback", title: "I've followed ✅", payload: `FOLLOWCHK:${rule.id}` });
+  return buttons;
 }

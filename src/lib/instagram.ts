@@ -91,14 +91,90 @@ export async function sendIgMessage(
   return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } });
 }
 
+// Buttons usable in IG message/private-reply templates.
+export type IgButton =
+  | { type: "web_url"; url: string; title: string }
+  | { type: "postback"; payload: string; title: string };
+
+function buttonTemplate(text: string, buttons: IgButton[]) {
+  return { attachment: { type: "template", payload: { template_type: "button", text: text.slice(0, 640), buttons: buttons.slice(0, 3) } } };
+}
+function buttonsAsText(text: string, buttons: IgButton[]): string {
+  const links = buttons.filter((b): b is Extract<IgButton, { type: "web_url" }> => b.type === "web_url").map(b => `${b.title}: ${b.url}`);
+  return [text, ...links].join("\n").slice(0, 1000);
+}
+
 // ── Comment-to-DM: one-time private reply to a comment ────────────────────────
 // The comment IS the user-initiated opt-in. Meta allows a single private reply
-// per comment — so this sends exactly ONE short block (rule #4).
-export async function sendPrivateReply(creds: IgCreds, commentId: string, text: string): Promise<IgSendResult> {
+// per comment — so this sends exactly ONE short block. Optionally attaches
+// buttons (link and/or postback), with a plain-text fallback.
+export async function sendPrivateReply(creds: IgCreds, commentId: string, text: string, buttons?: IgButton[] | null): Promise<IgSendResult> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
-  // recipient.comment_id → Meta delivers a one-time private DM tied to the comment.
-  return postMessage(creds, { recipient: { comment_id: commentId }, message: { text: text.slice(0, 1000) } });
+  const body = text.slice(0, 640);
+  if (buttons && buttons.length) {
+    const r = await postMessage(creds, { recipient: { comment_id: commentId }, message: buttonTemplate(body, buttons) });
+    if (r.ok) return r;
+    return postMessage(creds, { recipient: { comment_id: commentId }, message: { text: buttonsAsText(body, buttons) } });
+  }
+  return postMessage(creds, { recipient: { comment_id: commentId }, message: { text: body } });
+}
+
+// ── Standard DM with buttons (post-comment reward / re-prompt). Needs an open
+// 24h window — the user's tap/message opens it.
+export async function sendIgButtons(creds: IgCreds, recipientIgsid: string, text: string, buttons: IgButton[], opts: { lastInboundAt?: string | null } = {}): Promise<IgSendResult> {
+  if (!recipientIgsid || !text.trim()) return { ok: false, error: "recipient and text required" };
+  if (!within24hWindow(opts.lastInboundAt)) return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
+  const r = await postMessage(creds, { recipient: { id: recipientIgsid }, message: buttonTemplate(text, buttons) });
+  if (r.ok) return r;
+  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: buttonsAsText(text, buttons) } });
+}
+
+export interface IgProfile { name?: string; username?: string; profilePic?: string }
+
+// Resolve a user's profile from their IGSID (webhooks only carry the id).
+export async function getIgProfile(creds: IgCreds, igsid: string): Promise<IgProfile> {
+  if (!igsid) return {};
+  try {
+    const r = await fetch(`${GRAPH}/${igsid}?fields=name,username,profile_pic`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json();
+    if (!r.ok) return {};
+    return { name: j.name as string | undefined, username: j.username as string | undefined, profilePic: j.profile_pic as string | undefined };
+  } catch { return {}; }
+}
+
+// Whether an IG user follows the business. true/false when Meta tells us
+// (needs is_user_follow_business — Advanced Access + open conversation), else null.
+export async function getFollowStatus(creds: IgCreds, igsid: string): Promise<boolean | null> {
+  if (!igsid) return null;
+  try {
+    const r = await fetch(`${GRAPH}/${igsid}?fields=is_user_follow_business`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json();
+    if (!r.ok || typeof j.is_user_follow_business !== "boolean") return null;
+    return j.is_user_follow_business as boolean;
+  } catch { return null; }
+}
+
+export interface IgMedia { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string }
+
+// List the account's recent posts for the rule post-picker. Best-effort.
+export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[]> {
+  if (!creds.igUserId) return [];
+  try {
+    const fields = "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp";
+    const r = await fetch(`${GRAPH}/${creds.igUserId}/media?fields=${fields}&limit=${limit}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json();
+    if (!r.ok || !Array.isArray(j.data)) return [];
+    return (j.data as Record<string, unknown>[]).map(m => ({
+      id: String(m.id),
+      caption: (m.caption as string) ?? "",
+      permalink: (m.permalink as string) ?? "",
+      thumbnail: (m.thumbnail_url as string) || (m.media_url as string) || "",
+      mediaType: (m.media_type as string) ?? "",
+      timestamp: (m.timestamp as string) ?? "",
+    }));
+  } catch { return []; }
 }
 
 // ── Public reply under a comment (optional, alongside the private DM) ─────────

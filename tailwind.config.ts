@@ -5,20 +5,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Emerald Fintech theme ──
+        // ── Royal Blue theme ──
         brand: {
-          50: "#F0FDF4",
-          100: "#DCFCE7",
-          500: "#22C55E",
-          600: "#16A34A",
-          700: "#15803D",
-          900: "#14532D",
+          50: "#EEF3FF",
+          100: "#DCE6FF",
+          500: "#4169E1", // royal blue
+          600: "#3151CC",
+          700: "#2540A8",
+          800: "#1E3488",
+          900: "#18296B",
           // Legacy aliases (kept so existing class names adopt the new palette):
-          // `brand-dark` was the old blue #003368 → now near-black ink (headings,
-          // borders, dark accents). `brand-green`/`greenDark` → emerald.
-          dark: "#171717",
-          green: "#16A34A",
-          greenDark: "#15803D",
+          // `brand-dark` → deep navy for headings/dark accents.
+          // `brand-green`/`greenDark` → royal blue (names retained, values blue).
+          dark: "#16225C",
+          green: "#3151CC",
+          greenDark: "#2540A8",
         },
         ink: {
           400: "#A3A3A3",

@@ -4,8 +4,9 @@
 @tailwind utilities;
 
 :root {
-  --green-900: #14532d; --green-700: #15803d; --green-600: #16a34a;
-  --green-500: #22c55e; --green-100: #dcfce7; --green-50: #f0fdf4;
+  /* Brand accent (royal blue). Var names kept; values are blue. */
+  --green-900: #18296b; --green-700: #2540a8; --green-600: #3151cc;
+  --green-500: #4169e1; --green-100: #dce6ff; --green-50: #eef3ff;
   --ink-950: #0a0a0a; --ink-900: #171717; --ink-600: #525252; --ink-400: #a3a3a3;
   --border: #e5e7eb; --surface: #ffffff; --canvas: #f4f5f7;
   --success: #22c55e; --warning: #f59e0b; --danger: #ef4444;
@@ -24,11 +25,11 @@ body {
 /* KPI numbers / headings: tabular Inter. */
 h1, h2, h3, .tnum { font-variant-numeric: tabular-nums; }
 
-/* Theme-wide green focus ring on form controls. */
+/* Theme-wide royal-blue focus ring on form controls. */
 input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: none;
   border-color: var(--green-700);
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, .12);
+  box-shadow: 0 0 0 3px rgba(65, 105, 225, .15);
 }
 
 @media (prefers-reduced-motion: reduce) {
