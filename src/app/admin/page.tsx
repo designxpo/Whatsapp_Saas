@@ -990,7 +990,16 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
 type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string };
-type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram" };
+type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null };
+
+// Avatar that shows the profile image when available, falling back to the
+// initial if there's no image or it fails to load (IG image URLs can expire).
+function ConvAvatar({ url, label, size = 36 }: { url?: string | null; label: string; size?: number }) {
+  const [err, setErr] = useState(false);
+  const initial = (label || "?").slice(0, 1).toUpperCase();
+  if (url && !err) return <img src={url} alt="" onError={() => setErr(true)} className="rounded-full object-cover bg-canvas" style={{ width: size, height: size }} />;
+  return <div className="rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center font-bold shrink-0" style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}>{initial}</div>;
+}
 
 const PIPELINE: { icon: React.ReactNode; title: string; desc: string }[] = [
   { icon: <MessageSquare className="w-5 h-5" />, title: "Inbound", desc: "Customer sends a WhatsApp message" },
@@ -1161,9 +1170,7 @@ function LiveChatTab() {
             <button key={c.id} onClick={() => setSelected(c.id)}
               className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="relative shrink-0 mt-0.5">
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center text-xs font-bold">
-                  {(c.name || c.phone).slice(0, 1).toUpperCase()}
-                </div>
+                <ConvAvatar url={c.avatarUrl} label={c.name || c.phone} size={36} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : "WhatsApp"}>
                   {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
                 </span>
@@ -1282,9 +1289,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
       <section className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between gap-3 bg-white">
           <div className="min-w-0 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center text-xs font-bold shrink-0">
-              {(conv?.name || conv?.phone || "?").slice(0, 1).toUpperCase()}
-            </div>
+            <ConvAvatar url={conv?.avatarUrl} label={conv?.name || conv?.phone || "?"} size={36} />
             <div className="min-w-0">
               <p className="text-sm font-bold text-ink-900 truncate leading-tight">{conv?.name || conv?.phone || "Conversation"}</p>
               {conv && <p className="font-mono text-[11px] text-ink-400 leading-tight">{conv.phone}</p>}
@@ -1394,9 +1399,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
       {/* ── Right: contact info ── */}
       <aside className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">
         <div className="p-5 flex flex-col items-center text-center border-b border-line">
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center text-xl font-bold">
-            {(conv?.name || conv?.phone || "?").slice(0, 1).toUpperCase()}
-          </div>
+          <ConvAvatar url={conv?.avatarUrl} label={conv?.name || conv?.phone || "?"} size={64} />
           <p className="text-[15px] font-bold text-ink-900 mt-2">{conv?.name || "Unknown"}</p>
           <p className="font-mono text-xs text-ink-400">{conv?.phone}</p>
           {contact?.email && <p className="text-xs text-ink-400 mt-0.5">{contact.email}</p>}

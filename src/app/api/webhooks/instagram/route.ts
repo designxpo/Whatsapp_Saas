@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
@@ -91,6 +91,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     const prof = await getIgProfile(credsOf(channel), senderId);
     const display = prof.username ? `@${prof.username}` : prof.name;
     if (display) conv = await getOrCreateConversation(senderId, display, channel.id, "instagram", channel.tenantId);
+    if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
@@ -174,6 +175,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       const prof = await getIgProfile(credsOf(channel), fromId);
       const display = prof.username ? `@${prof.username}` : prof.name;
       if (display) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
+      if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
     }
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
