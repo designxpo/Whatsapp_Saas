@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listUsers } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 // never password hashes or login history.
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const users = await listUsers();
+  const users = await listUsers((await currentTenantId()) ?? DEFAULT_TENANT_ID);
   const members = users
     .filter(u => u.active)
     .map(u => ({ name: u.name || u.email, email: u.email, title: u.title, role: u.role }));

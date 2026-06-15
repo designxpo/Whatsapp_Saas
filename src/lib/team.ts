@@ -48,27 +48,28 @@ function verifyPassword(password: string, stored: string): boolean {
   return candidate.length === expected.length && timingSafeEqual(candidate, expected);
 }
 
-// ── CRUD ──────────────────────────────────────────────────────────────────────
-export async function listUsers(): Promise<TeamUser[]> {
+// ── CRUD (tenant-scoped) ──────────────────────────────────────────────────────
+export async function listUsers(tenantId = DEFAULT_TENANT_ID): Promise<TeamUser[]> {
   try {
-    const { data, error } = await db().from("wa_users").select("*").order("created_at", { ascending: true });
+    const { data, error } = await db().from("wa_users").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: true });
     if (error) throw error;
     return (data ?? []).map(mapUser);
   } catch { return []; }     // table missing → owner-only mode
 }
 
-export async function saveUser(input: { id?: string; email: string; name: string; title?: string; role: "admin" | "member"; password?: string; active?: boolean }): Promise<TeamUser> {
+export async function saveUser(input: { id?: string; email: string; name: string; title?: string; role: "admin" | "member"; password?: string; active?: boolean }, tenantId = DEFAULT_TENANT_ID): Promise<TeamUser> {
   const row: Record<string, unknown> = {
     email: input.email.trim().toLowerCase(),
     name: input.name.trim(),
     title: (input.title ?? "").trim(),
     role: input.role,
     active: input.active ?? true,
+    tenant_id: tenantId,
   };
   if (input.password?.trim()) row.password_hash = hashPassword(input.password.trim());
   if (!input.id && !row.password_hash) throw new Error("Password is required for a new member");
   const run = (r: Record<string, unknown>) => input.id
-    ? db().from("wa_users").update(r).eq("id", input.id).select().single()
+    ? db().from("wa_users").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_users").insert(r).select().single();
   let { data, error } = await run(row);
   if (error && /title/i.test(error.message)) {
@@ -80,8 +81,8 @@ export async function saveUser(input: { id?: string; email: string; name: string
   return mapUser(data as Record<string, unknown>);
 }
 
-export async function deleteUser(id: string): Promise<void> {
-  const { error } = await db().from("wa_users").delete().eq("id", id);
+export async function deleteUser(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_users").delete().eq("id", id).eq("tenant_id", tenantId);
   if (error) throw error;
 }
 
@@ -100,9 +101,12 @@ export async function verifyTeamLogin(email: string, password: string): Promise<
 export interface ActivityEntry { id: string; userEmail: string; userName: string; action: string; detail: string; at: string }
 
 // Fire-and-forget — audit logging must never break the action being logged.
-export function logActivity(actor: { email: string; name?: string } | null, action: string, detail = ""): void {
+// actor carries tenantId (SessionUser/TeamUser both have it) so the log row is
+// auto-stamped with the tenant without touching the ~30 call sites.
+export function logActivity(actor: { email: string; name?: string; tenantId?: string } | null, action: string, detail = ""): void {
   if (!actor?.email) return;
   void db().from("wa_activity_log").insert({
+    tenant_id: actor.tenantId ?? DEFAULT_TENANT_ID,
     user_email: actor.email,
     user_name: actor.name ?? "",
     action,
@@ -110,9 +114,9 @@ export function logActivity(actor: { email: string; name?: string } | null, acti
   }).then(() => undefined, () => undefined);
 }
 
-export async function listActivity(limit = 200): Promise<ActivityEntry[]> {
+export async function listActivity(limit = 200, tenantId = DEFAULT_TENANT_ID): Promise<ActivityEntry[]> {
   try {
-    const { data, error } = await db().from("wa_activity_log").select("*").order("at", { ascending: false }).limit(Math.min(500, limit));
+    const { data, error } = await db().from("wa_activity_log").select("*").eq("tenant_id", tenantId).order("at", { ascending: false }).limit(Math.min(500, limit));
     if (error) throw error;
     return (data ?? []).map(r => ({
       id: r.id as string,
