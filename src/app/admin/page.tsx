@@ -1310,16 +1310,19 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
             if (m.body === "[form-abandoned]") {
               return <div key={m.id} className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div>;
             }
-            const submitted = m.body.startsWith("[form] ");
-            const sentMatch = m.body.match(/^([\s\S]*?)\n\[form:\s*(.+?)\]\s*$/);
+            const isComment = m.body.startsWith("[comment] ");
+            const body = isComment ? m.body.slice(10) : m.body;
+            const submitted = body.startsWith("[form] ");
+            const sentMatch = body.match(/^([\s\S]*?)\n\[form:\s*(.+?)\]\s*$/);
             return (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
-                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? "bg-pink-50 border border-pink-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                  {isComment && <p className="text-[10px] font-bold text-pink-600 mb-0.5 flex items-center gap-1"><Instagram className="w-3 h-3" /> from comment</p>}
                   {submitted ? (
                     <div>
                       <p className="text-[11px] font-bold text-emerald-700 mb-1">✅ Form submitted</p>
                       <div className="space-y-0.5">
-                        {m.body.slice(7).split(" · ").map((pair, i) => {
+                        {body.slice(7).split(" · ").map((pair, i) => {
                           const idx = pair.indexOf(": ");
                           const k = idx > 0 ? pair.slice(0, idx) : pair;
                           const v = idx > 0 ? pair.slice(idx + 2) : "";
@@ -1333,7 +1336,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
                       <p className="mt-1 text-[11px] font-bold text-brand-700">📋 Form sent · {sentMatch[2]}</p>
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                    <p className="whitespace-pre-wrap break-words">{body}</p>
                   )}
                   <p className={`text-[10px] mt-1 ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
                     {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

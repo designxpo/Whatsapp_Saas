@@ -136,7 +136,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, channel.agentId, tid);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   const sent = commentId
@@ -177,7 +177,8 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       if (display) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
     }
     if (!conv.botEnabled) return;   // a human is handling this thread
-    await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: tid });
+    // Marker so Live Chat shows this came from a COMMENT, not a DM.
+    await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid });
     await aiRespond(channel, conv, text, commentId);
     return;
   }
