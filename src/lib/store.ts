@@ -114,9 +114,10 @@ export async function listContacts(opts: {
   tag?: string | null; search?: string | null; limit?: number; offset?: number;
   createdFrom?: string | null; createdTo?: string | null;
   seenFrom?: string | null; seenTo?: string | null;     // last inbound message window
-  attrs?: ContactAttrFilter[];
+  attrs?: ContactAttrFilter[]; tenantId?: string;
 } = {}): Promise<{ data: Contact[]; total: number }> {
-  let q = db().from("contacts").select("*", { count: "exact" }).order("created_at", { ascending: false });
+  const tid = opts.tenantId ?? DEFAULT_TENANT_ID;
+  let q = db().from("contacts").select("*", { count: "exact" }).eq("tenant_id", tid).order("created_at", { ascending: false });
   if (opts.tag) q = q.contains("tags", [opts.tag]);
   if (opts.search) q = q.or(`name.ilike.%${opts.search}%,phone.ilike.%${opts.search}%`);
   if (opts.createdFrom) q = q.gte("created_at", opts.createdFrom);
@@ -131,7 +132,7 @@ export async function listContacts(opts: {
   // "Last seen" lives on conversations (last inbound message), so resolve the
   // matching phones first and narrow contacts to them.
   if (opts.seenFrom || opts.seenTo) {
-    let cq = db().from("wa_conversations").select("phone").not("last_inbound_at", "is", null);
+    let cq = db().from("wa_conversations").select("phone").eq("tenant_id", tid).not("last_inbound_at", "is", null);
     if (opts.seenFrom) cq = cq.gte("last_inbound_at", opts.seenFrom);
     if (opts.seenTo) cq = cq.lte("last_inbound_at", opts.seenTo);
     const { data: convs } = await cq.limit(1000);
@@ -147,8 +148,8 @@ export async function listContacts(opts: {
 }
 
 // Recipients for a broadcast audience (active contacts only).
-export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute"; tag?: string; key?: string; value?: string }): Promise<{ phone: string; fullName: string }[]> {
-  let q = db().from("contacts").select("phone, name").eq("status", "active");
+export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute"; tag?: string; key?: string; value?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ phone: string; fullName: string }[]> {
+  let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active");
   if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);
   if (audience.mode === "attribute" && audience.key) q = q.contains("attributes", { [audience.key]: audience.value ?? "" });
   const { data, error } = await q.limit(50000);
@@ -157,40 +158,40 @@ export async function recipientsForAudience(audience: { mode: "all" | "tag" | "a
 }
 
 // Add one tag to a contact (no-op when missing or already tagged).
-export async function addContactTag(phone: string, tag: string): Promise<void> {
+export async function addContactTag(phone: string, tag: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const t = tag.trim();
   if (!t) return;
-  const c = await getContactByPhone(phone);
+  const c = await getContactByPhone(phone, tenantId);
   if (!c || c.tags.includes(t)) return;
-  await db().from("contacts").update({ tags: [...c.tags, t] }).eq("id", c.id);
+  await db().from("contacts").update({ tags: [...c.tags, t] }).eq("tenant_id", tenantId).eq("id", c.id);
 }
 
 // Merge attributes into an existing contact (does not overwrite unrelated keys).
-export async function setContactAttributes(phone: string, attributes: Record<string, string>): Promise<void> {
-  const c = await getContactByPhone(phone);
+export async function setContactAttributes(phone: string, attributes: Record<string, string>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const c = await getContactByPhone(phone, tenantId);
   if (!c) return;
-  await db().from("contacts").update({ attributes: { ...c.attributes, ...attributes } }).eq("id", c.id);
+  await db().from("contacts").update({ attributes: { ...c.attributes, ...attributes } }).eq("tenant_id", tenantId).eq("id", c.id);
 }
 
 // Partial profile edit from the contact drawer — only the provided fields change.
-export async function updateContactProfile(phone: string, patch: { name?: string; email?: string | null; tags?: string[]; attributes?: Record<string, string> }): Promise<void> {
-  const c = await getContactByPhone(phone);
+export async function updateContactProfile(phone: string, patch: { name?: string; email?: string | null; tags?: string[]; attributes?: Record<string, string> }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const c = await getContactByPhone(phone, tenantId);
   if (!c) return;
   const row: Record<string, unknown> = {};
   if (patch.name !== undefined) row.name = patch.name;
   if (patch.email !== undefined) row.email = patch.email;
   if (patch.tags !== undefined) row.tags = patch.tags;
   if (patch.attributes !== undefined) row.attributes = patch.attributes;
-  if (Object.keys(row).length) await db().from("contacts").update(row).eq("id", c.id);
+  if (Object.keys(row).length) await db().from("contacts").update(row).eq("tenant_id", tenantId).eq("id", c.id);
 }
 
-export async function getContactByPhone(phone: string): Promise<Contact | null> {
-  const { data } = await db().from("contacts").select("*").eq("phone", digits(phone)).maybeSingle();
+export async function getContactByPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Contact | null> {
+  const { data } = await db().from("contacts").select("*").eq("tenant_id", tenantId).eq("phone", digits(phone)).maybeSingle();
   return data ? mapContact(data as Record<string, unknown>) : null;
 }
 
-export async function countContacts(): Promise<number> {
-  const { count } = await db().from("contacts").select("*", { count: "exact", head: true }).eq("status", "active");
+export async function countContacts(tenantId = DEFAULT_TENANT_ID): Promise<number> {
+  const { count } = await db().from("contacts").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "active");
   return count ?? 0;
 }
 

@@ -23,8 +23,9 @@ export async function GET(req: Request) {
     if (raw) attrs = (JSON.parse(raw) as ContactAttrFilter[]).filter(a => a?.key && ["is", "is_not", "contains"].includes(a.op)).slice(0, 10);
   } catch { /* malformed attrs → ignore */ }
   try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const { data, total } = await listContacts({
-      tag, search, offset, limit, attrs,
+      tag, search, offset, limit, attrs, tenantId: tid,
       createdFrom: url.searchParams.get("createdFrom"),
       createdTo: url.searchParams.get("createdTo"),
       seenFrom: url.searchParams.get("seenFrom"),
@@ -45,13 +46,14 @@ export async function POST(req: Request) {
   const rows = Array.isArray(body.contacts) ? body.contacts : [];
   if (rows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
   // Enforce the plan's contact cap (counts the batch being added).
-  try { await enforceLimit((await currentTenantId()) ?? DEFAULT_TENANT_ID, "contacts", rows.length); }
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  try { await enforceLimit(tid, "contacts", rows.length); }
   catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   try {
-    const result = await upsertContacts(rows, "import");
+    const result = await upsertContacts(rows, "import", tid);
     // Fire 'contact_added' automation for newly imported contacts.
     for (const r of rows) {
-      const c = await getContactByPhone(r.phone);
+      const c = await getContactByPhone(r.phone, tid);
       if (c && c.source === "import") {
         await fireTrigger({ trigger: "contact_added", triggerKey: null, contactId: c.id, phone: c.phone, name: c.name }).catch(() => undefined);
       }
