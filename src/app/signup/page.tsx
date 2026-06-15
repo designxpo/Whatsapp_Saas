@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
+import { BrandLogo } from "@/components/BrandLogo";
 
 const inp = "w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400";
 const INDUSTRIES = ["E-commerce / D2C", "Education / EdTech", "Real estate", "Healthcare", "Travel & hospitality", "Financial services", "Agency / Marketing", "SaaS / Tech", "Other"];
@@ -34,7 +35,9 @@ export default function SignupPage() {
     <main className="min-h-screen flex items-center justify-center px-4 py-10 bg-canvas">
       <form onSubmit={submit} className="w-full max-w-lg bg-white rounded-card border border-line p-7 space-y-5">
         <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center"><MessageSquare className="w-6 h-6 text-white" /></div>
+          <BrandLogo height={40} className="max-w-[200px]" fallback={
+            <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center"><MessageSquare className="w-6 h-6 text-white" /></div>
+          } />
           <div>
             <h1 className="text-xl font-bold text-ink-900">Start your free 14-day trial</h1>
             <p className="text-sm text-ink-400">WhatsApp + Instagram automation, AI replies, broadcasts & more.</p>
