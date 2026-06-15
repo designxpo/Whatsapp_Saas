@@ -4,15 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, X, ChevronDown, Bot, Phone } from "lucide-react";
 import { NAV, SITE, FAQS } from "../_content/site";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandLogo } from "@/components/BrandLogo";
 
 function Wordmark({ dark = false }: { dark?: boolean }) {
+  // Dark footer: the colored logo wouldn't read on blue, so keep the white
+  // wordmark. Light nav: show the full logo lockup.
+  if (dark) {
+    return (
+      <Link href="/" className="flex items-center gap-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white"><Bot className="h-4 w-4" /></span>
+        <span className="text-[16px] font-extrabold tracking-tight text-white">{SITE.name}</span>
+      </Link>
+    );
+  }
   return (
-    <Link href="/" className="flex items-center gap-2">
-      <BrandMark size={32} className="rounded-lg" fallback={
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
+    <Link href="/" className="flex items-center">
+      <BrandLogo height={34} className="max-w-[200px]" fallback={
+        <span className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
+          <span className="text-[16px] font-extrabold tracking-tight text-slate-900">{SITE.name}</span>
+        </span>
       } />
-      <span className={`text-[16px] font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>{SITE.name}</span>
     </Link>
   );
 }
