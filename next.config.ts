@@ -1,5 +1,18 @@
 import type { NextConfig } from "next";
 
+// Allowed remote-image hosts for the Next image optimizer: the project's
+// Supabase storage host (derived from the env URL) plus Meta CDNs (IG profile
+// pics). Replaces a wildcard "**" that made /_next/image an open proxy.
+const supabaseHost = (() => {
+  try { return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").hostname || undefined; }
+  catch { return undefined; }
+})();
+const IMAGE_HOSTS = [
+  ...(supabaseHost ? [{ protocol: "https" as const, hostname: supabaseHost }] : []),
+  { protocol: "https" as const, hostname: "**.cdninstagram.com" },
+  { protocol: "https" as const, hostname: "**.fbcdn.net" },
+];
+
 // Baseline security headers applied to every response. Kept conservative so we
 // don't break Next's inline runtime: clickjacking (frame-ancestors), MIME
 // sniffing, transport pinning, and referrer leakage are covered without a
@@ -21,8 +34,9 @@ const nextConfig: NextConfig = {
   // Verification builds (`NEXT_DIST_DIR=.next-build npm run build`) write to a
   // separate folder so they can't corrupt a running dev server's .next cache.
   distDir: process.env.NEXT_DIST_DIR || ".next",
-  // Allow remote images (uploaded header/banner images on Supabase storage).
-  images: { remotePatterns: [{ protocol: "https", hostname: "**" }] },
+  // Scope the Next image optimizer to known hosts instead of "**" (open proxy).
+  // The app renders images via plain <img>, so this never affects rendering.
+  images: { remotePatterns: IMAGE_HOSTS },
   // These do native/global work that breaks when webpack bundles them into a
   // server route — load them via Node's require at runtime instead.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "mammoth", "cheerio"],

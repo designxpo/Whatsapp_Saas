@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { cronOk } from "@/lib/apiauth";
-import { getDueScheduledCampaigns, campaignsWithPending, conversationsNeedingReply } from "@/lib/store";
+import { getDueScheduledCampaigns, campaignsWithPending, conversationsNeedingReply, pruneEphemeral } from "@/lib/store";
 import { fireScheduledCampaign, drainQueue, drainAutoSends } from "@/lib/campaign";
 import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
@@ -74,6 +74,9 @@ export async function POST(req: Request) {
         catch (e) { console.error("[cron] aiReply", c.id, e); }
       }
     }
+
+    // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
+    try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
     return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, sequences, aiReplies });
   } catch (err) {

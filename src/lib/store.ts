@@ -154,8 +154,14 @@ export async function recipientsForAudience(audience: { mode: "all" | "tag" | "a
   let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active");
   if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);
   if (audience.mode === "attribute" && audience.key) q = q.contains("attributes", { [audience.key]: audience.value ?? "" });
-  const { data, error } = await q.limit(50000);
+  const AUDIENCE_LIMIT = 50000;
+  const { data, error } = await q.limit(AUDIENCE_LIMIT);
   if (error) throw error;
+  // Surface silent truncation: a larger audience is capped here, so the caller
+  // would under-send without any signal. Log it (and it can be alerted on).
+  if ((data?.length ?? 0) >= AUDIENCE_LIMIT) {
+    console.warn(JSON.stringify({ tag: "audience_truncated", tenantId, limit: AUDIENCE_LIMIT, mode: audience.mode }));
+  }
   return (data ?? []).map(r => ({ phone: r.phone as string, fullName: (r.name as string) ?? "" }));
 }
 
@@ -565,6 +571,24 @@ export async function claimWebhookEvent(key: string): Promise<boolean> {
   return true;                                 // table missing / other → don't drop
 }
 
+// Housekeeping: the dedup + login-throttle tables only need rows for their short
+// windows (Meta retries within ~hours; the login window is 15 min). Prune from
+// the cron so they don't grow unbounded. Best-effort; returns rows removed.
+export async function pruneEphemeral(): Promise<{ dedup: number; loginAttempts: number }> {
+  const out = { dedup: 0, loginAttempts: 0 };
+  try {
+    const cutoff = new Date(Date.now() - 48 * 3600_000).toISOString();
+    const { data } = await db().from("wa_webhook_dedup").delete().lt("created_at", cutoff).select("key");
+    out.dedup = data?.length ?? 0;
+  } catch { /* table missing */ }
+  try {
+    const cutoff = new Date(Date.now() - 24 * 3600_000).toISOString();
+    const { data } = await db().from("wa_login_attempts").delete().lt("created_at", cutoff).select("id");
+    out.loginAttempts = data?.length ?? 0;
+  } catch { /* table missing */ }
+  return out;
+}
+
 export async function setConversationStatus(id: string, status: ConvStatus): Promise<void> {
   await db().from("wa_conversations").update({ status }).eq("id", id);
 }
@@ -714,9 +738,15 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
   ]);
 
   // Last 14 days of send-log rows, aggregated per day in JS (internal-tool scale).
+  const ANALYTICS_LIMIT = 20000;
   const { data: logRows } = await db().from("wa_send_log")
     .select("status, sent_at").eq("tenant_id", tenantId).gte("sent_at", since.toISOString())
-    .order("sent_at", { ascending: false }).limit(20000);
+    .order("sent_at", { ascending: false }).limit(ANALYTICS_LIMIT);
+  // Past this cap the 14-day chart under-counts silently — flag the scale cliff
+  // (move aggregation into a Postgres function when this starts firing).
+  if ((logRows?.length ?? 0) >= ANALYTICS_LIMIT) {
+    console.warn(JSON.stringify({ tag: "analytics_truncated", tenantId, limit: ANALYTICS_LIMIT }));
+  }
 
   const byDay = new Map<string, { sent: number; delivered: number; read: number; failed: number }>();
   for (let i = 0; i < 14; i++) {

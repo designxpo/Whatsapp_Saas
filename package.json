@@ -12,7 +12,6 @@
   "dependencies": {
     "@google/genai": "^2.8.0",
     "@supabase/supabase-js": "^2.48.1",
-    "@types/pdf-parse": "^1.1.5",
     "@xyflow/react": "^12.11.0",
     "cheerio": "^1.2.0",
     "jose": "^5.9.6",
@@ -29,11 +28,15 @@
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.10.7",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^19.0.7",
     "@types/react-dom": "^19.0.3",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
   }
 }
