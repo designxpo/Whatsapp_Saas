@@ -35,6 +35,12 @@ but the real tenant must be threaded from the entry point above.
 - ✅ **Channels** — listChannels(tenantId) + save scoped (done earlier).
 - ✅ **Semantic cache** — tenant-scoped (0020).
 - ✅ **Sequence enroll / drip** — carries tenant via enrollment rows.
+- ✅ **Conversations + messages** — getOrCreateConversation / getConversationByPhone /
+  listConversations / appendConvMessage scoped + stamped; threaded from both
+  webhooks (`channel.tenantId`) and the inbox route (`currentTenantId`).
+  *Still to thread:* `assistant.ts` + flowengine tag/attribute writes should
+  stamp the conversation's tenant (carry `tenantId` on the Conversation type) —
+  tracked under the Flows/AI domain below.
 
 ## Remaining (apply the same pattern)
 Per domain: add `tenantId` to the store fns, scope reads/writes, thread from the

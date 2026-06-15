@@ -11,6 +11,7 @@ import { enroll } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText } from "@/lib/whatsapp";
 import { getChannelByPhoneNumberId, type Channel } from "@/lib/channels";
+import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
 import { pushWaActivity } from "@/lib/leadsquared";
 import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours } from "@/lib/messaging-settings";
@@ -81,6 +82,8 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Replies must go out from the same number; null = env single-number mode.
   const phoneNumberId = ((value.metadata as Record<string, unknown>)?.phone_number_id as string) ?? "";
   const channel: Channel | undefined = (await getChannelByPhoneNumberId(phoneNumberId)) ?? undefined;
+  // Inbound belongs to the receiving channel's tenant (never a magic default).
+  const tid = channel?.tenantId ?? DEFAULT_TENANT_ID;
 
   // Shared-WABA guard: webhooks arrive for EVERY number on the WABA. Only
   // handle numbers this portal owns (a channel row or the env number) —
@@ -110,7 +113,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   if ((await optoutSet()).has(last10(from))) return;
 
   // Ensure the sender is a contact, then attach to a conversation.
-  await upsertContacts([{ phone: from, name: profileName }], "inbound").catch(() => undefined);
+  await upsertContacts([{ phone: from, name: profileName }], "inbound", tid).catch(() => undefined);
 
   // Click-to-WhatsApp ad attribution — when the chat was opened from an ad,
   // Meta attaches a referral object. Stamp the contact so the Ads tab can show
@@ -121,17 +124,17 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       ad_id: String(referral.source_id),
       ...(referral.headline ? { ad_headline: String(referral.headline).slice(0, 120) } : {}),
       ...(referral.source_type ? { ad_source: String(referral.source_type) } : {}),
-    }).catch(() => undefined);
+    }, tid).catch(() => undefined);
   }
 
   // WhatsApp form submission → every answer becomes a contact attribute.
   const answers = formAnswers(m);
   if (answers && Object.keys(answers).length) {
-    await setContactAttributes(from, answers).catch(() => undefined);
+    await setContactAttributes(from, answers, tid).catch(() => undefined);
   }
 
-  const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null);
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound" });
+  const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid });
   await touchInbound(conv.id, text);
 
   // In-chat checkout: a checkout-flow submission (carries a delivery address)
@@ -142,7 +145,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       if (order) {
         const msg = "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
         const r = await sendText(from, msg, channel);
-        if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot" }).catch(() => undefined);
+        if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot", tenantId: tid }).catch(() => undefined);
       }
     } catch (e) { console.error("[webhook] checkout", e); }
   }
@@ -155,7 +158,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   try {
     const tool = await growthToolForOptIn(text);
     if (tool) {
-      if (tool.tag) await addContactTag(from, tool.tag);
+      if (tool.tag) await addContactTag(from, tool.tag, tid);
       if (tool.sequenceId) await enroll(tool.sequenceId, { phone: from, platform: "whatsapp", conversationId: conv.id });
       await recordGrowthConversion(tool.id);
     }

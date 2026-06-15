@@ -433,29 +433,29 @@ function mapConversation(r: Record<string, unknown>): Conversation {
 
 // Find-or-create by phone. Keeps the latest name if provided; stamps the
 // channel (receiving number) on create or when it was unknown.
-export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: "whatsapp" | "instagram" = "whatsapp"): Promise<Conversation> {
+export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: "whatsapp" | "instagram" = "whatsapp", tenantId = DEFAULT_TENANT_ID): Promise<Conversation> {
   // IG uses non-numeric IGSIDs, so only digit-normalize WhatsApp identifiers.
   const p = platform === "instagram" ? phone.trim() : digits(phone);
-  const existing = await db().from("wa_conversations").select("*").eq("phone", p).maybeSingle();
+  const existing = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", p).maybeSingle();
   if (existing.data) {
     const row = existing.data as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     if (name && name.trim() && !row.name) patch.name = name.trim();
     if (channelId && !row.channel_id) patch.channel_id = channelId;
     if (Object.keys(patch).length) {
-      const { error } = await db().from("wa_conversations").update(patch).eq("phone", p);
+      const { error } = await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("phone", p);
       if (!error) Object.assign(row, patch);
     }
     return mapConversation(row);
   }
-  const contact = platform === "instagram" ? null : await getContactByPhone(p);
-  const base: Record<string, unknown> = { phone: p, name: (name ?? contact?.name ?? "").trim(), contact_id: contact?.id ?? null, platform };
+  const contact = platform === "instagram" ? null : await getContactByPhone(p, tenantId);
+  const base: Record<string, unknown> = { tenant_id: tenantId, phone: p, name: (name ?? contact?.name ?? "").trim(), contact_id: contact?.id ?? null, platform };
   let ins = await db().from("wa_conversations").insert(channelId ? { ...base, channel_id: channelId } : base).select().single();
   // channel_id / platform column missing (migration not applied) — retry minimal.
-  if (ins.error) ins = await db().from("wa_conversations").insert({ phone: p, name: (name ?? "").trim() }).select().single();
+  if (ins.error) ins = await db().from("wa_conversations").insert({ tenant_id: tenantId, phone: p, name: (name ?? "").trim() }).select().single();
   if (ins.error) {
     // Race: another inbound created it first — re-read.
-    const retry = await db().from("wa_conversations").select("*").eq("phone", p).single();
+    const retry = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", p).single();
     return mapConversation(retry.data as Record<string, unknown>);
   }
   return mapConversation(ins.data as Record<string, unknown>);
@@ -463,8 +463,8 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
 
 // Read-only lookup by phone — used by the CRM panel, which must not create
 // empty conversations just because an agent opened the tab.
-export async function getConversationByPhone(phone: string): Promise<Conversation | null> {
-  const { data } = await db().from("wa_conversations").select("*").eq("phone", digits(phone)).maybeSingle();
+export async function getConversationByPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
+  const { data } = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", digits(phone)).maybeSingle();
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -473,16 +473,16 @@ export async function getConversation(id: string): Promise<Conversation | null> 
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
-export async function listConversations(opts: { status?: ConvStatus | null; limit?: number } = {}): Promise<Conversation[]> {
-  let q = db().from("wa_conversations").select("*").order("last_inbound_at", { ascending: false, nullsFirst: false }).limit(Math.min(200, opts.limit ?? 100));
+export async function listConversations(opts: { status?: ConvStatus | null; limit?: number; tenantId?: string } = {}): Promise<Conversation[]> {
+  let q = db().from("wa_conversations").select("*").eq("tenant_id", opts.tenantId ?? DEFAULT_TENANT_ID).order("last_inbound_at", { ascending: false, nullsFirst: false }).limit(Math.min(200, opts.limit ?? 100));
   if (opts.status) q = q.eq("status", opts.status);
   const { data } = await q;
   return (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
 }
 
-export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent" }): Promise<void> {
+export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string }): Promise<void> {
   const { error } = await db().from("wa_conv_messages").insert({
-    conversation_id: p.conversationId, role: p.role, body: p.body,
+    tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, conversation_id: p.conversationId, role: p.role, body: p.body,
     meta_message_id: p.metaId ?? null, source: p.source,
   });
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.

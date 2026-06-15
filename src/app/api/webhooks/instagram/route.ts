@@ -77,8 +77,8 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }
   if ((await optoutSet()).has(senderId.slice(-10))) return;
 
-  const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram");
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound" });
+  const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
 
   // Story-reply automation: a reply to one of our stories carries reply_to.story.
@@ -104,7 +104,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), senderId, channel.agentId);
   if (r.reply && !r.escalate) {
     const sent = await sendIgMessage(credsOf(channel), senderId, r.reply, { lastInboundAt: new Date().toISOString() });
-    if (sent.ok) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot" });
+    if (sent.ok) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: channel.tenantId });
     else console.warn("[ig webhook] reply blocked:", sent.blockedBy, sent.error);
   }
 }
