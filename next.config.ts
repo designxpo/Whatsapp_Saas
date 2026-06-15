@@ -44,6 +44,11 @@ const nextConfig: NextConfig = {
   // read & offer them for copy-paste in production (not traced automatically).
   outputFileTracingIncludes: {
     "/api/admin/system/setup": ["./supabase/migrations/**"],
+    // pdfjs (via pdf-parse) loads its worker with a DYNAMIC import that Next's
+    // file-tracing can't follow, so the worker .mjs is missing from the Vercel
+    // bundle → "Setting up fake worker failed: Cannot find module …pdf.worker
+    // .mjs". Force-include the legacy build worker for the KB ingest.
+    "/api/admin/kb": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
   },
 };
 
