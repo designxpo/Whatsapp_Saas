@@ -73,6 +73,14 @@ async function postMessage(creds: IgCreds, payload: Record<string, unknown>): Pr
   }
 }
 
+// Show a "typing…" indicator in the DM while we compose a reply (Messenger
+// sender action). Best-effort — needs an open conversation; never blocks.
+export async function sendTypingOn(creds: IgCreds, recipientIgsid: string): Promise<void> {
+  if (!recipientIgsid) return;
+  try { await postMessage(creds, { recipient: { id: recipientIgsid }, sender_action: "typing_on" }); }
+  catch { /* best-effort */ }
+}
+
 // ── Standard DM (requires an open 24h window) ─────────────────────────────────
 // `lastInboundAt` MUST be the user's last interaction time. Sends are refused
 // outside the window and without prior interaction — never a cold DM.

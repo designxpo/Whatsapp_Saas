@@ -9,7 +9,7 @@ import {
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { enroll } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
-import { sendText } from "@/lib/whatsapp";
+import { sendText, sendTypingIndicator } from "@/lib/whatsapp";
 import { getChannelByPhoneNumberId, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
@@ -209,6 +209,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     catch (e) { console.error("[webhook] flow", conv.id, e); }
 
     if (!flowHandled && process.env.LLM_BOT_ENABLED !== "false") {
+      await sendTypingIndicator(id, channel);   // "typing…" while the AI composes
       try { await respondToConversation(conv.id); }
       catch (e) { console.error("[webhook] respond", conv.id, e); }
     }

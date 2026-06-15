@@ -4,7 +4,7 @@ import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
-import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
+import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, type IgCommentRule } from "@/lib/igcomments";
@@ -141,6 +141,10 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
 
   // The cap applies to comment-triggered AI only; direct DMs are uncapped.
   if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
+
+  // DM replies: show a "typing…" indicator while the model composes (comment
+  // replies post publicly, so no DM typing there).
+  if (!commentId) await sendTypingOn(creds, conv.phone);
 
   const history = await getConvHistory(conv.id, 20);
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid);

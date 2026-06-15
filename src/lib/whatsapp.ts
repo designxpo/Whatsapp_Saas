@@ -20,6 +20,21 @@ export function getCreds(channel?: ChannelCreds) {
   };
 }
 
+// Show a "typing…" indicator to the user while we compose a reply. Sent with
+// the read receipt for the inbound message; Meta displays it for up to ~25s or
+// until our next message arrives. Fire-and-forget — never blocks the reply.
+export async function sendTypingIndicator(messageId: string, channel?: ChannelCreds): Promise<void> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId || !messageId) return;
+  try {
+    await fetch(`${GRAPH}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: messageId, typing_indicator: { type: "text" } }),
+    });
+  } catch { /* best-effort */ }
+}
+
 const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 const firstName = (n: string) => (n || "").trim().split(/\s+/)[0] || "";
 
