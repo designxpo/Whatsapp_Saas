@@ -419,13 +419,19 @@ export async function getBusinessProfile(channel?: ChannelCreds): Promise<{ prof
 export async function updateBusinessProfile(fields: BusinessProfile, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { success: false, error: "WhatsApp credentials not configured" };
+  // Only send fields that actually have a value — Meta rejects empty strings
+  // (e.g. an empty `email`) with a generic (#131000) error rather than treating
+  // them as "leave unchanged".
   const body: Record<string, unknown> = { messaging_product: "whatsapp" };
-  if (fields.about !== undefined) body.about = fields.about.slice(0, 139);
-  if (fields.address !== undefined) body.address = fields.address.slice(0, 256);
-  if (fields.description !== undefined) body.description = fields.description.slice(0, 512);
-  if (fields.email !== undefined) body.email = fields.email.slice(0, 128);
-  if (fields.vertical !== undefined && fields.vertical) body.vertical = fields.vertical;
-  if (fields.websites !== undefined) body.websites = fields.websites.filter(w => w.trim()).slice(0, 2);
+  const v = (s?: string) => (typeof s === "string" && s.trim() ? s.trim() : undefined);
+  if (v(fields.about)) body.about = v(fields.about)!.slice(0, 139);
+  if (v(fields.address)) body.address = v(fields.address)!.slice(0, 256);
+  if (v(fields.description)) body.description = v(fields.description)!.slice(0, 512);
+  if (v(fields.email)) body.email = v(fields.email)!.slice(0, 128);
+  if (v(fields.vertical)) body.vertical = fields.vertical;
+  const sites = (fields.websites ?? []).map(w => w.trim()).filter(Boolean).slice(0, 2);
+  if (sites.length) body.websites = sites;
+  if (Object.keys(body).length === 1) return { success: true };   // nothing to update
   try {
     const r = await fetch(`${GRAPH}/${phoneId}/whatsapp_business_profile`, {
       method: "POST",
@@ -433,7 +439,11 @@ export async function updateBusinessProfile(fields: BusinessProfile, channel?: C
       body: JSON.stringify(body),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j?.error) return { success: false, error: j?.error?.message || `Update failed (HTTP ${r.status})` };
+    const e = j?.error;
+    if (!r.ok || e) {
+      const detail = e?.error_user_msg || e?.error_data?.details || e?.message || `Update failed (HTTP ${r.status})`;
+      return { success: false, error: detail };
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
