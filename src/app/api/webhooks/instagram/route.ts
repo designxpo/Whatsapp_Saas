@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
@@ -12,6 +12,9 @@ import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollo
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 // A user replying to a follow-gate prompt to confirm they followed.
 const CONFIRM_RE = /\b(follow(ed)?|done|finished|ok(ay)?|got\s?it|✅)\b/i;
+// Max AI auto-replies per conversation before handing off to a human.
+const AI_REPLY_CAP = 3;
+const CLOSING_MSG = "Thanks for reaching out! 🙌 Our team will connect with you shortly.";
 
 // GET — Meta webhook verification handshake (shared verify token).
 export async function GET(req: Request) {
@@ -112,16 +115,36 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
   if (flowHandled) return;
 
-  // Reply only inside the window (touchInbound just set it, so this holds now).
-  if (!within24hWindow(new Date().toISOString())) return;
+  await aiRespond(channel, conv, text);
+}
+
+// Shared AI responder with a per-conversation cap. Generates a grounded reply;
+// after AI_REPLY_CAP replies (or when the model escalates) it sends a hand-off
+// message and escalates the conversation to the portal (Live Chat, needs human).
+// `commentId` set → first contact is the one-time private reply + a public reply.
+async function aiRespond(channel: Channel, conv: Conversation, userText: string, commentId?: string) {
+  const creds = credsOf(channel);
+  const tid = channel.tenantId;
+  const now = new Date().toISOString();
+  const closeOut = async () => {
+    if (commentId) await sendPrivateReply(creds, commentId, CLOSING_MSG);
+    else await sendIgMessage(creds, conv.phone, CLOSING_MSG, { lastInboundAt: now });
+    await escalateConversation(conv.id);
+  };
+
+  if (conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), senderId, channel.agentId, channel.tenantId);
-  if (r.reply && !r.escalate) {
-    const sent = await sendIgMessage(credsOf(channel), senderId, r.reply, { lastInboundAt: new Date().toISOString() });
-    if (sent.ok) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: channel.tenantId });
-    else console.warn("[ig webhook] reply blocked:", sent.blockedBy, sent.error);
-  }
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, channel.agentId, tid);
+  if (!r.reply || r.escalate) { await closeOut(); return; }
+
+  const sent = commentId
+    ? await sendPrivateReply(creds, commentId, r.reply)
+    : await sendIgMessage(creds, conv.phone, r.reply, { lastInboundAt: now });
+  if (!sent.ok) { console.warn("[ig webhook] ai reply blocked:", sent.blockedBy, sent.error); return; }
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
+  await incAiReplies(conv.id, conv.aiReplyCount);
+  if (commentId) await replyToComment(creds, commentId, r.reply).catch(e => console.error("[ig webhook] public reply", e));
 }
 
 // Comment → ManyChat-style automation. Matches the comment against this tenant's
@@ -138,7 +161,22 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
 
   const tid = channel.tenantId;
   const rule = await matchCommentRule(text, mediaId, tid, channel.id);
-  if (!rule) return;
+
+  // No fixed rule matched → let the AI answer the comment contextually (public
+  // reply + DM), capped + escalating to a human after AI_REPLY_CAP replies.
+  if (!rule) {
+    if (!(await claimComment(commentId, null, tid))) return;
+    let conv = await getOrCreateConversation(fromId, "", channel.id, "instagram", tid);
+    if (!conv.name) {
+      const prof = await getIgProfile(credsOf(channel), fromId);
+      const display = prof.username ? `@${prof.username}` : prof.name;
+      if (display) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
+    }
+    if (!conv.botEnabled) return;   // a human is handling this thread
+    await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: tid });
+    await aiRespond(channel, conv, text, commentId);
+    return;
+  }
 
   // Idempotency: claim the comment so a webhook redelivery can't double-DM.
   if (!(await claimComment(commentId, rule.id, tid))) return;

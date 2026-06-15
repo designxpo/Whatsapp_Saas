@@ -137,7 +137,7 @@ export async function matchCommentRule(text: string, mediaId: string | null, ten
 }
 
 // Idempotency guard: true the first time a comment is seen, false on redeliveries.
-export async function claimComment(commentId: string, ruleId: string, tenantId: string): Promise<boolean> {
+export async function claimComment(commentId: string, ruleId: string | null, tenantId: string): Promise<boolean> {
   const { error } = await db().from("wa_ig_comment_log").insert({ comment_id: commentId, rule_id: ruleId, tenant_id: tenantId });
   if (error) return false;
   return true;

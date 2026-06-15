@@ -411,6 +411,7 @@ export interface Conversation {
   assignedTo: string | null;
   welcomed: boolean;
   agentId: string | null;
+  aiReplyCount: number;         // AI auto-replies sent so far (capped before human handoff)
   channelId: string | null;     // which WhatsApp number this chat lives on
   tenantId: string;             // owning tenant
   createdAt: string;
@@ -440,10 +441,22 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     assignedTo: (r.assigned_to as string | null) ?? null,
     welcomed: (r.welcomed as boolean) ?? false,
     agentId: (r.agent_id as string | null) ?? null,
+    aiReplyCount: (r.ai_reply_count as number) ?? 0,
     channelId: (r.channel_id as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
   };
+}
+
+// Bump the AI auto-reply counter (used to cap before handing off to a human).
+// Keyed by conversation id (a globally-unique uuid), like touchInbound.
+export async function incAiReplies(conversationId: string, current: number): Promise<void> {
+  await db().from("wa_conversations").update({ ai_reply_count: current + 1 }).eq("id", conversationId).then(() => {}, () => {});
+}
+
+// Hand a conversation off to a human: escalate, flag for reply, stop the bot.
+export async function escalateConversation(conversationId: string): Promise<void> {
+  await db().from("wa_conversations").update({ status: "escalated", needs_reply: true, bot_enabled: false }).eq("id", conversationId).then(() => {}, () => {});
 }
 
 // Find-or-create by phone. Keeps the latest name if provided; stamps the
