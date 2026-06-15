@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { BrandMark } from "@/components/BrandMark";
 import { launchWhatsAppSignup, launchInstagramSignup, whatsappSignupReady, instagramSignupReady } from "@/lib/embedded-signup-client";
 import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp } from "lucide-react";
 
@@ -87,9 +88,11 @@ export default function Admin() {
       <aside className="w-64 shrink-0 bg-white border-r border-line flex flex-col h-screen sticky top-0">
         {/* Logo block */}
         <div className="px-5 py-5 flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center shrink-0">
-            <MessageSquare className="w-[18px] h-[18px] text-white" />
-          </div>
+          <BrandMark size={36} className="rounded-control shrink-0" fallback={
+            <div className="w-9 h-9 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center shrink-0">
+              <MessageSquare className="w-[18px] h-[18px] text-white" />
+            </div>
+          } />
           <div className="min-w-0">
             <p className="text-[15px] font-bold text-ink-900 leading-tight truncate">Talko AI</p>
             <p className="text-[11px] text-ink-400 leading-tight truncate">AI conversations for WhatsApp &amp; Instagram</p>

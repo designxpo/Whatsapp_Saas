@@ -4,11 +4,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, X, ChevronDown, Bot, Phone } from "lucide-react";
 import { NAV, SITE, FAQS } from "../_content/site";
+import { BrandMark } from "@/components/BrandMark";
 
 function Wordmark({ dark = false }: { dark?: boolean }) {
   return (
     <Link href="/" className="flex items-center gap-2">
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
+      <BrandMark size={32} className="rounded-lg" fallback={
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
+      } />
       <span className={`text-[16px] font-extrabold tracking-tight ${dark ? "text-white" : "text-slate-900"}`}>{SITE.name}</span>
     </Link>
   );

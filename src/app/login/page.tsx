@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
+import { BrandMark } from "@/components/BrandMark";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,9 +28,11 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center px-4 bg-canvas">
       <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-card border border-line p-7 space-y-5">
         <div className="flex flex-col items-center text-center gap-3">
-          <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center">
-            <MessageSquare className="w-6 h-6 text-white" />
-          </div>
+          <BrandMark size={48} className="rounded-control" fallback={
+            <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center">
+              <MessageSquare className="w-6 h-6 text-white" />
+            </div>
+          } />
           <div>
             <h1 className="text-xl font-bold text-ink-900">Talko AI</h1>
             <p className="text-sm text-ink-400">AI conversations for WhatsApp &amp; Instagram</p>
