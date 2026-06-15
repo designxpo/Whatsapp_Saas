@@ -8,6 +8,7 @@ export interface PlanFeatures { whatsapp: boolean; instagram: boolean; sequences
 export interface Plan {
   id: string; key: string; name: string; priceCents: number; currency: string; interval: string;
   limits: PlanLimits; features: PlanFeatures; sort: number; active: boolean;
+  stripePriceId: string | null;   // Stripe Price this plan maps to (null → not purchasable via Stripe)
 }
 
 const DEF_LIMITS: PlanLimits = { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 };
@@ -20,6 +21,7 @@ function mapPlan(r: Record<string, unknown>): Plan {
     limits: { ...DEF_LIMITS, ...((r.limits as Partial<PlanLimits>) ?? {}) },
     features: { ...DEF_FEATURES, ...((r.features as Partial<PlanFeatures>) ?? {}) },
     sort: (r.sort as number) ?? 0, active: (r.active as boolean) ?? true,
+    stripePriceId: (r.stripe_price_id as string | null) ?? null,
   };
 }
 
@@ -33,11 +35,18 @@ export async function getPlan(key: string): Promise<Plan | null> {
   return data ? mapPlan(data as Record<string, unknown>) : null;
 }
 
+// Reverse lookup used by the Stripe webhook: Price id → our plan.
+export async function getPlanByStripePrice(priceId: string): Promise<Plan | null> {
+  const { data } = await db().from("wa_plans").select("*").eq("stripe_price_id", priceId).maybeSingle();
+  return data ? mapPlan(data as Record<string, unknown>) : null;
+}
+
 export async function savePlan(p: Partial<Plan> & { key: string; name: string }): Promise<Plan> {
   const row = {
     key: p.key.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"), name: p.name.trim(),
     price_cents: p.priceCents ?? 0, currency: p.currency ?? "INR", interval: p.interval ?? "month",
     limits: p.limits ?? DEF_LIMITS, features: p.features ?? DEF_FEATURES, sort: p.sort ?? 0, active: p.active ?? true,
+    ...(p.stripePriceId !== undefined ? { stripe_price_id: p.stripePriceId || null } : {}),
   };
   const { data, error } = await db().from("wa_plans").upsert(row, { onConflict: "key" }).select().single();
   if (error) throw error;

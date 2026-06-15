@@ -16,6 +16,7 @@ export interface Tenant {
   paymentStatus: PaymentStatus; trialEndsAt: string | null; currentPeriodEnd: string | null;
   amountCents: number; currency: string; notes: string | null;
   features: TenantFeatures; onboarded: boolean; createdAt: string;
+  stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
 const DEFAULT_FEATURES: TenantFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
@@ -35,6 +36,8 @@ function mapTenant(r: Record<string, unknown>): Tenant {
     notes: (r.notes as string | null) ?? null,
     features: { ...DEFAULT_FEATURES, ...((r.features as Partial<TenantFeatures>) ?? {}) },
     onboarded: (r.onboarded as boolean) ?? false, createdAt: r.created_at as string,
+    stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
+    stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
   };
 }
 
@@ -71,6 +74,41 @@ export async function updateTenant(id: string, p: Partial<{ status: TenantStatus
     row.features = { ...DEFAULT_FEATURES, ...(current?.features ?? {}), ...p.features };
   }
   if (Object.keys(row).length) { const { error } = await db().from("tenants").update(row).eq("id", id); if (error) throw error; }
+}
+
+// ── Stripe billing sync ───────────────────────────────────────────────────────
+// Persist Stripe ids on a tenant (after customer/subscription creation).
+export async function setStripeIds(tenantId: string, ids: { customerId?: string; subscriptionId?: string | null }): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (ids.customerId !== undefined) row.stripe_customer_id = ids.customerId;
+  if (ids.subscriptionId !== undefined) row.stripe_subscription_id = ids.subscriptionId;
+  if (Object.keys(row).length) await db().from("tenants").update(row).eq("id", tenantId);
+}
+
+export async function getTenantByStripeCustomer(customerId: string): Promise<Tenant | null> {
+  const { data } = await db().from("tenants").select("*").eq("stripe_customer_id", customerId).maybeSingle();
+  return data ? mapTenant(data as Record<string, unknown>) : null;
+}
+
+export async function getTenantByStripeSubscription(subscriptionId: string): Promise<Tenant | null> {
+  const { data } = await db().from("tenants").select("*").eq("stripe_subscription_id", subscriptionId).maybeSingle();
+  return data ? mapTenant(data as Record<string, unknown>) : null;
+}
+
+// Apply a Stripe subscription state to a tenant (called by the webhook). Maps
+// Stripe's status → our payment_status, sets plan/price/period from the sub.
+export async function applySubscription(tenantId: string, p: {
+  plan?: string; paymentStatus: PaymentStatus; amountCents?: number; currency?: string;
+  currentPeriodEnd?: string | null; subscriptionId?: string | null; status?: TenantStatus;
+}): Promise<void> {
+  const row: Record<string, unknown> = { payment_status: p.paymentStatus };
+  if (p.plan !== undefined) row.plan = p.plan;
+  if (p.amountCents !== undefined) row.amount_cents = p.amountCents;
+  if (p.currency !== undefined) row.currency = p.currency;
+  if (p.currentPeriodEnd !== undefined) row.current_period_end = p.currentPeriodEnd;
+  if (p.subscriptionId !== undefined) row.stripe_subscription_id = p.subscriptionId;
+  if (p.status !== undefined) row.status = p.status;
+  await db().from("tenants").update(row).eq("id", tenantId);
 }
 
 // Platform metrics for the owner dashboard.

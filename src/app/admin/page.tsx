@@ -6134,6 +6134,7 @@ function UsageCard() {
           <p className="text-xs font-bold text-slate-400 uppercase">Plan &amp; usage</p>
           <p className="text-sm font-semibold text-ink-900 capitalize">{u.plan} plan {u.status === "trialing" && trialLeft !== null && <span className="text-[11px] font-bold text-amber-600">· {trialLeft} days left in trial</span>}</p>
         </div>
+        <a href="/admin/billing" className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">Manage plan</a>
       </div>
       <div className="space-y-2.5">
         {rows.map(([label, used, limit]) => {

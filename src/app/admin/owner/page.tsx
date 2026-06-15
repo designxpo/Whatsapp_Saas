@@ -15,7 +15,7 @@ type Tenant = {
 };
 type Stats = { total: number; active: number; trialing: number; suspended: number; mrrCents: number };
 type PlanLimits = { contacts: number; messages_per_month: number; channels: number; team_seats: number };
-type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean };
+type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean; stripePriceId?: string | null };
 type Ann = { id: string; title: string; body: string; level: "info" | "success" | "warning"; pinned: boolean; active: boolean; createdAt: string };
 const FEATURE_KEYS: (keyof Features)[] = ["whatsapp", "instagram", "sequences", "commerce", "growth", "ai_autoreply", "ads"];
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
@@ -58,7 +58,7 @@ export default function OwnerPortal() {
 
   // ── Plans ──
   const [planDraft, setPlanDraft] = useState<Plan | null>(null);
-  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true }, sort: plans.length, active: true };
+  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true }, sort: plans.length, active: true, stripePriceId: "" };
   async function savePlan() {
     if (!planDraft || !planDraft.key.trim() || !planDraft.name.trim()) return;
     await fetch("/api/owner/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planDraft) });
@@ -204,6 +204,7 @@ export default function OwnerPortal() {
               <label className="text-[11px] text-ink-500">Messages/mo (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.messages_per_month} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, messages_per_month: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Channels (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.channels} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, channels: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Team seats (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.team_seats} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, team_seats: Number(e.target.value) || 0 } })} /></label>
+              <label className="col-span-2 text-[11px] text-ink-500">Stripe Price ID (price_… — required to sell this plan via Stripe) <input className={`${inp} w-full font-mono`} placeholder="price_1AbcD… (leave blank if not on Stripe)" value={planDraft.stripePriceId ?? ""} onChange={e => setPlanDraft({ ...planDraft, stripePriceId: e.target.value.trim() })} /></label>
               <div className="col-span-2 flex gap-2"><button onClick={savePlan} className="px-4 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold">Save plan</button><button onClick={() => setPlanDraft(null)} className="px-2 text-xs text-ink-400">Cancel</button></div>
             </div>
           )}
