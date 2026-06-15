@@ -5,6 +5,7 @@ import { retrieve } from "@/lib/kb";
 import { matchFaq } from "@/lib/router/faq";
 import { cacheLookup, cacheStore } from "@/lib/router/cache";
 import { routerEnabled } from "@/lib/router";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,9 @@ export async function POST(req: Request) {
     }
 
     // RAG fallback — surface the retrieval picture alongside the answer.
-    const chunks = await retrieve(question, 6).catch(() => []);
-    const result = await generateReply([{ role: "user", body: question }], undefined, body.agentId ?? null);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const chunks = await retrieve(question, 6, tid).catch(() => []);
+    const result = await generateReply([{ role: "user", body: question }], undefined, body.agentId ?? null, tid);
     if (!result.escalate && result.reply && result.reply.trim() !== FALLBACK_REPLY) {
       void cacheStore(question, result.reply, queryEmbedding, "rag");
     }

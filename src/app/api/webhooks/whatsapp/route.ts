@@ -99,18 +99,18 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Opt-out keyword — suppress, confirm, and stop. Never invoke the bot.
   if (OPTOUT_RE.test(text)) {
-    await addOptout(from, "inbound STOP");
+    await addOptout(from, "inbound STOP", tid);
     await sendText(from, "You've been unsubscribed and won't receive further messages. Reply START to opt back in.", channel);
     return;
   }
   // Opt back in — the STOP confirmation promises "Reply START to opt back in".
-  if (OPTIN_RE.test(text) && (await optoutSet()).has(last10(from))) {
-    await removeOptout(from);
+  if (OPTIN_RE.test(text) && (await optoutSet(tid)).has(last10(from))) {
+    await removeOptout(from, tid);
     await sendText(from, "Welcome back! You're subscribed again and will receive our updates. Reply STOP anytime to opt out.", channel);
     return;
   }
   // Already opted out — ignore inbound entirely.
-  if ((await optoutSet()).has(last10(from))) return;
+  if ((await optoutSet(tid)).has(last10(from))) return;
 
   // Ensure the sender is a contact, then attach to a conversation.
   await upsertContacts([{ phone: from, name: profileName }], "inbound", tid).catch(() => undefined);

@@ -112,7 +112,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId);
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId);
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");

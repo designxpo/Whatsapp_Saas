@@ -20,7 +20,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
 
     if (segment && SEGMENTS.includes(segment)) {
-      const [funnel, recipients] = await Promise.all([campaignFunnel(id), retargetRecipients(id, segment)]);
+      const [funnel, recipients] = await Promise.all([campaignFunnel(id), retargetRecipients(id, segment, tid)]);
       return NextResponse.json({ funnel, segment, recipients });
     }
 

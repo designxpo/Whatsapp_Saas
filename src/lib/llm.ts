@@ -65,7 +65,7 @@ export interface ReplyResult {
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
-export async function generateReply(history: { role: "user" | "assistant"; body: string }[], phone?: string, agentId?: string | null): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -79,7 +79,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   // Retrieve business context for the latest question.
   let chunks: { content: string; similarity: number }[] = [];
   try {
-    chunks = await retrieve(lastUser.body, 6);
+    chunks = await retrieve(lastUser.body, 6, tenantId);
   } catch (err) {
     console.error("[llm] retrieve failed:", err);
   }

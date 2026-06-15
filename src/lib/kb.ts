@@ -2,6 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, matchChunks, type KbSourceType } from "./store";
 import { errorMessage } from "./errors";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 // pdf-parse / mammoth / cheerio are loaded lazily inside the extract functions:
 // they do native/global work that crashes if evaluated at module load inside a
 // bundled route, and listing documents shouldn't pay to load them at all.
@@ -117,25 +119,25 @@ export function chunkText(text: string): string[] {
 }
 
 // ── Full ingest: extract → chunk → embed → store. Updates document status. ────
-export async function ingestDocument(docId: string, sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }): Promise<void> {
+export async function ingestDocument(docId: string, sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   try {
     const text = await extractText(sourceType, payload);
     const chunks = chunkText(text);
     if (chunks.length === 0) {
-      await setDocStatus(docId, "failed", { error: "No extractable text found", chunkCount: 0 });
+      await setDocStatus(docId, "failed", { error: "No extractable text found", chunkCount: 0 }, tenantId);
       return;
     }
     const embeddings = await embedTexts(chunks, "RETRIEVAL_DOCUMENT");
     const rows = chunks.map((content, i) => ({ content, embedding: embeddings[i] }));
-    const n = await replaceChunks(docId, rows);
-    await setDocStatus(docId, "ready", { chunkCount: n, error: null });
+    const n = await replaceChunks(docId, rows, tenantId);
+    await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
   } catch (err) {
-    await setDocStatus(docId, "failed", { error: errorMessage(err) });
+    await setDocStatus(docId, "failed", { error: errorMessage(err) }, tenantId);
   }
 }
 
-// Retrieve top-k business-doc chunks relevant to a query.
-export async function retrieve(query: string, k = 6): Promise<{ content: string; similarity: number }[]> {
+// Retrieve top-k business-doc chunks relevant to a query (tenant-scoped).
+export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; similarity: number }[]> {
   const emb = await embedQuery(query);
-  return matchChunks(emb, k);
+  return matchChunks(emb, k, tenantId);
 }

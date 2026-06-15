@@ -75,7 +75,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
 
   // Opt-out (STOP) honored like WhatsApp.
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }
-  if ((await optoutSet()).has(senderId.slice(-10))) return;
+  if ((await optoutSet(channel.tenantId)).has(senderId.slice(-10))) return;
 
   const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
@@ -101,7 +101,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   if (!within24hWindow(new Date().toISOString())) return;
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), senderId, channel.agentId);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), senderId, channel.agentId, channel.tenantId);
   if (r.reply && !r.escalate) {
     const sent = await sendIgMessage(credsOf(channel), senderId, r.reply, { lastInboundAt: new Date().toISOString() });
     if (sent.ok) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: channel.tenantId });

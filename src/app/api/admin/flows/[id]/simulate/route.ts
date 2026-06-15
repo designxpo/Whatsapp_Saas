@@ -6,6 +6,7 @@ import { cacheLookup } from "@/lib/router/cache";
 import { routerEnabled } from "@/lib/router";
 import { generateReply, applyPersonaTone } from "@/lib/llm";
 import { resolveAgent } from "@/lib/aihub";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         }
       }
       const agent = await resolveAgent(null).catch(() => null);
-      const result = await generateReply([{ role: "user", body: message }]);
+      const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+      const result = await generateReply([{ role: "user", body: message }], undefined, null, tid);
       if (result.reply) {
         return NextResponse.json({ outputs: [{ kind: "ai", body: result.reply }], handled: false, note: `Answered by the AI assistant${agent ? ` (${agent.name})` : ""}` });
       }

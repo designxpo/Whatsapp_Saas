@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentUser } from "@/lib/auth";
+import { requireAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { sendTemplateTest } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
@@ -25,6 +25,7 @@ export async function POST(req: Request) {
     variables: Array.isArray(body.variables) ? body.variables : [],
     headerImageUrl: body.headerImageUrl ?? null,
     channel: await credsFor(body.channelId),
+    tenantId: (await currentTenantId()) ?? DEFAULT_TENANT_ID,
   });
   if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), "broadcast.test", `${body.templateName} → ${phone}`);

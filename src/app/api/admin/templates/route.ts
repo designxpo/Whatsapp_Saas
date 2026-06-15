@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchTemplates, createTemplate, deleteTemplate, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { setTemplateMeta, siteUrl, type TrackedUrl } from "@/lib/links";
-import { currentUser } from "@/lib/auth";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   if (!body.name?.trim() || !body.bodyText?.trim()) return NextResponse.json({ error: "name and bodyText are required" }, { status: 400 });
 
   const channel = await credsFor(body.channelId);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const name = body.name.trim().toLowerCase();
   let buttons: TemplateButton[] | undefined = body.buttons;
 
@@ -49,7 +50,7 @@ export async function POST(req: Request) {
       // Store config BEFORE submitting — if this fails (migration 0011 not
       // applied), better to reject now than approve a template whose sends
       // would point at codes nobody can mint.
-      try { await setTemplateMeta(name, { clickTracking: true, trackedUrls }); }
+      try { await setTemplateMeta(name, { clickTracking: true, trackedUrls }, tid); }
       catch (err) {
         return NextResponse.json({ error: `Click tracking needs migration 0011 (wa_template_meta): ${err instanceof Error ? err.message : err}` }, { status: 500 });
       }
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   }, channel);
   if (r.error) {
     // Roll back the meta row so a failed submission doesn't leave tracking armed.
-    if (trackedUrls.length) await setTemplateMeta(name, { clickTracking: false, trackedUrls: [] }).catch(() => undefined);
+    if (trackedUrls.length) await setTemplateMeta(name, { clickTracking: false, trackedUrls: [] }, tid).catch(() => undefined);
     return NextResponse.json({ error: r.error }, { status: 502 });
   }
   logActivity(await currentUser(), "template.create", `${name} (${r.status ?? "PENDING"})`);

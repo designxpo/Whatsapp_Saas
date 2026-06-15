@@ -61,6 +61,33 @@ but the real tenant must be threaded from the entry point above.
   `fireTrigger`/`getContactByPhone` there (Phase: public-API). Also `flowengine`/
   `commerce` `sendCampaign` calls still default — tracked under Flows/commerce.
 
+- ✅ **Opt-outs** — `optoutSet(tenantId)` / `listOptouts(tenantId)` /
+  add/removeOptout scoped + stamped; threaded into `sendCampaign`
+  (`params.tenantId`), `assistant` (`conv.tenantId`), both webhooks
+  (`channel.tenantId`/`tid`), and the admin optouts route. A STOP for one
+  business never suppresses another's sends.
+- ✅ **Quick replies** — list/create/delete scoped; admin route passes
+  `currentTenantId()`. (CRM thread panel defaults — shared-token integration.)
+- ✅ **KB / RAG** — createDocument/setDocStatus/listDocuments/deleteDocument/
+  replaceChunks/matchChunks scoped + stamped; `kb.ts` ingest/retrieve thread
+  `tenantId`. **New migration 0026** rewrites `match_kb_chunks` to take
+  `p_tenant_id` and filter (so one tenant's RAG never grounds on another's
+  docs — mirrors the 0020 `match_semantic_cache` pattern). `generateReply`
+  gained a `tenantId` param → `retrieve(..., tenantId)`, threaded from the IG
+  webhook, assistant, assistant-test, and flow-simulate.
+- ✅ **Templates / click-links** — `setTemplateMeta`/`getTrackedUrls`
+  tenant-scoped (composite PK `(tenant_id, template_name)` from 0020);
+  `mintLinks` stamps `tenant_id`; `sendCampaign`/`sendTemplateTest` thread it;
+  templates route passes `currentTenantId()`. Click-stats query by
+  `campaign_id` (ownership pre-checked in the funnel route). **Forms (waforms):**
+  live on Meta under the channel's WABA → already isolated by channel creds, no
+  local tenant column needed.
+
+## Apply before going live
+Run migration **0026_kb_tenant_match.sql** alongside 0019–0025 on the SaaS
+Supabase (it redefines the KB match RPC with the required `p_tenant_id` arg —
+`matchChunks` now passes it, so the old 2-arg RPC would error).
+
 ## Remaining (apply the same pattern)
 Per domain: add `tenantId` to the store fns, scope reads/writes, thread from the
 route/webhook/cron.

@@ -1,6 +1,8 @@
 import { randomBytes } from "crypto";
 import { db } from "./supabase";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 // ── Click tracking (AiSensy-style) ───────────────────────────────────────────
 // Templates submitted with click tracking get their URL buttons rewritten to
 // {SITE}/r/{{1}}. At send time each recipient gets a unique code per tracked
@@ -24,19 +26,21 @@ export function siteUrl(): string {
 
 // ── Template meta ─────────────────────────────────────────────────────────────
 
-export async function setTemplateMeta(templateName: string, meta: { clickTracking: boolean; trackedUrls: TrackedUrl[] }): Promise<void> {
+export async function setTemplateMeta(templateName: string, meta: { clickTracking: boolean; trackedUrls: TrackedUrl[] }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  // PK is composite (tenant_id, template_name) — see 0020.
   await db().from("wa_template_meta").upsert({
+    tenant_id: tenantId,
     template_name: templateName,
     click_tracking: meta.clickTracking,
     tracked_urls: meta.trackedUrls,
     updated_at: new Date().toISOString(),
-  });
+  }, { onConflict: "tenant_id,template_name" });
 }
 
-export async function getTrackedUrls(templateName: string): Promise<TrackedUrl[]> {
+export async function getTrackedUrls(templateName: string, tenantId = DEFAULT_TENANT_ID): Promise<TrackedUrl[]> {
   try {
     const { data } = await db().from("wa_template_meta")
-      .select("click_tracking, tracked_urls").eq("template_name", templateName).maybeSingle();
+      .select("click_tracking, tracked_urls").eq("tenant_id", tenantId).eq("template_name", templateName).maybeSingle();
     if (!data?.click_tracking) return [];
     return (data.tracked_urls as TrackedUrl[]) ?? [];
   } catch { return []; }   // table missing → tracking off
@@ -45,8 +49,9 @@ export async function getTrackedUrls(templateName: string): Promise<TrackedUrl[]
 // ── Link minting + resolution ────────────────────────────────────────────────
 
 // Creates one short code per tracked button for one recipient.
-export async function mintLinks(params: { campaignId: string; phone: string; tracked: TrackedUrl[] }): Promise<{ index: number; code: string }[]> {
+export async function mintLinks(params: { campaignId: string; phone: string; tracked: TrackedUrl[]; tenantId?: string }): Promise<{ index: number; code: string }[]> {
   const rows = params.tracked.map(t => ({
+    tenant_id: params.tenantId ?? DEFAULT_TENANT_ID,
     code: genCode(),
     campaign_id: params.campaignId,
     phone: params.phone,

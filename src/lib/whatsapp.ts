@@ -42,14 +42,14 @@ export async function sendCampaign(params: {
   const { token, phoneId } = getCreds(params.channel);
   if (!token || !phoneId) return { sentCount: 0, failedCount: params.recipients.length, skippedCount: 0, errors: ["WhatsApp credentials not configured"] };
 
-  const optouts = await optoutSet();
+  const optouts = await optoutSet(params.tenantId);
   const errors: string[] = [];
   let sentCount = 0, failedCount = 0, skippedCount = 0, consecutiveErrors = 0;
   const log: Parameters<typeof insertLog>[0] = [];
 
   // Click tracking: templates submitted with "Enable click tracking" have their
   // URL buttons pointing at {SITE}/r/{{1}} — each recipient gets a unique code.
-  const trackedUrls = await getTrackedUrls(params.templateName).catch(() => []);
+  const trackedUrls = await getTrackedUrls(params.templateName, params.tenantId).catch(() => []);
 
   for (let i = 0; i < params.recipients.length; i++) {
     const r = params.recipients[i];
@@ -69,7 +69,7 @@ export async function sendCampaign(params: {
       // The template's URL button is dynamic ({SITE}/r/{{1}}), so Meta requires a
       // parameter either way — fall back to "0" (redirects to the site home) if
       // minting fails so the send still goes through.
-      const codes = await mintLinks({ campaignId: params.campaignId, phone: digitsPhone, tracked: trackedUrls })
+      const codes = await mintLinks({ campaignId: params.campaignId, phone: digitsPhone, tracked: trackedUrls, tenantId: params.tenantId })
         .catch(() => trackedUrls.map(t => ({ index: t.index, code: "0" })));
       for (const c of codes) {
         components.push({ type: "button", sub_type: "url", index: String(c.index), parameters: [{ type: "text", text: c.code }] });
@@ -127,6 +127,7 @@ export async function sendTemplateTest(params: {
   variables: string[];
   headerImageUrl?: string | null;
   channel?: ChannelCreds;
+  tenantId?: string;
 }): Promise<{ id?: string; error?: string }> {
   const { token, phoneId } = getCreds(params.channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
@@ -134,7 +135,7 @@ export async function sendTemplateTest(params: {
   const components: unknown[] = [];
   if (params.headerImageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: params.headerImageUrl } }] });
   if (vars.length) components.push({ type: "body", parameters: vars.map(t => ({ type: "text", text: t })) });
-  const trackedUrls = await getTrackedUrls(params.templateName).catch(() => []);
+  const trackedUrls = await getTrackedUrls(params.templateName, params.tenantId).catch(() => []);
   for (const t of trackedUrls) {
     components.push({ type: "button", sub_type: "url", index: String(t.index), parameters: [{ type: "text", text: "0" }] });
   }

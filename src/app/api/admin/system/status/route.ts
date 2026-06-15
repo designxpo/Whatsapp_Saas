@@ -3,6 +3,7 @@ import { countContacts, listDocuments, listConversations } from "@/lib/store";
 import { lsqConfigured } from "@/lib/leadsquared";
 import { routerEnabled } from "@/lib/router";
 import { faqCount } from "@/lib/router/faq";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -11,11 +12,12 @@ const isReal = (v: string | undefined) => Boolean(v && v !== "test" && v !== "te
 // GET — single source of truth for "is the platform set up?". Drives the
 // Home tab checklist so a new user can see exactly what works and what's left.
 export async function GET() {
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   // Light health probes — each independent, none may throw the whole route.
   const [dbOk, kbDocs, convs] = await Promise.all([
-    countContacts().then(n => ({ ok: true, contacts: n })).catch(() => ({ ok: false, contacts: 0 })),
-    listDocuments().catch(() => []),
-    listConversations({ limit: 200 }).catch(() => []),
+    countContacts(tid).then(n => ({ ok: true, contacts: n })).catch(() => ({ ok: false, contacts: 0 })),
+    listDocuments(tid).catch(() => []),
+    listConversations({ limit: 200, tenantId: tid }).catch(() => []),
   ]);
 
   const readyDocs = kbDocs.filter(d => d.status === "ready");

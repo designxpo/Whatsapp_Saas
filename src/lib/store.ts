@@ -208,13 +208,15 @@ export async function removeOptout(phone: string, tenantId = DEFAULT_TENANT_ID):
   await db().from("contacts").update({ status: "active" }).eq("tenant_id", tenantId).eq("phone", digits(phone));
 }
 
-export async function listOptouts(): Promise<{ phone: string; reason: string | null; createdAt: string }[]> {
-  const { data } = await db().from("wa_optouts").select("*").order("created_at", { ascending: false });
+export async function listOptouts(tenantId = DEFAULT_TENANT_ID): Promise<{ phone: string; reason: string | null; createdAt: string }[]> {
+  const { data } = await db().from("wa_optouts").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
   return (data ?? []).map(r => ({ phone: r.phone as string, reason: (r.reason as string | null) ?? null, createdAt: r.created_at as string }));
 }
 
-export async function optoutSet(): Promise<Set<string>> {
-  const { data } = await db().from("wa_optouts").select("phone");
+// Opt-outs are per-tenant — a STOP for one business never suppresses sends for
+// another (separate WhatsApp numbers, separate consent).
+export async function optoutSet(tenantId = DEFAULT_TENANT_ID): Promise<Set<string>> {
+  const { data } = await db().from("wa_optouts").select("phone").eq("tenant_id", tenantId);
   return new Set((data ?? []).map(r => last10(r.phone as string)));
 }
 
@@ -587,35 +589,35 @@ function mapDocument(r: Record<string, unknown>): KbDocument {
   };
 }
 
-export async function createDocument(p: { title: string; sourceType: KbSourceType; sourceRef?: string | null }): Promise<KbDocument> {
+export async function createDocument(p: { title: string; sourceType: KbSourceType; sourceRef?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<KbDocument> {
   const { data, error } = await db().from("kb_documents").insert({
-    title: p.title, source_type: p.sourceType, source_ref: p.sourceRef ?? null, status: "processing",
+    tenant_id: tenantId, title: p.title, source_type: p.sourceType, source_ref: p.sourceRef ?? null, status: "processing",
   }).select().single();
   if (error) throw error;
   return mapDocument(data as Record<string, unknown>);
 }
 
-export async function setDocStatus(id: string, status: KbStatus, extra: { chunkCount?: number; error?: string | null } = {}): Promise<void> {
+export async function setDocStatus(id: string, status: KbStatus, extra: { chunkCount?: number; error?: string | null } = {}, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const row: Record<string, unknown> = { status };
   if (extra.chunkCount !== undefined) row.chunk_count = extra.chunkCount;
   if (extra.error !== undefined) row.error = extra.error;
-  await db().from("kb_documents").update(row).eq("id", id);
+  await db().from("kb_documents").update(row).eq("tenant_id", tenantId).eq("id", id);
 }
 
-export async function listDocuments(): Promise<KbDocument[]> {
-  const { data } = await db().from("kb_documents").select("*").order("created_at", { ascending: false }).limit(200);
+export async function listDocuments(tenantId = DEFAULT_TENANT_ID): Promise<KbDocument[]> {
+  const { data } = await db().from("kb_documents").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(200);
   return (data ?? []).map(r => mapDocument(r as Record<string, unknown>));
 }
 
-export async function deleteDocument(id: string): Promise<void> {
-  await db().from("kb_documents").delete().eq("id", id);   // chunks cascade
+export async function deleteDocument(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("kb_documents").delete().eq("tenant_id", tenantId).eq("id", id);   // chunks cascade
 }
 
 // Replace a document's chunks (delete-then-insert) so re-ingest doesn't duplicate.
-export async function replaceChunks(documentId: string, chunks: { content: string; embedding: number[] }[]): Promise<number> {
-  await db().from("kb_chunks").delete().eq("document_id", documentId);
+export async function replaceChunks(documentId: string, chunks: { content: string; embedding: number[] }[], tenantId = DEFAULT_TENANT_ID): Promise<number> {
+  await db().from("kb_chunks").delete().eq("tenant_id", tenantId).eq("document_id", documentId);
   if (chunks.length === 0) return 0;
-  const rows = chunks.map((c, i) => ({ document_id: documentId, chunk_index: i, content: c.content, embedding: c.embedding }));
+  const rows = chunks.map((c, i) => ({ tenant_id: tenantId, document_id: documentId, chunk_index: i, content: c.content, embedding: c.embedding }));
   // Insert in batches to stay under request-size limits.
   for (let i = 0; i < rows.length; i += 100) {
     const { error } = await db().from("kb_chunks").insert(rows.slice(i, i + 100));
@@ -624,8 +626,8 @@ export async function replaceChunks(documentId: string, chunks: { content: strin
   return rows.length;
 }
 
-export async function matchChunks(queryEmbedding: number[], k = 6): Promise<{ content: string; documentId: string; similarity: number }[]> {
-  const { data, error } = await db().rpc("match_kb_chunks", { query_embedding: queryEmbedding, match_count: k });
+export async function matchChunks(queryEmbedding: number[], k = 6, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; similarity: number }[]> {
+  const { data, error } = await db().rpc("match_kb_chunks", { query_embedding: queryEmbedding, match_count: k, p_tenant_id: tenantId });
   if (error) throw error;
   return (data ?? []).map((r: Record<string, unknown>) => ({ content: r.content as string, documentId: r.document_id as string, similarity: r.similarity as number }));
 }
@@ -703,8 +705,8 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
 // ── Quick replies (canned responses) ─────────────────────────────────────────
 export interface QuickReply { id: string; shortcut: string; body: string; createdAt: string }
 
-export async function listQuickReplies(): Promise<QuickReply[]> {
-  const { data } = await db().from("wa_quick_replies").select("*").order("shortcut");
+export async function listQuickReplies(tenantId = DEFAULT_TENANT_ID): Promise<QuickReply[]> {
+  const { data } = await db().from("wa_quick_replies").select("*").eq("tenant_id", tenantId).order("shortcut");
   return (data ?? []).map(r => ({ id: r.id as string, shortcut: r.shortcut as string, body: r.body as string, createdAt: r.created_at as string }));
 }
 
@@ -713,8 +715,8 @@ export async function createQuickReply(shortcut: string, body: string, tenantId 
   if (error) throw error;
 }
 
-export async function deleteQuickReply(id: string): Promise<void> {
-  const { error } = await db().from("wa_quick_replies").delete().eq("id", id);
+export async function deleteQuickReply(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_quick_replies").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
 
@@ -810,11 +812,11 @@ export async function campaignFunnel(campaignId: string): Promise<CampaignFunnel
 }
 
 // Recipients for a behavioral retarget — excludes anyone who has opted out since.
-export async function retargetRecipients(campaignId: string, segment: RetargetSegment): Promise<{ phone: string; fullName: string }[]> {
+export async function retargetRecipients(campaignId: string, segment: RetargetSegment, tenantId = DEFAULT_TENANT_ID): Promise<{ phone: string; fullName: string }[]> {
   const { data, error } = await db().from("wa_send_log").select("phone, recipient_name")
-    .eq("campaign_id", campaignId).eq("status", SEGMENT_STATUS[segment]).limit(10000);
+    .eq("tenant_id", tenantId).eq("campaign_id", campaignId).eq("status", SEGMENT_STATUS[segment]).limit(10000);
   if (error) throw error;
-  const optedOut = await optoutSet();
+  const optedOut = await optoutSet(tenantId);
   const seen = new Set<string>();
   const out: { phone: string; fullName: string }[] = [];
   for (const r of data ?? []) {
