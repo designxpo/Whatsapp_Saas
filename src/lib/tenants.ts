@@ -125,6 +125,46 @@ export async function platformStats(): Promise<{ total: number; active: number; 
   return { total: rows.length, active, trialing, suspended, mrrCents };
 }
 
+// Richer platform analytics for the owner dashboard (signups trend, plan/status
+// mix, MRR, trials ending soon).
+export async function platformAnalytics(): Promise<{
+  signupsByDay: { date: string; count: number }[];
+  planMix: { plan: string; count: number }[];
+  statusMix: { status: string; count: number }[];
+  mrrCents: number; newThisMonth: number; trialsEndingSoon: number;
+}> {
+  const { data } = await db().from("tenants").select("plan, status, payment_status, amount_cents, trial_ends_at, created_at");
+  const rows = (data ?? []) as { plan: string; status: string; payment_status: string; amount_cents: number; trial_ends_at: string | null; created_at: string }[];
+
+  // 30-day signup series.
+  const days = new Map<string, number>();
+  const since = new Date(); since.setHours(0, 0, 0, 0); since.setDate(since.getDate() - 29);
+  for (let i = 0; i < 30; i++) { const d = new Date(since); d.setDate(since.getDate() + i); days.set(d.toISOString().slice(0, 10), 0); }
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  const soon = Date.now() + 7 * 86400000;
+
+  const plan = new Map<string, number>(), status = new Map<string, number>();
+  let mrrCents = 0, newThisMonth = 0, trialsEndingSoon = 0;
+  for (const r of rows) {
+    const day = (r.created_at ?? "").slice(0, 10);
+    if (days.has(day)) days.set(day, (days.get(day) ?? 0) + 1);
+    if (r.created_at && new Date(r.created_at) >= monthStart) newThisMonth++;
+    plan.set(r.plan ?? "trial", (plan.get(r.plan ?? "trial") ?? 0) + 1);
+    status.set(r.status ?? "active", (status.get(r.status ?? "active") ?? 0) + 1);
+    if (r.payment_status === "active") mrrCents += r.amount_cents ?? 0;
+    if ((r.payment_status === "trialing" || r.status === "trialing") && r.trial_ends_at) {
+      const t = new Date(r.trial_ends_at).getTime();
+      if (t > Date.now() && t <= soon) trialsEndingSoon++;
+    }
+  }
+  return {
+    signupsByDay: [...days.entries()].map(([date, count]) => ({ date, count })),
+    planMix: [...plan.entries()].map(([plan, count]) => ({ plan, count })).sort((a, b) => b.count - a.count),
+    statusMix: [...status.entries()].map(([status, count]) => ({ status, count })),
+    mrrCents, newThisMonth, trialsEndingSoon,
+  };
+}
+
 // Self-serve signup → new tenant (14-day trial) + its first admin user.
 export async function createTenantFromSignup(p: {
   company: string; ownerName: string; ownerEmail: string; password: string;

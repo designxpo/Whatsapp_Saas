@@ -6152,6 +6152,59 @@ function UsageCard() {
   );
 }
 
+// Developer API keys — mint per-tenant keys for the public API (/api/broadcast,
+// /api/events, /api/contacts). The full key is shown once on creation.
+function ApiKeysCard() {
+  const [keys, setKeys] = useState<{ id: string; name: string; prefix: string; lastUsedAt: string | null; revoked: boolean }[]>([]);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { fetch("/api/admin/api-keys").then(r => r.json()).then(d => setKeys(d.keys ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    setBusy(true); setFresh(null);
+    try {
+      const d = await fetch("/api/admin/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then(r => r.json());
+      if (d.key) { setFresh(d.key); setName(""); load(); } else alert(d.error || "Failed");
+    } finally { setBusy(false); }
+  }
+  async function revoke(id: string) {
+    if (!confirm("Revoke this key? Any integration using it stops working immediately.")) return;
+    await fetch("/api/admin/api-keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p>
+      <p className="text-[11px] text-ink-400">Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</p>
+      <div className="flex gap-2">
+        <input className="flex-1 border border-line rounded-control px-2 py-1.5 text-xs bg-white" placeholder="Key name (e.g. CRM integration)" value={name} onChange={e => setName(e.target.value)} />
+        <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0">Create key</button>
+      </div>
+      {fresh && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-control px-3 py-2 space-y-1">
+          <p className="text-[11px] font-bold text-emerald-800">Copy this key now — it won&apos;t be shown again:</p>
+          <code className="block font-mono text-[11px] text-emerald-900 break-all select-all">{fresh}</code>
+        </div>
+      )}
+      <div className="divide-y divide-slate-100">
+        {keys.filter(k => !k.revoked).map(k => (
+          <div key={k.id} className="flex items-center justify-between py-2 gap-3">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-brand-dark">{k.name}</span>
+              <p className="text-[11px] text-slate-500 font-mono">{k.prefix} · {k.lastUsedAt ? `last used ${new Date(k.lastUsedAt).toLocaleDateString()}` : "never used"}</p>
+            </div>
+            <button onClick={() => revoke(k.id)} className="text-[11px] font-bold text-red-500 hover:text-red-700 shrink-0">Revoke</button>
+          </div>
+        ))}
+        {keys.filter(k => !k.revoked).length === 0 && <p className="text-center text-slate-400 text-sm py-3">No API keys yet.</p>}
+      </div>
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -6289,6 +6342,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-[11px] text-ink-400">Export downloads everything stored for your workspace. Erase fulfils a right‑to‑be‑forgotten request for one contact (removes the contact, conversations, messages, opt‑outs, queue/log, orders and more).</p>
         </section>
       )}
+
+      {isAdmin && <ApiKeysCard />}
     </div>
     <SettingsRail goTo={goTo} />
     </div>

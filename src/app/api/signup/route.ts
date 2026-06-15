@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createTenantFromSignup } from "@/lib/tenants";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
+import { getFlag } from "@/lib/flags";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +10,10 @@ export const maxDuration = 30;
 // POST — public self-serve signup. Creates a trialing tenant + its first admin
 // user, then signs them in. Captures who's using the platform.
 export async function POST(req: Request) {
+  // Platform-wide signup kill switch (owner control plane).
+  if (!(await getFlag("signups_enabled", true))) {
+    return NextResponse.json({ error: "Signups are currently closed. Please check back soon." }, { status: 403 });
+  }
   let body: { company?: string; ownerName?: string; ownerEmail?: string; password?: string; ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

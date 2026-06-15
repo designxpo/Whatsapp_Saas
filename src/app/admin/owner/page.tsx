@@ -34,6 +34,9 @@ export default function OwnerPortal() {
   const [busy, setBusy] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [anns, setAnns] = useState<Ann[]>([]);
+  const [flags, setFlags] = useState<{ key: string; enabled: boolean; description: string | null }[]>([]);
+  const [analytics, setAnalytics] = useState<{ newThisMonth: number; trialsEndingSoon: number; signupsByDay: { date: string; count: number }[] } | null>(null);
+  const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
     const res = await fetch("/api/owner/tenants");
@@ -42,7 +45,13 @@ export default function OwnerPortal() {
     setTenants(d.tenants ?? []); setStats(d.stats ?? null); setAudit(d.audit ?? []); setLoading(false);
     fetch("/api/owner/plans").then(r => r.json()).then(p => setPlans(p.plans ?? [])).catch(() => {});
     fetch("/api/owner/announcements").then(r => r.json()).then(a => setAnns(a.announcements ?? [])).catch(() => {});
+    fetch("/api/owner/flags").then(r => r.json()).then(f => setFlags(f.flags ?? [])).catch(() => {});
+    fetch("/api/owner/analytics").then(r => r.json()).then(a => setAnalytics(a.analytics ?? null)).catch(() => {});
   }, []);
+  async function toggleFlag(key: string, enabled: boolean) {
+    setFlags(fs => fs.map(f => f.key === key ? { ...f, enabled } : f));
+    await fetch("/api/owner/flags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, enabled }) }).catch(() => {});
+  }
   useEffect(() => { load(); }, [load]);
 
   async function removeTenant(t: Tenant) {
@@ -133,9 +142,43 @@ export default function OwnerPortal() {
           </div>
         )}
 
+        {analytics && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-card border border-line p-4"><p className="text-[11px] font-bold uppercase text-ink-400">New this month</p><p className="text-2xl font-extrabold text-ink-900 mt-1">{analytics.newThisMonth}</p></div>
+            <div className="bg-white rounded-card border border-line p-4"><p className="text-[11px] font-bold uppercase text-ink-400">Trials ending ≤7d</p><p className="text-2xl font-extrabold text-ink-900 mt-1">{analytics.trialsEndingSoon}</p></div>
+            <div className="bg-white rounded-card border border-line p-4 col-span-2">
+              <p className="text-[11px] font-bold uppercase text-ink-400 mb-1">Signups · last 30 days</p>
+              <div className="flex items-end gap-0.5 h-10">
+                {analytics.signupsByDay.map((d, i) => {
+                  const max = Math.max(1, ...analytics.signupsByDay.map(x => x.count));
+                  return <div key={i} title={`${d.date}: ${d.count}`} className="flex-1 bg-brand-500/70 rounded-sm" style={{ height: `${Math.max(4, (d.count / max) * 100)}%` }} />;
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Feature flags */}
+        {flags.length > 0 && (
+          <div className="bg-white rounded-card border border-line p-4 space-y-2">
+            <p className="text-xs font-bold text-slate-400 uppercase">Platform feature flags</p>
+            <div className="grid sm:grid-cols-2 gap-2">
+              {flags.map(f => (
+                <label key={f.key} className="flex items-center justify-between gap-3 border border-line rounded-control px-3 py-2">
+                  <span><span className="text-xs font-bold text-ink-800">{f.key}</span>{f.description && <span className="block text-[11px] text-ink-400">{f.description}</span>}</span>
+                  <input type="checkbox" className="accent-brand-700 w-4 h-4 shrink-0" checked={f.enabled} onChange={e => toggleFlag(f.key, e.target.checked)} />
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
-          <p className="text-xs font-bold text-slate-400 uppercase">Tenants</p>
-          {tenants.map(t => (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-bold text-slate-400 uppercase">Tenants</p>
+            <input className={`${inp} w-56`} placeholder="Search name / email / slug…" value={q} onChange={e => setQ(e.target.value)} />
+          </div>
+          {tenants.filter(t => { const s = q.trim().toLowerCase(); return !s || [t.name, t.company, t.ownerEmail, t.slug].some(v => (v ?? "").toLowerCase().includes(s)); }).map(t => (
             <div key={t.id} className="bg-white rounded-card border border-line">
               <div className="p-4 flex items-center gap-3">
                 <div className="min-w-0 flex-1">

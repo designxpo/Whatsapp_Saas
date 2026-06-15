@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { apiKeyOk } from "@/lib/apiauth";
+import { apiKeyTenant } from "@/lib/apiauth";
 import { getContactByPhone } from "@/lib/store";
 import { fireTrigger } from "@/lib/autosend";
 import { processEvent } from "@/lib/apirules";
@@ -10,7 +10,8 @@ import { processEvent } from "@/lib/apirules";
 //    variable mapping from data, delay, send window, frequency cap).
 // 2) Also fires legacy 'api_event' auto-sends with the same event name.
 export async function POST(req: Request) {
-  if (!apiKeyOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const tenantId = await apiKeyTenant(req);
+  if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   let body: { event?: string; phone?: string; name?: string; data?: Record<string, unknown> };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.event?.trim() || !body.phone?.trim()) return NextResponse.json({ error: "event and phone are required" }, { status: 400 });
@@ -21,16 +22,16 @@ export async function POST(req: Request) {
       phone: body.phone.trim(),
       name: body.name,
       payload: body.data && typeof body.data === "object" ? body.data : {},
-    }).catch(err => { console.error("[events] rules:", err); return []; });
+    }, tenantId).catch(err => { console.error("[events] rules:", err); return []; });
 
-    const contact = await getContactByPhone(body.phone);
+    const contact = await getContactByPhone(body.phone, tenantId);
     const legacyFired = await fireTrigger({
       trigger: "api_event",
       triggerKey: body.event.trim(),
       contactId: contact?.id ?? null,
       phone: body.phone.trim(),
       name: body.name ?? contact?.name ?? "",
-    });
+    }, tenantId);
 
     return NextResponse.json({
       success: true,
