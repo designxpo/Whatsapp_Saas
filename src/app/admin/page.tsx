@@ -970,7 +970,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
       {result && <div className="bg-brand-green/10 border border-brand-green/40 rounded-lg px-4 py-3 text-sm text-brand-dark font-semibold">{result}</div>}
 
-      <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-brand-green text-brand-dark font-bold flex items-center justify-center gap-2 disabled:opacity-60">
+      <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-brand-green text-white font-bold flex items-center justify-center gap-2 disabled:opacity-60">
         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send broadcast
       </button>
     </div>
