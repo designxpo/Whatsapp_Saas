@@ -1,0 +1,18 @@
+import type { Metadata } from "next";
+import { SiteNav, SiteFooter } from "./_components/chrome";
+
+export const metadata: Metadata = {
+  title: "Alabs Connect — WhatsApp & Instagram automation with AI",
+  description:
+    "Automate WhatsApp & Instagram with AI replies, broadcasts, chatbot flows, drip sequences and catalog checkout. One inbox for every conversation. Start a free 14-day trial.",
+};
+
+export default function SiteLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-h-screen overflow-x-hidden bg-white text-slate-600 antialiased">
+      <SiteNav />
+      <main>{children}</main>
+      <SiteFooter />
+    </div>
+  );
+}

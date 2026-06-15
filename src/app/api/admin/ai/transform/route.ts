@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const prompt = (await listPrompts(true, tid)).find(p => p.id === body.promptId);
     if (!prompt) return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
-    const result = await transformText(prompt.prompt, text);
+    const result = await transformText(prompt.prompt, text, tid);
     return NextResponse.json({ result: result || text });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

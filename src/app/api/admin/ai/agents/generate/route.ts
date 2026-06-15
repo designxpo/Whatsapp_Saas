@@ -1,6 +1,7 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { transformText } from "@/lib/llm";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,8 @@ export async function POST(req: Request) {
   ].join("\n");
 
   try {
-    const persona = await transformText(instruction, description);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const persona = await transformText(instruction, description, tid);
     if (!persona) return NextResponse.json({ error: "Generation returned empty text — try again" }, { status: 502 });
     return NextResponse.json({ persona });
   } catch (err) {

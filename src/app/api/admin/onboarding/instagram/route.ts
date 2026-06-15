@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, resolveInstagramAsset } from "@/lib/embeddedsignup";
 import { saveInstagramChannel } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
@@ -17,19 +17,29 @@ export async function POST(req: Request) {
   let body: { code?: string; igUserId?: string; pageId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const { code, igUserId, pageId } = body;
+  const { code } = body;
   if (!code) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
-  if (!igUserId) return NextResponse.json({ error: "Missing Instagram account id from signup" }, { status: 400 });
 
   const ex = await exchangeSignupCode(code);
   if (!ex.ok || !ex.token) return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+
+  // Embedded Signup returns only a code; resolve the IG account + Page from the
+  // token server-side unless the caller (manual/admin form) supplied them.
+  let igUserId = body.igUserId?.trim();
+  let pageId = body.pageId?.trim() || null;
+  if (!igUserId) {
+    const asset = await resolveInstagramAsset(ex.token);
+    if (!asset.ok || !asset.igUserId) return NextResponse.json({ error: asset.error || "Could not resolve Instagram account" }, { status: 502 });
+    igUserId = asset.igUserId;
+    pageId = asset.pageId ?? null;
+  }
 
   try {
     const channel = await saveInstagramChannel({
       tenantId,
       name: body.name?.trim() || `Instagram ${igUserId}`,
       igUserId,
-      pageId: pageId ?? null,
+      pageId,
       token: ex.token,
       isDefault: false,
     });

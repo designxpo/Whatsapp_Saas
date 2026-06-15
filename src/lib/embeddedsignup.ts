@@ -61,6 +61,27 @@ export async function subscribeWaba(wabaId: string, token: string): Promise<{ ok
   }
 }
 
+// Resolve the Instagram business account + Page from a freshly-exchanged token.
+// The Instagram Embedded Signup returns only a `code`; we derive the asset ids
+// server-side (/me/accounts → page → instagram_business_account) so the frontend
+// never has to ask the tenant for ids.
+export async function resolveInstagramAsset(token: string): Promise<{ ok: boolean; igUserId?: string; pageId?: string; error?: string }> {
+  if (!token) return { ok: false, error: "Missing token" };
+  try {
+    const url = new URL(`${GRAPH}/me/accounts`);
+    url.searchParams.set("fields", "id,instagram_business_account{id}");
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j.error?.message || `Account lookup failed (${r.status})` };
+    const pages: { id: string; instagram_business_account?: { id: string } }[] = j.data ?? [];
+    const withIg = pages.find(p => p.instagram_business_account?.id);
+    if (!withIg) return { ok: false, error: "No Instagram professional account is linked to your Facebook Page" };
+    return { ok: true, igUserId: withIg.instagram_business_account!.id, pageId: withIg.id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Instagram asset lookup error" };
+  }
+}
+
 // Register the phone number on Cloud API (best-effort; some flows pre-register).
 export async function registerPhone(phoneNumberId: string, token: string, pin?: string): Promise<{ ok: boolean; error?: string }> {
   if (!phoneNumberId || !token) return { ok: false, error: "Missing phoneNumberId / token" };

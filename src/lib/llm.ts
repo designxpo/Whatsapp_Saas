@@ -1,8 +1,7 @@
-import { GoogleGenAI, type Content } from "@google/genai";
 import { retrieve } from "./kb";
-import { resolveAgent, listFunctions, toGeminiTools, executeAiFunction, isToneEnabled } from "./aihub";
-
-const CHAT_MODEL = process.env.GEMINI_CHAT_MODEL || "gemini-2.5-flash";
+import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
+import { runChat, type ChatTool, type ChatTurn } from "./ai/chat";
+import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 
 // Below this cosine similarity, retrieved context is treated as irrelevant.
 const MIN_SIMILARITY = 0.45;
@@ -12,14 +11,15 @@ const MAX_TOOL_ROUNDS = 3;
 export const FALLBACK_REPLY =
   "Thanks for your message! A team member will get back to you shortly.";
 
-let client: GoogleGenAI | null = null;
-function genai(): GoogleGenAI {
-  if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-    client = new GoogleGenAI({ apiKey });
-  }
-  return client;
+// AI Hub functions → normalized chat tools (provider-agnostic).
+function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
+  if (fns.length === 0) return undefined;
+  return fns.map(f => ({
+    name: f.name,
+    description: f.description || f.name,
+    params: f.parameters.map(p => ({ name: p.name, description: p.description || p.name })),
+    required: f.parameters.filter(p => p.required).map(p => p.name),
+  }));
 }
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
@@ -74,7 +74,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
-  const tools = toGeminiTools(functions);
+  const tools = toChatTools(functions);
 
   // Retrieve business context for the latest question.
   let chunks: { content: string; similarity: number }[] = [];
@@ -91,47 +91,48 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   }
 
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
-  const contents: Content[] = history.map(m => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.body }],
-  }));
+  const system = systemPrompt(context, agent, !!tools);
 
-  const model = agent?.model?.trim() || CHAT_MODEL;
-  const config = {
-    systemInstruction: systemPrompt(context, agent, !!tools),
-    maxOutputTokens: 1024,
-    // Chat replies don't need extended reasoning — disabling "thinking" cuts
-    // seconds off every response (Gemini 2.5 thinks by default).
-    thinkingConfig: { thinkingBudget: 0 },
-    ...(tools ? { tools: [tools] } : {}),
-  };
+  // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
+  // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
+  let ai;
+  try {
+    ai = await resolveTenantAi(tenantId, agent?.model ?? null);
+  } catch (err) {
+    if (err instanceof AiKeyMissingError) {
+      return { reply: null, escalate: true, reason: "no AI key configured", usedChunks: relevant.length };
+    }
+    throw err;
+  }
+
+  const turns: ChatTurn[] = history.map((m): ChatTurn =>
+    m.role === "assistant" ? { role: "assistant", text: m.body } : { role: "user", text: m.body });
 
   try {
     let escalateViaFn = false;
     const executed: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const res = await genai().models.generateContent({ model, contents, config });
+      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system, turns, tools, maxTokens: 1024 });
 
       // Function-calling round: execute each call, feed results back, continue.
-      const calls = res.functionCalls ?? [];
-      if (calls.length > 0 && round < MAX_TOOL_ROUNDS) {
-        contents.push({ role: "model", parts: calls.map(c => ({ functionCall: { name: c.name, args: c.args } })) });
-        const responses = [];
-        for (const c of calls) {
+      if (res.toolCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
+        turns.push({ role: "assistant", calls: res.toolCalls });
+        const results = [];
+        for (const c of res.toolCalls) {
           const fn = functions.find(f => f.name === c.name);
           const result = fn
-            ? await executeAiFunction(fn, (c.args ?? {}) as Record<string, unknown>, phone, tenantId)
+            ? await executeAiFunction(fn, c.args, phone, tenantId)
             : { status: "unknown function", escalate: false };
           if (result.escalate) escalateViaFn = true;
           if (fn) executed.push(fn.name);
-          responses.push({ functionResponse: { name: c.name ?? "", response: { status: result.status } } });
+          results.push({ id: c.id, name: c.name, status: result.status });
         }
-        contents.push({ role: "user", parts: responses });
+        turns.push({ role: "tool", results });
         continue;
       }
 
-      const text = (res.text ?? "").trim();
+      const text = res.text;
       if (!text || text.includes(ESCALATE_TOKEN)) {
         return { reply: null, escalate: true, reason: "model escalated", usedChunks: relevant.length, functionCalls: executed };
       }
@@ -154,37 +155,38 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     const agent = await resolveAgent(agentId ?? null, tenantId);
     if (!agent?.persona?.trim()) return answer;
 
-    const res = await genai().models.generateContent({
-      model: agent.model?.trim() || CHAT_MODEL,
-      contents: [{ role: "user", parts: [{ text: `CUSTOMER MESSAGE:\n${userMessage}\n\nFACTUAL ANSWER:\n${answer}` }] }],
-      config: {
-        systemInstruction: [
-          agent.persona.trim(),
-          agent.constraintsText?.trim() ? `--- Constraints ---\n${agent.constraintsText.trim()}` : "",
-          "--- Task ---",
-          "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
-          "Match the customer's language (Hindi / Hinglish / English).",
-          "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
-          "Output ONLY the reply text.",
-        ].filter(Boolean).join("\n\n"),
-        maxOutputTokens: 512,
-        thinkingConfig: { thinkingBudget: 0 },   // tone rewrite must be near-instant
-      },
+    const ai = await resolveTenantAi(tenantId, agent.model ?? null);
+    const system = [
+      agent.persona.trim(),
+      agent.constraintsText?.trim() ? `--- Constraints ---\n${agent.constraintsText.trim()}` : "",
+      "--- Task ---",
+      "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
+      "Match the customer's language (Hindi / Hinglish / English).",
+      "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
+      "Output ONLY the reply text.",
+    ].filter(Boolean).join("\n\n");
+    const res = await runChat({
+      provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system,
+      turns: [{ role: "user", text: `CUSTOMER MESSAGE:\n${userMessage}\n\nFACTUAL ANSWER:\n${answer}` }],
+      maxTokens: 512,
     });
-    const text = (res.text ?? "").trim();
-    return text || answer;
+    return res.text || answer;
   } catch (err) {
+    // AiKeyMissingError, rate limits, etc. — never block; serve the raw answer.
     console.error("[llm] persona tone failed (serving raw answer):", err);
     return answer;
   }
 }
 
 // One-shot text transform for agent assist (tone change, translate, fix, etc).
-export async function transformText(instruction: string, text: string): Promise<string> {
-  const res = await genai().models.generateContent({
-    model: CHAT_MODEL,
-    contents: [{ role: "user", parts: [{ text: `${instruction}\n\nReturn ONLY the rewritten text, no preamble.\n\n--- TEXT ---\n${text}` }] }],
-    config: { maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
+// Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
+export async function transformText(instruction: string, text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+  const ai = await resolveTenantAi(tenantId);
+  const res = await runChat({
+    provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+    system: "You rewrite text exactly as instructed and output only the result.",
+    turns: [{ role: "user", text: `${instruction}\n\nReturn ONLY the rewritten text, no preamble.\n\n--- TEXT ---\n${text}` }],
+    maxTokens: 1024,
   });
-  return (res.text ?? "").trim();
+  return res.text;
 }

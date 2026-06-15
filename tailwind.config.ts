@@ -5,21 +5,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Royal Blue theme ──
+        // ── Meta / Facebook blue theme ──
         brand: {
-          50: "#EEF3FF",
-          100: "#DCE6FF",
-          500: "#4169E1", // royal blue
-          600: "#3151CC",
-          700: "#2540A8",
-          800: "#1E3488",
-          900: "#18296B",
+          50: "#EBF3FF",
+          100: "#D6E4FF",
+          500: "#1877F2", // Facebook blue
+          600: "#166FE0", // hover
+          700: "#0C63D4",
+          800: "#0A4DA8",
+          900: "#0A3D8F",
           // Legacy aliases (kept so existing class names adopt the new palette):
           // `brand-dark` → deep navy for headings/dark accents.
-          // `brand-green`/`greenDark` → royal blue (names retained, values blue).
-          dark: "#16225C",
-          green: "#3151CC",
-          greenDark: "#2540A8",
+          // `brand-green`/`greenDark` → Facebook blue (names retained, values blue).
+          dark: "#0A2A66",
+          green: "#166FE0",
+          greenDark: "#0C63D4",
         },
         ink: {
           400: "#A3A3A3",

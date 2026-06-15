@@ -1,0 +1,185 @@
+// Marketing-site content for Alabs Connect. Single source of truth for all copy
+// so pages stay consistent. Pure data — no JSX — usable from server components.
+
+export const SITE = {
+  name: "Alabs Connect",
+  tagline: "Turn every chat into a customer",
+  domainCta: { trial: "/signup", login: "/login" },
+};
+
+export const NAV: { label: string; href: string }[] = [
+  { label: "Features", href: "/features" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "About", href: "/about" },
+  { label: "Blog", href: "/blog" },
+];
+
+export const HERO = {
+  eyebrow: "WhatsApp + Instagram, on autopilot",
+  title: "Enhance your customer conversations with Alabs Connect",
+  subtitle:
+    "The all-in-one platform to automate WhatsApp & Instagram — AI replies in your own voice, broadcasts, chatbot flows, drip sequences, catalog checkout and growth tools. One inbox, every conversation.",
+  primary: { label: "Start free 14-day trial", href: "/signup" },
+  secondary: { label: "See pricing", href: "/pricing" },
+  note: "No credit card required · Bring your own AI key · Cancel anytime",
+};
+
+export const LOGOS = ["D2C brands", "EdTech", "Real estate", "Healthcare", "Travel", "Agencies"];
+
+export const STATS: { value: string; label: string }[] = [
+  { value: "98%", label: "message open rate on WhatsApp" },
+  { value: "3×", label: "faster first response with AI" },
+  { value: "24/7", label: "always-on automated replies" },
+  { value: "60s", label: "to connect a number & go live" },
+];
+
+export type Feature = { title: string; body: string; icon: string };
+export const FEATURES: Feature[] = [
+  { icon: "bot", title: "AI replies in your voice", body: "Grounded auto-replies from your own knowledge base. Bring your own Gemini, OpenAI or Anthropic key — usage stays on your account." },
+  { icon: "megaphone", title: "Broadcasts that land", body: "Send template campaigns to thousands, schedule sends, and track delivery, reads and clicks — without tripping spam limits." },
+  { icon: "workflow", title: "No-code chatbot flows", body: "Drag-and-build conversation flows that qualify leads, book appointments and answer FAQs around the clock." },
+  { icon: "repeat", title: "Drip sequences", body: "Automated follow-ups triggered by keywords, opt-ins, tags, abandoned carts or ad referrals — set once, runs forever." },
+  { icon: "shopping", title: "Catalog & checkout", body: "Show products, build carts and recover abandoned ones, all inside the chat your customer already uses." },
+  { icon: "instagram", title: "Instagram, done right", body: "Auto-reply to DMs and turn post comments into DMs — fully inside Meta's rules (24-hour window, no cold DMs)." },
+  { icon: "inbox", title: "One unified inbox", body: "Every WhatsApp and Instagram conversation in a single live inbox, with team assignment, labels and quick replies." },
+  { icon: "shield", title: "Multi-tenant & secure", body: "Per-business isolation, encrypted token vault, RLS-backed data separation and full audit trails by design." },
+];
+
+export type Step = { n: string; title: string; body: string };
+export const STEPS: Step[] = [
+  { n: "01", title: "Connect your channels", body: "Link a WhatsApp number and an Instagram account in a couple of clicks. Each gets its own AI persona and flows." },
+  { n: "02", title: "Teach your AI", body: "Upload docs, FAQs and product info. Add your own AI key and Alabs Connect grounds every reply on your business." },
+  { n: "03", title: "Automate & broadcast", body: "Turn on auto-replies, launch broadcasts, build flows and sequences — then watch conversations convert." },
+];
+
+export type Tier = {
+  name: string; priceMonthly: number | null; customLabel?: string; tagline: string;
+  features: string[]; cta: string; href: string; highlighted?: boolean;
+};
+export const TIERS: Tier[] = [
+  {
+    name: "Starter", priceMonthly: 1999, tagline: "For solo founders getting started",
+    features: ["1 WhatsApp number", "1,000 conversations / mo", "AI auto-replies (your key)", "Broadcasts & templates", "Unified inbox", "2 team seats"],
+    cta: "Start free trial", href: "/signup",
+  },
+  {
+    name: "Growth", priceMonthly: 4999, tagline: "For growing teams that automate", highlighted: true,
+    features: ["3 channels (WhatsApp + Instagram)", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
+    cta: "Start free trial", href: "/signup",
+  },
+  {
+    name: "Scale", priceMonthly: null, customLabel: "Custom", tagline: "For high-volume & multi-brand",
+    features: ["Unlimited channels", "Custom message volume", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
+    cta: "Talk to sales", href: "/signup",
+  },
+];
+
+// ── "How your chatbot flow works" — node graph ───────────────────────────────
+export type FlowBranch = { title: string; body: string; tone: "sky" | "lavender" | "peach"; icon: string };
+export const CHAT_FLOW = {
+  trigger: { title: "Customer message", body: "Arrives on WhatsApp or Instagram", icon: "message" },
+  brain: { title: "AI Assistant", body: "Understands intent & routes instantly", icon: "bot" },
+  branches: [
+    { tone: "sky", icon: "book", title: "Answer from knowledge base", body: "Grounded, on-brand reply in seconds — no human needed." },
+    { tone: "lavender", icon: "user", title: "Capture the lead", body: "Collects name, email and intent, saved to the contact." },
+    { tone: "peach", icon: "handoff", title: "Hand off to a human", body: "Escalates cleanly to your team when it matters." },
+  ] as FlowBranch[],
+};
+
+// ── "How drip sequences work" — process timeline ─────────────────────────────
+export type SeqStep = { n: string; title: string; body: string; meta: string; icon: string };
+export const SEQUENCE_FLOW: SeqStep[] = [
+  { n: "1", icon: "zap", title: "Trigger fires", body: "A new lead, keyword, opt-in or abandoned cart kicks off the sequence.", meta: "Instant" },
+  { n: "2", icon: "send", title: "Welcome message", body: "An instant intro goes out in your brand voice to open the conversation.", meta: "0 min" },
+  { n: "3", icon: "clock", title: "Smart follow-up", body: "If there's no reply, a nudge lands later — automatically, never pushy.", meta: "+1 day" },
+  { n: "4", icon: "cart", title: "Convert", body: "Send the offer and a checkout link, then hand hot leads to your team.", meta: "+3 days" },
+];
+
+export type Testimonial = { quote: string; name: string; role: string };
+export const TESTIMONIALS: Testimonial[] = [
+  { quote: "We replaced three tools with Alabs Connect. AI replies handle 70% of our DMs and our team finally has one inbox.", name: "Aisha Khan", role: "Founder, Bloom D2C" },
+  { quote: "Broadcasts with 95%+ open rates and flows that book demos overnight. Our cost per lead dropped by half.", name: "Rohit Verma", role: "Growth Lead, EduPrime" },
+  { quote: "Setup took an afternoon. Bringing our own AI key meant predictable costs and full control over the model.", name: "Sara Mathew", role: "Ops Head, Nest Realty" },
+];
+
+export type Faq = { q: string; a: string };
+export const FAQS: Faq[] = [
+  { q: "Do I need my own WhatsApp Business account?", a: "Yes — Alabs Connect connects your own WhatsApp number and Instagram account through Meta's official APIs, so your brand and number stay yours. We guide you through connecting in minutes." },
+  { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
+  { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
+  { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
+  { q: "Can I use it for both WhatsApp and Instagram?", a: "Yes. Both run through the same unified inbox, AI engine, flows and sequences — Instagram is a channel, not a separate product." },
+  { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
+];
+
+export type Post = {
+  slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
+  body: string[];
+};
+export const POSTS: Post[] = [
+  {
+    slug: "whatsapp-automation-guide",
+    title: "How automation is transforming customer messaging",
+    excerpt: "WhatsApp and Instagram are now the front door to your business. Here's how automation turns them into your best sales channel.",
+    date: "June 12, 2026", category: "Playbook", readTime: "6 min read",
+    body: [
+      "Messaging has quietly become the primary way customers reach brands. The average person opens a WhatsApp message within minutes — a response rate email and ads can only dream of. Yet most businesses still treat chat as an afterthought, answering manually, slowly, and only during office hours.",
+      "Automation changes the economics. With grounded AI replies, the moment a customer asks a question — about pricing, availability, or your return policy — they get an accurate answer instantly, in your brand's voice, at any hour. The conversations that genuinely need a human are escalated cleanly, so your team spends time where it matters.",
+      "The compounding wins come from the layers on top: broadcasts that re-engage past customers, drip sequences that nurture leads, and flows that qualify and book without a single human touch. Done well, a single conversation becomes a repeatable, measurable funnel.",
+      "The key is doing it within the rules. Official APIs, opt-in respected, no cold outreach, and a clear escalation path. That's the difference between a channel that scales and one that gets your number blocked.",
+    ],
+  },
+  {
+    slug: "bring-your-own-ai-key",
+    title: "Why we let you bring your own AI key",
+    excerpt: "Predictable costs, full model control, and no lock-in. Here's the thinking behind per-account AI keys.",
+    date: "June 5, 2026", category: "Product", readTime: "4 min read",
+    body: [
+      "Most platforms bundle AI into an opaque per-message fee. It feels simple until volume grows and the bill becomes impossible to predict — or you're stuck on a model you didn't choose.",
+      "We took the opposite approach. You add your own Gemini, OpenAI or Anthropic key, and Alabs Connect uses it for your replies. Usage is billed directly to your provider account, so you see exactly what you spend and can pick the model that fits your budget and quality bar.",
+      "It also means no lock-in. Switch models or providers whenever you like — your flows, knowledge base and inbox stay exactly the same. Your key is encrypted at rest and never leaves our vault.",
+    ],
+  },
+  {
+    slug: "instagram-dm-best-practices",
+    title: "Instagram DMs: what's allowed, and what gets you blocked",
+    excerpt: "A practical guide to automating Instagram messaging without breaking Meta's rules.",
+    date: "May 28, 2026", category: "Compliance", readTime: "5 min read",
+    body: [
+      "Instagram is a goldmine for conversational commerce — but Meta's rules are strict, and ignoring them is the fastest way to lose access. The good news: the rules are sensible, and you can automate aggressively while staying fully compliant.",
+      "The core constraints are simple. You can reply to anyone who messaged you within a 24-hour window. You can turn a comment into a single private reply when someone comments on your post. What you cannot do is send cold DMs to people who never interacted with you.",
+      "Alabs Connect enforces these guardrails in code — the 24-hour window, comment-to-DM as a single message, per-account pacing, and opt-out handling are all built in. You get the automation upside without the risk of a ban.",
+    ],
+  },
+];
+
+export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
+
+// "Works with your favorite tools" strip.
+export const INTEGRATIONS = ["WhatsApp", "Instagram", "Messenger", "Stripe", "Gemini", "OpenAI", "Anthropic", "LeadSquared"];
+
+// "Why teams choose Alabs Connect" — pastel benefit cards.
+export type Benefit = { title: string; body: string; tone: "mint" | "sky" | "peach" };
+export const WHY: Benefit[] = [
+  { tone: "mint", title: "Replies in your brand voice", body: "Grounded AI answers from your own knowledge base — accurate, on-brand, and instant, not generic canned text." },
+  { tone: "sky", title: "Compliant, data-driven automation", body: "Official Meta APIs, opt-in respected, guardrails in code. Scale conversations without risking your number." },
+  { tone: "peach", title: "Save time and money", body: "Bring your own AI key for predictable costs, replace a stack of tools, and let automation handle the busywork." },
+];
+
+export const CTA_BULLETS = [
+  "Connect a number and go live in under an hour",
+  "Bring your own AI key — predictable, transparent costs",
+];
+
+export const ABOUT = {
+  eyebrow: "About us",
+  title: "We help businesses turn conversations into growth",
+  intro:
+    "Alabs Connect was built on a simple belief: the messaging apps your customers already love should be your most powerful sales and support channel — not your most manual one.",
+  values: [
+    { title: "Customer-obsessed", body: "Every feature starts with a real conversation a business is struggling to handle at scale." },
+    { title: "Compliant by design", body: "Official APIs, opt-in respected, guardrails in code. We grow channels, we don't get them blocked." },
+    { title: "Transparent & open", body: "Bring your own AI key, own your data, no lock-in. Your business runs on your terms." },
+    { title: "Built to scale", body: "Multi-tenant isolation, encrypted vaults and infrastructure that grows from one number to thousands." },
+  ],
+};

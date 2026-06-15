@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
+import { launchWhatsAppSignup, launchInstagramSignup, whatsappSignupReady, instagramSignupReady } from "@/lib/embedded-signup-client";
 import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp } from "lucide-react";
 
 type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings";
@@ -3078,7 +3079,7 @@ function Donut({ pct, label }: { pct: number; label: string }) {
     <div className="relative w-32 h-32">
       <svg viewBox="0 0 110 110" className="w-32 h-32 -rotate-90">
         <circle cx="55" cy="55" r={r} fill="none" stroke="#e2e8f0" strokeWidth="14" />
-        <circle cx="55" cy="55" r={r} fill="none" stroke="#2540A8" strokeWidth="14" strokeLinecap="round"
+        <circle cx="55" cy="55" r={r} fill="none" stroke="#0C63D4" strokeWidth="14" strokeLinecap="round"
           strokeDasharray={`${(Math.min(100, Math.max(0, pct)) / 100) * c} ${c}`} />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -3109,9 +3110,9 @@ function PerDayChart({ days }: { days: DayPoint[] }) {
             <text x={PX - 5} y={y(maxY * g) + 3} textAnchor="end" fontSize="9" fill="#94a3b8">{Math.round(maxY * g)}</text>
           </g>
         ))}
-        <path d={area} fill="#2540A8" opacity="0.25" />
-        <path d={path("clicked")} fill="none" stroke="#2540A8" strokeWidth="2" />
-        <path d={path("read")} fill="none" stroke="#4169E1" strokeWidth="1.5" strokeDasharray="4 3" />
+        <path d={area} fill="#0C63D4" opacity="0.25" />
+        <path d={path("clicked")} fill="none" stroke="#0C63D4" strokeWidth="2" />
+        <path d={path("read")} fill="none" stroke="#1877F2" strokeWidth="1.5" strokeDasharray="4 3" />
         {days.map((d, i) => i % labelEvery === 0 ? (
           <text key={d.date} x={x(i)} y={H - 8} textAnchor="middle" fontSize="9" fill="#94a3b8">
             {new Date(d.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
@@ -5730,14 +5731,36 @@ function ChannelsManager() {
     load();
   }
 
+  async function connectWithMeta() {
+    setBusy(true); setMsg(null);
+    try {
+      const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup();
+      const res = await fetch("/api/admin/onboarding/whatsapp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, wabaId, phoneNumberId }),
+      });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Connection failed");
+      else { setForm(null); load(); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
+    finally { setBusy(false); }
+  }
+
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect multiple numbers/WABAs — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add number</button>
+        <div className="flex items-center gap-2 shrink-0">
+          {whatsappSignupReady() && (
+            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#1877F2] hover:bg-[#166fe0] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
+            </button>
+          )}
+          <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+        </div>
       </div>
 
       {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
@@ -6161,6 +6184,21 @@ function InstagramManager() {
     load();
   }
 
+  async function connectWithMeta() {
+    setBusy(true); setMsg(null);
+    try {
+      const { code } = await launchInstagramSignup();
+      const res = await fetch("/api/admin/onboarding/instagram", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Connection failed");
+      else { setForm(null); load(); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
+    finally { setBusy(false); }
+  }
+
   async function saveRule() {
     if (!ruleForm) return;
     if (!ruleForm.dmMessage.trim()) { setMsg("DM message is required"); return; }
@@ -6189,7 +6227,14 @@ function InstagramManager() {
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Connect account</button>
+        <div className="flex items-center gap-2 shrink-0">
+          {instagramSignupReady() && (
+            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#1877F2] hover:bg-[#166fe0] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect with Facebook
+            </button>
+          )}
+          <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+        </div>
       </div>
 
       {channels.map(c => (
@@ -6659,6 +6704,77 @@ type AiPromptT = { id: string; name: string; prompt: string; active: boolean; so
 const EMPTY_AGENT: AiAgentT = { name: "", description: "", persona: "", constraintsText: "", productInfo: "", model: null, active: false, routingKeywords: "" };
 const EMPTY_FN: AiFunctionT = { name: "", description: "", parameters: [{ name: "", description: "", required: true, saveToAttribute: "" }], webhookUrl: null, escalate: false, active: true };
 
+// Per-tenant AI provider + key. The key is validated with a live test call,
+// then stored encrypted server-side. No key = auto-replies are off for this
+// workspace. Embeddings always use the platform's shared Gemini key.
+type AiKeyStatusT = { configured: boolean; provider: string; model: string; keyHint: string | null };
+const AI_MODEL_HINT: Record<string, string> = { gemini: "gemini-2.5-flash", openai: "gpt-4o-mini", anthropic: "claude-opus-4-8" };
+const AI_KEY_HELP: Record<string, string> = {
+  gemini: "Google AI Studio key — aistudio.google.com/apikey",
+  openai: "OpenAI key — platform.openai.com/api-keys",
+  anthropic: "Anthropic key — console.anthropic.com",
+};
+function AiKeyCard() {
+  const [status, setStatus] = useState<AiKeyStatusT | null>(null);
+  const [provider, setProvider] = useState("gemini");
+  const [apiKey, setApiKey] = useState("");
+  const [model, setModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/ai/key").then(r => r.json()).then((d: AiKeyStatusT) => { setStatus(d); if (d.provider) setProvider(d.provider); }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!apiKey.trim()) return;
+    setBusy(true); setMsg(null);
+    try {
+      const r = await fetch("/api/admin/ai/key", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ provider, apiKey: apiKey.trim(), model: model.trim() || undefined }) });
+      const d = await r.json();
+      if (!r.ok) setMsg({ ok: false, text: d.error ?? "Failed to save key" });
+      else { setStatus(d); setApiKey(""); setMsg({ ok: true, text: "Key validated and saved." }); }
+    } catch { setMsg({ ok: false, text: "Network error" }); }
+    finally { setBusy(false); }
+  }
+  async function remove() {
+    if (!confirm("Remove this AI key? AI auto-replies will stop for this workspace until you add one.")) return;
+    setBusy(true); setMsg(null);
+    try { const d = await fetch("/api/admin/ai/key", { method: "DELETE" }).then(r => r.json()); setStatus(d); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-extrabold text-brand-dark flex items-center gap-2"><ShieldCheck className="w-4 h-4" /> AI provider & key</h3>
+        {status && (status.configured
+          ? <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">Connected · {status.provider} · {status.keyHint}</span>
+          : <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Not configured — AI replies off</span>)}
+      </div>
+      <p className="text-[12px] text-slate-500">Bring your own AI key — usage is billed to your provider account. Used for chat replies only; document search (embeddings) runs on the platform.</p>
+      <div className="grid sm:grid-cols-3 gap-2">
+        <select value={provider} onChange={e => setProvider(e.target.value)} className="rounded-control border border-line px-3 py-2 text-sm">
+          <option value="gemini">Google Gemini</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic (Claude)</option>
+        </select>
+        <input value={model} onChange={e => setModel(e.target.value)} placeholder={`Model (default ${AI_MODEL_HINT[provider]})`} className="rounded-control border border-line px-3 py-2 text-sm sm:col-span-2" />
+      </div>
+      <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={status?.configured ? "Enter a new key to replace the saved one" : "Paste your API key"} className="w-full rounded-control border border-line px-3 py-2 text-sm font-mono" />
+      <p className="text-[11px] text-slate-400">{AI_KEY_HELP[provider]}</p>
+      {msg && <p className={`text-[12px] font-semibold ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.text}</p>}
+      <div className="flex gap-2">
+        <button onClick={save} disabled={busy || !apiKey.trim()} className="bg-brand-700 text-white rounded-control px-4 py-2 text-sm font-bold disabled:opacity-50 inline-flex items-center gap-2">
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Validate & save
+        </button>
+        {status?.configured && <button onClick={remove} disabled={busy} className="text-red-600 border border-red-200 rounded-control px-4 py-2 text-sm font-bold disabled:opacity-50">Remove</button>}
+      </div>
+    </section>
+  );
+}
+
 function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [sub, setSub] = useState<"agents" | "functions" | "prompts">("agents");
   const [agentFormOpen, setAgentFormOpen] = useState(false);
@@ -6714,6 +6830,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
         <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI Hub</h2>
         <p className="text-sm text-slate-500">Three simple things live here: <b>AI agents</b> — who the AI is when it replies, <b>Lead capture</b> — the details it saves mid-chat, and <b>Writing tools</b> — one-tap rewrites for your team in Live Chat.</p>
       </div>
+
+      <AiKeyCard />
 
       <div className="flex gap-2">
         {([["agents", "AI agents"], ["functions", "Lead capture"], ["prompts", "Writing tools"]] as ["agents" | "functions" | "prompts", string][]).map(([k, label]) => (
