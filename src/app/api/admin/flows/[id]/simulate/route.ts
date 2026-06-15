@@ -39,18 +39,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Flow didn't consume it — answer like production would.
     try {
+      const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
       if (routerEnabled()) {
         const faqHit = matchFaq(message);
         if (faqHit) {
-          return NextResponse.json({ outputs: [{ kind: "ai", body: await applyPersonaTone(faqHit.faq.detailedAnswer, message) }], handled: false, note: "Answered by the FAQ router (persona-toned)" });
+          return NextResponse.json({ outputs: [{ kind: "ai", body: await applyPersonaTone(faqHit.faq.detailedAnswer, message, null, tid) }], handled: false, note: "Answered by the FAQ router (persona-toned)" });
         }
-        const { hit } = await cacheLookup(message).catch(() => ({ hit: null }));
+        const { hit } = await cacheLookup(message, null, tid).catch(() => ({ hit: null }));
         if (hit) {
-          return NextResponse.json({ outputs: [{ kind: "ai", body: await applyPersonaTone(hit.answer, message) }], handled: false, note: "Answered from the semantic cache (persona-toned)" });
+          return NextResponse.json({ outputs: [{ kind: "ai", body: await applyPersonaTone(hit.answer, message, null, tid) }], handled: false, note: "Answered from the semantic cache (persona-toned)" });
         }
       }
-      const agent = await resolveAgent(null).catch(() => null);
-      const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+      const agent = await resolveAgent(null, tid).catch(() => null);
       const result = await generateReply([{ role: "user", body: message }], undefined, null, tid);
       if (result.reply) {
         return NextResponse.json({ outputs: [{ kind: "ai", body: result.reply }], handled: false, note: `Answered by the AI assistant${agent ? ` (${agent.name})` : ""}` });

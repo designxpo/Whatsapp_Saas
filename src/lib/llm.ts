@@ -71,8 +71,8 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
   // Agent persona + function tools (both optional — defaults preserve old behavior).
   const [agent, functions] = await Promise.all([
-    resolveAgent(agentId).catch(() => null),
-    listFunctions(true).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
+    resolveAgent(agentId, tenantId).catch(() => null),
+    listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
   const tools = toGeminiTools(functions);
 
@@ -121,7 +121,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         for (const c of calls) {
           const fn = functions.find(f => f.name === c.name);
           const result = fn
-            ? await executeAiFunction(fn, (c.args ?? {}) as Record<string, unknown>, phone)
+            ? await executeAiFunction(fn, (c.args ?? {}) as Record<string, unknown>, phone, tenantId)
             : { status: "unknown function", escalate: false };
           if (result.escalate) escalateViaFn = true;
           if (fn) executed.push(fn.name);
@@ -148,10 +148,10 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 // Rewrites a factual FAQ/cache answer in the agent's persona voice, matching
 // the customer's language and the agent's style rules. Facts are preserved;
 // any failure (rate limit, etc.) falls back to the raw answer — never blocks.
-export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null): Promise<string> {
+export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
   try {
-    if (!(await isToneEnabled())) return answer;
-    const agent = await resolveAgent(agentId ?? null);
+    if (!(await isToneEnabled(tenantId))) return answer;
+    const agent = await resolveAgent(agentId ?? null, tenantId);
     if (!agent?.persona?.trim()) return answer;
 
     const res = await genai().models.generateContent({

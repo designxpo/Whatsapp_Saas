@@ -13,6 +13,8 @@ import { cacheLookup, cacheStore } from "./cache";
 import { loadMemory, saveMemory, resolveFollowUp, type ConvMemory } from "./memory";
 import { logRouterEvent } from "./metrics";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface RouteResult {
   answer: string | null;
   source: "memory" | "faq" | "cache" | null;   // null → fall back to RAG
@@ -25,14 +27,15 @@ export function routerEnabled(): boolean {
   return process.env.KNOWLEDGE_ROUTER_ENABLED !== "false";
 }
 
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null }): Promise<RouteResult> {
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string }): Promise<RouteResult> {
   const t0 = Date.now();
+  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
   if (!routerEnabled()) return miss;
 
   // FAQ/cache answers are rewritten in the agent's persona voice before sending
   // (cheap one-shot call, falls back to the raw answer on any failure).
-  const toned = (answer: string) => applyPersonaTone(answer, p.message, p.agentId ?? null);
+  const toned = (answer: string) => applyPersonaTone(answer, p.message, p.agentId ?? null, tid);
 
   let mem: ConvMemory = {};
   try { mem = await loadMemory(p.conversationId); } catch { /* memory is best-effort */ }
@@ -56,7 +59,7 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 
   // Layer 3 — global semantic cache (one embedding call, no generation)
   try {
-    const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding);
+    const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid);
     if (hit) {
       logRouterEvent({ event: "CACHE_HIT", phone: p.phone, question: p.message, ref: `cache:${hit.id}${hit.exact ? ":exact" : ""}`, score: hit.similarity, latencyMs: Date.now() - t0 });
       return { answer: await toned(hit.answer), source: "cache", confidence: hit.similarity, queryEmbedding: embedding };
@@ -73,8 +76,8 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 // Call after the RAG fallback produced a real (non-escalation) answer.
 // The generic FALLBACK_REPLY (returned on LLM API errors) must never be cached —
 // it would permanently shadow the real answer for that question.
-export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null }): void {
+export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string }): void {
   logRouterEvent({ event: "RAG_USED", phone: p.phone, question: p.question });
   if (p.answer.trim() === FALLBACK_REPLY) return;
-  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag");
+  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID);
 }

@@ -5,8 +5,10 @@
 // optionally POST it to a webhook, and optionally escalate to a human.
 
 import { db } from "./supabase";
-import { setContactAttributes, getSetting, setSetting } from "./store";
+import { setContactAttributes, getTenantSetting, setTenantSetting } from "./store";
 import { embedTexts } from "./kb";
+
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface AiAgent {
@@ -38,31 +40,35 @@ const mapFn = (r: Record<string, unknown>): AiFunction => ({
 });
 
 // ── Agents ────────────────────────────────────────────────────────────────────
-export async function listAgents(): Promise<AiAgent[]> {
-  const { data } = await db().from("wa_ai_agents").select("*").order("created_at");
+export async function listAgents(tenantId = DEFAULT_TENANT_ID): Promise<AiAgent[]> {
+  const { data } = await db().from("wa_ai_agents").select("*").eq("tenant_id", tenantId).order("created_at");
   return (data ?? []).map(r => mapAgent(r as Record<string, unknown>));
 }
 
-export async function getActiveAgent(): Promise<AiAgent | null> {
-  const { data } = await db().from("wa_ai_agents").select("*").eq("active", true).limit(1).maybeSingle();
+export async function getActiveAgent(tenantId = DEFAULT_TENANT_ID): Promise<AiAgent | null> {
+  const { data } = await db().from("wa_ai_agents").select("*").eq("tenant_id", tenantId).eq("active", true).limit(1).maybeSingle();
   return data ? mapAgent(data as Record<string, unknown>) : null;
 }
 
-export async function getAgentById(id: string): Promise<AiAgent | null> {
-  const { data } = await db().from("wa_ai_agents").select("*").eq("id", id).maybeSingle();
+// tenantId optional: bot path resolves a pinned agent by id (tenant-unique);
+// admin scopes. getActiveAgent always scopes to the tenant.
+export async function getAgentById(id: string, tenantId?: string): Promise<AiAgent | null> {
+  let q = db().from("wa_ai_agents").select("*").eq("id", id);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.maybeSingle();
   return data ? mapAgent(data as Record<string, unknown>) : null;
 }
 
-// Routing: the conversation's pinned agent wins; otherwise the active agent.
-export async function resolveAgent(agentId?: string | null): Promise<AiAgent | null> {
+// Routing: the conversation's pinned agent wins; otherwise the tenant's active agent.
+export async function resolveAgent(agentId?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<AiAgent | null> {
   if (agentId) {
-    const pinned = await getAgentById(agentId).catch(() => null);
+    const pinned = await getAgentById(agentId, tenantId).catch(() => null);
     if (pinned) return pinned;
   }
-  return getActiveAgent();
+  return getActiveAgent(tenantId);
 }
 
-export async function saveAgent(p: Partial<AiAgent> & { name: string }): Promise<AiAgent> {
+export async function saveAgent(p: Partial<AiAgent> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<AiAgent> {
   // Routing embedding from what the agent handles. Best-effort: a failed embed
   // (rate limit) saves the agent anyway; it just won't auto-route until re-saved.
   let embedding: number[] | null = null;
@@ -72,6 +78,7 @@ export async function saveAgent(p: Partial<AiAgent> & { name: string }): Promise
     catch (e) { console.error("[aihub] agent embed failed:", e); }
   }
   const row = {
+    tenant_id: tenantId,
     name: p.name, description: p.description ?? "", persona: p.persona ?? "",
     constraints_text: p.constraintsText ?? "", product_info: p.productInfo ?? "",
     model: p.model || null, active: p.active ?? false,
@@ -79,9 +86,10 @@ export async function saveAgent(p: Partial<AiAgent> & { name: string }): Promise
     ...(embedding ? { embedding } : {}),
     updated_at: new Date().toISOString(),
   };
-  if (p.active) await db().from("wa_ai_agents").update({ active: false }).neq("id", p.id ?? "00000000-0000-0000-0000-000000000000");
+  // Only one active agent PER TENANT — never deactivate other tenants' agents.
+  if (p.active) await db().from("wa_ai_agents").update({ active: false }).eq("tenant_id", tenantId).neq("id", p.id ?? "00000000-0000-0000-0000-000000000000");
   const q = p.id
-    ? db().from("wa_ai_agents").update(row).eq("id", p.id).select().single()
+    ? db().from("wa_ai_agents").update(row).eq("tenant_id", tenantId).eq("id", p.id).select().single()
     : db().from("wa_ai_agents").insert(row).select().single();
   const { data, error } = await q;
   if (error) throw error;
@@ -92,19 +100,19 @@ export async function saveAgent(p: Partial<AiAgent> & { name: string }): Promise
 const ROUTE_MIN_SIMILARITY = 0.35;   // below this nothing matches well — keep current
 const ROUTE_SWITCH_MARGIN = 0.04;    // hysteresis: switch only on a clearly better fit
 
-export async function isAutoRouteEnabled(): Promise<boolean> {
-  return (await getSetting<{ auto?: boolean }>("agent_routing", {})).auto === true;
+export async function isAutoRouteEnabled(tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  return (await getTenantSetting<{ auto?: boolean }>(tenantId, "agent_routing", {})).auto === true;
 }
-export async function setAutoRoute(auto: boolean): Promise<void> {
-  await setSetting("agent_routing", { auto });
+export async function setAutoRoute(auto: boolean, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "agent_routing", { auto });
 }
 
 // Persona tone for FAQ/cache answers — ON by default (raw FAQ text reads robotic).
-export async function isToneEnabled(): Promise<boolean> {
-  return (await getSetting<{ enabled?: boolean }>("faq_tone", {})).enabled !== false;
+export async function isToneEnabled(tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  return (await getTenantSetting<{ enabled?: boolean }>(tenantId, "faq_tone", {})).enabled !== false;
 }
-export async function setToneEnabled(enabled: boolean): Promise<void> {
-  await setSetting("faq_tone", { enabled });
+export async function setToneEnabled(enabled: boolean, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "faq_tone", { enabled });
 }
 
 function cosine(a: number[], b: number[]): number {
@@ -116,8 +124,8 @@ function cosine(a: number[], b: number[]): number {
 // Returns the agent the conversation should use for this query, or null to
 // keep the current behavior. Sticky: switching needs a clear margin over the
 // conversation's current agent so chat doesn't ping-pong between personas.
-export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null): Promise<{ agentId: string; name: string; score: number } | null> {
-  const { data } = await db().from("wa_ai_agents").select("id, name, embedding").not("embedding", "is", null);
+export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null, tenantId = DEFAULT_TENANT_ID): Promise<{ agentId: string; name: string; score: number } | null> {
+  const { data } = await db().from("wa_ai_agents").select("id, name, embedding").eq("tenant_id", tenantId).not("embedding", "is", null);
   const scored = (data ?? [])
     .map(r => ({ agentId: r.id as string, name: r.name as string, score: cosine(queryEmbedding, r.embedding as number[]) }))
     .sort((a, b) => b.score - a.score);
@@ -132,22 +140,23 @@ export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId
   return best;
 }
 
-export async function deleteAgent(id: string): Promise<void> {
-  const { error } = await db().from("wa_ai_agents").delete().eq("id", id);
+export async function deleteAgent(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_ai_agents").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
 
 // ── Functions ─────────────────────────────────────────────────────────────────
-export async function listFunctions(activeOnly = false): Promise<AiFunction[]> {
-  let q = db().from("wa_ai_functions").select("*").order("created_at");
+export async function listFunctions(activeOnly = false, tenantId = DEFAULT_TENANT_ID): Promise<AiFunction[]> {
+  let q = db().from("wa_ai_functions").select("*").eq("tenant_id", tenantId).order("created_at");
   if (activeOnly) q = q.eq("active", true);
   const { data } = await q;
   return (data ?? []).map(r => mapFn(r as Record<string, unknown>));
 }
 
-export async function saveFunction(p: Partial<AiFunction> & { name: string }): Promise<void> {
+export async function saveFunction(p: Partial<AiFunction> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const name = p.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 50);
   const row = {
+    tenant_id: tenantId,
     name, description: p.description ?? "",
     parameters: (p.parameters ?? []).filter(x => x.name?.trim()).map(x => ({
       name: x.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_"),
@@ -157,14 +166,14 @@ export async function saveFunction(p: Partial<AiFunction> & { name: string }): P
     webhook_url: p.webhookUrl?.trim() || null, escalate: !!p.escalate, active: p.active ?? true,
   };
   const q = p.id
-    ? db().from("wa_ai_functions").update(row).eq("id", p.id)
+    ? db().from("wa_ai_functions").update(row).eq("tenant_id", tenantId).eq("id", p.id)
     : db().from("wa_ai_functions").insert(row);
   const { error } = await q;
   if (error) throw error;
 }
 
-export async function deleteFunction(id: string): Promise<void> {
-  const { error } = await db().from("wa_ai_functions").delete().eq("id", id);
+export async function deleteFunction(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_ai_functions").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
 
@@ -186,14 +195,14 @@ export function toGeminiTools(fns: AiFunction[]): { functionDeclarations: { name
 
 // Executes one function call from the model: save attributes → webhook → escalate.
 // Never throws — returns a result object the model can read.
-export async function executeAiFunction(fn: AiFunction, args: Record<string, unknown>, phone?: string): Promise<{ status: string; escalate: boolean }> {
+export async function executeAiFunction(fn: AiFunction, args: Record<string, unknown>, phone?: string, tenantId = DEFAULT_TENANT_ID): Promise<{ status: string; escalate: boolean }> {
   const collected: Record<string, string> = {};
   for (const pm of fn.parameters) {
     const v = args[pm.name];
     if (typeof v === "string" && v.trim() && pm.saveToAttribute) collected[pm.saveToAttribute] = v.trim().slice(0, 300);
   }
   if (phone && Object.keys(collected).length > 0) {
-    await setContactAttributes(phone, collected).catch(e => console.error("[aihub] attr save:", e));
+    await setContactAttributes(phone, collected, tenantId).catch(e => console.error("[aihub] attr save:", e));
   }
   if (fn.webhookUrl) {
     try {
@@ -212,8 +221,8 @@ export async function executeAiFunction(fn: AiFunction, args: Record<string, unk
 }
 
 // ── Prompts (agent assist) ────────────────────────────────────────────────────
-export async function listPrompts(activeOnly = false): Promise<AiPrompt[]> {
-  let q = db().from("wa_ai_prompts").select("*").order("sort").order("created_at");
+export async function listPrompts(activeOnly = false, tenantId = DEFAULT_TENANT_ID): Promise<AiPrompt[]> {
+  let q = db().from("wa_ai_prompts").select("*").eq("tenant_id", tenantId).order("sort").order("created_at");
   if (activeOnly) q = q.eq("active", true);
   const { data } = await q;
   return (data ?? []).map(r => ({
@@ -222,14 +231,14 @@ export async function listPrompts(activeOnly = false): Promise<AiPrompt[]> {
   }));
 }
 
-export async function savePrompt(p: Partial<AiPrompt> & { name: string; prompt: string }): Promise<void> {
-  const row = { name: p.name.trim(), prompt: p.prompt.trim(), active: p.active ?? true, sort: p.sort ?? 0 };
-  const q = p.id ? db().from("wa_ai_prompts").update(row).eq("id", p.id) : db().from("wa_ai_prompts").insert(row);
+export async function savePrompt(p: Partial<AiPrompt> & { name: string; prompt: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const row = { tenant_id: tenantId, name: p.name.trim(), prompt: p.prompt.trim(), active: p.active ?? true, sort: p.sort ?? 0 };
+  const q = p.id ? db().from("wa_ai_prompts").update(row).eq("tenant_id", tenantId).eq("id", p.id) : db().from("wa_ai_prompts").insert(row);
   const { error } = await q;
   if (error) throw error;
 }
 
-export async function deletePrompt(id: string): Promise<void> {
-  const { error } = await db().from("wa_ai_prompts").delete().eq("id", id);
+export async function deletePrompt(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_ai_prompts").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }

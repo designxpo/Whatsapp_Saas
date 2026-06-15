@@ -20,33 +20,33 @@ export async function POST(req: Request) {
   if (!question) return NextResponse.json({ error: "question required" }, { status: 400 });
 
   try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     let queryEmbedding: number[] | null = null;
 
     if (routerEnabled() && !body.skipRouter && !body.agentId) {
       const faqHit = matchFaq(question);
       if (faqHit) {
         return NextResponse.json({
-          reply: await applyPersonaTone(faqHit.faq.detailedAnswer, question), escalate: false, reason: null, usedChunks: 0,
+          reply: await applyPersonaTone(faqHit.faq.detailedAnswer, question, null, tid), escalate: false, reason: null, usedChunks: 0,
           routedBy: "faq", faqId: faqHit.faq.id, faqQuestion: faqHit.faq.question,
           confidence: Number(faqHit.confidence.toFixed(3)), tier: faqHit.tier, retrieved: [],
         });
       }
-      const { hit, embedding } = await cacheLookup(question).catch(() => ({ hit: null, embedding: null }));
+      const { hit, embedding } = await cacheLookup(question, null, tid).catch(() => ({ hit: null, embedding: null }));
       queryEmbedding = embedding;
       if (hit) {
         return NextResponse.json({
-          reply: await applyPersonaTone(hit.answer, question), escalate: false, reason: null, usedChunks: 0,
+          reply: await applyPersonaTone(hit.answer, question, null, tid), escalate: false, reason: null, usedChunks: 0,
           routedBy: "cache", confidence: Number(hit.similarity.toFixed(3)), retrieved: [],
         });
       }
     }
 
     // RAG fallback — surface the retrieval picture alongside the answer.
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const chunks = await retrieve(question, 6, tid).catch(() => []);
     const result = await generateReply([{ role: "user", body: question }], undefined, body.agentId ?? null, tid);
     if (!result.escalate && result.reply && result.reply.trim() !== FALLBACK_REPLY) {
-      void cacheStore(question, result.reply, queryEmbedding, "rag");
+      void cacheStore(question, result.reply, queryEmbedding, "rag", tid);
     }
     return NextResponse.json({
       reply: result.reply,

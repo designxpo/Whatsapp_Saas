@@ -109,7 +109,17 @@ but the real tenant must be threaded from the entry point above.
   **access token** (`META_ADS_ACCESS_TOKEN`/system-user token) is still a single
   app-level env — per-tenant ad tokens (each tenant's own Meta auth) is a
   later step; today isolation is by ad-account id + per-tenant data.
-- ✅ **AI Hub (agents / functions / prompts)** — see commit below.
+- ✅ **AI Hub (agents / functions / prompts)** — every read/write tenant-scoped;
+  agent/function/prompt types & resolvers carry the tenant; `resolveAgent`/
+  `getActiveAgent`/`pickAgentForQuery` scope to the tenant so one tenant's bot
+  never speaks in another's persona. **Fixed a real cross-tenant bug:**
+  `saveAgent`'s "one active agent" deactivation was global (`.neq("id", …)`) and
+  would have flipped *every* tenant's active agent off — now scoped to the
+  tenant. Auto-route + FAQ-tone toggles are per-tenant settings. `executeAiFunction`
+  stamps captured attributes with the tenant. Threaded through `llm.ts`
+  (generateReply/applyPersonaTone), the knowledge router (`routeMessage`/
+  `recordRagAnswer` now take a tenant → tenant-scoped semantic cache + persona),
+  assistant auto-route (`conv.tenantId`), and all `/api/admin/ai/*` routes.
 
 ## Apply before going live
 Run migrations **0026_kb_tenant_match.sql** and **0027_tenancy_commerce_growth.sql**

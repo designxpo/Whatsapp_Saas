@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { listAgents, saveAgent, deleteAgent } from "@/lib/aihub";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  try { return NextResponse.json({ agents: await listAgents() }); }
+  try { const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID; return NextResponse.json({ agents: await listAgents(tid) }); }
   catch (err) { return NextResponse.json({ error: errorMessage(err) }, { status: 500 }); }
 }
 
@@ -16,7 +17,8 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
   try {
-    const agent = await saveAgent({ ...body, name: body.name.trim() });
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const agent = await saveAgent({ ...body, name: body.name.trim() }, tid);
     return NextResponse.json({ agent });
   } catch (err) { return NextResponse.json({ error: errorMessage(err) }, { status: 500 }); }
 }
@@ -25,6 +27,6 @@ export async function DELETE(req: Request) {
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  try { await deleteAgent(body.id); return NextResponse.json({ success: true }); }
+  try { const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID; await deleteAgent(body.id, tid); return NextResponse.json({ success: true }); }
   catch (err) { return NextResponse.json({ error: errorMessage(err) }, { status: 500 }); }
 }

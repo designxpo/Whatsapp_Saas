@@ -83,10 +83,10 @@ export async function respondToConversation(conversationId: string): Promise<{ o
     let agentId = conv.agentId ?? channel?.agentId ?? null;
     let queryEmbedding: number[] | null = null;
     try {
-      if (lastUserMsg && await isAutoRouteEnabled()) {
+      if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
         queryEmbedding = await embedQuery(lastUserMsg).catch(() => null);
         if (queryEmbedding) {
-          const pick = await pickAgentForQuery(queryEmbedding, agentId);
+          const pick = await pickAgentForQuery(queryEmbedding, agentId, conv.tenantId);
           if (pick && pick.agentId !== agentId) {
             await setConversationAgent(conversationId, pick.agentId);
             agentId = pick.agentId;
@@ -98,7 +98,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
     if (lastUserMsg) {
-      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding });
+      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
         const sent = await sendSmart(conv.phone, routed.answer, channel);
@@ -133,7 +133,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
     await touchOutbound(conversationId, result.reply);
     void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot" });
     // Warm the semantic cache so the next similar question skips RAG.
-    if (lastUserMsg) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding });
+    if (lastUserMsg) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId });
     return { outcome: "sent" };
   } catch (err) {
     await reflagReply(conversationId);

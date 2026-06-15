@@ -2,6 +2,7 @@ export const maxDuration = 30;
 import { NextResponse } from "next/server";
 import { transformText } from "@/lib/llm";
 import { listPrompts } from "@/lib/aihub";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,8 @@ export async function POST(req: Request) {
   const text = body.text?.trim();
   if (!body.promptId || !text) return NextResponse.json({ error: "promptId and text required" }, { status: 400 });
   try {
-    const prompt = (await listPrompts(true)).find(p => p.id === body.promptId);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const prompt = (await listPrompts(true, tid)).find(p => p.id === body.promptId);
     if (!prompt) return NextResponse.json({ error: "Prompt not found" }, { status: 404 });
     const result = await transformText(prompt.prompt, text);
     return NextResponse.json({ result: result || text });
