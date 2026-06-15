@@ -374,6 +374,92 @@ export async function uploadSampleMedia(file: { bytes: ArrayBuffer; mime: string
   }
 }
 
+// ── Business profile (the connected number's own public profile) ──────────────
+// Unlike end-user profile photos (which Meta doesn't expose), the BUSINESS's own
+// profile on the connected number is editable via the Cloud API.
+export interface BusinessProfile {
+  about?: string;
+  address?: string;
+  description?: string;
+  email?: string;
+  vertical?: string;          // industry, e.g. "PROF_SERVICES"
+  websites?: string[];
+  profilePictureUrl?: string; // read-only (set via setProfilePicture)
+}
+
+const WA_VERTICALS = ["UNDEFINED","OTHER","AUTO","BEAUTY","APPAREL","EDU","ENTERTAIN","EVENT_PLAN","FINANCE","GROCERY","GOVT","HOTEL","HEALTH","NONPROFIT","PROF_SERVICES","RETAIL","TRAVEL","RESTAURANT","NOT_A_BIZ"] as const;
+export const WA_PROFILE_VERTICALS: readonly string[] = WA_VERTICALS;
+
+export async function getBusinessProfile(channel?: ChannelCreds): Promise<{ profile?: BusinessProfile; error?: string }> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
+  try {
+    const fields = "about,address,description,email,profile_picture_url,websites,vertical";
+    const r = await fetch(`${GRAPH}/${phoneId}/whatsapp_business_profile?fields=${fields}`, {
+      headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { error: j?.error?.message || `Fetch failed (HTTP ${r.status})` };
+    const p = (j.data?.[0] ?? {}) as Record<string, unknown>;
+    return { profile: {
+      about: (p.about as string) ?? "",
+      address: (p.address as string) ?? "",
+      description: (p.description as string) ?? "",
+      email: (p.email as string) ?? "",
+      vertical: (p.vertical as string) ?? "",
+      websites: (p.websites as string[]) ?? [],
+      profilePictureUrl: (p.profile_picture_url as string) ?? "",
+    } };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Update the editable text fields. Pass only the fields you want to change.
+export async function updateBusinessProfile(fields: BusinessProfile, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId) return { success: false, error: "WhatsApp credentials not configured" };
+  const body: Record<string, unknown> = { messaging_product: "whatsapp" };
+  if (fields.about !== undefined) body.about = fields.about.slice(0, 139);
+  if (fields.address !== undefined) body.address = fields.address.slice(0, 256);
+  if (fields.description !== undefined) body.description = fields.description.slice(0, 512);
+  if (fields.email !== undefined) body.email = fields.email.slice(0, 128);
+  if (fields.vertical !== undefined && fields.vertical) body.vertical = fields.vertical;
+  if (fields.websites !== undefined) body.websites = fields.websites.filter(w => w.trim()).slice(0, 2);
+  try {
+    const r = await fetch(`${GRAPH}/${phoneId}/whatsapp_business_profile`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.error) return { success: false, error: j?.error?.message || `Update failed (HTTP ${r.status})` };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Set the profile photo: resumable-upload the bytes → handle → set it on the
+// profile. Meta wants a square image (≥192px, ≤640px recommended), JPEG/PNG.
+export async function setProfilePicture(file: { bytes: ArrayBuffer; mime: string }, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
+  const up = await uploadSampleMedia(file, channel);   // returns Meta upload handle
+  if (!up.handle) return { success: false, error: up.error || "Photo upload failed" };
+  const { token, phoneId } = getCreds(channel);
+  try {
+    const r = await fetch(`${GRAPH}/${phoneId}/whatsapp_business_profile`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", profile_picture_handle: up.handle }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.error) return { success: false, error: j?.error?.message || `Set photo failed (HTTP ${r.status})` };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export type TemplateButton =
   | { type: "QUICK_REPLY"; text: string }
   | { type: "URL"; text: string; url: string; example?: string }   // example required when url has a {{1}} suffix

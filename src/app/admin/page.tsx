@@ -5717,6 +5717,7 @@ function ChannelsManager() {
   const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [profileFor, setProfileFor] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
@@ -5789,11 +5790,15 @@ function ChannelsManager() {
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+          <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}
+            className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
+          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
+
+      {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} onClose={() => setProfileFor(null)} />}
 
       {form && (
         <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
@@ -5820,6 +5825,98 @@ function ChannelsManager() {
       )}
       {!channels.length && !form && !envMode && <p className="text-xs text-ink-400">No numbers connected yet.</p>}
     </section>
+  );
+}
+
+// ── WhatsApp business profile editor (the connected number's own profile) ──────
+const WA_VERTICAL_OPTS: { v: string; label: string }[] = [
+  { v: "", label: "Industry: not set" },
+  { v: "PROF_SERVICES", label: "Professional Services" }, { v: "EDU", label: "Education" },
+  { v: "FINANCE", label: "Finance" }, { v: "HEALTH", label: "Health" }, { v: "RETAIL", label: "Retail" },
+  { v: "APPAREL", label: "Apparel" }, { v: "BEAUTY", label: "Beauty" }, { v: "AUTO", label: "Automotive" },
+  { v: "TRAVEL", label: "Travel" }, { v: "HOTEL", label: "Hotel" }, { v: "RESTAURANT", label: "Restaurant" },
+  { v: "GROCERY", label: "Grocery" }, { v: "ENTERTAIN", label: "Entertainment" }, { v: "EVENT_PLAN", label: "Event Planning" },
+  { v: "GOVT", label: "Government" }, { v: "NONPROFIT", label: "Non-profit" }, { v: "OTHER", label: "Other" },
+];
+
+function BusinessProfileEditor({ channelId, name, onClose }: { channelId: string; name: string; onClose: () => void }) {
+  const [p, setP] = useState({ about: "", description: "", email: "", address: "", vertical: "", website: "" });
+  const [photoUrl, setPhotoUrl] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/admin/channels/profile?channelId=${encodeURIComponent(channelId)}`)
+      .then(r => r.json()).then(d => {
+        if (d.profile) {
+          setP({ about: d.profile.about ?? "", description: d.profile.description ?? "", email: d.profile.email ?? "", address: d.profile.address ?? "", vertical: d.profile.vertical ?? "", website: (d.profile.websites ?? [])[0] ?? "" });
+          setPhotoUrl(d.profile.profilePictureUrl ?? "");
+        } else if (d.notice) setMsg(d.notice);
+      }).catch(() => setMsg("Could not load profile")).finally(() => setLoading(false));
+  }, [channelId]);
+
+  async function saveFields() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/profile", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId, about: p.about, description: p.description, email: p.email, address: p.address, vertical: p.vertical, websites: p.website ? [p.website] : [] }),
+      });
+      const d = await res.json();
+      setMsg(res.ok ? "Saved ✓" : (d.error || "Save failed"));
+    } finally { setBusy(false); }
+  }
+
+  async function uploadPhoto(file: File) {
+    setBusy(true); setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("channelId", channelId);
+      fd.append("file", file);
+      const res = await fetch("/api/admin/channels/profile", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Photo upload failed"); return; }
+      setMsg("Photo updated ✓ — refreshing…");
+      const r = await fetch(`/api/admin/channels/profile?channelId=${encodeURIComponent(channelId)}`).then(x => x.json()).catch(() => null);
+      if (r?.profile?.profilePictureUrl) setPhotoUrl(r.profile.profilePictureUrl);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="border-2 border-brand-700/30 rounded-control p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-ink-900">Business profile — <span className="text-brand-700">{name}</span></p>
+        <button onClick={onClose} className="text-xs font-semibold text-ink-400 hover:text-ink-900">Close</button>
+      </div>
+      {loading ? <p className="text-xs text-ink-400">Loading…</p> : (
+        <>
+          <div className="flex items-center gap-3">
+            <ConvAvatar url={photoUrl} label={name} size={56} />
+            <div>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
+              <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Change photo</button>
+              <p className="text-[10px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
+            </div>
+          </div>
+          <input className={`${inp} w-full`} placeholder="About (status, ≤139 chars)" maxLength={139} value={p.about} onChange={e => setP({ ...p, about: e.target.value })} />
+          <textarea className={`${inp} w-full`} rows={2} placeholder="Description (≤512 chars)" maxLength={512} value={p.description} onChange={e => setP({ ...p, description: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Email" value={p.email} onChange={e => setP({ ...p, email: e.target.value })} />
+            <input className={inp} placeholder="Website (https://…)" value={p.website} onChange={e => setP({ ...p, website: e.target.value })} />
+            <input className={inp} placeholder="Address" value={p.address} onChange={e => setP({ ...p, address: e.target.value })} />
+            <select className={inp} value={p.vertical} onChange={e => setP({ ...p, vertical: e.target.value })}>
+              {WA_VERTICAL_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
+            {msg && <p className={`text-xs ${msg.includes("✓") ? "text-emerald-600" : "text-red-500"}`}>{msg}</p>}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
