@@ -1,9 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import { timingSafeEqual } from "crypto";
-import { verifyPassword } from "./team";
+import { verifyPassword, getMemberAuthState } from "./team";
 
 const COOKIE = "wa_admin_session";
+
+// Owner sessions carry this epoch; bump ADMIN_TOKEN_EPOCH in the environment to
+// force the owner to re-authenticate everywhere (e.g. after a secret rotation).
+function ownerEpoch(): number {
+  return Number(process.env.ADMIN_TOKEN_EPOCH ?? "0") || 0;
+}
 
 // Constant-time string compare (avoids login timing oracles).
 function strEq(a: string, b: string): boolean {
@@ -20,6 +27,7 @@ export interface SessionUser {
   name: string;
   role: "admin" | "member";
   tenantId: string;
+  tokenVersion?: number;   // revocation epoch embedded in the JWT
 }
 
 function secret(): Uint8Array {
@@ -30,7 +38,7 @@ function secret(): Uint8Array {
 }
 
 export async function createSession(user: SessionUser): Promise<string> {
-  return new SignJWT({ sub: user.email, n: user.name, r: user.role, t: user.tenantId })
+  return new SignJWT({ sub: user.email, n: user.name, r: user.role, t: user.tenantId, v: user.tokenVersion ?? 0 })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("7d")
@@ -42,14 +50,23 @@ export async function verifySession(token: string | undefined): Promise<SessionU
   try {
     const { payload } = await jwtVerify(token, secret());
     if (typeof payload.sub !== "string") return null;
-    return {
-      email: payload.sub,
-      name: typeof payload.n === "string" ? payload.n : "",
-      // Sessions minted before roles existed are owner sessions → admin.
-      role: payload.r === "member" ? "member" : "admin",
-      // Sessions minted before multi-tenancy belong to the default tenant.
-      tenantId: typeof payload.t === "string" && payload.t ? payload.t : DEFAULT_TENANT_ID,
-    };
+    const email = payload.sub;
+    const ver = typeof payload.v === "number" ? payload.v : 0;
+    const tenantId = typeof payload.t === "string" && payload.t ? payload.t : DEFAULT_TENANT_ID;
+
+    // Owner session (env account): validated against the owner epoch so the
+    // owner can be force-logged-out by bumping ADMIN_TOKEN_EPOCH.
+    if (isPlatformOwnerEmail(email)) {
+      if (ver !== ownerEpoch()) return null;
+      return { email, name: typeof payload.n === "string" ? payload.n : "", role: "admin", tenantId, tokenVersion: ver };
+    }
+
+    // Team member: re-read live auth state so deactivation and role changes
+    // take effect immediately, and a token_version bump revokes old sessions.
+    const state = await getMemberAuthState(email);
+    if (!state) return null;                 // deleted / deactivated → reject
+    if (state.tokenVersion !== ver) return null;   // revoked (e.g. password changed)
+    return { email, name: typeof payload.n === "string" ? payload.n : "", role: state.role, tenantId, tokenVersion: ver };
   } catch {
     return null;
   }
@@ -72,10 +89,13 @@ export function checkCredentials(user: string, password: string): boolean {
   return userOk && passOk;
 }
 
-export async function currentUser(): Promise<SessionUser | null> {
+// Wrapped in React cache() so the per-request revocation DB lookup in
+// verifySession runs at most once per request even when several helpers
+// (requireAdmin, currentTenantId, isPlatformOwner…) all call currentUser.
+export const currentUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(COOKIE)?.value;
   return verifySession(token);
-}
+});
 
 export async function requireAdmin(): Promise<boolean> {
   return (await currentUser()) !== null;

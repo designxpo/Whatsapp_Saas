@@ -22,10 +22,10 @@ export async function POST(req: Request) {
   // Owner account (env) first, then team members (wa_users).
   let user: SessionUser | null = null;
   if (checkCredentials(login, password)) {
-    user = { email: login, name: "Owner", role: "admin", tenantId: DEFAULT_TENANT_ID };
+    user = { email: login, name: "Owner", role: "admin", tenantId: DEFAULT_TENANT_ID, tokenVersion: Number(process.env.ADMIN_TOKEN_EPOCH ?? "0") || 0 };
   } else {
     const member = await verifyTeamLogin(login, password);
-    if (member) user = { email: member.email, name: member.name || member.email, role: member.role, tenantId: member.tenantId };
+    if (member) user = { email: member.email, name: member.name || member.email, role: member.role, tenantId: member.tenantId, tokenVersion: member.tokenVersion };
   }
   if (!user) {
     await recordLoginFailure(key);

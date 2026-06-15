@@ -13,6 +13,7 @@ export interface TeamUser {
   role: "admin" | "member";
   tenantId: string;
   active: boolean;
+  tokenVersion: number;
   lastLoginAt: string | null;
   createdAt: string;
 }
@@ -28,9 +29,26 @@ function mapUser(r: Record<string, unknown>): TeamUser {
     role: (r.role as TeamUser["role"]) ?? "member",
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     active: (r.active as boolean) ?? true,
+    tokenVersion: (r.token_version as number) ?? 0,
     lastLoginAt: (r.last_login_at as string | null) ?? null,
     createdAt: r.created_at as string,
   };
+}
+
+// Live auth state for a member, read on every request by verifySession so that
+// deactivation and role changes take effect immediately (not at token expiry).
+// Returns null when the user is gone/inactive or the table is missing.
+export interface MemberAuthState { role: "admin" | "member"; tokenVersion: number }
+export async function getMemberAuthState(email: string): Promise<MemberAuthState | null> {
+  try {
+    const { data } = await db().from("wa_users")
+      .select("role, active, token_version")
+      .eq("email", email.trim().toLowerCase()).maybeSingle();
+    if (!data || !(data.active as boolean)) return null;
+    return { role: (data.role as "admin" | "member") ?? "member", tokenVersion: (data.token_version as number) ?? 0 };
+  } catch {
+    return null;   // table missing → pre-team mode; caller treats as no member
+  }
 }
 
 // ── Passwords (scrypt, no external deps) ──────────────────────────────────────
@@ -78,7 +96,15 @@ export async function saveUser(input: { id?: string; email: string; name: string
     ({ data, error } = await run(row));
   }
   if (error) throw error;
-  return mapUser(data as Record<string, unknown>);
+  const saved = mapUser(data as Record<string, unknown>);
+  // Changing the password invalidates existing sessions (log out everywhere).
+  if (input.id && input.password?.trim()) {
+    try {
+      await db().from("wa_users").update({ token_version: saved.tokenVersion + 1 }).eq("id", input.id).eq("tenant_id", tenantId);
+      saved.tokenVersion += 1;
+    } catch { /* token_version column missing (pre-0038) — ignore */ }
+  }
+  return saved;
 }
 
 export async function deleteUser(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
