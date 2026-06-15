@@ -1317,7 +1317,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
             return (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
                 <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? "bg-pink-50 border border-pink-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
-                  {isComment && <p className="text-[10px] font-bold text-pink-600 mb-0.5 flex items-center gap-1"><Instagram className="w-3 h-3" /> from comment</p>}
+                  {isComment && <p className="text-[10px] font-bold text-pink-600 mb-0.5 flex items-center gap-1"><Instagram className="w-3 h-3" /> {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {submitted ? (
                     <div>
                       <p className="text-[11px] font-bold text-emerald-700 mb-1">✅ Form submitted</p>

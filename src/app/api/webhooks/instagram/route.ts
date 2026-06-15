@@ -126,11 +126,16 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const creds = credsOf(channel);
   const tid = channel.tenantId;
   const now = new Date().toISOString();
-  const closeOut = async () => {
-    if (commentId) await sendPrivateReply(creds, commentId, CLOSING_MSG);
-    else await sendIgMessage(creds, conv.phone, CLOSING_MSG, { lastInboundAt: now });
-    await escalateConversation(conv.id);
+  // Comment-triggered AI replies PUBLICLY under the comment (never a DM).
+  // DM-triggered AI replies in the DM. (Rule-based comment-to-DM is separate and
+  // intentionally DMs — handled in handleComment.)
+  const deliver = async (msg: string): Promise<boolean> => {
+    if (commentId) return (await replyToComment(creds, commentId, msg)).ok;
+    const r = await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
+    if (!r.ok) console.warn("[ig webhook] ai reply blocked:", r.blockedBy, r.error);
+    return r.ok;
   };
+  const closeOut = async () => { await deliver(CLOSING_MSG); await escalateConversation(conv.id); };
 
   // The cap applies to comment-triggered AI only; direct DMs are uncapped.
   if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
@@ -139,16 +144,10 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
-  const sent = commentId
-    ? await sendPrivateReply(creds, commentId, r.reply)
-    : await sendIgMessage(creds, conv.phone, r.reply, { lastInboundAt: now });
-  if (!sent.ok) { console.warn("[ig webhook] ai reply blocked:", sent.blockedBy, sent.error); return; }
-  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
-  // Comment path only: count toward the cap + also post the AI reply publicly.
-  if (commentId) {
-    await incAiReplies(conv.id, conv.aiReplyCount);
-    await replyToComment(creds, commentId, r.reply).catch(e => console.error("[ig webhook] public reply", e));
-  }
+  if (!(await deliver(r.reply))) return;
+  // Tag comment replies so Live Chat shows them as comment replies, not DMs.
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid });
+  if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 
 // Comment → ManyChat-style automation. Matches the comment against this tenant's
