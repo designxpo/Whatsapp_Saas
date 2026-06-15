@@ -1,0 +1,70 @@
+import { describe, it, expect, vi } from "vitest";
+
+// flowengine imports store/whatsapp/instagram which pull in supabase; none are
+// invoked by the pure routing helpers we test, but stub the heaviest leaf so
+// importing the module never tries to construct a client.
+vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure routing tests"); } }));
+
+import { nextNode, matchOption, optionLabel, type FlowGraph, type FlowNode } from "@/lib/flowengine";
+
+// Node factory — `position` is required by the builder type but irrelevant here.
+const n = (id: string, type: string, data: Record<string, unknown> = {}): FlowNode => ({ id, type, position: { x: 0, y: 0 }, data });
+
+const graph: FlowGraph = {
+  nodes: [
+    n("start", "start"),
+    n("msg", "message", { text: "hi" }),
+    n("cond", "condition"),
+    n("yes", "message", { text: "yes branch" }),
+    n("no", "message", { text: "no branch" }),
+  ],
+  edges: [
+    { id: "e1", source: "start", target: "msg" },
+    { id: "e2", source: "cond", sourceHandle: "yes", target: "yes" },
+    { id: "e3", source: "cond", sourceHandle: "no", target: "no" },
+  ],
+};
+
+describe("nextNode (graph routing)", () => {
+  it("follows the default edge", () => {
+    expect(nextNode(graph, "start")?.id).toBe("msg");
+  });
+  it("follows a named branch handle", () => {
+    expect(nextNode(graph, "cond", "yes")?.id).toBe("yes");
+    expect(nextNode(graph, "cond", "no")?.id).toBe("no");
+  });
+  it("returns undefined at a dead end", () => {
+    expect(nextNode(graph, "msg")).toBeUndefined();
+  });
+});
+
+const buttonsNode = n("b", "buttons", { buttons: [{ id: "opt_sales", title: "Talk to Sales" }, { id: "opt_support", title: "Support" }] });
+const listNode = n("l", "list", { rows: [{ id: "row_a", title: "Option A" }, { id: "row_b", title: "Option B" }] });
+
+describe("matchOption (reply → option id)", () => {
+  it("matches a button by title (case-insensitive)", () => {
+    expect(matchOption(buttonsNode, "talk to sales")).toBe("opt_sales");
+  });
+  it("matches a button by id", () => {
+    expect(matchOption(buttonsNode, "opt_support")).toBe("opt_support");
+  });
+  it("matches a list row by title", () => {
+    expect(matchOption(listNode, "Option B")).toBe("row_b");
+  });
+  it("returns null for no match or empty text", () => {
+    expect(matchOption(buttonsNode, "nonsense")).toBeNull();
+    expect(matchOption(buttonsNode, "")).toBeNull();
+  });
+});
+
+describe("optionLabel (option id → human label)", () => {
+  it("resolves a button label", () => {
+    expect(optionLabel(buttonsNode, "opt_sales")).toBe("Talk to Sales");
+  });
+  it("resolves a list row label", () => {
+    expect(optionLabel(listNode, "row_a")).toBe("Option A");
+  });
+  it("returns empty string for an unknown id", () => {
+    expect(optionLabel(buttonsNode, "missing")).toBe("");
+  });
+});

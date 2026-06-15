@@ -201,7 +201,8 @@ export function drySender(out: SimOutput[]): FlowSender {
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 function nodeById(g: FlowGraph, id: string): FlowNode | undefined { return g.nodes.find(n => n.id === id); }
-function nextNode(g: FlowGraph, from: string, handle?: string): FlowNode | undefined {
+// Exported for unit tests — pure graph routing, no side effects.
+export function nextNode(g: FlowGraph, from: string, handle?: string): FlowNode | undefined {
   const e = g.edges.find(x => x.source === from && (handle === undefined || (x.sourceHandle ?? "next") === handle || x.sourceHandle == null));
   return e ? nodeById(g, e.target) : undefined;
 }
@@ -359,7 +360,8 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
 }
 
 // Match an inbound reply against the interactive node the session is waiting on.
-function matchOption(node: FlowNode, text: string): string | null {
+// Exported for unit tests — pure.
+export function matchOption(node: FlowNode, text: string): string | null {
   const t = norm(text);
   if (!t) return null;
   if (node.type === "buttons") {
@@ -376,7 +378,8 @@ function matchOption(node: FlowNode, text: string): string | null {
 }
 
 // The human-readable label of a menu option, for intent checks (e.g. agent).
-function optionLabel(node: FlowNode, optionId: string): string {
+// Exported for unit tests — pure.
+export function optionLabel(node: FlowNode, optionId: string): string {
   if (node.type === "buttons") return ((node.data.buttons as { id: string; title: string }[]) ?? []).find(b => b.id === optionId)?.title ?? "";
   if (node.type === "list") return listSections(node.data).flatMap(s => s.rows).find(r => r.id === optionId)?.title ?? "";
   return "";
