@@ -1,9 +1,9 @@
 // Server-safe presentational primitives — light "TimBot-style" theme:
-// white canvas, soft pastel cards, violet accent (#1877F2), rounded & friendly.
+// white canvas, soft pastel cards, violet accent (#0164ff), rounded & friendly.
 
 import Link from "next/link";
 
-export const PURPLE = "#1877F2";
+export const PURPLE = "#0164ff";
 
 export function Container({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${className}`}>{children}</div>;
@@ -20,7 +20,7 @@ export function Glow({ className = "" }: { className?: string }) {
 
 export function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[#1877F2]/20 bg-[#1877F2]/5 px-3 py-1 text-xs font-semibold text-[#1877F2]">
+    <span className="inline-flex items-center gap-2 rounded-full border border-[#0164ff]/20 bg-[#0164ff]/5 px-3 py-1 text-xs font-semibold text-[#0164ff]">
       {children}
     </span>
   );
@@ -31,8 +31,8 @@ export function Button({
 }: { href: string; children: React.ReactNode; variant?: "primary" | "ghost"; className?: string }) {
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-colors";
   const styles = variant === "primary"
-    ? "bg-[#1877F2] text-white shadow-[0_8px_24px_-8px_rgba(24,119,242,0.7)] hover:bg-[#166FE0]"
-    : "border border-[#1877F2]/30 bg-white text-[#1877F2] hover:bg-[#1877F2]/5";
+    ? "bg-[#0164ff] text-white shadow-[0_8px_24px_-8px_rgba(24,119,242,0.7)] hover:bg-[#0153d6]"
+    : "border border-[#0164ff]/30 bg-white text-[#0164ff] hover:bg-[#0164ff]/5";
   if (href.startsWith("http")) return <a href={href} className={`${base} ${styles} ${className}`}>{children}</a>;
   return <Link href={href} className={`${base} ${styles} ${className}`}>{children}</Link>;
 }
@@ -60,7 +60,7 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
 // Pastel tones for feature / step / benefit cards.
 export const TONES: Record<string, { bg: string; icon: string; ring: string }> = {
   peach: { bg: "bg-[#FDEBD2]", icon: "bg-[#F6B26B] text-white", ring: "ring-[#F6B26B]/30" },
-  lavender: { bg: "bg-[#E7F0FF]", icon: "bg-[#1877F2] text-white", ring: "ring-[#1877F2]/30" },
+  lavender: { bg: "bg-[#E7F0FF]", icon: "bg-[#0164ff] text-white", ring: "ring-[#0164ff]/30" },
   sky: { bg: "bg-[#D9ECF7]", icon: "bg-[#4FA6D9] text-white", ring: "ring-[#4FA6D9]/30" },
   mint: { bg: "bg-[#DDEFE4]", icon: "bg-[#4CAF82] text-white", ring: "ring-[#4CAF82]/30" },
 };

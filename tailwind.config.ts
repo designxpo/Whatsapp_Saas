@@ -5,21 +5,21 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Meta / Facebook blue theme ──
+        // ── Talko AI blue theme (#0164ff) ──
         brand: {
-          50: "#EBF3FF",
-          100: "#D6E4FF",
-          500: "#1877F2", // Facebook blue
-          600: "#166FE0", // hover
-          700: "#0C63D4",
-          800: "#0A4DA8",
-          900: "#0A3D8F",
-          // Legacy aliases (kept so existing class names adopt the new palette):
+          50: "#E6F0FF",
+          100: "#CCE1FF",
+          500: "#3B82FF",  // light accent / dots / links
+          600: "#2A7BFF",  // hover (lighter than the 700 primary)
+          700: "#0164FF",  // PRIMARY — buttons, active states
+          800: "#0150CC",  // darker / pressed
+          900: "#013E9E",
+          // Legacy aliases (kept so existing class names adopt the palette):
           // `brand-dark` → deep navy for headings/dark accents.
-          // `brand-green`/`greenDark` → Facebook blue (names retained, values blue).
-          dark: "#0A2A66",
-          green: "#166FE0",
-          greenDark: "#0C63D4",
+          // `brand-green`/`greenDark` → brand blue (names retained, values blue).
+          dark: "#012E78",
+          green: "#0164FF",
+          greenDark: "#0150CC",
         },
         ink: {
           400: "#A3A3A3",

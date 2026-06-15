@@ -22,7 +22,7 @@ export default function PricingPage() {
 
       <Container className="pb-8">
         <PricingTiers />
-        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR, billed monthly. Need annual billing or a custom volume? <span className="font-semibold text-[#1877F2]">Talk to sales.</span></p>
+        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR, billed monthly. Need annual billing or a custom volume? <span className="font-semibold text-[#0164ff]">Talk to sales.</span></p>
       </Container>
 
       <Testimonials />

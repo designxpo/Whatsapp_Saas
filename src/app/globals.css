@@ -4,9 +4,9 @@
 @tailwind utilities;
 
 :root {
-  /* Brand accent (Meta / Facebook blue). Var names kept; values are blue. */
-  --green-900: #0a3d8f; --green-700: #0c63d4; --green-600: #166fe0;
-  --green-500: #1877f2; --green-100: #d6e4ff; --green-50: #ebf3ff;
+  /* Brand accent (Talko AI blue #0164ff). Var names kept; values are blue. */
+  --green-900: #013e9e; --green-700: #0164ff; --green-600: #2a7bff;
+  --green-500: #3b82ff; --green-100: #cce1ff; --green-50: #e6f0ff;
   --ink-950: #0a0a0a; --ink-900: #171717; --ink-600: #525252; --ink-400: #a3a3a3;
   --border: #e5e7eb; --surface: #ffffff; --canvas: #f4f5f7;
   --success: #22c55e; --warning: #f59e0b; --danger: #ef4444;

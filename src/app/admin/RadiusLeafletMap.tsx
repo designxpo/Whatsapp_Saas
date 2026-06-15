@@ -30,8 +30,8 @@ export default function RadiusLeafletMap({ lat, lng, radius }: { lat: number; ln
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
         maxZoom={19}
       />
-      <Circle center={[lat, lng]} radius={radius * 1000} pathOptions={{ color: "#059669", weight: 2, fillColor: "#10b981", fillOpacity: 0.12 }} />
-      <CircleMarker center={[lat, lng]} radius={5} pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#047857", fillOpacity: 1 }} />
+      <Circle center={[lat, lng]} radius={radius * 1000} pathOptions={{ color: "#0153d6", weight: 2, fillColor: "#0164ff", fillOpacity: 0.12 }} />
+      <CircleMarker center={[lat, lng]} radius={5} pathOptions={{ color: "#ffffff", weight: 2, fillColor: "#0142b0", fillOpacity: 1 }} />
       <FitToRadius lat={lat} lng={lng} radius={radius} />
     </MapContainer>
   );
