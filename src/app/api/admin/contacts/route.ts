@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     for (const r of rows) {
       const c = await getContactByPhone(r.phone, tid);
       if (c && c.source === "import") {
-        await fireTrigger({ trigger: "contact_added", triggerKey: null, contactId: c.id, phone: c.phone, name: c.name }).catch(() => undefined);
+        await fireTrigger({ trigger: "contact_added", triggerKey: null, contactId: c.id, phone: c.phone, name: c.name }, tid).catch(() => undefined);
       }
     }
     logActivity(await currentUser(), "contacts.import", `${result.inserted} added, ${result.skipped} skipped`);

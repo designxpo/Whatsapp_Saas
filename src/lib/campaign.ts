@@ -18,7 +18,7 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   const campaign = await getCampaign(campaignId);
   if (!campaign) return { sentNow: 0, queuedRemaining: 0, status: "failed" };
 
-  const headroom = Math.max(0, dailyLimit() - (await dailySentCount()));
+  const headroom = Math.max(0, dailyLimit() - (await dailySentCount(campaign.tenantId)));
   const claim = Math.min(maxToSend, headroom);
   let sentNow = 0;
   const errs: string[] = [];
@@ -34,6 +34,7 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
         recipients: chunk.map(c => ({ phone: c.phone, fullName: c.fullName })),
         headerImageUrl: campaign.headerImageUrl,
         channel: await credsFor(campaign.channelId),
+        tenantId: campaign.tenantId,
       });
       await markQueue(chunk.map(c => c.id), "sent");
       sentNow = r.sentCount;
@@ -68,7 +69,7 @@ export async function startSend(campaign: Campaign, recipients: { phone: string;
   const { token, phoneId } = getCreds(await credsFor(campaign.channelId));
   if (!token || !phoneId) return { enqueued: 0, sentNow: 0, queuedRemaining: 0, status: campaign.status, message: "WhatsApp credentials not configured." };
 
-  const enqueued = await enqueue(campaign.id, recipients);
+  const enqueued = await enqueue(campaign.id, recipients, campaign.tenantId);
   if (enqueued === 0) return { enqueued: 0, sentNow: 0, queuedRemaining: await countPending(campaign.id), status: campaign.status, message: "No valid recipients." };
 
   await updateCampaign(campaign.id, { status: "sending", totalRecipients: recipients.length });
@@ -118,6 +119,7 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
         recipients: group.map(d => ({ phone: d.phone, fullName: d.recipientName })),
         headerImageUrl: campaign.headerImageUrl,
         channel: await credsFor(campaign.channelId),
+        tenantId: campaign.tenantId,
       });
       for (const d of group) { await markScheduled(d.id, "sent"); sent++; }
     } catch (err) {

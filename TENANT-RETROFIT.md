@@ -38,9 +38,28 @@ but the real tenant must be threaded from the entry point above.
 - ✅ **Conversations + messages** — getOrCreateConversation / getConversationByPhone /
   listConversations / appendConvMessage scoped + stamped; threaded from both
   webhooks (`channel.tenantId`) and the inbox route (`currentTenantId`).
-  *Still to thread:* `assistant.ts` + flowengine tag/attribute writes should
-  stamp the conversation's tenant (carry `tenantId` on the Conversation type) —
-  tracked under the Flows/AI domain below.
+  `Conversation.tenantId` now carried on the type/mapper, so `assistant.ts` uses
+  `conv.tenantId` for the daily cap. *Still to thread:* flowengine tag/attribute
+  writes — tracked under the Flows/AI domain below.
+- ✅ **Campaigns + queue + send log + cron** — `Campaign.tenantId` on the
+  type/mapper; createCampaign/getCampaign(optional scope)/listCampaigns/
+  listAutomations/getAutoSend/disableAutomation/enqueue/insertLog/dailySentCount/
+  scheduleSend/getAnalytics all tenant-aware. `sendCampaign` (whatsapp.ts) carries
+  `tenantId` → stamps the send log. `campaign.ts` drains use `campaign.tenantId`
+  (per-tenant daily headroom + log). `broadcast.ts`/`autosend.ts`/`apirules.ts`
+  threaded; admin routes pass `currentTenantId()`.
+  **Key finding — the cron is NOT the feared sharp edge:** every send resolves
+  credentials from `credsFor(campaign.channelId)` (the campaign's *own* channel),
+  so iterating campaigns globally never sends through another tenant's number. No
+  per-tenant cron loop is required for credential safety — only per-tenant daily
+  caps (now done: `dailySentCount(tenantId)`, and `drainRuleSends` computes
+  headroom per tenant and releases the claim back to `pending` when a tenant is
+  capped). *Pending:* per-tenant **API keys** — `/api/broadcast`, `/api/events`,
+  `/api/contacts` use a single shared `BROADCAST_API_KEY` (`apiKeyOk`) and
+  therefore resolve to the default tenant; when public API keys become
+  per-tenant, thread the resolved tenant into `runBroadcast`/`processEvent`/
+  `fireTrigger`/`getContactByPhone` there (Phase: public-API). Also `flowengine`/
+  `commerce` `sendCampaign` calls still default — tracked under Flows/commerce.
 
 ## Remaining (apply the same pattern)
 Per domain: add `tenantId` to the store fns, scope reads/writes, thread from the

@@ -61,7 +61,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
   }
 
   // Opt-out suppression + daily cap (parallel — independent reads).
-  const [optouts, sentToday] = await Promise.all([optoutSet(), dailySentCount()]);
+  const [optouts, sentToday] = await Promise.all([optoutSet(), dailySentCount(conv.tenantId)]);
   if (optouts.has(last10(conv.phone))) return { outcome: "skipped", detail: "opted out" };
   if (sentToday >= dailyLimit()) return { outcome: "skipped", detail: "daily cap reached" };
 

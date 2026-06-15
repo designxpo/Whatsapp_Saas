@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getCreds } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { dailySentCount } from "@/lib/store";
@@ -15,7 +15,8 @@ export async function GET(req: Request) {
   const { token, phoneId } = getCreds(await credsFor(channelId));
 
   const dailyCap = parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10);
-  const sentToday = await dailySentCount().catch(() => 0);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const sentToday = await dailySentCount(tid).catch(() => 0);
 
   let quality: string | null = null, tier: string | null = null, displayPhone: string | null = null, metaError: string | null = null;
   if (token && phoneId) {

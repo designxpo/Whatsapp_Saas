@@ -44,6 +44,7 @@ export interface Campaign {
   createdAt: string;
   sentAt: string | null;
   channelId: string | null;     // which WhatsApp number this campaign sends from
+  tenantId: string;             // owning tenant — sends use this tenant's channel/limits
 }
 
 const digits = (p: string) => (p || "").replace(/\D/g, "");
@@ -72,6 +73,7 @@ function mapCampaign(r: Record<string, unknown>): Campaign {
     createdAt: r.created_at as string,
     sentAt: (r.sent_at as string | null) ?? null,
     channelId: (r.channel_id as string | null) ?? null,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
   };
 }
 
@@ -217,8 +219,9 @@ export async function optoutSet(): Promise<Set<string>> {
 }
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────
-export async function createCampaign(p: Partial<Campaign> & { templateName: string }): Promise<Campaign> {
+export async function createCampaign(p: Partial<Campaign> & { templateName: string }, tenantId = DEFAULT_TENANT_ID): Promise<Campaign> {
   const { data, error } = await db().from("wa_campaigns").insert({
+    tenant_id: tenantId,
     name: p.name ?? null,
     template_name: p.templateName,
     language_code: p.languageCode ?? "en_US",
@@ -239,13 +242,17 @@ export async function createCampaign(p: Partial<Campaign> & { templateName: stri
   return mapCampaign(data as Record<string, unknown>);
 }
 
-export async function getCampaign(id: string): Promise<Campaign | null> {
-  const { data } = await db().from("wa_campaigns").select("*").eq("id", id).maybeSingle();
+// tenantId optional: cron resolves campaigns by id (tenant-agnostic) and reads
+// the owner from the row; admin routes pass the session tenant to scope access.
+export async function getCampaign(id: string, tenantId?: string): Promise<Campaign | null> {
+  let q = db().from("wa_campaigns").select("*").eq("id", id);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.maybeSingle();
   return data ? mapCampaign(data as Record<string, unknown>) : null;
 }
 
-export async function listCampaigns(): Promise<Campaign[]> {
-  const { data, error } = await db().from("wa_campaigns").select("*").eq("auto_send_enabled", false).order("created_at", { ascending: false }).limit(50);
+export async function listCampaigns(tenantId = DEFAULT_TENANT_ID): Promise<Campaign[]> {
+  const { data, error } = await db().from("wa_campaigns").select("*").eq("tenant_id", tenantId).eq("auto_send_enabled", false).order("created_at", { ascending: false }).limit(50);
   if (error) throw error;
   return (data ?? []).map(r => mapCampaign(r as Record<string, unknown>));
 }
@@ -269,28 +276,28 @@ export async function getDueScheduledCampaigns(limit = 25): Promise<Campaign[]> 
 }
 
 // ── Auto-send configs ───────────────────────────────────────────────────────
-export async function getAutoSend(trigger: AutoTrigger, triggerKey: string | null): Promise<Campaign | null> {
-  let q = db().from("wa_campaigns").select("*").eq("auto_send_enabled", true).eq("auto_send_trigger", trigger);
+export async function getAutoSend(trigger: AutoTrigger, triggerKey: string | null, tenantId = DEFAULT_TENANT_ID): Promise<Campaign | null> {
+  let q = db().from("wa_campaigns").select("*").eq("tenant_id", tenantId).eq("auto_send_enabled", true).eq("auto_send_trigger", trigger);
   if (triggerKey) q = q.eq("trigger_key", triggerKey);
   const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
   return data ? mapCampaign(data as Record<string, unknown>) : null;
 }
 
-export async function listAutomations(): Promise<Campaign[]> {
-  const { data } = await db().from("wa_campaigns").select("*").eq("auto_send_enabled", true).order("created_at", { ascending: false });
+export async function listAutomations(tenantId = DEFAULT_TENANT_ID): Promise<Campaign[]> {
+  const { data } = await db().from("wa_campaigns").select("*").eq("tenant_id", tenantId).eq("auto_send_enabled", true).order("created_at", { ascending: false });
   return (data ?? []).map(r => mapCampaign(r as Record<string, unknown>));
 }
 
-export async function disableAutomation(id: string): Promise<void> {
-  await db().from("wa_campaigns").update({ auto_send_enabled: false }).eq("id", id);
+export async function disableAutomation(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_campaigns").update({ auto_send_enabled: false }).eq("tenant_id", tenantId).eq("id", id);
 }
 
 // ── Queue ─────────────────────────────────────────────────────────────────────
-export async function enqueue(campaignId: string, recipients: { phone: string; fullName: string }[]): Promise<number> {
+export async function enqueue(campaignId: string, recipients: { phone: string; fullName: string }[], tenantId = DEFAULT_TENANT_ID): Promise<number> {
   const seen = new Set<string>();
   const rows = recipients
     .filter(r => { const k = last10(r.phone); if (!k || seen.has(k)) return false; seen.add(k); return digits(r.phone).length >= 10; })
-    .map(r => ({ campaign_id: campaignId, phone: digits(r.phone), recipient_name: r.fullName ?? "", status: "pending" }));
+    .map(r => ({ tenant_id: tenantId, campaign_id: campaignId, phone: digits(r.phone), recipient_name: r.fullName ?? "", status: "pending" }));
   if (rows.length === 0) return 0;
   const { data, error } = await db().from("wa_send_queue").upsert(rows, { onConflict: "campaign_id,phone", ignoreDuplicates: true }).select("id");
   if (error) throw error;
@@ -323,9 +330,10 @@ export async function campaignsWithPending(): Promise<string[]> {
 }
 
 // ── Send log ──────────────────────────────────────────────────────────────────
-export async function insertLog(entries: { campaignId: string; phone: string; recipientName: string; status: "sent" | "failed" | "skipped"; errorDetail?: string; metaMessageId?: string }[]): Promise<void> {
+export async function insertLog(entries: { campaignId: string; phone: string; recipientName: string; status: "sent" | "failed" | "skipped"; errorDetail?: string; metaMessageId?: string }[], tenantId = DEFAULT_TENANT_ID): Promise<void> {
   if (entries.length === 0) return;
   await db().from("wa_send_log").insert(entries.map(e => ({
+    tenant_id: tenantId,
     campaign_id: e.campaignId, phone: e.phone, recipient_name: e.recipientName,
     status: e.status, error_detail: e.errorDetail ?? null, meta_message_id: e.metaMessageId ?? null,
   })));
@@ -357,15 +365,18 @@ export async function updateLogByMessageId(metaMessageId: string, status: "deliv
   await db().from("wa_send_log").update(row).eq("meta_message_id", metaMessageId);
 }
 
-export async function dailySentCount(): Promise<number> {
+// Per-tenant daily sent count — each tenant's volume counts against its own cap
+// so one tenant can never consume another's daily headroom.
+export async function dailySentCount(tenantId = DEFAULT_TENANT_ID): Promise<number> {
   const since = new Date(); since.setHours(0, 0, 0, 0);
-  const { count } = await db().from("wa_send_log").select("*", { count: "exact", head: true }).gte("sent_at", since.toISOString()).in("status", ["sent", "delivered", "read"]);
+  const { count } = await db().from("wa_send_log").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("sent_at", since.toISOString()).in("status", ["sent", "delivered", "read"]);
   return count ?? 0;
 }
 
 // ── Scheduled (auto-send) ─────────────────────────────────────────────────────
-export async function scheduleSend(p: { campaignId: string; contactId: string | null; phone: string; recipientName: string; trigger: string; sendAfter: string }): Promise<void> {
+export async function scheduleSend(p: { campaignId: string; contactId: string | null; phone: string; recipientName: string; trigger: string; sendAfter: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_scheduled_sends").insert({
+    tenant_id: tenantId,
     campaign_id: p.campaignId, contact_id: p.contactId, phone: digits(p.phone),
     recipient_name: p.recipientName, trigger: p.trigger, send_after: p.sendAfter, status: "pending",
   });
@@ -399,6 +410,7 @@ export interface Conversation {
   welcomed: boolean;
   agentId: string | null;
   channelId: string | null;     // which WhatsApp number this chat lives on
+  tenantId: string;             // owning tenant
   createdAt: string;
 }
 
@@ -427,6 +439,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     welcomed: (r.welcomed as boolean) ?? false,
     agentId: (r.agent_id as string | null) ?? null,
     channelId: (r.channel_id as string | null) ?? null,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
   };
 }
@@ -634,26 +647,27 @@ async function countWhere(table: string, filters: Record<string, unknown> = {}):
   return count ?? 0;
 }
 
-export async function getAnalytics(): Promise<Analytics> {
+export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analytics> {
   const since = new Date(); since.setDate(since.getDate() - 13); since.setHours(0, 0, 0, 0);
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const t = { tenant_id: tenantId };
 
   const [active, optedOut, campaignsTotal, automations, convTotal, convActive, convEscalated, convNeedsReply, kbTotal, kbReady] = await Promise.all([
-    countWhere("contacts", { status: "active" }),
-    countWhere("wa_optouts"),
-    countWhere("wa_campaigns", { auto_send_enabled: false }),
-    countWhere("wa_campaigns", { auto_send_enabled: true }),
-    countWhere("wa_conversations"),
-    countWhere("wa_conversations", { status: "active" }),
-    countWhere("wa_conversations", { status: "escalated" }),
-    countWhere("wa_conversations", { needs_reply: true }),
-    countWhere("kb_documents"),
-    countWhere("kb_documents", { status: "ready" }),
+    countWhere("contacts", { ...t, status: "active" }),
+    countWhere("wa_optouts", t),
+    countWhere("wa_campaigns", { ...t, auto_send_enabled: false }),
+    countWhere("wa_campaigns", { ...t, auto_send_enabled: true }),
+    countWhere("wa_conversations", t),
+    countWhere("wa_conversations", { ...t, status: "active" }),
+    countWhere("wa_conversations", { ...t, status: "escalated" }),
+    countWhere("wa_conversations", { ...t, needs_reply: true }),
+    countWhere("kb_documents", t),
+    countWhere("kb_documents", { ...t, status: "ready" }),
   ]);
 
   // Last 14 days of send-log rows, aggregated per day in JS (internal-tool scale).
   const { data: logRows } = await db().from("wa_send_log")
-    .select("status, sent_at").gte("sent_at", since.toISOString())
+    .select("status, sent_at").eq("tenant_id", tenantId).gte("sent_at", since.toISOString())
     .order("sent_at", { ascending: false }).limit(20000);
 
   const byDay = new Map<string, { sent: number; delivered: number; read: number; failed: number }>();

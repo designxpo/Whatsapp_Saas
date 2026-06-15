@@ -1,6 +1,8 @@
 import { createCampaign, getCampaign, recipientsForAudience, type Campaign } from "./store";
 import { startSend } from "./campaign";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export type BroadcastMode = "campaign" | "audience" | "recipients";
 
 export interface BroadcastInput {
@@ -33,18 +35,18 @@ export class BroadcastError extends Error {
 }
 function assert(c: unknown, m: string): asserts c { if (!c) throw new BroadcastError(m); }
 
-export async function runBroadcast(input: BroadcastInput): Promise<BroadcastResult> {
+export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TENANT_ID): Promise<BroadcastResult> {
   assert(input && typeof input === "object", "Body must be a JSON object.");
   assert(["campaign", "audience", "recipients"].includes(input.mode), 'mode must be "campaign", "audience", or "recipients".');
 
   // Trigger an existing campaign — recompute its audience and send now.
   if (input.mode === "campaign") {
     assert(input.campaignId, "campaignId is required for mode 'campaign'.");
-    const campaign = await getCampaign(input.campaignId!);
+    const campaign = await getCampaign(input.campaignId!, tenantId);
     assert(campaign, "Campaign not found.");
     const aud = campaign!.audience;
     assert(aud && aud.mode !== "recipients", "Campaign has no audience filter to recompute.");
-    const recipients = await recipientsForAudience({ mode: aud!.mode as "all" | "tag" | "attribute", tag: aud!.tag, key: aud!.key, value: aud!.value });
+    const recipients = await recipientsForAudience({ mode: aud!.mode as "all" | "tag" | "attribute", tag: aud!.tag, key: aud!.key, value: aud!.value }, tenantId);
     const r = await startSend(campaign!, recipients);
     return { success: true, campaignId: campaign!.id, status: r.status, totalRecipients: recipients.length, sent: r.sentNow, queuedRemaining: r.queuedRemaining, message: r.message };
   }
@@ -61,7 +63,7 @@ export async function runBroadcast(input: BroadcastInput): Promise<BroadcastResu
     assert(a && (a.mode === "all" || a.mode === "tag" || a.mode === "attribute"), "audience.mode must be 'all', 'tag', or 'attribute'.");
     assert(a!.mode !== "attribute" || a!.key?.trim(), "audience.key is required for mode 'attribute'.");
     audience = { mode: a!.mode, ...(a!.tag ? { tag: a!.tag } : {}), ...(a!.key ? { key: a!.key, value: a!.value ?? "" } : {}) };
-    recipients = await recipientsForAudience({ mode: a!.mode, tag: a!.tag, key: a!.key, value: a!.value });
+    recipients = await recipientsForAudience({ mode: a!.mode, tag: a!.tag, key: a!.key, value: a!.value }, tenantId);
   } else {
     assert(Array.isArray(input.recipients) && input.recipients.length > 0, "recipients must be a non-empty array.");
     assert(!input.scheduledFor, "scheduledFor is not supported with explicit recipients — use mode 'audience'.");
@@ -80,7 +82,7 @@ export async function runBroadcast(input: BroadcastInput): Promise<BroadcastResu
       headerImageUrl: input.headerImageUrl ?? null, audience, status: "scheduled",
       totalRecipients: recipients.length, scheduledFor: when.toISOString(),
       channelId: input.channelId ?? null,
-    });
+    }, tenantId);
     return { success: true, campaignId: campaign.id, status: "scheduled", totalRecipients: recipients.length, message: `Scheduled ${recipients.length} for ${when.toISOString()}.` };
   }
 
@@ -88,7 +90,7 @@ export async function runBroadcast(input: BroadcastInput): Promise<BroadcastResu
     name: input.name, templateName: input.templateName!.trim(), languageCode, variables,
     headerImageUrl: input.headerImageUrl ?? null, audience, status: "sending", totalRecipients: recipients.length,
     channelId: input.channelId ?? null,
-  });
+  }, tenantId);
   const r = await startSend(campaign, recipients);
   return { success: true, campaignId: campaign.id, status: r.status, totalRecipients: recipients.length, sent: r.sentNow, queuedRemaining: r.queuedRemaining, message: r.message };
 }

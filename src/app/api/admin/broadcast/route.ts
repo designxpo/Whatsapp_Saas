@@ -18,7 +18,8 @@ export async function GET(req: Request) {
   const value = url.searchParams.get("value");
   if (mode !== "all" && mode !== "tag" && mode !== "attribute") return NextResponse.json({ count: 0 });
   try {
-    const r = await recipientsForAudience({ mode, tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined });
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const r = await recipientsForAudience({ mode, tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined }, tid);
     return NextResponse.json({ count: r.length });
   } catch {
     return NextResponse.json({ count: 0 });
@@ -35,7 +36,8 @@ export async function POST(req: Request) {
     if (!c.allowed) return NextResponse.json({ success: false, error: `You've reached your plan's monthly message limit (${c.used}/${c.limit}). Upgrade to send more.`, upgrade: true }, { status: 402 });
   } catch (e) { console.error("[broadcast] limit check", errorMessage(e)); }
   try {
-    const result = await runBroadcast(body);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const result = await runBroadcast(body, tid);
     logActivity(await currentUser(), "broadcast.send", `${body.templateName ?? "campaign"} → ${result.totalRecipients ?? 0} recipients (${result.status ?? ""})`);
     return NextResponse.json(result);
   } catch (err) {

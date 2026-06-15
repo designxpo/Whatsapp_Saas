@@ -37,6 +37,7 @@ export async function sendCampaign(params: {
   recipients: { phone: string; fullName: string }[];
   headerImageUrl?: string | null;
   channel?: ChannelCreds;
+  tenantId?: string;
 }): Promise<SendResult> {
   const { token, phoneId } = getCreds(params.channel);
   if (!token || !phoneId) return { sentCount: 0, failedCount: params.recipients.length, skippedCount: 0, errors: ["WhatsApp credentials not configured"] };
@@ -110,7 +111,7 @@ export async function sendCampaign(params: {
     if ((i + 1) % BATCH_SIZE === 0) await sleep(BATCH_PAUSE_MS);
   }
 
-  await insertLog(log).catch(() => undefined);
+  await insertLog(log, params.tenantId).catch(() => undefined);
   return { sentCount, failedCount, skippedCount, errors };
 }
 

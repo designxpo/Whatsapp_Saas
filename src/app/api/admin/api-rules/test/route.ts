@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { processEvent } from "@/lib/apirules";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +13,14 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.event?.trim() || !body.phone?.trim()) return NextResponse.json({ error: "event and phone are required" }, { status: 400 });
   try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const results = await processEvent({
       event: body.event.trim(),
       phone: body.phone.trim(),
       name: body.name,
       payload: body.data && typeof body.data === "object" ? body.data : {},
       dryRun: true,
-    });
+    }, tid);
     return NextResponse.json({ results });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

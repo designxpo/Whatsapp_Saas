@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { campaignFunnel, retargetRecipients, getCampaign, type RetargetSegment } from "@/lib/store";
 import { campaignClickStats, campaignRepliedCount, campaignPerDay } from "@/lib/links";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const { id } = await params;
   const segment = new URL(req.url).searchParams.get("segment") as RetargetSegment | null;
   try {
-    const campaign = await getCampaign(id);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const campaign = await getCampaign(id, tid);
     if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
 
     if (segment && SEGMENTS.includes(segment)) {

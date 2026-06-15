@@ -3,6 +3,8 @@ import { createCampaign, getContactByPhone, dailySentCount, type Contact } from 
 import { sendCampaign } from "./whatsapp";
 import { credsFor } from "./channels";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 // ── API broadcasting rules engine ─────────────────────────────────────────────
 // One generic inbound event (name + phone + free-form data) fans out through
 // portal-defined rules. Each rule = conditions + template + variable mapping +
@@ -32,6 +34,7 @@ export interface ApiRule {
   windowEndHour: number | null;
   frequencyCapHours: number;
   channelId: string | null;     // which WhatsApp number this rule sends from
+  tenantId: string;             // owning tenant
   createdAt: string;
 }
 
@@ -53,19 +56,20 @@ function mapRule(r: Record<string, unknown>): ApiRule {
     windowEndHour: (r.window_end_hour as number | null) ?? null,
     frequencyCapHours: (r.frequency_cap_hours as number) ?? 0,
     channelId: (r.channel_id as string | null) ?? null,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
   };
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-export async function listRules(): Promise<ApiRule[]> {
-  const { data, error } = await db().from("wa_api_rules").select("*").order("created_at", { ascending: false });
+export async function listRules(tenantId = DEFAULT_TENANT_ID): Promise<ApiRule[]> {
+  const { data, error } = await db().from("wa_api_rules").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []).map(mapRule);
 }
 
-export async function saveRule(input: Partial<ApiRule> & { name: string; eventKey: string; templateName: string }): Promise<ApiRule> {
+export async function saveRule(input: Partial<ApiRule> & { name: string; eventKey: string; templateName: string }, tenantId = DEFAULT_TENANT_ID): Promise<ApiRule> {
   // Each rule owns a hidden campaign so its sends get funnel + click analytics.
   let campaignId = input.campaignId ?? null;
   if (!input.id && !campaignId) {
@@ -77,10 +81,11 @@ export async function saveRule(input: Partial<ApiRule> & { name: string; eventKe
       headerImageUrl: input.headerImageUrl ?? null,
       status: "sent",            // not a sendable campaign — just an analytics anchor
       audience: { mode: "recipients" },
-    });
+    }, tenantId);
     campaignId = c.id;
   }
   const row = {
+    tenant_id: tenantId,
     name: input.name,
     active: input.active ?? true,
     event_key: input.eventKey.trim(),
@@ -98,20 +103,20 @@ export async function saveRule(input: Partial<ApiRule> & { name: string; eventKe
     ...(campaignId ? { campaign_id: campaignId } : {}),
   };
   const q = input.id
-    ? db().from("wa_api_rules").update(row).eq("id", input.id).select().single()
+    ? db().from("wa_api_rules").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_api_rules").insert(row).select().single();
   const { data, error } = await q;
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
 }
 
-export async function setRuleActive(id: string, active: boolean): Promise<void> {
-  const { error } = await db().from("wa_api_rules").update({ active }).eq("id", id);
+export async function setRuleActive(id: string, active: boolean, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_api_rules").update({ active }).eq("id", id).eq("tenant_id", tenantId);
   if (error) throw error;
 }
 
-export async function deleteRule(id: string): Promise<void> {
-  const { error } = await db().from("wa_api_rules").delete().eq("id", id);
+export async function deleteRule(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_api_rules").delete().eq("id", id).eq("tenant_id", tenantId);
   if (error) throw error;
 }
 
@@ -209,14 +214,14 @@ export async function processEvent(params: {
   name?: string;
   payload?: Json;
   dryRun?: boolean;
-}): Promise<RuleFireResult[]> {
+}, tenantId = DEFAULT_TENANT_ID): Promise<RuleFireResult[]> {
   const payload = params.payload ?? {};
-  const { data, error } = await db().from("wa_api_rules").select("*").eq("event_key", params.event.trim()).eq("active", true);
+  const { data, error } = await db().from("wa_api_rules").select("*").eq("tenant_id", tenantId).eq("event_key", params.event.trim()).eq("active", true);
   if (error) throw error;
   const rules = (data ?? []).map(mapRule);
   if (!rules.length) return [];
 
-  const contact = await getContactByPhone(params.phone).catch(() => null);
+  const contact = await getContactByPhone(params.phone, tenantId).catch(() => null);
   const results: RuleFireResult[] = [];
 
   for (const rule of rules) {
@@ -229,7 +234,7 @@ export async function processEvent(params: {
     if (rule.frequencyCapHours > 0) {
       const since = new Date(Date.now() - rule.frequencyCapHours * 3600_000).toISOString();
       const { count } = await db().from("wa_rule_sends").select("id", { count: "exact", head: true })
-        .eq("rule_id", rule.id).eq("phone", params.phone.replace(/\D/g, ""))
+        .eq("tenant_id", tenantId).eq("rule_id", rule.id).eq("phone", params.phone.replace(/\D/g, ""))
         .in("status", ["pending", "sending", "sent"]).gte("created_at", since);
       if ((count ?? 0) > 0) { results.push({ ...base, outcome: "skipped", detail: `frequency cap (${rule.frequencyCapHours}h)` }); continue; }
     }
@@ -240,6 +245,7 @@ export async function processEvent(params: {
     if (params.dryRun) { results.push({ ...base, outcome: "dry_run_match", sendAfter, variables }); continue; }
 
     const { error: insErr } = await db().from("wa_rule_sends").insert({
+      tenant_id: tenantId,
       rule_id: rule.id,
       phone: params.phone.replace(/\D/g, ""),
       recipient_name: params.name ?? contact?.name ?? "",
@@ -268,11 +274,17 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
   } catch { return out; }   // table missing → nothing to do
   if (!due.length) return out;
 
-  const headroom = Math.max(0, dailyLimit() - (await dailySentCount().catch(() => 0)));
+  // Per-tenant daily headroom — one tenant's volume never blocks another's.
   const ruleCache = new Map<string, ApiRule | null>();
+  const headroomByTenant = new Map<string, number>();
+  const headroomFor = async (tid: string): Promise<number> => {
+    if (!headroomByTenant.has(tid)) {
+      headroomByTenant.set(tid, Math.max(0, dailyLimit() - (await dailySentCount(tid).catch(() => 0))));
+    }
+    return headroomByTenant.get(tid)!;
+  };
 
   for (const row of due) {
-    if (out.sent >= headroom) break;
     const id = row.id as string;
     // Atomic claim — only one runner wins this row.
     const { data: claimed } = await db().from("wa_rule_sends")
@@ -291,6 +303,13 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
     if (!rule) { await finish("failed", "rule deleted"); out.failed++; continue; }
     if (!rule.active) { await finish("cancelled", "rule deactivated"); out.skipped++; continue; }
 
+    // This tenant's daily cap reached → release the claim back to pending so the
+    // row is retried after the daily reset (other tenants keep draining).
+    if (await headroomFor(rule.tenantId) <= 0) {
+      await db().from("wa_rule_sends").update({ status: "pending" }).eq("id", id);
+      out.skipped++; continue;
+    }
+
     try {
       // One-recipient campaign send → logs under the rule's hidden campaign,
       // so opt-outs, click tracking, and the funnel dashboard all apply.
@@ -302,8 +321,9 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
         recipients: [{ phone: row.phone as string, fullName: (row.recipient_name as string) ?? "" }],
         headerImageUrl: rule.headerImageUrl,
         channel: await credsFor(rule.channelId),
+        tenantId: rule.tenantId,
       });
-      if (r.sentCount > 0) { await finish("sent"); out.sent++; }
+      if (r.sentCount > 0) { headroomByTenant.set(rule.tenantId, (headroomByTenant.get(rule.tenantId) ?? 1) - 1); await finish("sent"); out.sent++; }
       else if (r.skippedCount > 0) { await finish("skipped", "opted out"); out.skipped++; }
       else { await finish("failed", r.errors[0] ?? "send failed"); out.failed++; }
     } catch (err) {
