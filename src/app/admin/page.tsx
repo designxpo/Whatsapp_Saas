@@ -6272,6 +6272,23 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           {quickReplies.length === 0 && <p className="text-center text-slate-400 text-sm py-4">No quick replies yet — add shortcuts like "fees", "location", "demo".</p>}
         </div>
       </section>
+
+      {isAdmin && (
+        <section className="bg-white rounded-card border border-line p-5 space-y-3">
+          <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
+          <div className="flex flex-wrap gap-2">
+            <a href="/api/admin/gdpr/export" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export all data (JSON)</a>
+            <button onClick={async () => {
+              const phone = prompt("Erase a contact — enter their phone number.\nThis permanently deletes the contact and ALL their data.");
+              if (!phone?.trim()) return;
+              if (!confirm(`Permanently erase all data for ${phone}? This cannot be undone.`)) return;
+              const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "request failed" }));
+              alert(r.error ? `Error: ${r.error}` : `Erased data for ${r.phone}.`);
+            }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>
+          </div>
+          <p className="text-[11px] text-ink-400">Export downloads everything stored for your workspace. Erase fulfils a right‑to‑be‑forgotten request for one contact (removes the contact, conversations, messages, opt‑outs, queue/log, orders and more).</p>
+        </section>
+      )}
     </div>
     <SettingsRail goTo={goTo} />
     </div>
