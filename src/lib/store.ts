@@ -412,6 +412,7 @@ export interface Conversation {
   welcomed: boolean;
   agentId: string | null;
   aiReplyCount: number;         // AI auto-replies sent so far (capped before human handoff)
+  platform: "whatsapp" | "instagram";   // which channel this chat arrived on
   channelId: string | null;     // which WhatsApp number this chat lives on
   tenantId: string;             // owning tenant
   createdAt: string;
@@ -442,6 +443,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     welcomed: (r.welcomed as boolean) ?? false,
     agentId: (r.agent_id as string | null) ?? null,
     aiReplyCount: (r.ai_reply_count as number) ?? 0,
+    platform: (r.platform as "whatsapp" | "instagram") ?? "whatsapp",
     channelId: (r.channel_id as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,

@@ -990,7 +990,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
 type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string };
-type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null };
+type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram" };
 
 const PIPELINE: { icon: React.ReactNode; title: string; desc: string }[] = [
   { icon: <MessageSquare className="w-5 h-5" />, title: "Inbound", desc: "Customer sends a WhatsApp message" },
@@ -1099,6 +1099,7 @@ function LiveChatTab() {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
+  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram">("all");
   const [search, setSearch] = useState("");
 
   const load = useCallback(() => {
@@ -1112,9 +1113,13 @@ function LiveChatTab() {
   }, [load]);
 
   const q = search.trim().toLowerCase();
+  const onPlatform = (c: Conversation, p: "whatsapp" | "instagram") => (c.platform ?? "whatsapp") === p;
   const visible = convos
+    .filter(c => platform === "all" ? true : onPlatform(c, platform))
     .filter(c => filter === "all" ? true : filter === "needs_reply" ? !!c.needsReply : filter === "escalated" ? c.status === "escalated" : !c.botEnabled)
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
+  const waCount = convos.filter(c => onPlatform(c, "whatsapp")).length;
+  const igCount = convos.filter(c => onPlatform(c, "instagram")).length;
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return "";
@@ -1135,6 +1140,16 @@ function LiveChatTab() {
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-sm bg-canvas text-ink-900 placeholder:text-ink-400" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
+          {/* Platform toggle — switch between WhatsApp and Instagram chats. */}
+          <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
+            {([["all", "All", convos.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount]] as const).map(([k, label, n]) => (
+              <button key={k} onClick={() => setPlatform(k)} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
+                {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
+                {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
+                {label} <span className="opacity-60">{n}</span>
+              </button>
+            ))}
+          </div>
           <div className="flex gap-1 flex-wrap">
             {([["all", "All"], ["needs_reply", "Needs reply"], ["escalated", "Escalated"], ["bot_off", "Human"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{label}</button>
@@ -1145,8 +1160,13 @@ function LiveChatTab() {
           {visible.map(c => (
             <button key={c.id} onClick={() => setSelected(c.id)}
               className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
-                {(c.name || c.phone).slice(0, 1).toUpperCase()}
+              <div className="relative shrink-0 mt-0.5">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-600 to-brand-900 text-white flex items-center justify-center text-xs font-bold">
+                  {(c.name || c.phone).slice(0, 1).toUpperCase()}
+                </div>
+                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : "WhatsApp"}>
+                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
+                </span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
