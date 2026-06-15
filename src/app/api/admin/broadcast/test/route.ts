@@ -17,6 +17,7 @@ export async function POST(req: Request) {
   if (phone.length < 10) return NextResponse.json({ error: "Enter a valid number with country code, e.g. 919876543210" }, { status: 400 });
   if (!body.templateName?.trim()) return NextResponse.json({ error: "Pick a template first" }, { status: 400 });
 
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const r = await sendTemplateTest({
     phone,
     name: body.name,
@@ -24,8 +25,8 @@ export async function POST(req: Request) {
     languageCode: body.languageCode?.trim() || "en_US",
     variables: Array.isArray(body.variables) ? body.variables : [],
     headerImageUrl: body.headerImageUrl ?? null,
-    channel: await credsFor(body.channelId),
-    tenantId: (await currentTenantId()) ?? DEFAULT_TENANT_ID,
+    channel: await credsFor(body.channelId, tid),
+    tenantId: tid,
   });
   if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), "broadcast.test", `${body.templateName} → ${phone}`);

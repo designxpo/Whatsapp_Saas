@@ -60,9 +60,14 @@ export async function listChannels(tenantId?: string): Promise<Channel[]> {
   } catch { return []; }     // table missing → env single-number mode
 }
 
-export async function getChannel(id: string): Promise<Channel | null> {
+// When tenantId is supplied the lookup is tenant-scoped. ALWAYS pass it from any
+// route that takes a client-supplied channel id, or a tenant can use another
+// tenant's decrypted credentials (cross-tenant send / credential exposure).
+export async function getChannel(id: string, tenantId?: string): Promise<Channel | null> {
   try {
-    const { data } = await db().from("wa_channels").select("*").eq("id", id).maybeSingle();
+    let q = db().from("wa_channels").select("*").eq("id", id);
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data } = await q.maybeSingle();
     return data ? mapChannel(data as Record<string, unknown>) : null;
   } catch { return null; }
 }
@@ -86,17 +91,20 @@ export async function getChannelByIgId(igUserId: string): Promise<Channel | null
 }
 
 // The channel used when a send doesn't specify one: the explicit default, else
-// the first active channel, else null (= env credentials).
-export async function getDefaultChannel(): Promise<Channel | null> {
-  const all = (await listChannels()).filter(c => c.active);
+// the first active channel, else null (= env credentials). Pass tenantId to
+// avoid falling back to another tenant's channel.
+export async function getDefaultChannel(tenantId?: string): Promise<Channel | null> {
+  const all = (await listChannels(tenantId)).filter(c => c.active);
   return all.find(c => c.isDefault) ?? all[0] ?? null;
 }
 
 // Resolve a channel reference (id | Channel | null/undefined) to creds-or-undefined.
-// `undefined` tells the senders to use env credentials.
-export async function credsFor(ref?: string | Channel | null): Promise<ChannelCreds | undefined> {
+// `undefined` tells the senders to use env credentials. When ref is a client-
+// supplied id, pass tenantId so a foreign channel resolves to undefined rather
+// than leaking another tenant's credentials.
+export async function credsFor(ref?: string | Channel | null, tenantId?: string): Promise<ChannelCreds | undefined> {
   if (!ref) return undefined;
-  const c = typeof ref === "string" ? await getChannel(ref) : ref;
+  const c = typeof ref === "string" ? await getChannel(ref, tenantId) : ref;
   return c ?? undefined;
 }
 
@@ -150,7 +158,9 @@ export async function saveInstagramChannel(input: {
   return mapChannel(data as Record<string, unknown>);
 }
 
-export async function deleteChannel(id: string): Promise<void> {
-  const { error } = await db().from("wa_channels").delete().eq("id", id);
+export async function deleteChannel(id: string, tenantId?: string): Promise<void> {
+  let q = db().from("wa_channels").delete().eq("id", id);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { error } = await q;
   if (error) throw error;
 }

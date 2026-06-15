@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
 import { checkCredentials, createSession, SESSION_COOKIE, DEFAULT_TENANT_ID, type SessionUser } from "@/lib/auth";
 import { verifyTeamLogin, logActivity } from "@/lib/team";
+import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from "@/lib/loginthrottle";
 
 export async function POST(req: Request) {
   let body: { user?: string; password?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const login = (body.user ?? "").trim();
   const password = body.password ?? "";
+
+  // Brute-force throttle (per IP + username).
+  const key = loginKey(req, login);
+  const gate = await loginThrottle(key);
+  if (!gate.allowed) {
+    return NextResponse.json(
+      { error: "Too many failed attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(gate.retryAfterSec ?? 900) } },
+    );
+  }
 
   // Owner account (env) first, then team members (wa_users).
   let user: SessionUser | null = null;
@@ -16,7 +27,11 @@ export async function POST(req: Request) {
     const member = await verifyTeamLogin(login, password);
     if (member) user = { email: member.email, name: member.name || member.email, role: member.role, tenantId: member.tenantId };
   }
-  if (!user) return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+  if (!user) {
+    await recordLoginFailure(key);
+    return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+  }
+  await clearLoginFailures(key);
 
   logActivity(user, "auth.login", "signed in");
   const token = await createSession(user);

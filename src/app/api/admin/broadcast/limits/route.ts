@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const channelId = new URL(req.url).searchParams.get("channelId");
-  const { token, phoneId } = getCreds(await credsFor(channelId));
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const { token, phoneId } = getCreds(await credsFor(channelId, tid));
 
   const dailyCap = parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10);
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const sentToday = await dailySentCount(tid).catch(() => 0);
 
   let quality: string | null = null, tier: string | null = null, displayPhone: string | null = null, metaError: string | null = null;

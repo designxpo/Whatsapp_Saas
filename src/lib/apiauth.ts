@@ -3,9 +3,25 @@ import { tenantForApiKey } from "./apikeys";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
-function constEq(provided: string, expected: string | undefined): boolean {
+export function constEq(provided: string, expected: string | undefined): boolean {
   if (!expected) return false;
   const a = Buffer.from(provided), b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+// Verifies Meta's X-Hub-Signature-256 over the RAW request body. FAIL-CLOSED:
+// a missing/empty app secret rejects the request (never processes unsigned
+// payloads). Constant-time compare. Pass the exact bytes read via req.text().
+export function verifyMetaSignature(raw: string, sigHeader: string | null, secret: string | undefined): boolean {
+  if (!secret) {
+    console.error("[webhook] Meta app secret not configured — rejecting (fail-closed)");
+    return false;
+  }
+  const sig = sigHeader ?? "";
+  if (!sig.startsWith("sha256=")) return false;
+  const expected = "sha256=" + crypto.createHmac("sha256", secret).update(raw, "utf8").digest("hex");
+  const a = Buffer.from(sig), b = Buffer.from(expected);
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
 }

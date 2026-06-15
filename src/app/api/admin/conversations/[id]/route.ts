@@ -8,7 +8,7 @@ import {
 import { sendText, sendButtons } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { pushWaActivity } from "@/lib/leadsquared";
-import { currentUser } from "@/lib/auth";
+import { currentUser, currentTenantId } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -18,9 +18,11 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const conversation = await getConversation(id);
+    const tid = await currentTenantId();
+    if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const conversation = await getConversation(id, tid);
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
-    const messages = await getConvHistory(id, 200);
+    const messages = await getConvHistory(id, 200, tid);
     // Opening the chat marks it read (clears the "awaiting your reply" flag).
     if (conversation.needsReply) { await markConversationRead(id); conversation.needsReply = false; }
     return NextResponse.json({ conversation, messages });
@@ -38,7 +40,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const conv = await getConversation(id);
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const conv = await getConversation(id, tid);
   if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
@@ -52,7 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         : await sendText(conv.phone, text, channel);
       if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
       const logged = buttons.length > 0 ? `${text}\n[buttons: ${buttons.join(" | ")}]` : text;
-      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent" });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
       void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);

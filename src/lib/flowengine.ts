@@ -24,6 +24,7 @@ import {
   addContactTag,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
+import { safeFetch } from "./ssrf";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -321,7 +322,8 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         const url = str(d.url);
         if (isReal && /^https?:\/\//.test(url)) {
           const contact = await getContactByPhone(phone, tenantId).catch(() => null);
-          void fetch(url, {
+          // SSRF guard (safeFetch) — tenant-supplied URL must resolve to a public host.
+          void safeFetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

@@ -510,8 +510,13 @@ export async function getConversationByPhone(phone: string, tenantId = DEFAULT_T
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
-export async function getConversation(id: string): Promise<Conversation | null> {
-  const { data } = await db().from("wa_conversations").select("*").eq("id", id).maybeSingle();
+// When tenantId is supplied the lookup is tenant-scoped — pass it from any
+// caller that takes a client-supplied conversation id (prevents cross-tenant
+// IDOR; a foreign id returns null → 404).
+export async function getConversation(id: string, tenantId?: string): Promise<Conversation | null> {
+  let q = db().from("wa_conversations").select("*").eq("id", id);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.maybeSingle();
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
@@ -531,10 +536,12 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
   if (error && error.code !== "23505") throw error;
 }
 
-export async function getConvHistory(conversationId: string, limit = 20): Promise<ConvMessage[]> {
-  const { data } = await db().from("wa_conv_messages")
+export async function getConvHistory(conversationId: string, limit = 20, tenantId?: string): Promise<ConvMessage[]> {
+  let q = db().from("wa_conv_messages")
     .select("id, role, body, source, created_at")
-    .eq("conversation_id", conversationId)
+    .eq("conversation_id", conversationId);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q
     .order("created_at", { ascending: false }).limit(limit);
   const rows = (data ?? []).reverse();
   return rows.map(r => ({ id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string, source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string }));
@@ -544,6 +551,18 @@ export async function getConvHistory(conversationId: string, limit = 20): Promis
 export async function messageLogged(metaId: string): Promise<boolean> {
   const { count } = await db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("meta_message_id", metaId);
   return (count ?? 0) > 0;
+}
+
+// Atomically claim a webhook event by a unique key. Returns true only for the
+// FIRST caller to see this key; concurrent/duplicate deliveries get false and
+// must skip all side effects (AI reply, sends, orders, enrollment). Degrades to
+// true (process) if the dedup table is missing, so an unapplied migration never
+// drops live messages.
+export async function claimWebhookEvent(key: string): Promise<boolean> {
+  const { error } = await db().from("wa_webhook_dedup").insert({ key });
+  if (!error) return true;
+  if (error.code === "23505") return false;   // already claimed (unique violation)
+  return true;                                 // table missing / other → don't drop
 }
 
 export async function setConversationStatus(id: string, status: ConvStatus): Promise<void> {

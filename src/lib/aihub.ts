@@ -7,6 +7,7 @@
 import { db } from "./supabase";
 import { setContactAttributes, getTenantSetting, setTenantSetting } from "./store";
 import { embedTexts } from "./kb";
+import { safeFetch } from "./ssrf";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -208,7 +209,8 @@ export async function executeAiFunction(fn: AiFunction, args: Record<string, unk
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);
-      await fetch(fn.webhookUrl, {
+      // SSRF guard (safeFetch) — tenant-supplied URL must resolve to a public host.
+      await safeFetch(fn.webhookUrl, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ function: fn.name, phone: phone ?? null, data: args, savedAttributes: collected, at: new Date().toISOString() }),
         signal: ctrl.signal,
@@ -216,7 +218,8 @@ export async function executeAiFunction(fn: AiFunction, args: Record<string, unk
       clearTimeout(t);
     } catch (e) { console.error("[aihub] webhook:", e); }
   }
-  console.log(JSON.stringify({ tag: "ai_function", fn: fn.name, phone, saved: Object.keys(collected), escalate: fn.escalate }));
+  // Don't log the full phone (PII) — last 4 digits are enough to correlate.
+  console.log(JSON.stringify({ tag: "ai_function", fn: fn.name, phone: phone ? `…${phone.slice(-4)}` : null, saved: Object.keys(collected), escalate: fn.escalate }));
   return { status: "saved", escalate: fn.escalate };
 }
 

@@ -26,7 +26,7 @@ export async function POST(req: Request) {
   try {
     let token = (body.token ?? "").trim();
     if ((!token || token.includes("…")) && body.id) {
-      const existing = await getChannel(body.id);
+      const existing = await getChannel(body.id, tenantId);
       if (!existing) return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       token = existing.token;
     }

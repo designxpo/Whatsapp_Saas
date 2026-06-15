@@ -1,8 +1,8 @@
 export const maxDuration = 60;
 import { NextResponse, after } from "next/server";
-import crypto from "crypto";
+import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
-  updateLogByMessageId, messageLogged, addOptout, removeOptout, optoutSet, upsertContacts,
+  updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, optoutSet, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
   setContactAttributes, addContactTag,
 } from "@/lib/store";
@@ -30,7 +30,7 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && token === process.env.META_WA_WEBHOOK_VERIFY_TOKEN) {
+  if (mode === "subscribe" && constEq(token ?? "", process.env.META_WA_WEBHOOK_VERIFY_TOKEN)) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
@@ -78,6 +78,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   const from = (m.from as string) || "";
   if (!id || !from) return;
   if (await messageLogged(id)) return;                       // webhook retry — already handled
+  if (!(await claimWebhookEvent(`wa:${id}`))) return;        // atomic guard against concurrent redelivery
 
   // Multi-number routing: Meta tells us which of our numbers received this.
   // Replies must go out from the same number; null = env single-number mode.
@@ -217,14 +218,8 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 // POST — inbound messages + delivery/read status updates. Verifies signature.
 export async function POST(req: Request) {
   const raw = await req.text();
-  const sig = req.headers.get("x-hub-signature-256") ?? "";
-  const secret = process.env.META_WA_WEBHOOK_SECRET;
-  if (secret) {
-    const expected = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    const a = Buffer.from(sig), b = Buffer.from(expected);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
+  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_WA_WEBHOOK_SECRET)) {
+    return new NextResponse("Invalid signature", { status: 401 });
   }
 
   try {

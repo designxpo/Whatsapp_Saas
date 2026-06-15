@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listSequences, getSequenceSteps, createSequence, updateSequence, deleteSequence, setSequenceSteps, type SequenceTriggerKind, type SequenceStepAction } from "@/lib/sequences";
 import { logActivity } from "@/lib/team";
+import { getChannel } from "@/lib/channels";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,11 @@ export async function POST(req: Request) {
   if (!body.name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    // A client-supplied channelId must belong to this tenant — the sequence
+    // cron later sends from it, so a foreign id = cross-tenant credential abuse.
+    if (body.channelId && !(await getChannel(body.channelId, tid))) {
+      return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    }
     let id = body.id;
     if (id) {
       await updateSequence(id, { name: body.name, platform: body.platform, triggerKind: body.triggerKind, triggerValue: body.triggerValue ?? null, channelId: body.channelId ?? null, active: body.active }, tid);

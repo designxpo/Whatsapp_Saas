@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { buildCheckoutFlowJson, createWaForm, publishWaForm } from "@/lib/waforms";
 import { credsFor, getDefaultChannel } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
@@ -16,7 +16,8 @@ export async function POST(req: Request) {
   let body: { name?: string; channelId?: string | null };
   try { body = await req.json().catch(() => ({})); } catch { body = {}; }
 
-  const channel = (await credsFor(body.channelId)) ?? (await getDefaultChannel()) ?? undefined;
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const channel = (await credsFor(body.channelId, tid)) ?? (await getDefaultChannel(tid)) ?? undefined;
   try {
     const created = await createWaForm((body.name?.trim() || "Checkout"), buildCheckoutFlowJson(), channel ?? undefined);
     if (created.error) return NextResponse.json({ error: created.error }, { status: 502 });

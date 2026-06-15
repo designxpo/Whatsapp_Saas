@@ -1,7 +1,16 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { timingSafeEqual } from "crypto";
+import { verifyPassword } from "./team";
 
 const COOKIE = "wa_admin_session";
+
+// Constant-time string compare (avoids login timing oracles).
+function strEq(a: string, b: string): boolean {
+  const ba = Buffer.from(a), bb = Buffer.from(b);
+  if (ba.length !== bb.length) return false;
+  return timingSafeEqual(ba, bb);
+}
 
 // Pre-multitenant sessions (and the bootstrap owner) belong to the default tenant.
 export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -15,7 +24,8 @@ export interface SessionUser {
 
 function secret(): Uint8Array {
   const s = process.env.ADMIN_JWT_SECRET;
-  if (!s || s.length < 16) throw new Error("ADMIN_JWT_SECRET missing or too short");
+  // HS256 needs a ≥256-bit (32-byte) key to meet its security assumptions.
+  if (!s || s.length < 32) throw new Error("ADMIN_JWT_SECRET missing or too short (need ≥32 chars)");
   return new TextEncoder().encode(s);
 }
 
@@ -46,9 +56,20 @@ export async function verifySession(token: string | undefined): Promise<SessionU
 }
 
 // Validate the OWNER credentials against env (team members live in wa_users).
+// Prefers ADMIN_PASSWORD_HASH (scrypt "salt:hash", set via hashPassword) so the
+// plaintext password never lives in the environment; falls back to a constant-
+// time compare of the legacy ADMIN_PASSWORD. Always compares both username and
+// password in constant time to avoid timing oracles.
 export function checkCredentials(user: string, password: string): boolean {
-  const u = process.env.ADMIN_USER, p = process.env.ADMIN_PASSWORD;
-  return !!u && !!p && user === u && password === p;
+  const u = process.env.ADMIN_USER;
+  if (!u) return false;
+  const userOk = strEq(user, u);
+  const hash = process.env.ADMIN_PASSWORD_HASH;
+  const plain = process.env.ADMIN_PASSWORD;
+  let passOk = false;
+  if (hash) passOk = verifyPassword(password, hash);
+  else if (plain) passOk = strEq(password, plain);
+  return userOk && passOk;
 }
 
 export async function currentUser(): Promise<SessionUser | null> {

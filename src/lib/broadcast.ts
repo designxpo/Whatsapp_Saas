@@ -1,5 +1,6 @@
 import { createCampaign, getCampaign, recipientsForAudience, type Campaign } from "./store";
 import { startSend } from "./campaign";
+import { getChannel } from "./channels";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -38,6 +39,14 @@ function assert(c: unknown, m: string): asserts c { if (!c) throw new BroadcastE
 export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TENANT_ID): Promise<BroadcastResult> {
   assert(input && typeof input === "object", "Body must be a JSON object.");
   assert(["campaign", "audience", "recipients"].includes(input.mode), 'mode must be "campaign", "audience", or "recipients".');
+
+  // A client-supplied channelId must belong to the caller's tenant — otherwise
+  // it would be persisted on the campaign and used to send from another tenant's
+  // WhatsApp number (cross-tenant credential abuse / mis-billing).
+  if (input.channelId) {
+    const owned = await getChannel(input.channelId, tenantId);
+    assert(owned, "Channel not found.");
+  }
 
   // Trigger an existing campaign — recompute its audience and send now.
   if (input.mode === "campaign") {

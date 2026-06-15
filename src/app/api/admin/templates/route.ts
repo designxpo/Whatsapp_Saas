@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 // GET ?channelId=… — templates live on the WABA, so each channel can differ.
 export async function GET(req: Request) {
   try {
-    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"));
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"), tid);
     return NextResponse.json({ templates: await fetchTemplates(channel) });
   } catch (err) {
     // Degrade gracefully — missing/invalid Meta creds shouldn't 500 the UI.
@@ -30,8 +31,8 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.bodyText?.trim()) return NextResponse.json({ error: "name and bodyText are required" }, { status: 400 });
 
-  const channel = await credsFor(body.channelId);
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const channel = await credsFor(body.channelId, tid);
   const name = body.name.trim().toLowerCase();
   let buttons: TemplateButton[] | undefined = body.buttons;
 
@@ -85,7 +86,8 @@ export async function DELETE(req: Request) {
   let body: { name?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
-  const r = await deleteTemplate(body.name.trim(), await credsFor(body.channelId));
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const r = await deleteTemplate(body.name.trim(), await credsFor(body.channelId, tid));
   if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), "template.delete", body.name.trim());
   return NextResponse.json({ success: true });

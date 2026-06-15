@@ -31,10 +31,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Button link must start with http(s)://" }, { status: 400 });
   }
   try {
-    const igChannel = (await listChannels(tid)).find(c => c.kind === "instagram");
+    const channels = await listChannels(tid);
+    const igChannel = channels.find(c => c.kind === "instagram");
+    // A client-supplied channelId must be one of this tenant's channels.
+    const reqChannelId = (body.channelId as string | null) || null;
+    if (reqChannelId && !channels.some(c => c.id === reqChannelId)) {
+      return NextResponse.json({ error: "Channel not found" }, { status: 404 });
+    }
     const rule = await saveCommentRule({
       id: typeof body.id === "string" ? body.id : undefined,
-      channelId: (body.channelId as string | null) ?? igChannel?.id ?? null,
+      channelId: reqChannelId ?? igChannel?.id ?? null,
       name: String(body.name ?? "").slice(0, 80),
       enabled: body.enabled === undefined ? true : !!body.enabled,
       postId: (body.postId as string | null) || null,

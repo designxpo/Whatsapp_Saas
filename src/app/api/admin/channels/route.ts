@@ -34,14 +34,14 @@ export async function POST(req: Request) {
     catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   }
   try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     let token = (body.token ?? "").trim();
     if ((!token || token.includes("…")) && body.id) {
-      const existing = await getChannel(body.id);
+      const existing = await getChannel(body.id, tid);
       if (!existing) return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       token = existing.token;
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const saved = await saveChannel({ ...body, name: body.name!, phoneId: body.phoneId!, wabaId: body.wabaId!, token, tenantId: tid });
     logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId})`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
@@ -56,7 +56,8 @@ export async function DELETE(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
   try {
-    await deleteChannel(body.id);
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    await deleteChannel(body.id, tid);
     logActivity(await currentUser(), "channel.delete", body.id);
     return NextResponse.json({ success: true });
   } catch (err) {

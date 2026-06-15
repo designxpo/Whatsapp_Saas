@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, type WaFormField } from "@/lib/waforms";
 import { credsFor } from "@/lib/channels";
-import { currentUser } from "@/lib/auth";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 // GET ?channelId=… — forms live on the WABA, so each channel can differ.
 export async function GET(req: Request) {
   try {
-    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"));
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"), tid);
     return NextResponse.json({ forms: await listWaForms(channel) });
   } catch (err) {
     // Missing/invalid Meta creds shouldn't 500 the UI — render with a notice.
@@ -25,7 +26,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const channel = await credsFor(body.channelId);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const channel = await credsFor(body.channelId, tid);
 
   // Publish-only call for an existing draft.
   if (body.id && body.publish && !body.fields) {
@@ -63,7 +65,8 @@ export async function DELETE(req: Request) {
   let body: { id?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const r = await deleteWaForm(body.id, await credsFor(body.channelId));
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const r = await deleteWaForm(body.id, await credsFor(body.channelId, tid));
   if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), r.deprecated ? "form.deprecate" : "form.delete", body.id);
   return NextResponse.json({ success: true, deprecated: r.deprecated ?? false });

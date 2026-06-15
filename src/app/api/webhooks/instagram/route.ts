@@ -1,8 +1,8 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import crypto from "crypto";
+import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll } from "@/lib/sequences";
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && token === process.env.META_WEBHOOK_VERIFY_TOKEN) {
+  if (mode === "subscribe" && constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
@@ -32,14 +32,8 @@ export async function GET(req: Request) {
 // app secret (same Tech Provider app as WhatsApp).
 export async function POST(req: Request) {
   const raw = await req.text();
-  const sig = req.headers.get("x-hub-signature-256") ?? "";
-  const secret = process.env.META_APP_SECRET;
-  if (secret) {
-    const expected = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    const a = Buffer.from(sig), b = Buffer.from(expected);
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      return new NextResponse("Invalid signature", { status: 401 });
-    }
+  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
+    return new NextResponse("Invalid signature", { status: 401 });
   }
 
   try {
@@ -80,6 +74,12 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const text = (msg?.text as string) ?? "";
   // Ignore echoes (our own outbound) and non-text events.
   if (!senderId || !text.trim() || (msg?.is_echo as boolean)) return;
+
+  // Idempotency: Meta redelivers IG messaging events on timeout/non-2xx.
+  // Claim the message id (mid) so a redelivery can't double-fire AI replies,
+  // sends or sequence enrollment.
+  const mid = String(msg?.mid ?? "");
+  if (mid && !(await claimWebhookEvent(`ig:${mid}`))) return;
 
   // Opt-out (STOP) honored like WhatsApp.
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }

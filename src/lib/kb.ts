@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, matchChunks, type KbSourceType } from "./store";
 import { errorMessage } from "./errors";
+import { safeFetch } from "./ssrf";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -68,7 +69,8 @@ async function extractDocx(buffer: Buffer): Promise<string> {
 
 async function extractUrl(url: string): Promise<string> {
   const cheerio = await import("cheerio");
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; wa-broadcaster KB ingest)" } });
+  // SSRF guard: validates the URL (and redirects) resolve to a public address.
+  const res = await safeFetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; wa-broadcaster KB ingest)" } });
   if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
   const html = await res.text();
   const $ = cheerio.load(html);
