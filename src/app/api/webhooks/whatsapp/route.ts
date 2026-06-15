@@ -139,9 +139,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // In-chat checkout: a checkout-flow submission (carries a delivery address)
   // for a contact with an open cart → create the order and confirm.
-  if (answers && Object.keys(answers).some(k => k.includes("address")) && await getOpenCart(from)) {
+  if (answers && Object.keys(answers).some(k => k.includes("address")) && await getOpenCart(from, tid)) {
     try {
-      const order = await checkoutCart({ phone: from });
+      const order = await checkoutCart({ phone: from }, tid);
       if (order) {
         const msg = "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
         const r = await sendText(from, msg, channel);
@@ -156,11 +156,11 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Growth opt-in: if this message matches a growth tool's prefilled keyword,
   // apply its action (tag + sequence enrollment) and count the conversion.
   try {
-    const tool = await growthToolForOptIn(text);
+    const tool = await growthToolForOptIn(text, tid);
     if (tool) {
       if (tool.tag) await addContactTag(from, tool.tag, tid);
-      if (tool.sequenceId) await enroll(tool.sequenceId, { phone: from, platform: "whatsapp", conversationId: conv.id });
-      await recordGrowthConversion(tool.id);
+      if (tool.sequenceId) await enroll(tool.sequenceId, { phone: from, platform: "whatsapp", conversationId: conv.id }, tid);
+      await recordGrowthConversion(tool.id, tid);
     }
   } catch (e) { console.error("[webhook] growth opt-in", e); }
 
@@ -195,7 +195,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     // Off-script messages fall through to the AI (smarter than a dead-end).
     let adFlowId: string | undefined;
     if (referral?.source_id) {
-      adFlowId = (await resolveFlowIdForAd(String(referral.source_id)).catch(() => null)) ?? undefined;
+      adFlowId = (await resolveFlowIdForAd(String(referral.source_id), tid).catch(() => null)) ?? undefined;
     }
     let flowHandled = false;
     try { flowHandled = await handleFlowMessage(conv.id, from, text, { channel, adFlowId }); }

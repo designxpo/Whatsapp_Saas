@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { adPreview, generateAdPreviews, getAdsAccountId, getAdsPageId, type CtwaInput, type AdObjective } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,8 @@ export async function POST(req: Request) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const [accountId, pageId] = await Promise.all([getAdsAccountId(), getAdsPageId()]);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   if (!pageId) return NextResponse.json({ error: "Set your Facebook Page ID first" }, { status: 400 });
   if (!body.creative) return NextResponse.json({ error: "No creative" }, { status: 400 });

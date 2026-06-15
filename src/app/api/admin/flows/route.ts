@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listFlows, createFlow } from "@/lib/flowengine";
+import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -7,7 +8,8 @@ export const dynamic = "force-dynamic";
 // GET — all flows (builder list view).
 export async function GET() {
   try {
-    return NextResponse.json({ flows: await listFlows() });
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    return NextResponse.json({ flows: await listFlows(tid) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -20,7 +22,8 @@ export async function POST(req: Request) {
   const name = body.name?.trim();
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
   try {
-    return NextResponse.json({ flow: await createFlow(name) });
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    return NextResponse.json({ flow: await createFlow(name, tid) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

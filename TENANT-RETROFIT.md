@@ -83,10 +83,41 @@ but the real tenant must be threaded from the entry point above.
   live on Meta under the channel's WABA → already isolated by channel creds, no
   local tenant column needed.
 
+- ✅ **Flows (chatbot engine)** — listFlows/getFlow(opt scope)/createFlow/
+  updateFlow/deleteFlow scoped + stamped; `handleFlowMessage` derives the tenant
+  from `opts.channel.tenantId` (webhooks) or `opts.tenantId` (simulator) and
+  threads it through `runFrom` → senders (appendConvMessage stamps tenant),
+  sessions (`wa_flow_sessions` stamped), and node writes (setContactAttributes /
+  addContactTag / getContactByPhone). `drainFlowReminders` (cron) uses each
+  session/conversation's own tenant. Flow CRUD routes pass `currentTenantId()`.
+- ✅ **Sequences (drip)** — type carries tenantId; CRUD + steps + enroll +
+  getSequenceByTrigger scoped/stamped; `drainSequences` (cron) resolves each
+  enrollment's sequence under its own `tenant_id`; executeStep reads the conv
+  under `seq.tenantId`.
+- ✅ **Commerce** — products/carts/orders scoped + stamped; checkout fires the
+  tenant's `order_placed` sequence; `drainAbandonedCarts` (cron) resolves each
+  cart's recovery sequence under the cart's own tenant.
+- ✅ **Growth tools** — CRUD scoped/stamped; webhook opt-in match + conversion
+  count use `channel.tenantId`. Public `/g/<slug>` stays slug-only (no tenant
+  context in the URL) — resilient to per-tenant slugs; tenant-subdomain routing
+  would fully disambiguate (later).
+- ✅ **Ads** — ad account + page id are per-tenant (`getTenantSetting`);
+  drafts / portal-campaigns / ad-rules / ad→flow triggers / CTWA attribution all
+  scoped + stamped; **`drainAdRules` (cron) iterates per tenant** and evaluates
+  each tenant's rules against that tenant's OWN ad account (no cross-tenant
+  pause). All Meta admin routes pass `currentTenantId()`. *Note:* the Meta
+  **access token** (`META_ADS_ACCESS_TOKEN`/system-user token) is still a single
+  app-level env — per-tenant ad tokens (each tenant's own Meta auth) is a
+  later step; today isolation is by ad-account id + per-tenant data.
+- ✅ **AI Hub (agents / functions / prompts)** — see commit below.
+
 ## Apply before going live
-Run migration **0026_kb_tenant_match.sql** alongside 0019–0025 on the SaaS
-Supabase (it redefines the KB match RPC with the required `p_tenant_id` arg —
-`matchChunks` now passes it, so the old 2-arg RPC would error).
+Run migrations **0026_kb_tenant_match.sql** and **0027_tenancy_commerce_growth.sql**
+alongside 0019–0025 on the SaaS Supabase:
+- 0026 redefines the KB match RPC with the required `p_tenant_id` arg.
+- 0027 adds `tenant_id` (+ FK/index/RLS) to the 0022 sequences/commerce/growth
+  tables (they were created *after* 0019's retrofit loop and had none), and makes
+  `wa_growth_tools.slug` unique **per tenant** instead of globally.
 
 ## Remaining (apply the same pattern)
 Per domain: add `tenantId` to the store fns, scope reads/writes, thread from the

@@ -33,6 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       sender: drySender(outputs),
       onlyFlowId: id,
       allowInactive: true,
+      tenantId: (await currentTenantId()) ?? DEFAULT_TENANT_ID,
     });
     if (handled) return NextResponse.json({ outputs, handled, note: null });
 

@@ -5,6 +5,8 @@
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
 export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean }
 
@@ -19,44 +21,45 @@ function mapProduct(r: Record<string, unknown>): Product {
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
-export async function listProducts(): Promise<Product[]> {
-  const { data } = await db().from("wa_products").select("*").order("created_at", { ascending: false });
+export async function listProducts(tenantId = DEFAULT_TENANT_ID): Promise<Product[]> {
+  const { data } = await db().from("wa_products").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
   return (data ?? []).map(r => mapProduct(r as Record<string, unknown>));
 }
 
-export async function saveProduct(p: Partial<Product> & { name: string }): Promise<Product> {
+export async function saveProduct(p: Partial<Product> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<Product> {
   const row = {
+    tenant_id: tenantId,
     name: p.name.trim(), description: p.description ?? null, price_cents: p.priceCents ?? 0,
     currency: p.currency ?? "INR", image_url: p.imageUrl ?? null, retailer_id: p.retailerId ?? null,
     meta_product_id: p.metaProductId ?? null, catalog_id: p.catalogId ?? null, available: p.available ?? true,
   };
-  const q = p.id ? db().from("wa_products").update(row).eq("id", p.id).select().single()
+  const q = p.id ? db().from("wa_products").update(row).eq("tenant_id", tenantId).eq("id", p.id).select().single()
                  : db().from("wa_products").insert(row).select().single();
   const { data, error } = await q;
   if (error) throw error;
   return mapProduct(data as Record<string, unknown>);
 }
 
-export async function deleteProduct(id: string): Promise<void> {
-  await db().from("wa_products").delete().eq("id", id);
+export async function deleteProduct(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_products").delete().eq("tenant_id", tenantId).eq("id", id);
 }
 
 // ── Carts ─────────────────────────────────────────────────────────────────────
-export async function getOpenCart(phone: string): Promise<{ id: string; items: CartItem[] } | null> {
-  const { data } = await db().from("wa_carts").select("id, items").eq("phone", phone).eq("status", "open").maybeSingle();
+export async function getOpenCart(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<{ id: string; items: CartItem[] } | null> {
+  const { data } = await db().from("wa_carts").select("id, items").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "open").maybeSingle();
   return data ? { id: data.id as string, items: (data.items as CartItem[]) ?? [] } : null;
 }
 
 // Create/replace the open cart for a contact (resets the abandonment clock).
-export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "instagram"; conversationId?: string | null; items: CartItem[] }): Promise<string> {
-  const existing = await getOpenCart(p.phone);
+export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "instagram"; conversationId?: string | null; items: CartItem[] }, tenantId = DEFAULT_TENANT_ID): Promise<string> {
+  const existing = await getOpenCart(p.phone, tenantId);
   const now = new Date().toISOString();
   if (existing) {
     await db().from("wa_carts").update({ items: p.items, recovery_sent: false, updated_at: now }).eq("id", existing.id);
     return existing.id;
   }
   const { data, error } = await db().from("wa_carts").insert({
-    phone: p.phone, platform: p.platform ?? "whatsapp", conversation_id: p.conversationId ?? null,
+    tenant_id: tenantId, phone: p.phone, platform: p.platform ?? "whatsapp", conversation_id: p.conversationId ?? null,
     items: p.items, status: "open",
   }).select("id").single();
   if (error) throw error;
@@ -64,18 +67,18 @@ export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "in
 }
 
 // Convert an open cart into an order.
-export async function checkoutCart(p: { phone: string; paymentRef?: string }): Promise<{ orderId: string } | null> {
-  const cart = await getOpenCart(p.phone);
+export async function checkoutCart(p: { phone: string; paymentRef?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ orderId: string } | null> {
+  const cart = await getOpenCart(p.phone, tenantId);
   if (!cart) return null;
   const total = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
   const { data, error } = await db().from("wa_orders").insert({
-    cart_id: cart.id, phone: p.phone, items: cart.items, total_cents: total, status: p.paymentRef ? "paid" : "pending", payment_ref: p.paymentRef ?? null,
+    tenant_id: tenantId, cart_id: cart.id, phone: p.phone, items: cart.items, total_cents: total, status: p.paymentRef ? "paid" : "pending", payment_ref: p.paymentRef ?? null,
   }).select("id").single();
   if (error) throw error;
   await db().from("wa_carts").update({ status: "ordered", updated_at: new Date().toISOString() }).eq("id", cart.id);
-  // Fire the order_placed event → optional post-purchase sequence.
-  const seq = await getSequenceByTrigger("order_placed");
-  if (seq) await enroll(seq.id, { phone: p.phone, platform: "whatsapp" });
+  // Fire the order_placed event → optional post-purchase sequence (this tenant's).
+  const seq = await getSequenceByTrigger("order_placed", null, tenantId);
+  if (seq) await enroll(seq.id, { phone: p.phone, platform: "whatsapp" }, tenantId);
   return { orderId: data!.id as string };
 }
 
@@ -83,19 +86,30 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string }): P
 // Find carts idle for `idleMinutes` and enroll them into the cart_abandoned
 // sequence (once). Returns how many recoveries were started.
 export async function drainAbandonedCarts(idleMinutes = 60, max = 100): Promise<number> {
-  const seq = await getSequenceByTrigger("cart_abandoned");
-  if (!seq) return 0;   // no recovery sequence configured → nothing to do
   const cutoff = new Date(Date.now() - idleMinutes * 60_000).toISOString();
   const { data } = await db().from("wa_carts")
-    .select("id, phone, platform, conversation_id, items")
+    .select("id, phone, platform, conversation_id, items, tenant_id")
     .eq("status", "open").eq("recovery_sent", false).lte("updated_at", cutoff).limit(max);
+
+  // Each cart's recovery sequence is its OWN tenant's cart_abandoned sequence.
+  const seqByTenant = new Map<string, string | null>();
+  const seqIdFor = async (tid: string): Promise<string | null> => {
+    if (!seqByTenant.has(tid)) {
+      const seq = await getSequenceByTrigger("cart_abandoned", null, tid);
+      seqByTenant.set(tid, seq?.id ?? null);
+    }
+    return seqByTenant.get(tid)!;
+  };
 
   let started = 0;
   for (const c of (data ?? []) as Record<string, unknown>[]) {
     const items = (c.items as CartItem[]) ?? [];
     if (!items.length) continue;
+    const tid = (c.tenant_id as string) ?? DEFAULT_TENANT_ID;
+    const seqId = await seqIdFor(tid);
+    if (!seqId) continue;   // this tenant has no recovery sequence configured
     try {
-      await enroll(seq.id, { phone: c.phone as string, platform: (c.platform as "whatsapp" | "instagram") ?? "whatsapp", conversationId: (c.conversation_id as string | null) ?? null });
+      await enroll(seqId, { phone: c.phone as string, platform: (c.platform as "whatsapp" | "instagram") ?? "whatsapp", conversationId: (c.conversation_id as string | null) ?? null }, tid);
       await db().from("wa_carts").update({ status: "abandoned", recovery_sent: true, updated_at: new Date().toISOString() }).eq("id", c.id as string);
       started++;
     } catch (e) { console.error("[commerce] cart recovery", e); }

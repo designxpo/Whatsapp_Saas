@@ -5,18 +5,21 @@
 // (regenerate it with ads_management + ads_read added). The ad account id is
 // portal-configurable (wa_settings key "ads_account", env fallback).
 
-import { getSetting, setSetting } from "./store";
+import { getTenantSetting, setTenantSetting } from "./store";
 import { db } from "./supabase";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
-export async function getAdsAccountId(): Promise<string> {
-  const saved = await getSetting<{ accountId?: string }>("ads_account", {});
+// Ad account + page are per-tenant config (wa_settings, tenant-scoped), with an
+// env fallback for the default/internal tenant.
+export async function getAdsAccountId(tenantId = DEFAULT_TENANT_ID): Promise<string> {
+  const saved = await getTenantSetting<{ accountId?: string }>(tenantId, "ads_account", {});
   return (saved.accountId ?? process.env.META_AD_ACCOUNT_ID ?? "").replace(/^act_/, "").trim();
 }
 
-export async function setAdsAccountId(accountId: string): Promise<void> {
-  await setSetting("ads_account", { accountId: accountId.replace(/^act_/, "").trim() });
+export async function setAdsAccountId(accountId: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "ads_account", { accountId: accountId.replace(/^act_/, "").trim() });
 }
 
 function adsToken(): string | undefined {
@@ -55,12 +58,12 @@ async function graphPost(path: string, params: Record<string, string>): Promise<
 }
 
 // CTWA ads run from a Facebook Page — portal-configurable, env fallback.
-export async function getAdsPageId(): Promise<string> {
-  const saved = await getSetting<{ pageId?: string }>("ads_page", {});
+export async function getAdsPageId(tenantId = DEFAULT_TENANT_ID): Promise<string> {
+  const saved = await getTenantSetting<{ pageId?: string }>(tenantId, "ads_page", {});
   return (saved.pageId ?? process.env.META_ADS_PAGE_ID ?? "").trim();
 }
-export async function setAdsPageId(pageId: string): Promise<void> {
-  await setSetting("ads_page", { pageId: pageId.trim() });
+export async function setAdsPageId(pageId: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "ads_page", { pageId: pageId.trim() });
 }
 
 export interface AdAccountInfo { name: string; currency: string; status: number }
@@ -715,9 +718,10 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
 // least one real detail (email or any non-ad attribute via AI/flows/forms).
 export interface AdAttribution { adId: string; headline: string; contacts: number; leads: number }
 
-export async function adAttribution(): Promise<AdAttribution[]> {
+export async function adAttribution(tenantId = DEFAULT_TENANT_ID): Promise<AdAttribution[]> {
   const { data } = await db().from("contacts")
     .select("email, attributes")
+    .eq("tenant_id", tenantId)
     .not("attributes->>ad_id", "is", null)
     .limit(5000);
   const byAd = new Map<string, AdAttribution>();

@@ -84,9 +84,9 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // Story-reply automation: a reply to one of our stories carries reply_to.story.
   const repliedToStory = !!(msg?.reply_to as Record<string, unknown> | undefined)?.story;
   if (repliedToStory) {
-    const seq = await getSequenceByTrigger("story_reply");
+    const seq = await getSequenceByTrigger("story_reply", null, channel.tenantId);
     if (seq && (!seq.triggerValue || text.toLowerCase().includes(seq.triggerValue.toLowerCase()))) {
-      await enroll(seq.id, { phone: senderId, platform: "instagram", conversationId: conv.id });
+      await enroll(seq.id, { phone: senderId, platform: "instagram", conversationId: conv.id }, channel.tenantId);
       return;
     }
   }

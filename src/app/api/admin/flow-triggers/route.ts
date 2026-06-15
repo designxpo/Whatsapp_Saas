@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listFlowTriggers, setFlowTrigger, removeFlowTrigger, type FlowTriggerScope } from "@/lib/adflow";
 import { getAdsAccountId, listAdCampaigns, listAds } from "@/lib/ads";
 
@@ -17,7 +17,8 @@ export async function GET(req: Request) {
   }
   const flowId = url.searchParams.get("flowId");
   if (!flowId) return NextResponse.json({ error: "flowId required" }, { status: 400 });
-  const accountId = await getAdsAccountId();
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const accountId = await getAdsAccountId(tid);
   const [triggers, campRes] = await Promise.all([
     listFlowTriggers(flowId),
     accountId ? listAdCampaigns(accountId, "last_30d") : Promise.resolve({ ok: true, campaigns: [] }),
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
   if (!body.flowId || !body.refId || (body.scope !== "ad" && body.scope !== "campaign")) {
     return NextResponse.json({ error: "flowId, scope (ad|campaign) and refId required" }, { status: 400 });
   }
-  await setFlowTrigger({ flowId: body.flowId, scope: body.scope, refId: body.refId, label: body.label ?? null });
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  await setFlowTrigger({ flowId: body.flowId, scope: body.scope, refId: body.refId, label: body.label ?? null, tenantId: tid });
   return NextResponse.json({ success: true });
 }
 
@@ -45,6 +47,7 @@ export async function DELETE(req: Request) {
   if (!body.refId || (body.scope !== "ad" && body.scope !== "campaign")) {
     return NextResponse.json({ error: "scope and refId required" }, { status: 400 });
   }
-  await removeFlowTrigger(body.scope, body.refId);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  await removeFlowTrigger(body.scope, body.refId, tid);
   return NextResponse.json({ success: true });
 }

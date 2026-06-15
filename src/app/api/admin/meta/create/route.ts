@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getAdsAccountId, getAdsPageId, createCtwaCampaign, type CtwaInput, type AdObjective, type BidStrategy } from "@/lib/ads";
 import { setFlowTrigger } from "@/lib/adflow";
 import { recordPortalCampaign } from "@/lib/adsmeta";
@@ -27,7 +27,8 @@ export async function POST(req: Request) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const [accountId, pageId] = await Promise.all([getAdsAccountId(), getAdsPageId()]);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   if (!pageId) return NextResponse.json({ error: "Set your Facebook Page ID first (Meta Ads → settings)" }, { status: 400 });
   if (!body.name?.trim()) return NextResponse.json({ error: "Give the campaign a name" }, { status: 400 });
@@ -92,13 +93,13 @@ export async function POST(req: Request) {
   if (!r.ok) return NextResponse.json({ error: `Failed at the ${r.stage}: ${r.error}`, campaignId: r.campaignId ?? null }, { status: 502 });
 
   // Remember this was created from the portal (vs. directly in Ads Manager).
-  if (r.campaignId) await recordPortalCampaign(r.campaignId, body.name?.trim());
+  if (r.campaignId) await recordPortalCampaign(r.campaignId, body.name?.trim(), tid);
 
   // Auto-start a chatbot flow for leads from this ad — campaign default or this ad.
   if (body.flowId) {
     const scope = body.flowScope === "ad" ? "ad" : "campaign";
     const refId = scope === "ad" ? r.adId : r.campaignId;
-    if (refId) await setFlowTrigger({ flowId: body.flowId, scope, refId, label: body.name?.trim() }).catch(() => {});
+    if (refId) await setFlowTrigger({ flowId: body.flowId, scope, refId, label: body.name?.trim(), tenantId: tid }).catch(() => {});
   }
 
   logActivity(await currentUser(), "ads.create", `${body.name} (${body.activate ? "live" : "paused"})`);

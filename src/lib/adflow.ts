@@ -33,21 +33,21 @@ export async function removeFlowTrigger(scope: FlowTriggerScope, refId: string, 
 }
 
 // ad_id → campaign_id, cached so we don't hit Meta on every inbound message.
-async function campaignForAd(adId: string): Promise<string | null> {
-  const { data } = await db().from("wa_ad_campaign_map").select("campaign_id").eq("ad_id", adId).maybeSingle();
+async function campaignForAd(adId: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
+  const { data } = await db().from("wa_ad_campaign_map").select("campaign_id").eq("tenant_id", tenantId).eq("ad_id", adId).maybeSingle();
   if (data?.campaign_id) return data.campaign_id as string;
   const campaignId = await getAdCampaignId(adId).catch(() => null);
-  if (campaignId) await db().from("wa_ad_campaign_map").upsert({ ad_id: adId, campaign_id: campaignId }).then(() => undefined, () => undefined);
+  if (campaignId) await db().from("wa_ad_campaign_map").upsert({ tenant_id: tenantId, ad_id: adId, campaign_id: campaignId }).then(() => undefined, () => undefined);
   return campaignId;
 }
 
 // Which flow should auto-start for a lead from this ad? Ad-level binding wins;
 // otherwise fall back to the ad's campaign-level binding. null = no binding.
-export async function resolveFlowIdForAd(adId: string): Promise<string | null> {
-  const { data: adHit } = await db().from("wa_ad_flow_triggers").select("flow_id").eq("scope", "ad").eq("ref_id", adId).maybeSingle();
+export async function resolveFlowIdForAd(adId: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
+  const { data: adHit } = await db().from("wa_ad_flow_triggers").select("flow_id").eq("tenant_id", tenantId).eq("scope", "ad").eq("ref_id", adId).maybeSingle();
   if (adHit?.flow_id) return adHit.flow_id as string;
-  const campaignId = await campaignForAd(adId);
+  const campaignId = await campaignForAd(adId, tenantId);
   if (!campaignId) return null;
-  const { data: campHit } = await db().from("wa_ad_flow_triggers").select("flow_id").eq("scope", "campaign").eq("ref_id", campaignId).maybeSingle();
+  const { data: campHit } = await db().from("wa_ad_flow_triggers").select("flow_id").eq("tenant_id", tenantId).eq("scope", "campaign").eq("ref_id", campaignId).maybeSingle();
   return (campHit?.flow_id as string) ?? null;
 }

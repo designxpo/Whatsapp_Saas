@@ -24,6 +24,8 @@ import {
   addContactTag,
 } from "./store";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface FlowNode {
   id: string;
   type: string;
@@ -55,27 +57,31 @@ function mapFlow(r: Record<string, unknown>): Flow {
   };
 }
 
-export async function listFlows(): Promise<Flow[]> {
-  const { data } = await db().from("wa_flows").select("*").order("created_at", { ascending: false });
+export async function listFlows(tenantId = DEFAULT_TENANT_ID): Promise<Flow[]> {
+  const { data } = await db().from("wa_flows").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
   return (data ?? []).map(r => mapFlow(r as Record<string, unknown>));
 }
 
-export async function getFlow(id: string): Promise<Flow | null> {
-  const { data } = await db().from("wa_flows").select("*").eq("id", id).maybeSingle();
+// tenantId optional: bot path resolves a flow by id under the channel's tenant;
+// admin routes pass the session tenant to scope access.
+export async function getFlow(id: string, tenantId?: string): Promise<Flow | null> {
+  let q = db().from("wa_flows").select("*").eq("id", id);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.maybeSingle();
   return data ? mapFlow(data as Record<string, unknown>) : null;
 }
 
-export async function createFlow(name: string): Promise<Flow> {
+export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Promise<Flow> {
   const starter: FlowGraph = {
     nodes: [{ id: "start", type: "start", position: { x: 60, y: 200 }, data: {} }],
     edges: [],
   };
-  const { data, error } = await db().from("wa_flows").insert({ name, graph: starter }).select().single();
+  const { data, error } = await db().from("wa_flows").insert({ tenant_id: tenantId, name, graph: starter }).select().single();
   if (error) throw error;
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram"; channelId: string | null; graph: FlowGraph }>): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram"; channelId: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
@@ -83,17 +89,17 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   if (p.platform !== undefined) patch.platform = p.platform;
   if (p.channelId !== undefined) patch.channel_id = p.channelId;
   if (p.graph !== undefined) patch.graph = p.graph;
-  let { error } = await db().from("wa_flows").update(patch).eq("id", id);
+  let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
   // Optional columns missing (migration not applied) — save the rest.
   if (error && ("channel_id" in patch || "platform" in patch)) {
     delete patch.channel_id; delete patch.platform;
-    ({ error } = await db().from("wa_flows").update(patch).eq("id", id));
+    ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
   }
   if (error) throw error;
 }
 
-export async function deleteFlow(id: string): Promise<void> {
-  const { error } = await db().from("wa_flows").delete().eq("id", id);
+export async function deleteFlow(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_flows").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
 
@@ -110,9 +116,9 @@ async function getSession(convKey: string): Promise<Session | null> {
   return { conversationId: convKey, flowId: data.flow_id as string, currentNode: data.current_node as string, state: (data.state as Record<string, unknown>) ?? {} };
 }
 
-async function saveSession(convKey: string, flowId: string, nodeId: string, state: Record<string, unknown>): Promise<void> {
+async function saveSession(convKey: string, flowId: string, nodeId: string, state: Record<string, unknown>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_flow_sessions").upsert(
-    { conversation_id: convKey, flow_id: flowId, current_node: nodeId, state, updated_at: new Date().toISOString() },
+    { tenant_id: tenantId, conversation_id: convKey, flow_id: flowId, current_node: nodeId, state, updated_at: new Date().toISOString() },
     { onConflict: "conversation_id" },
   );
 }
@@ -131,10 +137,10 @@ export interface FlowSender {
   waform(body: string, cta: string, formId: string): Promise<{ id?: string; error?: string }>;
 }
 
-function realSender(conversationId: string, phone: string, channel?: ChannelCreds): FlowSender {
+function realSender(conversationId: string, phone: string, channel?: ChannelCreds, tenantId = DEFAULT_TENANT_ID): FlowSender {
   const log = async (body: string, metaId?: string) => {
     if (!metaId) return;
-    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot" }).catch(() => undefined);
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   return {
@@ -151,11 +157,11 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
 // lists render as a numbered text menu (branching still works because the user
 // taps/types the option label, which matchOption resolves). Sends respect the
 // 24h window (the flow runs right after the inbound, so it's open).
-function igSender(conversationId: string, phone: string, channel: Channel): FlowSender {
+function igSender(conversationId: string, phone: string, channel: Channel, tenantId = DEFAULT_TENANT_ID): FlowSender {
   const creds = { igUserId: channel.igUserId ?? "", token: channel.token };
   const log = async (body: string, metaId?: string) => {
     if (!metaId) return;
-    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot" }).catch(() => undefined);
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   const sendIg = async (body: string): Promise<{ id?: string; error?: string }> => {
@@ -219,7 +225,7 @@ function listSections(d: Record<string, unknown>): ListSection[] {
 // dead-ends (no outgoing edge, no explicit End node), the session returns
 // there so the user can still pick the other menu options.
 // Returns true if the conversation is now (or was) inside the flow.
-async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, phone: string, send: FlowSender, isReal: boolean, menuNodeId?: string | null): Promise<boolean> {
+async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, phone: string, send: FlowSender, isReal: boolean, menuNodeId?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   const g = flow.graph;
   let steps = 0;
   let cur = node;
@@ -255,19 +261,19 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         const buttons = ((d.buttons as { id: string; title: string }[]) ?? []).filter(b => b.title?.trim()).slice(0, 3);
         if (buttons.length === 0) { cur = nextNode(g, cur.id); continue; }
         await send.buttons(str(d.text) || "Choose an option:", buttons);
-        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {});
+        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
       case "list": {
         const sections = listSections(d);
         if (sections.length === 0) { cur = nextNode(g, cur.id); continue; }
         await send.list(str(d.text) || "Pick one:", str(d.buttonText) || "Options", sections);
-        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {});
+        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
       case "ask": {
         await send.text(str(d.question) || "Please type your answer:");
-        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {});
+        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
       case "waform": {
@@ -275,7 +281,7 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         // (the answers are saved to contact attributes by the webhook).
         if (!str(d.formId)) { cur = nextNode(g, cur.id); continue; }
         await send.waform(str(d.text) || "Please fill this quick form:", str(d.cta) || "Open form", str(d.formId));
-        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {});
+        await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
       case "agent": {
@@ -286,7 +292,7 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
       case "condition": {
         let match = false;
         if (isReal && str(d.attribute)) {
-          const contact = await getContactByPhone(phone).catch(() => null);
+          const contact = await getContactByPhone(phone, tenantId).catch(() => null);
           const val = norm(String(contact?.attributes?.[str(d.attribute)] ?? ""));
           const want = norm(str(d.value));
           match = str(d.op) === "contains" ? (want !== "" && val.includes(want)) : val === want;
@@ -301,14 +307,14 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         cur = nextNode(g, cur.id, open ? "open" : "closed"); continue;
       }
       case "tag": {
-        if (isReal && str(d.tag)) await addContactTag(phone, str(d.tag)).catch(() => undefined);
+        if (isReal && str(d.tag)) await addContactTag(phone, str(d.tag), tenantId).catch(() => undefined);
         cur = nextNode(g, cur.id); continue;
       }
       case "webhook": {
         // Notify an external system (CRM, sheet, Zapier…) — fire-and-forget.
         const url = str(d.url);
         if (isReal && /^https?:\/\//.test(url)) {
-          const contact = await getContactByPhone(phone).catch(() => null);
+          const contact = await getContactByPhone(phone, tenantId).catch(() => null);
           void fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -339,7 +345,7 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
   }
   // Dead end (branch with no continuation) — go back to the menu we came from
   // so the remaining options keep working; only an End node closes the flow.
-  if (menuNodeId) await saveSession(convKey, flow.id, menuNodeId, {});
+  if (menuNodeId) await saveSession(convKey, flow.id, menuNodeId, {}, tenantId);
   else await endSession(convKey);
   return true;
 }
@@ -367,17 +373,18 @@ export async function handleFlowMessage(
   convKey: string,
   phone: string,
   text: string,
-  opts: { sender?: FlowSender; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string } = {},
+  opts: { sender?: FlowSender; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string; tenantId?: string } = {},
 ): Promise<boolean> {
+  const tid = opts.tenantId ?? opts.channel?.tenantId ?? DEFAULT_TENANT_ID;
   const send = opts.sender ?? (opts.channel?.kind === "instagram"
-    ? igSender(convKey, phone, opts.channel)
-    : realSender(convKey, phone, opts.channel));
+    ? igSender(convKey, phone, opts.channel, tid)
+    : realSender(convKey, phone, opts.channel, tid));
   const isReal = !opts.sender;
 
   // 1. Continue an in-progress session.
   const session = await getSession(convKey);
   if (session) {
-    const flow = await getFlow(session.flowId);
+    const flow = await getFlow(session.flowId, tid);
     if (!flow) { await endSession(convKey); return false; }
     const waiting = nodeById(flow.graph, session.currentNode);
     if (!waiting) { await endSession(convKey); return false; }
@@ -390,7 +397,7 @@ export async function handleFlowMessage(
       if (!menuNode) return null;
       const opt = matchOption(menuNode, text);
       if (!opt) return null;
-      const consumed = await runFrom(flow, nextNode(flow.graph, menuNode.id, opt), convKey, phone, send, isReal, menuNode.id);
+      const consumed = await runFrom(flow, nextNode(flow.graph, menuNode.id, opt), convKey, phone, send, isReal, menuNode.id, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       return consumed;
     };
@@ -400,8 +407,8 @@ export async function handleFlowMessage(
       const rewound = await rewind();
       if (rewound !== null) return rewound;
       const attr = str(waiting.data.attribute);
-      if (isReal && attr) await setContactAttributes(phone, { [attr]: text.slice(0, 200) }).catch(() => undefined);
-      const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal);
+      if (isReal && attr) await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
+      const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       return consumed;
     }
@@ -409,7 +416,7 @@ export async function handleFlowMessage(
     if (waiting.type === "waform") {
       // Continue only on the form submission (webhook renders it as "[form] …").
       if (text.startsWith("[form]")) {
-        const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal);
+        const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
         if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
         return consumed;
       }
@@ -422,7 +429,7 @@ export async function handleFlowMessage(
     const optionId = matchOption(waiting, text);
     if (optionId) {
       // Branch runs carry the menu node along — dead-ended branches return to it.
-      const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id, optionId), convKey, phone, send, isReal, waiting.id);
+      const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id, optionId), convKey, phone, send, isReal, waiting.id, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       return consumed;
     }
@@ -437,10 +444,10 @@ export async function handleFlowMessage(
   // The CTWA referral only arrives on the first inbound, so this fires once,
   // and takes precedence over keywords (the first message is rarely a keyword).
   if (opts.adFlowId && !opts.onlyFlowId) {
-    const flow = await getFlow(opts.adFlowId);
+    const flow = await getFlow(opts.adFlowId, tid);
     if (flow && (flow.active || opts.allowInactive) && (!flow.channelId || !opts.channel || flow.channelId === opts.channel.id)) {
       const start = flow.graph.nodes.find(n => n.type === "start");
-      const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal);
+      const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       if (consumed) return true;
     }
@@ -450,15 +457,15 @@ export async function handleFlowMessage(
   // platform (WhatsApp vs Instagram), and number-scoped flows only on that one.
   const platform = opts.channel?.kind ?? "whatsapp";
   const flows = (opts.onlyFlowId
-    ? [await getFlow(opts.onlyFlowId)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
-    : (await listFlows()).filter(f => f.active)
+    ? [await getFlow(opts.onlyFlowId, tid)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
+    : (await listFlows(tid)).filter(f => f.active)
   ).filter(f => (f.platform ?? "whatsapp") === platform)
    .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
   const t = norm(text);
   for (const flow of flows) {
     if (!flow.triggerKeywords.some(k => k === t)) continue;
     const start = flow.graph.nodes.find(n => n.type === "start");
-    const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal);
+    const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
     if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
     return consumed;
   }
@@ -480,7 +487,8 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     const state = ((s.state as Record<string, unknown>) ?? {});
     if (state.reminded) continue;
 
-    if (!flowCache.has(s.flow_id as string)) flowCache.set(s.flow_id as string, await getFlow(s.flow_id as string));
+    const sTid = (s.tenant_id as string) ?? DEFAULT_TENANT_ID;
+    if (!flowCache.has(s.flow_id as string)) flowCache.set(s.flow_id as string, await getFlow(s.flow_id as string, sTid));
     const flow = flowCache.get(s.flow_id as string);
     if (!flow?.active) continue;
     const node = nodeById(flow.graph, s.current_node as string);
@@ -496,7 +504,7 @@ export async function drainFlowReminders(max = 50): Promise<number> {
 
     // Reply from the same number the chat lives on.
     const channel = conv.channel_id ? (await getChannel(conv.channel_id as string)) ?? undefined : undefined;
-    const r = await realSender(convKey, conv.phone as string, channel).text(text);
+    const r = await realSender(convKey, conv.phone as string, channel, (conv.tenant_id as string) ?? sTid).text(text);
     // Mark reminded either way so a hard failure can't loop every cron tick.
     await db().from("wa_flow_sessions").update({ state: { ...state, reminded: true } }).eq("conversation_id", convKey);
     if (!r.error) sent++;

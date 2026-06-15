@@ -7,6 +7,8 @@ import { db } from "./supabase";
 import { getAdsAccountId, listAdCampaigns, setCampaignStatus, adAttribution, adCampaignIndex, type DatePreset, type AdCampaign } from "./ads";
 import { logActivity } from "./team";
 
+const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
 export interface AdRule {
   id: string;
   name: string;
@@ -20,6 +22,7 @@ export interface AdRule {
   lastCheckedAt: string | null;
   lastTriggeredAt: string | null;
   lastResult: string | null;
+  tenantId: string;
 }
 
 function mapRule(r: Record<string, unknown>): AdRule {
@@ -36,19 +39,21 @@ function mapRule(r: Record<string, unknown>): AdRule {
     lastCheckedAt: (r.last_checked_at as string | null) ?? null,
     lastTriggeredAt: (r.last_triggered_at as string | null) ?? null,
     lastResult: (r.last_result as string | null) ?? null,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
   };
 }
 
-export async function listAdRules(): Promise<AdRule[]> {
+export async function listAdRules(tenantId = DEFAULT_TENANT_ID): Promise<AdRule[]> {
   try {
-    const { data, error } = await db().from("wa_ad_rules").select("*").order("created_at", { ascending: true });
+    const { data, error } = await db().from("wa_ad_rules").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: true });
     if (error) throw error;
     return (data ?? []).map(mapRule);
   } catch { return []; }     // migration 0016 not applied → no rules
 }
 
-export async function saveAdRule(input: { id?: string; name: string; active?: boolean; scopeCampaignId?: string | null; metric: AdRule["metric"]; op: AdRule["op"]; threshold: number; windowPreset: DatePreset; action: AdRule["action"] }): Promise<void> {
+export async function saveAdRule(input: { id?: string; name: string; active?: boolean; scopeCampaignId?: string | null; metric: AdRule["metric"]; op: AdRule["op"]; threshold: number; windowPreset: DatePreset; action: AdRule["action"] }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const row = {
+    tenant_id: tenantId,
     name: input.name.trim(),
     active: input.active ?? true,
     scope_campaign_id: input.scopeCampaignId ?? null,
@@ -59,19 +64,19 @@ export async function saveAdRule(input: { id?: string; name: string; active?: bo
     action: input.action,
   };
   const q = input.id
-    ? db().from("wa_ad_rules").update(row).eq("id", input.id)
+    ? db().from("wa_ad_rules").update(row).eq("tenant_id", tenantId).eq("id", input.id)
     : db().from("wa_ad_rules").insert(row);
   const { error } = await q;
   if (error) throw error;
 }
 
-export async function deleteAdRule(id: string): Promise<void> {
-  await db().from("wa_ad_rules").delete().eq("id", id);
+export async function deleteAdRule(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("wa_ad_rules").delete().eq("tenant_id", tenantId).eq("id", id);
 }
 
 // Per-campaign lead counts from our attribution (ad_id attrs → campaign).
-async function leadsByCampaign(accountId: string): Promise<Map<string, number>> {
-  const [attribution, index] = await Promise.all([adAttribution(), adCampaignIndex(accountId)]);
+async function leadsByCampaign(accountId: string, tenantId: string): Promise<Map<string, number>> {
+  const [attribution, index] = await Promise.all([adAttribution(tenantId), adCampaignIndex(accountId)]);
   const map = new Map<string, number>();
   for (const a of attribution) {
     const cid = index.get(a.adId);
@@ -94,12 +99,30 @@ function metricValue(rule: AdRule, c: AdCampaign, leads: number): number | null 
 
 const SYSTEM_ACTOR = { email: "ad-rules@system", name: "Ad rules" };
 
-// Evaluates every active rule. Pauses at most a few campaigns per tick; safe to
-// call repeatedly — a paused campaign no longer matches the ACTIVE check.
+// Evaluates every active rule across ALL tenants. Each tenant's rules run
+// against that tenant's OWN ad account (getAdsAccountId(tenantId)) — a rule can
+// never pause another tenant's campaign. Pauses at most a few campaigns per
+// tick; safe to call repeatedly — a paused campaign no longer matches ACTIVE.
 export async function drainAdRules(): Promise<{ checked: number; triggered: number }> {
-  const rules = (await listAdRules()).filter(r => r.active);
+  // Distinct tenants that have any active rule.
+  let tenantIds: string[] = [];
+  try {
+    const { data } = await db().from("wa_ad_rules").select("tenant_id").eq("active", true);
+    tenantIds = [...new Set(((data ?? []) as Record<string, unknown>[]).map(r => (r.tenant_id as string) ?? DEFAULT_TENANT_ID))];
+  } catch { return { checked: 0, triggered: 0 }; }   // migration not applied → no rules
+
+  let checked = 0, triggered = 0;
+  for (const tenantId of tenantIds) {
+    const res = await drainAdRulesForTenant(tenantId).catch(() => ({ checked: 0, triggered: 0 }));
+    checked += res.checked; triggered += res.triggered;
+  }
+  return { checked, triggered };
+}
+
+async function drainAdRulesForTenant(tenantId: string): Promise<{ checked: number; triggered: number }> {
+  const rules = (await listAdRules(tenantId)).filter(r => r.active);
   if (rules.length === 0) return { checked: 0, triggered: 0 };
-  const accountId = await getAdsAccountId();
+  const accountId = await getAdsAccountId(tenantId);
   if (!accountId) return { checked: 0, triggered: 0 };
 
   // One insights fetch per distinct window, shared across rules.
@@ -109,7 +132,7 @@ export async function drainAdRules(): Promise<{ checked: number; triggered: numb
     if (r.ok) byWindow.set(preset, r.campaigns);
   }
   const needsLeads = rules.some(r => r.metric === "leads" || r.metric === "cost_per_lead");
-  const leads = needsLeads ? await leadsByCampaign(accountId).catch(() => new Map<string, number>()) : new Map<string, number>();
+  const leads = needsLeads ? await leadsByCampaign(accountId, tenantId).catch(() => new Map<string, number>()) : new Map<string, number>();
 
   let triggered = 0;
   for (const rule of rules) {

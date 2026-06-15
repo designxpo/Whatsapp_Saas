@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getAdsAccountId, uploadAdImage, uploadAdVideo, getAdImageUrls, getAdVideoThumb } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const maxDuration = 120;
 // hash/video_id persist, so we fetch Meta's hosted URLs to re-render the preview.
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const accountId = await getAdsAccountId();
+  const accountId = await getAdsAccountId((await currentTenantId()) ?? DEFAULT_TENANT_ID);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   const url = new URL(req.url);
   const videoId = url.searchParams.get("videoId");
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
 // Everything else → adimages, returns imageHash.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const accountId = await getAdsAccountId();
+  const accountId = await getAdsAccountId((await currentTenantId()) ?? DEFAULT_TENANT_ID);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   const form = await req.formData().catch(() => null);
   const file = form?.get("file");

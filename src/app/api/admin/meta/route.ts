@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getAdsAccountId, setAdsAccountId, getAdsPageId, setAdsPageId, getAdAccount, listAdCampaigns, adAttribution, type DatePreset } from "@/lib/ads";
 import { listPortalCampaignIds } from "@/lib/adsmeta";
 import { logActivity } from "@/lib/team";
@@ -13,14 +13,15 @@ export async function GET(req: Request) {
   const presetRaw = new URL(req.url).searchParams.get("preset") ?? "last_7d";
   const preset: DatePreset = presetRaw === "today" || presetRaw === "last_30d" ? presetRaw : "last_7d";
 
-  const [accountId, pageId] = await Promise.all([getAdsAccountId(), getAdsPageId()]);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ connected: false, accountId: "", pageId });
 
   const [acct, camps, attribution, portalIds] = await Promise.all([
     getAdAccount(accountId),
     listAdCampaigns(accountId, preset),
-    adAttribution().catch(() => []),
-    listPortalCampaignIds().catch(() => []),
+    adAttribution(tid).catch(() => []),
+    listPortalCampaignIds(tid).catch(() => []),
   ]);
 
   return NextResponse.json({
@@ -40,18 +41,19 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: { accountId?: string; pageId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
 
   if (body.pageId !== undefined) {
     const pid = body.pageId.trim();
     if (pid && !/^\d{5,}$/.test(pid)) return NextResponse.json({ error: "Enter the numeric Facebook Page ID" }, { status: 400 });
-    await setAdsPageId(pid);
+    await setAdsPageId(pid, tid);
     logActivity(await currentUser(), "ads.connect", `page ${pid || "(cleared)"}`);
     if (body.accountId === undefined) return NextResponse.json({ success: true });
   }
 
   const id = (body.accountId ?? "").replace(/^act_/, "").trim();
   if (!/^\d{5,}$/.test(id)) return NextResponse.json({ error: "Enter the numeric ad account ID (the number after act_ in Ads Manager's URL)" }, { status: 400 });
-  await setAdsAccountId(id);
+  await setAdsAccountId(id, tid);
   logActivity(await currentUser(), "ads.connect", id);
   const acct = await getAdAccount(id);
   return NextResponse.json({ success: true, connected: acct.ok, account: acct.account ?? null, error: acct.error ?? null });

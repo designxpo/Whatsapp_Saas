@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listSequences, getSequenceSteps, createSequence, updateSequence, deleteSequence, setSequenceSteps, type SequenceTriggerKind, type SequenceStepAction } from "@/lib/sequences";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
-    const seqs = await listSequences();
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const seqs = await listSequences(tid);
     const withSteps = await Promise.all(seqs.map(async s => ({ ...s, steps: await getSequenceSteps(s.id) })));
     return NextResponse.json({ sequences: withSteps });
   } catch (err) {
@@ -25,14 +26,15 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
   try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     let id = body.id;
     if (id) {
-      await updateSequence(id, { name: body.name, platform: body.platform, triggerKind: body.triggerKind, triggerValue: body.triggerValue ?? null, channelId: body.channelId ?? null, active: body.active });
+      await updateSequence(id, { name: body.name, platform: body.platform, triggerKind: body.triggerKind, triggerValue: body.triggerValue ?? null, channelId: body.channelId ?? null, active: body.active }, tid);
     } else {
-      const seq = await createSequence({ name: body.name, platform: body.platform, triggerKind: body.triggerKind, triggerValue: body.triggerValue ?? null, channelId: body.channelId ?? null });
+      const seq = await createSequence({ name: body.name, platform: body.platform, triggerKind: body.triggerKind, triggerValue: body.triggerValue ?? null, channelId: body.channelId ?? null }, tid);
       id = seq.id;
     }
-    if (Array.isArray(body.steps)) await setSequenceSteps(id!, body.steps);
+    if (Array.isArray(body.steps)) await setSequenceSteps(id!, body.steps, tid);
     logActivity(await currentUser(), "sequence.save", body.name);
     return NextResponse.json({ success: true, id });
   } catch (err) {
@@ -45,6 +47,6 @@ export async function DELETE(req: Request) {
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  try { await deleteSequence(body.id); return NextResponse.json({ success: true }); }
+  try { const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID; await deleteSequence(body.id, tid); return NextResponse.json({ success: true }); }
   catch (err) { return NextResponse.json({ error: errorMessage(err) }, { status: 500 }); }
 }
