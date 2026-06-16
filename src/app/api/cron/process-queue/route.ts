@@ -24,10 +24,19 @@ export async function POST(req: Request) {
       try { await fireScheduledCampaign(c); scheduledFired++; } catch (e) { console.error("[cron] fire", c.id, e); }
     }
 
+    // Drain campaigns CONCURRENTLY (atomic SKIP-LOCKED claims make this safe) so
+    // one large/slow tenant can't starve everyone else within the cron budget.
     let sent = 0, queuesDrained = 0;
-    for (const id of await campaignsWithPending()) {
+    const CONCURRENCY = Math.max(1, parseInt(process.env.WA_DRAIN_CONCURRENCY ?? "5", 10));
+    const pending = await campaignsWithPending();
+    for (let i = 0; i < pending.length; i += CONCURRENCY) {
       if (Date.now() - startedAt > DEADLINE) break;
-      try { const r = await drainQueue(id); sent += r.sentNow; queuesDrained++; } catch (e) { console.error("[cron] drain", id, e); }
+      const batch = pending.slice(i, i + CONCURRENCY);
+      const sentInBatch = await Promise.all(batch.map(async id => {
+        try { return (await drainQueue(id)).sentNow; } catch (e) { console.error("[cron] drain", id, e); return 0; }
+      }));
+      sent += sentInBatch.reduce((a, b) => a + b, 0);
+      queuesDrained += batch.length;
     }
 
     let autoSends = { sent: 0, failed: 0 };

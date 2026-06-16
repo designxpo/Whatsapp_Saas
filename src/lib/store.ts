@@ -342,8 +342,15 @@ export async function enqueue(campaignId: string, recipients: { phone: string; f
 }
 
 export async function claimPending(campaignId: string, limit: number): Promise<{ id: string; phone: string; fullName: string }[]> {
-  const { data } = await db().from("wa_send_queue").select("id, phone, recipient_name").eq("campaign_id", campaignId).eq("status", "pending").order("created_at").limit(limit);
-  return (data ?? []).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
+  // Atomic claim (migration 0044): FOR UPDATE SKIP LOCKED so concurrent
+  // workers/cron runs never grab the same rows. Falls back to a plain select if
+  // the RPC isn't deployed yet, so a missing migration never bricks sending.
+  const { data, error } = await db().rpc("claim_send_queue", { p_campaign: campaignId, p_limit: limit });
+  if (!error && data) {
+    return (data as Record<string, unknown>[]).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
+  }
+  const { data: fb } = await db().from("wa_send_queue").select("id, phone, recipient_name").eq("campaign_id", campaignId).eq("status", "pending").order("created_at").limit(limit);
+  return (fb ?? []).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
 }
 
 export async function markQueue(ids: string[], status: "sent" | "failed" | "skipped"): Promise<void> {
