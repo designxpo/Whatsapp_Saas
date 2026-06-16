@@ -381,6 +381,15 @@ export async function dailySentCount(tenantId = DEFAULT_TENANT_ID): Promise<numb
   return count ?? 0;
 }
 
+// Trailing 24-HOUR sent count — matches Meta's messaging-tier limit, which is a
+// rolling 24h window (NOT a calendar day). Use this when gating against the
+// number's real tier so a number can't overshoot its per-24h allowance.
+export async function sentLast24h(tenantId = DEFAULT_TENANT_ID): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const { count } = await db().from("wa_send_log").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("sent_at", since).in("status", ["sent", "delivered", "read"]);
+  return count ?? 0;
+}
+
 // ── Scheduled (auto-send) ─────────────────────────────────────────────────────
 export async function scheduleSend(p: { campaignId: string; contactId: string | null; phone: string; recipientName: string; trigger: string; sendAfter: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_scheduled_sends").insert({

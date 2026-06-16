@@ -1,14 +1,20 @@
 import {
   getCampaign, updateCampaign, enqueue, claimPending, markQueue, countPending, countQueueTotal,
-  logCounts, dailySentCount, recipientsForAudience, getDueScheduledSends, markScheduled,
+  logCounts, sentLast24h, recipientsForAudience, getDueScheduledSends, markScheduled,
   type Campaign,
 } from "./store";
 import { sendCampaign, getCreds } from "./whatsapp";
-import { credsFor, getChannel, isMarketingSendable } from "./channels";
+import { credsFor, getChannel, isMarketingSendable, tierDailyCap, type Channel } from "./channels";
 
 const CHUNK = Math.max(1, parseInt(process.env.WA_SEND_CHUNK ?? "80", 10));
 
-function dailyLimit(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
+// Operator safety cap (env). The EFFECTIVE per-24h cap is the smaller of this and
+// the number's real Meta tier, so a fresh/low-tier number can't overshoot Meta.
+function safetyCap(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
+function effectiveCap(ch: Channel | null): number {
+  const tier = tierDailyCap(ch?.messagingTier);
+  return tier == null ? safetyCap() : Math.min(safetyCap(), tier);
+}
 
 export interface DrainResult { sentNow: number; queuedRemaining: number; status: Campaign["status"] }
 
@@ -22,16 +28,17 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   // hold marketing sends. We keep status "sending" so it auto-resumes once Meta
   // health recovers (a webhook clears marketing_paused). Env single-number mode
   // (no channelId / no row) can't be gated here, so it falls through.
-  if (campaign.channelId) {
-    const ch = await getChannel(campaign.channelId, campaign.tenantId);
-    if (ch && !isMarketingSendable(ch)) {
-      const queued = await countPending(campaignId);
-      await updateCampaign(campaignId, { status: "sending", errorSummary: `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)` });
-      return { sentNow: 0, queuedRemaining: queued, status: "sending" };
-    }
+  const ch = campaign.channelId ? await getChannel(campaign.channelId, campaign.tenantId) : null;
+  if (ch && !isMarketingSendable(ch)) {
+    const queued = await countPending(campaignId);
+    await updateCampaign(campaignId, { status: "sending", errorSummary: `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)` });
+    return { sentNow: 0, queuedRemaining: queued, status: "sending" };
   }
 
-  const headroom = Math.max(0, dailyLimit() - (await dailySentCount(campaign.tenantId)));
+  // Cap against the SMALLER of the operator safety cap and the number's real Meta
+  // tier, counted over a trailing 24h (Meta's window is rolling, not calendar-day).
+  const cap = effectiveCap(ch);
+  const headroom = Math.max(0, cap - (await sentLast24h(campaign.tenantId)));
   const claim = Math.min(maxToSend, headroom);
   let sentNow = 0;
   const errs: string[] = [];
@@ -64,7 +71,7 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
     counts.failed > 0 ? "failed" : "sent";
 
   const errorSummary = queuedRemaining > 0
-    ? (headroom <= 0 ? `Daily limit (${dailyLimit()}) reached — ${queuedRemaining} queued, resumes after reset.` : `${queuedRemaining} queued — sending in the background.`)
+    ? (headroom <= 0 ? `24h send limit (${cap === Number.POSITIVE_INFINITY ? "unlimited" : cap}) reached — ${queuedRemaining} queued, resumes as the rolling window frees up.` : `${queuedRemaining} queued — sending in the background.`)
     : (counts.failed > 0 ? (errs.slice(0, 3).join(" | ") || `${counts.failed} failed`) : null);
 
   await updateCampaign(campaignId, {

@@ -32,6 +32,21 @@ export interface Channel extends ChannelCreds {
   qualityRating: "GREEN" | "YELLOW" | "RED" | "UNKNOWN" | null;
   messagingHealth: string | null;   // AVAILABLE | FLAGGED | RESTRICTED
   marketingPaused: boolean;
+  messagingTier: string | null;     // TIER_250 | TIER_1K | TIER_10K | TIER_100K | TIER_UNLIMITED
+}
+
+// The per-24h send allowance implied by a Meta messaging-limit tier. null tier
+// (unknown) → null so callers fall back to their configured safety cap.
+export function tierDailyCap(tier: string | null | undefined): number | null {
+  switch (tier) {
+    case "TIER_50": return 50;
+    case "TIER_250": return 250;
+    case "TIER_1K": return 1000;
+    case "TIER_10K": return 10000;
+    case "TIER_100K": return 100000;
+    case "TIER_UNLIMITED": return Number.POSITIVE_INFINITY;
+    default: return null;
+  }
 }
 
 function mapChannel(r: Record<string, unknown>): Channel {
@@ -54,6 +69,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     qualityRating: (r.quality_rating as Channel["qualityRating"]) ?? null,
     messagingHealth: (r.messaging_health as string | null) ?? null,
     marketingPaused: (r.marketing_paused as boolean) ?? false,
+    messagingTier: (r.messaging_tier as string | null) ?? null,
   };
 }
 
@@ -70,7 +86,7 @@ export function isMarketingSendable(c: Pick<Channel, "qualityRating" | "messagin
 // Persist a quality/health signal (from the Meta webhook or a Graph API poll) and
 // auto-pause marketing when it indicates trouble. Matches channels by WABA id
 // (the webhook entry.id) and/or phone_number_id. Best-effort: never throws.
-export async function recordChannelQuality(match: { wabaId?: string | null; phoneNumberId?: string | null }, signal: { rating?: string | null; health?: string | null; event?: string | null }): Promise<void> {
+export async function recordChannelQuality(match: { wabaId?: string | null; phoneNumberId?: string | null }, signal: { rating?: string | null; health?: string | null; event?: string | null; tier?: string | null }): Promise<void> {
   const rating = signal.rating ? signal.rating.toUpperCase() : null;
   const health = signal.health ? signal.health.toUpperCase() : null;
   // Derive auto-pause: pause when RED or FLAGGED/RESTRICTED; clear when explicitly healthy.
@@ -80,6 +96,7 @@ export async function recordChannelQuality(match: { wabaId?: string | null; phon
   if (rating) patch.quality_rating = rating;
   if (health) patch.messaging_health = health;
   if (signal.event) patch.quality_event = signal.event;
+  if (signal.tier) { patch.messaging_tier = signal.tier.toUpperCase(); patch.tier_updated_at = new Date().toISOString(); }
   if (bad) patch.marketing_paused = true;
   else if (healthy) patch.marketing_paused = false;
   try {

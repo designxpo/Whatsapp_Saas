@@ -29,9 +29,10 @@ export async function GET(req: Request) {
         quality = (d.quality_rating as string) ?? null;
         tier = (d.messaging_limit_tier as string) ?? null;
         displayPhone = (d.display_phone_number as string) ?? null;
-        // Persist so the broadcast drainer's auto-pause gate has fresh data even
-        // if the quality webhook isn't subscribed. RED here pauses marketing.
-        if (channelId && quality) after(() => recordChannelQuality({ phoneNumberId: phoneId }, { rating: quality }));
+        // Persist so the broadcast drainer's auto-pause + tier cap have fresh
+        // data even if the quality webhook isn't subscribed. RED here pauses
+        // marketing; the tier sizes the per-24h cap.
+        if (channelId && (quality || tier)) after(() => recordChannelQuality({ phoneNumberId: phoneId }, { rating: quality, tier }));
       } else {
         metaError = d?.error?.message || `HTTP ${r.status}`;
       }
