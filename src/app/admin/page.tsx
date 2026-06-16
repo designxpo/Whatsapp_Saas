@@ -6272,9 +6272,11 @@ function CatalogTab() {
     setCheckoutBusy(true); setMsg(null); setCheckoutId(null);
     try {
       const res = await fetch("/api/admin/checkout-flow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Checkout" }) });
-      const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Could not create checkout flow");
-      else setCheckoutId(d.id);
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setMsg(d.error || `Could not create checkout flow (HTTP ${res.status})`);
+      else { setCheckoutId(d.id); if (d.publishError) setMsg(`Created, but Meta couldn't publish it: ${d.publishError}`); }
+    } catch {
+      setMsg("Could not reach the server to create the checkout flow.");
     } finally { setCheckoutBusy(false); }
   }
 
@@ -6308,6 +6310,7 @@ function CatalogTab() {
         </div>
       </div>
       {checkoutId && <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">Published a multi-screen checkout flow — id <code className="font-mono">{checkoutId}</code>. Use it in a flow&apos;s “WhatsApp form” node; on submit, the order is created from the contact&apos;s open cart.</p>}
+      {!form && msg && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">⚠ {msg}{/credential|token|WABA|not configured/i.test(msg) ? " — checkout flows need a connected WhatsApp number with WhatsApp Flows access." : ""}</p>}
 
       {products.map(p => (
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
