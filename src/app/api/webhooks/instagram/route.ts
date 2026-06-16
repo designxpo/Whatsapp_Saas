@@ -5,7 +5,7 @@ import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
-import { getSequenceByTrigger, enroll } from "@/lib/sequences";
+import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, type IgCommentRule } from "@/lib/igcomments";
 
@@ -116,6 +116,10 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // Chatbot flows (platform='instagram') run first; AI is the fallback.
   const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
   if (flowHandled) return;
+
+  // Keyword-triggered sequence opts the sender into a timed drip; suppress AI.
+  const kwSeq = await matchKeywordSequence("instagram", text, channel.tenantId).catch(() => null);
+  if (kwSeq) { await enroll(kwSeq.id, { phone: senderId, platform: "instagram", conversationId: conv.id }, channel.tenantId); return; }
 
   await aiRespond(channel, conv, text);
 }

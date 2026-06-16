@@ -7,7 +7,7 @@ import {
   setContactAttributes, addContactTag, markOptedIn,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
-import { enroll } from "@/lib/sequences";
+import { enroll, matchKeywordSequence } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator } from "@/lib/whatsapp";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
@@ -212,7 +212,18 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     try { flowHandled = await handleFlowMessage(conv.id, from, text, { channel, adFlowId }); }
     catch (e) { console.error("[webhook] flow", conv.id, e); }
 
-    if (!flowHandled && process.env.LLM_BOT_ENABLED !== "false") {
+    // Keyword-triggered sequence: the exact trigger word opts the contact into a
+    // timed follow-up. Like flows, it takes precedence over the generic AI reply
+    // so the drip drives the chat (its first step may be delayed, e.g. 2 min).
+    let sequenceTriggered = false;
+    if (!flowHandled) {
+      try {
+        const seq = await matchKeywordSequence("whatsapp", text, tid);
+        if (seq) { await enroll(seq.id, { phone: from, platform: "whatsapp", conversationId: conv.id }, tid); sequenceTriggered = true; }
+      } catch (e) { console.error("[webhook] keyword sequence", conv.id, e); }
+    }
+
+    if (!flowHandled && !sequenceTriggered && process.env.LLM_BOT_ENABLED !== "false") {
       await sendTypingIndicator(id, channel);   // "typing…" while the AI composes
       try { await respondToConversation(conv.id); }
       catch (e) { console.error("[webhook] respond", conv.id, e); }

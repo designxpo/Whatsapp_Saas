@@ -104,6 +104,19 @@ export async function getSequenceByTrigger(kind: SequenceTriggerKind, value?: st
   return data ? mapSeq(data as Record<string, unknown>) : null;
 }
 
+// Match an active keyword-triggered sequence to inbound text (case-insensitive,
+// trimmed, platform- and tenant-scoped). The inbound webhooks call this: when a
+// contact sends the exact trigger word we enroll them and let the drip drive.
+export async function matchKeywordSequence(platform: "whatsapp" | "instagram", text: string, tenantId = DEFAULT_TENANT_ID): Promise<Sequence | null> {
+  const v = (text ?? "").trim().toLowerCase();
+  if (!v) return null;
+  const { data } = await db().from("wa_sequences").select("*")
+    .eq("tenant_id", tenantId).eq("trigger_kind", "keyword").eq("active", true).eq("platform", platform)
+    .order("created_at", { ascending: false });
+  const row = (data ?? []).find(r => ((r.trigger_value as string) ?? "").trim().toLowerCase() === v);
+  return row ? mapSeq(row as Record<string, unknown>) : null;
+}
+
 // ── Enrollment ──────────────────────────────────────────────────────────────
 export async function enroll(sequenceId: string, p: { phone: string; platform?: "whatsapp" | "instagram"; conversationId?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const steps = await getSequenceSteps(sequenceId);
