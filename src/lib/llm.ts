@@ -2,6 +2,7 @@ import { retrieve } from "./kb";
 import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
 import { runChat, type ChatTool, type ChatTurn } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
+import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
 
 // Below this cosine similarity, retrieved context is treated as irrelevant.
 const MIN_SIMILARITY = 0.45;
@@ -31,7 +32,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = ""): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
@@ -40,6 +41,11 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   const parts = [persona];
   if (agent?.constraintsText?.trim()) parts.push(`--- Constraints ---\n${agent.constraintsText.trim()}`);
   if (agent?.productInfo?.trim()) parts.push(`--- Product & service information ---\n${agent.productInfo.trim()}`);
+  if (profile.trim()) parts.push([
+    "--- Who you're talking to (remembered from earlier) ---",
+    profile.trim(),
+    "Greet returning customers by name and use these details. NEVER ask for information you already have here.",
+  ].join("\n"));
   parts.push([
     "--- Grounding rules ---",
     "Answer factual questions ONLY using the Business context below. Do not invent facts, prices, policies, or availability.",
@@ -59,6 +65,42 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].join("\n"));
   parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
   return parts.join("\n\n");
+}
+
+// ── Built-in customer memory ────────────────────────────────────────────────
+// A tool the model can call whenever the customer reveals who they are, so we
+// persist it to the contact and recognise them in any future conversation.
+const MEMORY_FN = "remember_customer";
+const MEMORY_TOOL: ChatTool = {
+  name: MEMORY_FN,
+  description: "Save personal details the customer shares — their name, email, city, or what they're interested in — so you remember them next time. Call this AS SOON AS the customer tells you any of these, then continue the conversation normally.",
+  params: [
+    { name: "name", description: "The customer's name" },
+    { name: "email", description: "The customer's email address" },
+    { name: "city", description: "The customer's city or location" },
+    { name: "interest", description: "What the customer is interested in (course, product, topic)" },
+  ],
+  required: [],
+};
+
+async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string): Promise<void> {
+  const s = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
+  const name = s(args.name), email = s(args.email), city = s(args.city), interest = s(args.interest);
+  if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
+  const attrs: Record<string, string> = {};
+  if (city) attrs.city = city;
+  if (interest) attrs.interest = interest;
+  if (Object.keys(attrs).length) await setContactAttributes(phone, attrs, tenantId).catch(() => undefined);
+}
+
+// Compact "what we already know" block for the system prompt.
+function knownProfile(contact: { name?: string | null; email?: string | null; attributes?: Record<string, string> } | null): string {
+  if (!contact) return "";
+  const lines: string[] = [];
+  if (contact.name?.trim()) lines.push(`Name: ${contact.name.trim()}`);
+  if (contact.email?.trim()) lines.push(`Email: ${contact.email.trim()}`);
+  for (const [k, v] of Object.entries(contact.attributes ?? {})) if (v?.trim()) lines.push(`${k}: ${v.trim()}`);
+  return lines.join("\n");
 }
 
 export interface ReplyResult {
@@ -81,7 +123,10 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
-  const tools = toChatTools(functions);
+  // Configured AI functions + a built-in "remember" tool so the model can
+  // persist the customer's name/details. `functions` stays the configured list
+  // (the no-context guard below keys off it, not the built-in tool).
+  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL];
 
   // Retrieve business context for the latest question.
   let chunks: { content: string; similarity: number }[] = [];
@@ -99,8 +144,13 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     return { reply: SOFT_FALLBACK, escalate: false, reason: "no relevant context", usedChunks: 0 };
   }
 
+  // What we already know about this person — injected so the AI recognises
+  // returning customers and never re-asks for details already on file.
+  const contact = phone ? await getContactByPhone(phone, tenantId).catch(() => null) : null;
+  const profile = knownProfile(contact);
+
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
-  const system = systemPrompt(context, agent, !!tools);
+  const system = systemPrompt(context, agent, tools.length > 0, profile);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
@@ -129,6 +179,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         turns.push({ role: "assistant", calls: res.toolCalls });
         const results = [];
         for (const c of res.toolCalls) {
+          if (c.name === MEMORY_FN) {
+            if (phone) await rememberCustomer(phone, c.args, tenantId);
+            executed.push(MEMORY_FN);
+            results.push({ id: c.id, name: c.name, status: "saved" });
+            continue;
+          }
           const fn = functions.find(f => f.name === c.name);
           const result = fn
             ? await executeAiFunction(fn, c.args, phone, tenantId)
