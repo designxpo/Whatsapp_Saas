@@ -403,6 +403,31 @@ export function optionLabel(node: FlowNode, optionId: string): string {
 
 // Main entry — called from the webhook for every inbound message (and from the
 // simulator). Returns true when the flow consumed the message.
+// Find an active flow on this platform whose exact trigger keyword matches the
+// text, and start it. Returns true/false when a flow matched (consumed or not),
+// or null when no keyword matched. Used both for the no-session case and to let
+// a trigger keyword restart a flow even while a session is open.
+async function triggerByKeyword(
+  text: string, convKey: string, phone: string, send: FlowSender, isReal: boolean,
+  opts: { onlyFlowId?: string; allowInactive?: boolean; channel?: Channel }, tid: string,
+): Promise<boolean | null> {
+  const platform = opts.channel?.kind ?? "whatsapp";
+  const flows = (opts.onlyFlowId
+    ? [await getFlow(opts.onlyFlowId, tid)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
+    : (await listFlows(tid)).filter(f => f.active)
+  ).filter(f => (f.platform ?? "whatsapp") === platform)
+   .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
+  const t = norm(text);
+  for (const flow of flows) {
+    if (!flow.triggerKeywords.some(k => k === t)) continue;
+    const start = flow.graph.nodes.find(n => n.type === "start");
+    const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
+    if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
+    return consumed;
+  }
+  return null;
+}
+
 export async function handleFlowMessage(
   convKey: string,
   phone: string,
@@ -487,7 +512,11 @@ export async function handleFlowMessage(
     // Not an option of the current menu — maybe one from the menu before it.
     const rewound = await rewind();
     if (rewound !== null) return rewound;
-    // Off-script reply — leave the session waiting and let the AI answer.
+    // Still off-script — but a trigger keyword should restart its flow even
+    // mid-session (users resend "hi"/"menu" to start over). runFrom replaces the
+    // open session; only genuinely off-script text falls through to the AI.
+    const restarted = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
+    if (restarted !== null) return restarted;
     return false;
   }
 
@@ -504,23 +533,9 @@ export async function handleFlowMessage(
     }
   }
 
-  // 2b. No session — does this message trigger a flow? Flows fire only on their
-  // platform (WhatsApp vs Instagram), and number-scoped flows only on that one.
-  const platform = opts.channel?.kind ?? "whatsapp";
-  const flows = (opts.onlyFlowId
-    ? [await getFlow(opts.onlyFlowId, tid)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
-    : (await listFlows(tid)).filter(f => f.active)
-  ).filter(f => (f.platform ?? "whatsapp") === platform)
-   .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
-  const t = norm(text);
-  for (const flow of flows) {
-    if (!flow.triggerKeywords.some(k => k === t)) continue;
-    const start = flow.graph.nodes.find(n => n.type === "start");
-    const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
-    if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
-    return consumed;
-  }
-  return false;
+  // 2b. No session — does this message trigger a flow? (Flows fire only on their
+  // platform and number-scope; the match + start lives in triggerByKeyword.)
+  return (await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid)) ?? false;
 }
 
 // ── No-reply reminders (called from the cron) ─────────────────────────────────
