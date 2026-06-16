@@ -2,7 +2,8 @@
 
 import {
   Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
-  Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, type LucideIcon,
+  Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
+  Rocket, TrendingUp, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES } from "./ui";
 import { Marquee } from "./marquee";
@@ -119,16 +120,50 @@ function WhyVisual() {
   );
 }
 
+// Tiny decorative sparkline for a KPI card.
+function Spark({ pts, light = false }: { pts: number[]; light?: boolean }) {
+  const W = 88, H = 30, max = Math.max(...pts), min = Math.min(...pts);
+  const path = pts.map((v, i) => `${((i / (pts.length - 1)) * W).toFixed(1)},${(H - ((v - min) / Math.max(1, max - min)) * (H - 4) - 2).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="h-7 w-full">
+      <polyline points={path} fill="none" stroke={light ? "#ffffff" : "#0783FD"} strokeOpacity={light ? 0.9 : 1} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+const STAT_META: { icon: LucideIcon; trend: string; spark: number[] }[] = [
+  { icon: CheckCheck, trend: "+12%", spark: [4, 6, 5, 8, 7, 10, 12] },
+  { icon: Zap, trend: "3× faster", spark: [3, 4, 6, 5, 8, 9, 11] },
+  { icon: Clock, trend: "always on", spark: [6, 6, 7, 6, 8, 7, 9] },
+  { icon: Rocket, trend: "go live", spark: [2, 5, 4, 7, 9, 8, 12] },
+];
+
 export function StatsBand() {
   return (
-    <Container className="py-12">
-      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 lg:grid-cols-4">
-        {STATS.map(s => (
-          <div key={s.label} className="bg-white px-6 py-8 text-center">
-            <div className="text-3xl font-extrabold text-[#0783fd] sm:text-4xl">{s.value}</div>
-            <div className="mt-2 text-sm text-slate-500">{s.label}</div>
-          </div>
-        ))}
+    <Container className="py-14">
+      <div className="mb-8 flex items-center justify-center gap-2 text-center text-sm font-bold uppercase tracking-wider text-[#0783fd]">
+        <TrendingUp className="h-4 w-4" /> By the numbers
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {STATS.map((s, i) => {
+          const m = STAT_META[i] ?? STAT_META[0];
+          const Icon = m.icon;
+          const hero = i === 0;
+          return (
+            <div
+              key={s.label}
+              className={`relative overflow-hidden rounded-2xl border p-5 ${hero ? "border-transparent bg-gradient-to-br from-brand-600 to-brand-900 text-white shadow-[0_20px_50px_-25px_rgba(24,119,242,0.7)]" : "border-slate-200 bg-white"}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : "bg-[#0783fd]/10 text-[#0783fd]"}`}><Icon className="h-4 w-4" /></span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hero ? "bg-white/15 text-white" : "bg-[#DDEFE4] text-[#2f9e6e]"}`}>{m.trend}</span>
+              </div>
+              <div className={`mt-4 text-4xl font-extrabold tracking-tight ${hero ? "text-white" : "text-slate-900"}`}>{s.value}</div>
+              <div className={`mt-1 text-sm ${hero ? "text-white/80" : "text-slate-500"}`}>{s.label}</div>
+              <div className="mt-3 opacity-80"><Spark pts={m.spark} light={hero} /></div>
+            </div>
+          );
+        })}
       </div>
     </Container>
   );

@@ -2382,6 +2382,94 @@ type AnalyticsData = {
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 };
 
+// ── Lightweight SVG charts (no chart library) ────────────────────────────────
+function buildArea(values: number[], w: number, h: number, pad: number) {
+  const max = Math.max(1, ...values);
+  const n = values.length;
+  const pts = values.map((v, i) => ({
+    x: n <= 1 ? w / 2 : (i / (n - 1)) * w,
+    y: h - pad - (v / max) * (h - pad * 2),
+  }));
+  let line = pts.length ? `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}` : "";
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cx = (pts[i].x + pts[i + 1].x) / 2;
+    line += ` C ${cx.toFixed(1)} ${pts[i].y.toFixed(1)} ${cx.toFixed(1)} ${pts[i + 1].y.toFixed(1)} ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
+  }
+  return { pts, line, area: pts.length ? `${line} L ${w} ${h} L 0 ${h} Z` : "", max };
+}
+
+// Smooth area/line chart with a highlighted peak (HTML overlay keeps the dot +
+// tooltip crisp while the line stretches to full width).
+function AreaChart({ daily }: { daily: AnalyticsData["daily"] }) {
+  const W = 720, H = 200, PAD = 18;
+  const values = daily.map(d => d.sent);
+  const { pts, line, area, max } = buildArea(values, W, H, PAD);
+  const peakIdx = values.length ? values.indexOf(Math.max(...values)) : -1;
+  const peak = peakIdx >= 0 ? pts[peakIdx] : null;
+  const grid = [0, 0.5, 1].map(f => H - PAD - f * (H - PAD * 2));
+  return (
+    <div className="relative">
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full" style={{ height: H }}>
+        <defs>
+          <linearGradient id="waArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0783FD" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#0783FD" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {grid.map((y, i) => <line key={i} x1="0" y1={y} x2={W} y2={y} stroke="#EEF2F7" strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+        {area && <path d={area} fill="url(#waArea)" />}
+        {line && <path d={line} fill="none" stroke="#0783FD" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />}
+        {peak && max > 1 && <line x1={peak.x} y1={peak.y} x2={peak.x} y2={H} stroke="#0783FD" strokeWidth="1" strokeDasharray="3 3" opacity="0.4" vectorEffect="non-scaling-stroke" />}
+      </svg>
+      {peak && max > 1 && (
+        <>
+          <span className="absolute z-10 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand-700 shadow" style={{ left: `${(peak.x / W) * 100}%`, top: peak.y }} />
+          <span className="absolute z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-ink-900 px-2 py-1 text-[10px] font-bold text-white shadow-lg" style={{ left: `${(peak.x / W) * 100}%`, top: peak.y - 8 }}>
+            {values[peakIdx].toLocaleString()} · {daily[peakIdx]?.date.slice(5)}
+          </span>
+        </>
+      )}
+      <div className="mt-2 flex justify-between text-[9px] text-ink-400">
+        {daily.filter((_, i) => i % 2 === 0 || i === daily.length - 1).map(d => <span key={d.date}>{d.date.slice(5)}</span>)}
+      </div>
+    </div>
+  );
+}
+
+// Donut with center label + legend (delivery breakdown of the last 14 days).
+function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { label: string; value: number; color: string }[]; centerValue: string; centerLabel: string }) {
+  const total = Math.max(1, segments.reduce((s, x) => s + x.value, 0));
+  const R = 56, C = 2 * Math.PI * R;
+  let offset = 0;
+  return (
+    <div className="flex items-center gap-6">
+      <div className="relative shrink-0" style={{ width: 140, height: 140 }}>
+        <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
+          <circle cx="70" cy="70" r={R} fill="none" stroke="#F1F5F9" strokeWidth="16" />
+          {segments.map((s, i) => {
+            const len = (s.value / total) * C;
+            const el = <circle key={i} cx="70" cy="70" r={R} fill="none" stroke={s.color} strokeWidth="16" strokeDasharray={`${len.toFixed(2)} ${(C - len).toFixed(2)}`} strokeDashoffset={(-offset).toFixed(2)} />;
+            offset += len;
+            return el;
+          })}
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+          <span className="text-2xl font-bold text-ink-900 tnum leading-none">{centerValue}</span>
+          <span className="text-[10px] text-ink-400 mt-1">{centerLabel}</span>
+        </div>
+      </div>
+      <ul className="flex-1 space-y-2.5">
+        {segments.map(s => (
+          <li key={s.label} className="flex items-center justify-between text-[12px]">
+            <span className="flex items-center gap-2 text-ink-600"><span className="h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.label}</span>
+            <span className="font-bold text-ink-900 tnum">{Math.round((s.value / total) * 100)}%</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function AnalyticsTab() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -2390,7 +2478,6 @@ function AnalyticsTab() {
   }, []);
 
   const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
-  const maxDay = Math.max(1, ...(data?.daily ?? []).map(d => d.sent));
 
   // Secondary KPIs (the first metric is the green hero card below).
   const cards: { label: string; value: string; sub?: string; icon: React.ReactNode }[] = data ? [
@@ -2404,9 +2491,9 @@ function AnalyticsTab() {
   ] : [];
 
   return (
-    <div className="max-w-5xl space-y-5">
+    <div className="max-w-6xl space-y-5">
       <div>
-        <h2 className="text-xl font-semibold text-ink-900">Overview</h2>
+        <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2>
         <p className="text-[13px] text-ink-400">Messaging performance across WhatsApp &amp; Instagram</p>
       </div>
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
@@ -2432,23 +2519,34 @@ function AnalyticsTab() {
             ))}
           </div>
 
-          <section className="bg-white rounded-card border border-line p-5">
-            <p className="text-sm font-semibold text-ink-900 mb-4">Messages sent <span className="font-normal text-ink-400">— last 14 days</span></p>
-            <div className="flex items-end gap-1.5 h-36">
-              {data.daily.map(d => {
-                const h = Math.max(2, (d.sent / maxDay) * 110);
-                const peak = d.sent === maxDay && maxDay > 1;
-                return (
-                  <div key={d.date} className="flex-1 flex flex-col items-center gap-1 group" title={`${d.date}: ${d.sent} sent, ${d.delivered} delivered, ${d.read} read, ${d.failed} failed`}>
-                    <span className="text-[9px] text-ink-400 opacity-0 group-hover:opacity-100">{d.sent}</span>
-                    {/* Inactive bars: faded green gradient; peak bar: solid deep green. */}
-                    <div className={`w-full rounded-t-md ${peak ? "bg-gradient-to-b from-brand-700 to-brand-900" : "bg-gradient-to-b from-brand-100 to-brand-50"}`} style={{ height: `${h}px` }} />
-                    <span className="text-[9px] text-ink-400">{d.date.slice(5)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
+          <div className="grid gap-5 lg:grid-cols-3">
+            {/* Messages trend — smooth area chart with peak callout */}
+            <section className="lg:col-span-2 bg-white rounded-card border border-line p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-sm font-semibold text-ink-900">Messages sent</p>
+                  <p className="text-[12px] text-ink-400">Last 14 days · {data.messaging.totals.sent.toLocaleString()} total</p>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">{pct(data.messaging.totals.delivered, data.messaging.totals.sent)} delivered</span>
+              </div>
+              <AreaChart daily={data.daily} />
+            </section>
+
+            {/* Delivery breakdown — donut */}
+            <section className="bg-white rounded-card border border-line p-5">
+              <p className="text-sm font-semibold text-ink-900 mb-5">Delivery breakdown</p>
+              <DeliveryDonut
+                centerValue={pct(data.messaging.totals.delivered, data.messaging.totals.sent)}
+                centerLabel="delivered"
+                segments={[
+                  { label: "Read", value: data.messaging.totals.read, color: "#0783FD" },
+                  { label: "Delivered", value: Math.max(0, data.messaging.totals.delivered - data.messaging.totals.read), color: "#4DA3FF" },
+                  { label: "Pending", value: Math.max(0, data.messaging.totals.sent - data.messaging.totals.delivered - data.messaging.totals.failed), color: "#CFE6FF" },
+                  { label: "Failed", value: data.messaging.totals.failed, color: "#F97066" },
+                ]}
+              />
+            </section>
+          </div>
         </>
       )}
       {!data && !notice && <p className="text-center text-ink-400 text-sm py-8">Loading…</p>}
