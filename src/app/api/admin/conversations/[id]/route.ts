@@ -66,6 +66,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
         messageId = sent.messageId;
       } else {
+        // WhatsApp free-form is only allowed inside Meta's 24-hour window. The
+        // AI always replies instantly (in-window); an agent replying later can
+        // fall outside it, so give a clear reason instead of a cryptic Meta error.
+        if (conv.lastInboundAt && Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000) {
+          return NextResponse.json({ error: "Outside WhatsApp's 24-hour window — the customer must message again before you can reply, or send an approved template." }, { status: 409 });
+        }
         const channel = await credsFor(conv.channelId, tid);    // reply from the chat's own number
         const sent = buttons.length > 0
           ? await sendButtons(conv.phone, text, buttons.map((title, i) => ({ id: `btn_${i + 1}`, title })), channel)
