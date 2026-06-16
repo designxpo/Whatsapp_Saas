@@ -31,7 +31,7 @@ export function Button({
 }: { href: string; children: React.ReactNode; variant?: "primary" | "ghost"; className?: string }) {
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-colors";
   const styles = variant === "primary"
-    ? "bg-[#0783fd] text-white shadow-[0_8px_24px_-8px_rgba(24,119,242,0.7)] hover:bg-[#0668d6]"
+    ? "bg-gradient-to-br from-brand-600 to-brand-900 text-white shadow-[0_8px_24px_-8px_rgba(24,119,242,0.7)] hover:from-brand-500 hover:to-brand-800"
     : "border border-[#0783fd]/30 bg-white text-[#0783fd] hover:bg-[#0783fd]/5";
   if (href.startsWith("http")) return <a href={href} className={`${base} ${styles} ${className}`}>{children}</a>;
   return <Link href={href} className={`${base} ${styles} ${className}`}>{children}</Link>;

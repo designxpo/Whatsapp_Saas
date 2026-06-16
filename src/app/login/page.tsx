@@ -41,7 +41,7 @@ export default function LoginPage() {
         <input className="w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400" placeholder="Username" value={user} onChange={e => setUser(e.target.value)} autoFocus />
         <input type="password" className="w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button disabled={loading} className="w-full py-2.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+        <button disabled={loading} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Sign in
         </button>
         <p className="text-center text-xs text-ink-400">Don&apos;t have an account? <a href="/signup" className="font-semibold text-brand-700 hover:underline">Start free trial</a></p>

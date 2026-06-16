@@ -243,7 +243,7 @@ function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => v
 
 // ── Shared component grammar (Emerald Fintech theme) ──
 const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400";
-const btnPrimary = "px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";
+const btnPrimary = "px-4 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";
 
 // ── Multi-number channels (shared) ──
 type ChannelRow = { id: string; kind?: "whatsapp" | "instagram"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; token: string; appId: string | null; agentId: string | null; active: boolean; isDefault: boolean };
@@ -976,7 +976,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
       {result && <div className="bg-brand-green/10 border border-brand-green/40 rounded-lg px-4 py-3 text-sm text-brand-dark font-semibold">{result}</div>}
 
-      <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-brand-green text-white font-bold flex items-center justify-center gap-2 disabled:opacity-60">
+      <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send broadcast
       </button>
     </div>

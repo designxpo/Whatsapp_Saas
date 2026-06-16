@@ -58,7 +58,7 @@ export default function SignupPage() {
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button disabled={loading} className="w-full py-2.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+        <button disabled={loading} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Create my account
         </button>
         <p className="text-center text-xs text-ink-400">Already have an account? <a href="/login" className="font-semibold text-brand-700 hover:underline">Sign in</a></p>

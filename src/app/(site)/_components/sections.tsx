@@ -237,7 +237,7 @@ export function ComparisonTable() {
 export function CtaBand() {
   return (
     <Container className="py-16">
-      <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-[#0783fd] to-[#0553ad] px-6 py-14 sm:px-12">
+      <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-brand-600 to-brand-900 px-6 py-14 sm:px-12">
         <div className="grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <h2 className="text-balance text-3xl font-extrabold leading-tight text-white sm:text-4xl">Ready to transform your customer conversations?</h2>
