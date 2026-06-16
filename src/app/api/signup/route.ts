@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createTenantFromSignup } from "@/lib/tenants";
 import { createSession, SESSION_COOKIE } from "@/lib/auth";
 import { getFlag } from "@/lib/flags";
+import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,15 @@ export async function POST(req: Request) {
   if (!(await getFlag("signups_enabled", true))) {
     return NextResponse.json({ error: "Signups are currently closed. Please check back soon." }, { status: 403 });
   }
+
+  // Abuse throttle — cap signups per IP so the public endpoint can't be used to
+  // mass-create tenants. Reuses the login-attempts table (degrades open if absent).
+  const throttleKey = loginKey(req, "signup");
+  const gate = await loginThrottle(throttleKey);
+  if (!gate.allowed) {
+    return NextResponse.json({ error: "Too many signups from this network. Please try again shortly." }, { status: 429, headers: gate.retryAfterSec ? { "Retry-After": String(gate.retryAfterSec) } : undefined });
+  }
+  await recordLoginFailure(throttleKey);   // count this attempt toward the cap
   let body: { company?: string; ownerName?: string; ownerEmail?: string; password?: string; ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

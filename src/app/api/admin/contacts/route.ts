@@ -4,6 +4,7 @@ import { fireTrigger } from "@/lib/autosend";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
+import { isLikelyValidE164, toDigits } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -43,8 +44,14 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[] };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const rows = Array.isArray(body.contacts) ? body.contacts : [];
-  if (rows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
+  const allRows = Array.isArray(body.contacts) ? body.contacts : [];
+  if (allRows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
+  // Drop numbers that aren't valid E.164 (leading 0, too short/long) BEFORE they
+  // can be broadcast to — sending to them spikes Meta errors and hurts the
+  // quality rating. We report the count instead of silently importing them.
+  const rows = allRows.filter(r => isLikelyValidE164(toDigits(r.phone)));
+  const invalid = allRows.length - rows.length;
+  if (rows.length === 0) return NextResponse.json({ error: `All ${invalid} number(s) were invalid. Use full international format with country code, e.g. 919876543210.`, invalid }, { status: 400 });
   // Enforce the plan's contact cap (counts the batch being added).
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   try { await enforceLimit(tid, "contacts", rows.length); }
@@ -58,8 +65,8 @@ export async function POST(req: Request) {
         await fireTrigger({ trigger: "contact_added", triggerKey: null, contactId: c.id, phone: c.phone, name: c.name }, tid).catch(() => undefined);
       }
     }
-    logActivity(await currentUser(), "contacts.import", `${result.inserted} added, ${result.skipped} skipped`);
-    return NextResponse.json({ success: true, ...result });
+    logActivity(await currentUser(), "contacts.import", `${result.inserted} added, ${result.skipped} skipped, ${invalid} invalid`);
+    return NextResponse.json({ success: true, ...result, invalid });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

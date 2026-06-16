@@ -3,6 +3,7 @@ import { requireAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@
 import { sendTemplateTest } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
+import { toDigits, isLikelyValidE164 } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,8 @@ export async function POST(req: Request) {
   let body: { phone?: string; name?: string; templateName?: string; languageCode?: string; variables?: string[]; headerImageUrl?: string | null; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const phone = (body.phone ?? "").replace(/\D/g, "");
-  if (phone.length < 10) return NextResponse.json({ error: "Enter a valid number with country code, e.g. 919876543210" }, { status: 400 });
+  const phone = toDigits(body.phone);
+  if (!isLikelyValidE164(phone)) return NextResponse.json({ error: "Enter a valid number with country code and no leading 0, e.g. 919876543210" }, { status: 400 });
   if (!body.templateName?.trim()) return NextResponse.json({ error: "Pick a template first" }, { status: 400 });
 
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
