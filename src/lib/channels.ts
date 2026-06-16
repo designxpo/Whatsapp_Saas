@@ -28,6 +28,10 @@ export interface Channel extends ChannelCreds {
   active: boolean;
   isDefault: boolean;
   createdAt: string;
+  // Meta health — drives auto-pause so a degraded number stops broadcasting.
+  qualityRating: "GREEN" | "YELLOW" | "RED" | "UNKNOWN" | null;
+  messagingHealth: string | null;   // AVAILABLE | FLAGGED | RESTRICTED
+  marketingPaused: boolean;
 }
 
 function mapChannel(r: Record<string, unknown>): Channel {
@@ -47,7 +51,44 @@ function mapChannel(r: Record<string, unknown>): Channel {
     active: (r.active as boolean) ?? true,
     isDefault: (r.is_default as boolean) ?? false,
     createdAt: r.created_at as string,
+    qualityRating: (r.quality_rating as Channel["qualityRating"]) ?? null,
+    messagingHealth: (r.messaging_health as string | null) ?? null,
+    marketingPaused: (r.marketing_paused as boolean) ?? false,
   };
+}
+
+// True when this channel is safe to send MARKETING on. A RED quality rating or a
+// FLAGGED/RESTRICTED messaging health (or an explicit pause) means Meta is about
+// to restrict the number — continuing to broadcast is what gets it disabled.
+export function isMarketingSendable(c: Pick<Channel, "qualityRating" | "messagingHealth" | "marketingPaused">): boolean {
+  if (c.marketingPaused) return false;
+  if (c.qualityRating === "RED") return false;
+  if (c.messagingHealth === "FLAGGED" || c.messagingHealth === "RESTRICTED") return false;
+  return true;
+}
+
+// Persist a quality/health signal (from the Meta webhook or a Graph API poll) and
+// auto-pause marketing when it indicates trouble. Matches channels by WABA id
+// (the webhook entry.id) and/or phone_number_id. Best-effort: never throws.
+export async function recordChannelQuality(match: { wabaId?: string | null; phoneNumberId?: string | null }, signal: { rating?: string | null; health?: string | null; event?: string | null }): Promise<void> {
+  const rating = signal.rating ? signal.rating.toUpperCase() : null;
+  const health = signal.health ? signal.health.toUpperCase() : null;
+  // Derive auto-pause: pause when RED or FLAGGED/RESTRICTED; clear when explicitly healthy.
+  const bad = rating === "RED" || health === "FLAGGED" || health === "RESTRICTED" || signal.event === "FLAGGED";
+  const healthy = rating === "GREEN" || health === "AVAILABLE" || signal.event === "UNFLAGGED";
+  const patch: Record<string, unknown> = { quality_updated_at: new Date().toISOString() };
+  if (rating) patch.quality_rating = rating;
+  if (health) patch.messaging_health = health;
+  if (signal.event) patch.quality_event = signal.event;
+  if (bad) patch.marketing_paused = true;
+  else if (healthy) patch.marketing_paused = false;
+  try {
+    let q = db().from("wa_channels").update(patch);
+    if (match.phoneNumberId) q = q.eq("phone_number_id", match.phoneNumberId);
+    else if (match.wabaId) q = q.eq("waba_id", match.wabaId);
+    else return;
+    await q;
+  } catch (e) { console.error("[channels] recordChannelQuality", e); }
 }
 
 export async function listChannels(tenantId?: string): Promise<Channel[]> {

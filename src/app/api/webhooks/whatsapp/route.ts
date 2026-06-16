@@ -10,7 +10,7 @@ import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { enroll } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator } from "@/lib/whatsapp";
-import { getChannelByPhoneNumberId, type Channel } from "@/lib/channels";
+import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
 import { pushWaActivity } from "@/lib/leadsquared";
@@ -226,8 +226,35 @@ export async function POST(req: Request) {
   try {
     const body = JSON.parse(raw);
     for (const entry of body.entry ?? []) {
+      const wabaId = entry.id ? String(entry.id) : null;   // WABA id for account-level events
       for (const change of entry.changes ?? []) {
         const value = (change.value ?? {}) as Record<string, unknown>;
+        const field = change.field as string | undefined;
+
+        // Number quality / messaging-limit health → persist + auto-pause marketing.
+        // event is FLAGGED|UNFLAGGED; current_limit carries the tier. We match the
+        // channel by phone_number_id when present, else by WABA id (entry.id).
+        if (field === "phone_number_quality_update") {
+          const meta = (value.metadata as Record<string, unknown>) ?? {};
+          after(() => recordChannelQuality(
+            { phoneNumberId: (meta.phone_number_id as string) ?? (value.phone_number_id as string) ?? null, wabaId },
+            { health: value.event === "FLAGGED" ? "FLAGGED" : value.event === "UNFLAGGED" ? "AVAILABLE" : null, event: value.event as string | null },
+          ));
+          continue;
+        }
+        // Some accounts deliver the GREEN/YELLOW/RED rating via account_update.
+        if (field === "account_update" && (value.current_quality_rating || value.event === "ACCOUNT_RESTRICTION")) {
+          after(() => recordChannelQuality(
+            { wabaId },
+            { rating: value.current_quality_rating as string | null, health: value.event === "ACCOUNT_RESTRICTION" ? "RESTRICTED" : null, event: value.event as string | null },
+          ));
+          continue;
+        }
+        // Template paused/disabled/rejected by Meta — log so a tenant can react.
+        if (field === "message_template_status_update") {
+          console.warn("[webhook] template status", { wabaId, name: value.message_template_name, event: value.event, reason: value.reason });
+          continue;
+        }
 
         // Delivery/read status updates.
         for (const status of (value.statuses as Record<string, unknown>[]) ?? []) {

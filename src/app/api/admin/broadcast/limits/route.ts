@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getCreds } from "@/lib/whatsapp";
-import { credsFor } from "@/lib/channels";
+import { credsFor, recordChannelQuality } from "@/lib/channels";
 import { dailySentCount } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +29,9 @@ export async function GET(req: Request) {
         quality = (d.quality_rating as string) ?? null;
         tier = (d.messaging_limit_tier as string) ?? null;
         displayPhone = (d.display_phone_number as string) ?? null;
+        // Persist so the broadcast drainer's auto-pause gate has fresh data even
+        // if the quality webhook isn't subscribed. RED here pauses marketing.
+        if (channelId && quality) after(() => recordChannelQuality({ phoneNumberId: phoneId }, { rating: quality }));
       } else {
         metaError = d?.error?.message || `HTTP ${r.status}`;
       }

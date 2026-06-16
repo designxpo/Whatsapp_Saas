@@ -4,7 +4,7 @@ import {
   type Campaign,
 } from "./store";
 import { sendCampaign, getCreds } from "./whatsapp";
-import { credsFor } from "./channels";
+import { credsFor, getChannel, isMarketingSendable } from "./channels";
 
 const CHUNK = Math.max(1, parseInt(process.env.WA_SEND_CHUNK ?? "80", 10));
 
@@ -17,6 +17,19 @@ export interface DrainResult { sentNow: number; queuedRemaining: number; status:
 export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise<DrainResult> {
   const campaign = await getCampaign(campaignId);
   if (!campaign) return { sentNow: 0, queuedRemaining: 0, status: "failed" };
+
+  // Anti-ban gate: if this campaign's number is RED / FLAGGED (or admin-paused),
+  // hold marketing sends. We keep status "sending" so it auto-resumes once Meta
+  // health recovers (a webhook clears marketing_paused). Env single-number mode
+  // (no channelId / no row) can't be gated here, so it falls through.
+  if (campaign.channelId) {
+    const ch = await getChannel(campaign.channelId, campaign.tenantId);
+    if (ch && !isMarketingSendable(ch)) {
+      const queued = await countPending(campaignId);
+      await updateCampaign(campaignId, { status: "sending", errorSummary: `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)` });
+      return { sentNow: 0, queuedRemaining: queued, status: "sending" };
+    }
+  }
 
   const headroom = Math.max(0, dailyLimit() - (await dailySentCount(campaign.tenantId)));
   const claim = Math.min(maxToSend, headroom);
