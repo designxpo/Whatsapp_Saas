@@ -2118,13 +2118,25 @@ function TemplatesTab() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <p className="text-xs font-bold text-slate-400 uppercase">{mode === "carousel" ? "Message bubble (shown above the cards)" : "Body"}</p>
-            <textarea className={`${inp} w-full`} rows={4} maxLength={1024} placeholder={"Body — use {{1}}, {{2}} for variables.\nHi {{1}}, our masterclass starts {{2}}!"} value={bodyText} onChange={e => setBodyText(e.target.value)} />
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-slate-400 uppercase">{mode === "carousel" ? "Message bubble (shown above the cards)" : "Message body"}</p>
+              <p className="text-[11px] text-slate-500">The main text your customer reads. Put <span className="font-mono text-slate-600">{"{{1}}"}</span>, <span className="font-mono text-slate-600">{"{{2}}"}</span> where you want fill-in-the-blanks (like a name or date) that you set each time you send.</p>
+              <textarea className={`${inp} w-full`} rows={4} maxLength={1024} placeholder={"e.g. Hi {{1}}, your {{2}} class starts tomorrow at 7 PM — see you there!"} value={bodyText} onChange={e => setBodyText(e.target.value)} />
+            </div>
             {/\{\{\d+\}\}/.test(bodyText) && (
-              <textarea className={`${inp} w-full font-mono`} rows={2} placeholder={"Example values, one per line (required by Meta when using variables)\nAsha\ntomorrow 7 PM"} value={examples} onChange={e => setExamples(e.target.value)} />
+              <div className="space-y-1">
+                <p className="text-[11px] font-bold text-slate-600">Sample values <span className="font-normal text-slate-400">— one per line, in order ({"{{1}}"} first). Meta reviews these; your customers never see them.</span></p>
+                <textarea className={`${inp} w-full font-mono`} rows={2} placeholder={"Asha\ntomorrow 7 PM"} value={examples} onChange={e => setExamples(e.target.value)} />
+              </div>
             )}
-            {mode === "standard" && <input className={`${inp} w-full`} placeholder="Footer (optional, 60 chars)" maxLength={60} value={footerText} onChange={e => setFooterText(e.target.value)} />}
+            {mode === "standard" && (
+              <div className="space-y-1">
+                <p className="text-[11px] font-bold text-slate-600">Footer <span className="font-normal text-slate-400">(optional)</span></p>
+                <p className="text-[11px] text-slate-500">A small grey line under the message — usually a sign-off or an opt-out note.</p>
+                <input className={`${inp} w-full`} placeholder="e.g. Team AnalytixLabs · Reply STOP to opt out" maxLength={60} value={footerText} onChange={e => setFooterText(e.target.value)} />
+              </div>
+            )}
           </div>
 
           {mode === "standard" && (
