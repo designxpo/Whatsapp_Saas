@@ -2784,6 +2784,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [adv, setAdv] = useState<AdvFilters>(EMPTY_ADV);          // draft (being edited)
   const [applied, setApplied] = useState<AdvFilters>(EMPTY_ADV);  // active (drives the query)
   const [importing, setImporting] = useState(false);
+  const [importConsent, setImportConsent] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
   const [quota, setQuota] = useState<{ sentToday: number } | null>(null);
 
@@ -2832,12 +2833,14 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
     a.download = "contacts.csv"; a.click(); URL.revokeObjectURL(a.href);
   }
 
-  async function importRows(rows: ImportRow[]) {
+  async function importRows(rows: ImportRow[], consent = true) {
     setImporting(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: rows }) });
+      const res = await fetch("/api/admin/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: rows, consent }) });
       const d = await res.json();
-      setMsg(res.ok ? `Imported ${d.inserted}, skipped ${d.skipped} (duplicates/invalid).` : (d.error || "Import failed"));
+      setMsg(res.ok
+        ? `Imported ${d.inserted}, skipped ${d.skipped} (duplicates)${d.invalid ? `, ${d.invalid} invalid number${d.invalid === 1 ? "" : "s"}` : ""}.${consent ? "" : " Marked not-opted-in — excluded from broadcasts until they opt in."}`
+        : (d.error || "Import failed"));
       if (res.ok) { setCsvPreview(null); setAddPhone(""); setAddName(""); setAddTags(""); load(); }
       return res.ok;
     } finally { setImporting(false); }
@@ -2845,7 +2848,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   async function addContact() {
     if (!addPhone.trim()) { setMsg("Phone is required."); return; }
-    const ok = await importRows([{ phone: addPhone.trim(), name: addName.trim(), tags: addTags.split(/[;,]/).map(t => t.trim()).filter(Boolean) }]);
+    const ok = await importRows([{ phone: addPhone.trim(), name: addName.trim(), tags: addTags.split(/[;,]/).map(t => t.trim()).filter(Boolean) }], true);
     if (ok) setShowAdd(false);
   }
 
@@ -3029,7 +3032,11 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   </tbody>
                 </table>
               </div>
-              <button onClick={() => importRows(csvPreview.rows)} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
+              <label className="mb-3 flex items-start gap-2.5 rounded-lg border border-line bg-canvas p-3 text-xs text-ink-600">
+                <input type="checkbox" checked={importConsent} onChange={e => setImportConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-brand-700" />
+                <span>These contacts <b className="text-brand-dark">opted in</b> to receive WhatsApp messages from us. Required to include them in broadcasts — sending to non-opted-in numbers is the top cause of Meta number bans. Leave unchecked to import them for 1:1 chats only.</span>
+              </label>
+              <button onClick={() => importRows(csvPreview.rows, importConsent)} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
                 {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Import {csvPreview.rows.length.toLocaleString()} contacts
               </button>
             </div>

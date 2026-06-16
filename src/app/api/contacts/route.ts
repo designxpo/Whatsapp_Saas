@@ -9,13 +9,15 @@ import { fireTrigger } from "@/lib/autosend";
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[] }[] };
+  let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[] }[]; consent?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const rows = Array.isArray(body.contacts) ? body.contacts : [];
   if (rows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
 
   try {
-    const result = await upsertContacts(rows, "api", tenantId);
+    // Pass consent:true only when the integration attests these contacts opted in;
+    // otherwise they're stored not-opted-in and excluded from marketing audiences.
+    const result = await upsertContacts(rows, "api", tenantId, body.consent ? { consented: true, proof: "API attested consent" } : undefined);
     // Fire 'contact_added' automation for the newly inserted contacts.
     // (Upsert ignore-duplicates means only genuinely new phones get nudged.)
     for (const r of rows) {

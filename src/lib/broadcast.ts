@@ -55,7 +55,7 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
     assert(campaign, "Campaign not found.");
     const aud = campaign!.audience;
     assert(aud && aud.mode !== "recipients", "Campaign has no audience filter to recompute.");
-    const recipients = await recipientsForAudience({ mode: aud!.mode as "all" | "tag" | "attribute", tag: aud!.tag, key: aud!.key, value: aud!.value }, tenantId);
+    const recipients = await recipientsForAudience({ mode: aud!.mode as "all" | "tag" | "attribute", tag: aud!.tag, key: aud!.key, value: aud!.value }, tenantId, true);
     const r = await startSend(campaign!, recipients);
     return { success: true, campaignId: campaign!.id, status: r.status, totalRecipients: recipients.length, sent: r.sentNow, queuedRemaining: r.queuedRemaining, message: r.message };
   }
@@ -72,7 +72,7 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
     assert(a && (a.mode === "all" || a.mode === "tag" || a.mode === "attribute"), "audience.mode must be 'all', 'tag', or 'attribute'.");
     assert(a!.mode !== "attribute" || a!.key?.trim(), "audience.key is required for mode 'attribute'.");
     audience = { mode: a!.mode, ...(a!.tag ? { tag: a!.tag } : {}), ...(a!.key ? { key: a!.key, value: a!.value ?? "" } : {}) };
-    recipients = await recipientsForAudience({ mode: a!.mode, tag: a!.tag, key: a!.key, value: a!.value }, tenantId);
+    recipients = await recipientsForAudience({ mode: a!.mode, tag: a!.tag, key: a!.key, value: a!.value }, tenantId, true);
   } else {
     assert(Array.isArray(input.recipients) && input.recipients.length > 0, "recipients must be a non-empty array.");
     assert(!input.scheduledFor, "scheduledFor is not supported with explicit recipients — use mode 'audience'.");

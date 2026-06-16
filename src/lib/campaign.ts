@@ -110,7 +110,7 @@ export async function fireScheduledCampaign(campaign: Campaign): Promise<void> {
     await updateCampaign(campaign.id, { status: "failed", errorSummary: "Scheduled campaign has no audience filter." });
     return;
   }
-  const recipients = await recipientsForAudience({ mode: aud.mode, tag: aud.tag, key: aud.key, value: aud.value });
+  const recipients = await recipientsForAudience({ mode: aud.mode, tag: aud.tag, key: aud.key, value: aud.value }, campaign.tenantId, true);
   if (recipients.length === 0) {
     await updateCampaign(campaign.id, { status: "sent", totalRecipients: 0, sentAt: new Date().toISOString(), errorSummary: "No recipients at fire time." });
     return;

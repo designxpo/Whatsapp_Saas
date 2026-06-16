@@ -92,13 +92,29 @@ function mapContact(r: Record<string, unknown>): Contact {
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
+// optIn captures proof-of-consent. Inbound messages / growth opt-ins are real
+// consent (optIn.consented=true). Un-attested CSV/API imports default to
+// consented=false so they're excluded from MARKETING audiences until the tenant
+// attests consent. New rows only — onConflict ignoreDuplicates means an existing
+// contact's opt-in state is never downgraded by a re-import.
 export async function upsertContacts(
   rows: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[],
   source = "import",
   tenantId = DEFAULT_TENANT_ID,
+  optIn?: { consented: boolean; proof?: string },
 ): Promise<{ inserted: number; skipped: number }> {
+  const consented = optIn?.consented ?? false;
+  const nowIso = new Date().toISOString();
   const clean = rows
-    .map(r => ({ tenant_id: tenantId, phone: digits(r.phone), name: (r.name ?? "").trim(), email: r.email?.trim() || null, tags: r.tags ?? [], attributes: r.attributes ?? {}, status: "active", source }))
+    .map(r => ({
+      tenant_id: tenantId, phone: digits(r.phone), name: (r.name ?? "").trim(),
+      email: r.email?.trim() || null, tags: r.tags ?? [], attributes: r.attributes ?? {},
+      status: "active", source,
+      opted_in: consented,
+      opt_in_source: source,
+      opt_in_at: consented ? nowIso : null,
+      opt_in_proof: optIn?.proof ?? null,
+    }))
     .filter(r => r.phone.length >= 10);
   if (clean.length === 0) return { inserted: 0, skipped: rows.length };
   const { data, error } = await db()
@@ -108,6 +124,16 @@ export async function upsertContacts(
   if (error) throw error;
   const inserted = data?.length ?? 0;
   return { inserted, skipped: rows.length - inserted };
+}
+
+// Record explicit opt-in for an existing contact (inbound message, growth keyword,
+// website form, manual attestation). Idempotent; only ever upgrades to opted-in.
+export async function markOptedIn(phone: string, source: string, proof: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  try {
+    await db().from("contacts")
+      .update({ opted_in: true, opt_in_source: source, opt_in_at: new Date().toISOString(), opt_in_proof: proof })
+      .eq("tenant_id", tenantId).eq("phone", digits(phone));
+  } catch (e) { console.error("[store] markOptedIn", e); }
 }
 
 export interface ContactAttrFilter { key: string; op: "is" | "is_not" | "contains"; value: string }
@@ -149,9 +175,12 @@ export async function listContacts(opts: {
   return { data: (data ?? []).map(mapContact), total: count ?? 0 };
 }
 
-// Recipients for a broadcast audience (active contacts only).
-export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute"; tag?: string; key?: string; value?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ phone: string; fullName: string }[]> {
+// Recipients for a broadcast audience (active contacts only). When onlyOptedIn
+// is set (the default for marketing broadcasts) non-consented contacts are
+// excluded — the proof-of-opt-in gate that keeps numbers off Meta's ban radar.
+export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute"; tag?: string; key?: string; value?: string }, tenantId = DEFAULT_TENANT_ID, onlyOptedIn = false): Promise<{ phone: string; fullName: string }[]> {
   let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active");
+  if (onlyOptedIn) q = q.eq("opted_in", true);
   if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);
   if (audience.mode === "attribute" && audience.key) q = q.contains("attributes", { [audience.key]: audience.value ?? "" });
   const AUDIENCE_LIMIT = 50000;

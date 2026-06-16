@@ -42,7 +42,7 @@ export async function GET(req: Request) {
 // Body: { contacts: [{ phone, name?, email?, tags?, attributes? }] }
 // Extra CSV columns arrive as attributes and land on contacts.attributes.
 export async function POST(req: Request) {
-  let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[] };
+  let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[]; consent?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const allRows = Array.isArray(body.contacts) ? body.contacts : [];
   if (allRows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
@@ -57,7 +57,10 @@ export async function POST(req: Request) {
   try { await enforceLimit(tid, "contacts", rows.length); }
   catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   try {
-    const result = await upsertContacts(rows, "import", tid);
+    // consent=true means the tenant attested these contacts opted in to receive
+    // messages. Without it, imports are stored not-opted-in and excluded from
+    // marketing audiences until consent is established (e.g. they reply).
+    const result = await upsertContacts(rows, "import", tid, body.consent ? { consented: true, proof: "Importer attested consent" } : undefined);
     // Fire 'contact_added' automation for newly imported contacts.
     for (const r of rows) {
       const c = await getContactByPhone(r.phone, tid);

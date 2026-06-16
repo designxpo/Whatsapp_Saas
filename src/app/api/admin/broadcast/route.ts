@@ -19,7 +19,8 @@ export async function GET(req: Request) {
   if (mode !== "all" && mode !== "tag" && mode !== "attribute") return NextResponse.json({ count: 0 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const r = await recipientsForAudience({ mode, tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined }, tid);
+    // Marketing audience → opted-in only, so the preview count matches the send.
+    const r = await recipientsForAudience({ mode, tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined }, tid, true);
     return NextResponse.json({ count: r.length });
   } catch {
     return NextResponse.json({ count: 0 });

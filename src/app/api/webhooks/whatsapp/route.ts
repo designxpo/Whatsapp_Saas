@@ -4,7 +4,7 @@ import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
   updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, optoutSet, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
-  setContactAttributes, addContactTag,
+  setContactAttributes, addContactTag, markOptedIn,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { enroll } from "@/lib/sequences";
@@ -114,8 +114,11 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Already opted out — ignore inbound entirely.
   if ((await optoutSet(tid)).has(last10(from))) return;
 
-  // Ensure the sender is a contact, then attach to a conversation.
-  await upsertContacts([{ phone: from, name: profileName }], "inbound", tid).catch(() => undefined);
+  // Ensure the sender is a contact, then attach to a conversation. An inbound
+  // message IS a verifiable opt-in, so mark consent (and upgrade an existing
+  // imported-but-unconsented contact via markOptedIn).
+  await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }).catch(() => undefined);
+  await markOptedIn(from, "inbound", "WhatsApp inbound message", tid).catch(() => undefined);
 
   // Click-to-WhatsApp ad attribution — when the chat was opened from an ad,
   // Meta attaches a referral object. Stamp the contact so the Ads tab can show
@@ -167,6 +170,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (tool) {
       if (tool.tag) await addContactTag(from, tool.tag, tid);
       if (tool.sequenceId) await enroll(tool.sequenceId, { phone: from, platform: "whatsapp", conversationId: conv.id }, tid);
+      await markOptedIn(from, "growth", `Growth keyword opt-in${tool.tag ? ` (${tool.tag})` : ""}`, tid);
       await recordGrowthConversion(tool.id, tid);
     }
   } catch (e) { console.error("[webhook] growth opt-in", e); }
