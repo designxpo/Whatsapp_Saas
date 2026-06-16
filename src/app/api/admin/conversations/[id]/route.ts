@@ -6,7 +6,8 @@ import {
   setConversationAgent, markConversationRead, type ConvStatus,
 } from "@/lib/store";
 import { sendText, sendButtons } from "@/lib/whatsapp";
-import { credsFor } from "@/lib/channels";
+import { sendIgMessage, sendIgQuickReplies } from "@/lib/instagram";
+import { credsFor, getChannel } from "@/lib/channels";
 import { pushWaActivity } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
@@ -50,17 +51,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const text = (body.body ?? "").trim();
       if (!text) return NextResponse.json({ error: "body required" }, { status: 400 });
       const buttons = (body.buttons ?? []).map(b => b.trim()).filter(Boolean).slice(0, 3);
-      const channel = await credsFor(conv.channelId);    // reply from the chat's own number
-      const sent = buttons.length > 0
-        ? await sendButtons(conv.phone, text, buttons.map((title, i) => ({ id: `btn_${i + 1}`, title })), channel)
-        : await sendText(conv.phone, text, channel);
-      if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
       const logged = buttons.length > 0 ? `${text}\n[buttons: ${buttons.join(" | ")}]` : text;
-      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid });
+
+      // Route by platform — an Instagram chat MUST go out via the IG API, not
+      // WhatsApp (otherwise the message is logged but never reaches the user).
+      let messageId: string | undefined;
+      if (conv.platform === "instagram") {
+        const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
+        if (!ch?.igUserId || !ch?.token) return NextResponse.json({ error: "Instagram account not connected for this chat" }, { status: 502 });
+        const creds = { igUserId: ch.igUserId, token: ch.token };
+        const sent = buttons.length > 0
+          ? await sendIgQuickReplies(creds, conv.phone, text, buttons.map((title, i) => ({ title, payload: `btn_${i + 1}` })), { lastInboundAt: conv.lastInboundAt })
+          : await sendIgMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
+        messageId = sent.messageId;
+      } else {
+        const channel = await credsFor(conv.channelId, tid);    // reply from the chat's own number
+        const sent = buttons.length > 0
+          ? await sendButtons(conv.phone, text, buttons.map((title, i) => ({ id: `btn_${i + 1}`, title })), channel)
+          : await sendText(conv.phone, text, channel);
+        if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
+        messageId = sent.id;
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
+      }
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
-      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);
-      return NextResponse.json({ success: true, messageId: sent.id });
+      return NextResponse.json({ success: true, messageId });
     }
     if (body.action === "status" && body.status) {
       await setConversationStatus(id, body.status);
