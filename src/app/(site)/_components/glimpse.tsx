@@ -101,7 +101,7 @@ function BroadcastGlimpse() {
 export function PlatformGlimpse() {
   return (
     <Container className="py-16">
-      <SectionTitle eyebrow="A peek inside" title="See Talko AI in action" subtitle="One clean workspace for every conversation, campaign and number — built for teams that move fast." />
+      <SectionTitle eyebrow="A peek inside" title="See Talko AI in action" subtitle="One workspace for every conversation, campaign and number." />
       <Reveal className="mt-12 grid gap-5 lg:grid-cols-[1.5fr_1fr]">
         <InboxGlimpse />
         <div className="flex flex-col gap-5">

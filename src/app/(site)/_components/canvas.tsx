@@ -93,7 +93,7 @@ export function AgentCanvas() {
       <SectionTitle
         eyebrow="Build it visually"
         title="One canvas. Every conversation, automated."
-        subtitle="Connect a trigger, drop in an AI agent with your model, memory and tools, then route every message to the right outcome — no code, no engineers."
+        subtitle="Trigger → AI agent → the right outcome. No code, no engineers."
       />
       <Reveal className="relative mt-12">
         {/* Dotted canvas backdrop, like the builder. */}

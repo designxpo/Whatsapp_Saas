@@ -16,12 +16,12 @@ export const NAV: { label: string; href: string }[] = [
 
 export const HERO = {
   eyebrow: "WhatsApp + Instagram, on autopilot",
-  title: "Enhance your customer conversations with Talko AI",
+  title: "Turn every chat into a customer",
   subtitle:
-    "The all-in-one platform to automate WhatsApp & Instagram — AI replies in your own voice, broadcasts, chatbot flows, drip sequences, catalog checkout and growth tools. One inbox, every conversation.",
+    "AI that replies, qualifies and sells on WhatsApp & Instagram — one inbox, on autopilot.",
   primary: { label: "Start free 14-day trial", href: "/signup" },
   secondary: { label: "See pricing", href: "/pricing" },
-  note: "No credit card required · Bring your own AI key · Cancel anytime",
+  note: "No credit card · Bring your own AI key · Cancel anytime",
 };
 
 export const LOGOS = ["D2C brands", "EdTech", "Real estate", "Healthcare", "Travel", "Agencies"];
@@ -35,14 +35,14 @@ export const STATS: { value: string; label: string }[] = [
 
 export type Feature = { title: string; body: string; icon: string };
 export const FEATURES: Feature[] = [
-  { icon: "bot", title: "AI replies in your voice", body: "Grounded auto-replies from your own knowledge base. Bring your own Gemini, OpenAI or Anthropic key — usage stays on your account." },
-  { icon: "megaphone", title: "Broadcasts that land", body: "Send template campaigns to thousands, schedule sends, and track delivery, reads and clicks — without tripping spam limits." },
-  { icon: "workflow", title: "No-code chatbot flows", body: "Drag-and-build conversation flows that qualify leads, book appointments and answer FAQs around the clock." },
-  { icon: "repeat", title: "Drip sequences", body: "Automated follow-ups triggered by keywords, opt-ins, tags, abandoned carts or ad referrals — set once, runs forever." },
-  { icon: "shopping", title: "Catalog & checkout", body: "Show products, build carts and recover abandoned ones, all inside the chat your customer already uses." },
-  { icon: "instagram", title: "Instagram, done right", body: "Auto-reply to DMs and turn post comments into DMs — fully inside Meta's rules (24-hour window, no cold DMs)." },
-  { icon: "inbox", title: "One unified inbox", body: "Every WhatsApp and Instagram conversation in a single live inbox, with team assignment, labels and quick replies." },
-  { icon: "shield", title: "Multi-tenant & secure", body: "Per-business isolation, encrypted token vault, RLS-backed data separation and full audit trails by design." },
+  { icon: "bot", title: "AI replies in your voice", body: "On-brand answers from your knowledge base — on your own AI key." },
+  { icon: "megaphone", title: "Broadcasts that land", body: "Template campaigns to thousands — scheduled, tracked, ban-safe." },
+  { icon: "workflow", title: "No-code chatbot flows", body: "Drag-and-build flows that qualify, book and answer 24/7." },
+  { icon: "repeat", title: "Drip sequences", body: "Automated follow-ups triggered by any event — set once, runs forever." },
+  { icon: "shopping", title: "Catalog & checkout", body: "Show products, build carts and recover them — right in chat." },
+  { icon: "instagram", title: "Instagram, done right", body: "Auto-reply to DMs and comments — fully within Meta's rules." },
+  { icon: "inbox", title: "One unified inbox", body: "Every conversation in one live inbox, with team assignment and labels." },
+  { icon: "shield", title: "Multi-tenant & secure", body: "Per-business isolation, encrypted vaults and audit trails by design." },
 ];
 
 export type Step = { n: string; title: string; body: string };

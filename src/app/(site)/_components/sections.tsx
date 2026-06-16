@@ -47,7 +47,7 @@ export function ThreeSteps() {
   return (
     <Container className="py-16">
       <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
-        <SectionTitle title="Get started in three easy steps" subtitle="Going live can feel overwhelming — Talko AI makes it simple." />
+        <SectionTitle title="Get started in three easy steps" subtitle="Go live in an afternoon." />
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {STEPS.map((s, i) => {
             const Icon = STEP_ICONS[i] ?? Search;
@@ -151,7 +151,7 @@ export function IntegrationsStrip() {
 export function Testimonials() {
   return (
     <Container className="py-16">
-      <SectionTitle title="People love growing with Talko AI" subtitle="Here's what teams say about automating their conversations." />
+      <SectionTitle title="People love growing with Talko AI" subtitle="What teams say." />
       <Marquee durationSec={45} gapClass="gap-x-6" className="mt-10 py-2">
         {TESTIMONIALS.map(t => (
           <figure key={t.name} className="flex h-full w-[340px] shrink-0 flex-col rounded-[24px] bg-slate-50 p-7 sm:w-[400px]">
@@ -178,7 +178,7 @@ const PROBLEM_ICONS: Record<string, LucideIcon> = {
 export function ProblemSolution() {
   return (
     <Container className="py-16">
-      <SectionTitle eyebrow="Why it matters" title="The problems you're losing sleep over — solved" subtitle="Every messy, manual part of customer messaging, handled by one platform instead of five." />
+      <SectionTitle eyebrow="Why it matters" title="The problems you're losing sleep over — solved" subtitle="The manual parts of messaging, handled by one platform." />
       <div className="mt-12 grid gap-5 md:grid-cols-2">
         {PROBLEMS.map(p => {
           const Icon = PROBLEM_ICONS[p.icon] ?? Inbox;
@@ -206,7 +206,7 @@ function CompareCell({ value }: { value: boolean | string }) {
 export function ComparisonTable() {
   return (
     <Container className="py-16">
-      <SectionTitle eyebrow="Compare" title="What you get with Talko AI that you don't elsewhere" subtitle="One platform that replaces a stack of single-purpose tools — with the compliance and AI built in." />
+      <SectionTitle eyebrow="Compare" title="What you get with Talko AI that you don't elsewhere" subtitle="One platform instead of a stack of tools — AI and compliance built in." />
       <div className="mx-auto mt-10 max-w-4xl overflow-x-auto rounded-2xl border border-slate-200">
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>

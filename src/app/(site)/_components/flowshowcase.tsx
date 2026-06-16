@@ -136,7 +136,7 @@ export function FlowShowcase() {
       <SectionTitle
         eyebrow="Use cases"
         title="One platform. Every business workflow."
-        subtitle="Pick a problem — see exactly how Talko AI solves it, end to end, with no code and no engineers."
+        subtitle="Pick a problem — see how Talko AI solves it."
       />
       <div
         className="mt-12 grid items-stretch gap-6 lg:grid-cols-[300px_1fr]"
