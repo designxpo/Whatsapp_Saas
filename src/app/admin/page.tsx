@@ -307,8 +307,8 @@ function HomeTab({ goTo }: { goTo: (t: Tab) => void }) {
           {[
             { label: "Contacts", value: s.counts.contacts, tab: "contacts" as Tab },
             { label: "Knowledge docs", value: s.counts.kbDocuments, tab: "assistant" as Tab },
-            { label: "Conversations", value: s.counts.conversations, tab: "assistant" as Tab },
-            { label: "Need attention", value: s.counts.needsAttention, tab: "assistant" as Tab },
+            { label: "Conversations", value: s.counts.conversations, tab: "livechat" as Tab },
+            { label: "Need attention", value: s.counts.needsAttention, tab: "livechat" as Tab },
           ].map(c => (
             <button key={c.label} onClick={() => goTo(c.tab)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
               <p className={`text-2xl font-extrabold ${c.label === "Need attention" && c.value > 0 ? "text-red-500" : ""}`}>{c.value}</p>
