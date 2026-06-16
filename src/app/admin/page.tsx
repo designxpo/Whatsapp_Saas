@@ -1000,7 +1000,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
 type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string };
-type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
+type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
 
 // Avatar that shows the profile image when available, falling back to the
 // initial if there's no image or it fails to load (IG image URLs can expire).
@@ -1233,6 +1233,94 @@ function LiveChatTab() {
   );
 }
 
+// Send an approved template from Live Chat — the ONLY message type Meta allows
+// outside the 24h window. Scoped to APPROVED templates with no media header and
+// no header variable (sendTemplateSingle only fills BODY {{n}}); richer
+// templates (media headers etc.) are sent from the Broadcast tab.
+function TemplateComposer({ channelId, busy, onSend, onClose }: {
+  channelId?: string | null;
+  busy: boolean;
+  onSend: (p: { templateName: string; languageCode: string; bodyParams: string[]; preview: string }) => void;
+  onClose: () => void;
+}) {
+  type Tpl = { name: string; status: string; language: string; category: string; components?: { type: string; format?: string; text?: string }[] };
+  const [tpls, setTpls] = useState<Tpl[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selKey, setSelKey] = useState("");          // `${name}|${language}`
+  const [vars, setVars] = useState<string[]>([]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/admin/templates${channelId ? `?channelId=${channelId}` : ""}`)
+      .then(r => r.json()).then(d => setTpls(d.templates ?? [])).catch(() => setTpls([]))
+      .finally(() => setLoading(false));
+  }, [channelId]);
+
+  const bodyText = (t: Tpl) => t.components?.find(c => c.type === "BODY")?.text ?? "";
+  const varsOf = (t: Tpl) => Math.max(0, ...(bodyText(t).match(/\{\{(\d+)\}\}/g) ?? []).map(m => parseInt(m.replace(/\D/g, ""), 10)));
+  // Quick-sendable: no media header, no header variable (we only fill BODY {{n}}).
+  const sendable = (t: Tpl) => {
+    const h = t.components?.find(c => c.type === "HEADER");
+    if (h?.format && h.format !== "TEXT") return false;
+    if (h && /\{\{\d+\}\}/.test(h.text ?? "")) return false;
+    return true;
+  };
+  const approved = tpls.filter(t => t.status === "APPROVED");
+  const usable = approved.filter(sendable);
+  const hiddenCount = approved.length - usable.length;
+  const selected = usable.find(t => `${t.name}|${t.language}` === selKey);
+  const varCount = selected ? varsOf(selected) : 0;
+
+  function pick(k: string) {
+    setSelKey(k);
+    const t = usable.find(x => `${x.name}|${x.language}` === k);
+    setVars(Array(t ? varsOf(t) : 0).fill(""));
+  }
+  function preview(): string {
+    if (!selected) return "";
+    return bodyText(selected).replace(/\{\{(\d+)\}\}/g, (_, d) => vars[Number(d) - 1]?.trim() || `{{${d}}}`);
+  }
+  const filled = varCount === 0 || vars.slice(0, varCount).every(v => v.trim());
+
+  return (
+    <div className="border border-line rounded-control bg-canvas/60 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold text-ink-600 uppercase tracking-[0.06em] flex items-center gap-1.5"><LayoutTemplate className="w-3.5 h-3.5" /> Send approved template</p>
+        <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
+      </div>
+      {loading ? (
+        <p className="text-[11px] text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading templates…</p>
+      ) : usable.length === 0 ? (
+        <p className="text-[11px] text-ink-400">No quick-sendable approved templates{hiddenCount > 0 ? ` (${hiddenCount} with media headers — use the Broadcast tab)` : ""}. Create one in the <b>Templates</b> tab.</p>
+      ) : (
+        <>
+          <select className={`${inp} w-full`} value={selKey} onChange={e => pick(e.target.value)}>
+            <option value="">Choose a template…</option>
+            {usable.map(t => <option key={`${t.name}|${t.language}`} value={`${t.name}|${t.language}`}>{t.name} · {t.language} · {t.category}</option>)}
+          </select>
+          {selected && varCount > 0 && (
+            <div className="space-y-1.5">
+              {Array.from({ length: varCount }).map((_, i) => (
+                <input key={i} className={`${inp} w-full text-xs`} placeholder={`Value for {{${i + 1}}}`} value={vars[i] ?? ""} onChange={e => setVars(prev => { const next = [...prev]; next[i] = e.target.value; return next; })} />
+              ))}
+            </div>
+          )}
+          {selected && <p className="text-[12px] text-ink-600 bg-white border border-line rounded-control px-2.5 py-1.5 whitespace-pre-wrap break-words">{preview()}</p>}
+          {hiddenCount > 0 && <p className="text-[10px] text-ink-400">{hiddenCount} template{hiddenCount > 1 ? "s" : ""} with media headers hidden — send those from the Broadcast tab.</p>}
+          <div className="flex items-center justify-end">
+            <button
+              onClick={() => selected && onSend({ templateName: selected.name, languageCode: selected.language, bodyParams: vars.slice(0, varCount).map(v => v.trim()), preview: preview() })}
+              disabled={busy || !selected || !filled}
+              className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
+              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send template</>}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Middle thread + right contact-info pane for one conversation.
 function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
   const [conv, setConv] = useState<Conversation | null>(null);
@@ -1250,6 +1338,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
   const [assisting, setAssisting] = useState(false);
   const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
+  const [showTemplate, setShowTemplate] = useState(false);
   const [contact, setContact] = useState<{ email: string | null; tags: string[]; attributes: Record<string, string> } | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef(0);
@@ -1309,6 +1398,14 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
     const ok = await act({ action: "reply", body: reply.trim(), ...(buttons.length ? { buttons } : {}) });
     if (ok) { setReply(""); setBtns(["", "", ""]); setShowButtons(false); }
   }
+  async function sendTemplate(p: { templateName: string; languageCode: string; bodyParams: string[]; preview: string }) {
+    const ok = await act({ action: "template", ...p });
+    if (ok) setShowTemplate(false);
+  }
+  // Free-form replies only deliver inside Meta's 24h window; outside it the agent
+  // must send an approved template. WhatsApp only — IG has no template path.
+  const windowClosed = !!conv && conv.platform !== "instagram" &&
+    (!conv.lastInboundAt || Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000);
 
   return (
     <>
@@ -1387,6 +1484,15 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
               ⚠ {actError}{/Invalid OAuth|access token|credentials not configured/i.test(actError) ? " — WhatsApp (Meta) credentials are not set yet, so messages can't actually send." : ""}
             </p>
           )}
+          {windowClosed && (
+            <div className="text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 flex items-center justify-between gap-2">
+              <span>⏱ Outside WhatsApp&apos;s 24-hour window — free-form replies won&apos;t deliver. Send an approved template to re-open the chat (a paid, business-initiated message).</span>
+              {!showTemplate && <button onClick={() => setShowTemplate(true)} className="shrink-0 px-2 py-1 rounded-control bg-amber-600 text-white font-bold hover:bg-amber-700">Send template</button>}
+            </div>
+          )}
+          {showTemplate && conv && (
+            <TemplateComposer channelId={conv.channelId} busy={busy} onClose={() => setShowTemplate(false)} onSend={sendTemplate} />
+          )}
           {showQuick && quickReplies.length > 0 && (
             <div className="flex gap-1.5 flex-wrap max-h-24 overflow-y-auto">
               {quickReplies.map(q => (
@@ -1416,6 +1522,9 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
             <button onClick={() => setShowQuick(s => !s)} title="Quick replies" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showQuick ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⚡</button>
             <button onClick={() => setShowAssist(s => !s)} disabled={assisting} title="AI assist (rewrite draft)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showAssist ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>{assisting ? <Loader2 className="w-4 h-4 animate-spin" /> : "✨"}</button>
             <button onClick={() => setShowButtons(s => !s)} title="Quick-reply buttons" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showButtons ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⊞</button>
+            {conv?.platform !== "instagram" && (
+              <button onClick={() => setShowTemplate(s => !s)} title="Send approved template (works outside the 24h window)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTemplate ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}><LayoutTemplate className="w-4 h-4" /></button>
+            )}
             <button onClick={sendReply} disabled={busy || !reply.trim()} className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send</>}
             </button>

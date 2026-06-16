@@ -5,7 +5,7 @@ import {
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
   setConversationAgent, markConversationRead, type ConvStatus,
 } from "@/lib/store";
-import { sendText, sendButtons } from "@/lib/whatsapp";
+import { sendText, sendButtons, sendTemplateSingle } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies } from "@/lib/instagram";
 import { credsFor, getChannel } from "@/lib/channels";
 import { pushWaActivity } from "@/lib/leadsquared";
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await currentTenantId();
@@ -84,6 +84,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);
       return NextResponse.json({ success: true, messageId });
+    }
+    if (body.action === "template") {
+      // Approved templates are the ONLY message type allowed OUTSIDE the 24h
+      // window — the supported way to re-open a closed conversation. Meta bills
+      // this as a business-initiated conversation. WhatsApp only (IG has none).
+      if (conv.platform === "instagram") return NextResponse.json({ error: "Templates are WhatsApp-only — on Instagram the user must message again first." }, { status: 400 });
+      const templateName = (body.templateName ?? "").trim();
+      if (!templateName) return NextResponse.json({ error: "templateName required" }, { status: 400 });
+      const languageCode = (body.languageCode ?? "en_US").trim() || "en_US";
+      const bodyParams = (body.bodyParams ?? []).map(p => String(p ?? ""));
+      const channel = await credsFor(conv.channelId, tid);
+      const sent = await sendTemplateSingle(conv.phone, templateName, languageCode, bodyParams, channel);
+      if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
+      // Show the resolved text in the thread when the UI supplies a preview,
+      // else fall back to the template name.
+      const logged = (body.preview ?? "").trim() || `[template: ${templateName}]`;
+      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid });
+      await touchOutbound(id, logged);
+      logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
+      return NextResponse.json({ success: true, messageId: sent.id });
     }
     if (body.action === "status" && body.status) {
       await setConversationStatus(id, body.status);
