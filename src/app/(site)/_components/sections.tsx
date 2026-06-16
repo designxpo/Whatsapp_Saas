@@ -147,23 +147,23 @@ export function IntegrationsStrip() {
 }
 
 export function Testimonials() {
-  const t = TESTIMONIALS[0];
   return (
     <Container className="py-16">
       <SectionTitle title="People love growing with Talko AI" subtitle="Here's what teams say about automating their conversations." />
-      <div className="mx-auto mt-10 max-w-2xl rounded-[28px] bg-slate-50 p-8 text-center sm:p-12">
-        <div className="mx-auto flex w-fit gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-5 w-5 fill-current" />)}</div>
-        <p className="mt-5 text-balance text-lg font-medium leading-relaxed text-slate-700">“{t.quote}”</p>
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0783fd] text-sm font-bold text-white">{t.name.charAt(0)}</span>
-          <div className="text-left">
-            <div className="text-sm font-bold text-slate-900">{t.name}</div>
-            <div className="text-xs text-slate-500">{t.role}</div>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-center gap-1.5">
-          {TESTIMONIALS.map((_, i) => <span key={i} className={`h-1.5 rounded-full ${i === 0 ? "w-6 bg-[#0783fd]" : "w-1.5 bg-slate-300"}`} />)}
-        </div>
+      <div className="mt-10 grid gap-5 md:grid-cols-3">
+        {TESTIMONIALS.map(t => (
+          <figure key={t.name} className="flex h-full flex-col rounded-[24px] bg-slate-50 p-7">
+            <div className="flex gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}</div>
+            <blockquote className="mt-4 flex-1 text-[15px] font-medium leading-relaxed text-slate-700">“{t.quote}”</blockquote>
+            <figcaption className="mt-6 flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0783fd] text-sm font-bold text-white">{t.name.charAt(0)}</span>
+              <span>
+                <span className="block text-sm font-bold text-slate-900">{t.name}</span>
+                <span className="block text-xs text-slate-500">{t.role}</span>
+              </span>
+            </figcaption>
+          </figure>
+        ))}
       </div>
     </Container>
   );

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, ChevronDown, Bot, Phone } from "lucide-react";
+import { Menu, X, ChevronDown, Bot } from "lucide-react";
 import { NAV, SITE, FAQS } from "../_content/site";
 import { BrandLogo } from "@/components/BrandLogo";
 
@@ -73,15 +73,15 @@ export function SiteFooter() {
         <div>
           <Wordmark dark />
           <p className="mt-3 max-w-xs text-sm text-white/70">{SITE.tagline}. One inbox for every conversation.</p>
-          <p className="mt-5 flex items-center gap-2 text-sm font-semibold"><Phone className="h-4 w-4" /> +1-800-222-8888</p>
         </div>
-        <FooterCol title="Company" links={[["About", "/about"], ["Blog", "/blog"], ["Pricing", "/pricing"]]} />
-        <FooterCol title="Support" links={[["Features", "/features"], ["Sign in", "/login"], ["Contact", "/about"]]} />
+        <FooterCol title="Product" links={[["Features", "/features"], ["Pricing", "/pricing"], ["Blog", "/blog"]]} />
+        <FooterCol title="Company" links={[["About", "/about"], ["Sign in", "/login"], ["Start free trial", "/signup"]]} />
         <div>
-          <p className="text-xs font-bold uppercase tracking-wider text-white/70">Newsletter</p>
-          <form className="mt-3 flex flex-col gap-2" action="/signup">
-            <input type="email" placeholder="Enter your email" className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none" />
-            <button type="submit" className="rounded-full bg-white px-4 py-2.5 text-sm font-bold text-[#0783fd] transition-colors hover:bg-slate-100">Subscribe</button>
+          <p className="text-xs font-bold uppercase tracking-wider text-white/70">Get started</p>
+          <p className="mt-3 text-sm text-white/70">Start your free 14-day trial — no credit card required.</p>
+          <form className="mt-3 flex flex-col gap-2" action="/signup" method="get">
+            <input type="email" name="email" placeholder="Enter your work email" className="w-full rounded-full border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/50 focus:outline-none" />
+            <button type="submit" className="rounded-full bg-white px-4 py-2.5 text-sm font-bold text-[#0783fd] transition-colors hover:bg-slate-100">Start free trial</button>
           </form>
         </div>
       </div>
