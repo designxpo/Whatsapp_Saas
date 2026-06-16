@@ -5,6 +5,8 @@ import {
   Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES } from "./ui";
+import { Marquee } from "./marquee";
+import { BrandMark } from "./logos";
 import {
   FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, WHY, CTA_BULLETS, type Feature,
   PROBLEMS, COMPARE_COLS, COMPARE_ROWS,
@@ -138,9 +140,9 @@ export function IntegrationsStrip() {
       <div className="rounded-[28px] bg-slate-50 px-5 py-10 text-center sm:px-10">
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Connect the channels and AI providers you already use.</p>
-        <div className="mt-7 flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-          {INTEGRATIONS.map(i => <span key={i} className="text-base font-extrabold text-slate-400">{i}</span>)}
-        </div>
+        <Marquee durationSec={28} gapClass="gap-x-16" className="mt-8 py-2">
+          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} />)}
+        </Marquee>
       </div>
     </Container>
   );
@@ -150,9 +152,9 @@ export function Testimonials() {
   return (
     <Container className="py-16">
       <SectionTitle title="People love growing with Talko AI" subtitle="Here's what teams say about automating their conversations." />
-      <div className="mt-10 grid gap-5 md:grid-cols-3">
+      <Marquee durationSec={45} gapClass="gap-x-6" className="mt-10 py-2">
         {TESTIMONIALS.map(t => (
-          <figure key={t.name} className="flex h-full flex-col rounded-[24px] bg-slate-50 p-7">
+          <figure key={t.name} className="flex h-full w-[340px] shrink-0 flex-col rounded-[24px] bg-slate-50 p-7 sm:w-[400px]">
             <div className="flex gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}</div>
             <blockquote className="mt-4 flex-1 text-[15px] font-medium leading-relaxed text-slate-700">“{t.quote}”</blockquote>
             <figcaption className="mt-6 flex items-center gap-3">
@@ -164,7 +166,7 @@ export function Testimonials() {
             </figcaption>
           </figure>
         ))}
-      </div>
+      </Marquee>
     </Container>
   );
 }

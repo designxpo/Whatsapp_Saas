@@ -49,6 +49,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 @keyframes pulsesoft { 0%, 100% { box-shadow: 0 0 0 0 rgba(24,119,242,0.45); } 50% { box-shadow: 0 0 0 8px rgba(24,119,242,0); } }
 .animate-pulsesoft { animation: pulsesoft 2.4s ease-in-out infinite; }
 
+/* Infinite auto-scroll marquee. The track renders its children TWICE, so a
+   -50% translate loops seamlessly. Duration is set inline per instance. */
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.animate-marquee { animation: marquee linear infinite; will-change: transform; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   /* Reveal-on-scroll must never leave content hidden when motion is reduced. */

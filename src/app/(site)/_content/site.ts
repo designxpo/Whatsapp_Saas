@@ -210,8 +210,20 @@ export const COMPARE_ROWS: CompareRow[] = [
 
 export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 
-// "Works with your favorite tools" strip.
-export const INTEGRATIONS = ["WhatsApp", "Instagram", "Messenger", "Stripe", "Gemini", "OpenAI", "Anthropic", "LeadSquared"];
+// "Works with your favorite tools" strip. slug = Simple Icons id (cdn.simpleicons.org);
+// omit slug to render the name as a wordmark (e.g. brands without a Simple Icon).
+export const INTEGRATIONS: { name: string; slug?: string }[] = [
+  { name: "WhatsApp", slug: "whatsapp" },
+  { name: "Instagram", slug: "instagram" },
+  { name: "Messenger", slug: "messenger" },
+  { name: "Stripe", slug: "stripe" },
+  { name: "Gemini", slug: "googlegemini" },
+  { name: "OpenAI", slug: "openai" },
+  { name: "Anthropic", slug: "anthropic" },
+  { name: "Meta", slug: "meta" },
+  { name: "Razorpay", slug: "razorpay" },
+  { name: "LeadSquared" },
+];
 
 // "Why teams choose Talko AI" — pastel benefit cards.
 export type Benefit = { title: string; body: string; tone: "mint" | "sky" | "peach" };
