@@ -96,10 +96,14 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   if (p.channelId !== undefined) patch.channel_id = p.channelId;
   if (p.graph !== undefined) patch.graph = p.graph;
   let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
-  // Optional columns missing (migration not applied) — save the rest.
+  // Optional columns missing (migration not applied) — save the rest, but never
+  // let an Instagram flow silently persist as WhatsApp-only: without the column
+  // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
   if (error && ("channel_id" in patch || "platform" in patch)) {
+    const triedInstagram = patch.platform === "instagram";
     delete patch.channel_id; delete patch.platform;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
+    if (!error && triedInstagram) throw new Error("Instagram flows need the wa_flows.platform column — apply migration 0023_flow_platform.sql, then save again.");
   }
   if (error) throw error;
 }
