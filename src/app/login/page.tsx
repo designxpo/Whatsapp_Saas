@@ -44,6 +44,7 @@ export default function LoginPage() {
         <button disabled={loading} className="w-full py-2.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Sign in
         </button>
+        <p className="text-center text-xs text-ink-400">Don&apos;t have an account? <a href="/signup" className="font-semibold text-brand-700 hover:underline">Start free trial</a></p>
       </form>
     </main>
   );

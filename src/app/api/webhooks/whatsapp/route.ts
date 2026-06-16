@@ -175,7 +175,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // greeting lands before the answer. claimReply/claimWelcome guard double-sends.
   after(async () => {
     try {
-      const [welcome, away] = await Promise.all([getWelcomeSetting(), getAwaySetting()]);
+      const [welcome, away] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid)]);
 
       // First-ever message from this contact → one-time greeting.
       if (welcome.enabled && !conv.welcomed && await claimWelcome(conv.id)) {

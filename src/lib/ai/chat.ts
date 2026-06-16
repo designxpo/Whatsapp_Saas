@@ -155,11 +155,14 @@ async function runOpenAI(opts: RunChatOpts): Promise<ChatResult> {
   const msg = res.choices[0]?.message;
   return {
     text: (msg?.content ?? "").trim(),
-    toolCalls: (msg?.tool_calls ?? []).flatMap(tc => {
+    toolCalls: (msg?.tool_calls ?? []).flatMap((tc, i) => {
       if (tc.type !== "function") return [];
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* keep {} */ }
-      return [{ id: tc.id, name: tc.function.name, args }];
+      // Synthesize a stable id if the provider omits one, so the assistant
+      // tool_calls[].id and the follow-up tool_result id always agree (the
+      // OpenAI API rejects a tool_call_id mismatch with a 400). Mirrors Gemini.
+      return [{ id: tc.id || `oai_${i}`, name: tc.function.name, args }];
     }),
   };
 }

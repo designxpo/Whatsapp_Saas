@@ -61,7 +61,11 @@ export async function respondToConversation(conversationId: string): Promise<{ o
   }
 
   // Opt-out suppression + daily cap (parallel — independent reads).
-  const [optouts, sentToday] = await Promise.all([optoutSet(), dailySentCount(conv.tenantId)]);
+  // Both MUST be scoped to the conversation's tenant: a STOP sent to tenant B's
+  // number lives in tenant B's wa_optouts, so calling optoutSet() with no arg
+  // (which defaults to DEFAULT_TENANT_ID) would silently ignore the opt-out for
+  // every non-owner tenant — a consent/compliance bug.
+  const [optouts, sentToday] = await Promise.all([optoutSet(conv.tenantId), dailySentCount(conv.tenantId)]);
   if (optouts.has(last10(conv.phone))) return { outcome: "skipped", detail: "opted out" };
   if (sentToday >= dailyLimit()) return { outcome: "skipped", detail: "daily cap reached" };
 

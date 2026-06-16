@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isAutoRouteEnabled, setAutoRoute, isToneEnabled, setToneEnabled } from "@/lib/aihub";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, DEFAULT_TENANT_ID, requireRoleAdmin } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,9 @@ export async function GET() {
 }
 
 // POST — AI behavior toggles. Body: { auto?: boolean, tone?: boolean }
+// Tenant-wide bot behavior → admins only (GET stays open to members).
 export async function POST(req: Request) {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: { auto?: boolean; tone?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {

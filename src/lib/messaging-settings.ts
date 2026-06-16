@@ -1,6 +1,7 @@
 // Welcome + away message settings — shared by the settings API and the webhook.
 
-import { getSetting } from "./store";
+import { getTenantSetting, setTenantSetting } from "./store";
+import { DEFAULT_TENANT_ID } from "./auth";
 
 export interface WelcomeSetting { enabled: boolean; text: string }
 export interface AwaySetting {
@@ -24,12 +25,23 @@ export const AWAY_DEFAULT: AwaySetting = {
   tzOffsetMinutes: 330,
 };
 
-export async function getWelcomeSetting(): Promise<WelcomeSetting> {
-  return { ...WELCOME_DEFAULT, ...(await getSetting<Partial<WelcomeSetting>>("welcome", {})) };
+// All settings are per-tenant: the webhook passes the receiving channel's tenant
+// and the settings API passes the signed-in tenant. Defaulting to the platform
+// owner only happens for genuinely tenantless callers.
+export async function getWelcomeSetting(tenantId: string = DEFAULT_TENANT_ID): Promise<WelcomeSetting> {
+  return { ...WELCOME_DEFAULT, ...(await getTenantSetting<Partial<WelcomeSetting>>(tenantId, "welcome", {})) };
 }
 
-export async function getAwaySetting(): Promise<AwaySetting> {
-  return { ...AWAY_DEFAULT, ...(await getSetting<Partial<AwaySetting>>("away", {})) };
+export async function getAwaySetting(tenantId: string = DEFAULT_TENANT_ID): Promise<AwaySetting> {
+  return { ...AWAY_DEFAULT, ...(await getTenantSetting<Partial<AwaySetting>>(tenantId, "away", {})) };
+}
+
+export async function setWelcomeSetting(tenantId: string, value: Partial<WelcomeSetting>): Promise<void> {
+  return setTenantSetting(tenantId, "welcome", value);
+}
+
+export async function setAwaySetting(tenantId: string, value: Partial<AwaySetting>): Promise<void> {
+  return setTenantSetting(tenantId, "away", value);
 }
 
 export function isOutsideWorkingHours(s: AwaySetting, now = new Date()): boolean {

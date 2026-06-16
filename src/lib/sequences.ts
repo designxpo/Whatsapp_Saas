@@ -10,7 +10,7 @@
 import { db } from "./supabase";
 import { getChannel } from "./channels";
 import { sendText, sendTemplateSingle, sendMedia } from "./whatsapp";
-import { sendIgMessage } from "./instagram";
+import { sendIgMessage, within24hWindow } from "./instagram";
 import { getConversationByPhone } from "./store";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -137,9 +137,20 @@ async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: Se
   }
 
   // WhatsApp — channel (Channel) is assignable to ChannelCreds; undefined → env default.
-  if (a.type === "text" && a.text) { const r = await sendText(phone, a.text, channel); return { ok: !r.error, error: r.error }; }
+  // Templates are always allowed (Meta-approved, no window). Free-form text/media
+  // may only be sent INSIDE the 24h customer-service window — sequences are
+  // time-delayed and routinely fire after it closes, so we must gate exactly like
+  // flowengine/assistant or we risk a closed-window send (a top Meta ban trigger).
   if (a.type === "template" && a.templateName) { const r = await sendTemplateSingle(phone, a.templateName, a.languageCode ?? "en_US", a.params ?? [], channel); return { ok: !r.error, error: r.error }; }
-  if (a.type === "media" && a.url) { const r = await sendMedia(phone, a.mediaKind ?? "image", a.url, a.caption, channel); return { ok: !r.error, error: r.error }; }
+  if (a.type === "text" || a.type === "media") {
+    const conv = await getConversationByPhone(phone, seq.tenantId);
+    if (!within24hWindow(conv?.lastInboundAt ?? null)) {
+      // Skip (don't fail) so the sequence keeps advancing; record why for the UI.
+      return { ok: false, error: "Skipped: outside 24h window — use an approved template for this step" };
+    }
+    if (a.type === "text" && a.text) { const r = await sendText(phone, a.text, channel); return { ok: !r.error, error: r.error }; }
+    if (a.type === "media" && a.url) { const r = await sendMedia(phone, a.mediaKind ?? "image", a.url, a.caption, channel); return { ok: !r.error, error: r.error }; }
+  }
   return { ok: true };   // empty/unknown step → no-op, just advance
 }
 
