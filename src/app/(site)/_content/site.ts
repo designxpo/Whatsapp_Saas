@@ -181,6 +181,75 @@ export const AGENT_CANVAS = {
   },
 };
 
+// ── Interactive use-case flows ───────────────────────────────────────────────
+// Each business problem maps to a clean left-to-right flow. Kept conceptual
+// (business-outcome nodes, not a build recipe) — it shows WHAT we solve and how
+// fast, without exposing the underlying implementation.
+export type FlowNodeDef = { icon: string; title: string; sub: string; accent?: boolean };
+export type UseCase = { key: string; tab: string; problem: string; outcome: string; nodes: FlowNodeDef[] };
+export const USE_CASES: UseCase[] = [
+  {
+    key: "leads",
+    tab: "Capture & qualify leads",
+    problem: "Leads message after hours and go cold before sales replies",
+    outcome: "Every lead captured, qualified and routed in seconds — 24/7, no rep online.",
+    nodes: [
+      { icon: "zap", title: "New enquiry", sub: "WhatsApp, Instagram or ad click" },
+      { icon: "bot", title: "AI qualifies", sub: "Intent, budget & timeline", accent: true },
+      { icon: "user", title: "Save to CRM", sub: "Tagged, scored contact" },
+      { icon: "bell", title: "Alert sales", sub: "Assigned in the inbox" },
+    ],
+  },
+  {
+    key: "support",
+    tab: "Answer support 24/7",
+    problem: "Customers wait hours for a reply to simple questions",
+    outcome: "Most questions resolved instantly; only the tricky ones reach your team.",
+    nodes: [
+      { icon: "message", title: "Customer asks", sub: "Any hour, any channel" },
+      { icon: "bot", title: "AI answers", sub: "Grounded on your knowledge base", accent: true },
+      { icon: "check", title: "Resolved instantly", sub: "On-brand, accurate reply" },
+      { icon: "handoff", title: "Escalate if needed", sub: "Clean hand-off to a human" },
+    ],
+  },
+  {
+    key: "carts",
+    tab: "Recover abandoned carts",
+    problem: "Carts are abandoned with no way to follow up in chat",
+    outcome: "Win back revenue automatically — inside the chat they already use.",
+    nodes: [
+      { icon: "shopping", title: "Cart abandoned", sub: "Checkout left incomplete" },
+      { icon: "clock", title: "Smart wait", sub: "Nudges at the right moment" },
+      { icon: "bot", title: "AI re-engages", sub: "Personalized, in your voice", accent: true },
+      { icon: "card", title: "Checkout link", sub: "One tap to complete" },
+    ],
+  },
+  {
+    key: "broadcasts",
+    tab: "Re-engage with broadcasts",
+    problem: "Re-marketing campaigns get your number flagged or banned",
+    outcome: "Reach thousands compliantly — opt-in respected, quality auto-protected.",
+    nodes: [
+      { icon: "user", title: "Pick a segment", sub: "Tags, attributes, activity" },
+      { icon: "shield", title: "Consent & tier check", sub: "Only opted-in, within limits", accent: true },
+      { icon: "megaphone", title: "Send template", sub: "Approved, scheduled" },
+      { icon: "chart", title: "Track & auto-pause", sub: "On any quality dip" },
+    ],
+  },
+  {
+    key: "booking",
+    tab: "Book appointments",
+    problem: "Booking takes endless back-and-forth and staff time",
+    outcome: "Fill your calendar on autopilot, with reminders that cut no-shows.",
+    nodes: [
+      { icon: "message", title: "Enquiry arrives", sub: "“Can I book a slot?”" },
+      { icon: "bot", title: "AI collects details", sub: "Service, date, contact", accent: true },
+      { icon: "calendar", title: "Books the slot", sub: "Synced to your calendar" },
+      { icon: "bell", title: "Confirm & remind", sub: "Auto follow-ups before" },
+    ],
+  },
+];
+
 // ── Business problem → one-platform solution ─────────────────────────────────
 export type ProblemSolution = { problem: string; solution: string; icon: string };
 export const PROBLEMS: ProblemSolution[] = [

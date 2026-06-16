@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Container, Glow, SectionTitle } from "../_components/ui";
 import { FeatureGrid, ThreeSteps, IntegrationsStrip, StatsBand, CtaBand, ProblemSolution, ComparisonTable } from "../_components/sections";
-import { ChatFlowDiagram, SequenceFlowDiagram } from "../_components/flows";
 import { AgentCanvas } from "../_components/canvas";
+import { FlowShowcase } from "../_components/flowshowcase";
 
 export const metadata: Metadata = {
   title: "Features — Talko AI",
@@ -25,9 +25,8 @@ export default function FeaturesPage() {
       </Container>
 
       <AgentCanvas />
+      <FlowShowcase />
       <ProblemSolution />
-      <ChatFlowDiagram />
-      <SequenceFlowDiagram />
       <ComparisonTable />
       <ThreeSteps />
       <IntegrationsStrip />

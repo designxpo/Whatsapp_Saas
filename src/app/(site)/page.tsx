@@ -3,8 +3,8 @@ import { ArrowRight, Bot, CheckCheck, MessageSquare } from "lucide-react";
 import { Container, Glow, Button, SectionTitle } from "./_components/ui";
 import { FeatureGrid, ThreeSteps, WhyChoose, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable } from "./_components/sections";
 import { PricingTiers } from "./_components/pricing";
-import { ChatFlowDiagram, SequenceFlowDiagram } from "./_components/flows";
 import { AgentCanvas } from "./_components/canvas";
+import { FlowShowcase } from "./_components/flowshowcase";
 import { Reveal } from "./_components/motion";
 import { Faq } from "./_components/chrome";
 import { HERO, SOCIAL_PROOF } from "./_content/site";
@@ -88,6 +88,9 @@ export default function HomePage() {
       {/* Signature n8n-style automation canvas — leads the product story */}
       <div id="how-it-works" className="scroll-mt-20"><AgentCanvas /></div>
 
+      {/* Interactive: pick a business problem → see its flow */}
+      <FlowShowcase />
+
       {/* Business problem → one-platform solution */}
       <ProblemSolution />
 
@@ -100,10 +103,6 @@ export default function HomePage() {
         </Reveal>
         <Reveal delay={120}><FeatureGrid /></Reveal>
       </Container>
-
-      {/* Signature product flows */}
-      <ChatFlowDiagram />
-      <SequenceFlowDiagram />
 
       <WhyChoose />
 

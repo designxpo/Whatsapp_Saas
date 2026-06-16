@@ -7,13 +7,17 @@ import { NAV, SITE, FAQS } from "../_content/site";
 import { BrandLogo } from "@/components/BrandLogo";
 
 function Wordmark({ dark = false }: { dark?: boolean }) {
-  // Dark footer: the colored logo wouldn't read on blue, so keep the white
-  // wordmark. Light nav: show the full logo lockup.
+  // Dark footer: the brand logo has dark text, so sit it on a white chip to stay
+  // legible on the blue footer. Light nav: show the full logo lockup directly.
   if (dark) {
     return (
-      <Link href="/" className="flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 text-white"><Bot className="h-4 w-4" /></span>
-        <span className="text-[16px] font-extrabold tracking-tight text-white">{SITE.name}</span>
+      <Link href="/" className="inline-flex items-center rounded-xl bg-white px-3 py-2 shadow-sm">
+        <BrandLogo height={26} className="max-w-[150px]" fallback={
+          <span className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
+            <span className="text-[15px] font-extrabold tracking-tight text-slate-900">{SITE.name}</span>
+          </span>
+        } />
       </Link>
     );
   }
