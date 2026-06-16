@@ -55,6 +55,15 @@ describe("matchOption (reply → option id)", () => {
     expect(matchOption(buttonsNode, "nonsense")).toBeNull();
     expect(matchOption(buttonsNode, "")).toBeNull();
   });
+  it("matches by typed number (IG text menu / quick-reply position)", () => {
+    expect(matchOption(buttonsNode, "1")).toBe("opt_sales");
+    expect(matchOption(buttonsNode, "2")).toBe("opt_support");
+    expect(matchOption(listNode, "2")).toBe("row_b");
+  });
+  it("ignores out-of-range numbers", () => {
+    expect(matchOption(buttonsNode, "9")).toBeNull();
+    expect(matchOption(buttonsNode, "0")).toBeNull();
+  });
 });
 
 describe("optionLabel (option id → human label)", () => {

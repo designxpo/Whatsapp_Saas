@@ -11,6 +11,13 @@ const MAX_TOOL_ROUNDS = 3;
 export const FALLBACK_REPLY =
   "Thanks for your message! A team member will get back to you shortly.";
 
+// Sent when there's nothing grounded to answer with (empty KB, vague greeting).
+// Keeps the conversation OPEN — asks for detail and offers the human path —
+// instead of instantly handing off. Escalation is reserved for explicit human
+// requests / complaints, so a simple "Hi" never triggers a handover.
+export const SOFT_FALLBACK =
+  "Thanks for reaching out! 🙂 Could you tell me a little more about what you're looking for? I'm happy to help — or just type \"agent\" anytime to reach our team.";
+
 // AI Hub functions → normalized chat tools (provider-agnostic).
 function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
   if (fns.length === 0) return undefined;
@@ -39,7 +46,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
       : "",
-    `If you cannot help, or the user demands a human/agent, or it is a complaint or sensitive issue, reply with exactly ${ESCALATE_TOKEN} and nothing else.`,
+    `If the user EXPLICITLY asks for a human/agent, or raises a complaint or sensitive issue, reply with exactly ${ESCALATE_TOKEN} and nothing else. Otherwise stay helpful — if you're unsure or missing details, ask one brief clarifying question instead of escalating. Never hand off just because a question is vague or a greeting.`,
     "Never promise anything not supported by the context. No medical, legal, or financial advice.",
   ].filter(Boolean).join("\n"));
   parts.push([
@@ -85,9 +92,11 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   }
   const relevant = chunks.filter(c => c.similarity >= MIN_SIMILARITY);
 
-  // No relevant knowledge AND no agent/tools to carry the conversation → escalate.
+  // No relevant knowledge AND no agent/tools to carry the conversation → don't
+  // hand off to a human (that frustrated users on greetings); keep the chat open
+  // with a soft prompt for more detail.
   if (relevant.length === 0 && !agent && functions.length === 0) {
-    return { reply: null, escalate: true, reason: "no relevant context", usedChunks: 0 };
+    return { reply: SOFT_FALLBACK, escalate: false, reason: "no relevant context", usedChunks: 0 };
   }
 
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
@@ -132,9 +141,14 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         continue;
       }
 
-      const text = res.text;
-      if (!text || text.includes(ESCALATE_TOKEN)) {
+      const text = (res.text ?? "").trim();
+      // Only an explicit escalate token hands off to a human. An empty model
+      // reply must NOT escalate — fall back to a soft prompt instead.
+      if (text.includes(ESCALATE_TOKEN)) {
         return { reply: null, escalate: true, reason: "model escalated", usedChunks: relevant.length, functionCalls: executed };
+      }
+      if (!text) {
+        return { reply: SOFT_FALLBACK, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
       }
       return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed };
     }

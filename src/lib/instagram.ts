@@ -99,6 +99,30 @@ export async function sendIgMessage(
   return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } });
 }
 
+// Quick replies — tappable chips under a message (IG supports up to 13, titles
+// ≤20 chars). Used by the flow engine so menu options are selectable, not just
+// numbered text the user has to type back.
+export interface IgQuickReply { title: string; payload: string }
+export async function sendIgQuickReplies(
+  creds: IgCreds,
+  recipientIgsid: string,
+  text: string,
+  replies: IgQuickReply[],
+  opts: { lastInboundAt?: string | null } = {},
+): Promise<IgSendResult> {
+  if (!recipientIgsid || !text.trim() || !replies.length) return { ok: false, error: "recipient, text and replies required" };
+  if (!within24hWindow(opts.lastInboundAt)) {
+    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  }
+  if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
+  const quick_replies = replies.slice(0, 13).map(r => ({
+    content_type: "text",
+    title: r.title.slice(0, 20),
+    payload: (r.payload || r.title).slice(0, 1000),
+  }));
+  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000), quick_replies } });
+}
+
 // Buttons usable in IG message/private-reply templates.
 export type IgButton =
   | { type: "web_url"; url: string; title: string }

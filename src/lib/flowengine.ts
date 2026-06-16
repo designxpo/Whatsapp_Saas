@@ -16,7 +16,7 @@ import {
   sendText, sendButtons, sendList, sendMedia, sendProduct,
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
-import { sendIgMessage } from "./instagram";
+import { sendIgMessage, sendIgQuickReplies } from "./instagram";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
@@ -159,10 +159,11 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
   };
 }
 
-// Instagram sender — IG messaging is text-only for our purposes, so buttons/
-// lists render as a numbered text menu (branching still works because the user
-// taps/types the option label, which matchOption resolves). Sends respect the
-// 24h window (the flow runs right after the inbound, so it's open).
+// Instagram sender — menu options render as tappable QUICK REPLIES (up to 13,
+// titles ≤20 chars). If the options don't fit that (too many / too long), we
+// fall back to a numbered text menu. Either way matchOption resolves the tap or
+// the typed number. Sends respect the 24h window (the flow runs right after the
+// inbound, so it's open).
 function igSender(conversationId: string, phone: string, channel: Channel, tenantId = DEFAULT_TENANT_ID): FlowSender {
   const creds = { igUserId: channel.igUserId ?? "", token: channel.token };
   const log = async (body: string, metaId?: string) => {
@@ -175,11 +176,20 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     await log(body, r.messageId);
     return { id: r.messageId, error: r.error };
   };
-  const menu = (body: string, opts: string[]) => sendIg(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
+  const numberedMenu = (body: string, opts: string[]) => sendIg(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
+  // Tappable chips when they fit IG's limits; otherwise numbered text.
+  const chips = async (body: string, options: { id: string; title: string }[]): Promise<{ id?: string; error?: string }> => {
+    const fits = options.length > 0 && options.length <= 13 && options.every(o => o.title.length <= 20);
+    if (!fits) return numberedMenu(body, options.map(o => o.title));
+    const r = await sendIgQuickReplies(creds, phone, body, options.map(o => ({ title: o.title, payload: o.id })), { lastInboundAt: new Date().toISOString() });
+    if (!r.ok) return numberedMenu(body, options.map(o => o.title));   // fallback if rejected
+    await log(`${body}\n[options: ${options.map(o => o.title).join(" | ")}]`, r.messageId);
+    return { id: r.messageId };
+  };
   return {
     async text(body) { return sendIg(body); },
-    async buttons(body, buttons) { return menu(body, buttons.map(b => b.title)); },
-    async list(body, _buttonText, sections) { return menu(body, sections.flatMap(s => s.rows.map(r => r.title))); },
+    async buttons(body, buttons) { return chips(body, buttons); },
+    async list(body, _buttonText, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
     async media(_kind, url, caption) { return sendIg(caption ? `${caption}\n${url}` : url); },
     async product(body) { return sendIg(body); },
     async waform(body, cta) { return sendIg(`${body}\n(${cta})`); },
@@ -364,15 +374,17 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
 export function matchOption(node: FlowNode, text: string): string | null {
   const t = norm(text);
   if (!t) return null;
-  if (node.type === "buttons") {
-    for (const b of ((node.data.buttons as { id: string; title: string }[]) ?? [])) {
-      if (norm(b.title) === t || norm(b.id) === t) return b.id;
-    }
-  }
-  if (node.type === "list") {
-    for (const r of listSections(node.data).flatMap(s => s.rows)) {
-      if (norm(r.title) === t || norm(r.id) === t) return r.id;
-    }
+  const opts: { id: string; title: string }[] =
+    node.type === "buttons" ? ((node.data.buttons as { id: string; title: string }[]) ?? [])
+    : node.type === "list" ? listSections(node.data).flatMap(s => s.rows)
+    : [];
+  // Exact title or id match (covers button taps and IG quick-reply taps).
+  for (const o of opts) if (norm(o.title) === t || norm(o.id) === t) return o.id;
+  // Numeric selection — IG (and any text-menu) users reply "1"/"2"/… to pick the
+  // option by its listed position. Without this, typing a number never advanced.
+  if (/^\d{1,2}$/.test(t)) {
+    const n = parseInt(t, 10);
+    if (n >= 1 && n <= opts.length) return opts[n - 1].id;
   }
   return null;
 }
