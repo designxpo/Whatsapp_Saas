@@ -1,9 +1,9 @@
 // n8n-style horizontal agent canvas. Shows what ONE automation actually looks
 // like in the builder: a trigger → an AI Agent (with model / memory / knowledge /
-// tools hanging beneath it) → a router → channel actions on each branch. Light
-// theme, brand blue, dotted backdrop, animated dashed connectors. Server-safe
-// (Reveal is the only client piece). Sized to fit a desktop viewport without
-// horizontal scroll; falls back to a scrollable canvas only on narrow screens.
+// tools hanging beneath it) → a router that fans to channel actions on each
+// branch. Light theme, brand blue, dotted backdrop, animated dashed connectors.
+// Server-safe (Reveal is the only client piece). Connector geometry is computed
+// from fixed node heights so every line meets its node — nothing "breaks".
 
 import {
   Zap, Bot, Sparkles, History, BookOpen, ShoppingBag, Split, UserPlus, Bell,
@@ -23,12 +23,28 @@ function Ico({ name, className = "h-4 w-4" }: { name: string; className?: string
   return <I className={className} />;
 }
 
-// A draggable-looking node card (with the little connector dots n8n shows).
-function Node({ node, dots = "x", className = "w-40" }: { node: CanvasNode; dots?: "x" | "in" | "out" | "io"; className?: string }) {
+// Geometry (px) — connectors are drawn from these, so they always align.
+const NODE_H = 64;          // every node is this tall (content vertically centred)
+const NODE_GAP = 10;        // gap between two nodes in a branch
+const BRANCH_GAP = 34;      // gap between the two branches
+const TOP_PAD = 4;          // pt-1 on the spine nodes
+const GROUP_H = 2 * NODE_H + NODE_GAP;                 // a 2-node branch's height
+const LEAD_Y = GROUP_H / 2;                            // lead branch centre
+const OTHER_Y = GROUP_H + BRANCH_GAP + GROUP_H / 2;    // other branch centre
+const BLOCK_H = 2 * GROUP_H + BRANCH_GAP;              // full branches block height
+const ROUTER_Y = TOP_PAD + NODE_H / 2;                 // router output centre
+const SPLIT_W = 64;
+
+// A draggable-looking node card (with the connector dots n8n shows). Titles wrap
+// rather than truncate; the fixed height keeps the branch connectors aligned.
+function Node({ node, dots = "x", className = "w-48" }: { node: CanvasNode; dots?: "x" | "in" | "out" | "io"; className?: string }) {
   const showIn = dots === "in" || dots === "io";
   const showOut = dots === "out" || dots === "io";
   return (
-    <div className={`relative shrink-0 rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(24,119,242,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}>
+    <div
+      className={`relative flex shrink-0 items-center rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(24,119,242,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}
+      style={{ minHeight: NODE_H }}
+    >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       {showOut && <span aria-hidden className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       <div className="flex items-center gap-2.5">
@@ -36,23 +52,36 @@ function Node({ node, dots = "x", className = "w-40" }: { node: CanvasNode; dots
           <Ico name={node.icon} className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <div className="truncate text-[12.5px] font-bold leading-tight text-slate-900">{node.title}</div>
-          {node.sub && <div className="truncate text-[10.5px] text-slate-500">{node.sub}</div>}
+          <div className="text-[12.5px] font-bold leading-tight text-slate-900">{node.title}</div>
+          {node.sub && <div className="text-[10.5px] leading-tight text-slate-500">{node.sub}</div>}
         </div>
       </div>
     </div>
   );
 }
 
-// Animated dashed horizontal connector between stages.
-function Wire({ label, width = 44 }: { label?: string; width?: number }) {
+// Animated dashed horizontal connector between the spine stages.
+function Wire({ width = 44 }: { width?: number }) {
   return (
-    <div className="relative flex shrink-0 items-center" style={{ width }}>
-      <svg width={width} height="24" viewBox={`0 0 ${width} 24`} className="overflow-visible">
-        <line x1="0" y1="12" x2={width - 8} y2="12" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.55" className="animate-dash" />
-        <path d={`M${width - 8} 7 L${width} 12 L${width - 8} 17 Z`} fill="#0783fd" fillOpacity="0.7" />
-      </svg>
-      {label && <span className="absolute -top-3.5 left-1 rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#0783fd]">{label}</span>}
+    <svg width={width} height="24" viewBox={`0 0 ${width} 24`} className="shrink-0 overflow-visible" style={{ marginTop: ROUTER_Y - 12 }}>
+      <line x1="0" y1="12" x2={width - 8} y2="12" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.55" className="animate-dash" />
+      <path d={`M${width - 8} 7 L${width} 12 L${width - 8} 17 Z`} fill="#0783fd" fillOpacity="0.7" />
+    </svg>
+  );
+}
+
+// A branch: a vertical bus that joins the router fan to each stacked action node.
+function BranchGroup({ nodes }: { nodes: CanvasNode[] }) {
+  const multi = nodes.length > 1;
+  return (
+    <div className="relative flex flex-col" style={{ gap: NODE_GAP }}>
+      {multi && <span aria-hidden className="absolute left-0 w-px bg-[#0783fd]/40" style={{ top: NODE_H / 2, bottom: NODE_H / 2 }} />}
+      {nodes.map(n => (
+        <div key={n.id} className="flex items-center" style={{ minHeight: NODE_H }}>
+          <span aria-hidden className="h-px w-3 shrink-0 bg-[#0783fd]/40" />
+          <Node node={n} dots="in" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -70,14 +99,14 @@ export function AgentCanvas() {
         {/* Dotted canvas backdrop, like the builder. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[28px] [background-image:radial-gradient(rgba(24,119,242,0.13)_1px,transparent_1px)] [background-size:20px_20px] [mask-image:radial-gradient(circle_at_center,black,transparent_85%)]" />
         <div className="relative overflow-x-auto rounded-[28px] border border-slate-200/70 bg-white/40 px-5 py-9 backdrop-blur-sm">
-          <div className="mx-auto flex w-max min-w-0 items-start justify-center gap-0">
+          <div className="mx-auto flex w-max items-start gap-0">
             {/* Trigger */}
-            <div className="pt-1"><Node node={c.trigger} dots="out" /></div>
-            <div className="pt-[18px]"><Wire /></div>
+            <div style={{ paddingTop: TOP_PAD }}><Node node={c.trigger} dots="out" /></div>
+            <Wire />
 
             {/* Agent + attachments hanging beneath */}
-            <div className="flex flex-col items-center">
-              <div className="pt-1"><Node node={c.agent} dots="io" className="w-44" /></div>
+            <div className="flex flex-col items-center" style={{ paddingTop: TOP_PAD }}>
+              <Node node={c.agent} dots="io" className="w-48" />
               <svg width="2" height="22" viewBox="0 0 2 22" className="overflow-visible"><line x1="1" y1="0" x2="1" y2="22" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.5" className="animate-dash" /></svg>
               <div aria-hidden className="relative h-5 w-[360px]">
                 <span className="absolute top-0 h-px bg-[#0783fd]/40" style={{ left: "12.5%", right: "12.5%" }} />
@@ -94,20 +123,26 @@ export function AgentCanvas() {
               </div>
             </div>
 
-            <div className="pt-[18px]"><Wire /></div>
+            <Wire />
             {/* Router */}
-            <div className="pt-1"><Node node={c.router} dots="io" /></div>
+            <div style={{ paddingTop: TOP_PAD }}><Node node={c.router} dots="io" /></div>
 
-            {/* Branches */}
-            <div className="flex flex-col gap-5 pt-1">
-              <div className="flex items-center">
-                <Wire label="lead" width={52} />
-                <div className="flex flex-col gap-2">{c.branches.yes.map(n => <Node key={n.id} node={n} dots="in" />)}</div>
-              </div>
-              <div className="flex items-center">
-                <Wire label="other" width={52} />
-                <div className="flex flex-col gap-2">{c.branches.no.map(n => <Node key={n.id} node={n} dots="in" />)}</div>
-              </div>
+            {/* Router fan → branches. SVG splits the router output to each branch
+                centre; labels sit on the paths. */}
+            <div className="relative shrink-0" style={{ width: SPLIT_W, height: BLOCK_H }}>
+              <svg width={SPLIT_W} height={BLOCK_H} className="overflow-visible">
+                <path d={`M0 ${ROUTER_Y} C 34 ${ROUTER_Y} 30 ${LEAD_Y} ${SPLIT_W} ${LEAD_Y}`} fill="none" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.55" className="animate-dash" />
+                <path d={`M0 ${ROUTER_Y} C 34 ${ROUTER_Y} 30 ${OTHER_Y} ${SPLIT_W} ${OTHER_Y}`} fill="none" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.55" className="animate-dash" />
+                <path d={`M${SPLIT_W - 8} ${LEAD_Y - 5} L${SPLIT_W} ${LEAD_Y} L${SPLIT_W - 8} ${LEAD_Y + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
+                <path d={`M${SPLIT_W - 8} ${OTHER_Y - 5} L${SPLIT_W} ${OTHER_Y} L${SPLIT_W - 8} ${OTHER_Y + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
+              </svg>
+              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#0783fd]" style={{ left: 22, top: LEAD_Y - 24 }}>lead</span>
+              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#0783fd]" style={{ left: 20, top: OTHER_Y - 24 }}>other</span>
+            </div>
+
+            <div className="flex flex-col" style={{ gap: BRANCH_GAP }}>
+              <BranchGroup nodes={c.branches.yes} />
+              <BranchGroup nodes={c.branches.no} />
             </div>
           </div>
         </div>
