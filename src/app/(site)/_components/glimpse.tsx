@@ -12,6 +12,34 @@ function Dots() {
   return <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>;
 }
 
+// Smooth mini area chart with a peak dot — premium replacement for plain bars.
+function MiniArea({ values }: { values: number[] }) {
+  const W = 280, H = 66, PAD = 7;
+  const max = Math.max(1, ...values), n = values.length;
+  const pts = values.map((v, i) => ({ x: n <= 1 ? W / 2 : (i / (n - 1)) * W, y: H - PAD - (v / max) * (H - PAD * 2) }));
+  let line = `M ${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const cx = (pts[i].x + pts[i + 1].x) / 2;
+    line += ` C ${cx.toFixed(1)} ${pts[i].y.toFixed(1)} ${cx.toFixed(1)} ${pts[i + 1].y.toFixed(1)} ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
+  }
+  const peakIdx = values.indexOf(max), peak = pts[peakIdx];
+  return (
+    <div className="relative" style={{ height: H }}>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full" style={{ height: H }}>
+        <defs>
+          <linearGradient id="glimpseArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#0783FD" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#0783FD" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${line} L ${W} ${H} L 0 ${H} Z`} fill="url(#glimpseArea)" />
+        <path d={line} fill="none" stroke="#0783FD" strokeWidth="2.5" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand-700 shadow" style={{ left: `${(peak.x / W) * 100}%`, top: peak.y }} />
+    </div>
+  );
+}
+
 // ── Unified inbox ─────────────────────────────────────────────────────────────
 const CONVOS: { name: string; msg: string; ch: LucideIcon; unread?: number; active?: boolean }[] = [
   { name: "Priya Sharma", msg: "Do you ship to Bangalore?", ch: MessageSquare, unread: 2, active: true },
@@ -53,16 +81,14 @@ function InboxGlimpse() {
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 function AnalyticsGlimpse() {
-  const bars = [40, 62, 48, 78, 90, 70, 96];
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_20px_50px_-30px_rgba(24,119,242,0.4)]">
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-[13px] font-bold text-slate-900"><Users className="h-4 w-4 text-[#0783fd]" /> This week</span>
+        <span className="flex items-center gap-2 text-[13px] font-bold text-slate-900"><Users className="h-4 w-4 text-[#0783fd]" /> Conversations this week</span>
         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">▲ 24%</span>
       </div>
-      <div className="mt-4 flex items-end gap-1.5" style={{ height: 64 }}>
-        {bars.map((h, i) => <span key={i} className="flex-1 rounded-t bg-gradient-to-t from-brand-600 to-brand-500" style={{ height: `${h}%` }} />)}
-      </div>
+      <div className="mt-4"><MiniArea values={[34, 52, 41, 68, 83, 61, 96]} /></div>
+      <div className="mt-2 flex justify-between text-[9px] font-medium text-slate-400">{["M", "T", "W", "T", "F", "S", "S"].map((d, i) => <span key={i}>{d}</span>)}</div>
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <div className="rounded-xl bg-gradient-to-br from-brand-600 to-brand-900 p-3 text-white">
           <div className="text-xl font-extrabold">1,284</div>
@@ -79,6 +105,7 @@ function AnalyticsGlimpse() {
 
 // ── Broadcast delivery ──────────────────────────────────────────────────────
 function BroadcastGlimpse() {
+  const TOTAL = 8200;
   const funnel = [["Sent", 100, "bg-brand-900"], ["Delivered", 96, "bg-brand-700"], ["Read", 81, "bg-brand-500"], ["Clicked", 34, "bg-emerald-400"]] as const;
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_20px_50px_-30px_rgba(24,119,242,0.4)]">
@@ -89,7 +116,10 @@ function BroadcastGlimpse() {
       <div className="mt-4 space-y-2.5">
         {funnel.map(([label, pct, color]) => (
           <div key={label}>
-            <div className="flex justify-between text-[10px] font-semibold text-slate-500"><span>{label}</span><span>{pct}%</span></div>
+            <div className="flex justify-between text-[10px] font-semibold text-slate-500">
+              <span>{label}</span>
+              <span><span className="text-slate-400">{Math.round((TOTAL * pct) / 100).toLocaleString()}</span> · <span className="text-slate-700">{pct}%</span></span>
+            </div>
             <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100"><span className={`block h-full rounded-full ${color}`} style={{ width: `${pct}%` }} /></div>
           </div>
         ))}
