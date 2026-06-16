@@ -49,6 +49,10 @@ export interface Campaign {
 
 const digits = (p: string) => (p || "").replace(/\D/g, "");
 const last10 = (p: string) => digits(p).slice(-10);
+// Two numbers are the same person if one is a suffix of the other (a local
+// "8368904146" vs its country-coded "918368904146"). Numbers that merely share
+// 10 trailing digits but neither is a suffix of the other are kept separate.
+const samePerson = (a: string, b: string) => a === b || a.endsWith(b) || b.endsWith(a);
 
 function mapCampaign(r: Record<string, unknown>): Campaign {
   return {
@@ -117,13 +121,64 @@ export async function upsertContacts(
     }))
     .filter(r => r.phone.length >= 10);
   if (clean.length === 0) return { inserted: 0, skipped: rows.length };
-  const { data, error } = await db()
-    .from("contacts")
-    .upsert(clean, { onConflict: "tenant_id,phone", ignoreDuplicates: true })
-    .select("id");
-  if (error) throw error;
-  const inserted = data?.length ?? 0;
-  return { inserted, skipped: rows.length - inserted };
+
+  // Collapse country-code variants of the SAME person within this batch — the
+  // longest (country-coded) number wins so sends/conversations stay consistent.
+  const batch: typeof clean = [];
+  for (const r of clean) {
+    const hit = batch.find(b => samePerson(b.phone, r.phone));
+    if (hit) {
+      if (r.phone.length > hit.phone.length) hit.phone = r.phone;
+      hit.tags = [...new Set([...hit.tags, ...r.tags])];
+      hit.attributes = { ...r.attributes, ...hit.attributes };
+      hit.name = hit.name || r.name; hit.email = hit.email || r.email;
+      if (r.opted_in && !hit.opted_in) { hit.opted_in = true; hit.opt_in_source = r.opt_in_source; hit.opt_in_at = r.opt_in_at; hit.opt_in_proof = r.opt_in_proof; }
+    } else batch.push({ ...r });
+  }
+
+  try {
+    // Reconcile against existing contacts in this tenant that share a last-10
+    // (country code may differ). Merge same-person variants into one contact.
+    const keys = [...new Set(batch.map(r => r.phone.slice(-10)))];
+    const { data: ex, error: exErr } = await db().from("contacts").select("id,phone,name,email,tags,attributes")
+      .eq("tenant_id", tenantId).or(keys.map(k => `phone.like.*${k}`).join(","));
+    if (exErr) throw exErr;
+    type Row = { id: string; phone: string; name: string | null; email: string | null; tags: string[] | null; attributes: Record<string, string> | null };
+    const byKey = new Map<string, Row[]>();
+    for (const e of (ex ?? []) as Row[]) { const k = digits(e.phone).slice(-10); const a = byKey.get(k) ?? []; a.push(e); byKey.set(k, a); }
+
+    let inserted = 0;
+    const toInsert: typeof clean = [];
+    for (const r of batch) {
+      const candidates = (byKey.get(r.phone.slice(-10)) ?? []).filter(e => samePerson(digits(e.phone), r.phone));
+      if (!candidates.length) { toInsert.push(r); continue; }
+      const primary = [...candidates].sort((a, b) => digits(b.phone).length - digits(a.phone).length)[0];
+      const cluster = candidates.filter(c => samePerson(digits(c.phone), digits(primary.phone)));
+      const phone = [r.phone, ...cluster.map(c => digits(c.phone))].sort((a, b) => b.length - a.length)[0];
+      const tags = [...new Set([...cluster.flatMap(c => c.tags ?? []), ...r.tags])];
+      const attributes = Object.assign({}, r.attributes, ...cluster.map(c => c.attributes ?? {}));
+      await db().from("contacts").update({ phone, tags, attributes, name: primary.name || r.name, email: primary.email || r.email }).eq("tenant_id", tenantId).eq("id", primary.id);
+      for (const dup of cluster.filter(c => c.id !== primary.id)) {
+        try {
+          await db().from("wa_conversations").update({ contact_id: primary.id }).eq("tenant_id", tenantId).eq("contact_id", dup.id);
+          await db().from("contacts").delete().eq("tenant_id", tenantId).eq("id", dup.id);
+        } catch { /* leave the duplicate row if repoint/delete fails */ }
+      }
+    }
+    if (toInsert.length) {
+      const { data, error } = await db().from("contacts").upsert(toInsert, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+      if (error) throw error;
+      inserted = data?.length ?? 0;
+    }
+    return { inserted, skipped: rows.length - inserted };
+  } catch (err) {
+    // Dedup failed (e.g. an oversized lookup) — fall back to a plain upsert so
+    // the import still lands; the unique (tenant_id, phone) constraint dedups.
+    console.error("[contacts] dedup failed, plain upsert:", err);
+    const { data, error } = await db().from("contacts").upsert(batch, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+    if (error) throw error;
+    return { inserted: data?.length ?? 0, skipped: rows.length - (data?.length ?? 0) };
+  }
 }
 
 // Record explicit opt-in for an existing contact (inbound message, growth keyword,
