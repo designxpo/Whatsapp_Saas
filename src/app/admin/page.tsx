@@ -776,6 +776,12 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     setError(null); setResult(null);
     const problem = templateProblem();
     if (problem) { setError(problem); return; }
+    // Confirm before a real blast — this fires to the whole audience and can't
+    // be undone. Show the authoritative recipient count so it's never a surprise.
+    const who = recipientCount === null
+      ? "your selected audience"
+      : `${recipientCount.toLocaleString()} recipient${recipientCount === 1 ? "" : "s"}`;
+    if (!confirm(`Send "${templateName.trim()}" to ${who}? This sends real WhatsApp messages and can't be undone.`)) return;
     setSending(true);
     try {
       const body: Record<string, unknown> = {
