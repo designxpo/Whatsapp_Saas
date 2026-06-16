@@ -153,6 +153,61 @@ export const POSTS: Post[] = [
   },
 ];
 
+// ── n8n-style agent canvas — "what one automation looks like" ────────────────
+// A horizontal node graph: trigger → AI Agent (with model/memory/tool sub-nodes)
+// → router → channel actions. Mirrors the builder so the marketing site shows the
+// actual product capability, not a static mock.
+export type CanvasNode = { id: string; icon: string; title: string; sub?: string; accent?: boolean };
+export const AGENT_CANVAS = {
+  trigger: { id: "trigger", icon: "zap", title: "Customer messages", sub: "WhatsApp or Instagram" },
+  agent: { id: "agent", icon: "bot", title: "AI Agent", sub: "Understands & decides", accent: true },
+  // Sub-nodes that hang beneath the agent (the n8n "model / memory / tool" row).
+  attachments: [
+    { id: "model", icon: "sparkles", title: "Your AI model", sub: "Gemini · OpenAI · Anthropic" },
+    { id: "memory", icon: "history", title: "Conversation memory", sub: "Full context, per contact" },
+    { id: "kb", icon: "book", title: "Knowledge base", sub: "Your docs & FAQs" },
+    { id: "catalog", icon: "shopping", title: "Catalog & tools", sub: "Products, orders, CRM" },
+  ] as CanvasNode[],
+  router: { id: "router", icon: "split", title: "Is it a hot lead?" },
+  branches: {
+    yes: [
+      { id: "capture", icon: "user", title: "Capture the lead", sub: "Save name, intent, tags" },
+      { id: "notify", icon: "bell", title: "Notify your team", sub: "Assign in the inbox" },
+    ] as CanvasNode[],
+    no: [
+      { id: "answer", icon: "message", title: "Answer instantly", sub: "Grounded, on-brand reply" },
+      { id: "nurture", icon: "repeat", title: "Add to a sequence", sub: "Automated follow-ups" },
+    ] as CanvasNode[],
+  },
+};
+
+// ── Business problem → one-platform solution ─────────────────────────────────
+export type ProblemSolution = { problem: string; solution: string; icon: string };
+export const PROBLEMS: ProblemSolution[] = [
+  { icon: "clock", problem: "Leads message after hours and go cold before anyone replies.", solution: "AI replies in seconds, 24/7, in your brand voice — and books or escalates the ones that matter." },
+  { icon: "inbox", problem: "Conversations are scattered across WhatsApp, Instagram DMs and personal phones.", solution: "One unified inbox with team assignment, labels and quick replies across every channel." },
+  { icon: "megaphone", problem: "Broadcasts get the number flagged or banned by Meta.", solution: "Opt-in respected, 24h-window enforced, quality auto-pause and per-tier pacing baked in." },
+  { icon: "shopping", problem: "Carts get abandoned and there's no way to follow up in chat.", solution: "Catalog, checkout and automated cart-recovery sequences — all inside the chat they already use." },
+  { icon: "workflow", problem: "Every tool needs a developer and they don't talk to each other.", solution: "No-code flows, sequences and growth tools in one platform — launch in an afternoon, no engineers." },
+  { icon: "shield", problem: "Customer data is spread across vendors with no real isolation.", solution: "Per-business isolation, encrypted token vault and RLS-backed separation by design." },
+];
+
+// ── Comparison: Talko AI vs the alternatives ─────────────────────────────────
+export const COMPARE_COLS = ["Talko AI", "Generic WhatsApp tools", "Point solutions + DIY"] as const;
+export type CompareRow = { feature: string; values: [boolean | string, boolean | string, boolean | string] };
+export const COMPARE_ROWS: CompareRow[] = [
+  { feature: "WhatsApp + Instagram in one inbox", values: [true, "WhatsApp only", false] },
+  { feature: "AI replies grounded on your knowledge base", values: [true, "Canned replies", "Separate chatbot"] },
+  { feature: "Bring your own AI key (no per-message markup)", values: [true, false, false] },
+  { feature: "No-code chatbot flow builder", values: [true, "Basic", "Extra tool"] },
+  { feature: "Drip sequences & cart recovery", values: [true, false, "Extra tool"] },
+  { feature: "Catalog & in-chat checkout", values: [true, "Add-on", false] },
+  { feature: "Built-in Meta anti-ban guardrails", values: [true, "Partial", false] },
+  { feature: "Opt-in, 24h-window & quality auto-pause", values: [true, false, false] },
+  { feature: "Multi-tenant isolation & encrypted vault", values: [true, "Varies", false] },
+  { feature: "Launch in an afternoon, no engineers", values: [true, true, false] },
+];
+
 export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 
 // "Works with your favorite tools" strip.

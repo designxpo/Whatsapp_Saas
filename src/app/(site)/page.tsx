@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ArrowRight, Bot, CheckCheck, MessageSquare } from "lucide-react";
 import { Container, Glow, Button, SectionTitle } from "./_components/ui";
-import { FeatureGrid, ThreeSteps, WhyChoose, StatsBand, IntegrationsStrip, Testimonials, CtaBand } from "./_components/sections";
+import { FeatureGrid, ThreeSteps, WhyChoose, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable } from "./_components/sections";
 import { PricingTiers } from "./_components/pricing";
 import { ChatFlowDiagram, SequenceFlowDiagram } from "./_components/flows";
+import { AgentCanvas } from "./_components/canvas";
 import { Reveal } from "./_components/motion";
 import { Faq } from "./_components/chrome";
 import { HERO, SOCIAL_PROOF } from "./_content/site";
@@ -77,11 +78,18 @@ export default function HomePage() {
 
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button href={HERO.primary.href}>{HERO.primary.label} <ArrowRight className="h-4 w-4" /></Button>
-            <Button href="/features" variant="ghost">See how it works</Button>
+            <Button href="#how-it-works" variant="ghost">See how it works</Button>
           </div>
+          <p className="mt-4 text-xs font-medium text-slate-400">{HERO.note}</p>
           <HeroMock />
         </Container>
       </section>
+
+      {/* Signature n8n-style automation canvas — leads the product story */}
+      <div id="how-it-works" className="scroll-mt-20"><AgentCanvas /></div>
+
+      {/* Business problem → one-platform solution */}
+      <ProblemSolution />
 
       <ThreeSteps />
 
@@ -98,6 +106,10 @@ export default function HomePage() {
       <SequenceFlowDiagram />
 
       <WhyChoose />
+
+      {/* Talko AI vs the alternatives */}
+      <ComparisonTable />
+
       <IntegrationsStrip />
       <StatsBand />
 

@@ -2,10 +2,13 @@
 
 import {
   Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
-  Check, Star, Search, GitCompare, BadgeCheck, type LucideIcon,
+  Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES } from "./ui";
-import { FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, WHY, CTA_BULLETS, type Feature } from "../_content/site";
+import {
+  FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, WHY, CTA_BULLETS, type Feature,
+  PROBLEMS, COMPARE_COLS, COMPARE_ROWS,
+} from "../_content/site";
 
 const ICONS: Record<string, LucideIcon> = {
   bot: Bot, megaphone: Megaphone, workflow: Workflow, repeat: Repeat,
@@ -162,6 +165,69 @@ export function Testimonials() {
           {TESTIMONIALS.map((_, i) => <span key={i} className={`h-1.5 rounded-full ${i === 0 ? "w-6 bg-[#0783fd]" : "w-1.5 bg-slate-300"}`} />)}
         </div>
       </div>
+    </Container>
+  );
+}
+
+// "Solve real problems with one platform" — problem → solution rows.
+const PROBLEM_ICONS: Record<string, LucideIcon> = {
+  clock: Clock, inbox: Inbox, megaphone: Megaphone, shopping: ShoppingBag, workflow: Workflow, shield: ShieldCheck,
+};
+export function ProblemSolution() {
+  return (
+    <Container className="py-16">
+      <SectionTitle eyebrow="Why it matters" title="The problems you're losing sleep over — solved" subtitle="Every messy, manual part of customer messaging, handled by one platform instead of five." />
+      <div className="mt-12 grid gap-5 md:grid-cols-2">
+        {PROBLEMS.map(p => {
+          const Icon = PROBLEM_ICONS[p.icon] ?? Inbox;
+          return (
+            <div key={p.problem} className="flex gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)]">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><Icon className="h-5 w-5" /></span>
+              <div>
+                <p className="text-sm font-bold text-slate-900">{p.problem}</p>
+                <p className="mt-2 flex gap-2 text-sm leading-relaxed text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f9e6e]" />{p.solution}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Container>
+  );
+}
+
+// Comparison table — Talko AI vs the alternatives. First column highlighted.
+function CompareCell({ value }: { value: boolean | string }) {
+  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" /></span>;
+  if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" /></span>;
+  return <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500"><Minus className="h-3 w-3 text-slate-300" />{value}</span>;
+}
+export function ComparisonTable() {
+  return (
+    <Container className="py-16">
+      <SectionTitle eyebrow="Compare" title="What you get with Talko AI that you don't elsewhere" subtitle="One platform that replaces a stack of single-purpose tools — with the compliance and AI built in." />
+      <div className="mx-auto mt-10 max-w-4xl overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="w-full min-w-[640px] border-collapse text-left">
+          <thead>
+            <tr className="border-b border-slate-200">
+              <th className="px-5 py-4 text-sm font-bold text-slate-900">Capability</th>
+              {COMPARE_COLS.map((col, i) => (
+                <th key={col} className={`px-5 py-4 text-center text-sm font-bold ${i === 0 ? "bg-[#0783fd]/5 text-[#0783fd]" : "text-slate-500"}`}>{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARE_ROWS.map((row, ri) => (
+              <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
+                <td className="px-5 py-3.5 text-sm font-medium text-slate-700">{row.feature}</td>
+                {row.values.map((v, ci) => (
+                  <td key={ci} className={`px-5 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-4 text-center text-xs text-slate-400">Comparison reflects typical capabilities of generic WhatsApp tools and assembling point solutions yourself.</p>
     </Container>
   );
 }
