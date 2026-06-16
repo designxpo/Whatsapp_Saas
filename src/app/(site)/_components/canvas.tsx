@@ -104,22 +104,26 @@ export function AgentCanvas() {
             <div style={{ paddingTop: TOP_PAD }}><Node node={c.trigger} dots="out" /></div>
             <Wire />
 
-            {/* Agent + attachments hanging beneath */}
-            <div className="flex flex-col items-center" style={{ paddingTop: TOP_PAD }}>
+            {/* Agent. Column is constrained to the node width so the spine wires
+                meet the node edges (no gap); the model/memory/tool nodes float
+                below it, centred, without widening the horizontal spacing. */}
+            <div className="relative w-48 shrink-0" style={{ paddingTop: TOP_PAD }}>
               <Node node={c.agent} dots="io" className="w-48" />
-              <svg width="2" height="22" viewBox="0 0 2 22" className="overflow-visible"><line x1="1" y1="0" x2="1" y2="22" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.5" className="animate-dash" /></svg>
-              <div aria-hidden className="relative h-5 w-[360px]">
-                <span className="absolute top-0 h-px bg-[#0783fd]/40" style={{ left: "12.5%", right: "12.5%" }} />
-                {[12.5, 37.5, 62.5, 87.5].map(x => <span key={x} className="absolute top-0 h-5 w-px bg-[#0783fd]/40" style={{ left: `${x}%` }} />)}
-              </div>
-              <div className="grid w-[360px] grid-cols-4 gap-2">
-                {c.attachments.map(a => (
-                  <div key={a.id} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2 text-center">
-                    <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={a.icon} className="h-3 w-3" /></span>
-                    <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{a.title}</div>
-                    <div className="text-[9px] leading-tight text-slate-400">{a.sub}</div>
-                  </div>
-                ))}
+              <div className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center" style={{ top: TOP_PAD + 64 }}>
+                <svg width="2" height="22" viewBox="0 0 2 22" className="overflow-visible"><line x1="1" y1="0" x2="1" y2="22" stroke="#0783fd" strokeWidth="2" strokeOpacity="0.5" className="animate-dash" /></svg>
+                <div aria-hidden className="relative h-5 w-[360px]">
+                  <span className="absolute top-0 h-px bg-[#0783fd]/40" style={{ left: "12.5%", right: "12.5%" }} />
+                  {[12.5, 37.5, 62.5, 87.5].map(x => <span key={x} className="absolute top-0 h-5 w-px bg-[#0783fd]/40" style={{ left: `${x}%` }} />)}
+                </div>
+                <div className="grid w-[360px] grid-cols-4 gap-2">
+                  {c.attachments.map(a => (
+                    <div key={a.id} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2 text-center">
+                      <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={a.icon} className="h-3 w-3" /></span>
+                      <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{a.title}</div>
+                      <div className="text-[9px] leading-tight text-slate-400">{a.sub}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 

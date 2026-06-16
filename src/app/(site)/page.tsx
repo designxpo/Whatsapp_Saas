@@ -5,6 +5,7 @@ import { FeatureGrid, ThreeSteps, WhyChoose, StatsBand, IntegrationsStrip, Testi
 import { PricingTiers } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
+import { PlatformGlimpse } from "./_components/glimpse";
 import { Reveal } from "./_components/motion";
 import { Faq } from "./_components/chrome";
 import { HERO, SOCIAL_PROOF } from "./_content/site";
@@ -103,6 +104,9 @@ export default function HomePage() {
         </Reveal>
         <Reveal delay={120}><FeatureGrid /></Reveal>
       </Container>
+
+      {/* A glimpse of the actual product */}
+      <PlatformGlimpse />
 
       <WhyChoose />
 
