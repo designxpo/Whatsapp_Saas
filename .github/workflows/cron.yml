@@ -25,11 +25,17 @@ jobs:
     steps:
       - name: Drain queue
         env:
-          URL: ${{ vars.CRON_URL || 'https://waba.analytixlabs.co.in/api/cron/process-queue' }}
+          # No default — this is the SaaS; set CRON_URL to YOUR deployment so we
+          # never accidentally ping the internal app.
+          URL: ${{ vars.CRON_URL }}
           SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           if [ -z "$SECRET" ]; then
             echo "::error::CRON_SECRET repo secret is not set (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+          if [ -z "$URL" ]; then
+            echo "::error::CRON_URL repo variable is not set — point it at https://<your-saas-domain>/api/cron/process-queue (Settings → Secrets and variables → Actions → Variables)"
             exit 1
           fi
           code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -m 55 --retry 2 --retry-delay 5 \
