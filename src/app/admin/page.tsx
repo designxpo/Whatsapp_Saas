@@ -436,7 +436,7 @@ const TIER_LABELS: Record<string, string> = {
 };
 
 // Broadcast: daily limit & number status, sending health, templates, campaigns.
-function BroadcastRail({ goTo }: { goTo: (t: Tab) => void }) {
+function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: React.ReactNode }) {
   const a = useAnalytics();
   const [tpls, setTpls] = useState<{ name: string; status: string }[] | null>(null);
   const [camps, setCamps] = useState<{ id: string; name?: string | null; templateName: string; status: string; sentCount: number; totalRecipients: number }[] | null>(null);
@@ -449,6 +449,7 @@ function BroadcastRail({ goTo }: { goTo: (t: Tab) => void }) {
   const quality = limits?.quality?.toUpperCase() ?? null;
   return (
     <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
+      {preview}
       <RailCard title="Daily sending limit">
         {!limits ? railLoading : <>
           <RailBar label="Used today" count={limits.sentToday} pct={usedPct} color={usedPct >= 90 ? "bg-red-400" : usedPct >= 70 ? "bg-amber-400" : "bg-brand-500"} />
@@ -865,6 +866,34 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     return null;
   }
 
+  // Live WhatsApp-style preview of the selected template, mirrored into the rail.
+  const filledBody = bodyPreview.replace(/\{\{(\d+)\}\}/g, (_, d) => varsArr[Number(d) - 1]?.trim() || `{{${d}}}`);
+  const previewFooter = comps.find(c => c.type === "FOOTER")?.text ?? "";
+  const previewButtons = ((comps.find(c => c.type === "BUTTONS") as { buttons?: { text?: string }[] } | undefined)?.buttons) ?? [];
+  const previewCard = (
+    <div className="bg-white rounded-card border border-line p-4">
+      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-2">Preview</p>
+      {selected ? (
+        <div className="bg-[#e5ddd5] rounded-control p-3">
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            {needsImage && (headerImageUrl.trim()
+              ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={headerImageUrl} alt="" className="w-full h-32 object-cover" />
+              )
+              : <div className="h-32 bg-slate-200 flex items-center justify-center text-slate-400"><ImageIcon className="w-6 h-6" /></div>)}
+            <p className="px-3 py-2 text-[13px] text-slate-800 whitespace-pre-wrap break-words">{filledBody || "Your message appears here…"}</p>
+            {previewFooter.trim() && <p className="px-3 pb-1 text-[11px] text-slate-400">{previewFooter}</p>}
+            <p className="px-3 pb-1.5 text-right text-[10px] text-slate-300">10:30</p>
+            {previewButtons.map((b, i) => (
+              <div key={i} className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{b.text || "Button"}</div>
+            ))}
+          </div>
+        </div>
+      ) : <p className="text-xs text-ink-400">Pick a template above to preview the message your contacts will see.</p>}
+    </div>
+  );
+
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-2xl space-y-5">
@@ -980,7 +1009,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send broadcast
       </button>
     </div>
-    <BroadcastRail goTo={goTo} />
+    <BroadcastRail goTo={goTo} preview={previewCard} />
     </div>
   );
 }
