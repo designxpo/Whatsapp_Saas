@@ -23,7 +23,9 @@ export async function POST(req: Request) {
   // flow NAMES within a WABA, so a fixed "Checkout" fails on the 2nd click.
   // Reuse the stored id (tenant-scoped via getTenantSetting) when present;
   // otherwise create with a unique name.
-  const key = `checkout_flow_id:${body.channelId ?? "default"}`;
+  // Key bumped (_pub) so any previously-cached unpublished/broken draft id is
+  // ignored; we now only ever store a successfully-published flow under it.
+  const key = `checkout_flow_pub:${body.channelId ?? "default"}`;
   try {
     const existing = await getTenantSetting<string>(tid, key, "");
     if (existing) return NextResponse.json({ success: true, id: existing, published: true, reused: true });
@@ -33,7 +35,9 @@ export async function POST(req: Request) {
     if (created.error) return NextResponse.json({ error: created.error }, { status: 502 });
     if (!created.id) return NextResponse.json({ error: "Flow not created" }, { status: 502 });
     const pub = await publishWaForm(created.id, channel ?? undefined);
-    await setTenantSetting(tid, key, created.id).catch(e => console.error("[checkout] persist id failed:", e));
+    // Only remember a flow that actually PUBLISHED — caching an unpublished
+    // draft would reuse a broken flow forever. A failed publish recreates next time.
+    if (pub.success) await setTenantSetting(tid, key, created.id).catch(e => console.error("[checkout] persist id failed:", e));
     logActivity(await currentUser(), "checkout.create", created.id);
     return NextResponse.json({ success: true, id: created.id, published: pub.success, validationErrors: created.validationErrors ?? [], publishError: pub.error });
   } catch (err) {

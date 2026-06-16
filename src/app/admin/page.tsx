@@ -6274,7 +6274,8 @@ function CatalogTab() {
       const res = await fetch("/api/admin/checkout-flow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Checkout" }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) setMsg(d.error || `Could not create checkout flow (HTTP ${res.status})`);
-      else { setCheckoutId(d.id); if (d.publishError) setMsg(`Created, but Meta couldn't publish it: ${d.publishError}`); }
+      else if (d.published) setCheckoutId(d.id);
+      else setMsg(`Created the flow but Meta couldn't publish it: ${(d.validationErrors?.length ? d.validationErrors.join("; ") : d.publishError) || "the Flow JSON didn't pass validation"}`);
     } catch {
       setMsg("Could not reach the server to create the checkout flow.");
     } finally { setCheckoutBusy(false); }

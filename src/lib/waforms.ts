@@ -105,7 +105,6 @@ export function buildMultiScreenFlowJson(screens: WaFormScreen[]): Record<string
     const mine = perScreen[i];
     const prior = perScreen.slice(0, i).flat();
     const children: Record<string, unknown>[] = [];
-    if (s.bodyText?.trim()) children.push({ type: "TextBody", text: s.bodyText.trim().slice(0, 4096) });
     for (const m of mine) children.push(flowField(m.field, m.name));
     // Footer payload: prior answers as ${data.x}, this screen's as ${form.x}.
     const payload: Record<string, string> = {};
@@ -119,10 +118,13 @@ export function buildMultiScreenFlowJson(screens: WaFormScreen[]): Record<string
     const screen: Record<string, unknown> = {
       id: `SCREEN_${i}`,
       title: s.title.trim().slice(0, 30) || `Step ${i + 1}`,
-      layout: { type: "SingleColumnLayout", children: [{ type: "Form", name: `form_${i}`, children }] },
+      // Display text (TextBody) must sit in the layout OUTSIDE the Form — a Form
+      // holds only inputs + the Footer, else Meta rejects the Flow JSON on publish.
+      layout: { type: "SingleColumnLayout", children: [...(s.bodyText?.trim() ? [{ type: "TextBody", text: s.bodyText.trim().slice(0, 4096) }] : []), { type: "Form", name: `form_${i}`, children }] },
     };
-    // Declare incoming data (everything collected before this screen).
-    if (prior.length) { const data: Record<string, unknown> = {}; for (const p of prior) data[p.name] = { type: "string", __example__: "" }; screen.data = data; }
+    // Declare incoming data (everything collected before this screen). Examples
+    // must be non-empty or Meta flags the data model on publish.
+    if (prior.length) { const data: Record<string, unknown> = {}; for (const p of prior) data[p.name] = { type: "string", __example__: "sample" }; screen.data = data; }
     if (isLast) screen.terminal = true;
     return screen;
   });
