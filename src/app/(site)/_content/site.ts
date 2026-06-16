@@ -182,22 +182,33 @@ export const AGENT_CANVAS = {
 };
 
 // ── Interactive use-case flows ───────────────────────────────────────────────
-// Each business problem maps to a clean left-to-right flow. Kept conceptual
-// (business-outcome nodes, not a build recipe) — it shows WHAT we solve and how
-// fast, without exposing the underlying implementation.
-export type FlowNodeDef = { icon: string; title: string; sub: string; accent?: boolean };
-export type UseCase = { key: string; tab: string; problem: string; outcome: string; nodes: FlowNodeDef[] };
+// Each business problem maps to a small n8n-style 2D graph: a trigger → an AI
+// brain (with conceptual "context" nodes hanging beneath it) → two outcome
+// branches. Kept conceptual (business-outcome nodes, not a build recipe) — it
+// shows WHAT we solve and how fast, without exposing the implementation.
+export type FlowNodeDef = { icon: string; title: string; sub: string };
+export type UseCase = {
+  key: string; tab: string; problem: string; outcome: string;
+  trigger: FlowNodeDef;
+  brain: FlowNodeDef;                                  // the accent AI node
+  context: FlowNodeDef[];                              // sub-nodes under the brain (1–2)
+  branches: { label: string; node: FlowNodeDef }[];    // two outcomes
+};
 export const USE_CASES: UseCase[] = [
   {
     key: "leads",
     tab: "Capture & qualify leads",
     problem: "Leads message after hours and go cold before sales replies",
     outcome: "Every lead captured, qualified and routed in seconds — 24/7, no rep online.",
-    nodes: [
-      { icon: "zap", title: "New enquiry", sub: "WhatsApp, Instagram or ad click" },
-      { icon: "bot", title: "AI qualifies", sub: "Intent, budget & timeline", accent: true },
-      { icon: "user", title: "Save to CRM", sub: "Tagged, scored contact" },
-      { icon: "bell", title: "Alert sales", sub: "Assigned in the inbox" },
+    trigger: { icon: "zap", title: "New enquiry", sub: "WhatsApp · IG · ad click" },
+    brain: { icon: "bot", title: "AI qualifies", sub: "Intent, budget, timeline" },
+    context: [
+      { icon: "book", title: "Knowledge base", sub: "Answers on the spot" },
+      { icon: "user", title: "CRM + tags", sub: "Saved & scored" },
+    ],
+    branches: [
+      { label: "hot", node: { icon: "bell", title: "Alert sales", sub: "Assigned in the inbox" } },
+      { label: "warm", node: { icon: "repeat", title: "Nurture sequence", sub: "Auto follow-ups" } },
     ],
   },
   {
@@ -205,11 +216,15 @@ export const USE_CASES: UseCase[] = [
     tab: "Answer support 24/7",
     problem: "Customers wait hours for a reply to simple questions",
     outcome: "Most questions resolved instantly; only the tricky ones reach your team.",
-    nodes: [
-      { icon: "message", title: "Customer asks", sub: "Any hour, any channel" },
-      { icon: "bot", title: "AI answers", sub: "Grounded on your knowledge base", accent: true },
-      { icon: "check", title: "Resolved instantly", sub: "On-brand, accurate reply" },
-      { icon: "handoff", title: "Escalate if needed", sub: "Clean hand-off to a human" },
+    trigger: { icon: "message", title: "Customer asks", sub: "Any hour, any channel" },
+    brain: { icon: "bot", title: "AI answers", sub: "Grounded on your KB" },
+    context: [
+      { icon: "book", title: "Knowledge base", sub: "Docs & FAQs" },
+      { icon: "history", title: "Past chats", sub: "Full context" },
+    ],
+    branches: [
+      { label: "solved", node: { icon: "check", title: "Resolved instantly", sub: "On-brand reply" } },
+      { label: "complex", node: { icon: "handoff", title: "Escalate to team", sub: "Clean hand-off" } },
     ],
   },
   {
@@ -217,11 +232,15 @@ export const USE_CASES: UseCase[] = [
     tab: "Recover abandoned carts",
     problem: "Carts are abandoned with no way to follow up in chat",
     outcome: "Win back revenue automatically — inside the chat they already use.",
-    nodes: [
-      { icon: "shopping", title: "Cart abandoned", sub: "Checkout left incomplete" },
-      { icon: "clock", title: "Smart wait", sub: "Nudges at the right moment" },
-      { icon: "bot", title: "AI re-engages", sub: "Personalized, in your voice", accent: true },
-      { icon: "card", title: "Checkout link", sub: "One tap to complete" },
+    trigger: { icon: "shopping", title: "Cart abandoned", sub: "Checkout left" },
+    brain: { icon: "bot", title: "AI re-engages", sub: "Personalized nudge" },
+    context: [
+      { icon: "clock", title: "Smart timing", sub: "The right moment" },
+      { icon: "card", title: "Your catalog", sub: "Items & prices" },
+    ],
+    branches: [
+      { label: "buys", node: { icon: "card", title: "Checkout link", sub: "One tap to pay" } },
+      { label: "later", node: { icon: "repeat", title: "Follow-up later", sub: "Gentle reminder" } },
     ],
   },
   {
@@ -229,11 +248,15 @@ export const USE_CASES: UseCase[] = [
     tab: "Re-engage with broadcasts",
     problem: "Re-marketing campaigns get your number flagged or banned",
     outcome: "Reach thousands compliantly — opt-in respected, quality auto-protected.",
-    nodes: [
-      { icon: "user", title: "Pick a segment", sub: "Tags, attributes, activity" },
-      { icon: "shield", title: "Consent & tier check", sub: "Only opted-in, within limits", accent: true },
-      { icon: "megaphone", title: "Send template", sub: "Approved, scheduled" },
-      { icon: "chart", title: "Track & auto-pause", sub: "On any quality dip" },
+    trigger: { icon: "user", title: "Pick a segment", sub: "Tags & activity" },
+    brain: { icon: "shield", title: "Consent & tier check", sub: "Opted-in, within limits" },
+    context: [
+      { icon: "megaphone", title: "Approved template", sub: "Scheduled send" },
+      { icon: "chart", title: "Live tracking", sub: "Delivery & reads" },
+    ],
+    branches: [
+      { label: "healthy", node: { icon: "megaphone", title: "Send at scale", sub: "Thousands, safely" } },
+      { label: "risk", node: { icon: "shield", title: "Auto-pause", sub: "On any quality dip" } },
     ],
   },
   {
@@ -241,11 +264,15 @@ export const USE_CASES: UseCase[] = [
     tab: "Book appointments",
     problem: "Booking takes endless back-and-forth and staff time",
     outcome: "Fill your calendar on autopilot, with reminders that cut no-shows.",
-    nodes: [
-      { icon: "message", title: "Enquiry arrives", sub: "“Can I book a slot?”" },
-      { icon: "bot", title: "AI collects details", sub: "Service, date, contact", accent: true },
-      { icon: "calendar", title: "Books the slot", sub: "Synced to your calendar" },
-      { icon: "bell", title: "Confirm & remind", sub: "Auto follow-ups before" },
+    trigger: { icon: "message", title: "Enquiry arrives", sub: "“Can I book?”" },
+    brain: { icon: "bot", title: "AI collects details", sub: "Service, date, contact" },
+    context: [
+      { icon: "calendar", title: "Your calendar", sub: "Live availability" },
+      { icon: "book", title: "Service info", sub: "Hours & options" },
+    ],
+    branches: [
+      { label: "booked", node: { icon: "calendar", title: "Slot booked", sub: "Synced & confirmed" } },
+      { label: "remind", node: { icon: "bell", title: "Auto reminders", sub: "Cut no-shows" } },
     ],
   },
 ];
