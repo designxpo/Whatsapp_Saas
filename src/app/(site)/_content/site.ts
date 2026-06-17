@@ -310,14 +310,15 @@ export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 // slug = Simple Icons id (cdn.simpleicons.org); omit slug to render the name as
 // a wordmark (e.g. brands without a Simple Icon). Single source of truth — the
 // flat INTEGRATIONS strip below is derived from it.
-// slug = Simple Icons id; iconify = Iconify "logos" id (fallback for brands
-// Simple Icons dropped, e.g. Slack/Teams/Pipedrive); neither → wordmark.
-export type IntegrationBrand = { name: string; slug?: string; iconify?: string };
+// src = explicit logo URL (e.g. an official SVG in /public/brand); slug = Simple
+// Icons id; iconify = Iconify "logos" id (for brands Simple Icons dropped, e.g.
+// Slack/Teams/Pipedrive); none → the name renders as a wordmark.
+export type IntegrationBrand = { name: string; slug?: string; iconify?: string; src?: string };
 export type IntegrationCategory = { title: string; blurb: string; items: IntegrationBrand[] };
 
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   { title: "Channels", blurb: "Meet customers where they already are.", items: [
-    { name: "WhatsApp", slug: "whatsapp" }, { name: "Instagram", slug: "instagram" }, { name: "Messenger", slug: "messenger" },
+    { name: "WhatsApp", slug: "whatsapp" }, { name: "Instagram", slug: "instagram" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
     { name: "Gemini", slug: "googlegemini" }, { name: "OpenAI", slug: "openai" }, { name: "Anthropic", slug: "anthropic" },

@@ -175,8 +175,8 @@ export function IntegrationsStrip() {
       <div className="rounded-[28px] bg-slate-50 px-5 py-10 text-center sm:px-10">
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Channels, AI, CRM, payments, e-commerce, scheduling and automation — all in one place.</p>
-        <Marquee durationSec={28} gapClass="gap-x-16" className="mt-8 py-2">
-          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} />)}
+        <Marquee durationSec={30} gapClass="gap-x-12" className="mt-8 py-2">
+          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
         </Marquee>
       </div>
     </Container>
@@ -196,8 +196,8 @@ export function IntegrationsGrid() {
           <div key={cat.title} className="rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
             <h3 className="text-sm font-extrabold text-slate-900">{cat.title}</h3>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">{cat.blurb}</p>
-            <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-4">
-              {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} />)}
+            <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-5">
+              {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
             </div>
           </div>
         ))}
