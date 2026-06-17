@@ -18,6 +18,7 @@ import {
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
   AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd, LayoutTemplate,
+  UploadCloud,
 } from "lucide-react";
 
 type NodeData = Record<string, unknown>;
@@ -27,6 +28,21 @@ type NodeData = Record<string, unknown>;
 const IssuesContext = createContext<Record<string, string[]>>({});
 const inp = "nodrag border border-line rounded-lg px-2 py-1.5 text-xs w-full bg-white text-ink-900 placeholder:text-ink-400";
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+
+// Inline "Upload" button for a node's media field — uploads to public storage and
+// hands the resulting URL back, so users never have to host an image themselves.
+function NodeUpload({ onUploaded, accept = "image/*" }: { onUploaded: (url: string) => void; accept?: string }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <label className={`nodrag shrink-0 flex items-center gap-1 px-2 py-1.5 rounded-lg border border-dashed border-line text-xs text-ink-600 cursor-pointer hover:border-brand-500 hover:text-brand-700 ${busy ? "opacity-60" : ""}`} title="Upload an image">
+      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />} Upload
+      <input type="file" accept={accept} className="hidden" onChange={async e => {
+        const f = e.target.files?.[0]; if (!f) return; setBusy(true);
+        try { const fd = new FormData(); fd.append("file", f); const r = await fetch("/api/upload", { method: "POST", body: fd }); const d = await r.json(); if (d.url) onUploaded(d.url); } finally { setBusy(false); e.currentTarget.value = ""; }
+      }} />
+    </label>
+  );
+}
 
 // ── Block metadata (toolbox + node chrome share this) ─────────────────────────
 const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: string }> = {
@@ -167,7 +183,10 @@ function SequenceNode({ id, type, selected, data }: NodeProps) {
           {p.kind === "text"
             ? <textarea className={inp} rows={2} maxLength={4096} placeholder="Text to send…" value={p.text ?? ""} onChange={e => setPart(i, { text: e.target.value })} />
             : <>
-                <input className={inp} placeholder="Public https:// URL" value={p.url ?? ""} onChange={e => setPart(i, { url: e.target.value })} />
+                <div className="flex items-center gap-1.5">
+                  <input className={`${inp} flex-1`} placeholder="Public URL or upload →" value={p.url ?? ""} onChange={e => setPart(i, { url: e.target.value })} />
+                  <NodeUpload accept={p.kind === "video" ? "video/*" : p.kind === "document" ? "" : "image/*"} onUploaded={url => setPart(i, { url })} />
+                </div>
                 <input className={inp} maxLength={1024} placeholder="Caption (optional)" value={p.caption ?? ""} onChange={e => setPart(i, { caption: e.target.value })} />
               </>}
         </div>
@@ -223,7 +242,10 @@ function MediaNode({ id, type, selected, data }: NodeProps) {
       <select className={inp} value={str(data.kind) || "image"} onChange={e => set({ kind: e.target.value })}>
         <option value="image">Image</option><option value="video">Video</option><option value="document">Document</option>
       </select>
-      <input className={inp} placeholder="Public https:// URL" value={str(data.url)} onChange={e => set({ url: e.target.value })} />
+      <div className="flex items-center gap-1.5">
+        <input className={`${inp} flex-1`} placeholder="Public URL or upload →" value={str(data.url)} onChange={e => set({ url: e.target.value })} />
+        <NodeUpload accept={str(data.kind) === "video" ? "video/*" : str(data.kind) === "document" ? "" : "image/*"} onUploaded={url => set({ url })} />
+      </div>
       <input className={inp} maxLength={1024} placeholder="Caption (optional)" value={str(data.caption)} onChange={e => set({ caption: e.target.value })} />
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
@@ -365,7 +387,10 @@ function CarouselTemplateNode({ id, type, selected, data }: NodeProps) {
             <span className="text-[9px] text-ink-400 flex-1 text-right">card {i + 1}</span>
             {cards.length > 2 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ cards: cards.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
           </div>
-          <input className={inp} placeholder="Card media https:// URL" value={c.mediaUrl ?? ""} onChange={e => setCard(i, { mediaUrl: e.target.value })} />
+          <div className="flex items-center gap-1.5">
+            <input className={`${inp} flex-1`} placeholder="Card media URL or upload →" value={c.mediaUrl ?? ""} onChange={e => setCard(i, { mediaUrl: e.target.value })} />
+            <NodeUpload accept={c.kind === "video" ? "video/*" : "image/*"} onUploaded={url => setCard(i, { mediaUrl: url })} />
+          </div>
           <input className={inp} placeholder="Card {{1}},{{2}}… (optional)" value={c.bodyParams ?? ""} onChange={e => setCard(i, { bodyParams: e.target.value })} />
         </div>
       ))}
@@ -402,7 +427,12 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
         <option value="">{tpls.length ? "— pick an approved template —" : "No approved templates yet"}</option>
         {tpls.map(t => <option key={t.name + t.language} value={`${t.name}|||${t.language}`}>{t.name} · {t.language}</option>)}
       </select>
-      {needsImage && <input className={inp} placeholder="Header image https:// URL" value={str(data.headerImageUrl)} onChange={e => set({ headerImageUrl: e.target.value })} />}
+      {needsImage && (
+        <div className="flex items-center gap-1.5">
+          <input className={`${inp} flex-1`} placeholder="Header image URL or upload →" value={str(data.headerImageUrl)} onChange={e => set({ headerImageUrl: e.target.value })} />
+          <NodeUpload onUploaded={url => set({ headerImageUrl: url })} />
+        </div>
+      )}
       {Array.from({ length: varCount }).map((_, i) => (
         <input key={i} className={inp} placeholder={`Value for {{${i + 1}}}`} value={params[i] ?? ""} onChange={e => setParam(i, e.target.value)} />
       ))}
