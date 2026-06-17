@@ -6350,7 +6350,7 @@ function CatalogTab() {
   }
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
@@ -6378,7 +6378,7 @@ function CatalogTab() {
       {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
 
       {form && (
-        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col lg:flex-row gap-4">
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
           <div className="flex-1 space-y-2 min-w-0">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -6405,7 +6405,7 @@ function CatalogTab() {
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
           </div>
-          <div className="lg:w-60 shrink-0">
+          <div className="xl:w-64 shrink-0">
             <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
             <div className="bg-[#e5ddd5] rounded-control p-3">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
