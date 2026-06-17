@@ -44,6 +44,7 @@ export interface Campaign {
   createdAt: string;
   sentAt: string | null;
   channelId: string | null;     // which WhatsApp number this campaign sends from
+  replyFlowId: string | null;   // flow to start when a recipient replies ("bot on broadcast")
   tenantId: string;             // owning tenant — sends use this tenant's channel/limits
 }
 
@@ -77,6 +78,7 @@ function mapCampaign(r: Record<string, unknown>): Campaign {
     createdAt: r.created_at as string,
     sentAt: (r.sent_at as string | null) ?? null,
     channelId: (r.channel_id as string | null) ?? null,
+    replyFlowId: (r.reply_flow_id as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
   };
 }
@@ -329,6 +331,7 @@ export async function createCampaign(p: Partial<Campaign> & { templateName: stri
     delay_value: p.delayValue ?? 0,
     delay_unit: p.delayUnit ?? "minutes",
     ...(p.channelId ? { channel_id: p.channelId } : {}),
+    ...(p.replyFlowId ? { reply_flow_id: p.replyFlowId } : {}),
   }).select().single();
   if (error) throw error;
   return mapCampaign(data as Record<string, unknown>);
@@ -426,6 +429,42 @@ export async function countQueueTotal(campaignId: string): Promise<number> {
 export async function campaignsWithPending(): Promise<string[]> {
   const { data } = await db().from("wa_send_queue").select("campaign_id").eq("status", "pending").limit(1000);
   return [...new Set((data ?? []).map(r => r.campaign_id as string))];
+}
+
+// ── Broadcast → flow arming ("bot on broadcast") ────────────────────────────────
+// When a broadcast names a reply flow, each delivered recipient is "armed": their
+// next inbound starts that flow. Keyed by (tenant, last-10 digits) so country-code
+// variants of the same number match. Best-effort — silently no-ops if the table is
+// absent (migration 0048 not applied yet).
+export async function armFlow(phones: string[], flowId: string, campaignId: string | null, tenantId = DEFAULT_TENANT_ID, hours = 168): Promise<void> {
+  const seen = new Set<string>();
+  const expiresAt = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+  const rows = phones
+    .map(p => last10(p))
+    .filter(k => { if (!k || k.length < 10 || seen.has(k)) return false; seen.add(k); return true; })
+    .map(phone => ({ tenant_id: tenantId, phone, flow_id: flowId, campaign_id: campaignId, expires_at: expiresAt }));
+  if (rows.length === 0) return;
+  await db().from("wa_flow_arms").upsert(rows, { onConflict: "tenant_id,phone" }).then(undefined, () => undefined);
+}
+
+// Returns the armed flow id for this number (if any, unexpired) and consumes it
+// so the flow starts only once. Returns null when nothing is armed.
+export async function takeArmedFlow(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
+  const key = last10(phone);
+  if (!key || key.length < 10) return null;
+  try {
+    const { data } = await db().from("wa_flow_arms").select("flow_id, expires_at").eq("tenant_id", tenantId).eq("phone", key).maybeSingle();
+    if (!data) return null;
+    await db().from("wa_flow_arms").delete().eq("tenant_id", tenantId).eq("phone", key);
+    if (new Date(data.expires_at as string).getTime() < Date.now()) return null;
+    return (data.flow_id as string) ?? null;
+  } catch { return null; }
+}
+
+export async function clearArmedFlow(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const key = last10(phone);
+  if (!key) return;
+  await db().from("wa_flow_arms").delete().eq("tenant_id", tenantId).eq("phone", key).then(undefined, () => undefined);
 }
 
 // ── Send log ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import {
   getCampaign, updateCampaign, enqueue, claimPending, markQueue, countPending, countQueueTotal,
-  logCounts, sentLast24h, recipientsForAudience, getDueScheduledSends, markScheduled,
+  logCounts, sentLast24h, recipientsForAudience, getDueScheduledSends, markScheduled, armFlow,
   type Campaign,
 } from "./store";
 import { sendCampaign, getCreds } from "./whatsapp";
@@ -57,6 +57,8 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
         tenantId: campaign.tenantId,
       });
       await markQueue(chunk.map(c => c.id), "sent");
+      // Bot on broadcast: arm each delivered recipient so their reply starts the flow.
+      if (campaign.replyFlowId) await armFlow(chunk.map(c => c.phone), campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
       sentNow = r.sentCount;
       if (r.errors.length) errs.push(...r.errors);
     }
@@ -141,6 +143,7 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
         channel: await credsFor(campaign.channelId),
         tenantId: campaign.tenantId,
       });
+      if (campaign.replyFlowId) await armFlow(group.map(d => d.phone), campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
       for (const d of group) { await markScheduled(d.id, "sent"); sent++; }
     } catch (err) {
       for (const d of group) { await markScheduled(d.id, "failed", String(err)); failed++; }

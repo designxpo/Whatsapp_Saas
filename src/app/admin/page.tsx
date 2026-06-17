@@ -734,6 +734,8 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const [variables, setVariables] = useState("{name}");
   const [headerImageUrl, setHeaderImageUrl] = useState("");
   const [channelId, setChannelId] = useState<string | null>(null);
+  const [replyFlowId, setReplyFlowId] = useState("");
+  const [flows, setFlows] = useState<{ id: string; name: string; active: boolean; triggerKeywords?: string[] }[]>([]);
   const [templates, setTemplates] = useState<{ name: string; status: string; language: string; category: string; components?: { type: string; format?: string; text?: string }[] }[]>([]);
   const [manualTemplate, setManualTemplate] = useState(false);
   const [count, setCount] = useState<number | null>(null);
@@ -748,6 +750,11 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   useEffect(() => {
     fetch(`/api/admin/templates${channelId ? `?channelId=${channelId}` : ""}`).then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
   }, [channelId]);
+
+  // Flows available to start when a recipient replies ("bot on broadcast").
+  useEffect(() => {
+    fetch("/api/admin/flows").then(r => r.json()).then(d => setFlows(d.flows ?? [])).catch(() => {});
+  }, []);
 
   // A "Retarget →" click in Campaign history lands here with the segment prefilled.
   useEffect(() => {
@@ -792,6 +799,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         variables: variables.split(/\r?\n/).map(v => v.trim()).filter(Boolean),
         headerImageUrl: headerImageUrl.trim() || null,
         channelId,
+        replyFlowId: replyFlowId || null,
       };
       if (audMode === "recipients") body.recipients = parseRecipients();
       else body.audience = {
@@ -984,6 +992,20 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         {selected && headerFormat && headerFormat !== "IMAGE" && headerFormat !== "TEXT" && (
           <p className="text-[11px] text-amber-600">This template has a {headerFormat.toLowerCase()} header — broadcasting that header type isn&apos;t supported yet.</p>
         )}
+      </section>
+
+      <section className="bg-white rounded-card border border-line p-5 space-y-2">
+        <p className="text-xs font-bold text-slate-400 uppercase">When they reply — start a flow <span className="text-slate-300 normal-case font-normal">(optional)</span></p>
+        <p className="text-xs text-slate-500">Pick a chatbot flow to run automatically when a recipient replies to this broadcast — a tap on a template button or any message. Their first reply starts it (no trigger keyword needed); it stays armed for 7 days.</p>
+        <select className={`${inp} w-full`} value={replyFlowId} onChange={e => setReplyFlowId(e.target.value)}>
+          <option value="">No flow — replies go to Live Chat / AI as usual</option>
+          {flows.filter(f => f.active).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+        {replyFlowId && (() => {
+          const f = flows.find(x => x.id === replyFlowId);
+          return f ? <p className="text-[11px] text-brand-700 font-semibold">▶ Replies to this broadcast will start <b>{f.name}</b> from its first step.</p> : null;
+        })()}
+        {flows.filter(f => f.active).length === 0 && <p className="text-[11px] text-amber-600">No active flows yet — build one in the Flows tab first.</p>}
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">

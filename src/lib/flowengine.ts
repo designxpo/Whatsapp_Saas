@@ -21,7 +21,7 @@ import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
-  addContactTag,
+  addContactTag, takeArmedFlow,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
 import { safeFetch } from "./ssrf";
@@ -593,6 +593,22 @@ export async function handleFlowMessage(
       const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       if (consumed) return true;
+    }
+  }
+
+  // 2a-bis. No session — was this contact armed by a broadcast? Their first reply
+  // after a "bot on broadcast" send starts that flow, regardless of keyword. Real
+  // WhatsApp inbounds only (broadcasts are template sends); consumed once.
+  if (isReal && !opts.onlyFlowId && opts.channel?.kind !== "instagram") {
+    const armedId = await takeArmedFlow(phone, tid).catch(() => null);
+    if (armedId) {
+      const flow = await getFlow(armedId, tid);
+      if (flow && flow.active && (!flow.channelId || !opts.channel || flow.channelId === opts.channel.id)) {
+        await setConversationKbTag(convKey, flow.primaryKbTag).catch(() => undefined);
+        const start = flow.graph.nodes.find(n => n.type === "start");
+        const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
+        if (consumed) { await claimReply(convKey).catch(() => undefined); return true; }
+      }
     }
   }
 

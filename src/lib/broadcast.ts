@@ -18,6 +18,7 @@ export interface BroadcastInput {
   headerImageUrl?: string | null;
   scheduledFor?: string | null;
   channelId?: string | null;     // which WhatsApp number to send from
+  replyFlowId?: string | null;   // flow to start when a recipient replies
 }
 
 export interface BroadcastResult {
@@ -90,7 +91,7 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
       name: input.name, templateName: input.templateName!.trim(), languageCode, variables,
       headerImageUrl: input.headerImageUrl ?? null, audience, status: "scheduled",
       totalRecipients: recipients.length, scheduledFor: when.toISOString(),
-      channelId: input.channelId ?? null,
+      channelId: input.channelId ?? null, replyFlowId: input.replyFlowId ?? null,
     }, tenantId);
     return { success: true, campaignId: campaign.id, status: "scheduled", totalRecipients: recipients.length, message: `Scheduled ${recipients.length} for ${when.toISOString()}.` };
   }
@@ -98,7 +99,7 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
   const campaign = await createCampaign({
     name: input.name, templateName: input.templateName!.trim(), languageCode, variables,
     headerImageUrl: input.headerImageUrl ?? null, audience, status: "sending", totalRecipients: recipients.length,
-    channelId: input.channelId ?? null,
+    channelId: input.channelId ?? null, replyFlowId: input.replyFlowId ?? null,
   }, tenantId);
   const r = await startSend(campaign, recipients);
   return { success: true, campaignId: campaign.id, status: r.status, totalRecipients: recipients.length, sent: r.sentNow, queuedRemaining: r.queuedRemaining, message: r.message };
