@@ -30,6 +30,17 @@ function csrfBlocked(req: NextRequest): boolean {
   }
 }
 
+// Stops the browser caching authenticated pages (and the login page) in its
+// disk / back-forward cache. Without this, the Back button can resurface the
+// cached dashboard after sign-out, or show the cached sign-in form even though
+// the user is already authenticated.
+function noStore(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get(COOKIE)?.value;
@@ -45,15 +56,29 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Admin pages → redirect to login.
+  // Sign-in page: already authenticated → bounce to the dashboard (handles the
+  // Back button landing on a cached login form). Always no-store so Back forces
+  // a revalidation through this check instead of replaying a cached page.
+  if (pathname === "/login") {
+    if (ok) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/admin";
+      return noStore(NextResponse.redirect(url));
+    }
+    return noStore(NextResponse.next());
+  }
+
+  // Admin pages → must be authenticated, and must never be cached so Back/Forward
+  // can't resurface the dashboard after the session ends.
   if (pathname.startsWith("/admin")) {
     if (!ok) {
       const url = req.nextUrl.clone();
       url.pathname = "/login";
-      return NextResponse.redirect(url);
+      return noStore(NextResponse.redirect(url));
     }
+    return noStore(NextResponse.next());
   }
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/admin/:path*", "/api/admin/:path*", "/api/owner/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/login", "/api/admin/:path*", "/api/owner/:path*"] };
