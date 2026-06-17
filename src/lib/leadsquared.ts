@@ -62,6 +62,18 @@ async function findLeadIdByHandle(handle: string): Promise<string | null> {
   return null;
 }
 
+// Pulls the first phone-like number out of free text (e.g. an Instagram lead
+// typing their WhatsApp number). Returns normalized digits (10-15) or null.
+export function extractPhone(text: string): string | null {
+  const candidates = (text || "").match(/\+?\d[\d\s().-]{8,}\d/g);
+  if (!candidates) return null;
+  for (const c of candidates) {
+    const d = c.replace(/\D/g, "");
+    if (d.length >= 10 && d.length <= 15) return d;
+  }
+  return null;
+}
+
 // Pulls a real phone number out of a contact's collected attributes (e.g. one an
 // Instagram lead shared in chat or a flow captured), so an IG conversation can be
 // matched to an LSQ lead by phone. Returns null when no phone-like attribute exists.

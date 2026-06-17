@@ -2,8 +2,8 @@ export const maxDuration = 60;
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
-import { pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
@@ -74,8 +74,7 @@ function credsOf(channel: Channel): IgCreds {
 async function syncIgToLsq(conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", tenantId: string) {
   try {
     const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
-    const contact = await getContactByPhone(conv.phone, tenantId).catch(() => null);
-    const phone = phoneFromAttributes(contact?.attributes);
+    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
     if (!phone && !handle) return;
     await pushIgActivity({ igUserId: conv.phone, handle, phone, direction, body, via });
   } catch { /* CRM sync must never break IG handling */ }
@@ -110,6 +109,12 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   if (conv.isComment) await setConversationComment(conv.id, false);   // a real DM → move to Chats
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
+  // Capture a phone the lead shares (IG has no number of its own) so the chat can
+  // be matched to a CRM lead by phone, now and on later messages.
+  if (!conv.leadPhone) {
+    const shared = extractPhone(text);
+    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+  }
   after(() => syncIgToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
 
   // Follow-gate: a waiting user's "done"/"followed" re-checks their follow.
@@ -166,7 +171,9 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   if (!commentId) await sendTypingOn(creds, conv.phone);
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid);
+  // On DMs where we still have no phone for this IG lead, let the AI ask for it once.
+  const askPhone = !commentId && !conv.leadPhone;
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid, null, askPhone);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;

@@ -32,7 +32,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = ""): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
@@ -62,6 +62,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "• When the Business context contains a relevant URL (course page, brochure, contact), include it as a bare link on its own line — never markdown [text](url).",
     "• Never prefix replies with your name, role, or labels (no 'SUPPORT:', no 'Maya:'). Just speak naturally.",
     "• End with one short, helpful follow-up question when it moves the conversation forward.",
+  ].join("\n"));
+  if (askPhone) parts.push([
+    "--- Capture contact ---",
+    "You don't have this person's phone number yet. If they show interest (ask about courses, fees, enrolment, a callback, or details), politely ask once for their WhatsApp number so the team can share details or call back — e.g. \"Could you share your WhatsApp number so our team can send you the details?\" Ask at most once and never pressure them; if they decline, carry on helpfully.",
   ].join("\n"));
   parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
   return parts.join("\n\n");
@@ -114,7 +118,7 @@ export interface ReplyResult {
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
-export async function generateReply(history: { role: "user" | "assistant"; body: string }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -150,7 +154,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   const profile = knownProfile(contact);
 
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
-  const system = systemPrompt(context, agent, tools.length > 0, profile);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.

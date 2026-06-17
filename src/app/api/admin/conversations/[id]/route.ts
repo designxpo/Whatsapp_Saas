@@ -68,8 +68,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // Mirror to LeadSquared by a known phone (shared in chat) or @handle.
         void (async () => {
           const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
-          const c = await getContactByPhone(conv.phone, tid).catch(() => null);
-          const phone = phoneFromAttributes(c?.attributes);
+          const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tid).catch(() => null))?.attributes);
           if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent" });
         })();
       } else {

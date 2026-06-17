@@ -562,6 +562,7 @@ export interface Conversation {
   avatarUrl: string | null;     // profile image (Instagram); null for WhatsApp
   isComment: boolean;           // originated from an IG comment (AI reply flow), not a DM
   channelId: string | null;     // which WhatsApp number this chat lives on
+  leadPhone: string | null;     // a real phone the lead shared (IG has no phone) — for CRM matching
   tenantId: string;             // owning tenant
   createdAt: string;
 }
@@ -596,6 +597,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     avatarUrl: (r.avatar_url as string | null) ?? null,
     isComment: (r.is_comment as boolean) ?? false,
     channelId: (r.channel_id as string | null) ?? null,
+    leadPhone: (r.lead_phone as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
   };
@@ -1048,6 +1050,13 @@ export async function setConversationAgent(id: string, agentId: string | null): 
 // Best-effort: errors (e.g. column missing pre-0047) are ignored, never thrown.
 export async function setConversationKbTag(id: string, tag: string | null): Promise<void> {
   await db().from("wa_conversations").update({ primary_kb_tag: tag }).eq("id", id);
+}
+
+// Remembers a real phone the lead shared (mainly Instagram, whose id isn't a
+// phone) so the chat can be matched to a CRM lead. No-ops if the column is
+// missing (migration 0049 not applied).
+export async function setConversationLeadPhone(id: string, phone: string): Promise<void> {
+  await db().from("wa_conversations").update({ lead_phone: phone }).eq("id", id).then(undefined, () => undefined);
 }
 
 // Atomically claims the welcome send: only the first caller gets true.
