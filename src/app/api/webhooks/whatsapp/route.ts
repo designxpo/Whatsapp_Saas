@@ -14,6 +14,7 @@ import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
 import { pushWaActivity } from "@/lib/leadsquared";
+import { emitEvent } from "@/lib/integrations";
 import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours } from "@/lib/messaging-settings";
 import { loadMemory, saveMemory } from "@/lib/router/memory";
 import { handleFlowMessage } from "@/lib/flowengine";
@@ -103,6 +104,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   if (OPTOUT_RE.test(text)) {
     await addOptout(from, "inbound STOP", tid);
     await sendText(from, "You've been unsubscribed and won't receive further messages. Reply START to opt back in.", channel);
+    after(() => emitEvent(tid, "contact.optout", { phone: from, name: profileName, reason: "inbound STOP" }));
     return;
   }
   // Opt back in — the STOP confirmation promises "Reply START to opt back in".
@@ -162,6 +164,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
   after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid }));
+  // Fan the inbound message out to any connected integrations (Zapier/Sheets/
+  // Slack…). Deferred so it never delays the reply; no-op when none configured.
+  after(() => emitEvent(tid, "message.inbound", { phone: from, name: profileName, text, channel: "whatsapp", conversationId: conv.id }));
 
   // Growth opt-in: if this message matches a growth tool's prefilled keyword,
   // apply its action (tag + sequence enrollment) and count the conversion.

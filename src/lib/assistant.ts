@@ -6,6 +6,7 @@ import { generateReply } from "./llm";
 import { sendText, sendCtaUrl } from "./whatsapp";
 import type { ChannelCreds } from "./channels";
 import { pushWaActivity } from "./leadsquared";
+import { emitEvent } from "./integrations";
 import { routeMessage, recordRagAnswer } from "./router";
 import { isAutoRouteEnabled, pickAgentForQuery } from "./aihub";
 import { embedQuery } from "./kb";
@@ -120,6 +121,9 @@ export async function respondToConversation(conversationId: string): Promise<{ o
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");
+      // Notify any connected integrations (Slack/Teams/Zapier) that a human is
+      // needed — best-effort, must never delay or fail the handoff reply.
+      void emitEvent(conv.tenantId, "conversation.escalated", { conversationId, phone: conv.phone, name: conv.name, reason: result.reason ?? null, channel: conv.platform });
       // A function handoff supplies its own reply text; otherwise use the default.
       const handoff = result.reply ?? "Thanks for reaching out — I'm connecting you with a team member who'll reply shortly.";
       const sent = await sendText(conv.phone, handoff, channel);

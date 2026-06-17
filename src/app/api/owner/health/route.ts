@@ -20,7 +20,7 @@ export async function GET() {
       plan: t.plan,
       ...(await getTenantHealthSummary(t.id).catch(() => ({
         whatsapp: { configured: false, flag: null }, instagram: { configured: false },
-        ai: { configured: false }, kb: { ready: 0, total: 0 }, crm: { configured: false }, health: "error" as const,
+        ai: { configured: false }, kb: { ready: 0, total: 0 }, crm: { configured: false }, integrations: { active: 0, errored: 0 }, health: "error" as const,
       }))),
     })));
     // Broken/at-risk tenants first.

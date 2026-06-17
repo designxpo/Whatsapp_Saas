@@ -5,9 +5,9 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { launchWhatsAppSignup, launchInstagramSignup, whatsappSignupReady, instagramSignupReady } from "@/lib/embedded-signup-client";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks } from "lucide-react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, CircleDashed, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug } from "lucide-react";
 
-type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings" | "setup";
+type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
 
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -40,6 +40,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
     group: "General",
     items: [
       { key: "setup", label: "Setup & status", icon: <ListChecks className="w-[18px] h-[18px]" /> },
+      { key: "integrations", label: "Integrations", icon: <Plug className="w-[18px] h-[18px]" /> },
       { key: "optouts", label: "Opt-outs", icon: <Ban className="w-[18px] h-[18px]" /> },
       { key: "settings", label: "Settings", icon: <Settings className="w-[18px] h-[18px]" /> },
     ],
@@ -49,7 +50,7 @@ const TAB_TITLES: Record<Tab, string> = {
   home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
-  contacts: "Contacts", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status",
+  contacts: "Contacts", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status", integrations: "Integrations",
 };
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -200,6 +201,7 @@ export default function Admin() {
           {tab === "campaigns" && <CampaignsTab goTo={setTab} />}
           {tab === "optouts" && <OptoutsTab />}
           {tab === "setup" && <SetupTab goTo={setTab} />}
+          {tab === "integrations" && <IntegrationsTab />}
           {tab === "settings" && <SettingsTab goTo={setTab} />}
         </main>
       </div>
@@ -7521,6 +7523,168 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
 }
 
 // Per-tenant LeadSquared CRM credentials — each workspace uses their own CRM.
+// ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
+type Integration = {
+  id: string; kind: string; name: string; active: boolean;
+  config: { url?: string; format?: string }; events: string[];
+  status: "connected" | "error" | "unverified"; statusDetail: string | null;
+  hasSecret: boolean; lastEventAt: string | null; createdAt: string;
+};
+const INTEGRATION_EVENTS: { key: string; label: string }[] = [
+  { key: "message.inbound", label: "New message received" },
+  { key: "conversation.escalated", label: "Chat handed to a human" },
+  { key: "order.created", label: "Order placed" },
+  { key: "contact.optout", label: "Contact opted out" },
+];
+const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
+
+function IntegrationsTab() {
+  const [items, setItems] = useState<Integration[] | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [form, setForm] = useState({ name: "", url: "", format: "generic", events: ["message.inbound", "conversation.escalated"] as string[] });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [newSecret, setNewSecret] = useState<string | null>(null);
+  const [testing, setTesting] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/integrations").then(r => r.json()).then(d => setItems(d.integrations ?? [])).catch(() => setItems([]));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  function toggleEvent(key: string) {
+    setForm(f => ({ ...f, events: f.events.includes(key) ? f.events.filter(e => e !== key) : [...f.events, key] }));
+  }
+
+  async function create() {
+    setBusy(true); setMsg(null); setNewSecret(null);
+    try {
+      const d = await fetch("/api/admin/integrations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }).then(r => r.json());
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else {
+        setNewSecret(d.secret ?? null);
+        setMsg({ ok: true, text: "Added. Send a test ping to confirm it's connected." });
+        setForm({ name: "", url: "", format: "generic", events: ["message.inbound", "conversation.escalated"] });
+        setAdding(false);
+        load();
+      }
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setBusy(false); }
+  }
+
+  async function test(id: string) {
+    setTesting(id); setMsg(null);
+    try {
+      const d = await fetch(`/api/admin/integrations/${id}/verify`, { method: "POST" }).then(r => r.json());
+      setMsg({ ok: !!d.verify?.ok, text: d.verify?.detail || d.error || "Test failed." });
+      load();
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setTesting(null); }
+  }
+
+  async function toggleActive(i: Integration) {
+    await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !i.active }) });
+    load();
+  }
+
+  async function remove(i: Integration) {
+    if (!confirm(`Delete "${i.name}"? Events will stop being sent there.`)) return;
+    await fetch(`/api/admin/integrations/${i.id}`, { method: "DELETE" });
+    load();
+  }
+
+  const statusBadge = (s: Integration["status"]) => {
+    const map = { connected: "bg-emerald-100 text-emerald-700", error: "bg-red-100 text-red-600", unverified: "bg-slate-100 text-slate-500" };
+    const label = { connected: "Connected", error: "Error", unverified: "Not tested" };
+    return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${map[s]}`}>{label[s]}</span>;
+  };
+
+  return (
+    <div className="max-w-3xl space-y-5">
+      <div>
+        <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
+        <p className="text-sm text-slate-500">Send your WhatsApp events to the tools you already use. Connect a webhook to Zapier, Make, n8n, Slack or Teams — no code required. Each event is signed so the receiver can trust it.</p>
+      </div>
+
+      {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+
+      {newSecret && (
+        <div className="bg-amber-50 border border-amber-200 rounded-card p-4 space-y-1.5">
+          <p className="text-xs font-bold text-amber-800">Signing secret — copy it now, it won't be shown again.</p>
+          <p className="text-[11px] text-amber-700">Use it to verify the <span className="font-mono">X-Alabs-Signature</span> header (HMAC-SHA256 of the body). Slack/Teams don't need it.</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 text-xs bg-white border border-amber-200 rounded px-2 py-1.5 break-all">{newSecret}</code>
+            <button onClick={() => { navigator.clipboard?.writeText(newSecret); }} className="px-2 py-1.5 rounded-control border border-amber-300 text-xs font-bold text-amber-800 hover:bg-amber-100 shrink-0"><Copy className="w-3.5 h-3.5" /></button>
+          </div>
+        </div>
+      )}
+
+      {/* Existing connections */}
+      <div className="space-y-2">
+        {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
+        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations yet — add a webhook below to start sending events.</p>}
+        {items?.map(i => (
+          <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-ink-900 truncate">{i.name}</h3>
+                  {statusBadge(i.status)}
+                  {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
+                </div>
+                <p className="text-[11px] text-slate-500 truncate">{FORMAT_LABELS[i.config.format ?? "generic"]} · {i.config.url}</p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button onClick={() => test(i.id)} disabled={testing === i.id} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
+                <button onClick={() => toggleActive(i)} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">{i.active ? "Pause" : "Resume"}</button>
+                <button onClick={() => remove(i)} className="p-1.5 text-red-400 hover:text-red-600 rounded-control"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{INTEGRATION_EVENTS.find(x => x.key === e)?.label ?? e}</span>)}
+            </div>
+            {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
+            {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
+          </section>
+        ))}
+      </div>
+
+      {/* Add a webhook */}
+      {adding ? (
+        <section className="bg-white rounded-card border border-line p-5 space-y-3">
+          <h3 className="text-sm font-bold text-ink-900">Add a webhook</h3>
+          <input className={`${inp} w-full`} placeholder="Name (e.g. Slack #leads, Zapier orders)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          <input className={`${inp} w-full`} placeholder="https://hooks.zapier.com/… or your Slack/Teams webhook URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase">Destination format</label>
+            <select className={`${inp} w-full mt-1`} value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
+              {Object.entries(FORMAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500 mt-1">Standard sends the full signed JSON. Slack/Teams send a ready-to-read message to your channel.</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase">Send these events</label>
+            <div className="grid grid-cols-2 gap-1.5 mt-1.5">
+              {INTEGRATION_EVENTS.map(e => (
+                <label key={e.key} className="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
+                  <input type="checkbox" className="accent-brand-700" checked={form.events.includes(e.key)} onChange={() => toggleEvent(e.key)} />
+                  {e.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={create} disabled={busy || !form.url.trim() || !form.events.length} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add webhook"}</button>
+            <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
+          </div>
+        </section>
+      ) : (
+        <button onClick={() => { setAdding(true); setNewSecret(null); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold"><Plus className="w-4 h-4" /> Add a webhook</button>
+      )}
+    </div>
+  );
+}
+
 function LsqSettingsCard() {
   type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean };
   const [st, setSt] = useState<LsqState | null>(null);

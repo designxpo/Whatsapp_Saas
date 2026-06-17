@@ -9,6 +9,7 @@ import { getTenantAiStatus, resolveTenantAi, AiKeyMissingError } from "./ai/keys
 import { validateKey } from "./ai/chat";
 import { listDocuments } from "./store";
 import { resolveLsq, verifyLsq } from "./leadsquared";
+import { integrationsHealth } from "./integrations";
 import { errorMessage } from "./errors";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -167,15 +168,17 @@ export interface TenantHealth {
   ai: { configured: boolean };
   kb: { ready: number; total: number };
   crm: { configured: boolean };
+  integrations: { active: number; errored: number };
   health: StepStatus;
 }
 
 export async function getTenantHealthSummary(tenantId: string): Promise<TenantHealth> {
-  const [channels, ai, docs, lsq] = await Promise.all([
+  const [channels, ai, docs, lsq, integrations] = await Promise.all([
     listChannels(tenantId).catch(() => [] as Channel[]),
     getTenantAiStatus(tenantId).catch(() => ({ configured: false, provider: "gemini" as const, model: "", keyHint: null })),
     listDocuments(tenantId).catch(() => []),
     resolveLsq(tenantId).catch(() => null),
+    integrationsHealth(tenantId).catch(() => ({ total: 0, active: 0, errored: 0 })),
   ]);
   const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp");
   const ig = channels.filter(c => c.kind === "instagram");
@@ -185,7 +188,7 @@ export async function getTenantHealthSummary(tenantId: string): Promise<TenantHe
 
   const health: StepStatus =
     (!wa.length || !ai.configured || flag) ? "error"
-    : !ready ? "warn"
+    : (!ready || integrations.errored > 0) ? "warn"
     : "ok";
 
   return {
@@ -194,6 +197,7 @@ export async function getTenantHealthSummary(tenantId: string): Promise<TenantHe
     ai: { configured: !!ai.configured },
     kb: { ready, total: docs.length },
     crm: { configured: !!lsq },
+    integrations: { active: integrations.active, errored: integrations.errored },
     health,
   };
 }

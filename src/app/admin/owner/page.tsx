@@ -21,6 +21,7 @@ type TenantHealthRow = {
   id: string; name: string; status: string; plan: string; health: "ok" | "warn" | "todo" | "error";
   whatsapp: { configured: boolean; flag: string | null }; instagram: { configured: boolean };
   ai: { configured: boolean }; kb: { ready: number; total: number }; crm: { configured: boolean };
+  integrations: { active: number; errored: number };
 };
 const FEATURE_KEYS: (keyof Features)[] = ["whatsapp", "instagram", "sequences", "commerce", "growth", "ai_autoreply", "ads"];
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
@@ -205,6 +206,9 @@ export default function OwnerPortal() {
                     {chip("KB", h.kb.ready > 0, `${h.kb.ready}/${h.kb.total}`)}
                     {chip("CRM", h.crm.configured)}
                     {chip("IG", h.instagram.configured)}
+                    {h.integrations?.active > 0 && (h.integrations.errored > 0
+                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Integrations {h.integrations.errored}✕</span>
+                      : chip("Integrations", true, String(h.integrations.active)))}
                   </div>
                 </div>
               ))}

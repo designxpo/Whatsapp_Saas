@@ -4,6 +4,7 @@
 
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
+import { emitEvent } from "./integrations";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -95,10 +96,13 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string }, te
   }).select("id").single();
   if (error) throw error;
   await db().from("wa_carts").update({ status: "ordered", updated_at: new Date().toISOString() }).eq("id", cart.id);
+  const orderId = data!.id as string;
   // Fire the order_placed event → optional post-purchase sequence (this tenant's).
   const seq = await getSequenceByTrigger("order_placed", null, tenantId);
   if (seq) await enroll(seq.id, { phone: p.phone, platform: "whatsapp" }, tenantId);
-  return { orderId: data!.id as string };
+  // Fan out to connected integrations (Zapier/Sheets/Slack…) — best-effort.
+  void emitEvent(tenantId, "order.created", { orderId, phone: p.phone, totalCents: total });
+  return { orderId };
 }
 
 // ── Cart recovery (cron) ──────────────────────────────────────────────────────
