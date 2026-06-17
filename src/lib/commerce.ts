@@ -8,7 +8,7 @@ import { getSequenceByTrigger, enroll } from "./sequences";
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
-export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean }
+export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null }
 
 function mapProduct(r: Record<string, unknown>): Product {
   return {
@@ -17,6 +17,7 @@ function mapProduct(r: Record<string, unknown>): Product {
     imageUrl: (r.image_url as string | null) ?? null, retailerId: (r.retailer_id as string | null) ?? null,
     metaProductId: (r.meta_product_id as string | null) ?? null, catalogId: (r.catalog_id as string | null) ?? null,
     available: (r.available as boolean) ?? true,
+    buttonText: (r.button_text as string | null) ?? null, buttonUrl: (r.button_url as string | null) ?? null,
   };
 }
 
@@ -36,17 +37,26 @@ function genRetailerId(name: string): string {
 
 export async function saveProduct(p: Partial<Product> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<Product> {
   const retailerId = p.retailerId?.trim() || (p.id ? null : genRetailerId(p.name));
-  const row = {
+  const base = {
     tenant_id: tenantId,
     name: p.name.trim(), description: p.description ?? null, price_cents: p.priceCents ?? 0,
     currency: p.currency ?? "INR", image_url: p.imageUrl ?? null, retailer_id: retailerId,
     meta_product_id: p.metaProductId ?? null, catalog_id: p.catalogId ?? null, available: p.available ?? true,
   };
-  const q = p.id ? db().from("wa_products").update(row).eq("tenant_id", tenantId).eq("id", p.id).select().single()
-                 : db().from("wa_products").insert(row).select().single();
-  const { data, error } = await q;
+  const withButton = { ...base, button_text: p.buttonText?.trim() || null, button_url: p.buttonUrl?.trim() || null };
+  const run = (row: Record<string, unknown>) => (p.id
+    ? db().from("wa_products").update(row).eq("tenant_id", tenantId).eq("id", p.id).select().single()
+    : db().from("wa_products").insert(row).select().single());
+  let { data, error } = await run(withButton);
+  // Graceful degradation when migration 0050 (button_text/button_url) isn't applied yet.
+  if (error && /button_text|button_url|column/i.test(error.message ?? "")) ({ data, error } = await run(base));
   if (error) throw error;
   return mapProduct(data as Record<string, unknown>);
+}
+
+export async function getProduct(id: string, tenantId = DEFAULT_TENANT_ID): Promise<Product | null> {
+  const { data } = await db().from("wa_products").select("*").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+  return data ? mapProduct(data as Record<string, unknown>) : null;
 }
 
 export async function deleteProduct(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {

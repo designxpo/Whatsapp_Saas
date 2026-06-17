@@ -341,13 +341,43 @@ function WebhookNode({ id, type, selected, data }: NodeProps) {
     </Shell>
   );
 }
+// Module-level catalog list, shared by all ProductNode instances (custom-card mode).
+let PRODUCT_CACHE: { id: string; name: string; buttonText: string | null; buttonUrl: string | null }[] | null = null;
+async function loadProducts(): Promise<NonNullable<typeof PRODUCT_CACHE>> {
+  if (!PRODUCT_CACHE) {
+    PRODUCT_CACHE = await fetch("/api/admin/products").then(r => r.json())
+      .then(d => ((d.products ?? []) as NonNullable<typeof PRODUCT_CACHE>))
+      .catch(() => []);
+  }
+  return PRODUCT_CACHE ?? [];
+}
 function ProductNode({ id, type, selected, data }: NodeProps) {
   const set = useSet(id);
+  const custom = str(data.cardStyle) === "custom";
+  const [prods, setProds] = useState<NonNullable<typeof PRODUCT_CACHE>>([]);
+  useEffect(() => { if (custom) loadProducts().then(setProds); }, [custom]);
+  const sel = prods.find(p => p.id === str(data.localProductId));
   return (
-    <Shell id={id} type={type} selected={selected}>
-      <textarea className={inp} rows={2} maxLength={1024} placeholder="Message text…" value={str(data.text)} onChange={e => set({ text: e.target.value })} />
-      <input className={inp} placeholder="Catalog ID (Commerce Manager)" value={str(data.catalogId)} onChange={e => set({ catalogId: e.target.value })} />
-      <input className={inp} placeholder="Product retailer ID" value={str(data.productId)} onChange={e => set({ productId: e.target.value })} />
+    <Shell id={id} type={type} selected={selected} foot={custom ? "Custom card: the product image + your text + the button you set in Catalog. Needs a button link on the product." : "Native catalog card — WhatsApp shows its own “View” button (not editable)."}>
+      <div className="flex gap-1 rounded-control bg-canvas p-0.5">
+        <button onClick={() => set({ cardStyle: "native" })} className={`flex-1 px-2 py-1 rounded-[6px] text-[11px] font-bold ${!custom ? "bg-white shadow-sm text-ink-900" : "text-ink-400"}`}>Catalog card</button>
+        <button onClick={() => set({ cardStyle: "custom" })} className={`flex-1 px-2 py-1 rounded-[6px] text-[11px] font-bold ${custom ? "bg-white shadow-sm text-ink-900" : "text-ink-400"}`}>Custom card</button>
+      </div>
+      <textarea className={inp} rows={2} maxLength={1024} placeholder={custom ? "Message text (defaults to name + price)…" : "Message text…"} value={str(data.text)} onChange={e => set({ text: e.target.value })} />
+      {custom ? (
+        <>
+          <select className={inp} value={str(data.localProductId)} onChange={e => set({ localProductId: e.target.value })}>
+            <option value="">{prods.length ? "— pick a product —" : "No products yet — add them in Catalog"}</option>
+            {prods.map(p => <option key={p.id} value={p.id}>{p.name}{p.buttonText ? ` · “${p.buttonText}”` : ""}</option>)}
+          </select>
+          {sel && !sel.buttonUrl && <p className="text-[10px] text-amber-600">This product has no button link — add one in Catalog or it won’t send.</p>}
+        </>
+      ) : (
+        <>
+          <input className={inp} placeholder="Catalog ID (Commerce Manager)" value={str(data.catalogId)} onChange={e => set({ catalogId: e.target.value })} />
+          <input className={inp} placeholder="Product retailer ID" value={str(data.productId)} onChange={e => set({ productId: e.target.value })} />
+        </>
+      )}
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
   );
@@ -541,7 +571,11 @@ function validateGraph(nodes: Node[], edges: Edge[], keywords: string, active: b
     if (n.type === "hours" && !out(n.id, "open") && !out(n.id, "closed")) add("Connect the open and/or closed path so the flow knows where to go.");
     if (n.type === "tag" && !str(d.tag).trim()) add("Type the tag to add to this contact (e.g. hot-lead).");
     if (n.type === "webhook" && !/^https?:\/\//.test(str(d.url))) add("Paste the full URL to notify, starting with https://.");
-    if (n.type === "product" && (!str(d.catalogId).trim() || !str(d.productId).trim())) add("Fill in both the Catalog ID and the Product ID from Meta Commerce Manager.");
+    if (n.type === "product") {
+      if (str(d.cardStyle) === "custom") {
+        if (!str(d.localProductId).trim()) add("Pick a product for the custom card (add products in Catalog).");
+      } else if (!str(d.catalogId).trim() || !str(d.productId).trim()) add("Fill in both the Catalog ID and the Product ID from Meta Commerce Manager.");
+    }
     if (n.type === "template" && !str(d.templateName).trim()) add("Pick an approved template to send.");
     if (n.type === "productlist") {
       const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);

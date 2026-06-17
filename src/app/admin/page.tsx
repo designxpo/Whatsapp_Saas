@@ -6814,8 +6814,8 @@ function SequencesTab() {
 }
 
 // ── Catalog (commerce) ────────────────────────────────────────────────────────
-type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean };
-const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", description: "", price: "", currency: "INR", imageUrl: "", retailerId: "", metaProductId: "", catalogId: "", available: true };
+type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null };
+const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", description: "", price: "", currency: "INR", imageUrl: "", retailerId: "", metaProductId: "", catalogId: "", available: true, buttonText: "", buttonUrl: "" };
 
 // Image that falls back to a placeholder icon when the URL is missing or fails
 // to load (e.g. a non-image link was pasted), instead of a broken-image glyph.
@@ -6856,7 +6856,7 @@ function CatalogTab() {
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: form.id, name: form.name, description: form.description, priceCents: Math.round((Number(form.price) || 0) * 100), currency: form.currency, imageUrl: form.imageUrl || null, retailerId: form.retailerId || null, metaProductId: form.metaProductId || null, catalogId: form.catalogId || null, available: form.available }) });
+        body: JSON.stringify({ id: form.id, name: form.name, description: form.description, priceCents: Math.round((Number(form.price) || 0) * 100), currency: form.currency, imageUrl: form.imageUrl || null, retailerId: form.retailerId || null, metaProductId: form.metaProductId || null, catalogId: form.catalogId || null, available: form.available, buttonText: form.buttonText || null, buttonUrl: form.buttonUrl || null }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -6889,7 +6889,7 @@ function CatalogTab() {
             <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
             <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
           </div>
-          <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available, buttonText: p.buttonText ?? "", buttonUrl: p.buttonUrl ?? "" })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
@@ -6914,6 +6914,8 @@ function CatalogTab() {
             <textarea className={`${inp} col-span-2`} rows={2} placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
             <input className={inp} placeholder={form.id ? "Your SKU / retailer id" : "SKU / retailer id — auto-generated if blank"} value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
             <input className={inp} placeholder="Meta catalog product id (optional)" value={form.metaProductId} onChange={e => setForm({ ...form, metaProductId: e.target.value })} />
+            <input className={inp} maxLength={20} placeholder='Button label (e.g. "Buy now") — max 20' value={form.buttonText} onChange={e => setForm({ ...form, buttonText: e.target.value })} />
+            <input className={inp} placeholder="Button link (https://… — required to use a custom button)" value={form.buttonUrl} onChange={e => setForm({ ...form, buttonUrl: e.target.value })} />
           </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.available} onChange={e => setForm({ ...form, available: e.target.checked })} /> available</label>
@@ -6933,9 +6935,14 @@ function CatalogTab() {
                   <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
                   {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
                 </div>
-                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">View</div>
+                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{form.buttonText.trim() || "View"}</div>
               </div>
             </div>
+            <p className="mt-1.5 text-[10px] text-ink-400 leading-snug">
+              {form.buttonUrl.trim()
+                ? <>Custom card: image + this button → <span className="font-mono break-all">{form.buttonUrl}</span>. Use the “Custom card” style on a flow’s Product node.</>
+                : <>Native catalog card shows WhatsApp’s own “View” button. Add a button link above to send a custom card with your label instead.</>}
+            </p>
           </div>
         </div>
       )}

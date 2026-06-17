@@ -13,7 +13,7 @@
 
 import { db } from "./supabase";
 import {
-  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCarouselTemplate, sendTemplateSingle,
+  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCtaUrl, sendCarouselTemplate, sendTemplateSingle,
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
@@ -24,6 +24,7 @@ import {
   addContactTag, takeArmedFlow,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
+import { getProduct } from "./commerce";
 import { safeFetch } from "./ssrf";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -147,6 +148,9 @@ export interface FlowSender {
   list(body: string, buttonText: string, sections: { title: string; rows: { id: string; title: string; description?: string }[] }[]): Promise<{ id?: string; error?: string }>;
   media(kind: "image" | "video" | "document", url: string, caption?: string): Promise<{ id?: string; error?: string }>;
   product(body: string, catalogId: string, productId: string): Promise<{ id?: string; error?: string }>;
+  // Custom product card: image + body + a button you label (vs the native
+  // catalog card whose button Meta controls). buttonUrl is required by WhatsApp.
+  productCard(body: string, imageUrl: string | null, buttonText: string, buttonUrl: string): Promise<{ id?: string; error?: string }>;
   productList(header: string, body: string, catalogId: string, sections: { title: string; productRetailerIds: string[] }[]): Promise<{ id?: string; error?: string }>;
   template(templateName: string, lang: string, bodyParams: string[], headerImageUrl?: string): Promise<{ id?: string; error?: string }>;
   carouselTemplate(templateName: string, lang: string, bubbleParams: string[], cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[]): Promise<{ id?: string; error?: string }>;
@@ -165,6 +169,7 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     async list(body, buttonText, sections) { const r = await sendList(phone, body, buttonText, sections, channel); await log(`${body}\n[list: ${sections.flatMap(s => s.rows.map(x => x.title)).join(" | ")}]`, r.id); return r; },
     async media(kind, url, caption) { const r = await sendMedia(phone, kind, url, caption, channel); await log(`[${kind}] ${caption ?? url}`, r.id); return r; },
     async product(body, catalogId, productId) { const r = await sendProduct(phone, body, catalogId, productId, channel); await log(`[product ${productId}] ${body}`, r.id); return r; },
+    async productCard(body, imageUrl, buttonText, buttonUrl) { const r = await sendCtaUrl(phone, body, buttonText, buttonUrl, channel, imageUrl ?? undefined); await log(`[product card] ${body}\n[${buttonText}] ${buttonUrl}`, r.id); return r; },
     async productList(header, body, catalogId, sections) { const r = await sendProductList(phone, header, body, catalogId, sections, channel); await log(`${body}\n[catalog: ${sections.flatMap(s => s.productRetailerIds).length} products]`, r.id); return r; },
     async template(templateName, lang, bodyParams, headerImageUrl) { const r = await sendTemplateSingle(phone, templateName, lang, bodyParams, channel, headerImageUrl); await log(`[template: ${templateName}${bodyParams.length ? ` · ${bodyParams.join(", ")}` : ""}]`, r.id); return r; },
     async carouselTemplate(templateName, lang, bubbleParams, cards) { const r = await sendCarouselTemplate(phone, templateName, lang, bubbleParams, cards, channel); await log(`[carousel template: ${templateName} · ${cards.length} cards]`, r.id); return r; },
@@ -205,6 +210,7 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     async list(body, _buttonText, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
     async media(_kind, url, caption) { return sendIg(caption ? `${caption}\n${url}` : url); },
     async product(body) { return sendIg(body); },
+    async productCard(body, _imageUrl, buttonText, buttonUrl) { return sendIg(`${body}\n${buttonText}: ${buttonUrl}`); },
     // Instagram has no catalog/template messages — send the bubble text so the
     // flow still says something instead of going silent.
     async productList(header, body) { return sendIg([header, body].filter(s => s?.trim()).join("\n") || "Have a look:"); },
@@ -223,6 +229,7 @@ export function drySender(out: SimOutput[]): FlowSender {
     async list(body, _bt, sections) { out.push({ kind: "list", body, options: sections.flatMap(s => s.rows.map(r => r.title)) }); return ok(); },
     async media(kind, url, caption) { out.push({ kind, body: caption ?? url }); return ok(); },
     async product(body, _c, productId) { out.push({ kind: "product", body: `${body} (product: ${productId})` }); return ok(); },
+    async productCard(body, _imageUrl, buttonText, buttonUrl) { out.push({ kind: "product", body: `${body}\n🔘 [${buttonText || "View"}] → ${buttonUrl}` }); return ok(); },
     async productList(header, body, _c, sections) { out.push({ kind: "product_list", body: `🛍 ${[header, body].filter(s => s?.trim()).join(" — ")} (${sections.flatMap(s => s.productRetailerIds).length} catalog products, swipeable)` }); return ok(); },
     async template(templateName, _lang, bodyParams) { out.push({ kind: "template", body: `📄 Template “${templateName}”${bodyParams.length ? ` · ${bodyParams.join(", ")}` : ""}` }); return ok(); },
     async carouselTemplate(templateName, _lang, _bubbleParams, cards) { out.push({ kind: "carousel", body: `🎠 Carousel template “${templateName}” — ${cards.length} swipeable cards` }); return ok(); },
@@ -292,7 +299,18 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         cur = nextNode(g, cur.id); continue;
       }
       case "product": {
-        if (str(d.catalogId) && str(d.productId)) await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+        if (str(d.cardStyle) === "custom") {
+          // Custom card: live-look up the catalog product so its image + button
+          // (edited in the Catalog tab) are always current. Needs a button link.
+          const prod = str(d.localProductId) ? await getProduct(str(d.localProductId), tenantId) : null;
+          if (prod?.buttonUrl) {
+            const price = `${prod.currency} ${(prod.priceCents / 100).toFixed(2)}`;
+            const body = str(d.text) || [prod.name, price, prod.description].filter(Boolean).join("\n");
+            await send.productCard(body, prod.imageUrl, prod.buttonText || "View", prod.buttonUrl);
+          }
+        } else if (str(d.catalogId) && str(d.productId)) {
+          await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+        }
         cur = nextNode(g, cur.id); continue;
       }
       case "template": {

@@ -338,9 +338,10 @@ export async function sendMedia(phone: string, kind: "image" | "video" | "docume
 
 // Sends a message with a tappable URL button (interactive cta_url). Free-form,
 // 24h-window rules apply — used when an AI answer references a link.
-export async function sendCtaUrl(phone: string, body: string, buttonText: string, url: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendCtaUrl(phone: string, body: string, buttonText: string, url: string, channel?: ChannelCreds, headerImageUrl?: string): Promise<{ id?: string; error?: string }> {
   return sendInteractive(phone, {
     type: "cta_url",
+    ...(headerImageUrl ? { header: { type: "image", image: { link: headerImageUrl } } } : {}),
     body: { text: body.slice(0, 1024) },
     action: { name: "cta_url", parameters: { display_text: buttonText.slice(0, 20) || "View details", url } },
   }, channel);
