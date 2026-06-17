@@ -51,9 +51,16 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 //   pipedrive  — sync persons into Pipedrive (API token)
 //   razorpay   — generate payment links (key id + secret)
 //   stripe     — generate payment links (secret key)
-export type IntegrationKind = "webhook" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom";
+export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
+// Webhook-style kinds POST to a URL. slack/teams are webhooks with the format
+// pre-set, surfaced as their own types so users don't have to know they're "just
+// a webhook". The format each one sends is derived from the kind (see formatForKind).
+export const WEBHOOK_KINDS: IntegrationKind[] = ["webhook", "slack", "teams"];
+export function formatForKind(kind: IntegrationKind): WebhookFormat {
+  return kind === "slack" ? "slack" : kind === "teams" ? "teams" : "generic";
+}
 // CRM kinds authenticate with a single pasted token.
 export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive"];
 // Payment kinds expose createPaymentLink() instead of subscribing to events.
@@ -63,9 +70,11 @@ export const STORE_KINDS: IntegrationKind[] = ["shopify", "woocommerce"];
 // Scheduling kinds back the flow "Book meeting" node (slots + booking via API).
 export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom"];
 // Event-driven kinds — their `events` subscription matters; action kinds ignore it.
-export const EVENT_KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive"];
+export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive"];
 export const KIND_LABELS: Record<IntegrationKind, string> = {
-  webhook: "Webhook (Zapier / Make / Slack / Teams)",
+  webhook: "Webhook (Zapier / Make / n8n)",
+  slack: "Slack",
+  teams: "Microsoft Teams",
   hubspot: "HubSpot",
   pipedrive: "Pipedrive",
   razorpay: "Razorpay",
@@ -628,6 +637,8 @@ const calcomConnector: Connector = {
 
 const CONNECTORS: Record<IntegrationKind, Connector> = {
   webhook: webhookConnector,
+  slack: webhookConnector,   // webhook with format pre-set to "slack"
+  teams: webhookConnector,   // webhook with format pre-set to "teams"
   hubspot: hubspotConnector,
   pipedrive: pipedriveConnector,
   razorpay: razorpayConnector,

@@ -201,7 +201,7 @@ export default function Admin() {
           {tab === "campaigns" && <CampaignsTab goTo={setTab} />}
           {tab === "optouts" && <OptoutsTab />}
           {tab === "setup" && <SetupTab goTo={setTab} />}
-          {tab === "integrations" && <IntegrationsTab />}
+          {tab === "integrations" && <IntegrationsTab goTo={setTab} />}
           {tab === "settings" && <SettingsTab goTo={setTab} />}
         </main>
       </div>
@@ -7538,12 +7538,12 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "contact.optout", label: "Contact opted out" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Webhook", hubspot: "HubSpot", pipedrive: "Pipedrive", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };
+const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };
 const CRM_KINDS = ["hubspot", "pipedrive"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
 const SCHEDULE_KINDS = ["calcom"];
-const EVENT_KINDS = ["webhook", "hubspot", "pipedrive"];
+const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive"];
 const TOKEN_HELP: Record<string, string> = {
   hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
   pipedrive: "Pipedrive → Settings → Personal preferences → API → copy your personal API token.",
@@ -7554,7 +7554,7 @@ const TOKEN_HELP: Record<string, string> = {
   calcom: "Cal.com → Settings → Developer → API Keys for the key; the Event Type ID is in the event type's URL (…/event-types/123).",
 };
 
-function IntegrationsTab() {
+function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", events: ["contact.created", "conversation.escalated"] as string[] });
@@ -7653,8 +7653,20 @@ function IntegrationsTab() {
 
       {/* Existing connections */}
       <div className="space-y-2">
+        {/* LeadSquared is configured on its own Settings card (it powers live CRM
+            timeline sync); surfaced here so all CRMs are visible in one place. */}
+        <section className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-ink-900 truncate">LeadSquared</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Set up in Settings</span>
+            </div>
+            <p className="text-[11px] text-slate-500 truncate">LeadSquared CRM · syncs every chat to the lead timeline</p>
+          </div>
+          <button onClick={() => goTo("settings")} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas shrink-0">Open settings</button>
+        </section>
         {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
-        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations yet — add one below to start sending events.</p>}
+        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No other integrations connected yet — add one below.</p>}
         {items?.map(i => (
           <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -7716,14 +7728,12 @@ function IntegrationsTab() {
             </div>
           ) : (
             <>
-              <input className={`${inp} w-full`} placeholder="https://hooks.zapier.com/… or your Slack/Teams webhook URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
-              <div>
-                <label className="text-xs font-bold text-slate-400 uppercase">Destination format</label>
-                <select className={`${inp} w-full mt-1`} value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
-                  {Object.entries(FORMAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-                <p className="text-[11px] text-slate-500 mt-1">Standard sends the full signed JSON. Slack/Teams send a ready-to-read message to your channel.</p>
-              </div>
+              <input className={`${inp} w-full`} placeholder={form.kind === "slack" ? "Slack incoming webhook URL (hooks.slack.com/…)" : form.kind === "teams" ? "Teams incoming webhook URL" : "https://hooks.zapier.com/… (Zapier / Make / n8n)"} value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
+              <p className="text-[11px] text-slate-500">
+                {form.kind === "slack" ? "Slack → Apps → Incoming Webhooks → add one for a channel, then paste its URL. We post a ready-to-read message."
+                  : form.kind === "teams" ? "Teams → channel → Connectors → Incoming Webhook → create one, then paste its URL. We post a ready-to-read message."
+                  : "We POST a signed JSON event to this URL — works with Zapier, Make, n8n, Pabbly and any tool that accepts a webhook."}
+              </p>
             </>
           )}
           {isEventKind && <div>
