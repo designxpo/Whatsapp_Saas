@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   signPayload, humanText, buildWebhookRequest, isIntegrationEvent,
+  splitName, hubspotContactProps, pipedrivePersonBody,
   type EventEnvelope,
 } from "../integrations";
 
@@ -69,7 +70,45 @@ describe("buildWebhookRequest", () => {
 describe("isIntegrationEvent", () => {
   it("accepts known events and rejects others", () => {
     expect(isIntegrationEvent("message.inbound")).toBe(true);
+    expect(isIntegrationEvent("contact.created")).toBe(true);
     expect(isIntegrationEvent("order.created")).toBe(true);
     expect(isIntegrationEvent("nope")).toBe(false);
+  });
+});
+
+describe("splitName", () => {
+  it("splits first and last", () => {
+    expect(splitName("Asha Verma")).toEqual({ first: "Asha", last: "Verma" });
+    expect(splitName("Asha")).toEqual({ first: "Asha", last: "" });
+    expect(splitName("Asha Devi Verma")).toEqual({ first: "Asha", last: "Devi Verma" });
+    expect(splitName(undefined)).toEqual({ first: "", last: "" });
+  });
+});
+
+describe("hubspotContactProps", () => {
+  it("maps phone + name to HubSpot properties", () => {
+    const p = hubspotContactProps({ phone: "+15551234567", name: "Asha Verma", channel: "whatsapp" });
+    expect(p.phone).toBe("+15551234567");
+    expect(p.firstname).toBe("Asha");
+    expect(p.lastname).toBe("Verma");
+    expect(p.lifecyclestage).toBe("lead");
+  });
+  it("omits name fields when there is no name", () => {
+    const p = hubspotContactProps({ phone: "+1" });
+    expect(p.phone).toBe("+1");
+    expect(p.firstname).toBeUndefined();
+    expect(p.lastname).toBeUndefined();
+  });
+});
+
+describe("pipedrivePersonBody", () => {
+  it("builds a person with a primary phone", () => {
+    const b = pipedrivePersonBody({ phone: "+15551234567", name: "Asha" }) as { name: string; phone: { value: string; primary: boolean }[] };
+    expect(b.name).toBe("Asha");
+    expect(b.phone[0]).toMatchObject({ value: "+15551234567", primary: true });
+  });
+  it("falls back to the phone, then a generic name", () => {
+    expect((pipedrivePersonBody({ phone: "+199" }) as { name: string }).name).toBe("+199");
+    expect((pipedrivePersonBody({}) as { name: string }).name).toBe("WhatsApp lead");
   });
 });

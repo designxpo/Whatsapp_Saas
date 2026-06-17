@@ -119,8 +119,11 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Ensure the sender is a contact, then attach to a conversation. An inbound
   // message IS a verifiable opt-in, so mark consent (and upgrade an existing
   // imported-but-unconsented contact via markOptedIn).
-  await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }).catch(() => undefined);
+  const upserted = await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }).catch(() => undefined);
   await markOptedIn(from, "inbound", "WhatsApp inbound message", tid).catch(() => undefined);
+  // Brand-new contact → a new lead. Fire once (inserted>0) so CRM connectors
+  // sync each lead exactly once instead of on every message.
+  if (upserted?.inserted) after(() => emitEvent(tid, "contact.created", { phone: from, name: profileName, channel: "whatsapp" }));
 
   // Click-to-WhatsApp ad attribution — when the chat was opened from an ad,
   // Meta attaches a referral object. Stamp the contact so the Ads tab can show

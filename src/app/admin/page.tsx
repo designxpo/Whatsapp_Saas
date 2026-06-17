@@ -7531,17 +7531,25 @@ type Integration = {
   hasSecret: boolean; lastEventAt: string | null; createdAt: string;
 };
 const INTEGRATION_EVENTS: { key: string; label: string }[] = [
+  { key: "contact.created", label: "New contact / lead" },
   { key: "message.inbound", label: "New message received" },
   { key: "conversation.escalated", label: "Chat handed to a human" },
   { key: "order.created", label: "Order placed" },
   { key: "contact.optout", label: "Contact opted out" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
+const KIND_LABELS: Record<string, string> = { webhook: "Webhook", hubspot: "HubSpot", pipedrive: "Pipedrive" };
+const CRM_KINDS = ["hubspot", "pipedrive"];
+const TOKEN_HELP: Record<string, string> = {
+  hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
+  pipedrive: "Pipedrive → Settings → Personal preferences → API → copy your personal API token.",
+};
 
 function IntegrationsTab() {
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ name: "", url: "", format: "generic", events: ["message.inbound", "conversation.escalated"] as string[] });
+  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", events: ["contact.created", "conversation.escalated"] as string[] });
+  const isCrm = CRM_KINDS.includes(form.kind);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
@@ -7563,8 +7571,8 @@ function IntegrationsTab() {
       if (d.error) setMsg({ ok: false, text: d.error });
       else {
         setNewSecret(d.secret ?? null);
-        setMsg({ ok: true, text: "Added. Send a test ping to confirm it's connected." });
-        setForm({ name: "", url: "", format: "generic", events: ["message.inbound", "conversation.escalated"] });
+        setMsg({ ok: true, text: "Added. Hit Test to confirm it's connected." });
+        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", events: ["contact.created", "conversation.escalated"] });
         setAdding(false);
         load();
       }
@@ -7603,7 +7611,7 @@ function IntegrationsTab() {
     <div className="max-w-3xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Send your WhatsApp events to the tools you already use. Connect a webhook to Zapier, Make, n8n, Slack or Teams — no code required. Each event is signed so the receiver can trust it.</p>
+        <p className="text-sm text-slate-500">Connect the tools you already use. Send events to Zapier, Make, n8n, Slack or Teams via a signed webhook, or sync new leads straight into HubSpot or Pipedrive — no code required.</p>
       </div>
 
       {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
@@ -7622,7 +7630,7 @@ function IntegrationsTab() {
       {/* Existing connections */}
       <div className="space-y-2">
         {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
-        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations yet — add a webhook below to start sending events.</p>}
+        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations yet — add one below to start sending events.</p>}
         {items?.map(i => (
           <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -7632,7 +7640,7 @@ function IntegrationsTab() {
                   {statusBadge(i.status)}
                   {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
                 </div>
-                <p className="text-[11px] text-slate-500 truncate">{FORMAT_LABELS[i.config.format ?? "generic"]} · {i.config.url}</p>
+                <p className="text-[11px] text-slate-500 truncate">{CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 <button onClick={() => test(i.id)} disabled={testing === i.id} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
@@ -7652,18 +7660,33 @@ function IntegrationsTab() {
       {/* Add a webhook */}
       {adding ? (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
-          <h3 className="text-sm font-bold text-ink-900">Add a webhook</h3>
-          <input className={`${inp} w-full`} placeholder="Name (e.g. Slack #leads, Zapier orders)" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          <input className={`${inp} w-full`} placeholder="https://hooks.zapier.com/… or your Slack/Teams webhook URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
+          <h3 className="text-sm font-bold text-ink-900">Add an integration</h3>
           <div>
-            <label className="text-xs font-bold text-slate-400 uppercase">Destination format</label>
-            <select className={`${inp} w-full mt-1`} value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
-              {Object.entries(FORMAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            <label className="text-xs font-bold text-slate-400 uppercase">Type</label>
+            <select className={`${inp} w-full mt-1`} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>
+              {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
-            <p className="text-[11px] text-slate-500 mt-1">Standard sends the full signed JSON. Slack/Teams send a ready-to-read message to your channel.</p>
           </div>
+          <input className={`${inp} w-full`} placeholder={isCrm ? `Name (e.g. ${KIND_LABELS[form.kind]} leads)` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          {isCrm ? (
+            <div>
+              <input className={`${inp} w-full`} type="password" placeholder={`${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
+              <p className="text-[11px] text-slate-500 mt-1">{TOKEN_HELP[form.kind]}</p>
+            </div>
+          ) : (
+            <>
+              <input className={`${inp} w-full`} placeholder="https://hooks.zapier.com/… or your Slack/Teams webhook URL" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
+              <div>
+                <label className="text-xs font-bold text-slate-400 uppercase">Destination format</label>
+                <select className={`${inp} w-full mt-1`} value={form.format} onChange={e => setForm({ ...form, format: e.target.value })}>
+                  {Object.entries(FORMAT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <p className="text-[11px] text-slate-500 mt-1">Standard sends the full signed JSON. Slack/Teams send a ready-to-read message to your channel.</p>
+              </div>
+            </>
+          )}
           <div>
-            <label className="text-xs font-bold text-slate-400 uppercase">Send these events</label>
+            <label className="text-xs font-bold text-slate-400 uppercase">{isCrm ? "Sync a contact on" : "Send these events"}</label>
             <div className="grid grid-cols-2 gap-1.5 mt-1.5">
               {INTEGRATION_EVENTS.map(e => (
                 <label key={e.key} className="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
@@ -7674,12 +7697,12 @@ function IntegrationsTab() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={create} disabled={busy || !form.url.trim() || !form.events.length} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add webhook"}</button>
+            <button onClick={create} disabled={busy || !form.events.length || (isCrm ? !form.token.trim() : !form.url.trim())} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
             <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
           </div>
         </section>
       ) : (
-        <button onClick={() => { setAdding(true); setNewSecret(null); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold"><Plus className="w-4 h-4" /> Add a webhook</button>
+        <button onClick={() => { setAdding(true); setNewSecret(null); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold"><Plus className="w-4 h-4" /> Add an integration</button>
       )}
     </div>
   );

@@ -24,6 +24,7 @@ const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 // Stable string keys — external automations match on these, so renaming one is
 // a breaking change for tenants. Add new events to the end.
 export const INTEGRATION_EVENTS = [
+  "contact.created",
   "message.inbound",
   "conversation.escalated",
   "order.created",
@@ -32,6 +33,7 @@ export const INTEGRATION_EVENTS = [
 export type IntegrationEvent = (typeof INTEGRATION_EVENTS)[number];
 
 export const EVENT_LABELS: Record<IntegrationEvent, string> = {
+  "contact.created": "New contact / lead",
   "message.inbound": "New message received",
   "conversation.escalated": "Chat handed to a human",
   "order.created": "Order placed",
@@ -43,9 +45,20 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 }
 
 // ── Connector kinds ──────────────────────────────────────────────────────────
-// Only "webhook" today; the registry below makes adding kinds a local change.
-export type IntegrationKind = "webhook";
+// The registry below makes adding a kind a local change.
+//   webhook   — signed outbound HTTP (Zapier/Make/Slack/Teams)
+//   hubspot   — sync contacts into HubSpot (private-app token)
+//   pipedrive — sync persons into Pipedrive (API token)
+export type IntegrationKind = "webhook" | "hubspot" | "pipedrive";
 export type WebhookFormat = "generic" | "slack" | "teams";
+
+// Kinds that authenticate with a single pasted token (vs a webhook URL).
+export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive"];
+export const KIND_LABELS: Record<IntegrationKind, string> = {
+  webhook: "Webhook (Zapier / Make / Slack / Teams)",
+  hubspot: "HubSpot",
+  pipedrive: "Pipedrive",
+};
 
 export interface Integration {
   id: string;
@@ -82,6 +95,8 @@ export function signPayload(secret: string, rawBody: string): string {
 export function humanText(event: IntegrationEvent, data: Record<string, unknown>): string {
   const who = (data.name as string)?.trim() || (data.phone as string) || "a contact";
   switch (event) {
+    case "contact.created":
+      return `🆕 New lead: ${who}${data.channel ? ` (${String(data.channel)})` : ""}.`;
     case "message.inbound":
       return `📩 ${who}: ${String(data.text ?? "").slice(0, 300) || "(no text)"}`;
     case "conversation.escalated":
@@ -114,6 +129,31 @@ export function buildWebhookRequest(opts: {
   // Slack/Teams ignore custom headers; we still sign generic deliveries.
   if (secret && format === "generic") headers["X-Alabs-Signature"] = signPayload(secret, body);
   return { body, headers };
+}
+
+// Split a free-text name into first/last for CRM contact records.
+export function splitName(name: string | undefined): { first: string; last: string } {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  return { first: parts[0] ?? "", last: parts.slice(1).join(" ") };
+}
+
+// HubSpot contact properties from an event payload (phone is the dedup key).
+export function hubspotContactProps(data: Record<string, unknown>): Record<string, string> {
+  const { first, last } = splitName(data.name as string);
+  const phone = String(data.phone ?? "").trim();
+  const props: Record<string, string> = { phone };
+  if (first) props.firstname = first;
+  if (last) props.lastname = last;
+  props.hs_lead_status = "NEW";
+  if (data.channel) props.lifecyclestage = "lead";
+  return props;
+}
+
+// Pipedrive person body from an event payload.
+export function pipedrivePersonBody(data: Record<string, unknown>): Record<string, unknown> {
+  const phone = String(data.phone ?? "").trim();
+  const name = (data.name as string)?.trim() || phone || "WhatsApp lead";
+  return { name, phone: [{ value: phone, primary: true, label: "mobile" }] };
 }
 
 // ── DB layer (tenant-scoped) ──────────────────────────────────────────────────
@@ -254,7 +294,77 @@ const webhookConnector: Connector = {
   },
 };
 
-const CONNECTORS: Record<IntegrationKind, Connector> = { webhook: webhookConnector };
+// ── HubSpot — sync contacts (private-app token) ───────────────────────────────
+// deliver() is idempotent: search by phone, create only when absent, so a
+// connection subscribed to "every message" never makes duplicate contacts.
+const HUBSPOT_API = "https://api.hubapi.com";
+const hubspotConnector: Connector = {
+  async verify(_i, secret) {
+    if (!secret) return { ok: false, detail: "Paste your HubSpot private-app token first." };
+    try {
+      const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts?limit=1`, {
+        headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) return { ok: true, detail: "Connected — your HubSpot token works." };
+      if (res.status === 401) return { ok: false, detail: "HubSpot rejected the token — create a Private App with crm.objects.contacts read+write and paste its token." };
+      if (res.status === 403) return { ok: false, detail: "That HubSpot token is missing the Contacts scope (crm.objects.contacts.read / .write)." };
+      return { ok: false, detail: `HubSpot returned HTTP ${res.status}. Check the token and try again.` };
+    } catch { return { ok: false, detail: "Couldn't reach HubSpot — check your connection and try again." }; }
+  },
+  async deliver(_i, secret, envelope) {
+    const phone = String(envelope.data.phone ?? "").trim();
+    if (!secret || !phone) return;
+    const auth = { Authorization: `Bearer ${secret}`, "Content-Type": "application/json" };
+    const search = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/search`, {
+      method: "POST", headers: auth, signal: AbortSignal.timeout(6000),
+      body: JSON.stringify({ filterGroups: [{ filters: [{ propertyName: "phone", operator: "EQ", value: phone }] }], properties: ["phone"], limit: 1 }),
+    });
+    if (search.ok) {
+      const found = (await search.json().catch(() => null)) as { total?: number } | null;
+      if (found?.total && found.total > 0) return; // already in HubSpot — no dupe
+    }
+    const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts`, {
+      method: "POST", headers: auth, signal: AbortSignal.timeout(6000),
+      body: JSON.stringify({ properties: hubspotContactProps(envelope.data) }),
+    });
+    if (!res.ok && res.status !== 409) throw new Error(`HubSpot HTTP ${res.status}`); // 409 = already exists
+  },
+};
+
+// ── Pipedrive — sync persons (API token) ──────────────────────────────────────
+const PIPEDRIVE_API = "https://api.pipedrive.com/v1";
+const pipedriveConnector: Connector = {
+  async verify(_i, secret) {
+    if (!secret) return { ok: false, detail: "Paste your Pipedrive API token first." };
+    try {
+      const res = await fetch(`${PIPEDRIVE_API}/users/me?api_token=${encodeURIComponent(secret)}`, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Pipedrive token works." };
+      if (res.status === 401) return { ok: false, detail: "Pipedrive rejected the token — copy it from Settings → Personal preferences → API." };
+      return { ok: false, detail: `Pipedrive returned HTTP ${res.status}. Check the token and try again.` };
+    } catch { return { ok: false, detail: "Couldn't reach Pipedrive — check your connection and try again." }; }
+  },
+  async deliver(_i, secret, envelope) {
+    const phone = String(envelope.data.phone ?? "").trim();
+    if (!secret || !phone) return;
+    const q = `api_token=${encodeURIComponent(secret)}`;
+    const search = await fetch(`${PIPEDRIVE_API}/persons/search?term=${encodeURIComponent(phone)}&fields=phone&exact_match=false&limit=1&${q}`, { signal: AbortSignal.timeout(6000) });
+    if (search.ok) {
+      const found = (await search.json().catch(() => null)) as { data?: { items?: unknown[] } } | null;
+      if (found?.data?.items?.length) return; // already a person — no dupe
+    }
+    const res = await fetch(`${PIPEDRIVE_API}/persons?${q}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(6000),
+      body: JSON.stringify(pipedrivePersonBody(envelope.data)),
+    });
+    if (!res.ok) throw new Error(`Pipedrive HTTP ${res.status}`);
+  },
+};
+
+const CONNECTORS: Record<IntegrationKind, Connector> = {
+  webhook: webhookConnector,
+  hubspot: hubspotConnector,
+  pipedrive: pipedriveConnector,
+};
 
 // ── Public: verify + emit ─────────────────────────────────────────────────────
 
