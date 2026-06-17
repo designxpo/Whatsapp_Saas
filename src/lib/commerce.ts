@@ -26,11 +26,20 @@ export async function listProducts(tenantId = DEFAULT_TENANT_ID): Promise<Produc
   return (data ?? []).map(r => mapProduct(r as Record<string, unknown>));
 }
 
+// Auto-generated SKU / product_retailer_id for new products when the admin
+// leaves it blank — a name slug + short random suffix (unique enough for a small
+// catalog; this id is what catalog/product messages reference).
+function genRetailerId(name: string): string {
+  const slug = name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24);
+  return `${slug || "PROD"}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+}
+
 export async function saveProduct(p: Partial<Product> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<Product> {
+  const retailerId = p.retailerId?.trim() || (p.id ? null : genRetailerId(p.name));
   const row = {
     tenant_id: tenantId,
     name: p.name.trim(), description: p.description ?? null, price_cents: p.priceCents ?? 0,
-    currency: p.currency ?? "INR", image_url: p.imageUrl ?? null, retailer_id: p.retailerId ?? null,
+    currency: p.currency ?? "INR", image_url: p.imageUrl ?? null, retailer_id: retailerId,
     meta_product_id: p.metaProductId ?? null, catalog_id: p.catalogId ?? null, available: p.available ?? true,
   };
   const q = p.id ? db().from("wa_products").update(row).eq("tenant_id", tenantId).eq("id", p.id).select().single()

@@ -6372,9 +6372,20 @@ function CatalogTab() {
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <div className="flex gap-2"><input className={inp} placeholder="Price" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
-            <input className={`${inp} col-span-2`} placeholder="Image URL" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
+            <div className="col-span-2 flex items-center gap-3">
+              {form.imageUrl
+                ? <img src={form.imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-line shrink-0" />
+                : <div className="w-14 h-14 rounded-lg bg-canvas flex items-center justify-center shrink-0"><ImageIcon className="w-5 h-5 text-ink-300" /></div>}
+              <div className="flex-1 space-y-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <ImageUpload onUploaded={url => setForm({ ...form, imageUrl: url })} />
+                  {form.imageUrl && <button onClick={() => setForm({ ...form, imageUrl: "" })} className="text-[11px] font-semibold text-ink-400 hover:text-red-600">Remove</button>}
+                </div>
+                <input className={`${inp} w-full`} placeholder="…or paste an image link" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
+              </div>
+            </div>
             <textarea className={`${inp} col-span-2`} rows={2} placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
-            <input className={inp} placeholder="Your SKU / retailer id" value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
+            <input className={inp} placeholder={form.id ? "Your SKU / retailer id" : "SKU / retailer id — auto-generated if blank"} value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
             <input className={inp} placeholder="Meta catalog product id (optional)" value={form.metaProductId} onChange={e => setForm({ ...form, metaProductId: e.target.value })} />
           </div>
           <div className="flex items-center gap-3">
