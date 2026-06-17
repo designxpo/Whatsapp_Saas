@@ -12,7 +12,7 @@ function Wordmark({ dark = false }: { dark?: boolean }) {
   if (dark) {
     return (
       <Link href="/" className="inline-flex items-center rounded-xl bg-white px-3 py-2 shadow-sm">
-        <BrandLogo height={26} className="max-w-[150px]" fallback={
+        <BrandLogo height={30} className="max-w-[170px]" fallback={
           <span className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
             <span className="text-[15px] font-extrabold tracking-tight text-slate-900">{SITE.name}</span>
