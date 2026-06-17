@@ -41,7 +41,10 @@ export async function POST() {
     const brief = await generateExecutiveBrief(lines, tid);
     return NextResponse.json({ brief, metrics: { cur, prev, deltaPct, optOutRate, escalationRate } });
   } catch (err) {
-    const msg = err instanceof AiKeyMissingError ? "AI isn't configured for this workspace yet." : "Could not generate the brief — try again.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const busy = err instanceof Error && /AI_BUSY/.test(err.message);
+    const msg = err instanceof AiKeyMissingError ? "AI isn't configured for this workspace yet."
+      : busy ? "AI is busy right now (model overloaded) — tap Generate to try again."
+      : "Could not generate the brief — try again.";
+    return NextResponse.json({ error: msg }, { status: busy ? 503 : 500 });
   }
 }

@@ -24,7 +24,10 @@ export async function POST(req: Request) {
     const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), phone, conv.agentId, conv.tenantId, conv.primaryKbTag);
     return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
   } catch (err) {
-    const msg = err instanceof AiKeyMissingError ? "AI isn't configured for this workspace." : "Could not draft a reply.";
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const busy = err instanceof Error && /AI_BUSY/.test(err.message);
+    const msg = err instanceof AiKeyMissingError ? "AI isn't configured for this workspace."
+      : busy ? "AI is busy right now (model overloaded) — try again."
+      : "Could not draft a reply.";
+    return NextResponse.json({ error: msg }, { status: busy ? 503 : 500 });
   }
 }

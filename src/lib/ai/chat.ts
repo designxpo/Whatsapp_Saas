@@ -76,13 +76,44 @@ function anthropic(apiKey: string): Anthropic {
   return c;
 }
 
+// ── resilience ────────────────────────────────────────────────────────────────
+// Provider endpoints intermittently return 503/429 "overloaded / high demand"
+// (Gemini's shared tier especially) and their SDKs can retry with no cap — which
+// makes a brief/reply spin forever in the UI. Wrap every call so it: retries
+// transient failures with short backoff, but hard-caps each attempt so it can
+// NEVER hang. Real errors (bad key, 400) surface as-is; persistent overloads /
+// timeouts become AI_BUSY, which callers turn into a clear "try again" message.
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+const TRANSIENT = /\b(429|500|502|503|529)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand|rate.?limit|deadline|timed out|timeout|AI_TIMEOUT|fetch failed|ECONNRESET|ETIMEDOUT/i;
+
+async function runResilient(fn: () => Promise<ChatResult>, tries = 4, perTryMs = 24000): Promise<ChatResult> {
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      const p = fn();
+      p.catch(() => {}); // swallow if it loses the timeout race (avoids unhandled rejection)
+      return await Promise.race([
+        p,
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error("AI_TIMEOUT")), perTryMs)),
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!TRANSIENT.test(msg)) throw err;          // real error (bad key, 400) — surface as-is
+      if (attempt === tries - 1) break;             // transient but out of tries
+      await sleep(500 * (attempt + 1));             // 0.5s, 1s, 1.5s backoff
+    }
+  }
+  throw new Error("AI_BUSY"); // exhausted transient retries / timed out
+}
+
 // ── dispatcher ────────────────────────────────────────────────────────────────
 export async function runChat(opts: RunChatOpts): Promise<ChatResult> {
-  switch (opts.provider) {
-    case "gemini": return runGemini(opts);
-    case "openai": return runOpenAI(opts);
-    case "anthropic": return runAnthropic(opts);
-  }
+  return runResilient(() => {
+    switch (opts.provider) {
+      case "gemini": return runGemini(opts);
+      case "openai": return runOpenAI(opts);
+      case "anthropic": return runAnthropic(opts);
+    }
+  });
 }
 
 // ── Gemini ─────────────────────────────────────────────────────────────────────
