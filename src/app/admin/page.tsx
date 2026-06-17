@@ -2720,14 +2720,37 @@ function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { lab
   );
 }
 
+type ExecBrief = { health: "strong" | "steady" | "at-risk"; headline: string; working: string[]; lacking: string[]; steps: { action: string; why: string }[] };
+
 function AnalyticsTab() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [brief, setBrief] = useState<ExecBrief | null>(null);
+  const [briefBusy, setBriefBusy] = useState(false);
+  const [briefErr, setBriefErr] = useState<string | null>(null);
   useEffect(() => {
     fetch("/api/admin/analytics").then(r => r.json()).then(d => { setData(d.analytics ?? null); setNotice(d.notice ?? null); }).catch(() => {});
   }, []);
 
+  async function genBrief() {
+    setBriefBusy(true); setBriefErr(null);
+    try {
+      const d = await fetch("/api/admin/analytics/brief", { method: "POST" }).then(r => r.json());
+      if (d.brief) setBrief(d.brief); else setBriefErr(d.error || "Could not generate the brief.");
+    } catch { setBriefErr("Connection error."); }
+    finally { setBriefBusy(false); }
+  }
+
   const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
+  const sumWeek = (rows: { sent: number; delivered: number; read: number; failed: number }[]) =>
+    rows.reduce((a, x) => ({ sent: a.sent + x.sent, delivered: a.delivered + x.delivered, read: a.read + x.read, failed: a.failed + x.failed }), { sent: 0, delivered: 0, read: 0, failed: 0 });
+  const wow = data ? (() => {
+    const prev = sumWeek(data.daily.slice(0, 7)), cur = sumWeek(data.daily.slice(7));
+    const dpct = prev.sent > 0 ? Math.round(((cur.sent - prev.sent) / prev.sent) * 100) : (cur.sent > 0 ? 100 : 0);
+    return { prev, cur, dpct };
+  })() : null;
+  const r0 = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+  const healthStyle = (h: string) => h === "strong" ? "bg-brand-100 text-brand-700" : h === "at-risk" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
 
   // Secondary KPIs (the first metric is the green hero card below).
   const cards: { label: string; value: string; sub?: string; icon: React.ReactNode }[] = data ? [
@@ -2749,6 +2772,78 @@ function AnalyticsTab() {
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
       {data && (
         <>
+          {/* ── CEO executive overview: week-over-week + AI brief ── */}
+          <section className="rounded-card border border-brand-100 bg-gradient-to-br from-brand-50/60 to-white p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-brand-700" /> Executive overview</p>
+                <p className="text-[11px] text-ink-400">This week vs last — with an AI read on what to fix.</p>
+              </div>
+              <button onClick={genBrief} disabled={briefBusy} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+                {briefBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} {brief ? "Refresh brief" : "Generate brief"}
+              </button>
+            </div>
+
+            {wow && (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {[
+                  { label: "Sent this week", value: wow.cur.sent.toLocaleString(), delta: wow.dpct },
+                  { label: "Read rate", value: `${r0(wow.cur.read, wow.cur.sent)}%`, delta: r0(wow.cur.read, wow.cur.sent) - r0(wow.prev.read, wow.prev.sent) },
+                  { label: "Delivery rate", value: `${r0(wow.cur.delivered, wow.cur.sent)}%`, delta: r0(wow.cur.delivered, wow.cur.sent) - r0(wow.prev.delivered, wow.prev.sent) },
+                  { label: "Failures", value: wow.cur.failed.toLocaleString(), delta: wow.cur.failed - wow.prev.failed, invert: true },
+                ].map(k => {
+                  const up = k.delta > 0, flat = k.delta === 0;
+                  const good = k.invert ? !up : up;
+                  return (
+                    <div key={k.label} className="bg-white rounded-control border border-line p-3">
+                      <p className="text-[19px] font-bold text-ink-900 tnum leading-none">{k.value}</p>
+                      <p className="text-[11px] text-ink-500 font-medium mt-1">{k.label}</p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${flat ? "text-ink-400" : good ? "text-brand-700" : "text-red-600"}`}>
+                        {flat ? "no change" : `${up ? "▲" : "▼"} ${Math.abs(k.delta)}${k.label.includes("rate") ? "pp" : ""} vs last week`}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {briefErr && <p className="text-xs text-red-600">{briefErr}</p>}
+            {!brief && !briefBusy && !briefErr && <p className="text-xs text-ink-500">Tap <b>Generate brief</b> for an AI read of the whole platform — what&apos;s working, what&apos;s lacking, and the highest-impact next steps.</p>}
+            {briefBusy && !brief && <p className="text-xs text-ink-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Analysing this week&apos;s performance…</p>}
+            {brief && (
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${healthStyle(brief.health)}`}>{brief.health === "strong" ? "🟢 Strong" : brief.health === "at-risk" ? "🔴 At risk" : "🟡 Steady"}</span>
+                  <p className="text-sm font-semibold text-ink-900">{brief.headline}</p>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div className="bg-white rounded-control border border-line p-3">
+                    <p className="text-[11px] font-bold text-brand-700 uppercase mb-1.5">What&apos;s working</p>
+                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.working.map((w, i) => <li key={i}>{w}</li>)}{!brief.working.length && <li className="list-none text-ink-400">—</li>}</ul>
+                  </div>
+                  <div className="bg-white rounded-control border border-line p-3">
+                    <p className="text-[11px] font-bold text-red-600 uppercase mb-1.5">What&apos;s lacking</p>
+                    <ul className="list-disc pl-4 space-y-1 text-xs text-ink-700">{brief.lacking.map((w, i) => <li key={i}>{w}</li>)}{!brief.lacking.length && <li className="list-none text-ink-400">—</li>}</ul>
+                  </div>
+                </div>
+                {brief.steps.length > 0 && (
+                  <div className="bg-white rounded-control border border-line p-3">
+                    <p className="text-[11px] font-bold text-ink-500 uppercase mb-1.5">Do next — in priority order</p>
+                    <ol className="space-y-2">
+                      {brief.steps.map((s, i) => (
+                        <li key={i} className="flex gap-2 text-xs">
+                          <span className="shrink-0 w-5 h-5 rounded-full bg-brand-700 text-white font-bold flex items-center justify-center text-[10px]">{i + 1}</span>
+                          <span><span className="font-semibold text-ink-900">{s.action}</span>{s.why ? <span className="text-ink-500"> — {s.why}</span> : null}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+                <p className="text-[10px] text-ink-400">AI-generated from your metrics — sanity-check before acting.</p>
+              </div>
+            )}
+          </section>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* Green hero card — the one signature green surface per the brief. */}
             <div className="relative overflow-hidden rounded-card p-5 bg-gradient-to-br from-brand-600 to-brand-900 text-white">

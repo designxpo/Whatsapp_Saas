@@ -305,6 +305,54 @@ export async function generateSalesBrief(context: string, tenantId = "00000000-0
   };
 }
 
+// ── Executive brief ───────────────────────────────────────────────────────────
+// A CEO-level read of the whole platform from its metrics (this week vs last).
+// Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
+export interface ExecutiveBrief {
+  health: "strong" | "steady" | "at-risk";
+  headline: string;
+  working: string[];
+  lacking: string[];
+  steps: { action: string; why: string }[];
+}
+
+export async function generateExecutiveBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ExecutiveBrief> {
+  const ai = await resolveTenantAi(tenantId);
+  const instruction =
+    `You are a sharp growth/operations advisor briefing the CEO of a business that runs customer messaging on ` +
+    `WhatsApp + Instagram (broadcasts, chatbot flows, drip sequences, an AI assistant, and a CRM). Read the ` +
+    `metrics below (this week vs last week + current totals) and give a holistic, decision-ready brief.\n\n` +
+    `Rules:\n` +
+    `- Be specific and grounded ONLY in the numbers given. Cite the actual figures/percentages.\n` +
+    `- "health": "strong" (growing + healthy rates), "steady" (flat/ok), or "at-risk" (declining volume, poor ` +
+    `delivery/read, rising opt-outs/failures/escalations, or a backlog awaiting reply).\n` +
+    `- "headline": one punchy sentence summarising the state of the business this week.\n` +
+    `- "working": 2-4 concrete bright spots (with numbers).\n` +
+    `- "lacking": 2-4 weak/declining areas needing attention (with numbers).\n` +
+    `- "steps": 2-5 prioritised {action, why} — action = a specific thing to do in THIS platform, why ties to a ` +
+    `metric. Order by impact.\n` +
+    `Return ONLY JSON: {"health","headline","working":[],"lacking":[],"steps":[{"action","why"}]}.`;
+
+  const res = await runChat({
+    provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+    system: "You are an analytics advisor. You output ONLY valid JSON — no markdown fences, no preamble.",
+    turns: [{ role: "user", text: `${instruction}\n\n--- METRICS ---\n${context}` }],
+    maxTokens: 1536,
+  });
+
+  const raw = (res.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
+  let p: Partial<ExecutiveBrief> = {};
+  try { p = JSON.parse(raw) as Partial<ExecutiveBrief>; } catch { /* defaults below */ }
+  const arr = (v: unknown) => (Array.isArray(v) ? v.map(x => String(x).trim()).filter(Boolean) : []);
+  return {
+    health: p.health === "strong" || p.health === "at-risk" ? p.health : "steady",
+    headline: (p.headline ?? "").toString().trim() || "Not enough data yet to assess this week.",
+    working: arr(p.working).slice(0, 4),
+    lacking: arr(p.lacking).slice(0, 4),
+    steps: Array.isArray(p.steps) ? p.steps.map(s => ({ action: String(s?.action ?? "").trim(), why: String(s?.why ?? "").trim() })).filter(s => s.action).slice(0, 5) : [],
+  };
+}
+
 // One-shot text transform for agent assist (tone change, translate, fix, etc).
 // Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
 export async function transformText(instruction: string, text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
