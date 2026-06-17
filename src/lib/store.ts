@@ -905,11 +905,13 @@ export async function matchChunksByTag(queryEmbedding: number[], k: number, tag:
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 export interface Analytics {
-  contacts: { active: number; optedOut: number };
+  contacts: { active: number; optedOut: number; new14d: number };
   campaigns: { total: number; automations: number };
-  conversations: { total: number; active: number; escalated: number; needsReply: number };
+  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
   kb: { documents: number; ready: number };
-  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number } };
+  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
+  automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
+  recentCampaigns: { name: string; sent: number; total: number; status: string }[];
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 }
 
@@ -969,12 +971,40 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
     if (s !== "failed" && s !== "skipped" && new Date(r.sent_at as string) >= todayStart) sentToday++;
   }
 
+  // Storyline metrics: engagement, conversation health, automation, growth.
+  const countSince = async (table: string, eq: Record<string, unknown> = {}): Promise<number> => {
+    let q = db().from(table).select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since.toISOString());
+    for (const [k, v] of Object.entries(eq)) q = q.eq(k, v);
+    const { count } = await q; return count ?? 0;
+  };
+  const [botOn, igConv, flows, flowsActive, sequences, sequencesActive, activeEnrollments, replied14d, aiReplies14d, new14d] = await Promise.all([
+    countWhere("wa_conversations", { ...t, bot_enabled: true }),
+    countWhere("wa_conversations", { ...t, platform: "instagram" }),
+    countWhere("wa_flows", t),
+    countWhere("wa_flows", { ...t, active: true }),
+    countWhere("wa_sequences", t),
+    countWhere("wa_sequences", { ...t, active: true }),
+    countWhere("wa_sequence_enrollments", { ...t, status: "active" }),
+    countSince("wa_conv_messages", { role: "user" }),
+    countSince("wa_conv_messages", { source: "bot" }),
+    countSince("contacts"),
+  ]);
+  const { data: campRows } = await db().from("wa_campaigns")
+    .select("name, template_name, sent_count, total_recipients, status")
+    .eq("tenant_id", tenantId).eq("auto_send_enabled", false).order("created_at", { ascending: false }).limit(5);
+  const recentCampaigns = (campRows ?? []).map(c => ({
+    name: (c.name as string) || (c.template_name as string) || "Campaign",
+    sent: (c.sent_count as number) ?? 0, total: (c.total_recipients as number) ?? 0, status: c.status as string,
+  }));
+
   return {
-    contacts: { active, optedOut },
+    contacts: { active, optedOut, new14d },
     campaigns: { total: campaignsTotal, automations },
-    conversations: { total: convTotal, active: convActive, escalated: convEscalated, needsReply: convNeedsReply },
+    conversations: { total: convTotal, active: convActive, escalated: convEscalated, needsReply: convNeedsReply, botOn, whatsapp: Math.max(0, convTotal - igConv), instagram: igConv },
     kb: { documents: kbTotal, ready: kbReady },
-    messaging: { sentToday, totals },
+    messaging: { sentToday, totals, replied14d, aiReplies14d },
+    automation: { flows, flowsActive, sequences, sequencesActive, activeEnrollments },
+    recentCampaigns,
     daily: [...byDay.entries()].map(([date, v]) => ({ date, ...v })),
   };
 }

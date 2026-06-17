@@ -27,8 +27,12 @@ export async function POST() {
     `Messages sent — this week: ${cur.sent}, last week: ${prev.sent} (${deltaPct >= 0 ? "+" : ""}${deltaPct}% WoW)`,
     `This week delivery rate ${rate(cur.delivered, cur.sent)}%, read rate ${rate(cur.read, cur.sent)}%, failures ${cur.failed} (${rate(cur.failed, cur.sent + cur.failed)}%)`,
     `Last week delivery rate ${rate(prev.delivered, prev.sent)}%, read rate ${rate(prev.read, prev.sent)}%, failures ${prev.failed}`,
-    `Conversations: ${a.conversations.total} total, ${a.conversations.active} active, ${a.conversations.escalated} escalated (${escalationRate}%), ${a.conversations.needsReply} awaiting a reply`,
-    `Campaigns: ${a.campaigns.total} broadcasts, ${a.campaigns.automations} automations`,
+    `Replies from customers (14d): ${a.messaging.replied14d}; AI auto-replies sent (14d): ${a.messaging.aiReplies14d}`,
+    `New contacts (14d): ${a.contacts.new14d}`,
+    `Conversations: ${a.conversations.total} total, ${a.conversations.active} active, AI-handled ${a.conversations.botOn}, ${a.conversations.escalated} escalated (${escalationRate}%), ${a.conversations.needsReply} awaiting a reply`,
+    `Channels: WhatsApp ${a.conversations.whatsapp} chats, Instagram ${a.conversations.instagram} chats`,
+    `Automation: ${a.automation.flowsActive}/${a.automation.flows} chatbot flows active, ${a.automation.sequencesActive}/${a.automation.sequences} drip sequences active, ${a.automation.activeEnrollments} people currently in drips`,
+    `Campaigns: ${a.campaigns.total} broadcasts, ${a.campaigns.automations} auto-sends`,
     `Knowledge base: ${a.kb.ready}/${a.kb.documents} documents ready`,
   ].join("\n");
 

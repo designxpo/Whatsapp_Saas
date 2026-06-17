@@ -2624,11 +2624,13 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 type AnalyticsData = {
-  contacts: { active: number; optedOut: number };
+  contacts: { active: number; optedOut: number; new14d: number };
   campaigns: { total: number; automations: number };
-  conversations: { total: number; active: number; escalated: number; needsReply: number };
+  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
   kb: { documents: number; ready: number };
-  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number } };
+  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
+  automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
+  recentCampaigns: { name: string; sent: number; total: number; status: string }[];
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 };
 
@@ -2890,6 +2892,114 @@ function AnalyticsTab() {
                   { label: "Failed", value: data.messaging.totals.failed, color: "#F97066" },
                 ]}
               />
+            </section>
+          </div>
+
+          {/* ── Engagement funnel: sent → delivered → read → replied ── */}
+          <section className="bg-white rounded-card border border-line p-5">
+            <p className="text-sm font-semibold text-ink-900 mb-1">Engagement funnel <span className="font-normal text-ink-400">— last 14 days</span></p>
+            <p className="text-[11px] text-ink-400 mb-4">How far your messages travel — and where people drop off.</p>
+            {(() => {
+              const t = data.messaging.totals;
+              const base = Math.max(1, t.sent);
+              const stages = [
+                { label: "Sent", n: t.sent, color: "bg-brand-700" },
+                { label: "Delivered", n: t.delivered, color: "bg-brand-600" },
+                { label: "Read", n: t.read, color: "bg-brand-500" },
+                { label: "Replied", n: data.messaging.replied14d, color: "bg-brand-400" },
+              ];
+              return (
+                <div className="space-y-2">
+                  {stages.map((s, i) => (
+                    <div key={s.label} className="flex items-center gap-3">
+                      <span className="w-20 text-xs text-ink-600 shrink-0">{s.label}</span>
+                      <div className="flex-1 bg-canvas rounded-full h-5 overflow-hidden"><div className={`${s.color} h-full rounded-full transition-all`} style={{ width: `${Math.max(2, (s.n / base) * 100)}%` }} /></div>
+                      <span className="w-24 text-right text-xs tnum shrink-0">{s.n.toLocaleString()}{i > 0 && <span className="text-ink-400"> · {r0(s.n, base)}%</span>}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </section>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <section className="bg-white rounded-card border border-line p-5">
+              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><MessageSquare className="w-4 h-4 text-brand-700" /> Conversation health</p>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {[
+                  { l: "AI-handled", v: data.conversations.botOn, s: `of ${data.conversations.total} chats` },
+                  { l: "Human-handled", v: Math.max(0, data.conversations.total - data.conversations.botOn) },
+                  { l: "Escalated", v: data.conversations.escalated, s: `${r0(data.conversations.escalated, data.conversations.total)}%`, warn: true },
+                  { l: "Awaiting reply", v: data.conversations.needsReply, warn: data.conversations.needsReply > 0 },
+                ].map(x => (
+                  <div key={x.l} className="bg-canvas rounded-control p-3">
+                    <p className={`text-xl font-bold tnum ${x.warn && x.v > 0 ? "text-amber-600" : "text-ink-900"}`}>{x.v.toLocaleString()}</p>
+                    <p className="text-[11px] text-ink-500 font-medium">{x.l}</p>
+                    {x.s && <p className="text-[10px] text-ink-400">{x.s}</p>}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="bg-white rounded-card border border-line p-5">
+              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" /> Channels</p>
+              {(() => {
+                const wa = data.conversations.whatsapp, ig = data.conversations.instagram, tot = Math.max(1, wa + ig);
+                return (
+                  <div className="space-y-3">
+                    {[{ l: "WhatsApp", n: wa, c: "bg-brand-600" }, { l: "Instagram", n: ig, c: "bg-pink-500" }].map(x => (
+                      <div key={x.l}>
+                        <div className="flex justify-between text-xs mb-1"><span className="text-ink-600">{x.l}</span><span className="tnum text-ink-900 font-semibold">{x.n.toLocaleString()} · {r0(x.n, tot)}%</span></div>
+                        <div className="bg-canvas rounded-full h-2.5 overflow-hidden"><div className={`${x.c} h-full rounded-full`} style={{ width: `${Math.max(2, (x.n / tot) * 100)}%` }} /></div>
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-ink-400">{data.messaging.aiReplies14d.toLocaleString()} AI replies sent in the last 14 days.</p>
+                  </div>
+                );
+              })()}
+            </section>
+          </div>
+
+          <section className="bg-white rounded-card border border-line p-5">
+            <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Automation coverage</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              {[
+                { l: "Chatbot flows", v: `${data.automation.flowsActive}/${data.automation.flows}`, s: "active / total" },
+                { l: "Drip sequences", v: `${data.automation.sequencesActive}/${data.automation.sequences}`, s: "active / total" },
+                { l: "Active drips", v: data.automation.activeEnrollments.toLocaleString(), s: "people enrolled" },
+                { l: "AI replies (14d)", v: data.messaging.aiReplies14d.toLocaleString() },
+              ].map(x => (
+                <div key={x.l} className="bg-canvas rounded-control p-3">
+                  <p className="text-xl font-bold tnum text-ink-900">{x.v}</p>
+                  <p className="text-[11px] text-ink-500 font-medium">{x.l}</p>
+                  {x.s && <p className="text-[10px] text-ink-400">{x.s}</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <section className="bg-white rounded-card border border-line p-5">
+              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Users className="w-4 h-4 text-brand-700" /> Audience</p>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{data.contacts.active.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">Active</p></div>
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-brand-700">+{data.contacts.new14d.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">New (14d)</p></div>
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{r0(data.contacts.optedOut, data.contacts.active + data.contacts.optedOut)}%</p><p className="text-[11px] text-ink-500 font-medium">Opt-out rate</p></div>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-card border border-line p-5">
+              <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Send className="w-4 h-4 text-brand-700" /> Recent campaigns</p>
+              {data.recentCampaigns.length === 0 ? <p className="text-xs text-ink-400">No campaigns yet.</p> : (
+                <div className="divide-y divide-line">
+                  {data.recentCampaigns.map((c, i) => (
+                    <div key={i} className="py-1.5 flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-ink-900 truncate">{c.name}</span>
+                      <span className="text-[11px] text-ink-400 tnum shrink-0">{c.sent.toLocaleString()}/{c.total.toLocaleString()} · {c.status}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </section>
           </div>
         </>
