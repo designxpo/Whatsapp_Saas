@@ -156,3 +156,44 @@ export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
 
   return steps;
 }
+
+// Lightweight per-tenant health rollup for the platform-owner view — DB reads
+// ONLY (no external API calls), so it's cheap across many tenants. "error" when
+// a required integration is missing OR a WhatsApp number is flagged by Meta
+// (recorded passively from webhooks); "warn" when the KB is empty.
+export interface TenantHealth {
+  whatsapp: { configured: boolean; flag: string | null };
+  instagram: { configured: boolean };
+  ai: { configured: boolean };
+  kb: { ready: number; total: number };
+  crm: { configured: boolean };
+  health: StepStatus;
+}
+
+export async function getTenantHealthSummary(tenantId: string): Promise<TenantHealth> {
+  const [channels, ai, docs, lsq] = await Promise.all([
+    listChannels(tenantId).catch(() => [] as Channel[]),
+    getTenantAiStatus(tenantId).catch(() => ({ configured: false, provider: "gemini" as const, model: "", keyHint: null })),
+    listDocuments(tenantId).catch(() => []),
+    resolveLsq(tenantId).catch(() => null),
+  ]);
+  const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp");
+  const ig = channels.filter(c => c.kind === "instagram");
+  const flagged = wa.find(c => c.qualityRating === "RED" || c.messagingHealth === "FLAGGED" || c.messagingHealth === "RESTRICTED");
+  const flag = flagged ? (flagged.qualityRating === "RED" ? "quality RED" : flagged.messagingHealth) : null;
+  const ready = docs.filter(d => d.status === "ready").length;
+
+  const health: StepStatus =
+    (!wa.length || !ai.configured || flag) ? "error"
+    : !ready ? "warn"
+    : "ok";
+
+  return {
+    whatsapp: { configured: !!wa.length, flag },
+    instagram: { configured: !!ig.length },
+    ai: { configured: !!ai.configured },
+    kb: { ready, total: docs.length },
+    crm: { configured: !!lsq },
+    health,
+  };
+}

@@ -17,6 +17,11 @@ type Stats = { total: number; active: number; trialing: number; suspended: numbe
 type PlanLimits = { contacts: number; messages_per_month: number; channels: number; team_seats: number };
 type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean; stripePriceId?: string | null };
 type Ann = { id: string; title: string; body: string; level: "info" | "success" | "warning"; pinned: boolean; active: boolean; createdAt: string };
+type TenantHealthRow = {
+  id: string; name: string; status: string; plan: string; health: "ok" | "warn" | "todo" | "error";
+  whatsapp: { configured: boolean; flag: string | null }; instagram: { configured: boolean };
+  ai: { configured: boolean }; kb: { ready: number; total: number }; crm: { configured: boolean };
+};
 const FEATURE_KEYS: (keyof Features)[] = ["whatsapp", "instagram", "sequences", "commerce", "growth", "ai_autoreply", "ads"];
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
 const PLANS = ["trial", "starter", "growth", "scale"];
@@ -36,6 +41,7 @@ export default function OwnerPortal() {
   const [anns, setAnns] = useState<Ann[]>([]);
   const [flags, setFlags] = useState<{ key: string; enabled: boolean; description: string | null }[]>([]);
   const [analytics, setAnalytics] = useState<{ newThisMonth: number; trialsEndingSoon: number; signupsByDay: { date: string; count: number }[] } | null>(null);
+  const [health, setHealth] = useState<TenantHealthRow[]>([]);
   const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
@@ -47,6 +53,7 @@ export default function OwnerPortal() {
     fetch("/api/owner/announcements").then(r => r.json()).then(a => setAnns(a.announcements ?? [])).catch(() => {});
     fetch("/api/owner/flags").then(r => r.json()).then(f => setFlags(f.flags ?? [])).catch(() => {});
     fetch("/api/owner/analytics").then(r => r.json()).then(a => setAnalytics(a.analytics ?? null)).catch(() => {});
+    fetch("/api/owner/health").then(r => r.json()).then(h => setHealth(h.tenants ?? [])).catch(() => {});
   }, []);
   async function toggleFlag(key: string, enabled: boolean) {
     setFlags(fs => fs.map(f => f.key === key ? { ...f, enabled } : f));
@@ -173,6 +180,37 @@ export default function OwnerPortal() {
             </div>
           </div>
         )}
+
+        {health.length > 0 && (() => {
+          const broken = health.filter(h => h.health === "error");
+          const warn = health.filter(h => h.health === "warn");
+          const dot = (s: string) => s === "error" ? "bg-red-500" : s === "warn" ? "bg-amber-500" : s === "ok" ? "bg-emerald-500" : "bg-slate-300";
+          const chip = (label: string, ok: boolean, extra?: string) => (
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${ok ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{label}{extra ? ` ${extra}` : ""}</span>
+          );
+          return (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-bold text-slate-400 uppercase">Setup health</p>
+                <p className="text-[11px] font-bold">{broken.length ? <span className="text-red-600">{broken.length} need attention</span> : <span className="text-emerald-600">All {health.length} healthy</span>}{warn.length ? <span className="text-amber-600"> · {warn.length} warning{warn.length === 1 ? "" : "s"}</span> : null}</p>
+              </div>
+              {health.map(h => (
+                <div key={h.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
+                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dot(h.health)}`} title={h.health} />
+                  <p className="text-sm font-semibold text-ink-900 truncate flex-1 min-w-0">{h.name} <span className="text-[10px] text-ink-400">· {h.status}</span></p>
+                  <div className="flex items-center gap-1 flex-wrap justify-end">
+                    {chip("WhatsApp", h.whatsapp.configured)}
+                    {h.whatsapp.flag && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">{h.whatsapp.flag}</span>}
+                    {chip("AI", h.ai.configured)}
+                    {chip("KB", h.kb.ready > 0, `${h.kb.ready}/${h.kb.total}`)}
+                    {chip("CRM", h.crm.configured)}
+                    {chip("IG", h.instagram.configured)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
