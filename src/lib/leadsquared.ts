@@ -178,6 +178,76 @@ export interface CrmLead {
   fields: { label: string; value: string }[];   // a few extra useful fields when present
 }
 
+// ── Bulk extract (for LeadSquared-sourced drips) ─────────────────────────────
+export type LeadCond = { field: string; op: "eq" | "contains" | "gt" | "lt"; value: string };
+export interface ExtractedLead { phone: string; name: string }
+
+// Flattens an LSQ lead record (flat dict OR { LeadPropertyList:[{Attribute,Value}] }).
+function flattenLead(lead: Record<string, unknown>): Record<string, string> {
+  const lpl = lead.LeadPropertyList as { Attribute?: string; Value?: string }[] | undefined;
+  if (Array.isArray(lpl)) {
+    const out: Record<string, string> = {};
+    for (const p of lpl) if (p.Attribute) out[p.Attribute] = p.Value ?? "";
+    return out;
+  }
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(lead)) out[k] = v == null ? "" : String(v);
+  return out;
+}
+
+function matchesCond(lead: Record<string, string>, c: LeadCond): boolean {
+  const raw = lead[c.field] ?? "";
+  if (raw === "" && c.op !== "eq") return false;
+  const a = raw.toLowerCase().trim(), b = (c.value ?? "").toLowerCase().trim();
+  switch (c.op) {
+    case "eq": return a === b;
+    case "contains": return a.includes(b);
+    case "gt": { const na = Number(raw), nb = Number(c.value); if (!isNaN(na) && !isNaN(nb)) return na > nb; const da = Date.parse(raw), db = Date.parse(c.value); return !isNaN(da) && !isNaN(db) && da > db; }
+    case "lt": { const na = Number(raw), nb = Number(c.value); if (!isNaN(na) && !isNaN(nb)) return na < nb; const da = Date.parse(raw), db = Date.parse(c.value); return !isNaN(da) && !isNaN(db) && da < db; }
+  }
+}
+
+// Extracts leads matching ALL conditions. The first equals-condition anchors a
+// server-side LSQ query (Leads.Get, paged); the rest filter locally — so any
+// combination of fields/operators works without depending on LSQ's fragile
+// advanced-search payload. Requires ≥1 "eq" condition as the anchor.
+export async function fetchLeads(conditions: LeadCond[], max = 2000): Promise<{ leads: ExtractedLead[]; scanned: number; truncated: boolean; error?: string }> {
+  if (!lsqConfigured()) return { leads: [], scanned: 0, truncated: false, error: "LeadSquared isn't configured." };
+  const anchor = conditions.find(c => c.op === "eq" && c.field.trim() && c.value.trim());
+  if (!anchor) return { leads: [], scanned: 0, truncated: false, error: "Add at least one exact-match (equals) condition to anchor the search." };
+  const { accessKey, secretKey, host } = cfg();
+  const cols = "ProspectID,FirstName,LastName,Phone,Mobile,EmailAddress,ProspectStage,Source,Owner,OwnerIdName,mx_City,CreatedOn";
+  const seen = new Set<string>();
+  const leads: ExtractedLead[] = [];
+  let scanned = 0, truncated = false;
+  try {
+    for (let page = 1; page <= 50; page++) {
+      const res = await fetch(`${host}/v2/LeadManagement.svc/Leads.Get?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Parameter: { LookupName: anchor.field.trim(), LookupValue: anchor.value.trim() }, Columns: { Include_CSV: cols }, Paging: { PageIndex: page, PageSize: 1000 }, Sorting: { ColumnName: "CreatedOn", Direction: "1" } }),
+      });
+      if (!res.ok) return { leads, scanned, truncated, error: `LeadSquared search failed (HTTP ${res.status}).` };
+      const data = await res.json().catch(() => null);
+      const rows = (Array.isArray(data) ? data : (data?.Leads ?? [])) as Record<string, unknown>[];
+      if (!rows.length) break;
+      for (const row of rows) {
+        scanned++;
+        const lead = flattenLead(row);
+        if (!conditions.every(c => matchesCond(lead, c))) continue;
+        const phone = (lead.Mobile || lead.Phone || "").replace(/\D/g, "");
+        if (phone.length < 10 || seen.has(phone.slice(-10))) continue;
+        seen.add(phone.slice(-10));
+        leads.push({ phone, name: `${lead.FirstName ?? ""} ${lead.LastName ?? ""}`.trim() });
+        if (leads.length >= max) { truncated = true; break; }
+      }
+      if (truncated || rows.length < 1000) break;
+    }
+    return { leads, scanned, truncated };
+  } catch (err) {
+    return { leads, scanned, truncated, error: errorMessage(err) };
+  }
+}
+
 // Reads the lead's core CRM fields by phone. Returns null when LSQ isn't
 // configured or the number isn't in the CRM. Never throws.
 export async function fetchLeadDetails(phone: string): Promise<CrmLead | null> {

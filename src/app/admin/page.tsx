@@ -6411,6 +6411,74 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
   );
 }
 
+// Run a drip from LeadSquared: pull leads matching an advanced (multi-condition)
+// search and enroll them into a sequence. Preview before enrolling.
+const LSQ_OPS: [string, string][] = [["eq", "equals"], ["contains", "contains"], ["gt", "after / greater"], ["lt", "before / less"]];
+const LSQ_FIELDS = ["ProspectStage", "Source", "Owner", "OwnerIdName", "mx_City", "CreatedOn", "EmailAddress"];
+function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
+  const [conds, setConds] = useState<{ field: string; op: string; value: string }[]>([{ field: "ProspectStage", op: "eq", value: "" }]);
+  const [seqId, setSeqId] = useState("");
+  const [preview, setPreview] = useState<{ count: number; scanned: number; truncated: boolean; sample: string[] } | null>(null);
+  const [busy, setBusy] = useState<"" | "preview" | "enroll">("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const valid = conds.filter(c => c.field.trim() && c.value.trim());
+  const hasAnchor = valid.some(c => c.op === "eq");
+  const setCond = (i: number, patch: Partial<{ field: string; op: string; value: string }>) => setConds(cs => cs.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+
+  async function run(action: "preview" | "enroll") {
+    if (action === "enroll") {
+      if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to enroll into." }); return; }
+      if (!confirm(`Enroll ${preview?.count ?? "the matching"} lead(s) into this drip? They'll receive its messages on schedule.`)) return;
+    }
+    setBusy(action); setMsg(null); if (action === "preview") setPreview(null);
+    try {
+      const res = await fetch("/api/admin/leadsquared/enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, conditions: valid, sequenceId: seqId || undefined }) });
+      const d = await res.json();
+      if (!res.ok) { setMsg({ ok: false, text: d.error || "Failed" }); return; }
+      if (action === "preview") setPreview(d);
+      else setMsg({ ok: true, text: `Enrolled ${d.enrolled} lead(s)${d.skippedOptout ? `, skipped ${d.skippedOptout} opted-out` : ""}${d.truncated ? " (capped at 5000 — refine to reach the rest)" : ""}.` });
+    } catch { setMsg({ ok: false, text: "Connection error" }); }
+    finally { setBusy(""); }
+  }
+
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Run a drip from LeadSquared</p>
+        <p className="text-[11px] text-ink-400">Pull leads matching these conditions and enroll them into a sequence. Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</p>
+      </div>
+      <div className="space-y-1.5">
+        {conds.map((c, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <input list="lsq-fields" className={`${inp} flex-1`} placeholder="Field (e.g. ProspectStage)" value={c.field} onChange={e => setCond(i, { field: e.target.value })} />
+            <select className={`${inp} w-32 shrink-0`} value={c.op} onChange={e => setCond(i, { op: e.target.value })}>{LSQ_OPS.map(o => <option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>
+            <input className={`${inp} flex-1`} placeholder="Value (e.g. Prospect)" value={c.value} onChange={e => setCond(i, { value: e.target.value })} />
+            {conds.length > 1 && <button onClick={() => setConds(cs => cs.filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>}
+          </div>
+        ))}
+        <datalist id="lsq-fields">{LSQ_FIELDS.map(f => <option key={f} value={f} />)}</datalist>
+        {conds.length < 6 && <button onClick={() => setConds(cs => [...cs, { field: "", op: "eq", value: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add condition</button>}
+      </div>
+      {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-600">Add at least one <b>equals</b> condition — it anchors the LeadSquared search.</p>}
+      <div className="flex items-center gap-2">
+        <select className={`${inp} flex-1`} value={seqId} onChange={e => setSeqId(e.target.value)}>
+          <option value="">Enroll into sequence…</option>
+          {seqs.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <button onClick={() => run("preview")} disabled={!hasAnchor || busy !== ""} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0">
+          {busy === "preview" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Preview count"}
+        </button>
+        <button onClick={() => run("enroll")} disabled={!hasAnchor || !seqId || busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0">
+          {busy === "enroll" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enroll"}
+        </button>
+      </div>
+      {preview && <p className="text-[11px] text-ink-600"><b className="text-brand-700">{preview.count}</b> lead(s) match{preview.truncated ? " (capped at 5000)" : ""} · scanned {preview.scanned}{preview.sample.length ? ` · e.g. ${preview.sample.join(", ")}` : ""}</p>}
+      {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
+      <p className="text-[10px] text-ink-400">Cold leads (no recent chat) only receive a message if the sequence&apos;s first step is an approved <b>template</b> — the 24h window is closed until they reply. Opt-outs are skipped automatically.</p>
+    </div>
+  );
+}
+
 function SequencesTab() {
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
@@ -6465,6 +6533,8 @@ function SequencesTab() {
         </div>
       ))}
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
+
+      <LsqDripPanel seqs={seqs} />
 
       {form && (
         <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
