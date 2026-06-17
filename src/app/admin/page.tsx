@@ -3118,9 +3118,13 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefErr, setBriefErr] = useState<string | null>(null);
   const [crm, setCrm] = useState<{ configured: boolean; lead: CrmLead | null } | null>(null);
+  const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(() => {
-    fetch(`/api/admin/contacts/profile?phone=${encodeURIComponent(phone)}`).then(r => r.json()).then(d => setP(d.contact ? d : null)).catch(() => {});
+    setNotFound(false);
+    fetch(`/api/admin/contacts/profile?phone=${encodeURIComponent(phone)}`).then(r => r.json())
+      .then(d => { if (d.contact) setP(d); else { setP(null); setNotFound(true); } })
+      .catch(() => setNotFound(true));
   }, [phone]);
   // CRM snapshot (LeadSquared) — best-effort, silent when LSQ isn't configured.
   useEffect(() => {
@@ -3175,7 +3179,12 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
     <>
       <div className="fixed inset-0 bg-ink-950/20 z-40" onClick={onClose} />
       <aside className="fixed inset-y-0 right-0 w-[460px] max-w-full bg-white border-l border-line shadow-2xl z-50 overflow-y-auto">
-        {!c ? <div className="p-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div> : (
+        {!c ? (notFound ? (
+          <div className="p-8 text-center space-y-3">
+            <p className="text-sm text-slate-500">No profile found for this contact yet.</p>
+            <button onClick={onClose} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Close</button>
+          </div>
+        ) : <div className="p-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>) : (
           <div className="p-5 space-y-5">
             {/* Header */}
             <div className="flex items-start gap-3">

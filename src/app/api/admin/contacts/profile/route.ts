@@ -15,13 +15,29 @@ export async function GET(req: Request) {
   const digits = (new URL(req.url).searchParams.get("phone") ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
-  const contact = await getContactByPhone(digits, tid);
-  if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
-
-  // Conversation summary + recent messages (newest conversation if several).
+  // Conversation summary (newest if several). Fetched first so Instagram chats
+  // — which have NO contact row (keyed by IGSID, see store.getOrCreateConversation)
+  // — can still render a profile instead of a 404 that spins the drawer forever.
   const { data: convRow } = await db().from("wa_conversations")
-    .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at")
+    .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at, name, platform, lead_phone, created_at")
     .eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
+  let contact = await getContactByPhone(digits, tid);
+  if (!contact) {
+    if (!convRow) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    // Synthesize a minimal contact from the (Instagram) conversation.
+    contact = {
+      id: convRow.id as string,
+      phone: digits,
+      name: (convRow.name as string) ?? "",
+      email: null,
+      tags: [],
+      attributes: convRow.lead_phone ? { lead_phone: convRow.lead_phone as string } : {},
+      status: "active",
+      source: (convRow.platform as string) ?? null,
+      createdAt: (convRow.created_at as string) ?? new Date().toISOString(),
+    };
+  }
 
   let messages: { role: string; body: string; source: string; createdAt: string }[] = [];
   let msgCounts = { inbound: 0, outbound: 0 };

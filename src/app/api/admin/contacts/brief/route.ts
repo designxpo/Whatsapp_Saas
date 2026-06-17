@@ -18,22 +18,32 @@ export async function POST(req: Request) {
   const digits = (body.phone ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
+  // Instagram chats have no contact row (keyed by IGSID) — fall back to the
+  // conversation so the brief works from the DM thread instead of 404-ing.
+  const { data: convRow } = await db().from("wa_conversations")
+    .select("id, name, platform, lead_phone, created_at")
+    .eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1).maybeSingle();
+
   const contact = await getContactByPhone(digits, tid);
-  if (!contact) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+  if (!contact && !convRow) return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+  const isIg = (convRow?.platform as string) === "instagram";
 
   // Build a compact context: identity + collected attributes + recent thread + campaigns + clicks.
   const lines: string[] = [];
-  lines.push(`Name: ${contact.name || "Unknown"}`);
-  lines.push(`Phone: ${contact.phone}`);
-  if (contact.email) lines.push(`Email: ${contact.email}`);
-  if (contact.source) lines.push(`First source: ${contact.source}`);
-  lines.push(`Lead since: ${new Date(contact.createdAt).toLocaleDateString()}`);
-  if (contact.tags.length) lines.push(`Tags: ${contact.tags.join(", ")}`);
-  const attrs = Object.entries(contact.attributes ?? {});
+  lines.push(`Name: ${contact?.name || (convRow?.name as string) || "Unknown"}`);
+  if (isIg) {
+    lines.push(`Channel: Instagram DM`);
+    if (convRow?.lead_phone) lines.push(`Phone shared in chat: ${convRow.lead_phone}`);
+  } else {
+    lines.push(`Phone: ${contact?.phone ?? digits}`);
+  }
+  if (contact?.email) lines.push(`Email: ${contact.email}`);
+  if (contact?.source) lines.push(`First source: ${contact.source}`);
+  const since = contact?.createdAt ?? (convRow?.created_at as string | undefined);
+  if (since) lines.push(`Lead since: ${new Date(since).toLocaleDateString()}`);
+  if (contact?.tags.length) lines.push(`Tags: ${contact.tags.join(", ")}`);
+  const attrs = Object.entries(contact?.attributes ?? {});
   if (attrs.length) lines.push(`Collected details:\n${attrs.map(([k, v]) => `  - ${k}: ${v}`).join("\n")}`);
-
-  const { data: convRow } = await db().from("wa_conversations")
-    .select("id").eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1).maybeSingle();
   if (convRow) {
     const { data: msgs } = await db().from("wa_conv_messages")
       .select("role, body, created_at").eq("tenant_id", tid).eq("conversation_id", convRow.id).order("created_at", { ascending: false }).limit(30);
