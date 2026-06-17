@@ -6191,6 +6191,49 @@ type SeqDraft = { id?: string; name: string; platform: "whatsapp" | "instagram";
 const SEQ_TRIGGERS: [string, string][] = [["manual", "Manual / API"], ["keyword", "Keyword reply"], ["opt_in", "Opt-in (growth tool)"], ["story_reply", "Instagram story reply"], ["comment", "Comment"], ["tag_added", "Tag added"], ["cart_abandoned", "Cart abandoned"], ["order_placed", "Order placed"], ["ad_referral", "Ad referral"]];
 const EMPTY_SEQ: SeqDraft = { name: "", platform: "whatsapp", triggerKind: "manual", triggerValue: "", channelId: null, active: true, steps: [{ delayMinutes: 0, action: { type: "text", text: "" } }] };
 
+// Format a step delay (minutes) as a human label for the preview timeline.
+function fmtDelay(min: number): string {
+  if (!min || min <= 0) return "immediately";
+  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  return "after " + [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean).join(" ");
+}
+
+// Chat-style preview of a sequence — each step shown as the message the contact
+// receives, in WhatsApp or Instagram styling, with the wait before each step.
+function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagram"; steps: StepDraft[] }) {
+  const ig = platform === "instagram";
+  const bubble = ig ? "bg-slate-100 text-slate-800 rounded-2xl rounded-bl-md" : "bg-white text-slate-800 rounded-lg rounded-tl-sm";
+  return (
+    <div className="xl:w-72 shrink-0">
+      <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview · {ig ? "Instagram" : "WhatsApp"}</p>
+      <div className={`rounded-control p-3 space-y-3 ${ig ? "bg-white border border-line" : "bg-[#e5ddd5]"}`}>
+        {steps.map((st, i) => {
+          const a = st.action;
+          return (
+            <div key={i} className="space-y-1.5">
+              <p className="text-center"><span className="text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5">⏱ {fmtDelay(st.delayMinutes)}</span></p>
+              <div className="flex">
+                <div className={`max-w-[85%] px-3 py-2 text-[13px] shadow-sm ${bubble}`}>
+                  {a.type === "text" && <p className="whitespace-pre-wrap break-words">{a.text?.trim() || "Empty message…"}</p>}
+                  {a.type === "template" && <><p className="font-semibold break-words">📄 {a.templateName?.trim() || "template"}</p><p className="text-[11px] text-slate-400 mt-0.5">approved template message</p></>}
+                  {a.type === "media" && <>
+                    {a.mediaKind === "image" && a.url
+                      ? <ImgFallback url={a.url} imgClass="w-40 h-24 object-cover rounded-md" boxClass="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400" icon={<ImageIcon className="w-6 h-6" />} />
+                      : <div className="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400">{a.mediaKind === "video" ? <Video className="w-6 h-6" /> : a.mediaKind === "document" ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}</div>}
+                    {a.caption?.trim() && <p className="break-words mt-1">{a.caption}</p>}
+                  </>}
+                  <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {!steps.length && <p className="text-xs text-ink-400 text-center py-4">Add steps to preview the conversation.</p>}
+      </div>
+    </div>
+  );
+}
+
 function SequencesTab() {
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
@@ -6224,7 +6267,7 @@ function SequencesTab() {
   const setStepAction = (i: number, patch: Partial<StepDraft["action"]>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, action: { ...s.action, ...patch } } : s) } : f);
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> Sequences</h2>
@@ -6247,7 +6290,8 @@ function SequencesTab() {
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
 
       {form && (
-        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 space-y-3">
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
+          <div className="flex-1 min-w-0 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Sequence name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <select className={inp} value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value as SeqDraft["platform"] })}>
@@ -6289,6 +6333,8 @@ function SequencesTab() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             {msg && <span className="text-xs text-red-500">{msg}</span>}
           </div>
+          </div>
+          <SequencePreview platform={form.platform} steps={form.steps} />
         </div>
       )}
     </div>
