@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Container, Glow, SectionTitle } from "../_components/ui";
-import { FeatureGrid, ThreeSteps, IntegrationsStrip, StatsBand, CtaBand, ProblemSolution, ComparisonTable } from "../_components/sections";
+import { FeatureGrid, ThreeSteps, IntegrationsGrid, StatsBand, CtaBand, ProblemSolution, ComparisonTable } from "../_components/sections";
 import { AgentCanvas } from "../_components/canvas";
 import { FlowShowcase } from "../_components/flowshowcase";
 
@@ -29,7 +29,7 @@ export default function FeaturesPage() {
       <ProblemSolution />
       <ComparisonTable />
       <ThreeSteps />
-      <IntegrationsStrip />
+      <IntegrationsGrid />
       <StatsBand />
       <CtaBand />
     </>

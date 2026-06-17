@@ -306,20 +306,42 @@ export const COMPARE_ROWS: CompareRow[] = [
 
 export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 
-// "Works with your favorite tools" strip. slug = Simple Icons id (cdn.simpleicons.org);
-// omit slug to render the name as a wordmark (e.g. brands without a Simple Icon).
-export const INTEGRATIONS: { name: string; slug?: string }[] = [
-  { name: "WhatsApp", slug: "whatsapp" },
-  { name: "Instagram", slug: "instagram" },
-  { name: "Messenger", slug: "messenger" },
-  { name: "Stripe", slug: "stripe" },
-  { name: "Gemini", slug: "googlegemini" },
-  { name: "OpenAI", slug: "openai" },
-  { name: "Anthropic", slug: "anthropic" },
-  { name: "Meta", slug: "meta" },
-  { name: "Razorpay", slug: "razorpay" },
-  { name: "LeadSquared" },
+// Integrations we provide, grouped by category for the logo wall.
+// slug = Simple Icons id (cdn.simpleicons.org); omit slug to render the name as
+// a wordmark (e.g. brands without a Simple Icon). Single source of truth — the
+// flat INTEGRATIONS strip below is derived from it.
+// slug = Simple Icons id; iconify = Iconify "logos" id (fallback for brands
+// Simple Icons dropped, e.g. Slack/Teams/Pipedrive); neither → wordmark.
+export type IntegrationBrand = { name: string; slug?: string; iconify?: string };
+export type IntegrationCategory = { title: string; blurb: string; items: IntegrationBrand[] };
+
+export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
+  { title: "Channels", blurb: "Meet customers where they already are.", items: [
+    { name: "WhatsApp", slug: "whatsapp" }, { name: "Instagram", slug: "instagram" }, { name: "Messenger", slug: "messenger" },
+  ] },
+  { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
+    { name: "Gemini", slug: "googlegemini" }, { name: "OpenAI", slug: "openai" }, { name: "Anthropic", slug: "anthropic" },
+  ] },
+  { title: "CRM", blurb: "Every new lead syncs automatically.", items: [
+    { name: "LeadSquared" }, { name: "HubSpot", slug: "hubspot" }, { name: "Pipedrive", iconify: "logos:pipedrive" },
+  ] },
+  { title: "Payments", blurb: "Send a pay link and get paid inside the chat.", items: [
+    { name: "Razorpay", slug: "razorpay" }, { name: "Stripe", slug: "stripe" },
+  ] },
+  { title: "E-commerce", blurb: "Import your product catalog in one click.", items: [
+    { name: "Shopify", slug: "shopify" }, { name: "WooCommerce", slug: "woocommerce" },
+  ] },
+  { title: "Scheduling", blurb: "Customers book a meeting without leaving chat.", items: [
+    { name: "Cal.com", slug: "caldotcom" },
+  ] },
+  { title: "Automation & alerts", blurb: "Pipe events into 5,000+ apps and your team's tools.", items: [
+    { name: "Zapier", slug: "zapier" }, { name: "Make", slug: "make" }, { name: "n8n", slug: "n8n" },
+    { name: "Slack", iconify: "logos:slack-icon" }, { name: "Microsoft Teams", iconify: "logos:microsoft-teams" },
+  ] },
 ];
+
+// Flat list for the marquee strip (derived — keep one source of truth).
+export const INTEGRATIONS: IntegrationBrand[] = INTEGRATION_CATEGORIES.flatMap(c => c.items);
 
 // "Why teams choose Talko AI" — pastel benefit cards.
 export type Benefit = { title: string; body: string; tone: "mint" | "sky" | "peach" };
