@@ -3,12 +3,12 @@ import { NextResponse } from "next/server";
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound,
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
-  setConversationAgent, markConversationRead, type ConvStatus,
+  setConversationAgent, markConversationRead, getContactByPhone, type ConvStatus,
 } from "@/lib/store";
 import { sendText, sendButtons, sendTemplateSingle } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies } from "@/lib/instagram";
 import { credsFor, getChannel } from "@/lib/channels";
-import { pushWaActivity } from "@/lib/leadsquared";
+import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -65,6 +65,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           : await sendIgMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt });
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
         messageId = sent.messageId;
+        // Mirror to LeadSquared by a known phone (shared in chat) or @handle.
+        void (async () => {
+          const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
+          const c = await getContactByPhone(conv.phone, tid).catch(() => null);
+          const phone = phoneFromAttributes(c?.attributes);
+          if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent" });
+        })();
       } else {
         // WhatsApp free-form is only allowed inside Meta's 24-hour window. The
         // AI always replies instantly (in-window); an agent replying later can

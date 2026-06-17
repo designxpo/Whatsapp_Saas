@@ -37,6 +37,41 @@ async function findLeadId(phone: string): Promise<string | null> {
   return null;
 }
 
+// Looks up the LeadSquared ProspectID by Instagram handle. Requires the org to
+// store the handle in a lead field whose schema name is set in LSQ_IG_HANDLE_FIELD
+// (e.g. mx_Instagram). Tries the bare handle and the @-prefixed form. Returns null
+// when the field isn't configured or no lead matches.
+async function findLeadIdByHandle(handle: string): Promise<string | null> {
+  const { accessKey, secretKey, host } = cfg();
+  const field = (process.env.LSQ_IG_HANDLE_FIELD ?? "").trim();
+  const h = (handle || "").replace(/^@/, "").trim();
+  if (!field || !h) return null;
+  for (const value of [h, `@${h}`]) {
+    try {
+      const url = `${host}/v2/LeadManagement.svc/Leads.Get?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ Parameter: { LookupName: field, LookupValue: value }, Paging: { PageIndex: 1, PageSize: 1 } }),
+      });
+      if (!res.ok) continue;
+      const data = (await res.json().catch(() => null)) as { ProspectID?: string }[] | null;
+      if (Array.isArray(data) && data[0]?.ProspectID) return data[0].ProspectID;
+    } catch { /* try next candidate */ }
+  }
+  return null;
+}
+
+// Pulls a real phone number out of a contact's collected attributes (e.g. one an
+// Instagram lead shared in chat or a flow captured), so an IG conversation can be
+// matched to an LSQ lead by phone. Returns null when no phone-like attribute exists.
+export function phoneFromAttributes(attributes: Record<string, string> | null | undefined): string | null {
+  for (const [k, v] of Object.entries(attributes ?? {})) {
+    if (/phone|mobile|whats?app|contact|number/i.test(k) && String(v).replace(/\D/g, "").length >= 10) return String(v);
+  }
+  return null;
+}
+
 // The CRM picture of a lead, surfaced inside Live Chat / the profile drawer so
 // sales sees stage/owner/score without opening LeadSquared.
 export interface CrmLead {
@@ -110,5 +145,40 @@ export async function pushWaActivity(p: {
     });
   } catch (err) {
     console.error("[leadsquared] activity push failed:", errorMessage(err));
+  }
+}
+
+// Instagram version of pushWaActivity. IG users have no phone, so the lead is
+// resolved by a known phone first (one shared in chat / captured by a flow), then
+// by Instagram handle (needs LSQ_IG_HANDLE_FIELD). Marks the note as Instagram so
+// the timeline distinguishes channels. Never throws.
+export async function pushIgActivity(p: {
+  igUserId: string;
+  handle?: string | null;
+  phone?: string | null;
+  direction: "inbound" | "outbound";
+  body: string;
+  via?: "lead" | "bot" | "agent";
+}): Promise<void> {
+  if (!lsqConfigured()) return;
+  try {
+    let leadId: string | null = null;
+    if (p.phone) leadId = await findLeadId(p.phone);
+    if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle);
+    if (!leadId) return; // can't match this IG user to a CRM lead — skip
+
+    const arrow = p.direction === "inbound"
+      ? "⬅️ Lead (Instagram)"
+      : "➡️ " + (p.via === "bot" ? "AI Assistant" : "Agent") + " (Instagram)";
+    const note = `${arrow}: ${p.body}`.slice(0, 1800);
+
+    const { accessKey, secretKey, host, activityCode } = cfg();
+    await fetch(`${host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: activityCode, ActivityNote: note }),
+    });
+  } catch (err) {
+    console.error("[leadsquared] IG activity push failed:", errorMessage(err));
   }
 }
