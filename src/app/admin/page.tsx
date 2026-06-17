@@ -2376,6 +2376,53 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [channelId, setChannelId] = useState<string | null>(null);   // which number's WABA
+  const [editingId, setEditingId] = useState<string | null>(null);   // editing a draft in place
+  const [cloneNote, setCloneNote] = useState<string | null>(null);   // editing a copy of a published form
+
+  function resetBuilder() {
+    setName(""); setTitle(""); setEditingId(null); setCloneNote(null);
+    setFields([{ type: "text", label: "Full name", required: true, options: "" }, { type: "phone", label: "Mobile number", required: true, options: "" }]);
+  }
+
+  // Open an existing form in the builder. Drafts edit in place; published forms
+  // are immutable on Meta, so we pre-fill a COPY that saves as a new form.
+  async function openEdit(f: WaFormRow) {
+    setMsg(null); setBusy("load:" + f.id);
+    try {
+      const d = await fetch(`/api/admin/waforms?def=${f.id}${channelId ? `&channelId=${channelId}` : ""}`).then(r => r.json());
+      if (d.error) { setMsg(d.error); return; }
+      const published = f.status === "PUBLISHED";
+      setName(published ? `${f.name} copy` : f.name);
+      setTitle(d.title || "");
+      setFields((d.fields ?? []).map((x: { type: UiFormFieldType; label: string; required: boolean; options?: string[] }) => ({ type: x.type, label: x.label, required: x.required, options: (x.options ?? []).join(", ") })));
+      setEditingId(published ? null : f.id);
+      setCloneNote(published ? f.name : null);
+      setShowBuilder(true);
+    } finally { setBusy(null); }
+  }
+
+  // Save edits to an existing draft (re-uploads its Flow JSON).
+  async function update(publish: boolean) {
+    setMsg(null);
+    if (!fields.some(f => f.label.trim())) { setMsg("Add at least one field."); return; }
+    setBusy(publish ? "publish" : "draft");
+    try {
+      const res = await fetch("/api/admin/waforms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingId, name: name.trim(), title: title.trim() || name.trim(), publish, channelId,
+          fields: fields.filter(f => f.label.trim()).map(f => ({ type: f.type, label: f.label.trim(), required: f.required, options: f.options.split(",").map(s => s.trim()).filter(Boolean) })),
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Failed"); return; }
+      if (d.validationErrors?.length) setMsg(`Saved as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`);
+      else if (d.publishError) setMsg(`Saved — publishing failed: ${d.publishError}`);
+      else setMsg(d.status === "PUBLISHED" ? "Updated & published ✓" : "Draft updated ✓");
+      resetBuilder();
+      load();
+    } finally { setBusy(null); }
+  }
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -2407,8 +2454,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       if (d.validationErrors?.length) setMsg(`Created as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`);
       else if (d.publishError) setMsg(`Created as draft — publishing failed: ${d.publishError}`);
       else setMsg(d.status === "PUBLISHED" ? "Published — the form is live. Use it from the WhatsApp form block in your chatbot flows." : "Draft created — publish when ready.");
-      setName(""); setTitle("");
-      setFields([{ type: "text", label: "Full name", required: true, options: "" }, { type: "phone", label: "Mobile number", required: true, options: "" }]);
+      resetBuilder();
       load();
     } finally { setBusy(null); }
   }
@@ -2446,7 +2492,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <button onClick={load} disabled={refreshing} className="px-4 py-2 rounded-control border border-brand-700 text-brand-700 text-[13px] font-semibold flex items-center gap-2 disabled:opacity-60 hover:bg-brand-50">
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} /> Sync
           </button>
-          <button onClick={() => setShowBuilder(v => !v)} className={btnPrimary}>
+          <button onClick={() => { resetBuilder(); setShowBuilder(v => !v); }} className={btnPrimary}>
             {showBuilder ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />} {showBuilder ? "Close" : "New form"}
           </button>
         </div>
@@ -2460,7 +2506,8 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {showBuilder && (
         <div className="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
           <section className="bg-white rounded-card border border-line p-5 space-y-4">
-            <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">New form</p>
+            <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{editingId ? "Edit form" : cloneNote ? "Edit a copy" : "New form"}</p>
+            {cloneNote && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">Editing a copy of <b>{cloneNote}</b>. Published forms can&apos;t be changed on WhatsApp, so this saves as a <b>new</b> form.</p>}
             <div className="grid grid-cols-2 gap-2">
               <input className={inp} placeholder="Form name (internal)" value={name} onChange={e => setName(e.target.value)} />
               <input className={inp} maxLength={30} placeholder="Title shown on the form (30 chars)" value={title} onChange={e => setTitle(e.target.value)} />
@@ -2487,11 +2534,11 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               )}
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={() => create(true)} disabled={!!busy} className={btnPrimary}>
-                {busy === "publish" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Create &amp; publish
+              <button onClick={() => (editingId ? update(true) : create(true))} disabled={!!busy} className={btnPrimary}>
+                {busy === "publish" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {editingId ? "Update & publish" : "Create & publish"}
               </button>
-              <button onClick={() => create(false)} disabled={!!busy} className="px-4 py-2 rounded-control border border-line text-ink-600 text-[13px] font-semibold flex items-center gap-2 hover:bg-canvas disabled:opacity-60">
-                {busy === "draft" ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Save as draft
+              <button onClick={() => (editingId ? update(false) : create(false))} disabled={!!busy} className="px-4 py-2 rounded-control border border-line text-ink-600 text-[13px] font-semibold flex items-center gap-2 hover:bg-canvas disabled:opacity-60">
+                {busy === "draft" ? <Loader2 className="w-4 h-4 animate-spin" /> : null} {editingId ? "Save draft" : "Save as draft"}
               </button>
             </div>
             <p className="text-[11px] text-ink-400">Forms publish instantly (Meta validates — no review queue). Answers land on the contact as attributes named after each field.</p>
@@ -2537,6 +2584,12 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {f.previewUrl && (
               <a href={f.previewUrl} target="_blank" rel="noreferrer" title="Open Meta's interactive preview"
                 className="p-1.5 text-ink-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg shrink-0"><ExternalLink className="w-4 h-4" /></a>
+            )}
+            {f.status !== "DEPRECATED" && (
+              <button onClick={() => openEdit(f)} disabled={busy === "load:" + f.id}
+                className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 disabled:opacity-60">
+                {busy === "load:" + f.id ? "…" : f.status === "PUBLISHED" ? "Edit a copy" : "Edit"}
+              </button>
             )}
             {f.status === "DRAFT" && f.validationErrors.length === 0 && (
               <button onClick={() => publish(f.id)} disabled={busy === f.id}

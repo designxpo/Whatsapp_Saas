@@ -68,6 +68,39 @@ export function buildFlowJson(title: string, fields: WaFormField[]): Record<stri
   };
 }
 
+// ── Reverse: Flow JSON → field spec (for the edit builder) ────────────────────
+// Walks the Flow JSON and pulls every input component back into a WaFormField,
+// in order, deduped by name — so an existing form can be re-opened in the builder.
+export function parseFlowJson(flowJson: Record<string, unknown>): { title: string; fields: WaFormField[] } {
+  const fields: WaFormField[] = [];
+  const seen = new Set<string>();
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    if (!node || typeof node !== "object") return;
+    const o = node as Record<string, unknown>;
+    const t = o.type as string | undefined;
+    if (t && ["TextInput", "TextArea", "Dropdown", "RadioButtonsGroup", "CheckboxGroup", "DatePicker", "OptIn"].includes(t)) {
+      const key = (o.name as string) || (o.label as string) || `f${fields.length}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        let type: WaFormField["type"];
+        if (t === "TextInput") {
+          const it = (o["input-type"] as string) || "text";
+          type = it === "email" ? "email" : it === "phone" ? "phone" : it === "number" ? "number" : "text";
+        } else {
+          type = ({ TextArea: "textarea", Dropdown: "dropdown", RadioButtonsGroup: "radio", CheckboxGroup: "checkbox", DatePicker: "date", OptIn: "optin" } as const)[t as "TextArea"];
+        }
+        const ds = (o["data-source"] as { title?: string }[] | undefined) ?? [];
+        fields.push({ type, label: String(o.label ?? ""), required: !!o.required, options: ds.map(d => String(d.title ?? "")).filter(Boolean) });
+      }
+    }
+    for (const v of Object.values(o)) walk(v);
+  };
+  const screens = (flowJson.screens as Record<string, unknown>[]) ?? [];
+  walk(screens);
+  return { title: (screens[0]?.title as string) ?? "", fields };
+}
+
 // One Flow JSON component for a field (shared by single + multi-screen builders).
 function flowField(f: WaFormField, name: string): Record<string, unknown> {
   const opts = (f.options ?? []).filter(o => o.trim()).slice(0, 20)
@@ -196,6 +229,35 @@ export async function publishWaForm(id: string, channel?: ChannelCreds): Promise
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+// Reads an existing form's fields back from Meta (downloads its Flow JSON asset)
+// so it can be re-opened in the builder. Read-only — safe on any form.
+export async function getWaFormDef(id: string, channel?: ChannelCreds): Promise<{ title: string; fields: WaFormField[]; error?: string }> {
+  const { token } = getCreds(channel);
+  if (!token) return { title: "", fields: [], error: "Missing META_WA_ACCESS_TOKEN" };
+  try {
+    const res = await fetch(`${GRAPH}/${id}/assets`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { title: "", fields: [], error: errMsg(data, res.status) };
+    const asset = ((data.data as Record<string, unknown>[]) ?? []).find(a => a.asset_type === "FLOW_JSON");
+    const url = asset?.download_url as string | undefined;
+    if (!url) return { title: "", fields: [], error: "No Flow JSON found for this form." };
+    const flowJson = await fetch(url).then(r => r.json()).catch(() => ({}));
+    return parseFlowJson(flowJson as Record<string, unknown>);
+  } catch (err) {
+    return { title: "", fields: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Replaces a DRAFT form's content with new Flow JSON (Meta allows editing only
+// while a Flow is in draft — published Flows are immutable, so clone instead).
+export async function updateWaFormJson(id: string, flowJson: Record<string, unknown>, channel?: ChannelCreds): Promise<{ validationErrors?: string[]; error?: string }> {
+  const { token } = getCreds(channel);
+  if (!token) return { error: "Missing META_WA_ACCESS_TOKEN" };
+  const up = await uploadFlowJson(token, id, flowJson);
+  if (up.error) return { error: up.error };
+  return { validationErrors: up.errors };
 }
 
 export async function listWaForms(channel?: ChannelCreds): Promise<WaForm[]> {

@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, type WaFormField } from "@/lib/waforms";
+import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, getWaFormDef, updateWaFormJson, type WaFormField } from "@/lib/waforms";
 import { credsFor } from "@/lib/channels";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
@@ -8,10 +8,14 @@ import { logActivity } from "@/lib/team";
 export const dynamic = "force-dynamic";
 
 // GET ?channelId=… — forms live on the WABA, so each channel can differ.
+// GET ?def=<id> — read one form's fields back (to re-open it in the builder).
 export async function GET(req: Request) {
   try {
+    const url = new URL(req.url);
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"), tid);
+    const channel = await credsFor(url.searchParams.get("channelId"), tid);
+    const def = url.searchParams.get("def");
+    if (def) return NextResponse.json(await getWaFormDef(def, channel));
     return NextResponse.json({ forms: await listWaForms(channel) });
   } catch (err) {
     // Missing/invalid Meta creds shouldn't 500 the UI — render with a notice.
@@ -35,6 +39,21 @@ export async function POST(req: Request) {
     if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
     logActivity(await currentUser(), "form.publish", body.id);
     return NextResponse.json({ success: true, published: true });
+  }
+
+  // Edit an existing DRAFT form's content (re-upload its Flow JSON), optionally publishing.
+  if (body.id && body.fields) {
+    const fields = (body.fields ?? []).filter(f => f?.label?.trim());
+    if (!fields.length) return NextResponse.json({ error: "Add at least one field" }, { status: 400 });
+    const needOptions = fields.find(f => ["dropdown", "radio", "checkbox"].includes(f.type) && !(f.options ?? []).some(o => o.trim()));
+    if (needOptions) return NextResponse.json({ error: `"${needOptions.label}" needs at least one option` }, { status: 400 });
+    const up = await updateWaFormJson(body.id, buildFlowJson(body.title ?? body.name ?? "Form", fields), channel);
+    if (up.error) return NextResponse.json({ error: up.error }, { status: 502 });
+    if (up.validationErrors?.length) return NextResponse.json({ success: true, id: body.id, status: "DRAFT", validationErrors: up.validationErrors });
+    let published = false, publishError: string | undefined;
+    if (body.publish) { const p = await publishWaForm(body.id, channel); published = p.success; publishError = p.error; }
+    logActivity(await currentUser(), "form.update", `${body.name ?? body.id} (${published ? "PUBLISHED" : "DRAFT"})`);
+    return NextResponse.json({ success: true, id: body.id, status: published ? "PUBLISHED" : "DRAFT", publishError });
   }
 
   if (!body.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
