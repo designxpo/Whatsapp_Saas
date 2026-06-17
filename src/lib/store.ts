@@ -667,6 +667,15 @@ export async function getConversationByPhone(phone: string, tenantId = DEFAULT_T
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+// An Instagram conversation linked to a real phone the lead shared (lead_phone).
+// Lets the CRM panel show the IG thread for a lead identified by phone.
+export async function getIgConversationByLeadPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
+  const { data } = await db().from("wa_conversations").select("*")
+    .eq("tenant_id", tenantId).eq("platform", "instagram").eq("lead_phone", digits(phone))
+    .order("last_inbound_at", { ascending: false }).limit(1).maybeSingle();
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
 // When tenantId is supplied the lookup is tenant-scoped — pass it from any
 // caller that takes a client-supplied conversation id (prevents cross-tenant
 // IDOR; a foreign id returns null → 404).

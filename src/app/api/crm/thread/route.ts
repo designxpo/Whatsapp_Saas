@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getConversationByPhone, getConvHistory, getContactByPhone, listQuickReplies } from "@/lib/store";
+import { getConversationByPhone, getConvHistory, getContactByPhone, listQuickReplies, getIgConversationByLeadPhone } from "@/lib/store";
 import { crmAuthorized } from "@/lib/crm";
 import { errorMessage } from "@/lib/errors";
 
@@ -17,14 +17,21 @@ export async function GET(req: Request) {
 
   try {
     const quickReplies = await listQuickReplies().catch(() => []);
+    // An Instagram thread linked to this phone (the lead shared it in chat) —
+    // shown read-only beside WhatsApp so the CRM sees the full picture.
+    const igConv = await getIgConversationByLeadPhone(phone).catch(() => null);
+    const ig = igConv
+      ? { conversation: igConv, messages: await getConvHistory(igConv.id, 200).catch(() => []) }
+      : null;
+
     const conversation = await getConversationByPhone(phone);
     if (!conversation) {
       const contact = await getContactByPhone(phone);
-      return NextResponse.json({ conversation: null, messages: [], contactName: contact?.name ?? "", window: "closed", quickReplies });
+      return NextResponse.json({ conversation: null, messages: [], contactName: contact?.name ?? "", window: "closed", quickReplies, ig });
     }
     const messages = await getConvHistory(conversation.id, 200);
     const windowOpen = !!conversation.lastInboundAt && Date.now() - new Date(conversation.lastInboundAt).getTime() < WINDOW_MS;
-    return NextResponse.json({ conversation, messages, window: windowOpen ? "open" : "closed", quickReplies });
+    return NextResponse.json({ conversation, messages, window: windowOpen ? "open" : "closed", quickReplies, ig });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
