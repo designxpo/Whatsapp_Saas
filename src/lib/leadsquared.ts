@@ -37,6 +37,55 @@ async function findLeadId(phone: string): Promise<string | null> {
   return null;
 }
 
+// The CRM picture of a lead, surfaced inside Live Chat / the profile drawer so
+// sales sees stage/owner/score without opening LeadSquared.
+export interface CrmLead {
+  id: string;
+  stage: string | null;
+  owner: string | null;
+  score: number | null;
+  source: string | null;
+  fields: { label: string; value: string }[];   // a few extra useful fields when present
+}
+
+// Reads the lead's core CRM fields by phone. Returns null when LSQ isn't
+// configured or the number isn't in the CRM. Never throws.
+export async function fetchLeadDetails(phone: string): Promise<CrmLead | null> {
+  if (!lsqConfigured()) return null;
+  try {
+    const { accessKey, secretKey, host } = cfg();
+    const digits = (phone || "").replace(/\D/g, "");
+    if (!digits) return null;
+    for (const candidate of [`+${digits}`, digits]) {
+      const url = `${host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}&phone=${encodeURIComponent(candidate)}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const leads = (await res.json().catch(() => [])) as Record<string, unknown>[];
+      const l = Array.isArray(leads) ? leads[0] : null;
+      if (!l || !l.ProspectID) continue;
+      const g = (k: string): string | null => { const v = l[k]; if (v == null) return null; const s = String(v).trim(); return s === "" || /^(null|undefined)$/i.test(s) ? null : s; };
+      const scoreRaw = g("Score") ?? g("EngagementScore");
+      const extras: { label: string; value: string }[] = [];
+      for (const [key, label] of [["Company", "Company"], ["mx_City", "City"], ["mx_Course", "Course"], ["ProspectStageReason", "Stage reason"], ["Notes", "Notes"]] as const) {
+        const v = g(key);
+        if (v) extras.push({ label, value: v.slice(0, 200) });
+      }
+      return {
+        id: String(l.ProspectID),
+        stage: g("ProspectStage"),
+        owner: g("OwnerIdName") ?? g("Owner") ?? g("OwnerName"),
+        score: scoreRaw != null && !isNaN(Number(scoreRaw)) ? Number(scoreRaw) : null,
+        source: g("Source"),
+        fields: extras,
+      };
+    }
+    return null;
+  } catch (err) {
+    console.error("[leadsquared] lead lookup failed:", errorMessage(err));
+    return null;
+  }
+}
+
 // Fire-and-forget: records one WhatsApp message on the lead's timeline.
 // Never throws — CRM sync must not break message delivery.
 export async function pushWaActivity(p: {

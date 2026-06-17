@@ -182,7 +182,7 @@ export default function Admin() {
 
         <main className="flex-1 p-6 overflow-x-hidden">
           {tab === "home" && <HomeTab goTo={setTab} />}
-          {tab === "livechat" && <LiveChatTab />}
+          {tab === "livechat" && <LiveChatTab goTo={setTab} />}
           {tab === "broadcast" && <BroadcastTab goTo={setTab} />}
           {tab === "ads" && <AdsTab goTo={setTab} />}
           {tab === "instagram" && <InstagramTab />}
@@ -1169,7 +1169,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string };
 
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
-function LiveChatTab() {
+function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
@@ -1277,7 +1277,7 @@ function LiveChatTab() {
       </aside>
 
       {selected
-        ? <ChatView key={selected} id={selected} onChanged={load} />
+        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} />
         : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-400 bg-canvas/40">
             <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center"><MessageSquare className="w-6 h-6" /></div>
@@ -1377,8 +1377,9 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
 }
 
 // Middle thread + right contact-info pane for one conversation.
-function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
+function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; goTo: (t: Tab) => void }) {
   const [conv, setConv] = useState<Conversation | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1594,6 +1595,11 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
           <p className="text-[15px] font-bold text-ink-900 mt-2">{conv?.name || "Unknown"}</p>
           <p className="font-mono text-xs text-ink-400">{conv?.phone}</p>
           {contact?.email && <p className="text-xs text-ink-400 mt-0.5">{contact.email}</p>}
+          {conv?.phone && (
+            <button onClick={() => setShowProfile(true)} className="mt-3 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" /> Sales brief &amp; full profile
+            </button>
+          )}
         </div>
 
         <div className="p-4 space-y-4 text-sm">
@@ -1677,6 +1683,7 @@ function ChatView({ id, onChanged }: { id: string; onChanged: () => void }) {
           )}
         </div>
       </aside>
+      {showProfile && conv?.phone && <ContactProfile phone={conv.phone} onClose={() => setShowProfile(false)} onChanged={() => { load(); onChanged(); }} goTo={goTo} />}
     </>
   );
 }
@@ -2819,6 +2826,8 @@ function mapCsvRows(cells: string[][]): { rows: ImportRow[]; mapping: string[] }
 }
 
 // ── Lead profile drawer — everything a sales/marketing person needs on one lead ──
+type SalesBrief = { temperature: "hot" | "warm" | "cold"; summary: string; interestedIn: string; intent: string; objections: string; nextStep: string; talkingPoints: string[] };
+type CrmLead = { id: string; stage: string | null; owner: string | null; score: number | null; source: string | null; fields: { label: string; value: string }[] };
 type LeadProfile = {
   contact: { id: string; phone: string; name: string; email: string | null; tags: string[]; attributes: Record<string, string>; status: string; source: string | null; createdAt: string };
   conversation: { id: string; status: string; botEnabled: boolean; assignedTo: string | null; labels: string[]; lastInboundAt: string | null; lastOutboundAt: string | null } | null;
@@ -2835,10 +2844,28 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
   const [attrKey, setAttrKey] = useState("");
   const [attrVal, setAttrVal] = useState("");
   const [edit, setEdit] = useState<{ name: string; email: string } | null>(null);
+  const [brief, setBrief] = useState<SalesBrief | null>(null);
+  const [briefBusy, setBriefBusy] = useState(false);
+  const [briefErr, setBriefErr] = useState<string | null>(null);
+  const [crm, setCrm] = useState<{ configured: boolean; lead: CrmLead | null } | null>(null);
 
   const load = useCallback(() => {
     fetch(`/api/admin/contacts/profile?phone=${encodeURIComponent(phone)}`).then(r => r.json()).then(d => setP(d.contact ? d : null)).catch(() => {});
   }, [phone]);
+  // CRM snapshot (LeadSquared) — best-effort, silent when LSQ isn't configured.
+  useEffect(() => {
+    setCrm(null); setBrief(null); setBriefErr(null);
+    fetch(`/api/admin/contacts/crm?phone=${encodeURIComponent(phone)}`).then(r => r.json()).then(setCrm).catch(() => {});
+  }, [phone]);
+
+  async function genBrief() {
+    setBriefBusy(true); setBriefErr(null);
+    try {
+      const d = await fetch("/api/admin/contacts/brief", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(r => r.json());
+      if (d.brief) setBrief(d.brief); else setBriefErr(d.error || "Could not generate the brief.");
+    } catch { setBriefErr("Connection error."); }
+    finally { setBriefBusy(false); }
+  }
   useEffect(() => { load(); }, [load]);
 
   async function patch(body: Record<string, unknown>) {
@@ -2915,6 +2942,63 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                 {c.status === "active" ? "Opt out" : "Re-subscribe"}
               </button>
             </div>
+
+            {/* AI sales brief */}
+            <div className="rounded-control border border-brand-100 bg-brand-50/60 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold text-brand-700 uppercase tracking-[0.06em] flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Sales brief</p>
+                <button disabled={briefBusy} onClick={genBrief} className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-1 disabled:opacity-50">
+                  {briefBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} {brief ? "Regenerate" : "Generate"}
+                </button>
+              </div>
+              {briefErr && <p className="text-[11px] text-red-600">{briefErr}</p>}
+              {!brief && !briefBusy && !briefErr && <p className="text-xs text-slate-500">One tap to summarise this lead for your call — their interest, intent, objections, and the best next step.</p>}
+              {briefBusy && !brief && <p className="text-xs text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading the conversation…</p>}
+              {brief && (
+                <div className="space-y-1.5">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${brief.temperature === "hot" ? "bg-red-100 text-red-700" : brief.temperature === "warm" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
+                    {brief.temperature === "hot" ? "🔥 HOT" : brief.temperature === "warm" ? "🌤 WARM" : "❄️ COLD"} LEAD
+                  </span>
+                  <p className="text-xs text-ink-900">{brief.summary}</p>
+                  <div className="text-xs text-ink-700 space-y-0.5">
+                    <p><span className="font-semibold text-slate-500">Interested in:</span> {brief.interestedIn}</p>
+                    <p><span className="font-semibold text-slate-500">Intent:</span> {brief.intent}</p>
+                    <p><span className="font-semibold text-slate-500">Objections:</span> {brief.objections}</p>
+                    <p><span className="font-semibold text-brand-700">Next step:</span> {brief.nextStep}</p>
+                  </div>
+                  {brief.talkingPoints.length > 0 && (
+                    <ul className="list-disc pl-4 text-xs text-ink-700 space-y-0.5">
+                      {brief.talkingPoints.map((t, i) => <li key={i}>{t}</li>)}
+                    </ul>
+                  )}
+                  <p className="text-[10px] text-slate-400 pt-0.5">AI-generated from this lead&apos;s chat — verify before acting.</p>
+                </div>
+              )}
+            </div>
+
+            {/* LeadSquared CRM snapshot */}
+            {crm?.lead && (() => {
+              const rows: [string, string][] = [
+                ...(crm.lead.stage ? [["Stage", crm.lead.stage] as [string, string]] : []),
+                ...(crm.lead.owner ? [["Owner", crm.lead.owner] as [string, string]] : []),
+                ...(crm.lead.score != null ? [["Score", String(crm.lead.score)] as [string, string]] : []),
+                ...(crm.lead.source ? [["Source", crm.lead.source] as [string, string]] : []),
+                ...crm.lead.fields.map(f => [f.label, f.value] as [string, string]),
+              ];
+              return (
+                <div className="space-y-2">
+                  <p className={`${sectionTitle} flex items-center gap-1.5`}><Database className="w-3.5 h-3.5" /> LeadSquared CRM</p>
+                  <div className="border border-line rounded-control divide-y divide-line">
+                    {rows.map(([k, v]) => (
+                      <div key={k} className="px-3 py-1.5 flex items-start justify-between gap-3">
+                        <span className="text-[11px] font-semibold text-slate-400 pt-0.5">{k}</span>
+                        <span className="text-xs text-ink-900 text-right flex-1">{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Engagement summary */}
             <div className="grid grid-cols-3 gap-2">

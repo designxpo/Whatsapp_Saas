@@ -248,6 +248,59 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
   }
 }
 
+// ── Sales brief ───────────────────────────────────────────────────────────────
+// A concise, sales-call-ready summary of one lead, generated from their chat
+// history + collected details. Returns structured fields the UI renders as a card.
+// Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
+export interface SalesBrief {
+  temperature: "hot" | "warm" | "cold";
+  summary: string;
+  interestedIn: string;
+  intent: string;
+  objections: string;
+  nextStep: string;
+  talkingPoints: string[];
+}
+
+export async function generateSalesBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<SalesBrief> {
+  const ai = await resolveTenantAi(tenantId);
+  const instruction =
+    `Read the lead context below (their chat, collected details, campaigns received, and links tapped) and ` +
+    `produce a tight brief a salesperson can glance at right before calling this lead.\n\n` +
+    `Rules:\n` +
+    `- Be specific and grounded ONLY in the context. Never invent facts. If something is unknown, say "Unknown".\n` +
+    `- "temperature": "hot" if they showed buying intent (asked price/EMI/enrolment, booked, repeated interest), ` +
+    `"warm" if engaged but exploring, "cold" if barely engaged.\n` +
+    `- "summary": 1-2 sentences on who they are and where they are in the journey.\n` +
+    `- "interestedIn": the specific product/course/offer they care about (or "Unknown").\n` +
+    `- "intent": what they're trying to do / their key questions.\n` +
+    `- "objections": hesitations or blockers they voiced (or "None surfaced").\n` +
+    `- "nextStep": the single best next action for the sales rep.\n` +
+    `- "talkingPoints": 2-4 short bullet phrases to open or steer the call.\n` +
+    `Return ONLY JSON: {"temperature","summary","interestedIn","intent","objections","nextStep","talkingPoints":[]}.`;
+
+  const res = await runChat({
+    provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+    system: "You are a sales-enablement assistant. You output ONLY valid JSON — no markdown fences, no preamble.",
+    turns: [{ role: "user", text: `${instruction}\n\n--- LEAD CONTEXT ---\n${context}` }],
+    maxTokens: 1024,
+  });
+
+  const raw = (res.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
+  let parsed: Partial<SalesBrief> = {};
+  try { parsed = JSON.parse(raw) as Partial<SalesBrief>; } catch { /* fall through to defaults */ }
+  const temp = parsed.temperature === "hot" || parsed.temperature === "cold" ? parsed.temperature : "warm";
+  return {
+    temperature: temp,
+    summary: (parsed.summary ?? "").toString().trim() || "Not enough conversation yet to summarise this lead.",
+    interestedIn: (parsed.interestedIn ?? "").toString().trim() || "Unknown",
+    intent: (parsed.intent ?? "").toString().trim() || "Unknown",
+    objections: (parsed.objections ?? "").toString().trim() || "None surfaced",
+    nextStep: (parsed.nextStep ?? "").toString().trim() || "Reach out and qualify their interest.",
+    talkingPoints: Array.isArray(parsed.talkingPoints) ? parsed.talkingPoints.map(t => String(t).trim()).filter(Boolean).slice(0, 4) : [],
+  };
+}
+
 // One-shot text transform for agent assist (tone change, translate, fix, etc).
 // Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
 export async function transformText(instruction: string, text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
