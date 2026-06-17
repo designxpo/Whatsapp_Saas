@@ -3797,9 +3797,20 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [retargeting, setRetargeting] = useState(false);
   useEffect(() => { fetch("/api/admin/campaigns").then(r => r.json()).then(d => setCampaigns(d.campaigns ?? [])).catch(() => {}); }, []);
 
+  const loadStats = useCallback((id: string) => {
+    fetch(`/api/admin/campaigns/${id}/funnel`).then(r => r.json()).then(d => { if (d.funnel) setStats(d as CampaignStats); }).catch(() => {});
+  }, []);
+  // Keep the open campaign's insight live — delivery/read receipts arrive over
+  // minutes, so poll while the detail is open instead of a one-shot fetch.
+  useEffect(() => {
+    if (!detailId) return;
+    loadStats(detailId);
+    const t = setInterval(() => { if (!document.hidden) loadStats(detailId); }, 8000);
+    return () => clearInterval(t);
+  }, [detailId, loadStats]);
+
   function openDetail(id: string) {
     setDetailId(id); setStats(null);
-    fetch(`/api/admin/campaigns/${id}/funnel`).then(r => r.json()).then(d => { if (d.funnel) setStats(d as CampaignStats); }).catch(() => {});
   }
 
   // Pull the segment's recipients and jump to Broadcast prefilled (AiSensy-style retargeting).

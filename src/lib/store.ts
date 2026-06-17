@@ -500,7 +500,11 @@ export async function updateLogByMessageId(metaMessageId: string, status: "deliv
   const row: Record<string, unknown> = { status };
   if (status === "delivered") row.delivered_at = at;
   if (status === "read") { row.read_at = at; row.delivered_at = at; }
-  await db().from("wa_send_log").update(row).eq("meta_message_id", metaMessageId);
+  // Only ever move a receipt FORWARD (sent → delivered → read). Meta can deliver
+  // a "delivered" webhook after "read" (or duplicates); without this guard a late
+  // event would downgrade the row and the read count would silently shrink.
+  const allowedFrom = status === "read" ? ["sent", "delivered"] : ["sent"];
+  await db().from("wa_send_log").update(row).eq("meta_message_id", metaMessageId).in("status", allowedFrom);
 }
 
 // Per-tenant daily sent count — each tenant's volume counts against its own cap
