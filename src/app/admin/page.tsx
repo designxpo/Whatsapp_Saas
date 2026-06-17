@@ -1125,6 +1125,9 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
+                <input className="w-24 border border-line rounded px-1.5 py-0.5 text-[11px] text-ink-700 placeholder:text-ink-300" placeholder="+ topic tag" title="Tag this doc so a flow can use it as primary knowledge (Enter to save)" defaultValue={d.tag ?? ""}
+                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  onBlur={e => { const v = e.target.value.trim(); if (v !== (d.tag ?? "")) fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retag: d.id, tag: v || null }) }).then(load).catch(() => {}); }} />
                 <span className={statusBadge(d.status)}>{d.status}</span>
                 {d.sourceType === "url" && <button title="Sync now — re-crawl this page" onClick={() => fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resync: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-slate-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg"><RefreshCw className="w-4 h-4" /></button>}
                 <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>

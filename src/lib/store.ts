@@ -807,6 +807,12 @@ export async function setDocSync(id: string, contentHash: string, tenantId = DEF
   await db().from("kb_documents").update({ content_hash: contentHash, last_synced_at: new Date().toISOString() }).eq("tenant_id", tenantId).eq("id", id);
 }
 
+// Set/clear a document's topic tag (used as a flow's primary knowledge).
+export async function setDocTag(id: string, tag: string | null, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("kb_documents").update({ tag }).eq("tenant_id", tenantId).eq("id", id);
+  if (error) throw error;
+}
+
 // URL documents due for a re-crawl across ALL tenants (the cron is a system job):
 // never synced, or last synced before the cutoff. Returns [] if the auto-sync
 // columns aren't migrated yet (feature simply dormant). Each doc carries tenantId.

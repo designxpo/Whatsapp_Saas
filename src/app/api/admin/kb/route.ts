@@ -1,6 +1,6 @@
 export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
-import { createDocument, listDocuments, deleteDocument, setDocStatus, type KbSourceType } from "@/lib/store";
+import { createDocument, listDocuments, deleteDocument, setDocStatus, setDocTag, type KbSourceType } from "@/lib/store";
 import { ingestDocument, jsonToText, syncUrlDocument } from "@/lib/kb";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
@@ -54,6 +54,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    // Re-tag a document (assign/clear its topic tag) without re-uploading.
+    if (body.retag) {
+      await setDocTag(body.retag as string, (body.tag as string)?.trim() || null, tid);
+      return NextResponse.json({ success: true });
+    }
     // Manual "Sync now" — re-crawl a URL document on demand (re-embeds only if changed).
     if (body.resync) {
       const doc = (await listDocuments(tid)).find(d => d.id === body.resync);
