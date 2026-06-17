@@ -7,6 +7,11 @@ import { getContactByPhone, setContactAttributes, updateContactProfile } from ".
 // Below this cosine similarity, retrieved context is treated as irrelevant.
 const MIN_SIMILARITY = 0.45;
 const ESCALATE_TOKEN = "[[ESCALATE]]";
+// A genuine human-handoff / complaint signal. The model occasionally emits the
+// escalate token on a benign one-word menu tap ("Fees", "Courses"), which would
+// silence the bot for the whole chat. We only honour an escalation when the
+// user's own words actually read like a handoff or complaint.
+const HANDOFF_RE = /\b(agent|human|representative|executive|supervisor|manager|complaint|refund|cancel(led|lation)?|angry|frustrat|useless|terrible|worst|rubbish|scam|fraud|lawyer|legal|call\s*me|call\s*back|talk to|speak to|connect me|real person|customer care)\b/i;
 const MAX_TOOL_ROUNDS = 3;
 
 export const FALLBACK_REPLY =
@@ -205,6 +210,15 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
       // Only an explicit escalate token hands off to a human. An empty model
       // reply must NOT escalate — fall back to a soft prompt instead.
       if (text.includes(ESCALATE_TOKEN)) {
+        // Guard against false-positive handoffs: a mis-escalation turns the bot
+        // OFF for the whole conversation (status → escalated). If the user's last
+        // message is short and shows no handoff/complaint intent (e.g. a menu tap
+        // like "Fees"), keep the bot active with a soft prompt instead.
+        const msg = lastUser.body.trim();
+        const benign = msg.split(/\s+/).length <= 3 && !HANDOFF_RE.test(msg);
+        if (benign) {
+          return { reply: SOFT_FALLBACK, escalate: false, reason: "escalate suppressed (benign message)", usedChunks: relevant.length, functionCalls: executed };
+        }
         return { reply: null, escalate: true, reason: "model escalated", usedChunks: relevant.length, functionCalls: executed };
       }
       if (!text) {

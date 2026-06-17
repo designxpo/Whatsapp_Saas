@@ -449,24 +449,55 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
   const bodyText = sel?.components?.find(c => c.type === "BODY")?.text ?? "";
   const varCount = sel ? new Set(Array.from(bodyText.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
   const needsImage = !!sel?.components?.some(c => c.type === "HEADER" && c.format === "IMAGE");
+  // A carousel template (BODY + CAROUSEL) can't be sent like a standard one —
+  // Meta needs each card's media at send time. Show the card editor instead.
+  const isCarousel = !!sel?.components?.some(c => c.type === "CAROUSEL");
   const params = (data.bodyParams as string[]) ?? [];
   const setParam = (i: number, v: string) => { const next = [...params]; next[i] = v; set({ bodyParams: next }); };
+  const cards = (data.cards as CarouselCard[]) ?? [{ kind: "image" }, { kind: "image" }];
+  const setCard = (i: number, patch: Partial<CarouselCard>) => set({ cards: cards.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
   return (
     <Shell id={id} type={type} selected={selected} foot="Sends an APPROVED template. WhatsApp only — create/approve templates in the Templates tab.">
       <select className={inp} value={sel ? `${sel.name}|||${sel.language}` : ""} onChange={e => { const [n, l] = e.target.value.split("|||"); set({ templateName: n, lang: l, bodyParams: [] }); }}>
         <option value="">{tpls.length ? "— pick an approved template —" : "No approved templates yet"}</option>
-        {tpls.map(t => <option key={t.name + t.language} value={`${t.name}|||${t.language}`}>{t.name} · {t.language}</option>)}
+        {tpls.map(t => <option key={t.name + t.language} value={`${t.name}|||${t.language}`}>{t.name} · {t.language}{t.components?.some(c => c.type === "CAROUSEL") ? " · carousel" : ""}</option>)}
       </select>
-      {needsImage && (
-        <div className="flex items-center gap-1.5">
-          <input className={`${inp} flex-1`} placeholder="Header image URL or upload →" value={str(data.headerImageUrl)} onChange={e => set({ headerImageUrl: e.target.value })} />
-          <NodeUpload onUploaded={url => set({ headerImageUrl: url })} />
-        </div>
+      {isCarousel ? (
+        <>
+          <p className="text-[10px] text-amber-600 leading-snug">Carousel template — add each card&apos;s image/video below (Meta needs it at send time).</p>
+          <input className={inp} placeholder="Bubble {{1}},{{2}}… (optional)" value={str(data.bubbleParams)} onChange={e => set({ bubbleParams: e.target.value })} />
+          {cards.map((c, i) => (
+            <div key={i} className="border border-line rounded-lg p-1.5 space-y-1 bg-canvas/50">
+              <div className="flex items-center gap-1.5">
+                <select className={`${inp} !w-auto !py-0.5`} value={c.kind ?? "image"} onChange={e => setCard(i, { kind: e.target.value as CarouselCard["kind"] })}>
+                  <option value="image">Image</option><option value="video">Video</option>
+                </select>
+                <span className="text-[9px] text-ink-400 flex-1 text-right">card {i + 1}</span>
+                {cards.length > 2 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ cards: cards.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <input className={`${inp} flex-1`} placeholder="Card media URL or upload →" value={c.mediaUrl ?? ""} onChange={e => setCard(i, { mediaUrl: e.target.value })} />
+                <NodeUpload accept={c.kind === "video" ? "video/*" : "image/*"} onUploaded={url => setCard(i, { mediaUrl: url })} />
+              </div>
+              <input className={inp} placeholder="Card {{1}},{{2}}… (optional)" value={c.bodyParams ?? ""} onChange={e => setCard(i, { bodyParams: e.target.value })} />
+            </div>
+          ))}
+          {cards.length < 10 && <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>}
+        </>
+      ) : (
+        <>
+          {needsImage && (
+            <div className="flex items-center gap-1.5">
+              <input className={`${inp} flex-1`} placeholder="Header image URL or upload →" value={str(data.headerImageUrl)} onChange={e => set({ headerImageUrl: e.target.value })} />
+              <NodeUpload onUploaded={url => set({ headerImageUrl: url })} />
+            </div>
+          )}
+          {Array.from({ length: varCount }).map((_, i) => (
+            <input key={i} className={inp} placeholder={`Value for {{${i + 1}}}`} value={params[i] ?? ""} onChange={e => setParam(i, e.target.value)} />
+          ))}
+          {sel && bodyText && <p className="text-[10px] text-ink-400 line-clamp-2">{bodyText}</p>}
+        </>
       )}
-      {Array.from({ length: varCount }).map((_, i) => (
-        <input key={i} className={inp} placeholder={`Value for {{${i + 1}}}`} value={params[i] ?? ""} onChange={e => setParam(i, e.target.value)} />
-      ))}
-      {sel && bodyText && <p className="text-[10px] text-ink-400 line-clamp-2">{bodyText}</p>}
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>
   );
@@ -576,7 +607,15 @@ function validateGraph(nodes: Node[], edges: Edge[], keywords: string, active: b
         if (!str(d.localProductId).trim()) add("Pick a product for the custom card (add products in Catalog).");
       } else if (!str(d.catalogId).trim() || !str(d.productId).trim()) add("Fill in both the Catalog ID and the Product ID from Meta Commerce Manager.");
     }
-    if (n.type === "template" && !str(d.templateName).trim()) add("Pick an approved template to send.");
+    if (n.type === "template") {
+      if (!str(d.templateName).trim()) add("Pick an approved template to send.");
+      else {
+        // Carousel template: needs ≥2 cards each with media, or Meta rejects it.
+        const cs = (d.cards as CarouselCard[] | undefined) ?? [];
+        const withMedia = cs.filter(c => str(c.mediaUrl).trim()).length;
+        if (cs.length && withMedia < 2) add("This carousel template needs at least 2 cards, each with an image or video.");
+      }
+    }
     if (n.type === "productlist") {
       const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
       if (!str(d.catalogId).trim()) add("Add the Catalog ID from Meta Commerce Manager.");

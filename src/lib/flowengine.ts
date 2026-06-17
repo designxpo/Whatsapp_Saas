@@ -317,8 +317,23 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         // Send an approved WhatsApp template (header image + {{n}} body params).
         const name = str(d.templateName).trim();
         if (name) {
-          const params = ((d.bodyParams as string[]) ?? []).map(s => (s ?? "").trim());
-          await send.template(name, str(d.lang) || "en_US", params, str(d.headerImageUrl).trim() || undefined);
+          // A CAROUSEL template must be sent with per-card media — the standard
+          // template send is rejected by Meta (silent failure). When the node
+          // carries cards (it detected a carousel template), route accordingly.
+          const cards = (((d.cards as { mediaUrl?: string; kind?: string; bodyParams?: string }[]) ?? [])
+            .map(c => ({
+              mediaUrl: str(c.mediaUrl).trim(),
+              kind: (c.kind === "video" ? "video" : "image") as "image" | "video",
+              bodyParams: str(c.bodyParams).split(",").map(s => s.trim()).filter(Boolean),
+            }))
+            .filter(c => c.mediaUrl));
+          if (cards.length >= 2) {
+            const bubbleParams = str(d.bubbleParams).split(",").map(s => s.trim()).filter(Boolean);
+            await send.carouselTemplate(name, str(d.lang) || "en_US", bubbleParams, cards);
+          } else {
+            const params = ((d.bodyParams as string[]) ?? []).map(s => (s ?? "").trim());
+            await send.template(name, str(d.lang) || "en_US", params, str(d.headerImageUrl).trim() || undefined);
+          }
         }
         cur = nextNode(g, cur.id); continue;
       }
