@@ -20,7 +20,7 @@ import { sendIgMessage, sendIgQuickReplies } from "./instagram";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
-  setContactAttributes, getContactByPhone, claimReply, setConversationAgent,
+  setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
@@ -44,6 +44,7 @@ export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
   platform: "whatsapp" | "instagram" | "both";   // which channel kind(s) this flow runs on
   channelId: string | null;     // scope to one number/account (null = every one of that platform)
+  primaryKbTag: string | null;  // AI in this flow answers from KB docs with this tag first
   graph: FlowGraph; createdAt: string; updatedAt: string;
 }
 
@@ -58,6 +59,7 @@ function mapFlow(r: Record<string, unknown>): Flow {
     triggerKeywords: (r.trigger_keywords as string[]) ?? [],
     platform: (r.platform as Flow["platform"]) ?? "whatsapp",
     channelId: (r.channel_id as string | null) ?? null,
+    primaryKbTag: (r.primary_kb_tag as string | null) ?? null,
     graph: (r.graph as FlowGraph) ?? { nodes: [], edges: [] },
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
@@ -87,21 +89,22 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "both"; channelId: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "both"; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
   if (p.triggerKeywords !== undefined) patch.trigger_keywords = p.triggerKeywords.map(k => norm(k)).filter(Boolean);
   if (p.platform !== undefined) patch.platform = p.platform;
   if (p.channelId !== undefined) patch.channel_id = p.channelId;
+  if (p.primaryKbTag !== undefined) patch.primary_kb_tag = p.primaryKbTag || null;
   if (p.graph !== undefined) patch.graph = p.graph;
   let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
   // Optional columns missing (migration not applied) — save the rest, but never
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
-  if (error && ("channel_id" in patch || "platform" in patch)) {
+  if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
     const triedPlatform = patch.platform === "instagram" || patch.platform === "both";
-    delete patch.channel_id; delete patch.platform;
+    delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
     if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023_flow_platform.sql + 0046_flow_platform_both.sql), then save again.");
   }
@@ -464,6 +467,8 @@ async function triggerByKeyword(
   const t = norm(text);
   for (const flow of flows) {
     if (!flow.triggerKeywords.some(k => norm(k) === t)) continue;
+    // Scope this chat's AI knowledge to the flow's primary tag (null clears it).
+    if (isReal) await setConversationKbTag(convKey, flow.primaryKbTag).catch(() => undefined);
     const start = flow.graph.nodes.find(n => n.type === "start");
     const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
     if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
@@ -570,6 +575,7 @@ export async function handleFlowMessage(
   if (opts.adFlowId && !opts.onlyFlowId) {
     const flow = await getFlow(opts.adFlowId, tid);
     if (flow && (flow.active || opts.allowInactive) && (!flow.channelId || !opts.channel || flow.channelId === opts.channel.id)) {
+      if (isReal) await setConversationKbTag(convKey, flow.primaryKbTag).catch(() => undefined);
       const start = flow.graph.nodes.find(n => n.type === "start");
       const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);

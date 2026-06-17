@@ -1,6 +1,6 @@
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, type KbSourceType, type KbDocument } from "./store";
+import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
 
@@ -210,8 +210,26 @@ export async function refreshDueUrlDocuments(opts: { olderThanHours?: number; ma
   return { checked: docs.length, updated, unchanged, failed };
 }
 
-// Retrieve top-k business-doc chunks relevant to a query (tenant-scoped).
-export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; similarity: number }[]> {
+// Retrieve top-k business-doc chunks relevant to a query (tenant-scoped). When
+// primaryTag is set (a flow's masterclass etc.), strongly-matching tagged chunks
+// lead; the rest of the slots fall back to the general KB — so on-topic questions
+// are answered from the masterclass and off-topic ones still get a default answer.
+export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primaryTag?: string | null): Promise<{ content: string; similarity: number }[]> {
   const emb = await embedQuery(query);
-  return matchChunks(emb, k, tenantId);
+  if (!primaryTag) return matchChunks(emb, k, tenantId);
+  const PRIMARY_FLOOR = 0.5;   // below this, the tagged docs don't really cover the question → fall back
+  const [tagged, general] = await Promise.all([
+    matchChunksByTag(emb, k, primaryTag, tenantId).catch(() => []),
+    matchChunks(emb, k, tenantId),
+  ]);
+  const lead = tagged.filter(c => c.similarity >= PRIMARY_FLOOR);
+  const out: { content: string; similarity: number }[] = [];
+  const seen = new Set<string>();
+  for (const c of [...lead, ...general]) {
+    if (out.length >= k) break;
+    if (seen.has(c.content)) continue;
+    seen.add(c.content);
+    out.push({ content: c.content, similarity: c.similarity });
+  }
+  return out;
 }

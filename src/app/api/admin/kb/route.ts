@@ -41,8 +41,9 @@ export async function POST(req: Request) {
       const sourceType = extToSourceType(file.name);
       if (!sourceType) return NextResponse.json({ error: "Unsupported file type (use PDF, DOC/DOCX, TXT, MD, JSON)" }, { status: 400 });
       const title = (form.get("title") as string)?.trim() || file.name;
+      const tag = (form.get("tag") as string)?.trim() || null;
       const buffer = Buffer.from(await file.arrayBuffer());
-      const doc = await createDocument({ title, sourceType, sourceRef: file.name }, tid);
+      const doc = await createDocument({ title, sourceType, sourceRef: file.name, tag }, tid);
       // .json files are flattened to readable key/value text; .md/.txt pass through as-is.
       const isJson = file.name.toLowerCase().endsWith(".json");
       const payload = sourceType === "text"
@@ -66,14 +67,14 @@ export async function POST(req: Request) {
     if (sourceType === "text") {
       const content = (body.content as string)?.trim();
       if (!content) return NextResponse.json({ error: "content required" }, { status: 400 });
-      const doc = await createDocument({ title: (body.title as string)?.trim() || "Pasted text", sourceType: "text" }, tid);
+      const doc = await createDocument({ title: (body.title as string)?.trim() || "Pasted text", sourceType: "text", tag: (body.tag as string)?.trim() || null }, tid);
       after(() => ingestDocument(doc.id, "text", { text: content }, tid));
       return NextResponse.json({ document: doc });
     }
     if (sourceType === "url") {
       const url = (body.sourceRef as string)?.trim();
       if (!url || !/^https?:\/\//i.test(url)) return NextResponse.json({ error: "valid sourceRef URL required" }, { status: 400 });
-      const doc = await createDocument({ title: (body.title as string)?.trim() || url, sourceType: "url", sourceRef: url }, tid);
+      const doc = await createDocument({ title: (body.title as string)?.trim() || url, sourceType: "url", sourceRef: url, tag: (body.tag as string)?.trim() || null }, tid);
       after(() => ingestDocument(doc.id, "url", { url }, tid));
       return NextResponse.json({ document: doc });
     }

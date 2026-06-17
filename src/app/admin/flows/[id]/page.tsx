@@ -593,6 +593,8 @@ function Editor({ flowId }: { flowId: string }) {
   const [active, setActive] = useState(false);
   const [platform, setPlatform] = useState<"whatsapp" | "instagram" | "both">("whatsapp");
   const [channelId, setChannelId] = useState<string | null>(null);
+  const [primaryKbTag, setPrimaryKbTag] = useState("");
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [channels, setChannels] = useState<{ id: string; name: string; kind: string }[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -612,6 +614,8 @@ function Editor({ flowId }: { flowId: string }) {
   const counter = useRef(1);
 
   useEffect(() => { fetch("/api/admin/channels").then(r => r.json()).then(d => setChannels((d.channels ?? []).map((c: { id: string; name: string; kind?: string }) => ({ id: c.id, name: c.name, kind: c.kind ?? "whatsapp" })))).catch(() => {}); }, []);
+  // Distinct KB topic tags, for the "Primary knowledge" picker.
+  useEffect(() => { fetch("/api/admin/kb").then(r => r.json()).then(d => setKbTags([...new Set(((d.documents ?? []) as { tag?: string | null }[]).map(x => x.tag).filter((t): t is string => !!t))].sort())).catch(() => {}); }, []);
 
   useEffect(() => {
     fetch(`/api/admin/flows/${flowId}`).then(r => r.json()).then(d => {
@@ -619,6 +623,7 @@ function Editor({ flowId }: { flowId: string }) {
       setName(d.flow.name); setActive(d.flow.active); setKeywords((d.flow.triggerKeywords ?? []).join(", "));
       setPlatform(d.flow.platform === "instagram" || d.flow.platform === "both" ? d.flow.platform : "whatsapp");
       setChannelId(d.flow.channelId ?? null);
+      setPrimaryKbTag(d.flow.primaryKbTag ?? "");
       setNodes((d.flow.graph.nodes ?? []).map((n: { id: string; type: string; position: { x: number; y: number }; data: NodeData }) => ({ ...n, data: n.data ?? {} })));
       setEdges((d.flow.graph.edges ?? []).map((e: Edge) => ({ ...e, animated: true, type: "deletable" })));
       counter.current = (d.flow.graph.nodes?.length ?? 0) + 1;
@@ -670,6 +675,7 @@ function Editor({ flowId }: { flowId: string }) {
           active,
           platform,
           channelId,
+          primaryKbTag: primaryKbTag || null,
           triggerKeywords: keywords.split(",").map(k => k.trim()).filter(Boolean),
           graph: {
             nodes: nodes.map(n => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
@@ -723,6 +729,11 @@ function Editor({ flowId }: { flowId: string }) {
             {channels.filter(c => c.kind === platform).map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
           </select>
         )}
+        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
+          <option value="">🧠 Default knowledge</option>
+          {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
+          {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
+        </select>
         <div className="flex-1" />
         {issues.length > 0 && (
           <div className="relative">

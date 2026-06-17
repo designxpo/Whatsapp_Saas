@@ -517,6 +517,7 @@ export interface Conversation {
   assignedTo: string | null;
   welcomed: boolean;
   agentId: string | null;
+  primaryKbTag: string | null;  // scope AI knowledge to a flow's tagged docs (masterclass etc.)
   aiReplyCount: number;         // AI auto-replies sent so far (capped before human handoff)
   platform: "whatsapp" | "instagram";   // which channel this chat arrived on
   avatarUrl: string | null;     // profile image (Instagram); null for WhatsApp
@@ -550,6 +551,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     assignedTo: (r.assigned_to as string | null) ?? null,
     welcomed: (r.welcomed as boolean) ?? false,
     agentId: (r.agent_id as string | null) ?? null,
+    primaryKbTag: (r.primary_kb_tag as string | null) ?? null,
     aiReplyCount: (r.ai_reply_count as number) ?? 0,
     platform: (r.platform as "whatsapp" | "instagram") ?? "whatsapp",
     avatarUrl: (r.avatar_url as string | null) ?? null,
@@ -755,6 +757,7 @@ export interface KbDocument {
   contentHash: string | null;
   lastSyncedAt: string | null;
   tenantId: string;
+  tag: string | null;
 }
 
 function mapDocument(r: Record<string, unknown>): KbDocument {
@@ -770,13 +773,14 @@ function mapDocument(r: Record<string, unknown>): KbDocument {
     contentHash: (r.content_hash as string | null) ?? null,
     lastSyncedAt: (r.last_synced_at as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
+    tag: (r.tag as string | null) ?? null,
   };
 }
 
-export async function createDocument(p: { title: string; sourceType: KbSourceType; sourceRef?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<KbDocument> {
-  const { data, error } = await db().from("kb_documents").insert({
-    tenant_id: tenantId, title: p.title, source_type: p.sourceType, source_ref: p.sourceRef ?? null, status: "processing",
-  }).select().single();
+export async function createDocument(p: { title: string; sourceType: KbSourceType; sourceRef?: string | null; tag?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<KbDocument> {
+  const row: Record<string, unknown> = { tenant_id: tenantId, title: p.title, source_type: p.sourceType, source_ref: p.sourceRef ?? null, status: "processing" };
+  if (p.tag?.trim()) row.tag = p.tag.trim();   // optional; column added in 0047
+  const { data, error } = await db().from("kb_documents").insert(row).select().single();
   if (error) throw error;
   return mapDocument(data as Record<string, unknown>);
 }
@@ -832,6 +836,14 @@ export async function replaceChunks(documentId: string, chunks: { content: strin
 export async function matchChunks(queryEmbedding: number[], k = 6, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; similarity: number }[]> {
   const { data, error } = await db().rpc("match_kb_chunks", { query_embedding: queryEmbedding, match_count: k, p_tenant_id: tenantId });
   if (error) throw error;
+  return (data ?? []).map((r: Record<string, unknown>) => ({ content: r.content as string, documentId: r.document_id as string, similarity: r.similarity as number }));
+}
+
+// Tenant-scoped vector search restricted to documents with a given tag (a flow's
+// primary topic). Returns [] if the 0047 function isn't applied (degrades to global).
+export async function matchChunksByTag(queryEmbedding: number[], k: number, tag: string, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; similarity: number }[]> {
+  const { data, error } = await db().rpc("match_kb_chunks_by_tag", { query_embedding: queryEmbedding, match_count: k, p_tenant_id: tenantId, doc_tag: tag });
+  if (error) return [];
   return (data ?? []).map((r: Record<string, unknown>) => ({ content: r.content as string, documentId: r.document_id as string, similarity: r.similarity as number }));
 }
 
@@ -985,6 +997,12 @@ export async function assignConversation(id: string, assignedTo: string | null):
 export async function setConversationAgent(id: string, agentId: string | null): Promise<void> {
   const { error } = await db().from("wa_conversations").update({ agent_id: agentId }).eq("id", id);
   if (error) throw error;
+}
+
+// Scope this conversation's AI knowledge to a flow's primary tag (null = global).
+// Best-effort: errors (e.g. column missing pre-0047) are ignored, never thrown.
+export async function setConversationKbTag(id: string, tag: string | null): Promise<void> {
+  await db().from("wa_conversations").update({ primary_kb_tag: tag }).eq("id", id);
 }
 
 // Atomically claims the welcome send: only the first caller gets true.

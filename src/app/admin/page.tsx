@@ -1028,7 +1028,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 }
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
-type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string; lastSyncedAt?: string | null };
+type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string; lastSyncedAt?: string | null; tag?: string | null };
 type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
 
 // Avatar that shows the profile image when available, falling back to the
@@ -1121,7 +1121,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                 {d.sourceType === "url" ? <Globe className="w-4 h-4 text-slate-400 shrink-0" /> : <FileText className="w-4 h-4 text-slate-400 shrink-0" />}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-brand-dark truncate">{d.title}</p>
-                  <p className="text-[11px] text-slate-400">{d.sourceType.toUpperCase()} · {d.chunkCount} chunks{d.sourceType === "url" ? ` · auto-updates${d.lastSyncedAt ? ` · synced ${new Date(d.lastSyncedAt).toLocaleDateString()}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
+                  <p className="text-[11px] text-slate-400">{d.sourceType.toUpperCase()}{d.tag ? ` · #${d.tag}` : ""} · {d.chunkCount} chunks{d.sourceType === "url" ? ` · auto-updates${d.lastSyncedAt ? ` · synced ${new Date(d.lastSyncedAt).toLocaleDateString()}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -1661,6 +1661,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [url, setUrl] = useState("");
+  const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -1669,10 +1670,10 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
     try {
       let res: Response;
       if (mode === "file" && file) {
-        const fd = new FormData(); fd.append("file", file); fd.append("title", title || file.name);
+        const fd = new FormData(); fd.append("file", file); fd.append("title", title || file.name); if (tag.trim()) fd.append("tag", tag.trim());
         res = await fetch("/api/admin/kb", { method: "POST", body: fd });
       } else {
-        const body = mode === "url" ? { sourceType: "url", title: title || url, sourceRef: url } : { sourceType: "text", title: title || "Pasted text", content: text };
+        const body = mode === "url" ? { sourceType: "url", title: title || url, sourceRef: url, tag: tag.trim() || null } : { sourceType: "text", title: title || "Pasted text", content: text, tag: tag.trim() || null };
         res = await fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       }
       if (!res.ok) {
@@ -1680,7 +1681,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
         setMsg(d.error ? `Failed: ${d.error}` : "Failed to add.");
         return;
       }
-      setTitle(""); setText(""); setUrl(""); onAdded();
+      setTitle(""); setText(""); setUrl(""); setTag(""); onAdded();
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
   }
@@ -1695,6 +1696,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
         ))}
       </div>
       <input className={`${inp} w-full`} placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
+      <input className={`${inp} w-full`} placeholder="Topic tag (optional, e.g. masterclass-jan) — lets a flow use these docs as its primary knowledge" value={tag} onChange={e => setTag(e.target.value)} />
       {mode === "text" && <textarea className={`${inp} w-full`} rows={3} placeholder="Paste business content (FAQ, policies, product info)…" value={text} onChange={e => setText(e.target.value)} />}
       {mode === "url" && <input className={`${inp} w-full`} placeholder="https://yourbusiness.com/faq" value={url} onChange={e => setUrl(e.target.value)} />}
       <div className="flex items-center gap-3">

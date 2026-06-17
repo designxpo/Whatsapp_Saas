@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import { handleFlowMessage, endSession, drySender, type SimOutput } from "@/lib/flowengine";
+import { handleFlowMessage, endSession, drySender, getFlow, type SimOutput } from "@/lib/flowengine";
 import { matchFaq } from "@/lib/router/faq";
 import { cacheLookup } from "@/lib/router/cache";
 import { routerEnabled } from "@/lib/router";
@@ -51,7 +51,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         }
       }
       const agent = await resolveAgent(null, tid).catch(() => null);
-      const result = await generateReply([{ role: "user", body: message }], undefined, null, tid);
+      const flow = await getFlow(id, tid).catch(() => null);
+      const result = await generateReply([{ role: "user", body: message }], undefined, null, tid, flow?.primaryKbTag ?? null);
       if (result.reply) {
         return NextResponse.json({ outputs: [{ kind: "ai", body: result.reply }], handled: false, note: `Answered by the AI assistant${agent ? ` (${agent.name})` : ""}` });
       }
