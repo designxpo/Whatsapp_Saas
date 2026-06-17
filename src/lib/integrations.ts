@@ -46,19 +46,42 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 
 // ── Connector kinds ──────────────────────────────────────────────────────────
 // The registry below makes adding a kind a local change.
-//   webhook   — signed outbound HTTP (Zapier/Make/Slack/Teams)
-//   hubspot   — sync contacts into HubSpot (private-app token)
-//   pipedrive — sync persons into Pipedrive (API token)
-export type IntegrationKind = "webhook" | "hubspot" | "pipedrive";
+//   webhook    — signed outbound HTTP (Zapier/Make/Slack/Teams)
+//   hubspot    — sync contacts into HubSpot (private-app token)
+//   pipedrive  — sync persons into Pipedrive (API token)
+//   razorpay   — generate payment links (key id + secret)
+//   stripe     — generate payment links (secret key)
+export type IntegrationKind = "webhook" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
-// Kinds that authenticate with a single pasted token (vs a webhook URL).
+// CRM kinds authenticate with a single pasted token.
 export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive"];
+// Payment kinds expose createPaymentLink() instead of subscribing to events.
+export const PAYMENT_KINDS: IntegrationKind[] = ["razorpay", "stripe"];
+// Store kinds expose fetchProducts() for one-way catalog import.
+export const STORE_KINDS: IntegrationKind[] = ["shopify", "woocommerce"];
+// Event-driven kinds — their `events` subscription matters; action kinds ignore it.
+export const EVENT_KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive"];
 export const KIND_LABELS: Record<IntegrationKind, string> = {
   webhook: "Webhook (Zapier / Make / Slack / Teams)",
   hubspot: "HubSpot",
   pipedrive: "Pipedrive",
+  razorpay: "Razorpay",
+  stripe: "Stripe",
+  shopify: "Shopify",
+  woocommerce: "WooCommerce",
 };
+
+// A product pulled from an external store, normalized for wa_products import.
+export interface ImportedProduct {
+  name: string;
+  description: string | null;
+  priceCents: number;
+  currency: string;
+  imageUrl: string | null;
+  externalId: string;     // store's product id — dedup key on re-sync
+  available: boolean;
+}
 
 export interface Integration {
   id: string;
@@ -156,6 +179,61 @@ export function pipedrivePersonBody(data: Record<string, unknown>): Record<strin
   return { name, phone: [{ value: phone, primary: true, label: "mobile" }] };
 }
 
+// ── Store import helpers (pure) ───────────────────────────────────────────────
+
+// Normalize a Shopify shop to its myshopify.com host: "my-store" →
+// "my-store.myshopify.com"; strips any scheme/path the tenant pasted.
+export function normalizeShop(input: unknown): string {
+  const d = String(input ?? "").trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").toLowerCase();
+  if (!d) return "";
+  return d.includes(".") ? d : `${d}.myshopify.com`;
+}
+
+// Normalize a WooCommerce store URL to an https origin with no trailing slash.
+export function wooBase(input: unknown): string {
+  let u = String(input ?? "").trim().replace(/\/+$/, "");
+  if (!u) return "";
+  if (!/^https?:\/\//i.test(u)) u = `https://${u}`;
+  return u.replace(/^http:\/\//i, "https://");
+}
+
+// Parse a store's decimal price string ("19.99") to integer cents.
+export function toCents(price: unknown): number {
+  const n = parseFloat(String(price ?? "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+
+function stripHtml(html: unknown): string {
+  return String(html ?? "").replace(/<[^>]*>/g, " ").replace(/&[a-z]+;/gi, " ").replace(/\s+/g, " ").trim().slice(0, 1000);
+}
+
+export function mapShopifyProduct(p: Record<string, unknown>): ImportedProduct {
+  const variants = (p.variants as Record<string, unknown>[]) ?? [];
+  const image = p.image as { src?: string } | null | undefined;
+  return {
+    name: String(p.title ?? "").trim() || "Product",
+    description: stripHtml(p.body_html) || null,
+    priceCents: toCents(variants[0]?.price),
+    currency: "INR",
+    imageUrl: image?.src ?? null,
+    externalId: String(p.id ?? ""),
+    available: p.status === "active",
+  };
+}
+
+export function mapWooProduct(p: Record<string, unknown>): ImportedProduct {
+  const images = (p.images as { src?: string }[]) ?? [];
+  return {
+    name: String(p.name ?? "").trim() || "Product",
+    description: stripHtml(p.description ?? p.short_description) || null,
+    priceCents: toCents(p.price),
+    currency: "INR",
+    imageUrl: images[0]?.src ?? null,
+    externalId: String(p.id ?? ""),
+    available: p.status === "publish",
+  };
+}
+
 // ── DB layer (tenant-scoped) ──────────────────────────────────────────────────
 
 function mapRow(r: Record<string, unknown>): Integration {
@@ -251,9 +329,21 @@ async function setStatus(id: string, tenantId: string, status: Integration["stat
 // Each kind knows how to verify connectivity and deliver one event. Adding a
 // connector = one entry here + (optionally) its own config/secret fields.
 
+export interface PaymentLinkParams {
+  amountCents: number;
+  currency?: string;       // ISO code; defaults to INR
+  description?: string;
+  phone?: string;
+}
+
 interface Connector {
   verify(i: Integration, secret: string | null): Promise<{ ok: boolean; detail: string }>;
-  deliver(i: Integration, secret: string | null, envelope: EventEnvelope): Promise<void>;
+  // Event-driven connectors implement deliver; action connectors (payments) don't.
+  deliver?(i: Integration, secret: string | null, envelope: EventEnvelope): Promise<void>;
+  // Payment connectors implement this; returns a hosted checkout URL.
+  createPaymentLink?(i: Integration, secret: string | null, p: PaymentLinkParams): Promise<{ url: string; id: string }>;
+  // Store connectors implement this; returns the catalog for one-way import.
+  fetchProducts?(i: Integration, secret: string | null): Promise<ImportedProduct[]>;
 }
 
 const PING: EventEnvelope = {
@@ -360,11 +450,162 @@ const pipedriveConnector: Connector = {
   },
 };
 
+// ── Razorpay — hosted payment links (key id + key secret) ─────────────────────
+// key_id lives in config (it's semi-public, used as the Basic-auth username);
+// key_secret is the encrypted secret. Amount is in the smallest unit (paise for
+// INR) == our amountCents, so it passes straight through.
+const RAZORPAY_API = "https://api.razorpay.com/v1";
+function basicAuth(user: string, pass: string): string {
+  return "Basic " + Buffer.from(`${user}:${pass}`).toString("base64");
+}
+const razorpayConnector: Connector = {
+  async verify(i, secret) {
+    const keyId = String(i.config.keyId ?? "").trim();
+    if (!keyId || !secret) return { ok: false, detail: "Add both your Razorpay Key ID and Key Secret." };
+    try {
+      const res = await fetch(`${RAZORPAY_API}/payment_links?count=1`, { headers: { Authorization: basicAuth(keyId, secret) }, signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Razorpay keys work." };
+      if (res.status === 401) return { ok: false, detail: "Razorpay rejected the keys — copy the Key ID and Key Secret from Settings → API Keys." };
+      return { ok: false, detail: `Razorpay returned HTTP ${res.status}. Check the keys and try again.` };
+    } catch { return { ok: false, detail: "Couldn't reach Razorpay — check your connection and try again." }; }
+  },
+  async createPaymentLink(i, secret, p) {
+    const keyId = String(i.config.keyId ?? "").trim();
+    if (!keyId || !secret) throw new Error("Razorpay keys missing");
+    const res = await fetch(`${RAZORPAY_API}/payment_links`, {
+      method: "POST", headers: { Authorization: basicAuth(keyId, secret), "Content-Type": "application/json" }, signal: AbortSignal.timeout(8000),
+      body: JSON.stringify({
+        amount: Math.round(p.amountCents), currency: (p.currency ?? "INR").toUpperCase(),
+        description: (p.description ?? "Payment").slice(0, 2048),
+        ...(p.phone ? { customer: { contact: p.phone }, notify: { sms: false, email: false } } : {}),
+        reminder_enable: false,
+      }),
+    });
+    if (!res.ok) throw new Error(`Razorpay HTTP ${res.status}`);
+    const d = (await res.json()) as { id: string; short_url: string };
+    return { url: d.short_url, id: d.id };
+  },
+};
+
+// ── Stripe — hosted payment links (secret key) ────────────────────────────────
+// Stripe payment links need a Price object, so we create an ad-hoc Price for the
+// amount, then a Payment Link pointing at it (two form-encoded calls).
+const STRIPE_API = "https://api.stripe.com/v1";
+const stripeConnector: Connector = {
+  async verify(_i, secret) {
+    if (!secret) return { ok: false, detail: "Paste your Stripe secret key (starts with sk_) first." };
+    try {
+      const res = await fetch(`${STRIPE_API}/balance`, { headers: { Authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Stripe key works." };
+      if (res.status === 401) return { ok: false, detail: "Stripe rejected the key — use your Secret key (sk_live_… or sk_test_…) from Developers → API keys." };
+      return { ok: false, detail: `Stripe returned HTTP ${res.status}. Check the key and try again.` };
+    } catch { return { ok: false, detail: "Couldn't reach Stripe — check your connection and try again." }; }
+  },
+  async createPaymentLink(_i, secret, p) {
+    if (!secret) throw new Error("Stripe key missing");
+    const auth = { Authorization: `Bearer ${secret}`, "Content-Type": "application/x-www-form-urlencoded" };
+    const priceBody = new URLSearchParams({
+      unit_amount: String(Math.round(p.amountCents)),
+      currency: (p.currency ?? "INR").toLowerCase(),
+      "product_data[name]": (p.description ?? "Payment").slice(0, 250),
+    });
+    const priceRes = await fetch(`${STRIPE_API}/prices`, { method: "POST", headers: auth, body: priceBody, signal: AbortSignal.timeout(8000) });
+    if (!priceRes.ok) throw new Error(`Stripe price HTTP ${priceRes.status}`);
+    const price = (await priceRes.json()) as { id: string };
+    const linkBody = new URLSearchParams({ "line_items[0][price]": price.id, "line_items[0][quantity]": "1" });
+    const linkRes = await fetch(`${STRIPE_API}/payment_links`, { method: "POST", headers: auth, body: linkBody, signal: AbortSignal.timeout(8000) });
+    if (!linkRes.ok) throw new Error(`Stripe link HTTP ${linkRes.status}`);
+    const link = (await linkRes.json()) as { id: string; url: string };
+    return { url: link.url, id: link.id };
+  },
+};
+
+// ── Shopify — one-way product import (Admin API access token) ─────────────────
+// shop domain lives in config; the Admin API access token is the secret. URLs go
+// through safeFetch so a pasted host can't point at internal services.
+const shopifyConnector: Connector = {
+  async verify(i, secret) {
+    const shop = normalizeShop(i.config.shopDomain);
+    if (!shop || !secret) return { ok: false, detail: "Add your shop domain and Admin API access token." };
+    try {
+      const res = await safeFetch(`https://${shop}/admin/api/2024-01/shop.json`, { headers: { "X-Shopify-Access-Token": secret }, signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Shopify store is reachable." };
+      if (res.status === 401 || res.status === 403) return { ok: false, detail: "Shopify rejected the token — create a custom app with read_products and paste its Admin API access token." };
+      return { ok: false, detail: `Shopify returned HTTP ${res.status}. Check the shop domain and token.` };
+    } catch { return { ok: false, detail: "Couldn't reach that Shopify store — check the shop domain (e.g. my-store.myshopify.com)." }; }
+  },
+  async fetchProducts(i, secret) {
+    const shop = normalizeShop(i.config.shopDomain);
+    if (!shop || !secret) throw new Error("Shopify creds missing");
+    const res = await safeFetch(`https://${shop}/admin/api/2024-01/products.json?limit=100`, { headers: { "X-Shopify-Access-Token": secret }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`Shopify HTTP ${res.status}`);
+    const data = (await res.json()) as { products?: Record<string, unknown>[] };
+    return (data.products ?? []).map(mapShopifyProduct);
+  },
+};
+
+// ── WooCommerce — one-way product import (consumer key + secret) ───────────────
+const wooConnector: Connector = {
+  async verify(i, secret) {
+    const base = wooBase(i.config.storeUrl);
+    const ck = String(i.config.consumerKey ?? "").trim();
+    if (!base || !ck || !secret) return { ok: false, detail: "Add your store URL, consumer key, and consumer secret." };
+    try {
+      const res = await safeFetch(`${base}/wp-json/wc/v3/products?per_page=1`, { headers: { Authorization: basicAuth(ck, secret) }, signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your WooCommerce store is reachable." };
+      if (res.status === 401) return { ok: false, detail: "WooCommerce rejected the keys — generate REST API keys (Read access) under WooCommerce → Settings → Advanced → REST API." };
+      return { ok: false, detail: `WooCommerce returned HTTP ${res.status}. Check the store URL and keys.` };
+    } catch { return { ok: false, detail: "Couldn't reach that store — check the store URL (e.g. https://shop.example.com)." }; }
+  },
+  async fetchProducts(i, secret) {
+    const base = wooBase(i.config.storeUrl);
+    const ck = String(i.config.consumerKey ?? "").trim();
+    if (!base || !ck || !secret) throw new Error("WooCommerce creds missing");
+    const res = await safeFetch(`${base}/wp-json/wc/v3/products?per_page=100`, { headers: { Authorization: basicAuth(ck, secret) }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error(`WooCommerce HTTP ${res.status}`);
+    const rows = (await res.json()) as Record<string, unknown>[];
+    return (Array.isArray(rows) ? rows : []).map(mapWooProduct);
+  },
+};
+
 const CONNECTORS: Record<IntegrationKind, Connector> = {
   webhook: webhookConnector,
   hubspot: hubspotConnector,
   pipedrive: pipedriveConnector,
+  razorpay: razorpayConnector,
+  stripe: stripeConnector,
+  shopify: shopifyConnector,
+  woocommerce: wooConnector,
 };
+
+// Pull a store integration's catalog (one-way). Returns the kind + normalized
+// products; the route persists them via commerce.importProducts. Throws on bad
+// creds / unreachable store so the route can show a plain-English error.
+export async function fetchStoreProducts(integrationId: string, tenantId: string): Promise<{ kind: IntegrationKind; products: ImportedProduct[] }> {
+  const i = await getIntegration(integrationId, tenantId);
+  if (!i || !STORE_KINDS.includes(i.kind)) throw new Error("Not a store integration");
+  const connector = CONNECTORS[i.kind];
+  if (!connector?.fetchProducts) throw new Error("This store type can't be imported.");
+  const secret = await getSecret(integrationId, tenantId);
+  return { kind: i.kind, products: await connector.fetchProducts(i, secret) };
+}
+
+// Generate a hosted payment link via the tenant's active payment provider, if
+// any. Returns null when no payment integration is configured. Never throws.
+export async function createPaymentLink(tenantId: string, p: PaymentLinkParams): Promise<{ url: string; id: string } | null> {
+  try {
+    const all = await listIntegrations(tenantId);
+    const pay = all.find(i => i.active && PAYMENT_KINDS.includes(i.kind));
+    if (!pay) return null;
+    const connector = CONNECTORS[pay.kind];
+    if (!connector?.createPaymentLink) return null;
+    const secret = await getSecret(pay.id, tenantId);
+    return await connector.createPaymentLink(pay, secret, p);
+  } catch (err) {
+    console.error("[integrations] payment link failed:", errorMessage(err));
+    return null;
+  }
+}
 
 // ── Public: verify + emit ─────────────────────────────────────────────────────
 
@@ -397,7 +638,7 @@ export async function emitEvent(
     const envelope: EventEnvelope = { id: randomUUID(), event, occurredAt: new Date().toISOString(), tenant: tenantId, data };
     await Promise.allSettled(targets.map(async i => {
       const connector = CONNECTORS[i.kind];
-      if (!connector) return;
+      if (!connector?.deliver) return;
       try {
         const secret = await getSecret(i.id, tenantId);
         await connector.deliver(i, secret, envelope);

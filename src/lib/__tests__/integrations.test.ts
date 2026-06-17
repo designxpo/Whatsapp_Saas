@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   signPayload, humanText, buildWebhookRequest, isIntegrationEvent,
   splitName, hubspotContactProps, pipedrivePersonBody,
+  normalizeShop, wooBase, toCents, mapShopifyProduct, mapWooProduct,
   type EventEnvelope,
 } from "../integrations";
 
@@ -110,5 +111,34 @@ describe("pipedrivePersonBody", () => {
   it("falls back to the phone, then a generic name", () => {
     expect((pipedrivePersonBody({ phone: "+199" }) as { name: string }).name).toBe("+199");
     expect((pipedrivePersonBody({}) as { name: string }).name).toBe("WhatsApp lead");
+  });
+});
+
+describe("store helpers", () => {
+  it("normalizeShop builds a myshopify host", () => {
+    expect(normalizeShop("my-store")).toBe("my-store.myshopify.com");
+    expect(normalizeShop("my-store.myshopify.com")).toBe("my-store.myshopify.com");
+    expect(normalizeShop("https://my-store.myshopify.com/admin")).toBe("my-store.myshopify.com");
+    expect(normalizeShop("")).toBe("");
+  });
+  it("wooBase forces https and strips trailing slash", () => {
+    expect(wooBase("shop.example.com")).toBe("https://shop.example.com");
+    expect(wooBase("http://shop.example.com/")).toBe("https://shop.example.com");
+    expect(wooBase("https://shop.example.com/")).toBe("https://shop.example.com");
+  });
+  it("toCents parses decimal prices", () => {
+    expect(toCents("19.99")).toBe(1999);
+    expect(toCents("1500")).toBe(150000);
+    expect(toCents("₹ 49.50")).toBe(4950);
+    expect(toCents("")).toBe(0);
+    expect(toCents(undefined)).toBe(0);
+  });
+  it("mapShopifyProduct normalizes a product", () => {
+    const p = mapShopifyProduct({ id: 12, title: "Tee", body_html: "<p>Soft <b>cotton</b></p>", status: "active", variants: [{ price: "9.99" }], image: { src: "https://x/y.jpg" } });
+    expect(p).toMatchObject({ name: "Tee", description: "Soft cotton", priceCents: 999, imageUrl: "https://x/y.jpg", externalId: "12", available: true });
+  });
+  it("mapWooProduct normalizes a product and availability", () => {
+    const p = mapWooProduct({ id: 7, name: "Mug", description: "<p>Ceramic</p>", price: "12.00", images: [{ src: "https://x/m.jpg" }], status: "draft" });
+    expect(p).toMatchObject({ name: "Mug", description: "Ceramic", priceCents: 1200, imageUrl: "https://x/m.jpg", externalId: "7", available: false });
   });
 });

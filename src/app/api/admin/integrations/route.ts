@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import {
   listIntegrations, createIntegration, isIntegrationEvent,
-  CRM_KINDS, type IntegrationEvent, type IntegrationKind, type WebhookFormat,
+  CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, EVENT_KINDS, type IntegrationEvent, type IntegrationKind, type WebhookFormat,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const FORMATS: WebhookFormat[] = ["generic", "slack", "teams"];
-const KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive"];
+const KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive", "razorpay", "stripe", "shopify", "woocommerce"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -31,16 +31,36 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; format?: string; token?: string; events?: string[] };
+  let b: { kind?: string; name?: string; url?: string; format?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; events?: string[] };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
   const events = (Array.isArray(b.events) ? b.events : []).filter(isIntegrationEvent) as IntegrationEvent[];
-  if (!events.length) return NextResponse.json({ error: "Pick at least one event to send." }, { status: 400 });
+  if (EVENT_KINDS.includes(kind) && !events.length) return NextResponse.json({ error: "Pick at least one event to send." }, { status: 400 });
 
   let config: Record<string, unknown> = {};
   let secretInput: string | undefined;
-  if (CRM_KINDS.includes(kind)) {
+  if (PAYMENT_KINDS.includes(kind)) {
+    secretInput = (b.token ?? "").trim();
+    if (!secretInput) return NextResponse.json({ error: kind === "stripe" ? "Paste your Stripe secret key (sk_…)." : "Paste your Razorpay Key Secret." }, { status: 400 });
+    if (kind === "razorpay") {
+      const keyId = (b.keyId ?? "").trim();
+      if (!keyId) return NextResponse.json({ error: "Add your Razorpay Key ID." }, { status: 400 });
+      config = { keyId };
+    }
+  } else if (STORE_KINDS.includes(kind)) {
+    secretInput = (b.token ?? "").trim();
+    if (kind === "shopify") {
+      const shopDomain = (b.shopDomain ?? "").trim();
+      if (!shopDomain || !secretInput) return NextResponse.json({ error: "Add your shop domain and Admin API access token." }, { status: 400 });
+      config = { shopDomain };
+    } else {
+      const storeUrl = (b.storeUrl ?? "").trim();
+      const consumerKey = (b.consumerKey ?? "").trim();
+      if (!storeUrl || !consumerKey || !secretInput) return NextResponse.json({ error: "Add your store URL, consumer key, and consumer secret." }, { status: 400 });
+      config = { storeUrl, consumerKey };
+    }
+  } else if (CRM_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
     if (!secretInput) return NextResponse.json({ error: "Paste your API token to connect." }, { status: 400 });
   } else {

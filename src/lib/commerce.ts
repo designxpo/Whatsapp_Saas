@@ -4,7 +4,7 @@
 
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
-import { emitEvent } from "./integrations";
+import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -64,6 +64,32 @@ export async function deleteProduct(id: string, tenantId = DEFAULT_TENANT_ID): P
   await db().from("wa_products").delete().eq("tenant_id", tenantId).eq("id", id);
 }
 
+// Import (or refresh) products pulled from an external store. Idempotent: each
+// product is keyed by retailer_id = "<source>:<externalId>", so re-syncing
+// UPDATES the existing rows instead of duplicating the catalog.
+export async function importProducts(items: ImportedProduct[], source: string, tenantId = DEFAULT_TENANT_ID): Promise<{ imported: number; updated: number }> {
+  const rid = (it: ImportedProduct) => `${source}:${it.externalId}`;
+  const ridList = items.map(rid);
+  let existing: { id: string; retailer_id: string }[] = [];
+  if (ridList.length) {
+    const { data } = await db().from("wa_products").select("id,retailer_id").eq("tenant_id", tenantId).in("retailer_id", ridList);
+    existing = (data ?? []) as { id: string; retailer_id: string }[];
+  }
+  const byRid = new Map(existing.map(r => [r.retailer_id, r.id]));
+  let imported = 0, updated = 0;
+  for (const it of items) {
+    if (!it.externalId) continue;
+    const row = {
+      name: it.name.trim() || "Product", description: it.description, price_cents: it.priceCents,
+      currency: it.currency || "INR", image_url: it.imageUrl, available: it.available, retailer_id: rid(it),
+    };
+    const id = byRid.get(rid(it));
+    if (id) { await db().from("wa_products").update(row).eq("tenant_id", tenantId).eq("id", id); updated++; }
+    else { await db().from("wa_products").insert({ ...row, tenant_id: tenantId }); imported++; }
+  }
+  return { imported, updated };
+}
+
 // ── Carts ─────────────────────────────────────────────────────────────────────
 export async function getOpenCart(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<{ id: string; items: CartItem[] } | null> {
   const { data } = await db().from("wa_carts").select("id, items").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "open").maybeSingle();
@@ -87,7 +113,7 @@ export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "in
 }
 
 // Convert an open cart into an order.
-export async function checkoutCart(p: { phone: string; paymentRef?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ orderId: string } | null> {
+export async function checkoutCart(p: { phone: string; paymentRef?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ orderId: string; totalCents: number; paymentUrl: string | null } | null> {
   const cart = await getOpenCart(p.phone, tenantId);
   if (!cart) return null;
   const total = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
@@ -102,7 +128,17 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string }, te
   if (seq) await enroll(seq.id, { phone: p.phone, platform: "whatsapp" }, tenantId);
   // Fan out to connected integrations (Zapier/Sheets/Slack…) — best-effort.
   void emitEvent(tenantId, "order.created", { orderId, phone: p.phone, totalCents: total });
-  return { orderId };
+  // Unpaid order → if the tenant connected a payment provider, mint a hosted
+  // pay link so the customer can complete checkout in chat. Best-effort.
+  let paymentUrl: string | null = null;
+  if (!p.paymentRef && total > 0) {
+    const link = await createPaymentLink(tenantId, { amountCents: total, description: `Order ${orderId.slice(0, 8)}`, phone: p.phone });
+    if (link) {
+      paymentUrl = link.url;
+      await db().from("wa_orders").update({ payment_ref: link.id }).eq("id", orderId).then(() => {}, () => {});
+    }
+  }
+  return { orderId, totalCents: total, paymentUrl };
 }
 
 // ── Cart recovery (cron) ──────────────────────────────────────────────────────

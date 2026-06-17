@@ -7538,18 +7538,29 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "contact.optout", label: "Contact opted out" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Webhook", hubspot: "HubSpot", pipedrive: "Pipedrive" };
+const KIND_LABELS: Record<string, string> = { webhook: "Webhook", hubspot: "HubSpot", pipedrive: "Pipedrive", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce" };
 const CRM_KINDS = ["hubspot", "pipedrive"];
+const PAYMENT_KINDS = ["razorpay", "stripe"];
+const STORE_KINDS = ["shopify", "woocommerce"];
+const EVENT_KINDS = ["webhook", "hubspot", "pipedrive"];
 const TOKEN_HELP: Record<string, string> = {
   hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
   pipedrive: "Pipedrive → Settings → Personal preferences → API → copy your personal API token.",
+  razorpay: "Razorpay → Settings → API Keys → generate keys, then paste the Key ID and Key Secret.",
+  stripe: "Stripe → Developers → API keys → copy your Secret key (sk_live_… or sk_test_…).",
+  shopify: "Shopify → Settings → Apps → Develop apps → create a custom app with read_products, then paste its Admin API access token.",
+  woocommerce: "WooCommerce → Settings → Advanced → REST API → add a key with Read access, then paste the Consumer key and secret.",
 };
 
 function IntegrationsTab() {
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", events: ["contact.created", "conversation.escalated"] as string[] });
+  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", events: ["contact.created", "conversation.escalated"] as string[] });
   const isCrm = CRM_KINDS.includes(form.kind);
+  const isPayment = PAYMENT_KINDS.includes(form.kind);
+  const isStore = STORE_KINDS.includes(form.kind);
+  const isEventKind = EVENT_KINDS.includes(form.kind);
+  const [syncing, setSyncing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [newSecret, setNewSecret] = useState<string | null>(null);
@@ -7572,7 +7583,7 @@ function IntegrationsTab() {
       else {
         setNewSecret(d.secret ?? null);
         setMsg({ ok: true, text: "Added. Hit Test to confirm it's connected." });
-        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", events: ["contact.created", "conversation.escalated"] });
+        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", events: ["contact.created", "conversation.escalated"] });
         setAdding(false);
         load();
       }
@@ -7588,6 +7599,15 @@ function IntegrationsTab() {
       load();
     } catch { setMsg({ ok: false, text: "Connection error." }); }
     finally { setTesting(null); }
+  }
+
+  async function sync(id: string) {
+    setSyncing(id); setMsg(null);
+    try {
+      const d = await fetch(`/api/admin/integrations/${id}/sync`, { method: "POST" }).then(r => r.json());
+      setMsg({ ok: !!d.success, text: d.message || d.error || "Import failed." });
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setSyncing(null); }
   }
 
   async function toggleActive(i: Integration) {
@@ -7640,16 +7660,21 @@ function IntegrationsTab() {
                   {statusBadge(i.status)}
                   {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
                 </div>
-                <p className="text-[11px] text-slate-500 truncate">{CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
+                <p className="text-[11px] text-slate-500 truncate">{STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
                 <button onClick={() => test(i.id)} disabled={testing === i.id} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
                 <button onClick={() => toggleActive(i)} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">{i.active ? "Pause" : "Resume"}</button>
                 <button onClick={() => remove(i)} className="p-1.5 text-red-400 hover:text-red-600 rounded-control"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
             <div className="flex flex-wrap gap-1">
-              {i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{INTEGRATION_EVENTS.find(x => x.key === e)?.label ?? e}</span>)}
+              {STORE_KINDS.includes(i.kind)
+                ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Imports your product catalog</span>
+                : PAYMENT_KINDS.includes(i.kind)
+                ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends a payment link on checkout</span>
+                : i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{INTEGRATION_EVENTS.find(x => x.key === e)?.label ?? e}</span>)}
             </div>
             {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
@@ -7667,11 +7692,19 @@ function IntegrationsTab() {
               {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </div>
-          <input className={`${inp} w-full`} placeholder={isCrm ? `Name (e.g. ${KIND_LABELS[form.kind]} leads)` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          {isCrm ? (
-            <div>
-              <input className={`${inp} w-full`} type="password" placeholder={`${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
-              <p className="text-[11px] text-slate-500 mt-1">{TOKEN_HELP[form.kind]}</p>
+          <input className={`${inp} w-full`} placeholder={isCrm || isPayment || isStore ? `Name (e.g. ${KIND_LABELS[form.kind]})` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          {isCrm || isPayment || isStore ? (
+            <div className="space-y-2">
+              {form.kind === "razorpay" && <input className={`${inp} w-full`} placeholder="Razorpay Key ID (rzp_…)" value={form.keyId} onChange={e => setForm({ ...form, keyId: e.target.value })} />}
+              {form.kind === "shopify" && <input className={`${inp} w-full`} placeholder="Shop domain (my-store.myshopify.com)" value={form.shopDomain} onChange={e => setForm({ ...form, shopDomain: e.target.value })} />}
+              {form.kind === "woocommerce" && <>
+                <input className={`${inp} w-full`} placeholder="Store URL (https://shop.example.com)" value={form.storeUrl} onChange={e => setForm({ ...form, storeUrl: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="Consumer key (ck_…)" value={form.consumerKey} onChange={e => setForm({ ...form, consumerKey: e.target.value })} />
+              </>}
+              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
+              <p className="text-[11px] text-slate-500">{TOKEN_HELP[form.kind]}</p>
+              {isPayment && <p className="text-[11px] text-slate-500">A payment link is sent automatically when a customer checks out an order.</p>}
+              {isStore && <p className="text-[11px] text-slate-500">After connecting, hit “Sync now” to import your products into the catalog. One-way; re-sync anytime.</p>}
             </div>
           ) : (
             <>
@@ -7685,7 +7718,7 @@ function IntegrationsTab() {
               </div>
             </>
           )}
-          <div>
+          {isEventKind && <div>
             <label className="text-xs font-bold text-slate-400 uppercase">{isCrm ? "Sync a contact on" : "Send these events"}</label>
             <div className="grid grid-cols-2 gap-1.5 mt-1.5">
               {INTEGRATION_EVENTS.map(e => (
@@ -7695,9 +7728,13 @@ function IntegrationsTab() {
                 </label>
               ))}
             </div>
-          </div>
+          </div>}
           <div className="flex items-center gap-2">
-            <button onClick={create} disabled={busy || !form.events.length || (isCrm ? !form.token.trim() : !form.url.trim())} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
+            <button onClick={create} disabled={busy || (isEventKind && !form.events.length) || (
+              isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
+              : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
+              : !form.url.trim()
+            )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
             <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
           </div>
         </section>

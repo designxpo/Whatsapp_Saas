@@ -158,7 +158,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     try {
       const order = await checkoutCart({ phone: from }, tid);
       if (order) {
-        const msg = "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
+        const msg = order.paymentUrl
+          ? `✅ Order placed! Complete your payment here to confirm your order:\n${order.paymentUrl}`
+          : "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
         const r = await sendText(from, msg, channel);
         if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot", tenantId: tid }).catch(() => undefined);
       }
