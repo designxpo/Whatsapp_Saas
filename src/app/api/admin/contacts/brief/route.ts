@@ -6,6 +6,7 @@ import { AiKeyMissingError } from "@/lib/ai/keys";
 import { db } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s default
 
 // POST { phone } — generate an AI sales-call brief from the lead's chat + details.
 export async function POST(req: Request) {

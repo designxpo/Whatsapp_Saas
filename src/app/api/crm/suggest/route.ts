@@ -5,6 +5,7 @@ import { generateReply } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s default
 
 // POST { phone } — an AI-drafted reply for the agent to review/edit (never sent).
 // Grounded in the KB + this lead's conversation, same as the live assistant.

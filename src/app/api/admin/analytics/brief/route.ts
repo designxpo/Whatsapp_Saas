@@ -5,6 +5,7 @@ import { generateExecutiveBrief } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s default
 
 const rate = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
 
