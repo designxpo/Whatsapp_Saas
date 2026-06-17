@@ -1,8 +1,21 @@
 import { createCampaign, getCampaign, recipientsForAudience, type Campaign } from "./store";
 import { startSend } from "./campaign";
-import { getChannel } from "./channels";
+import { getChannel, credsFor } from "./channels";
+import { fetchTemplates } from "./whatsapp";
+import { templateIssues } from "./preflight";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+
+// Best-effort: fetch the chosen template's Meta definition so we can preflight
+// it. Returns null when creds are missing / Meta is unreachable — never blocks
+// the send on an inability to verify.
+async function fetchTemplateByName(name: string, lang: string, channelId: string | null, tenantId: string) {
+  try {
+    const channel = await credsFor(channelId, tenantId);
+    const tpls = await fetchTemplates(channel);
+    return tpls.find(t => t.name === name && t.language === lang) ?? tpls.find(t => t.name === name) ?? null;
+  } catch { return null; }
+}
 
 export type BroadcastMode = "campaign" | "audience" | "recipients";
 
@@ -64,6 +77,15 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
   assert(input.templateName?.trim(), "templateName is required.");
   const languageCode = input.languageCode?.trim() || "en_US";
   const variables = Array.isArray(input.variables) ? input.variables : [];
+
+  // Preflight against Meta's template definition — turn a silent rejection
+  // (carousel template, missing {{n}} values, missing header media) into a
+  // clear, plain-English error instead of a broadcast that quietly fails.
+  const tpl = await fetchTemplateByName(input.templateName!.trim(), languageCode, input.channelId ?? null, tenantId);
+  if (tpl) {
+    const { blocking } = templateIssues(tpl, { bodyParams: variables, headerImageUrl: input.headerImageUrl }, "broadcast");
+    assert(blocking.length === 0, blocking[0]);
+  }
 
   let recipients: { phone: string; fullName: string }[];
   let audience: Campaign["audience"];
