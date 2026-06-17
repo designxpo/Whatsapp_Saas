@@ -448,15 +448,22 @@ async function triggerByKeyword(
   text: string, convKey: string, phone: string, send: FlowSender, isReal: boolean,
   opts: { onlyFlowId?: string; allowInactive?: boolean; channel?: Channel }, tid: string,
 ): Promise<boolean | null> {
-  const platform = opts.channel?.kind ?? "whatsapp";
-  const flows = (opts.onlyFlowId
-    ? [await getFlow(opts.onlyFlowId, tid)].filter((f): f is Flow => !!f && (opts.allowInactive || f.active))
-    : (await listFlows(tid)).filter(f => f.active)
-  ).filter(f => (f.platform ?? "whatsapp") === platform)
-   .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
+  // Testing one specific flow (simulator): use it as-is. The simulator passes no
+  // channel, so filtering by platform/channel here would wrongly exclude
+  // Instagram flows — only apply those filters when routing real inbound traffic.
+  let flows: Flow[];
+  if (opts.onlyFlowId) {
+    const f = await getFlow(opts.onlyFlowId, tid);
+    flows = f && (opts.allowInactive || f.active) ? [f] : [];
+  } else {
+    const platform = opts.channel?.kind ?? "whatsapp";
+    flows = (await listFlows(tid)).filter(f => f.active)
+      .filter(f => (f.platform ?? "whatsapp") === platform)
+      .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
+  }
   const t = norm(text);
   for (const flow of flows) {
-    if (!flow.triggerKeywords.some(k => k === t)) continue;
+    if (!flow.triggerKeywords.some(k => norm(k) === t)) continue;
     const start = flow.graph.nodes.find(n => n.type === "start");
     const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
     if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
