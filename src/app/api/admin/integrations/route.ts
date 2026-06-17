@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import {
   listIntegrations, createIntegration, isIntegrationEvent,
-  CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, EVENT_KINDS, type IntegrationEvent, type IntegrationKind, type WebhookFormat,
+  CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, EVENT_KINDS, type IntegrationEvent, type IntegrationKind, type WebhookFormat,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 const FORMATS: WebhookFormat[] = ["generic", "slack", "teams"];
-const KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive", "razorpay", "stripe", "shopify", "woocommerce"];
+const KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive", "razorpay", "stripe", "shopify", "woocommerce", "calcom"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; format?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; events?: string[] };
+  let b: { kind?: string; name?: string; url?: string; format?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[] };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
@@ -60,6 +60,11 @@ export async function POST(req: Request) {
       if (!storeUrl || !consumerKey || !secretInput) return NextResponse.json({ error: "Add your store URL, consumer key, and consumer secret." }, { status: 400 });
       config = { storeUrl, consumerKey };
     }
+  } else if (SCHEDULE_KINDS.includes(kind)) {
+    secretInput = (b.token ?? "").trim();
+    const eventTypeId = (b.eventTypeId ?? "").trim();
+    if (!secretInput || !eventTypeId) return NextResponse.json({ error: "Add your Cal.com API key and the Event Type ID to book." }, { status: 400 });
+    config = { eventTypeId };
   } else if (CRM_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
     if (!secretInput) return NextResponse.json({ error: "Paste your API token to connect." }, { status: 400 });

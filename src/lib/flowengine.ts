@@ -21,10 +21,11 @@ import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
-  addContactTag, takeArmedFlow,
+  addContactTag, takeArmedFlow, updateContactProfile,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
 import { getProduct } from "./commerce";
+import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
 import { safeFetch } from "./ssrf";
 
 const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
@@ -392,6 +393,21 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
       }
+      case "book": {
+        // Cal.com booking — show available slots as a list, then book on the
+        // user's pick (resume logic in handleFlowMessage). Skips gracefully when
+        // no Cal.com integration is connected so the flow still continues.
+        const tz = str(d.tz) || "Asia/Kolkata";
+        if (!isReal) { await send.text("[booking] would show available Cal.com slots here."); cur = nextNode(g, cur.id); continue; }
+        const slots = await calcomSlots(tenantId, { tz });
+        if (slots === null) { if (str(d.fallback)) await send.text(str(d.fallback)); cur = nextNode(g, cur.id); continue; }
+        if (!slots.length) { await send.text(str(d.fallback) || "Sorry, there are no open times in the next few days — our team will reach out to schedule."); cur = nextNode(g, cur.id); continue; }
+        await send.list(str(d.text) || "Pick a time that works for you:", "Times", [{ title: "Available times", rows: slots.map(s => ({ id: s.id, title: s.label })) }]);
+        const slotMap: Record<string, string> = {};
+        for (const s of slots) slotMap[s.id] = s.iso;
+        await saveSession(convKey, flow.id, cur.id, { step: "pickSlot", slots: slotMap, tz, ...(menuNodeId ? { menu: menuNodeId } : {}) }, tenantId);
+        return true;
+      }
       case "agent": {
         // Pin this conversation to a specific AI Hub agent for all future AI replies.
         if (isReal && str(d.agentId)) await setConversationAgent(convKey, str(d.agentId)).catch(() => undefined);
@@ -581,6 +597,61 @@ export async function handleFlowMessage(
       if (isReal && await markFormAbandoned(convKey, tid)) {
         await appendConvMessage({ conversationId: convKey, role: "assistant", body: "[form-abandoned]", source: "bot", tenantId: tid }).catch(() => undefined);
       }
+      return false;
+    }
+
+    if (waiting.type === "book") {
+      // An old menu tap takes priority over a slot pick.
+      const rewound = await rewind();
+      if (rewound !== null) return rewound;
+      const state = session.state ?? {};
+      const tz = str(state.tz) || "Asia/Kolkata";
+
+      // Send the result and continue the flow (on success) or close the booking
+      // session (on failure, so the user isn't stuck mid-booking).
+      const finish = async (booked: boolean, email: string): Promise<boolean> => {
+        await send.text(booked
+          ? `✅ Booked! A calendar invite is on its way${email ? ` to ${email}` : ""}.`
+          : "Sorry — I couldn't lock that slot in (it may have just been taken). Reply to start over and pick another time.");
+        if (booked) {
+          const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
+          if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
+          return consumed;
+        }
+        await endSession(convKey);
+        if (isReal) await claimReply(convKey).catch(() => undefined);
+        return true;
+      };
+
+      if (str(state.step) === "pickSlot") {
+        const slots = (state.slots as Record<string, string>) ?? {};
+        const chosen = matchSlot(text, Object.keys(slots));
+        if (!chosen) return false;   // not a valid pick → let the AI field the question
+        const startIso = slots[chosen];
+        const contact = await getContactByPhone(phone, tid).catch(() => null);
+        const attrEmail = Object.values(contact?.attributes ?? {}).map(v => extractEmail(String(v))).find(Boolean) ?? null;
+        const email = contact?.email || attrEmail;
+        if (email) return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz }), email);
+        await send.text("Great choice! What email should I send the calendar invite to?");
+        await saveSession(convKey, flow.id, waiting.id, { step: "askEmail", startIso, tz, ...(state.menu ? { menu: state.menu } : {}) }, tid);
+        if (isReal) await claimReply(convKey).catch(() => undefined);
+        return true;
+      }
+
+      if (str(state.step) === "askEmail") {
+        const email = extractEmail(text);
+        if (!email) {
+          await send.text("That doesn't look like an email — please reply with a valid email address.");
+          if (isReal) await claimReply(convKey).catch(() => undefined);
+          return true;
+        }
+        const startIso = str(state.startIso);
+        const contact = await getContactByPhone(phone, tid).catch(() => null);
+        if (isReal) await updateContactProfile(phone, { email }, tid).catch(() => undefined);
+        return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz }), email);
+      }
+
+      await endSession(convKey);
       return false;
     }
 

@@ -51,7 +51,7 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 //   pipedrive  — sync persons into Pipedrive (API token)
 //   razorpay   — generate payment links (key id + secret)
 //   stripe     — generate payment links (secret key)
-export type IntegrationKind = "webhook" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce";
+export type IntegrationKind = "webhook" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
 // CRM kinds authenticate with a single pasted token.
@@ -60,6 +60,8 @@ export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive"];
 export const PAYMENT_KINDS: IntegrationKind[] = ["razorpay", "stripe"];
 // Store kinds expose fetchProducts() for one-way catalog import.
 export const STORE_KINDS: IntegrationKind[] = ["shopify", "woocommerce"];
+// Scheduling kinds back the flow "Book meeting" node (slots + booking via API).
+export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom"];
 // Event-driven kinds — their `events` subscription matters; action kinds ignore it.
 export const EVENT_KINDS: IntegrationKind[] = ["webhook", "hubspot", "pipedrive"];
 export const KIND_LABELS: Record<IntegrationKind, string> = {
@@ -70,6 +72,7 @@ export const KIND_LABELS: Record<IntegrationKind, string> = {
   stripe: "Stripe",
   shopify: "Shopify",
   woocommerce: "WooCommerce",
+  calcom: "Cal.com",
 };
 
 // A product pulled from an external store, normalized for wa_products import.
@@ -232,6 +235,44 @@ export function mapWooProduct(p: Record<string, unknown>): ImportedProduct {
     externalId: String(p.id ?? ""),
     available: p.status === "publish",
   };
+}
+
+// ── Scheduling helpers (pure) ─────────────────────────────────────────────────
+
+export interface Slot { id: string; iso: string; label: string }
+
+// Human label for a slot, in the booking timezone (e.g. "Sat 21 Jun, 3:00 PM").
+export function formatSlotLabel(iso: string, tz = "Asia/Kolkata"): string {
+  try {
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: tz, weekday: "short", day: "2-digit", month: "short",
+      hour: "numeric", minute: "2-digit", hour12: true,
+    }).format(new Date(iso)).replace(",", "");
+  } catch { return iso; }
+}
+
+// Flatten Cal.com's /slots response ({ slots: { date: [{ time }] } }) into a
+// sorted, capped list of bookable slots with stable ids (s0, s1, …).
+export function parseCalcomSlots(json: unknown, tz = "Asia/Kolkata", limit = 8): Slot[] {
+  const bucket = (json as { slots?: Record<string, { time?: string }[]> })?.slots ?? {};
+  const isos = Object.values(bucket).flat().map(s => s?.time).filter((t): t is string => !!t);
+  const sorted = [...new Set(isos)].sort();
+  return sorted.slice(0, limit).map((iso, i) => ({ id: `s${i}`, iso, label: formatSlotLabel(iso, tz) }));
+}
+
+// Resolve an inbound reply to a slot id: exact id ("s2") or 1-based position ("3").
+export function matchSlot(text: string, ids: string[]): string | null {
+  const t = (text || "").trim().toLowerCase();
+  if (!t) return null;
+  if (ids.includes(t)) return t;
+  if (/^\d{1,2}$/.test(t)) { const n = parseInt(t, 10); if (n >= 1 && n <= ids.length) return ids[n - 1]; }
+  return null;
+}
+
+// Pull the first email out of free text. Returns null when none looks valid.
+export function extractEmail(text: string): string | null {
+  const m = (text || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return m ? m[0] : null;
 }
 
 // ── DB layer (tenant-scoped) ──────────────────────────────────────────────────
@@ -568,6 +609,23 @@ const wooConnector: Connector = {
   },
 };
 
+// ── Cal.com — book meetings from a flow (API key + event type id) ─────────────
+// The flow "Book meeting" node uses calcomSlots()/calcomBook() below; the
+// connector itself only needs verify() for the Settings "Test" button.
+const CALCOM_API = "https://api.cal.com/v1";
+const calcomConnector: Connector = {
+  async verify(i, secret) {
+    if (!secret) return { ok: false, detail: "Paste your Cal.com API key first." };
+    if (!String(i.config.eventTypeId ?? "").trim()) return { ok: false, detail: "Add the Event Type ID of the meeting you want customers to book." };
+    try {
+      const res = await fetch(`${CALCOM_API}/event-types?apiKey=${encodeURIComponent(secret)}`, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Cal.com key works." };
+      if (res.status === 401) return { ok: false, detail: "Cal.com rejected the key — create an API key under Settings → Developer → API Keys." };
+      return { ok: false, detail: `Cal.com returned HTTP ${res.status}. Check the key and try again.` };
+    } catch { return { ok: false, detail: "Couldn't reach Cal.com — check your connection and try again." }; }
+  },
+};
+
 const CONNECTORS: Record<IntegrationKind, Connector> = {
   webhook: webhookConnector,
   hubspot: hubspotConnector,
@@ -576,7 +634,60 @@ const CONNECTORS: Record<IntegrationKind, Connector> = {
   stripe: stripeConnector,
   shopify: shopifyConnector,
   woocommerce: wooConnector,
+  calcom: calcomConnector,
 };
+
+// Resolve the tenant's active integration of any of `kinds` (+ its secret).
+async function activeIntegration(tenantId: string, kinds: IntegrationKind[]): Promise<{ integration: Integration; secret: string | null } | null> {
+  const all = await listIntegrations(tenantId);
+  const i = all.find(x => x.active && kinds.includes(x.kind));
+  if (!i) return null;
+  return { integration: i, secret: await getSecret(i.id, tenantId) };
+}
+
+// Available Cal.com slots for the next `days` days. Returns null when no Cal.com
+// integration is configured (so the flow node can skip gracefully); [] when the
+// calendar is simply full. Never throws.
+export async function calcomSlots(tenantId: string, opts: { days?: number; tz?: string } = {}): Promise<Slot[] | null> {
+  try {
+    const found = await activeIntegration(tenantId, SCHEDULE_KINDS);
+    if (!found?.secret) return null;
+    const tz = opts.tz || "Asia/Kolkata";
+    const eventTypeId = String(found.integration.config.eventTypeId ?? "").trim();
+    if (!eventTypeId) return null;
+    const start = new Date().toISOString();
+    const end = new Date(Date.now() + (opts.days ?? 5) * 86400_000).toISOString();
+    const url = `${CALCOM_API}/slots?apiKey=${encodeURIComponent(found.secret)}&eventTypeId=${encodeURIComponent(eventTypeId)}&startTime=${encodeURIComponent(start)}&endTime=${encodeURIComponent(end)}&timeZone=${encodeURIComponent(tz)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return [];
+    return parseCalcomSlots(await res.json().catch(() => null), tz);
+  } catch (err) {
+    console.error("[integrations] calcom slots failed:", errorMessage(err));
+    return [];
+  }
+}
+
+// Book a Cal.com slot for an attendee. Returns true on success. Never throws.
+export async function calcomBook(tenantId: string, p: { startIso: string; name: string; email: string; tz?: string }): Promise<boolean> {
+  try {
+    const found = await activeIntegration(tenantId, SCHEDULE_KINDS);
+    if (!found?.secret) return false;
+    const eventTypeId = Number(found.integration.config.eventTypeId);
+    if (!Number.isFinite(eventTypeId)) return false;
+    const res = await fetch(`${CALCOM_API}/bookings?apiKey=${encodeURIComponent(found.secret)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000),
+      body: JSON.stringify({
+        eventTypeId, start: p.startIso,
+        responses: { name: p.name || "WhatsApp lead", email: p.email },
+        timeZone: p.tz || "Asia/Kolkata", language: "en", metadata: {},
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[integrations] calcom book failed:", errorMessage(err));
+    return false;
+  }
+}
 
 // Pull a store integration's catalog (one-way). Returns the kind + normalized
 // products; the route persists them via commerce.importProducts. Throws on bad

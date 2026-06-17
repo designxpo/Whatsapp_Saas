@@ -3,6 +3,7 @@ import {
   signPayload, humanText, buildWebhookRequest, isIntegrationEvent,
   splitName, hubspotContactProps, pipedrivePersonBody,
   normalizeShop, wooBase, toCents, mapShopifyProduct, mapWooProduct,
+  parseCalcomSlots, matchSlot, extractEmail, formatSlotLabel,
   type EventEnvelope,
 } from "../integrations";
 
@@ -140,5 +141,39 @@ describe("store helpers", () => {
   it("mapWooProduct normalizes a product and availability", () => {
     const p = mapWooProduct({ id: 7, name: "Mug", description: "<p>Ceramic</p>", price: "12.00", images: [{ src: "https://x/m.jpg" }], status: "draft" });
     expect(p).toMatchObject({ name: "Mug", description: "Ceramic", priceCents: 1200, imageUrl: "https://x/m.jpg", externalId: "7", available: false });
+  });
+});
+
+describe("scheduling helpers", () => {
+  it("parseCalcomSlots flattens, sorts, dedupes and caps", () => {
+    const json = { slots: {
+      "2026-06-21": [{ time: "2026-06-21T09:00:00Z" }, { time: "2026-06-21T09:00:00Z" }],
+      "2026-06-20": [{ time: "2026-06-20T10:00:00Z" }, { time: "2026-06-20T11:00:00Z" }],
+    } };
+    const slots = parseCalcomSlots(json, "UTC");
+    expect(slots).toHaveLength(3);                 // deduped
+    expect(slots[0].iso).toBe("2026-06-20T10:00:00Z"); // sorted
+    expect(slots[0].id).toBe("s0");
+    expect(slots.every(s => s.label.length > 0)).toBe(true);
+  });
+  it("parseCalcomSlots tolerates empty / malformed input", () => {
+    expect(parseCalcomSlots(null, "UTC")).toEqual([]);
+    expect(parseCalcomSlots({ slots: {} }, "UTC")).toEqual([]);
+  });
+  it("matchSlot resolves an id or a 1-based position", () => {
+    const ids = ["s0", "s1", "s2"];
+    expect(matchSlot("s1", ids)).toBe("s1");
+    expect(matchSlot("2", ids)).toBe("s1");
+    expect(matchSlot("9", ids)).toBeNull();
+    expect(matchSlot("nope", ids)).toBeNull();
+  });
+  it("extractEmail pulls a valid email or null", () => {
+    expect(extractEmail("reach me at asha@example.com please")).toBe("asha@example.com");
+    expect(extractEmail("no email here")).toBeNull();
+  });
+  it("formatSlotLabel renders in the given timezone", () => {
+    const label = formatSlotLabel("2026-06-20T10:00:00Z", "UTC");
+    expect(label).toMatch(/Sat/);
+    expect(label).toMatch(/Jun/);
   });
 });
