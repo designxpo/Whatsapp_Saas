@@ -591,7 +591,7 @@ function Editor({ flowId }: { flowId: string }) {
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
   const [active, setActive] = useState(false);
-  const [platform, setPlatform] = useState<"whatsapp" | "instagram">("whatsapp");
+  const [platform, setPlatform] = useState<"whatsapp" | "instagram" | "both">("whatsapp");
   const [channelId, setChannelId] = useState<string | null>(null);
   const [channels, setChannels] = useState<{ id: string; name: string; kind: string }[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -607,7 +607,7 @@ function Editor({ flowId }: { flowId: string }) {
   // Which chat skin the simulator renders in. Defaults to the flow's platform but
   // can be toggled to preview how the same flow looks on the other channel.
   const [simView, setSimView] = useState<"whatsapp" | "instagram">("whatsapp");
-  useEffect(() => { setSimView(platform); }, [platform]);
+  useEffect(() => { setSimView(platform === "instagram" ? "instagram" : "whatsapp"); }, [platform]);
   const { screenToFlowPosition } = useReactFlow();
   const counter = useRef(1);
 
@@ -617,7 +617,7 @@ function Editor({ flowId }: { flowId: string }) {
     fetch(`/api/admin/flows/${flowId}`).then(r => r.json()).then(d => {
       if (!d.flow) return;
       setName(d.flow.name); setActive(d.flow.active); setKeywords((d.flow.triggerKeywords ?? []).join(", "));
-      setPlatform(d.flow.platform === "instagram" ? "instagram" : "whatsapp");
+      setPlatform(d.flow.platform === "instagram" || d.flow.platform === "both" ? d.flow.platform : "whatsapp");
       setChannelId(d.flow.channelId ?? null);
       setNodes((d.flow.graph.nodes ?? []).map((n: { id: string; type: string; position: { x: number; y: number }; data: NodeData }) => ({ ...n, data: n.data ?? {} })));
       setEdges((d.flow.graph.edges ?? []).map((e: Edge) => ({ ...e, animated: true, type: "deletable" })));
@@ -711,10 +711,11 @@ function Editor({ flowId }: { flowId: string }) {
         <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
         <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
-        <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 max-w-md bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" value={keywords} onChange={e => setKeywords(e.target.value)} />
-        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 font-medium" value={platform} onChange={e => { setPlatform(e.target.value as "whatsapp" | "instagram"); setChannelId(null); }} title="Which channel this flow runs on">
+        <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 max-w-md bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
+        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 font-medium" value={platform} onChange={e => { setPlatform(e.target.value as "whatsapp" | "instagram" | "both"); setChannelId(null); }} title="Which channel(s) this flow runs on">
           <option value="whatsapp">📱 WhatsApp</option>
           <option value="instagram">📷 Instagram</option>
+          <option value="both">📱 + 📷 Both</option>
         </select>
         {channels.filter(c => c.kind === platform).length > 0 && (
           <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${platform === "instagram" ? "account" : "number"} this flow runs on`}>

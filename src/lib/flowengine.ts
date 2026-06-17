@@ -42,7 +42,7 @@ export interface FlowEdge { id: string; source: string; sourceHandle?: string | 
 export interface FlowGraph { nodes: FlowNode[]; edges: FlowEdge[] }
 export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
-  platform: "whatsapp" | "instagram";   // which channel kind this flow runs on
+  platform: "whatsapp" | "instagram" | "both";   // which channel kind(s) this flow runs on
   channelId: string | null;     // scope to one number/account (null = every one of that platform)
   graph: FlowGraph; createdAt: string; updatedAt: string;
 }
@@ -87,7 +87,7 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram"; channelId: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "both"; channelId: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
@@ -100,10 +100,10 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
   if (error && ("channel_id" in patch || "platform" in patch)) {
-    const triedInstagram = patch.platform === "instagram";
+    const triedPlatform = patch.platform === "instagram" || patch.platform === "both";
     delete patch.channel_id; delete patch.platform;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
-    if (!error && triedInstagram) throw new Error("Instagram flows need the wa_flows.platform column — apply migration 0023_flow_platform.sql, then save again.");
+    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023_flow_platform.sql + 0046_flow_platform_both.sql), then save again.");
   }
   if (error) throw error;
 }
@@ -458,7 +458,7 @@ async function triggerByKeyword(
   } else {
     const platform = opts.channel?.kind ?? "whatsapp";
     flows = (await listFlows(tid)).filter(f => f.active)
-      .filter(f => (f.platform ?? "whatsapp") === platform)
+      .filter(f => f.platform === "both" || (f.platform ?? "whatsapp") === platform)
       .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
   }
   const t = norm(text);
