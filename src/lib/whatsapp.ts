@@ -266,6 +266,55 @@ export async function sendTemplateSingle(phone: string, templateName: string, la
   }
 }
 
+// Sends an approved CAROUSEL template: a bubble (the template body) above 2–10
+// swipeable cards. Meta requires each card's media (image/video) at SEND time, so
+// every card needs a public link. bubbleParams fill {{1}}.. in the bubble body;
+// a card's optional bodyParams fill {{1}}.. in that card's body. Template-typed,
+// so it's allowed outside the 24h window.
+export async function sendCarouselTemplate(
+  phone: string,
+  templateName: string,
+  languageCode: string,
+  bubbleParams: string[],
+  cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[],
+  channel?: ChannelCreds,
+): Promise<{ id?: string; error?: string }> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
+  const usable = cards.filter(c => c.mediaUrl?.trim());
+  if (usable.length < 2) return { error: "A carousel template needs at least 2 cards with media" };
+  const components: Record<string, unknown>[] = [];
+  if (bubbleParams.length) components.push({ type: "body", parameters: bubbleParams.map(t => ({ type: "text", text: t })) });
+  components.push({
+    type: "carousel",
+    cards: usable.slice(0, 10).map((c, i) => {
+      const kind = c.kind === "video" ? "video" : "image";
+      const cardComps: Record<string, unknown>[] = [
+        { type: "header", parameters: [{ type: kind, [kind]: { link: c.mediaUrl.trim() } }] },
+      ];
+      if (c.bodyParams?.length) cardComps.push({ type: "body", parameters: c.bodyParams.map(t => ({ type: "text", text: t })) });
+      return { card_index: i, components: cardComps };
+    }),
+  });
+  try {
+    const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: (phone || "").replace(/\D/g, ""),
+        type: "template",
+        template: { name: templateName, language: { code: languageCode }, components },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
+    return { error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // Sends a media message (image/video/document/audio) by public URL. Free-form,
 // so 24h-window rules apply just like sendText.
 export async function sendMedia(phone: string, kind: "image" | "video" | "document" | "audio", url: string, caption?: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {

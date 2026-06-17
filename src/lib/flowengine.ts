@@ -13,7 +13,7 @@
 
 import { db } from "./supabase";
 import {
-  sendText, sendButtons, sendList, sendMedia, sendProduct,
+  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCarouselTemplate,
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
@@ -144,6 +144,8 @@ export interface FlowSender {
   list(body: string, buttonText: string, sections: { title: string; rows: { id: string; title: string; description?: string }[] }[]): Promise<{ id?: string; error?: string }>;
   media(kind: "image" | "video" | "document", url: string, caption?: string): Promise<{ id?: string; error?: string }>;
   product(body: string, catalogId: string, productId: string): Promise<{ id?: string; error?: string }>;
+  productList(header: string, body: string, catalogId: string, sections: { title: string; productRetailerIds: string[] }[]): Promise<{ id?: string; error?: string }>;
+  carouselTemplate(templateName: string, lang: string, bubbleParams: string[], cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[]): Promise<{ id?: string; error?: string }>;
   waform(body: string, cta: string, formId: string): Promise<{ id?: string; error?: string }>;
 }
 
@@ -159,6 +161,8 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     async list(body, buttonText, sections) { const r = await sendList(phone, body, buttonText, sections, channel); await log(`${body}\n[list: ${sections.flatMap(s => s.rows.map(x => x.title)).join(" | ")}]`, r.id); return r; },
     async media(kind, url, caption) { const r = await sendMedia(phone, kind, url, caption, channel); await log(`[${kind}] ${caption ?? url}`, r.id); return r; },
     async product(body, catalogId, productId) { const r = await sendProduct(phone, body, catalogId, productId, channel); await log(`[product ${productId}] ${body}`, r.id); return r; },
+    async productList(header, body, catalogId, sections) { const r = await sendProductList(phone, header, body, catalogId, sections, channel); await log(`${body}\n[catalog: ${sections.flatMap(s => s.productRetailerIds).length} products]`, r.id); return r; },
+    async carouselTemplate(templateName, lang, bubbleParams, cards) { const r = await sendCarouselTemplate(phone, templateName, lang, bubbleParams, cards, channel); await log(`[carousel template: ${templateName} · ${cards.length} cards]`, r.id); return r; },
     async waform(body, cta, formId) { const r = await sendWaFormMessage(phone, { formId, bodyText: body, cta }, channel); await log(`${body}\n[form: ${cta}]`, r.id); return r; },
   };
 }
@@ -196,6 +200,10 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     async list(body, _buttonText, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
     async media(_kind, url, caption) { return sendIg(caption ? `${caption}\n${url}` : url); },
     async product(body) { return sendIg(body); },
+    // Instagram has no catalog/template messages — send the bubble text so the
+    // flow still says something instead of going silent.
+    async productList(header, body) { return sendIg([header, body].filter(s => s?.trim()).join("\n") || "Have a look:"); },
+    async carouselTemplate(_templateName, _lang, bubbleParams) { return bubbleParams.length ? sendIg(bubbleParams.join(" ")) : { id: "ig_noop" }; },
     async waform(body, cta) { return sendIg(`${body}\n(${cta})`); },
   };
 }
@@ -209,6 +217,8 @@ export function drySender(out: SimOutput[]): FlowSender {
     async list(body, _bt, sections) { out.push({ kind: "list", body, options: sections.flatMap(s => s.rows.map(r => r.title)) }); return ok(); },
     async media(kind, url, caption) { out.push({ kind, body: caption ?? url }); return ok(); },
     async product(body, _c, productId) { out.push({ kind: "product", body: `${body} (product: ${productId})` }); return ok(); },
+    async productList(header, body, _c, sections) { out.push({ kind: "product_list", body: `🛍 ${[header, body].filter(s => s?.trim()).join(" — ")} (${sections.flatMap(s => s.productRetailerIds).length} catalog products, swipeable)` }); return ok(); },
+    async carouselTemplate(templateName, _lang, _bubbleParams, cards) { out.push({ kind: "carousel", body: `🎠 Carousel template “${templateName}” — ${cards.length} swipeable cards` }); return ok(); },
     async waform(body, cta, _formId) { out.push({ kind: "waform", body: `${body}\n📋 [${cta}] — opens the WhatsApp form; reply "[form] test" here to simulate a submission` }); return ok(); },
   };
 }
@@ -276,6 +286,33 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
       }
       case "product": {
         if (str(d.catalogId) && str(d.productId)) await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+        cur = nextNode(g, cur.id); continue;
+      }
+      case "productlist": {
+        // Catalog product carousel: several products from one catalog, swipeable.
+        const catalogId = str(d.catalogId).trim();
+        const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+        if (catalogId && ids.length) {
+          const header = (str(d.header) || "Our products").slice(0, 60);
+          await send.productList(header, str(d.text) || "Browse and tap to view:", catalogId, [{ title: header.slice(0, 24), productRetailerIds: ids }]);
+        }
+        cur = nextNode(g, cur.id); continue;
+      }
+      case "carouseltpl": {
+        // Approved CAROUSEL template — 2–10 swipeable marketing cards. Each card's
+        // media is supplied here (Meta requires it at send time).
+        const name = str(d.templateName).trim();
+        const cards = (((d.cards as { mediaUrl?: string; kind?: string; bodyParams?: string }[]) ?? [])
+          .map(c => ({
+            mediaUrl: str(c.mediaUrl).trim(),
+            kind: (c.kind === "video" ? "video" : "image") as "image" | "video",
+            bodyParams: str(c.bodyParams).split(",").map(s => s.trim()).filter(Boolean),
+          }))
+          .filter(c => c.mediaUrl));
+        if (name && cards.length >= 2) {
+          const bubbleParams = str(d.bubbleParams).split(",").map(s => s.trim()).filter(Boolean);
+          await send.carouselTemplate(name, str(d.lang) || "en_US", bubbleParams, cards);
+        }
         cur = nextNode(g, cur.id); continue;
       }
       case "buttons": {

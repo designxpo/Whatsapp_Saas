@@ -17,7 +17,7 @@ import {
   ArrowLeft, Loader2, Play, Save, Trash2, FlaskConical, Search, MessageSquare,
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
-  AlertTriangle, X, Layers, BellRing, ClipboardList,
+  AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd,
 } from "lucide-react";
 
 type NodeData = Record<string, unknown>;
@@ -34,6 +34,8 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
   sequence: { label: "Multi-send", icon: <Layers className="w-[18px] h-[18px]" />, hint: "Several messages in one go" },
   media: { label: "Media", icon: <ImageIcon className="w-[18px] h-[18px]" />, hint: "Image, video or PDF" },
   product: { label: "Product", icon: <ShoppingBag className="w-[18px] h-[18px]" />, hint: "Catalog product card" },
+  productlist: { label: "Product carousel", icon: <LayoutGrid className="w-[18px] h-[18px]" />, hint: "Several catalog products, swipeable" },
+  carouseltpl: { label: "Carousel template", icon: <GalleryHorizontalEnd className="w-[18px] h-[18px]" />, hint: "Approved 2–10 card template" },
   buttons: { label: "Buttons", icon: <MousePointerClick className="w-[18px] h-[18px]" />, hint: "Up to 3 reply buttons" },
   list: { label: "List menu", icon: <ListIcon className="w-[18px] h-[18px]" />, hint: "Menu of up to 10 options" },
   ask: { label: "Ask", icon: <HelpCircle className="w-[18px] h-[18px]" />, hint: "Collect a free-text answer" },
@@ -48,7 +50,7 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
 };
 
 const TOOLBOX_GROUPS: { group: string; types: string[] }[] = [
-  { group: "Send", types: ["message", "sequence", "media", "product"] },
+  { group: "Send", types: ["message", "sequence", "media", "product", "productlist", "carouseltpl"] },
   { group: "Collect", types: ["buttons", "list", "ask", "waform"] },
   { group: "Logic", types: ["condition", "hours"] },
   { group: "Actions", types: ["tag", "webhook", "agent", "handoff", "end"] },
@@ -327,6 +329,52 @@ function ProductNode({ id, type, selected, data }: NodeProps) {
     </Shell>
   );
 }
+function ProductListNode({ id, type, selected, data }: NodeProps) {
+  const set = useSet(id);
+  const ids = str(data.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+  return (
+    <Shell id={id} type={type} selected={selected} foot="One swipeable card per product, straight from your Meta catalog (≤30).">
+      <input className={inp} maxLength={60} placeholder="Header (e.g. Our plans)" value={str(data.header)} onChange={e => set({ header: e.target.value })} />
+      <textarea className={inp} rows={2} maxLength={1024} placeholder="Message text above the cards…" value={str(data.text)} onChange={e => set({ text: e.target.value })} />
+      <input className={inp} placeholder="Catalog ID (Commerce Manager)" value={str(data.catalogId)} onChange={e => set({ catalogId: e.target.value })} />
+      <textarea className={inp} rows={3} placeholder={"Product retailer IDs — one per line\nSKU-101\nSKU-102"} value={str(data.products)} onChange={e => set({ products: e.target.value })} />
+      <p className="text-right text-[9px] text-ink-400 -mt-1">{ids.length}/30 products</p>
+      <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
+    </Shell>
+  );
+}
+type CarouselCard = { mediaUrl?: string; kind?: "image" | "video"; bodyParams?: string };
+function CarouselTemplateNode({ id, type, selected, data }: NodeProps) {
+  const set = useSet(id);
+  const cards = (data.cards as CarouselCard[]) ?? [{ kind: "image" }, { kind: "image" }];
+  const setCard = (i: number, patch: Partial<CarouselCard>) => set({ cards: cards.map((c, j) => (j === i ? { ...c, ...patch } : c)) });
+  return (
+    <Shell id={id} type={type} selected={selected} foot="Pick an APPROVED carousel template. Supply each card's media link (Meta needs it at send) + any {{1}} values.">
+      <input className={inp} placeholder="Approved template name" value={str(data.templateName)} onChange={e => set({ templateName: e.target.value })} />
+      <div className="flex items-center gap-1.5">
+        <input className={`${inp} !w-24`} placeholder="en_US" value={str(data.lang) || ""} onChange={e => set({ lang: e.target.value })} />
+        <input className={inp} placeholder="Bubble {{1}},{{2}}… (optional)" value={str(data.bubbleParams)} onChange={e => set({ bubbleParams: e.target.value })} />
+      </div>
+      {cards.map((c, i) => (
+        <div key={i} className="border border-line rounded-lg p-1.5 space-y-1 bg-canvas/50">
+          <div className="flex items-center gap-1.5">
+            <select className={`${inp} !w-auto !py-0.5`} value={c.kind ?? "image"} onChange={e => setCard(i, { kind: e.target.value as CarouselCard["kind"] })}>
+              <option value="image">Image</option><option value="video">Video</option>
+            </select>
+            <span className="text-[9px] text-ink-400 flex-1 text-right">card {i + 1}</span>
+            {cards.length > 2 && <button className="nodrag p-0.5 text-ink-400 hover:text-red-500" onClick={() => set({ cards: cards.filter((_, j) => j !== i) })}><X className="w-3 h-3" /></button>}
+          </div>
+          <input className={inp} placeholder="Card media https:// URL" value={c.mediaUrl ?? ""} onChange={e => setCard(i, { mediaUrl: e.target.value })} />
+          <input className={inp} placeholder="Card {{1}},{{2}}… (optional)" value={c.bodyParams ?? ""} onChange={e => setCard(i, { bodyParams: e.target.value })} />
+        </div>
+      ))}
+      {cards.length < 10 && (
+        <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => set({ cards: [...cards, { kind: "image" }] })}>+ add card</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
+    </Shell>
+  );
+}
 // Module-level agent list, fetched once and shared by all AgentNode instances.
 let AGENT_CACHE: { id: string; name: string }[] | null = null;
 async function loadAgents(): Promise<{ id: string; name: string }[]> {
@@ -365,6 +413,7 @@ const nodeTypes = {
   start: StartNode, message: MessageNode, sequence: SequenceNode, buttons: ButtonsNode, list: ListNode,
   media: MediaNode, ask: AskNode, waform: WaFormNode, condition: ConditionNode, hours: HoursNode,
   tag: TagNode, webhook: WebhookNode, product: ProductNode,
+  productlist: ProductListNode, carouseltpl: CarouselTemplateNode,
   agent: AgentNode, handoff: HandoffNode, end: EndNode,
 };
 
@@ -427,6 +476,17 @@ function validateGraph(nodes: Node[], edges: Edge[], keywords: string, active: b
     if (n.type === "tag" && !str(d.tag).trim()) add("Type the tag to add to this contact (e.g. hot-lead).");
     if (n.type === "webhook" && !/^https?:\/\//.test(str(d.url))) add("Paste the full URL to notify, starting with https://.");
     if (n.type === "product" && (!str(d.catalogId).trim() || !str(d.productId).trim())) add("Fill in both the Catalog ID and the Product ID from Meta Commerce Manager.");
+    if (n.type === "productlist") {
+      const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
+      if (!str(d.catalogId).trim()) add("Add the Catalog ID from Meta Commerce Manager.");
+      if (!ids.length) add("List at least one product retailer ID — one per line.");
+    }
+    if (n.type === "carouseltpl") {
+      const cards = ((d.cards as { mediaUrl?: string }[]) ?? []).filter(c => str(c.mediaUrl).trim());
+      if (!str(d.templateName).trim()) add("Type the exact name of an APPROVED carousel template.");
+      if (cards.length < 2) add("A carousel needs at least 2 cards, each with a public media link.");
+      for (const c of (d.cards as { mediaUrl?: string }[]) ?? []) if (str(c.mediaUrl).trim() && !/^https:\/\//.test(str(c.mediaUrl).trim())) add("Card media links must start with https:// and be publicly reachable.");
+    }
     if (n.type === "agent" && !str(d.agentId)) add("Choose which AI agent should take over from here.");
     if ((n.type === "buttons" || n.type === "list" || n.type === "ask" || n.type === "waform") && Number(d.reminderMinutes ?? 0) > 0 && !str(d.reminderText).trim()) {
       add("You set a reminder time but no reminder message — type what the nudge should say.");
