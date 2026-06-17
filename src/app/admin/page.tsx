@@ -6299,6 +6299,16 @@ function SequencesTab() {
 type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean };
 const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", description: "", price: "", currency: "INR", imageUrl: "", retailerId: "", metaProductId: "", catalogId: "", available: true };
 
+// Image that falls back to a placeholder icon when the URL is missing or fails
+// to load (e.g. a non-image link was pasted), instead of a broken-image glyph.
+function ImgFallback({ url, imgClass, boxClass, icon }: { url: string; imgClass: string; boxClass: string; icon: React.ReactNode }) {
+  const [err, setErr] = useState(false);
+  useEffect(() => setErr(false), [url]);
+  // eslint-disable-next-line @next/next/no-img-element
+  if (url && !err) return <img src={url} alt="" className={imgClass} onError={() => setErr(true)} />;
+  return <div className={boxClass}>{icon}</div>;
+}
+
 function CatalogTab() {
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
@@ -6356,7 +6366,7 @@ function CatalogTab() {
 
       {products.map(p => (
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
-          {p.imageUrl ? <img src={p.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" /> : <div className="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0"><ShoppingBag className="w-5 h-5 text-ink-300" /></div>}
+          <ImgFallback url={p.imageUrl ?? ""} imgClass="w-12 h-12 rounded-lg object-cover shrink-0" boxClass="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ShoppingBag className="w-5 h-5 text-ink-300" />} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
             <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
@@ -6374,9 +6384,7 @@ function CatalogTab() {
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <div className="flex gap-2"><input className={inp} placeholder="Price" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
             <div className="col-span-2 flex items-center gap-3">
-              {form.imageUrl
-                ? <img src={form.imageUrl} alt="" className="w-14 h-14 rounded-lg object-cover border border-line shrink-0" />
-                : <div className="w-14 h-14 rounded-lg bg-canvas flex items-center justify-center shrink-0"><ImageIcon className="w-5 h-5 text-ink-300" /></div>}
+              <ImgFallback url={form.imageUrl} imgClass="w-14 h-14 rounded-lg object-cover border border-line shrink-0" boxClass="w-14 h-14 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ImageIcon className="w-5 h-5 text-ink-300" />} />
               <div className="flex-1 space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <ImageUpload onUploaded={url => setForm({ ...form, imageUrl: url })} />
@@ -6401,9 +6409,7 @@ function CatalogTab() {
             <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
             <div className="bg-[#e5ddd5] rounded-control p-3">
               <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                {form.imageUrl
-                  ? <img src={form.imageUrl} alt="" className="w-full h-32 object-cover" />
-                  : <div className="h-32 bg-slate-200 flex items-center justify-center text-slate-400"><ImageIcon className="w-6 h-6" /></div>}
+                <ImgFallback url={form.imageUrl} imgClass="w-full h-32 object-cover" boxClass="h-32 bg-slate-100 flex items-center justify-center text-slate-300" icon={<ImageIcon className="w-7 h-7" />} />
                 <div className="p-2.5 space-y-0.5">
                   <p className="text-[13px] font-semibold text-slate-800 break-words">{form.name || "Product name"}</p>
                   <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
