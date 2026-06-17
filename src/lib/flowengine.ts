@@ -13,7 +13,7 @@
 
 import { db } from "./supabase";
 import {
-  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCarouselTemplate,
+  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCarouselTemplate, sendTemplateSingle,
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
@@ -148,6 +148,7 @@ export interface FlowSender {
   media(kind: "image" | "video" | "document", url: string, caption?: string): Promise<{ id?: string; error?: string }>;
   product(body: string, catalogId: string, productId: string): Promise<{ id?: string; error?: string }>;
   productList(header: string, body: string, catalogId: string, sections: { title: string; productRetailerIds: string[] }[]): Promise<{ id?: string; error?: string }>;
+  template(templateName: string, lang: string, bodyParams: string[], headerImageUrl?: string): Promise<{ id?: string; error?: string }>;
   carouselTemplate(templateName: string, lang: string, bubbleParams: string[], cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[]): Promise<{ id?: string; error?: string }>;
   waform(body: string, cta: string, formId: string): Promise<{ id?: string; error?: string }>;
 }
@@ -165,6 +166,7 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     async media(kind, url, caption) { const r = await sendMedia(phone, kind, url, caption, channel); await log(`[${kind}] ${caption ?? url}`, r.id); return r; },
     async product(body, catalogId, productId) { const r = await sendProduct(phone, body, catalogId, productId, channel); await log(`[product ${productId}] ${body}`, r.id); return r; },
     async productList(header, body, catalogId, sections) { const r = await sendProductList(phone, header, body, catalogId, sections, channel); await log(`${body}\n[catalog: ${sections.flatMap(s => s.productRetailerIds).length} products]`, r.id); return r; },
+    async template(templateName, lang, bodyParams, headerImageUrl) { const r = await sendTemplateSingle(phone, templateName, lang, bodyParams, channel, headerImageUrl); await log(`[template: ${templateName}${bodyParams.length ? ` · ${bodyParams.join(", ")}` : ""}]`, r.id); return r; },
     async carouselTemplate(templateName, lang, bubbleParams, cards) { const r = await sendCarouselTemplate(phone, templateName, lang, bubbleParams, cards, channel); await log(`[carousel template: ${templateName} · ${cards.length} cards]`, r.id); return r; },
     async waform(body, cta, formId) { const r = await sendWaFormMessage(phone, { formId, bodyText: body, cta }, channel); await log(`${body}\n[form: ${cta}]`, r.id); return r; },
   };
@@ -206,6 +208,7 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     // Instagram has no catalog/template messages — send the bubble text so the
     // flow still says something instead of going silent.
     async productList(header, body) { return sendIg([header, body].filter(s => s?.trim()).join("\n") || "Have a look:"); },
+    async template(_templateName, _lang, bodyParams) { return bodyParams.length ? sendIg(bodyParams.join(" ")) : { id: "ig_noop" }; },
     async carouselTemplate(_templateName, _lang, bubbleParams) { return bubbleParams.length ? sendIg(bubbleParams.join(" ")) : { id: "ig_noop" }; },
     async waform(body, cta) { return sendIg(`${body}\n(${cta})`); },
   };
@@ -221,6 +224,7 @@ export function drySender(out: SimOutput[]): FlowSender {
     async media(kind, url, caption) { out.push({ kind, body: caption ?? url }); return ok(); },
     async product(body, _c, productId) { out.push({ kind: "product", body: `${body} (product: ${productId})` }); return ok(); },
     async productList(header, body, _c, sections) { out.push({ kind: "product_list", body: `🛍 ${[header, body].filter(s => s?.trim()).join(" — ")} (${sections.flatMap(s => s.productRetailerIds).length} catalog products, swipeable)` }); return ok(); },
+    async template(templateName, _lang, bodyParams) { out.push({ kind: "template", body: `📄 Template “${templateName}”${bodyParams.length ? ` · ${bodyParams.join(", ")}` : ""}` }); return ok(); },
     async carouselTemplate(templateName, _lang, _bubbleParams, cards) { out.push({ kind: "carousel", body: `🎠 Carousel template “${templateName}” — ${cards.length} swipeable cards` }); return ok(); },
     async waform(body, cta, _formId) { out.push({ kind: "waform", body: `${body}\n📋 [${cta}] — opens the WhatsApp form; reply "[form] test" here to simulate a submission` }); return ok(); },
   };
@@ -289,6 +293,15 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
       }
       case "product": {
         if (str(d.catalogId) && str(d.productId)) await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+        cur = nextNode(g, cur.id); continue;
+      }
+      case "template": {
+        // Send an approved WhatsApp template (header image + {{n}} body params).
+        const name = str(d.templateName).trim();
+        if (name) {
+          const params = ((d.bodyParams as string[]) ?? []).map(s => (s ?? "").trim());
+          await send.template(name, str(d.lang) || "en_US", params, str(d.headerImageUrl).trim() || undefined);
+        }
         cur = nextNode(g, cur.id); continue;
       }
       case "productlist": {

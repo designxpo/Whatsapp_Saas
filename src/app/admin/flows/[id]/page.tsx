@@ -17,7 +17,7 @@ import {
   ArrowLeft, Loader2, Play, Save, Trash2, FlaskConical, Search, MessageSquare, Send,
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
-  AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd,
+  AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd, LayoutTemplate,
 } from "lucide-react";
 
 type NodeData = Record<string, unknown>;
@@ -33,6 +33,7 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
   message: { label: "Message", icon: <MessageSquare className="w-[18px] h-[18px]" />, hint: "Send a text message" },
   sequence: { label: "Multi-send", icon: <Layers className="w-[18px] h-[18px]" />, hint: "Several messages in one go" },
   media: { label: "Media", icon: <ImageIcon className="w-[18px] h-[18px]" />, hint: "Image, video or PDF" },
+  template: { label: "Template", icon: <LayoutTemplate className="w-[18px] h-[18px]" />, hint: "Send an approved template" },
   product: { label: "Product", icon: <ShoppingBag className="w-[18px] h-[18px]" />, hint: "Catalog product card" },
   productlist: { label: "Product carousel", icon: <LayoutGrid className="w-[18px] h-[18px]" />, hint: "Several catalog products, swipeable" },
   carouseltpl: { label: "Carousel template", icon: <GalleryHorizontalEnd className="w-[18px] h-[18px]" />, hint: "Approved 2–10 card template" },
@@ -50,7 +51,7 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
 };
 
 const TOOLBOX_GROUPS: { group: string; types: string[] }[] = [
-  { group: "Send", types: ["message", "sequence", "media", "product", "productlist", "carouseltpl"] },
+  { group: "Send", types: ["message", "template", "sequence", "media", "product", "productlist", "carouseltpl"] },
   { group: "Collect", types: ["buttons", "list", "ask", "waform"] },
   { group: "Logic", types: ["condition", "hours"] },
   { group: "Actions", types: ["tag", "webhook", "agent", "handoff", "end"] },
@@ -375,6 +376,41 @@ function CarouselTemplateNode({ id, type, selected, data }: NodeProps) {
     </Shell>
   );
 }
+// Module-level approved-template list, shared by all TemplateNode instances.
+let TEMPLATE_CACHE: { name: string; language: string; status: string; components?: { type: string; format?: string; text?: string }[] }[] | null = null;
+async function loadTemplates(): Promise<NonNullable<typeof TEMPLATE_CACHE>> {
+  if (!TEMPLATE_CACHE) {
+    TEMPLATE_CACHE = await fetch("/api/admin/templates").then(r => r.json())
+      .then(d => ((d.templates ?? []) as NonNullable<typeof TEMPLATE_CACHE>).filter(t => t.status === "APPROVED"))
+      .catch(() => []);
+  }
+  return TEMPLATE_CACHE ?? [];
+}
+function TemplateNode({ id, type, selected, data }: NodeProps) {
+  const set = useSet(id);
+  const [tpls, setTpls] = useState<NonNullable<typeof TEMPLATE_CACHE>>([]);
+  useEffect(() => { loadTemplates().then(setTpls); }, []);
+  const sel = tpls.find(t => t.name === str(data.templateName) && t.language === str(data.lang));
+  const bodyText = sel?.components?.find(c => c.type === "BODY")?.text ?? "";
+  const varCount = sel ? new Set(Array.from(bodyText.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
+  const needsImage = !!sel?.components?.some(c => c.type === "HEADER" && c.format === "IMAGE");
+  const params = (data.bodyParams as string[]) ?? [];
+  const setParam = (i: number, v: string) => { const next = [...params]; next[i] = v; set({ bodyParams: next }); };
+  return (
+    <Shell id={id} type={type} selected={selected} foot="Sends an APPROVED template. WhatsApp only — create/approve templates in the Templates tab.">
+      <select className={inp} value={sel ? `${sel.name}|||${sel.language}` : ""} onChange={e => { const [n, l] = e.target.value.split("|||"); set({ templateName: n, lang: l, bodyParams: [] }); }}>
+        <option value="">{tpls.length ? "— pick an approved template —" : "No approved templates yet"}</option>
+        {tpls.map(t => <option key={t.name + t.language} value={`${t.name}|||${t.language}`}>{t.name} · {t.language}</option>)}
+      </select>
+      {needsImage && <input className={inp} placeholder="Header image https:// URL" value={str(data.headerImageUrl)} onChange={e => set({ headerImageUrl: e.target.value })} />}
+      {Array.from({ length: varCount }).map((_, i) => (
+        <input key={i} className={inp} placeholder={`Value for {{${i + 1}}}`} value={params[i] ?? ""} onChange={e => setParam(i, e.target.value)} />
+      ))}
+      {sel && bodyText && <p className="text-[10px] text-ink-400 line-clamp-2">{bodyText}</p>}
+      <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
+    </Shell>
+  );
+}
 // Module-level agent list, fetched once and shared by all AgentNode instances.
 let AGENT_CACHE: { id: string; name: string }[] | null = null;
 async function loadAgents(): Promise<{ id: string; name: string }[]> {
@@ -413,7 +449,7 @@ const nodeTypes = {
   start: StartNode, message: MessageNode, sequence: SequenceNode, buttons: ButtonsNode, list: ListNode,
   media: MediaNode, ask: AskNode, waform: WaFormNode, condition: ConditionNode, hours: HoursNode,
   tag: TagNode, webhook: WebhookNode, product: ProductNode,
-  productlist: ProductListNode, carouseltpl: CarouselTemplateNode,
+  template: TemplateNode, productlist: ProductListNode, carouseltpl: CarouselTemplateNode,
   agent: AgentNode, handoff: HandoffNode, end: EndNode,
 };
 
@@ -476,6 +512,7 @@ function validateGraph(nodes: Node[], edges: Edge[], keywords: string, active: b
     if (n.type === "tag" && !str(d.tag).trim()) add("Type the tag to add to this contact (e.g. hot-lead).");
     if (n.type === "webhook" && !/^https?:\/\//.test(str(d.url))) add("Paste the full URL to notify, starting with https://.");
     if (n.type === "product" && (!str(d.catalogId).trim() || !str(d.productId).trim())) add("Fill in both the Catalog ID and the Product ID from Meta Commerce Manager.");
+    if (n.type === "template" && !str(d.templateName).trim()) add("Pick an approved template to send.");
     if (n.type === "productlist") {
       const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
       if (!str(d.catalogId).trim()) add("Add the Catalog ID from Meta Commerce Manager.");

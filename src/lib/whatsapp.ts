@@ -241,12 +241,12 @@ async function sendInteractive(phone: string, interactive: Record<string, unknow
 
 // Sends one approved template to one recipient — the only message type allowed
 // outside the 24h customer-service window. bodyParams fill {{1}}..{{n}} in order.
-export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds, headerImageUrl?: string): Promise<{ id?: string; error?: string }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
-  const components = bodyParams.length
-    ? [{ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: t })) }]
-    : [];
+  const components: Record<string, unknown>[] = [];
+  if (headerImageUrl?.trim()) components.push({ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl.trim() } }] });
+  if (bodyParams.length) components.push({ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: t })) });
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
