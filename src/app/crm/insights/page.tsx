@@ -6,7 +6,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Loader2, BarChart3, MousePointerClick, Megaphone } from "lucide-react";
+import { Loader2, BarChart3, MousePointerClick, Megaphone, Database, Check } from "lucide-react";
 
 interface Insights {
   hasConversation: boolean;
@@ -24,6 +24,23 @@ function InsightsPanel() {
   const [data, setData] = useState<Insights | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Push-to-CRM controls.
+  const [stages, setStages] = useState<string[]>([]);
+  const [stage, setStage] = useState("");
+  const [taskName, setTaskName] = useState("");
+  const [taskNotes, setTaskNotes] = useState("");
+  const [crmBusy, setCrmBusy] = useState("");
+  const [crmMsg, setCrmMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function crmAction(action: string, extra: Record<string, unknown> = {}) {
+    setCrmBusy(action); setCrmMsg(null);
+    try {
+      const res = await fetch("/api/crm/lead", { method: "POST", headers: { "Content-Type": "application/json", "x-crm-token": token }, body: JSON.stringify({ action, phone, ...extra }) });
+      const d = await res.json();
+      setCrmMsg(res.ok && d.success ? { ok: true, text: action === "ensure" ? "Lead synced to CRM ✓" : action === "stage" ? "Stage updated ✓" : "Task created ✓" } : { ok: false, text: d.error || "Failed" });
+    } catch { setCrmMsg({ ok: false, text: "Connection error" }); }
+    finally { setCrmBusy(""); }
+  }
 
   const load = useCallback(async () => {
     if (!phone || !token) return;
@@ -36,6 +53,7 @@ function InsightsPanel() {
     finally { setLoading(false); }
   }, [phone, token]);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { if (token) fetch("/api/crm/lead", { headers: { "x-crm-token": token } }).then(r => r.json()).then(d => setStages(d.stages ?? [])).catch(() => {}); }, [token]);
 
   if (!phone || !token) return <div className="p-6 text-sm text-red-600">Missing <code>phone</code> or <code>token</code> in URL.</div>;
   if (loading) return <div className="h-screen flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>;
@@ -50,6 +68,39 @@ function InsightsPanel() {
       <header className="flex items-center gap-2"><BarChart3 className="w-5 h-5 text-brand-700" /><h1 className="font-bold text-sm">WhatsApp insights</h1></header>
 
       {!data?.hasConversation && <p className="text-xs text-slate-500">No WhatsApp conversation with this lead yet.</p>}
+
+      {/* Push to CRM */}
+      <div className="bg-white rounded-xl border border-line p-3 space-y-2.5">
+        <p className="text-[11px] font-bold text-slate-400 uppercase flex items-center gap-1.5"><Database className="w-3.5 h-3.5" /> Push to CRM</p>
+        <div className="flex gap-2">
+          <select value={stage} onChange={e => setStage(e.target.value)} className="flex-1 rounded-lg border border-line px-2 py-1.5 text-xs">
+            <option value="">Move to stage…</option>
+            {stages.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={() => stage && crmAction("stage", { stage })} disabled={!stage || crmBusy === "stage"}
+            className="rounded-lg bg-brand-600 text-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">
+            {crmBusy === "stage" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Update"}
+          </button>
+        </div>
+        <div className="space-y-1.5">
+          <input value={taskName} onChange={e => setTaskName(e.target.value)} placeholder="Follow-up task (e.g. Call back about EMI)"
+            className="w-full rounded-lg border border-line px-2 py-1.5 text-xs" />
+          <div className="flex gap-2">
+            <input value={taskNotes} onChange={e => setTaskNotes(e.target.value)} placeholder="Notes (optional)"
+              className="flex-1 rounded-lg border border-line px-2 py-1.5 text-xs" />
+            <button onClick={() => taskName.trim() && crmAction("task", { taskName, taskNotes })} disabled={!taskName.trim() || crmBusy === "task"}
+              className="rounded-lg bg-brand-600 text-white px-3 py-1.5 text-xs font-bold disabled:opacity-40">
+              {crmBusy === "task" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Create task"}
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-400">Task is due tomorrow and lands on the lead&apos;s owner in LeadSquared.</p>
+        </div>
+        <button onClick={() => crmAction("ensure")} disabled={crmBusy === "ensure"}
+          className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-1 disabled:opacity-40">
+          {crmBusy === "ensure" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Add / sync this lead to CRM
+        </button>
+        {crmMsg && <p className={`text-[11px] font-semibold ${crmMsg.ok ? "text-brand-700" : "text-red-600"}`}>{crmMsg.text}</p>}
+      </div>
 
       <div className="grid grid-cols-3 gap-2">
         {[

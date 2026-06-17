@@ -21,6 +21,89 @@ export function lsqConfigured(): boolean {
   return Boolean(accessKey && secretKey && host && Number.isFinite(activityCode));
 }
 
+// New inbound contacts become LSQ leads automatically only when this is on —
+// off by default so we never spam the CRM (or its lead-creation automations).
+function autoCreateLeads(): boolean {
+  return /^(1|true|yes|on)$/i.test(process.env.LSQ_AUTOCREATE_LEADS ?? "");
+}
+
+// Creates (or updates, via LSQ's dedup) a lead from a phone + optional name.
+// Returns the ProspectID, or null on failure / when LSQ is unconfigured.
+export async function createOrUpdateLead(p: { phone: string; name?: string; source?: string; fields?: { Attribute: string; Value: string }[] }): Promise<string | null> {
+  if (!lsqConfigured()) return null;
+  try {
+    const { accessKey, secretKey, host } = cfg();
+    const digits = (p.phone || "").replace(/\D/g, "");
+    if (!digits) return null;
+    const parts = (p.name || "").trim().split(/\s+/).filter(Boolean);
+    const first = parts[0] ?? "", last = parts.slice(1).join(" ");
+    const attrs = [
+      { Attribute: "Phone", Value: `+${digits}` },
+      { Attribute: "Mobile", Value: `+${digits}` },
+      ...(first ? [{ Attribute: "FirstName", Value: first }] : []),
+      ...(last ? [{ Attribute: "LastName", Value: last }] : []),
+      { Attribute: "Source", Value: p.source || "WhatsApp" },
+      ...(p.fields ?? []),
+    ];
+    const res = await fetch(`${host}/v2/LeadManagement.svc/Lead.Capture?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(attrs),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json().catch(() => null)) as { Status?: string; Message?: { Id?: string } } | null;
+    return data?.Message?.Id ?? null;
+  } catch (err) {
+    console.error("[leadsquared] lead create failed:", errorMessage(err));
+    return null;
+  }
+}
+
+// Returns the lead's ProspectID by phone, creating it first only if auto-create
+// is enabled. Used by the panel's "add to CRM" action.
+export async function ensureLead(phone: string, name?: string, source?: string): Promise<string | null> {
+  const existing = await findLeadId(phone);
+  if (existing) return existing;
+  return createOrUpdateLead({ phone, name, source });
+}
+
+// Public phone→ProspectID lookup (for panel actions that must NOT create).
+export async function getLeadIdByPhone(phone: string): Promise<string | null> {
+  return findLeadId(phone);
+}
+
+// Moves a lead to a new ProspectStage. Returns true on success.
+export async function updateLeadStage(leadId: string, stage: string): Promise<boolean> {
+  if (!lsqConfigured() || !leadId || !stage) return false;
+  try {
+    const { accessKey, secretKey, host } = cfg();
+    const res = await fetch(`${host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([{ Attribute: "ProspectStage", Value: stage }]),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[leadsquared] stage update failed:", errorMessage(err));
+    return false;
+  }
+}
+
+// Creates a follow-up task on a lead, due tomorrow by default. Returns true on success.
+export async function createLeadTask(leadId: string, p: { name: string; notes?: string; dueDate?: string }): Promise<boolean> {
+  if (!lsqConfigured() || !leadId || !p.name?.trim()) return false;
+  try {
+    const { accessKey, secretKey, host } = cfg();
+    const category = process.env.LSQ_TASK_CATEGORY || "2";
+    const due = p.dueDate || new Date(Date.now() + 24 * 3600 * 1000).toISOString().slice(0, 19).replace("T", " ");
+    const res = await fetch(`${host}/v2/Task.svc/Create?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ Task: { Category: category, Name: p.name.trim(), StatusCode: 0, DueDate: due, RelatedEntityId: leadId, Notes: p.notes ?? "" } }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[leadsquared] task create failed:", errorMessage(err));
+    return false;
+  }
+}
+
 // Looks up the LeadSquared ProspectID for a phone number. Tries +<digits>
 // first (LSQ usually stores E.164), then bare digits.
 async function findLeadId(phone: string): Promise<string | null> {
@@ -144,7 +227,9 @@ export async function pushWaActivity(p: {
   if (!lsqConfigured()) return;
   try {
     const { accessKey, secretKey, host, activityCode } = cfg();
-    const leadId = await findLeadId(p.phone);
+    let leadId = await findLeadId(p.phone);
+    // New inbound contact + auto-create on → create the lead, then attach.
+    if (!leadId && p.direction === "inbound" && autoCreateLeads()) leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" });
     if (!leadId) return; // phone not in CRM — nothing to attach to
 
     const arrow = p.direction === "inbound" ? "⬅️ Lead" : "➡️ " + (p.via === "bot" ? "AI Assistant" : p.via === "crm" ? "Sales (CRM)" : "Agent");
@@ -177,6 +262,8 @@ export async function pushIgActivity(p: {
     let leadId: string | null = null;
     if (p.phone) leadId = await findLeadId(p.phone);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle);
+    // New inbound IG lead who shared a phone + auto-create on → create, then attach.
+    if (!leadId && p.phone && p.direction === "inbound" && autoCreateLeads()) leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: "Instagram" });
     if (!leadId) return; // can't match this IG user to a CRM lead — skip
 
     const arrow = p.direction === "inbound"
