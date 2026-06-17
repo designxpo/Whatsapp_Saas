@@ -37,7 +37,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
@@ -71,6 +71,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   if (askPhone) parts.push([
     "--- Capture contact ---",
     "You don't have this person's phone number yet. If they show interest (ask about courses, fees, enrolment, a callback, or details), politely ask once for their WhatsApp number so the team can share details or call back — e.g. \"Could you share your WhatsApp number so our team can send you the details?\" Ask at most once and never pressure them; if they decline, carry on helpfully.",
+  ].join("\n"));
+  else if (haveNumber) parts.push([
+    "--- Contact (already known) ---",
+    "This is a WhatsApp chat, so you ALREADY have this person's phone number — it is the number they are messaging from. NEVER ask them for their phone, mobile, or WhatsApp number, and never ask them to \"share their number\" for a callback or to receive details — the team can already reach them right here. (You may still collect other details like name, city, or course interest if useful.)",
   ].join("\n"));
   parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
   return parts.join("\n\n");
@@ -159,7 +163,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   const profile = knownProfile(contact);
 
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
