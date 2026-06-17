@@ -92,6 +92,28 @@ export async function extractText(sourceType: KbSourceType, payload: { buffer?: 
   }
 }
 
+// Flatten arbitrary JSON into readable "key: value" lines so the embedder sees
+// the content, not braces and brackets. Each object becomes a block separated by
+// a blank line (so the chunker keeps related fields together). Invalid JSON falls
+// back to the raw text. Stored under the "text" source type (no schema change).
+export function jsonToText(raw: string): string {
+  let data: unknown;
+  try { data = JSON.parse(raw); } catch { return raw.trim(); }
+  const out: string[] = [];
+  const walk = (node: unknown, key: string) => {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) {
+      for (const v of node) { walk(v, key); if (v && typeof v === "object") out.push(""); }
+    } else if (typeof node === "object") {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) walk(v, k);
+    } else {
+      out.push(`${key ? key + ": " : ""}${String(node)}`);
+    }
+  };
+  walk(data, "");
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
 // ── Chunking: paragraph-aware windows (~1000 chars) with overlap ──────────────
 const TARGET = 1000;     // chars per chunk
 const OVERLAP = 150;     // chars carried into the next chunk for context continuity

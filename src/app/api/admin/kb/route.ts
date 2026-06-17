@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
 import { createDocument, listDocuments, deleteDocument, type KbSourceType } from "@/lib/store";
-import { ingestDocument } from "@/lib/kb";
+import { ingestDocument, jsonToText } from "@/lib/kb";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
@@ -24,7 +24,7 @@ function extToSourceType(name: string): KbSourceType | null {
   const ext = name.toLowerCase().split(".").pop() ?? "";
   if (ext === "pdf") return "pdf";
   if (ext === "doc" || ext === "docx") return "docx";
-  if (ext === "txt" || ext === "md" || ext === "markdown") return "text";
+  if (ext === "txt" || ext === "md" || ext === "markdown" || ext === "json") return "text";
   return null;
 }
 
@@ -39,11 +39,15 @@ export async function POST(req: Request) {
       const file = form.get("file");
       if (!(file instanceof File)) return NextResponse.json({ error: "file required" }, { status: 400 });
       const sourceType = extToSourceType(file.name);
-      if (!sourceType) return NextResponse.json({ error: "Unsupported file type (use PDF, DOC/DOCX, TXT, MD)" }, { status: 400 });
+      if (!sourceType) return NextResponse.json({ error: "Unsupported file type (use PDF, DOC/DOCX, TXT, MD, JSON)" }, { status: 400 });
       const title = (form.get("title") as string)?.trim() || file.name;
       const buffer = Buffer.from(await file.arrayBuffer());
       const doc = await createDocument({ title, sourceType, sourceRef: file.name }, tid);
-      const payload = sourceType === "text" ? { text: buffer.toString("utf8") } : { buffer };
+      // .json files are flattened to readable key/value text; .md/.txt pass through as-is.
+      const isJson = file.name.toLowerCase().endsWith(".json");
+      const payload = sourceType === "text"
+        ? { text: isJson ? jsonToText(buffer.toString("utf8")) : buffer.toString("utf8") }
+        : { buffer };
       after(() => ingestDocument(doc.id, sourceType, payload, tid));
       return NextResponse.json({ document: doc });
     }

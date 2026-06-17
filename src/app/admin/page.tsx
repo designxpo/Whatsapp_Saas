@@ -1689,7 +1689,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
       <div className="flex gap-2">
         {(["file", "text", "url"] as const).map(m => (
           <button key={m} onClick={() => setMode(m)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${mode === m ? "border-brand-dark bg-brand-700 text-white" : "border-line text-slate-600"}`}>
-            {m === "file" ? "PDF / Word" : m === "text" ? "Text" : "URL"}
+            {m === "file" ? "File" : m === "text" ? "Text" : "URL"}
           </button>
         ))}
       </div>
@@ -1700,7 +1700,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
         {mode === "file"
           ? <label className={`flex items-center gap-1.5 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold cursor-pointer ${busy || disabled ? "opacity-60 pointer-events-none" : ""}`}>
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Upload & ingest
-              <input type="file" accept=".pdf,.doc,.docx,.txt,.md" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ""; }} />
+              <input type="file" accept=".pdf,.doc,.docx,.txt,.md,.markdown,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) submit(f); e.currentTarget.value = ""; }} />
             </label>
           : <button onClick={() => submit()} disabled={busy || disabled} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add & ingest</button>}
         {msg && <span className="text-xs text-slate-500">{msg}</span>}
