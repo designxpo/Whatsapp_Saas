@@ -6368,7 +6368,8 @@ function CatalogTab() {
       {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
 
       {form && (
-        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 space-y-2">
+        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col lg:flex-row gap-4">
+          <div className="flex-1 space-y-2 min-w-0">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <div className="flex gap-2"><input className={inp} placeholder="Price" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
@@ -6395,6 +6396,23 @@ function CatalogTab() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
+          </div>
+          <div className="lg:w-60 shrink-0">
+            <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
+            <div className="bg-[#e5ddd5] rounded-control p-3">
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                {form.imageUrl
+                  ? <img src={form.imageUrl} alt="" className="w-full h-32 object-cover" />
+                  : <div className="h-32 bg-slate-200 flex items-center justify-center text-slate-400"><ImageIcon className="w-6 h-6" /></div>}
+                <div className="p-2.5 space-y-0.5">
+                  <p className="text-[13px] font-semibold text-slate-800 break-words">{form.name || "Product name"}</p>
+                  <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
+                  {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
+                </div>
+                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">View</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
