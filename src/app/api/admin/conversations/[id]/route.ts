@@ -69,7 +69,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         void (async () => {
           const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
           const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tid).catch(() => null))?.attributes);
-          if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent" });
+          if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
         })();
       } else {
         // WhatsApp free-form is only allowed inside Meta's 24-hour window. The
@@ -84,7 +84,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           : await sendText(conv.phone, text, channel);
         if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
         messageId = sent.id;
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
@@ -106,7 +106,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Show the resolved text in the thread when the UI supplies a preview,
       // else fall back to the template name.
       const logged = (body.preview ?? "").trim() || `[template: ${templateName}]`;
-      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent" });
+      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);

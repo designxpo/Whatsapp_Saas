@@ -76,7 +76,7 @@ async function syncIgToLsq(conv: Conversation, body: string, direction: "inbound
     const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
     const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
     if (!phone && !handle) return;
-    await pushIgActivity({ igUserId: conv.phone, handle, phone, direction, body, via });
+    await pushIgActivity({ igUserId: conv.phone, handle, phone, direction, body, via, tenantId });
   } catch { /* CRM sync must never break IG handling */ }
 }
 

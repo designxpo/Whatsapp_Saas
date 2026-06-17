@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, currentTenantId } from "@/lib/auth";
 import { verifyAiLive, getSetupStatus } from "@/lib/setupstatus";
+import { verifyLsq } from "@/lib/leadsquared";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,10 @@ export async function POST(req: Request) {
   try {
     if (body.target === "ai") {
       const r = await verifyAiLive(tid);
+      return NextResponse.json({ ok: r.ok, detail: r.detail });
+    }
+    if (body.target === "crm") {
+      const r = await verifyLsq(tid);
       return NextResponse.json({ ok: r.ok, detail: r.detail });
     }
     if (body.target === "whatsapp" || body.target === "instagram") {

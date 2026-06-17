@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   if (!conditions.length) return NextResponse.json({ error: "Add at least one condition." }, { status: 400 });
   const max = Math.min(Math.max(body.max ?? 2000, 1), 5000);
 
-  const r = await fetchLeads(conditions, max);
+  const r = await fetchLeads(conditions, max, tid);
   if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });
 
   if (body.action === "preview") {

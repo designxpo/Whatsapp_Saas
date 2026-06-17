@@ -8,13 +8,14 @@ import { listChannels, type Channel } from "./channels";
 import { getTenantAiStatus, resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { validateKey } from "./ai/chat";
 import { listDocuments } from "./store";
+import { resolveLsq, verifyLsq } from "./leadsquared";
 import { errorMessage } from "./errors";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
 
 export type StepStatus = "ok" | "warn" | "todo" | "error";
 export interface SetupStep {
-  key: "whatsapp" | "instagram" | "ai" | "kb";
+  key: "whatsapp" | "instagram" | "ai" | "kb" | "crm";
   title: string;
   status: StepStatus;
   detail: string;        // plain-English current state
@@ -139,6 +140,18 @@ export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
     const v = await verifyInstagram(def);
     steps.push({ key: "instagram", title: "Instagram", status: v.ok ? "ok" : "error", detail: v.detail, optional: true,
       hint: v.ok ? undefined : "Re-enter the Instagram token / account ID in Settings.", fixTab: "instagram" });
+  }
+
+  // 5) LeadSquared CRM — optional, verified live (read-only).
+  const lsq = await resolveLsq(tenantId).catch(() => null);
+  if (!lsq) {
+    steps.push({ key: "crm", title: "LeadSquared CRM", status: "todo", optional: true,
+      detail: "Not connected (optional).",
+      hint: "Add your LeadSquared keys to sync every chat onto the lead's timeline and pull stage/owner into Live Chat.", fixTab: "settings" });
+  } else {
+    const v = await verifyLsq(tenantId);
+    steps.push({ key: "crm", title: "LeadSquared CRM", status: v.ok ? "ok" : "error", detail: v.detail, optional: true,
+      hint: v.ok ? undefined : "Check your Access Key, Secret Key and API host in Settings → LeadSquared.", fixTab: "settings" });
   }
 
   return steps;

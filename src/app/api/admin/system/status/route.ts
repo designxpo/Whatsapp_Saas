@@ -21,6 +21,7 @@ export async function GET() {
   ]);
 
   const readyDocs = kbDocs.filter(d => d.status === "ready");
+  const lsqOk = await lsqConfigured(tid);
   const steps = {
     database: {
       ok: dbOk.ok,
@@ -52,9 +53,9 @@ export async function GET() {
         : "Set META_WA_WEBHOOK_SECRET + VERIFY_TOKEN, then register the URL in Meta",
     },
     crm: {
-      ok: lsqConfigured(),
+      ok: lsqOk,
       label: "LeadSquared CRM (optional)",
-      detail: lsqConfigured() ? "Timeline sync active" : "Optional — set LSQ_* keys to sync chats to the CRM",
+      detail: lsqOk ? "Timeline sync active" : "Optional — add your LeadSquared keys in Settings to sync chats to the CRM",
     },
   };
 

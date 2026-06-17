@@ -161,7 +161,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
-  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead" }));
+  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid }));
 
   // Growth opt-in: if this message matches a growth tool's prefilled keyword,
   // apply its action (tag + sequence enrollment) and count the conversion.

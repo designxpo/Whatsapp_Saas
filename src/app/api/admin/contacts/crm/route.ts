@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const digits = (new URL(req.url).searchParams.get("phone") ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
-  if (!lsqConfigured()) return NextResponse.json({ configured: false, lead: null });
-  const lead = await fetchLeadDetails(digits);
+  if (!(await lsqConfigured(tid))) return NextResponse.json({ configured: false, lead: null });
+  const lead = await fetchLeadDetails(digits, tid);
   return NextResponse.json({ configured: true, lead });
 }

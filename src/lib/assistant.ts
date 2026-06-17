@@ -109,7 +109,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
         if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
         await appendConvMessage({ conversationId, role: "assistant", body: routed.answer, metaId: sent.id, source: "bot" });
         await touchOutbound(conversationId, routed.answer);
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: routed.answer, via: "bot" });
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: routed.answer, via: "bot", tenantId: conv.tenantId });
         return { outcome: "sent", detail: `router:${routed.source}` };
       }
     }
@@ -126,7 +126,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
       if (sent.id) {
         await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });
         await touchOutbound(conversationId, handoff);
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: handoff, via: "bot" });
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: handoff, via: "bot", tenantId: conv.tenantId });
       }
       return { outcome: "escalated", detail: result.reason };
     }
@@ -135,7 +135,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
     if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
     await appendConvMessage({ conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot" });
     await touchOutbound(conversationId, result.reply);
-    void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot" });
+    void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot", tenantId: conv.tenantId });
     // Warm the semantic cache so the next similar question skips RAG.
     if (lastUserMsg) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId });
     return { outcome: "sent" };
