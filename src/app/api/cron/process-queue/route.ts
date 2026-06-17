@@ -8,6 +8,7 @@ import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
 import { drainSequences } from "@/lib/sequences";
 import { drainAbandonedCarts } from "@/lib/commerce";
+import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
 
 // POST /api/cron/process-queue — run on a schedule (every 5–15 min).
@@ -84,10 +85,17 @@ export async function POST(req: Request) {
       }
     }
 
+    // Knowledge-base auto-sync: re-crawl a few URL docs (any tenant) that are due
+    // (re-embeds only when the page changed) so the KB tracks org source pages.
+    let kbSync = { checked: 0, updated: 0, unchanged: 0, failed: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try { kbSync = await refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }); } catch (e) { console.error("[cron] kbsync", e); }
+    }
+
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, sequences, aiReplies });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, sequences, aiReplies, kbSync });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

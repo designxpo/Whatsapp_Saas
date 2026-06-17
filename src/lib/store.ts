@@ -752,6 +752,9 @@ export interface KbDocument {
   error: string | null;
   chunkCount: number;
   createdAt: string;
+  contentHash: string | null;
+  lastSyncedAt: string | null;
+  tenantId: string;
 }
 
 function mapDocument(r: Record<string, unknown>): KbDocument {
@@ -764,6 +767,9 @@ function mapDocument(r: Record<string, unknown>): KbDocument {
     error: (r.error as string | null) ?? null,
     chunkCount: (r.chunk_count as number) ?? 0,
     createdAt: r.created_at as string,
+    contentHash: (r.content_hash as string | null) ?? null,
+    lastSyncedAt: (r.last_synced_at as string | null) ?? null,
+    tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
   };
 }
 
@@ -789,6 +795,25 @@ export async function listDocuments(tenantId = DEFAULT_TENANT_ID): Promise<KbDoc
 
 export async function deleteDocument(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("kb_documents").delete().eq("tenant_id", tenantId).eq("id", id);   // chunks cascade
+}
+
+// Record a document's content hash + sync time after a (re-)crawl. Best-effort:
+// if the 0032 columns aren't migrated yet the update simply errors out unused.
+export async function setDocSync(id: string, contentHash: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await db().from("kb_documents").update({ content_hash: contentHash, last_synced_at: new Date().toISOString() }).eq("tenant_id", tenantId).eq("id", id);
+}
+
+// URL documents due for a re-crawl across ALL tenants (the cron is a system job):
+// never synced, or last synced before the cutoff. Returns [] if the auto-sync
+// columns aren't migrated yet (feature simply dormant). Each doc carries tenantId.
+export async function listSyncableUrlDocs(olderThanMs: number, max: number): Promise<KbDocument[]> {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  const { data, error } = await db().from("kb_documents")
+    .select("*").eq("source_type", "url")
+    .or(`last_synced_at.is.null,last_synced_at.lt.${cutoff}`)
+    .order("created_at", { ascending: true }).limit(max);
+  if (error) return [];
+  return (data ?? []).map(r => mapDocument(r as Record<string, unknown>));
 }
 
 // Replace a document's chunks (delete-then-insert) so re-ingest doesn't duplicate.

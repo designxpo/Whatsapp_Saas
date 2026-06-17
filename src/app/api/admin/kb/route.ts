@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
-import { createDocument, listDocuments, deleteDocument, type KbSourceType } from "@/lib/store";
-import { ingestDocument, jsonToText } from "@/lib/kb";
+import { createDocument, listDocuments, deleteDocument, setDocStatus, type KbSourceType } from "@/lib/store";
+import { ingestDocument, jsonToText, syncUrlDocument } from "@/lib/kb";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
@@ -53,6 +53,15 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+    // Manual "Sync now" — re-crawl a URL document on demand (re-embeds only if changed).
+    if (body.resync) {
+      const doc = (await listDocuments(tid)).find(d => d.id === body.resync);
+      if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+      if (doc.sourceType !== "url") return NextResponse.json({ error: "Only URL documents can be re-synced" }, { status: 400 });
+      await setDocStatus(doc.id, "processing", {}, tid);
+      after(() => syncUrlDocument(doc));
+      return NextResponse.json({ success: true });
+    }
     const sourceType = body.sourceType as KbSourceType;
     if (sourceType === "text") {
       const content = (body.content as string)?.trim();

@@ -1,5 +1,6 @@
+import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { replaceChunks, setDocStatus, matchChunks, type KbSourceType } from "./store";
+import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
 
@@ -159,9 +160,54 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
     const rows = chunks.map((content, i) => ({ content, embedding: embeddings[i] }));
     const n = await replaceChunks(docId, rows, tenantId);
     await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
+    await setDocSync(docId, sha256(text), tenantId);   // baseline hash for future change detection
   } catch (err) {
     await setDocStatus(docId, "failed", { error: errorMessage(err) }, tenantId);
   }
+}
+
+function sha256(s: string): string { return createHash("sha256").update(s).digest("hex"); }
+
+// Re-crawl one URL document (tenant taken from the doc). Re-embeds only when the
+// fetched content differs from the stored hash; otherwise just stamps the sync
+// time. Keeps the KB in step with the organisation's source page automatically.
+export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unchanged" | "failed"> {
+  if (doc.sourceType !== "url" || !doc.sourceRef) return "failed";
+  const tid = doc.tenantId;
+  try {
+    const text = await extractText("url", { url: doc.sourceRef });
+    const hash = sha256(text);
+    if (doc.contentHash && hash === doc.contentHash) {
+      await setDocStatus(doc.id, "ready", { error: null }, tid);   // clear any prior processing/failed
+      await setDocSync(doc.id, hash, tid);
+      return "unchanged";
+    }
+    const chunks = chunkText(text);
+    if (chunks.length === 0) {
+      await setDocStatus(doc.id, "failed", { error: "No extractable text found", chunkCount: 0 }, tid);
+      return "failed";
+    }
+    const embeddings = await embedTexts(chunks, "RETRIEVAL_DOCUMENT");
+    const n = await replaceChunks(doc.id, chunks.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
+    await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
+    await setDocSync(doc.id, hash, tid);
+    return "updated";
+  } catch (err) {
+    await setDocStatus(doc.id, "failed", { error: errorMessage(err) }, tid);
+    return "failed";
+  }
+}
+
+// Cron entry — re-crawl URL docs (all tenants) not synced within olderThanHours,
+// capped per run. Dormant (no-op) until the 0032 auto-sync columns exist.
+export async function refreshDueUrlDocuments(opts: { olderThanHours?: number; max?: number } = {}): Promise<{ checked: number; updated: number; unchanged: number; failed: number }> {
+  const docs = await listSyncableUrlDocs((opts.olderThanHours ?? 6) * 3600_000, opts.max ?? 3);
+  let updated = 0, unchanged = 0, failed = 0;
+  for (const doc of docs) {
+    const r = await syncUrlDocument(doc);
+    if (r === "updated") updated++; else if (r === "unchanged") unchanged++; else failed++;
+  }
+  return { checked: docs.length, updated, unchanged, failed };
 }
 
 // Retrieve top-k business-doc chunks relevant to a query (tenant-scoped).

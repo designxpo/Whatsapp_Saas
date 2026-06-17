@@ -1028,7 +1028,7 @@ function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
 }
 
 // ── AI Assistant ───────────────────────────────────────────────────────────────
-type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string };
+type KbDoc = { id: string; title: string; sourceType: "pdf" | "docx" | "text" | "url"; status: "processing" | "ready" | "failed"; chunkCount: number; error?: string | null; createdAt: string; lastSyncedAt?: string | null };
 type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
 
 // Avatar that shows the profile image when available, falling back to the
@@ -1121,11 +1121,12 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                 {d.sourceType === "url" ? <Globe className="w-4 h-4 text-slate-400 shrink-0" /> : <FileText className="w-4 h-4 text-slate-400 shrink-0" />}
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-brand-dark truncate">{d.title}</p>
-                  <p className="text-[11px] text-slate-400">{d.sourceType.toUpperCase()} · {d.chunkCount} chunks{d.error ? ` · ${d.error}` : ""}</p>
+                  <p className="text-[11px] text-slate-400">{d.sourceType.toUpperCase()} · {d.chunkCount} chunks{d.sourceType === "url" ? ` · auto-updates${d.lastSyncedAt ? ` · synced ${new Date(d.lastSyncedAt).toLocaleDateString()}` : ""}` : ""}{d.error ? ` · ${d.error}` : ""}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className={statusBadge(d.status)}>{d.status}</span>
+                {d.sourceType === "url" && <button title="Sync now — re-crawl this page" onClick={() => fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resync: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-slate-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg"><RefreshCw className="w-4 h-4" /></button>}
                 <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
