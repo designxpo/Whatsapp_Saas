@@ -2424,6 +2424,18 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     } finally { setBusy(null); }
   }
 
+  // Rename a form (works on published too — only content is locked once live).
+  async function renameForm(f: WaFormRow) {
+    const next = prompt("Rename form", f.name);
+    if (next == null || !next.trim() || next.trim() === f.name) return;
+    setBusy("rename:" + f.id); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, rename: next.trim(), channelId }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed ✓"); load(); }
+    } finally { setBusy(null); }
+  }
+
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -2577,7 +2589,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <div key={f.id} className="px-4 py-3 flex items-center gap-3">
             <div className="w-9 h-9 rounded-control bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><ClipboardList className="w-[18px] h-[18px]" /></div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 truncate">{f.name}</p>
+              <button onClick={() => renameForm(f)} disabled={busy === "rename:" + f.id} title="Click to rename" className="text-sm font-semibold text-ink-900 truncate text-left hover:underline disabled:opacity-60">{f.name}</button>
               {f.validationErrors.length > 0 && <p className="text-[11px] text-red-500 truncate">Fix before publishing: {f.validationErrors.join(" · ")}</p>}
             </div>
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusPill(f.status)}`}>{f.status}</span>

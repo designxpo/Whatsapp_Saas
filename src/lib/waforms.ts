@@ -250,6 +250,25 @@ export async function getWaFormDef(id: string, channel?: ChannelCreds): Promise<
   }
 }
 
+// Renames a form. Meta allows updating a Flow's NAME (metadata) in any status,
+// even published — only its content is locked once published.
+export async function renameWaForm(id: string, name: string, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
+  const { token } = getCreds(channel);
+  if (!token) return { success: false, error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!name.trim()) return { success: false, error: "name required" };
+  try {
+    const res = await fetch(`${GRAPH}/${id}`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim().slice(0, 200) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) return { success: false, error: errMsg(data, res.status) };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // Replaces a DRAFT form's content with new Flow JSON (Meta allows editing only
 // while a Flow is in draft — published Flows are immutable, so clone instead).
 export async function updateWaFormJson(id: string, flowJson: Record<string, unknown>, channel?: ChannelCreds): Promise<{ validationErrors?: string[]; error?: string }> {

@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, getWaFormDef, updateWaFormJson, type WaFormField } from "@/lib/waforms";
+import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, getWaFormDef, updateWaFormJson, renameWaForm, type WaFormField } from "@/lib/waforms";
 import { credsFor } from "@/lib/channels";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
@@ -28,10 +28,18 @@ export async function GET(req: Request) {
 // Create: { name, title, fields: WaFormField[], publish? }
 // Publish: { id, publish: true }
 export async function POST(req: Request) {
-  let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; channelId?: string | null };
+  let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; rename?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const channel = await credsFor(body.channelId, tid);
+
+  // Rename a form (works for published too — only content is locked on publish).
+  if (body.id && typeof body.rename === "string") {
+    const r = await renameWaForm(body.id, body.rename, channel);
+    if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
+    logActivity(await currentUser(), "form.rename", `${body.id} → ${body.rename}`);
+    return NextResponse.json({ success: true });
+  }
 
   // Publish-only call for an existing draft.
   if (body.id && body.publish && !body.fields) {

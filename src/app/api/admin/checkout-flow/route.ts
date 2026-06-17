@@ -29,9 +29,16 @@ export async function POST(req: Request) {
   try {
     const existing = await getTenantSetting<string>(tid, key, "");
     if (existing) return NextResponse.json({ success: true, id: existing, published: true, reused: true });
-    // Unique per request (ms + random) so even rapid double-clicks never collide.
-    const name = `${body.name?.trim() || "Checkout"} ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    const created = await createWaForm(name, buildCheckoutFlowJson(), channel ?? undefined);
+    // Use a clean name ("Checkout"). Meta rejects duplicate flow names within a
+    // WABA, so only on a real name collision do we add a short, readable suffix
+    // ("Checkout 2", "Checkout 3", …) — never random gibberish.
+    const base = body.name?.trim() || "Checkout";
+    let created: Awaited<ReturnType<typeof createWaForm>> = { error: "not attempted" };
+    for (let i = 1; i <= 6; i++) {
+      const name = i === 1 ? base : `${base} ${i}`;
+      created = await createWaForm(name, buildCheckoutFlowJson(), channel ?? undefined);
+      if (!created.error || !/name|exist|taken|duplicate|already/i.test(created.error)) break;
+    }
     if (created.error) return NextResponse.json({ error: created.error }, { status: 502 });
     if (!created.id) return NextResponse.json({ error: "Flow not created" }, { status: 502 });
     const pub = await publishWaForm(created.id, channel ?? undefined);
