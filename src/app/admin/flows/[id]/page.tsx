@@ -14,7 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  ArrowLeft, Loader2, Play, Save, Trash2, FlaskConical, Search, MessageSquare,
+  ArrowLeft, Loader2, Play, Save, Trash2, FlaskConical, Search, MessageSquare, Send,
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
   AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd,
@@ -604,6 +604,10 @@ function Editor({ flowId }: { flowId: string }) {
   const [simOpen, setSimOpen] = useState(false);
   const [simLog, setSimLog] = useState<{ who: "you" | "flow"; text: string; options?: string[] }[]>([]);
   const [simInput, setSimInput] = useState("");
+  // Which chat skin the simulator renders in. Defaults to the flow's platform but
+  // can be toggled to preview how the same flow looks on the other channel.
+  const [simView, setSimView] = useState<"whatsapp" | "instagram">("whatsapp");
+  useEffect(() => { setSimView(platform); }, [platform]);
   const { screenToFlowPosition } = useReactFlow();
   const counter = useRef(1);
 
@@ -698,6 +702,7 @@ function Editor({ flowId }: { flowId: string }) {
 
   const toggleGroup = (g: string) => setClosedGroups(s => { const next = new Set(s); if (next.has(g)) next.delete(g); else next.add(g); return next; });
   const q = search.trim().toLowerCase();
+  const simIg = simView === "instagram";
 
   return (
     <div className="h-screen flex flex-col bg-canvas">
@@ -805,26 +810,51 @@ function Editor({ flowId }: { flowId: string }) {
         {/* Simulator */}
         {simOpen && (
           <aside className="w-80 shrink-0 bg-white border-l border-line flex flex-col">
-            <div className="px-4 py-2.5 border-b border-line flex items-center justify-between">
+            <div className="px-3 py-2 border-b border-line flex items-center justify-between gap-2">
               <p className="text-xs font-bold text-ink-600 uppercase flex items-center gap-1.5"><Play className="w-3.5 h-3.5" /> Simulator</p>
-              <button onClick={async () => { setSimLog([]); await fetch(`/api/admin/flows/${flowId}/simulate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reset: true }) }); }} className="text-[10px] font-bold text-ink-400 hover:text-red-500 flex items-center gap-1"><Trash2 className="w-3 h-3" /> reset</button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-canvas">
-              {simLog.length === 0 && <p className="text-xs text-ink-400 text-center pt-8">Type a trigger keyword to start the flow — saves automatically before each test.</p>}
-              {simLog.map((m, i) => (
-                <div key={i} className={`max-w-[85%] rounded-xl px-3 py-2 text-xs whitespace-pre-wrap ${m.who === "you" ? "bg-brand-700 text-white ml-auto" : "bg-white border border-line text-ink-900"}`}>
-                  {m.text}
-                  {m.options && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {m.options.map(o => <button key={o} onClick={() => simulate(o)} className="px-2 py-0.5 rounded-full border border-brand-500 text-brand-700 bg-white text-[10px] font-bold">{o}</button>)}
-                    </div>
-                  )}
+              <div className="flex items-center gap-1.5">
+                <div className="flex rounded-full bg-canvas p-0.5 border border-line">
+                  <button onClick={() => setSimView("whatsapp")} title="WhatsApp view" className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${!simIg ? "bg-[#25d366] text-white" : "text-ink-500 hover:text-ink-900"}`}>WhatsApp</button>
+                  <button onClick={() => setSimView("instagram")} title="Instagram view" className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${simIg ? "bg-gradient-to-r from-[#feda75] via-[#d62976] to-[#962fbf] text-white" : "text-ink-500 hover:text-ink-900"}`}>Instagram</button>
                 </div>
-              ))}
+                <button onClick={async () => { setSimLog([]); await fetch(`/api/admin/flows/${flowId}/simulate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reset: true }) }); }} title="Reset conversation" className="text-ink-400 hover:text-red-500 p-1"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
             </div>
-            <div className="p-3 border-t border-line">
-              <input className="w-full border border-line rounded-control px-3 py-2 text-xs bg-white text-ink-900 placeholder:text-ink-400" placeholder="Type as the customer…" value={simInput}
+            {/* Chat top bar — mimics the real WhatsApp / Instagram conversation header */}
+            <div className={`flex items-center gap-2 px-3 py-2 shrink-0 ${simIg ? "bg-white border-b border-line" : "bg-[#075e54]"}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold ${simIg ? "bg-gradient-to-tr from-[#feda75] via-[#d62976] to-[#962fbf] text-white" : "bg-white/20 text-white"}`}>{simIg ? "@" : "B"}</div>
+              <div className="min-w-0">
+                <p className={`text-xs font-semibold truncate ${simIg ? "text-ink-900" : "text-white"}`}>{name.trim() || "Your business"}</p>
+                <p className={`text-[10px] ${simIg ? "text-ink-400" : "text-white/70"}`}>{simIg ? "Instagram · Active now" : "online"}</p>
+              </div>
+            </div>
+            {/* Conversation thread */}
+            <div className={`flex-1 overflow-y-auto p-3 space-y-1.5 ${simIg ? "bg-white" : "bg-[#e5ddd5]"}`}>
+              {simLog.length === 0 && <p className="text-xs text-ink-400 text-center pt-8">Type a trigger keyword to start the flow — it saves automatically before each test.</p>}
+              {simLog.map((m, i) => {
+                const you = m.who === "you";
+                const bubble = simIg
+                  ? (you ? "bg-[#3797f0] text-white rounded-2xl rounded-br-md ml-auto" : "bg-slate-100 text-slate-900 rounded-2xl rounded-bl-md")
+                  : (you ? "bg-[#dcf8c6] text-slate-900 rounded-lg rounded-tr-sm ml-auto" : "bg-white text-slate-900 rounded-lg rounded-tl-sm");
+                return (
+                  <div key={i} className="space-y-1">
+                    <div className={`max-w-[85%] px-2.5 py-1.5 text-xs whitespace-pre-wrap break-words shadow-sm ${bubble}`}>{m.text}</div>
+                    {m.options && (
+                      <div className="flex flex-col items-start gap-1 max-w-[85%]">
+                        {m.options.map(o => <button key={o} onClick={() => simulate(o)} className={simIg
+                          ? "px-3 py-1 rounded-full border border-[#3797f0] text-[#3797f0] bg-white text-[11px] font-semibold"
+                          : "w-full px-3 py-1.5 rounded-lg bg-white border border-line text-[#075e54] text-[11px] font-semibold text-center shadow-sm"}>{o}</button>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Composer */}
+            <div className={`p-2 flex items-center gap-2 shrink-0 ${simIg ? "bg-white border-t border-line" : "bg-[#f0f0f0]"}`}>
+              <input className="flex-1 border border-line rounded-full px-3 py-2 text-xs bg-white text-ink-900 placeholder:text-ink-400" placeholder="Type as the customer…" value={simInput}
                 onChange={e => setSimInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && simInput.trim()) simulate(simInput.trim()); }} />
+              <button onClick={() => simInput.trim() && simulate(simInput.trim())} title="Send" className={`w-8 h-8 rounded-full flex items-center justify-center text-white shrink-0 ${simIg ? "bg-[#3797f0]" : "bg-[#25d366]"}`}><Send className="w-4 h-4" /></button>
             </div>
           </aside>
         )}
