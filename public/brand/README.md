@@ -2,12 +2,12 @@
 
 Drop your Talko AI brand files here with the **exact names below** and the app
 picks them up automatically — no code change needed. Anything in `public/` is
-served from the site root, so `public/brand/favicon.svg` → `/brand/favicon.svg`.
+served from the site root, so `public/brand/talko_favicon.svg` → `/brand/talko_favicon.svg`.
 After replacing a file, redeploy (or restart `npm run dev`) so it's served.
 
 The app uses **two** files today:
 
-## 1. `talkoail_logo.svg` — horizontal logo lockup (icon + "Talko AI")
+## 1. `talkoai.svg` — horizontal logo lockup (icon + "Talko AI")
 
 Shown in the app sidebar, the login & signup screens, and the marketing
 site's nav and footer. It's rendered **by height** (the app sets ~30–44px tall)
@@ -26,7 +26,7 @@ and the **width scales automatically** to the artwork's aspect ratio.
 > it renders small. A tighter ~3.5–4 : 1 lockup at the same height will look
 > noticeably bigger and more balanced beside the nav text.
 
-## 2. `favicon.svg` — square app mark (icon only, no text)
+## 2. `talko_favicon.svg` — square app mark (icon only, no text)
 
 The browser-tab icon (and the Apple touch-icon fallback).
 

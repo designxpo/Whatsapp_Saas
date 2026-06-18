@@ -1,16 +1,15 @@
 "use client";
 import { useState } from "react";
 
-// Talko AI logo: the "TALK + robot" mark from public/brand/talkoail_logo.svg,
-// sized by height (width auto-scales), with the "AI" wordmark appended as text
-// in the brand-blue gradient so the lockup reads "TALK [robot] AI". Falls back to
-// the supplied default if the file is missing/fails to load (the fallback already
-// includes its own "Talko AI" text, so no suffix is added there).
+// Talko AI logo: the full horizontal lockup from public/brand/talkoai.svg,
+// sized by height (width auto-scales). Falls back to the supplied default if the
+// file is missing/fails to load.
 //
-// suffix=false renders the image alone — use it if you swap in an SVG that
-// already contains "AI", to avoid duplicating it.
+// suffix renders an extra "AI" text after the image — only needed if the artwork
+// itself omits "AI". The current asset is a complete "Talko AI" lockup, so it
+// defaults OFF to avoid printing "Talko AI AI".
 export function BrandLogo({
-  height = 32, className = "", fallback, suffix = true,
+  height = 32, className = "", fallback, suffix = false,
 }: { height?: number; className?: string; fallback: React.ReactNode; suffix?: boolean }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <>{fallback}</>;
@@ -18,7 +17,7 @@ export function BrandLogo({
     <span className="inline-flex items-center" style={{ gap: Math.round(height * 0.14) }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/brand/talkoail_logo.svg"
+        src="/brand/talkoai.svg"
         alt="Talko AI"
         style={{ height, width: "auto" }}
         className={className}
