@@ -1,0 +1,725 @@
+"use client";
+
+// Settings: workspace rail + plan/usage, WhatsApp numbers, team, activity log,
+// welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
+// from admin/page.tsx, lazy-loaded. Pure relocation.
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2 } from "lucide-react";
+import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
+import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
+
+function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
+  const [teamCount, setTeamCount] = useState<number | null>(null);
+  const [qrCount, setQrCount] = useState<number | null>(null);
+  useEffect(() => { fetch("/api/admin/team/members").then(r => r.json()).then(d => setTeamCount((d.members ?? []).length)).catch(() => setTeamCount(0)); }, []);
+  useEffect(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQrCount((d.quickReplies ?? []).length)).catch(() => setQrCount(0)); }, []);
+  return (
+    <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
+      <RailCard title="Workspace">
+        <StatRow label="People with portal access" value={teamCount ?? "…"} />
+        <StatRow label="Quick replies" value={qrCount ?? "…"} />
+      </RailCard>
+      <RailCard title="Who can do what">
+        <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
+          <li><b>Admins</b> — everything, including numbers, team, and settings.</li>
+          <li><b>Members</b> — Live Chat, broadcasts, flows, templates, contacts.</li>
+          <li>Every action is recorded in the <b>activity log</b> on this page.</li>
+        </ul>
+      </RailCard>
+      <RailCard title="Message automations">
+        <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
+          <li><b>Welcome</b> — sent once, the first time a contact ever messages you.</li>
+          <li><b>Away</b> — sent outside your business hours.</li>
+          <li><b>Quick replies</b> — type <b>/</b> in the Live Chat composer to use them.</li>
+        </ul>
+      </RailCard>
+      <RailCard title="Go-live reminders" action="Checklist" onAction={() => goTo("home")}>
+        <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
+          <li>Keep your WhatsApp two-step PIN recorded somewhere safe.</li>
+          <li>Rotate the admin password once setup is done.</li>
+          <li>The cron heartbeat sends queued broadcasts every 5 minutes.</li>
+        </ul>
+      </RailCard>
+    </aside>
+  );
+}
+
+type WelcomeS = { enabled: boolean; text: string };
+type AwayS = { enabled: boolean; text: string; startHour: number; endHour: number; tzOffsetMinutes: number };
+
+// ── Team members + activity log ──
+type TeamUserRow = { id: string; email: string; name: string; title: string; role: "admin" | "member"; active: boolean; lastLoginAt: string | null };
+
+function TeamManager() {
+  const [users, setUsers] = useState<TeamUserRow[]>([]);
+  const [owner, setOwner] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [form, setForm] = useState<{ id?: string; email: string; name: string; title: string; role: "admin" | "member"; password: string; active: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/team").then(r => r.json()).then(d => { setUsers(d.users ?? []); setOwner(d.owner ?? null); setNotice(d.notice ?? null); }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!form) return;
+    if (!form.email.trim()) { setMsg("Email is required."); return; }
+    if (!form.id && !form.password.trim()) { setMsg("Password is required for a new member."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+
+  async function remove(u: TeamUserRow) {
+    if (!confirm(`Remove ${u.email}? They'll be signed out and can't log in again.`)) return;
+    await fetch("/api/admin/team", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, email: u.email }) });
+    load();
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Team members</p>
+          <p className="text-xs text-slate-500 mt-0.5">Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…). All actions are recorded in the activity log.</p>
+        </div>
+        <button onClick={() => { setForm({ email: "", name: "", title: "", role: "member", password: "", active: true }); setMsg(null); }}
+          className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
+      </div>
+
+      {notice && <p className="text-xs text-amber-700 bg-amber-50 rounded-control px-3 py-2">{notice} — apply migration <code className="font-mono">0014_team.sql</code>.</p>}
+
+      {owner && (
+        <div className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5 bg-canvas/50">
+          <div className="w-8 h-8 rounded-full bg-ink-950 text-white flex items-center justify-center text-xs font-bold shrink-0">★</div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{owner} <span className="text-[10px] font-bold text-brand-700">· OWNER</span></p>
+            <p className="text-[11px] text-ink-400">The env account — always admin, managed via ADMIN_USER/ADMIN_PASSWORD</p>
+          </div>
+        </div>
+      )}
+
+      {users.map(u => (
+        <div key={u.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${u.active ? "bg-brand-50 text-brand-700" : "bg-canvas text-ink-400"}`}>
+            {(u.name || u.email).slice(0, 1).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">
+              {u.name || u.email} <span className={`text-[10px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role.toUpperCase()}</span>
+              {!u.active && <span className="text-[10px] font-bold text-red-500"> · DISABLED</span>}
+            </p>
+            <p className="text-[11px] text-ink-400 truncate">{u.title ? `${u.title} · ` : ""}{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleString()}` : " · never logged in"}</p>
+          </div>
+          <button onClick={() => { setForm({ id: u.id, email: u.email, name: u.name, title: u.title ?? "", role: u.role, password: "", active: u.active }); setMsg(null); }}
+            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(u)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+
+      {form && (
+        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="email@company.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!form.id} />
+            <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Role / persona — e.g. Sales Counsellor, Support Lead" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+            <select className={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value as "admin" | "member" })}>
+              <option value="member">Member — inbox, broadcasts, flows, templates</option>
+              <option value="admin">Admin — everything incl. numbers & team</option>
+            </select>
+            <input className={inp} type="password" placeholder={form.id ? "New password (blank = keep current)" : "Password"} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save member"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+      {!users.length && !form && !notice && <p className="text-xs text-ink-400">No members yet — only the owner account can log in.</p>}
+    </section>
+  );
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  "auth.login": "Signed in", "broadcast.send": "Sent broadcast", "broadcast.test": "Sent test message", "template.create": "Created template",
+  "template.delete": "Deleted template", "form.create": "Created form", "form.publish": "Published form",
+  "form.delete": "Deleted form", "form.deprecate": "Deprecated form", "flow.save": "Saved flow",
+  "flow.delete": "Deleted flow", "inbox.reply": "Replied in inbox", "contacts.import": "Imported contacts",
+  "channel.save": "Saved WhatsApp number", "channel.delete": "Removed WhatsApp number",
+  "rule.save": "Saved API rule", "rule.toggle": "Toggled API rule", "rule.delete": "Deleted API rule",
+  "settings.save": "Changed settings", "optout.add": "Added opt-out", "optout.remove": "Removed opt-out",
+  "team.add": "Added team member", "team.update": "Updated team member", "team.remove": "Removed team member",
+  "ads.connect": "Connected ad account", "ads.pause": "Paused ad campaign", "ads.resume": "Resumed ad campaign", "ads.budget": "Changed ad budget",
+  "contact.update": "Updated contact",
+};
+
+function ActivityLog() {
+  const [entries, setEntries] = useState<{ id: string; userEmail: string; userName: string; action: string; detail: string; at: string }[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const d = await fetch("/api/admin/activity?limit=200").then(r => r.json());
+      setEntries(d.activity ?? []);
+    } catch { /* keep last */ }
+    setRefreshing(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Activity log</p>
+          <p className="text-xs text-slate-500 mt-0.5">Who did what, newest first — logins, broadcasts, template/flow/form changes, inbox replies, settings.</p>
+        </div>
+        <button onClick={load} disabled={refreshing} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} /> Refresh
+        </button>
+      </div>
+      <div className="max-h-96 overflow-y-auto divide-y divide-line -mx-5 px-5">
+        {entries.map(e => (
+          <div key={e.id} className="py-2 flex items-start gap-3">
+            <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+              {(e.userName || e.userEmail).slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] text-ink-900">
+                <span className="font-semibold">{e.userName || e.userEmail}</span>{" "}
+                <span className="text-ink-600">{ACTION_LABELS[e.action] ?? e.action}</span>
+                {e.detail && <span className="text-ink-400"> — {e.detail}</span>}
+              </p>
+              <p className="text-[11px] text-ink-400">{new Date(e.at).toLocaleString()}</p>
+            </div>
+          </div>
+        ))}
+        {entries.length === 0 && <p className="py-6 text-center text-xs text-ink-400">No activity recorded yet (needs migration 0014_team.sql).</p>}
+      </div>
+    </section>
+  );
+}
+
+// ── WhatsApp numbers (multi-WABA channels) ──
+const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", active: true, isDefault: false };
+
+function ChannelsManager() {
+  const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [envMode, setEnvMode] = useState(false);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [profileFor, setProfileFor] = useState<{ id: string; name: string } | null>(null);
+
+  const load = useCallback(async () => {
+    const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
+    setChannels(d.channels ?? []); setEnvMode(d.envMode ?? false);
+    setChannelCache(d.channels ?? []);     // keep the shared pickers in sync
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim() || !form.phoneId.trim() || !form.wabaId.trim()) { setMsg("Name, Phone Number ID and WABA ID are required."); return; }
+    if (!form.id && !form.token.trim()) { setMsg("Access token is required for a new number."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, appId: form.appId || null }),
+      });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Remove this number? Its conversations stay but will reply via the default credentials.")) return;
+    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  async function connectWithMeta() {
+    setBusy(true); setMsg(null);
+    try {
+      const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup();
+      const res = await fetch("/api/admin/onboarding/whatsapp", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, wabaId, phoneNumberId }),
+      });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Connection failed");
+      else { setForm(null); load(); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p>
+          <p className="text-xs text-slate-500 mt-0.5">Connect multiple numbers/WABAs — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {whatsappSignupReady() && (
+            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
+            </button>
+          )}
+          <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+        </div>
+      </div>
+
+      {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
+
+      {channels.map(c => (
+        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+          </div>
+          <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}
+            className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
+          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
+            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+
+      {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} onClose={() => setProfileFor(null)} />}
+
+      {form && (
+        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Label, e.g. Sales India" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Phone Number ID (Meta → API Setup)" value={form.phoneId} onChange={e => setForm({ ...form, phoneId: e.target.value.trim() })} />
+            <input className={inp} placeholder="WABA ID" value={form.wabaId} onChange={e => setForm({ ...form, wabaId: e.target.value.trim() })} />
+            <input className={inp} placeholder="Meta App ID (for template media)" value={form.appId} onChange={e => setForm({ ...form, appId: e.target.value.trim() })} />
+          </div>
+          <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Access token — leave blank to keep the current one" : "System-user access token"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this number">
+              <option value="">AI persona: global default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save number"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+      {!channels.length && !form && !envMode && <p className="text-xs text-ink-400">No numbers connected yet.</p>}
+    </section>
+  );
+}
+
+// ── WhatsApp business profile editor (the connected number's own profile) ──────
+const WA_VERTICAL_OPTS: { v: string; label: string }[] = [
+  { v: "", label: "Industry: not set" },
+  { v: "PROF_SERVICES", label: "Professional Services" }, { v: "EDU", label: "Education" },
+  { v: "FINANCE", label: "Finance" }, { v: "HEALTH", label: "Health" }, { v: "RETAIL", label: "Retail" },
+  { v: "APPAREL", label: "Apparel" }, { v: "BEAUTY", label: "Beauty" }, { v: "AUTO", label: "Automotive" },
+  { v: "TRAVEL", label: "Travel" }, { v: "HOTEL", label: "Hotel" }, { v: "RESTAURANT", label: "Restaurant" },
+  { v: "GROCERY", label: "Grocery" }, { v: "ENTERTAIN", label: "Entertainment" }, { v: "EVENT_PLAN", label: "Event Planning" },
+  { v: "GOVT", label: "Government" }, { v: "NONPROFIT", label: "Non-profit" }, { v: "OTHER", label: "Other" },
+];
+
+function BusinessProfileEditor({ channelId, name, onClose }: { channelId: string; name: string; onClose: () => void }) {
+  const [p, setP] = useState({ about: "", description: "", email: "", address: "", vertical: "", website: "" });
+  const [photoUrl, setPhotoUrl] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch(`/api/admin/channels/profile?channelId=${encodeURIComponent(channelId)}`)
+      .then(r => r.json()).then(d => {
+        if (d.profile) {
+          setP({ about: d.profile.about ?? "", description: d.profile.description ?? "", email: d.profile.email ?? "", address: d.profile.address ?? "", vertical: d.profile.vertical ?? "", website: (d.profile.websites ?? [])[0] ?? "" });
+          setPhotoUrl(d.profile.profilePictureUrl ?? "");
+        } else if (d.notice) setMsg(d.notice);
+      }).catch(() => setMsg("Could not load profile")).finally(() => setLoading(false));
+  }, [channelId]);
+
+  async function saveFields() {
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/profile", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId, about: p.about, description: p.description, email: p.email, address: p.address, vertical: p.vertical, websites: p.website ? [p.website] : [] }),
+      });
+      const d = await res.json();
+      setMsg(res.ok ? "Saved ✓" : (d.error || "Save failed"));
+    } finally { setBusy(false); }
+  }
+
+  async function uploadPhoto(file: File) {
+    setBusy(true); setMsg(null);
+    try {
+      const fd = new FormData();
+      fd.append("channelId", channelId);
+      fd.append("file", file);
+      const res = await fetch("/api/admin/channels/profile", { method: "POST", body: fd });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Photo upload failed"); return; }
+      setMsg("Photo updated ✓ — refreshing…");
+      const r = await fetch(`/api/admin/channels/profile?channelId=${encodeURIComponent(channelId)}`).then(x => x.json()).catch(() => null);
+      if (r?.profile?.profilePictureUrl) setPhotoUrl(r.profile.profilePictureUrl);
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="border-2 border-brand-700/30 rounded-control p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-ink-900">Business profile — <span className="text-brand-700">{name}</span></p>
+        <button onClick={onClose} className="text-xs font-semibold text-ink-400 hover:text-ink-900">Close</button>
+      </div>
+      {loading ? <p className="text-xs text-ink-400">Loading…</p> : (
+        <>
+          <div className="flex items-center gap-3">
+            <ConvAvatar url={photoUrl} label={name} size={56} />
+            <div>
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
+              <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Change photo</button>
+              <p className="text-[10px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
+            </div>
+          </div>
+          <input className={`${inp} w-full`} placeholder="About (status, ≤139 chars)" maxLength={139} value={p.about} onChange={e => setP({ ...p, about: e.target.value })} />
+          <textarea className={`${inp} w-full`} rows={2} placeholder="Description (≤512 chars)" maxLength={512} value={p.description} onChange={e => setP({ ...p, description: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Email" value={p.email} onChange={e => setP({ ...p, email: e.target.value })} />
+            <input className={inp} placeholder="Website (https://…)" value={p.website} onChange={e => setP({ ...p, website: e.target.value })} />
+            <input className={inp} placeholder="Address" value={p.address} onChange={e => setP({ ...p, address: e.target.value })} />
+            <select className={inp} value={p.vertical} onChange={e => setP({ ...p, vertical: e.target.value })}>
+              {WA_VERTICAL_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
+            {msg && <p className={`text-xs ${msg.includes("✓") ? "text-emerald-600" : "text-red-500"}`}>{msg}</p>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+
+// Tenant-facing plan + usage card (consumption vs plan limits).
+function UsageCard() {
+  const [u, setU] = useState<{ usage: { contacts: number; messages: number; channels: number; seats: number }; limits: { contacts: number; messages_per_month: number; channels: number; team_seats: number }; plan: string; status: string; trialEndsAt: string | null } | null>(null);
+  useEffect(() => { fetch("/api/admin/usage").then(r => r.json()).then(d => { if (!d.error) setU(d); }).catch(() => {}); }, []);
+  if (!u) return null;
+  const rows: [string, number, number][] = [
+    ["Contacts", u.usage.contacts, u.limits.contacts],
+    ["Messages this month", u.usage.messages, u.limits.messages_per_month],
+    ["Channels", u.usage.channels, u.limits.channels],
+    ["Team seats", u.usage.seats, u.limits.team_seats],
+  ];
+  const trialLeft = u.trialEndsAt ? Math.max(0, Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)) : null;
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Plan &amp; usage</p>
+          <p className="text-sm font-semibold text-ink-900 capitalize">{u.plan} plan {u.status === "trialing" && trialLeft !== null && <span className="text-[11px] font-bold text-amber-600">· {trialLeft} days left in trial</span>}</p>
+        </div>
+        <a href="/admin/billing" className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">Manage plan</a>
+      </div>
+      <div className="space-y-2.5">
+        {rows.map(([label, used, limit]) => {
+          const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          const near = limit > 0 && used / limit >= 0.8;
+          return (
+            <div key={label}>
+              <div className="flex justify-between text-[11px] mb-0.5"><span className="text-ink-500">{label}</span><span className={`font-mono ${near ? "text-amber-600 font-bold" : "text-ink-400"}`}>{used.toLocaleString()} / {limit > 0 ? limit.toLocaleString() : "∞"}</span></div>
+              <div className="h-1.5 rounded-full bg-canvas overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-red-500" : near ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${limit > 0 ? pct : 4}%` }} /></div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+// Developer API keys — mint per-tenant keys for the public API (/api/broadcast,
+// /api/events, /api/contacts). The full key is shown once on creation.
+function ApiKeysCard() {
+  const [keys, setKeys] = useState<{ id: string; name: string; prefix: string; lastUsedAt: string | null; revoked: boolean }[]>([]);
+  const [name, setName] = useState("");
+  const [fresh, setFresh] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { fetch("/api/admin/api-keys").then(r => r.json()).then(d => setKeys(d.keys ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    setBusy(true); setFresh(null);
+    try {
+      const d = await fetch("/api/admin/api-keys", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) }).then(r => r.json());
+      if (d.key) { setFresh(d.key); setName(""); load(); } else alert(d.error || "Failed");
+    } finally { setBusy(false); }
+  }
+  async function revoke(id: string) {
+    if (!confirm("Revoke this key? Any integration using it stops working immediately.")) return;
+    await fetch("/api/admin/api-keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p>
+      <p className="text-[11px] text-ink-400">Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</p>
+      <div className="flex gap-2">
+        <input className="flex-1 border border-line rounded-control px-2 py-1.5 text-xs bg-white" placeholder="Key name (e.g. CRM integration)" value={name} onChange={e => setName(e.target.value)} />
+        <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0">Create key</button>
+      </div>
+      {fresh && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-control px-3 py-2 space-y-1">
+          <p className="text-[11px] font-bold text-emerald-800">Copy this key now — it won&apos;t be shown again:</p>
+          <code className="block font-mono text-[11px] text-emerald-900 break-all select-all">{fresh}</code>
+        </div>
+      )}
+      <div className="divide-y divide-slate-100">
+        {keys.filter(k => !k.revoked).map(k => (
+          <div key={k.id} className="flex items-center justify-between py-2 gap-3">
+            <div className="min-w-0">
+              <span className="text-xs font-bold text-brand-dark">{k.name}</span>
+              <p className="text-[11px] text-slate-500 font-mono">{k.prefix} · {k.lastUsedAt ? `last used ${new Date(k.lastUsedAt).toLocaleDateString()}` : "never used"}</p>
+            </div>
+            <button onClick={() => revoke(k.id)} className="text-[11px] font-bold text-red-500 hover:text-red-700 shrink-0">Revoke</button>
+          </div>
+        ))}
+        {keys.filter(k => !k.revoked).length === 0 && <p className="text-center text-slate-400 text-sm py-3">No API keys yet.</p>}
+      </div>
+    </section>
+  );
+}
+
+
+// Per-tenant LeadSquared CRM credentials — each workspace uses their own CRM.
+function LsqSettingsCard() {
+  type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean };
+  const [st, setSt] = useState<LsqState | null>(null);
+  const [form, setForm] = useState({ accessKey: "", secretKey: "", host: "", activityCode: "", taskCategory: "", igHandleField: "", autoCreate: false });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/leadsquared/settings").then(r => r.json()).then((d: LsqState) => {
+      setSt(d);
+      setForm(f => ({ ...f, host: d.host ?? "", activityCode: d.activityCode ?? "", taskCategory: d.taskCategory ?? "", igHandleField: d.igHandleField ?? "", autoCreate: !!d.autoCreate }));
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/leadsquared/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }).then(r => r.json());
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else { setMsg({ ok: !!d.verify?.ok, text: d.verify?.detail || "Saved." }); setForm(f => ({ ...f, accessKey: "", secretKey: "" })); load(); }
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setBusy(false); }
+  }
+  async function disconnect() {
+    if (!confirm("Disconnect LeadSquared? Chats will stop syncing to your CRM.")) return;
+    setBusy(true);
+    try { await fetch("/api/admin/leadsquared/settings", { method: "DELETE" }); setMsg(null); load(); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-ink-900">LeadSquared CRM</h3>
+          <p className="text-[12px] text-slate-500">Your own LeadSquared keys. Chats sync to each lead&apos;s timeline; stage/owner show in Live Chat. Used only by your workspace.</p>
+        </div>
+        {st?.configured && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">Connected</span>}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={inp} placeholder={st?.secretKeySet ? "Access Key — leave blank to keep current" : "Access Key"} value={form.accessKey} onChange={e => setForm({ ...form, accessKey: e.target.value })} />
+        <input className={inp} type="password" placeholder={st?.secretKeySet ? "Secret Key — leave blank to keep current" : "Secret Key"} value={form.secretKey} onChange={e => setForm({ ...form, secretKey: e.target.value })} />
+        <input className={inp} placeholder="API host (e.g. https://api-in21.leadsquared.com)" value={form.host} onChange={e => setForm({ ...form, host: e.target.value })} />
+        <input className={inp} placeholder="Activity code (e.g. 100)" value={form.activityCode} onChange={e => setForm({ ...form, activityCode: e.target.value })} />
+        <input className={inp} placeholder="Task category (optional, default 2)" value={form.taskCategory} onChange={e => setForm({ ...form, taskCategory: e.target.value })} />
+        <input className={inp} placeholder="IG handle field (optional, e.g. mx_Instagram)" value={form.igHandleField} onChange={e => setForm({ ...form, igHandleField: e.target.value })} />
+      </div>
+      <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer">
+        <input type="checkbox" className="accent-brand-700" checked={form.autoCreate} onChange={e => setForm({ ...form, autoCreate: e.target.checked })} />
+        Auto-create a lead for new inbound contacts (off = only sync to existing leads)
+      </label>
+      {msg && <p className={`text-[12px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+      <div className="flex items-center gap-2">
+        <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save & verify"}</button>
+        {st?.configured && <button onClick={disconnect} disabled={busy} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Disconnect</button>}
+      </div>
+    </section>
+  );
+}
+
+function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const [welcome, setWelcome] = useState<WelcomeS | null>(null);
+  const [away, setAway] = useState<AwayS | null>(null);
+  const [isAdmin, setIsAdmin] = useState(true);
+  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [quickReplies, setQuickReplies] = useState<{ id: string; shortcut: string; body: string }[]>([]);
+  const [qrShortcut, setQrShortcut] = useState("");
+  const [qrBody, setQrBody] = useState("");
+
+  const loadQr = useCallback(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQuickReplies(d.quickReplies ?? [])).catch(() => {}); }, []);
+  useEffect(() => {
+    fetch("/api/admin/settings").then(r => r.json()).then(d => { setWelcome(d.welcome); setAway(d.away); }).catch(() => {});
+    loadQr();
+  }, [loadQr]);
+
+  async function save() {
+    if (!welcome || !away) return;
+    setSaving(true);
+    try {
+      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ welcome, away }) });
+      setSavedAt(Date.now());
+    } finally { setSaving(false); }
+  }
+
+  async function addQr() {
+    if (!qrShortcut.trim() || !qrBody.trim()) return;
+    await fetch("/api/admin/quick-replies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shortcut: qrShortcut, body: qrBody }) });
+    setQrShortcut(""); setQrBody(""); loadQr();
+  }
+
+  return (
+    <div className="flex gap-6 items-start">
+    <div className="flex-1 min-w-0 max-w-2xl space-y-5">
+      <div>
+        <h2 className="text-xl font-extrabold text-brand-dark">Settings</h2>
+        <p className="text-sm text-slate-500">WhatsApp numbers, automatic messages, and canned responses.</p>
+      </div>
+
+      <UsageCard />
+      {isAdmin && <ChannelsManager />}
+      {isAdmin && <TeamManager />}
+      {isAdmin && <ActivityLog />}
+
+      {/* Welcome message */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">Welcome message</p>
+            <p className="text-xs text-slate-500 mt-0.5">Sent once, the first time a contact ever messages you (before the AI answers).</p>
+          </div>
+          {welcome && (
+            <button onClick={() => setWelcome({ ...welcome, enabled: !welcome.enabled })}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold ${welcome.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {welcome.enabled ? "ON" : "OFF"}
+            </button>
+          )}
+        </div>
+        {welcome ? (
+          <textarea className={`${inp} w-full resize-none`} rows={3} value={welcome.text} onChange={e => setWelcome({ ...welcome, text: e.target.value })} />
+        ) : <Loader2 className="w-4 h-4 animate-spin text-slate-300" />}
+      </section>
+
+      {/* Away message */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">Away message (outside working hours)</p>
+            <p className="text-xs text-slate-500 mt-0.5">Sent at most once per 12h per conversation. The AI keeps answering either way.</p>
+          </div>
+          {away && (
+            <button onClick={() => setAway({ ...away, enabled: !away.enabled })}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold ${away.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {away.enabled ? "ON" : "OFF"}
+            </button>
+          )}
+        </div>
+        {away ? (
+          <>
+            <textarea className={`${inp} w-full resize-none`} rows={3} value={away.text} onChange={e => setAway({ ...away, text: e.target.value })} />
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <span>Working hours:</span>
+              <input type="number" min={0} max={23} className={`${inp} w-20`} value={away.startHour} onChange={e => setAway({ ...away, startHour: parseInt(e.target.value) || 0 })} />
+              <span>to</span>
+              <input type="number" min={0} max={24} className={`${inp} w-20`} value={away.endHour} onChange={e => setAway({ ...away, endHour: parseInt(e.target.value) || 0 })} />
+              <span className="text-xs text-slate-400">(IST, 24h format)</span>
+            </div>
+          </>
+        ) : <Loader2 className="w-4 h-4 animate-spin text-slate-300" />}
+      </section>
+
+      <button onClick={save} disabled={saving || !welcome || !away} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-60">
+        {saving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : savedAt && Date.now() - savedAt < 3000 ? "Saved ✓" : "Save messages"}
+      </button>
+
+      {/* Quick replies */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Quick replies (canned responses)</p>
+          <p className="text-xs text-slate-500 mt-0.5">Available in the Team Inbox composer (⚡ or type /) and the CRM chat panel.</p>
+        </div>
+        <div className="flex gap-2">
+          <input className={`${inp} w-32`} placeholder="shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />
+          <input className={`${inp} flex-1`} placeholder="Reply text…" value={qrBody} onChange={e => setQrBody(e.target.value)} onKeyDown={e => { if (e.key === "Enter") addQr(); }} />
+          <button onClick={addQr} disabled={!qrShortcut.trim() || !qrBody.trim()} className="px-3 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50"><Plus className="w-4 h-4" /></button>
+        </div>
+        <div className="divide-y divide-slate-100">
+          {quickReplies.map(q => (
+            <div key={q.id} className="flex items-center justify-between py-2 gap-3">
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-brand-dark">/{q.shortcut}</span>
+                <p className="text-xs text-slate-500 truncate">{q.body}</p>
+              </div>
+              <button onClick={() => fetch("/api/admin/quick-replies", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: q.id }) }).then(loadQr)} className="p-1.5 text-red-400 hover:text-red-600 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+          {quickReplies.length === 0 && <p className="text-center text-slate-400 text-sm py-4">No quick replies yet — add shortcuts like "fees", "location", "demo".</p>}
+        </div>
+      </section>
+
+      {isAdmin && (
+        <section className="bg-white rounded-card border border-line p-5 space-y-3">
+          <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
+          <div className="flex flex-wrap gap-2">
+            <a href="/api/admin/gdpr/export" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export all data (JSON)</a>
+            <button onClick={async () => {
+              const phone = prompt("Erase a contact — enter their phone number.\nThis permanently deletes the contact and ALL their data.");
+              if (!phone?.trim()) return;
+              if (!confirm(`Permanently erase all data for ${phone}? This cannot be undone.`)) return;
+              const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "request failed" }));
+              alert(r.error ? `Error: ${r.error}` : `Erased data for ${r.phone}.`);
+            }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>
+          </div>
+          <p className="text-[11px] text-ink-400">Export downloads everything stored for your workspace. Erase fulfils a right‑to‑be‑forgotten request for one contact (removes the contact, conversations, messages, opt‑outs, queue/log, orders and more).</p>
+        </section>
+      )}
+
+      {isAdmin && <LsqSettingsCard />}
+      {isAdmin && <ApiKeysCard />}
+    </div>
+    <SettingsRail goTo={goTo} />
+    </div>
+  );
+}
+
+export default SettingsTab;
