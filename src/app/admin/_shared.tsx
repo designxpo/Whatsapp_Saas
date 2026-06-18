@@ -64,6 +64,14 @@ export type AnalyticsData = {
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 };
 
+// Flow + AI-Hub types — shared because the Home/Knowledge rails (FlowsRail,
+// AiHubRail) render these alongside the Flows / AI-Hub tabs themselves.
+export type FlowSummary = { id: string; name: string; active: boolean; platform?: "whatsapp" | "instagram"; triggerKeywords: string[]; updatedAt: string; graph: { nodes: unknown[] } };
+export type AiAgentT = { id?: string; name: string; description: string; persona: string; constraintsText: string; productInfo: string; model: string | null; active: boolean; routingKeywords?: string };
+export type AiParamT = { name: string; description: string; required: boolean; saveToAttribute: string };
+export type AiFunctionT = { id?: string; name: string; description: string; parameters: AiParamT[]; webhookUrl: string | null; escalate: boolean; active: boolean };
+export type AiPromptT = { id: string; name: string; prompt: string; active: boolean; sort: number };
+
 // ── Shared mini-components ───────────────────────────────────────────────────
 export function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
   const [busy, setBusy] = useState(false);
