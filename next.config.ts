@@ -37,6 +37,10 @@ const nextConfig: NextConfig = {
   // Scope the Next image optimizer to known hosts instead of "**" (open proxy).
   // The app renders images via plain <img>, so this never affects rendering.
   images: { remotePatterns: IMAGE_HOSTS },
+  // ESLint is configured (.eslintrc.json) and runnable via `npm run lint`, but
+  // we never gate the production build on it — a lint regression must not block
+  // a deploy. Run `next lint` in CI / locally to surface issues instead.
+  eslint: { ignoreDuringBuilds: true },
   // These do native/global work that breaks when webpack bundles them into a
   // server route — load them via Node's require at runtime instead.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "mammoth", "cheerio"],

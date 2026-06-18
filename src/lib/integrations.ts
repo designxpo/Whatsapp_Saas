@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Integrations framework — per-tenant outbound connections to external systems.
 //
 // One shared spine for every connector a tenant adds in their own portal:
@@ -18,7 +19,6 @@ import { encryptSecret, readSecret } from "./crypto";
 import { safeFetch } from "./ssrf";
 import { errorMessage } from "./errors";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Event catalog ────────────────────────────────────────────────────────────
 // Stable string keys — external automations match on these, so renaming one is

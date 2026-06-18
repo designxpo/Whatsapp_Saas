@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // LeadSquared CRM sync — PER TENANT. Each tenant configures their OWN LeadSquared
 // credentials in Settings (keys stored encrypted via tenant secrets); the
 // platform LSQ_* env vars are a fallback ONLY for the default tenant (the
@@ -11,7 +12,6 @@
 import { errorMessage } from "./errors";
 import { getTenantSetting, getTenantSecret } from "./store";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface LsqCreds {
   accessKey: string; secretKey: string; host: string; activityCode: number;

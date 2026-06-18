@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "../tenant";
 // Knowledge Router — orchestrates the layers that sit BEFORE the existing RAG
 // pipeline. RAG (lib/llm.ts + lib/kb.ts) is untouched and remains the fallback.
 //
@@ -13,7 +14,6 @@ import { cacheLookup, cacheStore } from "./cache";
 import { loadMemory, saveMemory, resolveFollowUp, type ConvMemory } from "./memory";
 import { logRouterEvent } from "./metrics";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface RouteResult {
   answer: string | null;

@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Team members + activity log. The env ADMIN_USER stays the owner account;
 // wa_users rows are additional members with their own passwords and roles.
 // Everything degrades gracefully when migration 0014 isn't applied.
@@ -18,7 +19,6 @@ export interface TeamUser {
   createdAt: string;
 }
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 function mapUser(r: Record<string, unknown>): TeamUser {
   return {

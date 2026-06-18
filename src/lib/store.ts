@@ -1,10 +1,9 @@
 import { db } from "./supabase";
 import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
-
-// Default tenant — every pre-multitenant caller resolves to it, so existing
-// call sites keep working while routes are retrofitted to pass a real tenantId.
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+import { DEFAULT_TENANT_ID } from "./tenant";
+import { safeFilterValue, escapeLike, safeAttrKey } from "./filters";
+import { logError } from "./errors";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "sent" | "partial" | "failed";
@@ -151,6 +150,7 @@ export async function upsertContacts(
 
     let inserted = 0;
     const toInsert: typeof clean = [];
+    const dupIdsToDelete: string[] = [];
     for (const r of batch) {
       const candidates = (byKey.get(r.phone.slice(-10)) ?? []).filter(e => samePerson(digits(e.phone), r.phone));
       if (!candidates.length) { toInsert.push(r); continue; }
@@ -160,12 +160,19 @@ export async function upsertContacts(
       const tags = [...new Set([...cluster.flatMap(c => c.tags ?? []), ...r.tags])];
       const attributes = Object.assign({}, r.attributes, ...cluster.map(c => c.attributes ?? {}));
       await db().from("contacts").update({ phone, tags, attributes, name: primary.name || r.name, email: primary.email || r.email }).eq("tenant_id", tenantId).eq("id", primary.id);
-      for (const dup of cluster.filter(c => c.id !== primary.id)) {
+      // Repoint ALL of this person's duplicate conversations in one query and
+      // defer the row deletes — avoids the per-duplicate N+1 (2 queries each) on
+      // large re-imports; the deletes go out as a single batched call below.
+      const dupIds = cluster.filter(c => c.id !== primary.id).map(c => c.id);
+      if (dupIds.length) {
         try {
-          await db().from("wa_conversations").update({ contact_id: primary.id }).eq("tenant_id", tenantId).eq("contact_id", dup.id);
-          await db().from("contacts").delete().eq("tenant_id", tenantId).eq("id", dup.id);
-        } catch { /* leave the duplicate row if repoint/delete fails */ }
+          await db().from("wa_conversations").update({ contact_id: primary.id }).eq("tenant_id", tenantId).in("contact_id", dupIds);
+          dupIdsToDelete.push(...dupIds);
+        } catch { /* leave the duplicate rows if the repoint fails */ }
       }
+    }
+    if (dupIdsToDelete.length) {
+      await db().from("contacts").delete().eq("tenant_id", tenantId).in("id", dupIdsToDelete).then(undefined, () => undefined);
     }
     if (toInsert.length) {
       const { data, error } = await db().from("contacts").upsert(toInsert, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
@@ -176,7 +183,7 @@ export async function upsertContacts(
   } catch (err) {
     // Dedup failed (e.g. an oversized lookup) — fall back to a plain upsert so
     // the import still lands; the unique (tenant_id, phone) constraint dedups.
-    console.error("[contacts] dedup failed, plain upsert:", err);
+    logError("contacts.dedup", err, { tenantId });
     const { data, error } = await db().from("contacts").upsert(batch, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
     if (error) throw error;
     return { inserted: data?.length ?? 0, skipped: rows.length - (data?.length ?? 0) };
@@ -190,7 +197,7 @@ export async function markOptedIn(phone: string, source: string, proof: string, 
     await db().from("contacts")
       .update({ opted_in: true, opt_in_source: source, opt_in_at: new Date().toISOString(), opt_in_proof: proof })
       .eq("tenant_id", tenantId).eq("phone", digits(phone));
-  } catch (e) { console.error("[store] markOptedIn", e); }
+  } catch (e) { logError("store.markOptedIn", e, { tenantId }); }
 }
 
 export interface ContactAttrFilter { key: string; op: "is" | "is_not" | "contains"; value: string }
@@ -204,7 +211,12 @@ export async function listContacts(opts: {
   const tid = opts.tenantId ?? DEFAULT_TENANT_ID;
   let q = db().from("contacts").select("*", { count: "exact" }).eq("tenant_id", tid).order("created_at", { ascending: false });
   if (opts.tag) q = q.contains("tags", [opts.tag]);
-  if (opts.search) q = q.or(`name.ilike.%${opts.search}%,phone.ilike.%${opts.search}%`);
+  if (opts.search) {
+    // Escape LIKE wildcards and neutralize .or() grammar so a search for "%" or
+    // "a,b" can't bypass the filter or inject extra conditions (filter bypass).
+    const s = safeFilterValue(opts.search);
+    if (s) q = q.or(`name.ilike.%${s}%,phone.ilike.%${s}%`);
+  }
   if (opts.createdFrom) q = q.gte("created_at", opts.createdFrom);
   if (opts.createdTo) q = q.lte("created_at", opts.createdTo);
   for (const a of opts.attrs ?? []) {
@@ -212,15 +224,30 @@ export async function listContacts(opts: {
     if (!key) continue;
     if (a.op === "is") q = q.contains("attributes", { [key]: a.value });
     else if (a.op === "is_not") q = q.not("attributes", "cs", JSON.stringify({ [key]: a.value }));
-    else q = q.ilike(`attributes->>${key}`, `%${a.value}%`);
+    else {
+      // "contains" interpolates the key into a column path and the value into a
+      // LIKE pattern — sanitize both so neither can break/inject the filter.
+      const safeKey = safeAttrKey(key);
+      if (safeKey) q = q.ilike(`attributes->>${safeKey}`, `%${escapeLike(a.value)}%`);
+    }
   }
   // "Last seen" lives on conversations (last inbound message), so resolve the
   // matching phones first and narrow contacts to them.
   if (opts.seenFrom || opts.seenTo) {
-    let cq = db().from("wa_conversations").select("phone").eq("tenant_id", tid).not("last_inbound_at", "is", null);
+    // Resolve the phones with inbound activity in the window, MOST-RECENT FIRST
+    // so that when the cap is hit we keep the relevant (recently-seen) numbers
+    // rather than an arbitrary slice. The cap bounds the IN(...) list — a very
+    // large list would overflow the request URL. If we hit it we log it (no
+    // longer a SILENT drop); the complete fix is a server-side join (RPC).
+    const SEEN_PHONE_CAP = 1000;
+    let cq = db().from("wa_conversations").select("phone").eq("tenant_id", tid).not("last_inbound_at", "is", null)
+      .order("last_inbound_at", { ascending: false });
     if (opts.seenFrom) cq = cq.gte("last_inbound_at", opts.seenFrom);
     if (opts.seenTo) cq = cq.lte("last_inbound_at", opts.seenTo);
-    const { data: convs } = await cq.limit(1000);
+    const { data: convs } = await cq.limit(SEEN_PHONE_CAP);
+    if ((convs?.length ?? 0) >= SEEN_PHONE_CAP) {
+      console.warn(JSON.stringify({ tag: "seen_filter_truncated", tenantId: tid, cap: SEEN_PHONE_CAP }));
+    }
     const phones = [...new Set((convs ?? []).map(c => digits(c.phone as string)))];
     if (phones.length === 0) return { data: [], total: 0 };
     q = q.in("phone", phones);
@@ -310,6 +337,16 @@ export async function listOptouts(tenantId = DEFAULT_TENANT_ID): Promise<{ phone
 export async function optoutSet(tenantId = DEFAULT_TENANT_ID): Promise<Set<string>> {
   const { data } = await db().from("wa_optouts").select("phone").eq("tenant_id", tenantId);
   return new Set((data ?? []).map(r => last10(r.phone as string)));
+}
+
+// Single-number opt-out check (indexed on tenant_id, phone). Use this on the
+// per-message hot paths (inbound webhooks, single CRM send) instead of loading
+// the tenant's entire opt-out set into memory for one lookup. optoutSet() is
+// still the right tool for bulk send paths that check many numbers at once.
+export async function isOptedOut(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  const { count } = await db().from("wa_optouts").select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId).eq("phone", last10(phone));
+  return (count ?? 0) > 0;
 }
 
 // ── Campaigns ─────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { getAutoSend, scheduleSend, type AutoTrigger } from "./store";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 function delayMs(value: number, unit: "minutes" | "hours" | "days"): number {
   const mult = unit === "days" ? 86_400_000 : unit === "hours" ? 3_600_000 : 60_000;

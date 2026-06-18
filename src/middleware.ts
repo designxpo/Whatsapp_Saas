@@ -5,8 +5,13 @@ const COOKIE = "wa_admin_session";
 
 async function valid(token: string | undefined): Promise<boolean> {
   if (!token) return false;
+  // Mirror auth.ts: HS256 needs a ≥32-byte key. A missing/short secret can't be
+  // trusted, so fail closed here too instead of verifying against "" — keeps the
+  // two auth layers from diverging on minimum-secret enforcement.
+  const s = process.env.ADMIN_JWT_SECRET;
+  if (!s || s.length < 32) return false;
   try {
-    await jwtVerify(token, new TextEncoder().encode(process.env.ADMIN_JWT_SECRET ?? ""));
+    await jwtVerify(token, new TextEncoder().encode(s));
     return true;
   } catch {
     return false;

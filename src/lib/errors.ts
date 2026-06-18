@@ -12,3 +12,15 @@ export function errorMessage(err: unknown): string {
   }
   return String(err);
 }
+
+// Structured error log line (single JSON object per error) so production logs
+// can be filtered/aggregated by `tag`, instead of the bare `console.error`
+// scattered across the codebase. Use for best-effort operations whose failure
+// should be observable but must not throw.
+export function logError(tag: string, err: unknown, extra?: Record<string, unknown>): void {
+  try {
+    console.error(JSON.stringify({ level: "error", tag, msg: errorMessage(err), ...(extra ?? {}) }));
+  } catch {
+    console.error(`[${tag}]`, err);
+  }
+}

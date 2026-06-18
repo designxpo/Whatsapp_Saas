@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Chatbot flow engine — executes drag-and-drop flows built in /admin (Flows tab).
 //
 // Runs BEFORE the Knowledge Router/AI in the webhook: if a flow handles the
@@ -28,7 +29,6 @@ import { getProduct } from "./commerce";
 import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
 import { safeFetch } from "./ssrf";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // Options whose label reads like a human-handoff request — used to auto-escalate
 // when such a button is left unconnected in the builder (instead of dead-ending).

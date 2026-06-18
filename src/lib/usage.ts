@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Usage metering + plan-limit enforcement. Resolves a tenant's plan limits and
 // current consumption, and gates actions that would exceed them. A limit of 0
 // means unlimited. The platform owner's default tenant is always unlimited.
@@ -6,7 +7,6 @@ import { db } from "./supabase";
 import { getTenant } from "./tenants";
 import { getPlan, type PlanLimits } from "./plans";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 export type Resource = "contacts" | "messages" | "channels" | "seats";
 const UNLIMITED: PlanLimits = { contacts: 0, messages_per_month: 0, channels: 0, team_seats: 0 };
 

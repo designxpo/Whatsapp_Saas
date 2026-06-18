@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Commerce — products, carts, orders. Cart RECOVERY is not a bespoke feature:
 // it's a Sequence (trigger_kind='cart_abandoned') that the cron enrolls idle
 // carts into. Browse/checkout reuse the WhatsApp product messages + Flows.
@@ -6,7 +7,6 @@ import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
 export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null }

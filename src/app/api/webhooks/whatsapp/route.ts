@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
-  updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, optoutSet, upsertContacts,
+  updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
   setContactAttributes, addContactTag, markOptedIn,
 } from "@/lib/store";
@@ -23,7 +23,6 @@ import { resolveFlowIdForAd } from "@/lib/adflow";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const OPTIN_RE = /^\s*(start|unstop|subscribe|opt[\s-]?in)\s*$/i;
-const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 
 // GET — Meta webhook verification handshake.
 export async function GET(req: Request) {
@@ -107,14 +106,17 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     after(() => emitEvent(tid, "contact.optout", { phone: from, name: profileName, reason: "inbound STOP" }));
     return;
   }
+  // One indexed lookup, reused for both the opt-back-in and the suppress checks
+  // (avoids loading the tenant's entire opt-out set on every inbound message).
+  const optedOut = await isOptedOut(from, tid);
   // Opt back in — the STOP confirmation promises "Reply START to opt back in".
-  if (OPTIN_RE.test(text) && (await optoutSet(tid)).has(last10(from))) {
+  if (OPTIN_RE.test(text) && optedOut) {
     await removeOptout(from, tid);
     await sendText(from, "Welcome back! You're subscribed again and will receive our updates. Reply STOP anytime to opt out.", channel);
     return;
   }
   // Already opted out — ignore inbound entirely.
-  if ((await optoutSet(tid)).has(last10(from))) return;
+  if (optedOut) return;
 
   // Ensure the sender is a contact, then attach to a conversation. An inbound
   // message IS a verifiable opt-in, so mark consent (and upgrade an existing

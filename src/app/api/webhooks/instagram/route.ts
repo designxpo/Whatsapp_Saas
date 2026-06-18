@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, optoutSet, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
@@ -96,7 +96,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
 
   // Opt-out (STOP) honored like WhatsApp.
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }
-  if ((await optoutSet(channel.tenantId)).has(senderId.slice(-10))) return;
+  if (await isOptedOut(senderId, channel.tenantId)) return;
 
   let conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
   // Webhooks only carry the IGSID — resolve the @handle once (while unnamed).

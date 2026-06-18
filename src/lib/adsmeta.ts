@@ -1,10 +1,10 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // ── Ad drafts + portal-campaign tracking ──────────────────────────────────────
 // Drafts: auto-saved snapshots of the ad builder so a refresh never loses work
 // or accidentally launches an ad. Portal campaigns: which Meta campaigns were
 // created from this portal (vs. directly in Ads Manager) — for the dashboard split.
 import { db } from "@/lib/supabase";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface AdDraftSummary { id: string; name: string; updatedAt: string }
 export interface AdDraft extends AdDraftSummary { data: Record<string, unknown> }

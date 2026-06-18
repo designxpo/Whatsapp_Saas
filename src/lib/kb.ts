@@ -1,10 +1,10 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // pdf-parse / mammoth / cheerio are loaded lazily inside the extract functions:
 // they do native/global work that crashes if evaluated at module load inside a

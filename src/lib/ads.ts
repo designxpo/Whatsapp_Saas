@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Meta Marketing API — campaign insights and controls for the Ads tab, plus
 // Click-to-WhatsApp lead attribution from our own contacts data.
 //
@@ -9,7 +10,6 @@ import { getTenantSetting, setTenantSetting } from "./store";
 import { db } from "./supabase";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // Ad account + page are per-tenant config (wa_settings, tenant-scoped), with an
 // env fallback for the default/internal tenant.

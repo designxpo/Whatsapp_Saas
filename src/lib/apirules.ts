@@ -1,9 +1,9 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { createCampaign, getContactByPhone, dailySentCount, type Contact } from "./store";
 import { sendCampaign } from "./whatsapp";
 import { credsFor } from "./channels";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── API broadcasting rules engine ─────────────────────────────────────────────
 // One generic inbound event (name + phone + free-form data) fans out through

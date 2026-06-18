@@ -1,6 +1,6 @@
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound, setConversationStatus,
-  claimReply, reflagReply, optoutSet, dailySentCount,
+  claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
 import { generateReply } from "./llm";
 import { sendText, sendCtaUrl } from "./whatsapp";
@@ -15,7 +15,6 @@ import { getChannel, type Channel } from "./channels";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 function dailyLimit(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
-const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 
 export type RespondOutcome = "sent" | "escalated" | "skipped" | "failed";
 
@@ -66,8 +65,8 @@ export async function respondToConversation(conversationId: string): Promise<{ o
   // number lives in tenant B's wa_optouts, so calling optoutSet() with no arg
   // (which defaults to DEFAULT_TENANT_ID) would silently ignore the opt-out for
   // every non-owner tenant — a consent/compliance bug.
-  const [optouts, sentToday] = await Promise.all([optoutSet(conv.tenantId), dailySentCount(conv.tenantId)]);
-  if (optouts.has(last10(conv.phone))) return { outcome: "skipped", detail: "opted out" };
+  const [optedOut, sentToday] = await Promise.all([isOptedOut(conv.phone, conv.tenantId), dailySentCount(conv.tenantId)]);
+  if (optedOut) return { outcome: "skipped", detail: "opted out" };
   if (sentToday >= dailyLimit()) return { outcome: "skipped", detail: "daily cap reached" };
 
   // Claim — only one runner proceeds.

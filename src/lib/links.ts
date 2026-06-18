@@ -1,7 +1,7 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { randomBytes } from "crypto";
 import { db } from "./supabase";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Click tracking (AiSensy-style) ───────────────────────────────────────────
 // Templates submitted with click tracking get their URL buttons rewritten to

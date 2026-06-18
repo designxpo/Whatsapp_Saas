@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // ── Ad → Flow triggers ────────────────────────────────────────────────────────
 // Bind a chatbot flow to a Meta Ads campaign (default) or a specific ad (override).
 // When a Click-to-WhatsApp lead first messages, the webhook resolves which flow to
@@ -5,7 +6,6 @@
 import { db } from "@/lib/supabase";
 import { getAdCampaignId } from "@/lib/ads";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export type FlowTriggerScope = "ad" | "campaign";
 export interface FlowTrigger { id: string; flowId: string; scope: FlowTriggerScope; refId: string; label: string | null; createdAt: string }

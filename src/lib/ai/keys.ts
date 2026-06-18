@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "../tenant";
 // Resolves a tenant's OWN chat AI configuration (provider + model + key).
 // Policy: REQUIRE-OWN-KEY — if a tenant hasn't configured a key, AI chat is off
 // for them (resolveTenantAi throws AiKeyMissingError; callers escalate to human).
@@ -6,7 +7,6 @@
 import { getTenantSetting, setTenantSetting, getTenantSecret, setTenantSecret } from "../store";
 import { DEFAULT_CHAT_MODEL, type AiProvider } from "./chat";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 const PROVIDER_SETTING = "ai_chat_provider";
 const MODEL_SETTING = "ai_chat_model";

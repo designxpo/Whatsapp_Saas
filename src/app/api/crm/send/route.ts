@@ -2,7 +2,7 @@ export const maxDuration = 30;
 import { NextResponse, after } from "next/server";
 import {
   upsertContacts, getOrCreateConversation, appendConvMessage, touchOutbound,
-  setBotEnabled, optoutSet,
+  setBotEnabled, isOptedOut,
 } from "@/lib/store";
 import { sendText, sendTemplateSingle } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
@@ -13,7 +13,6 @@ import { errorMessage } from "@/lib/errors";
 export const dynamic = "force-dynamic";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
-const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 
 // POST — send a WhatsApp message to a lead from the CRM (LeadSquared).
 //
@@ -48,7 +47,7 @@ export async function POST(req: Request) {
 
   try {
     // Opt-out suppression — CRM sends must respect STOP too.
-    if ((await optoutSet()).has(last10(phone))) {
+    if (await isOptedOut(phone)) {
       return NextResponse.json({ error: "Recipient has opted out", optedOut: true }, { status: 422 });
     }
 

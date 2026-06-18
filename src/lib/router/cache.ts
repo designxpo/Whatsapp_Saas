@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "../tenant";
 // Semantic Cache — Layer 2 of the Knowledge Router. Scoped per tenant.
 // Two-step lookup: free exact-normalized-text hit first, then pgvector cosine
 // similarity (one embedding call — still far cheaper than a full RAG pass).
@@ -6,7 +7,6 @@ import { db } from "@/lib/supabase";
 import { embedQuery } from "@/lib/kb";
 import { normalize } from "./faq";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // Paraphrase-level similarity. Below this we risk serving a wrong cached answer.
 const CACHE_SIMILARITY = 0.92;

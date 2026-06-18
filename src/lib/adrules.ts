@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Automated ad rules — evaluated on the cron tick. Each rule compares a metric
 // (from Meta insights, or leads/cost-per-lead from OUR CTWA attribution) against
 // a threshold and pauses the campaign or records an alert. Everything lands in
@@ -7,7 +8,6 @@ import { db } from "./supabase";
 import { getAdsAccountId, listAdCampaigns, setCampaignStatus, adAttribution, adCampaignIndex, type DatePreset, type AdCampaign } from "./ads";
 import { logActivity } from "./team";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface AdRule {
   id: string;

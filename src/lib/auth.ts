@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 import { timingSafeEqual } from "crypto";
 import { verifyPassword, getMemberAuthState } from "./team";
+import { DEFAULT_TENANT_ID } from "./tenant";
 
 const COOKIE = "wa_admin_session";
 
@@ -19,8 +20,10 @@ function strEq(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
-// Pre-multitenant sessions (and the bootstrap owner) belong to the default tenant.
-export const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
+// Pre-multitenant sessions (and the bootstrap owner) belong to the default
+// tenant. Re-exported from the canonical source (./tenant) so the many
+// `@/lib/auth` consumers keep importing it from here.
+export { DEFAULT_TENANT_ID };
 
 export interface SessionUser {
   email: string;
@@ -85,8 +88,18 @@ export function checkCredentials(user: string, password: string): boolean {
   const plain = process.env.ADMIN_PASSWORD;
   let passOk = false;
   if (hash) passOk = verifyPassword(password, hash);
-  else if (plain) passOk = strEq(password, plain);
+  else if (plain) { warnPlaintextPassword(); passOk = strEq(password, plain); }
   return userOk && passOk;
+}
+
+// One-time warning when the owner password is configured in plaintext. The
+// scrypt path (ADMIN_PASSWORD_HASH, set via hashPassword) keeps the password
+// out of the environment entirely and should be preferred in production.
+let plaintextWarned = false;
+function warnPlaintextPassword(): void {
+  if (plaintextWarned) return;
+  plaintextWarned = true;
+  console.warn("[auth] ADMIN_PASSWORD is set in plaintext — set ADMIN_PASSWORD_HASH (scrypt) instead so the password never lives in the environment.");
 }
 
 // Wrapped in React cache() so the per-request revocation DB lookup in

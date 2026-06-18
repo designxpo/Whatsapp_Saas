@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // AI Hub — agent personas, function-calling lead capture, agent-assist prompts.
 // The active agent's persona/constraints shape the bot's system prompt, and the
 // active functions become Gemini tools: the model extracts structured data
@@ -9,7 +10,6 @@ import { setContactAttributes, getTenantSetting, setTenantSetting } from "./stor
 import { embedTexts } from "./kb";
 import { safeFetch } from "./ssrf";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface AiAgent {

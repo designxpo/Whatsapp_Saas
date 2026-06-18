@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Sequences (drip) — timed, multi-step automations. The backbone for follow-up
 // nurture AND cart recovery AND post-purchase. Enrollment is created by any
 // event (keyword, opt-in, story_reply, tag, cart_abandoned…); the cron advances
@@ -13,7 +14,6 @@ import { sendText, sendTemplateSingle, sendMedia } from "./whatsapp";
 import { sendIgMessage, within24hWindow } from "./instagram";
 import { getConversationByPhone } from "./store";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export type SequenceTriggerKind =
   | "manual" | "keyword" | "tag_added" | "opt_in" | "story_reply"

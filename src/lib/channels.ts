@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Multi-number / multi-WABA channels. Every sender accepts an optional
 // ChannelCreds; when omitted (or when wa_channels is empty / migration 0013
 // not applied) the META_WA_* env credentials are used — so single-number
@@ -6,7 +7,6 @@
 import { db } from "./supabase";
 import { encryptSecret, readSecret } from "./crypto";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export interface ChannelCreds {
   token: string;

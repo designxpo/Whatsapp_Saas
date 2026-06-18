@@ -1,7 +1,7 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import crypto from "crypto";
 import { tenantForApiKey } from "./apikeys";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export function constEq(provided: string, expected: string | undefined): boolean {
   if (!expected) return false;

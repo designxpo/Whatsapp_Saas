@@ -1,10 +1,10 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { createCampaign, getCampaign, recipientsForAudience, type Campaign } from "./store";
 import { startSend } from "./campaign";
 import { getChannel, credsFor } from "./channels";
 import { fetchTemplates } from "./whatsapp";
 import { templateIssues } from "./preflight";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 // Best-effort: fetch the chosen template's Meta definition so we can preflight
 // it. Returns null when creds are missing / Meta is unreachable — never blocks

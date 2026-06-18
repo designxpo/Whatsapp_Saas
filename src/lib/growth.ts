@@ -1,3 +1,4 @@
+import { DEFAULT_TENANT_ID } from "./tenant";
 // Growth tools — ref links / QR / on-site widgets / opt-in landings. Each has a
 // public slug; visiting /g/<slug> redirects to WhatsApp/Instagram with a
 // prefilled opt-in message and counts the click. When the user then messages,
@@ -6,7 +7,6 @@
 
 import { db } from "./supabase";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 
 export type GrowthKind = "ref_link" | "qr" | "widget_popup" | "widget_bar" | "landing";
 
