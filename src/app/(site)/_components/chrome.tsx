@@ -12,7 +12,7 @@ function Wordmark({ dark = false }: { dark?: boolean }) {
   if (dark) {
     return (
       <Link href="/" className="inline-flex items-center rounded-xl bg-white px-3 py-2 shadow-sm">
-        <BrandLogo height={38} className="max-w-[210px]" fallback={
+        <BrandLogo height={34} className="max-w-[190px]" fallback={
           <span className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
             <span className="text-[15px] font-extrabold tracking-tight text-slate-900">{SITE.name}</span>
@@ -23,7 +23,7 @@ function Wordmark({ dark = false }: { dark?: boolean }) {
   }
   return (
     <Link href="/" className="flex items-center">
-      <BrandLogo height={46} className="max-w-[240px]" fallback={
+      <BrandLogo height={40} className="max-w-[220px]" fallback={
         <span className="flex items-center gap-2">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#0783fd] text-white"><Bot className="h-4 w-4" /></span>
           <span className="text-[16px] font-extrabold tracking-tight text-slate-900">{SITE.name}</span>
