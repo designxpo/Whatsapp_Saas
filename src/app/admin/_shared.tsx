@@ -19,6 +19,17 @@ export const inp = "border border-line rounded-control px-3 py-2 text-sm bg-whit
 export const btnPrimary = "px-4 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";
 export const railLoading = <Loader2 className="w-4 h-4 animate-spin text-slate-300" />;
 
+// Status pill classes (kb docs, conversations, templates) — shared by the
+// Assistant tab and the Live Chat ChatView.
+export function statusBadge(s: string): string {
+  const map: Record<string, string> = {
+    ready: "bg-brand-green/15 text-brand-dark", active: "bg-brand-green/15 text-brand-dark",
+    processing: "bg-amber-100 text-amber-700", paused: "bg-slate-100 text-slate-600",
+    failed: "bg-red-100 text-red-700", escalated: "bg-red-100 text-red-700",
+  };
+  return `px-2 py-0.5 rounded-full text-[11px] font-semibold ${map[s] ?? "bg-slate-100 text-slate-600"}`;
+}
+
 // ── Multi-number channels (shared across broadcast/templates/forms/ads/etc.) ──
 export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; token: string; appId: string | null; agentId: string | null; active: boolean; isDefault: boolean };
 let CHANNELS_CACHE: ChannelRow[] | null = null;
@@ -63,6 +74,13 @@ export type AnalyticsData = {
   recentCampaigns: { name: string; sent: number; total: number; status: string }[];
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 };
+
+// Analytics fetch hook — used by the Home / Broadcast / Knowledge sidebar rails.
+export function useAnalytics(): AnalyticsData | null {
+  const [a, setA] = useState<AnalyticsData | null>(null);
+  useEffect(() => { fetch("/api/admin/analytics").then(r => r.json()).then(d => setA(d.analytics ?? null)).catch(() => {}); }, []);
+  return a;
+}
 
 // Flow + AI-Hub types — shared because the Home/Knowledge rails (FlowsRail,
 // AiHubRail) render these alongside the Flows / AI-Hub tabs themselves.
