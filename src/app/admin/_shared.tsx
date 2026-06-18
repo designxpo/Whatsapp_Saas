@@ -51,6 +51,19 @@ export function ChannelSelect({ value, onChange, allLabel, className }: { value:
 // ── Shared conversation type (live chat / analytics / contacts) ──────────────
 export type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram"; avatarUrl?: string | null; isComment?: boolean };
 
+// Analytics payload — used by both the Analytics tab and the Home/Broadcast rails'
+// useAnalytics() hook, so it lives here rather than inside the analytics module.
+export type AnalyticsData = {
+  contacts: { active: number; optedOut: number; new14d: number };
+  campaigns: { total: number; automations: number };
+  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
+  kb: { documents: number; ready: number };
+  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
+  automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
+  recentCampaigns: { name: string; sent: number; total: number; status: string }[];
+  daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
+};
+
 // ── Shared mini-components ───────────────────────────────────────────────────
 export function ImageUpload({ onUploaded }: { onUploaded: (url: string) => void }) {
   const [busy, setBusy] = useState(false);
