@@ -40,7 +40,7 @@ const firstName = (n: string) => (n || "").trim().split(/\s+/)[0] || "";
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-export interface SendResult { sentCount: number; failedCount: number; skippedCount: number; errors: string[] }
+export interface SendResult { sentCount: number; failedCount: number; skippedCount: number; errors: string[]; results: { phone: string; status: "sent" | "failed" | "skipped" }[] }
 
 // Sends a template to a batch of recipients, logging each to wa_send_log.
 // Skips opted-out numbers. Returns aggregate counts.
@@ -55,12 +55,16 @@ export async function sendCampaign(params: {
   tenantId?: string;
 }): Promise<SendResult> {
   const { token, phoneId } = getCreds(params.channel);
-  if (!token || !phoneId) return { sentCount: 0, failedCount: params.recipients.length, skippedCount: 0, errors: ["WhatsApp credentials not configured"] };
+  if (!token || !phoneId) return { sentCount: 0, failedCount: params.recipients.length, skippedCount: 0, errors: ["WhatsApp credentials not configured"], results: [] };
 
   const optouts = await optoutSet(params.tenantId);
   const errors: string[] = [];
   let sentCount = 0, failedCount = 0, skippedCount = 0, consecutiveErrors = 0;
   const log: Parameters<typeof insertLog>[0] = [];
+  // One entry per recipient we ACTUALLY process, in input order. The caller maps
+  // these back to queue rows; recipients past results.length were never attempted
+  // (early-abort) and must NOT be marked sent — they stay queued for retry.
+  const results: SendResult["results"] = [];
 
   // Click tracking: templates submitted with "Enable click tracking" have their
   // URL buttons pointing at {SITE}/r/{{1}} — each recipient gets a unique code.
@@ -71,6 +75,7 @@ export async function sendCampaign(params: {
     const digitsPhone = (r.phone || "").replace(/\D/g, "");
     if (optouts.has(last10(r.phone))) {
       skippedCount++;
+      results.push({ phone: digitsPhone, status: "skipped" });
       log.push({ campaignId: params.campaignId, phone: digitsPhone, recipientName: r.fullName, status: "skipped", errorDetail: "opted out" });
       continue;
     }
@@ -105,17 +110,20 @@ export async function sendCampaign(params: {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.messages?.[0]?.id) {
         sentCount++; consecutiveErrors = 0;
+        results.push({ phone: digitsPhone, status: "sent" });
         log.push({ campaignId: params.campaignId, phone: digitsPhone, recipientName: r.fullName, status: "sent", metaMessageId: data.messages[0].id });
       } else {
         failedCount++; consecutiveErrors++;
         const msg = data?.error?.message || `HTTP ${res.status}`;
         if (errors.length < 5) errors.push(msg);
+        results.push({ phone: digitsPhone, status: "failed" });
         log.push({ campaignId: params.campaignId, phone: digitsPhone, recipientName: r.fullName, status: "failed", errorDetail: msg });
       }
     } catch (err) {
       failedCount++; consecutiveErrors++;
       const msg = err instanceof Error ? err.message : String(err);
       if (errors.length < 5) errors.push(msg);
+      results.push({ phone: digitsPhone, status: "failed" });
       log.push({ campaignId: params.campaignId, phone: digitsPhone, recipientName: r.fullName, status: "failed", errorDetail: msg });
     }
 
@@ -127,7 +135,7 @@ export async function sendCampaign(params: {
   }
 
   await insertLog(log, params.tenantId).catch(() => undefined);
-  return { sentCount, failedCount, skippedCount, errors };
+  return { sentCount, failedCount, skippedCount, errors, results };
 }
 
 // One-off test send to any number — renders exactly like a campaign send

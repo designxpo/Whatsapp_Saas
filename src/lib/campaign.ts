@@ -1,5 +1,5 @@
 import {
-  getCampaign, updateCampaign, enqueue, claimPending, markQueue, countPending, countQueueTotal,
+  getCampaign, updateCampaign, enqueue, claimPending, markQueue, releaseQueueClaims, countPending, countQueueTotal,
   logCounts, sentLast24h, recipientsForAudience, getDueScheduledSends, markScheduled, armFlow,
   type Campaign,
 } from "./store";
@@ -14,6 +14,26 @@ function safetyCap(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "90
 function effectiveCap(ch: Channel | null): number {
   const tier = tierDailyCap(ch?.messagingTier);
   return tier == null ? safetyCap() : Math.min(safetyCap(), tier);
+}
+
+// Bucket claimed queue rows by their per-recipient send outcome. sendCampaign
+// returns one result per recipient it PROCESSED, in claim order; rows at indices
+// past results.length were never attempted (early-abort after 5 consecutive
+// failures) and are bucketed "unattempted" so the caller leaves them queued for
+// retry instead of marking them sent (the BUG-2 data-loss the audit flagged).
+export function bucketQueueOutcomes(
+  chunk: { id: string; phone: string }[],
+  results: { status: "sent" | "failed" | "skipped" }[],
+): { sentIds: string[]; failedIds: string[]; skippedIds: string[]; unattemptedIds: string[]; sentPhones: string[] } {
+  const sentIds: string[] = [], failedIds: string[] = [], skippedIds: string[] = [], unattemptedIds: string[] = [], sentPhones: string[] = [];
+  chunk.forEach((c, i) => {
+    const outcome = results[i]?.status;
+    if (outcome === "sent") { sentIds.push(c.id); sentPhones.push(c.phone); }
+    else if (outcome === "failed") failedIds.push(c.id);
+    else if (outcome === "skipped") skippedIds.push(c.id);
+    else unattemptedIds.push(c.id);
+  });
+  return { sentIds, failedIds, skippedIds, unattemptedIds, sentPhones };
 }
 
 export interface DrainResult { sentNow: number; queuedRemaining: number; status: Campaign["status"] }
@@ -56,9 +76,18 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
         channel: await credsFor(campaign.channelId),
         tenantId: campaign.tenantId,
       });
-      await markQueue(chunk.map(c => c.id), "sent");
-      // Bot on broadcast: arm each delivered recipient so their reply starts the flow.
-      if (campaign.replyFlowId) await armFlow(chunk.map(c => c.phone), campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
+      // Mark each claimed row by its ACTUAL outcome. sendCampaign returns one
+      // result per recipient it processed, in claim order; rows past results.length
+      // were never attempted (early-abort after consecutive failures) and must NOT
+      // be marked sent — release them so the next drain retries them instead of
+      // silently dropping the recipients.
+      const { sentIds, failedIds, skippedIds, unattemptedIds, sentPhones } = bucketQueueOutcomes(chunk, r.results);
+      await markQueue(sentIds, "sent");
+      await markQueue(failedIds, "failed");
+      await markQueue(skippedIds, "skipped");
+      await releaseQueueClaims(unattemptedIds);
+      // Bot on broadcast: arm only the recipients we actually delivered to.
+      if (campaign.replyFlowId && sentPhones.length) await armFlow(sentPhones, campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
       sentNow = r.sentCount;
       if (r.errors.length) errs.push(...r.errors);
     }
@@ -133,7 +162,7 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
     const campaign = await getCampaign(cid);
     if (!campaign) { for (const d of group) { await markScheduled(d.id, "failed", "config not found"); failed++; } continue; }
     try {
-      await sendCampaign({
+      const r = await sendCampaign({
         campaignId: campaign.id,
         templateName: campaign.templateName,
         languageCode: campaign.languageCode,
@@ -143,8 +172,17 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
         channel: await credsFor(campaign.channelId),
         tenantId: campaign.tenantId,
       });
-      if (campaign.replyFlowId) await armFlow(group.map(d => d.phone), campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
-      for (const d of group) { await markScheduled(d.id, "sent"); sent++; }
+      // Mark each scheduled send by its real outcome (in send order). Items past
+      // results.length were never attempted (early-abort) — leave them 'pending'
+      // so the next run retries them rather than dropping them.
+      const sentPhones: string[] = [];
+      for (let i = 0; i < group.length; i++) {
+        const outcome = r.results[i]?.status;
+        if (outcome === "sent") { await markScheduled(group[i].id, "sent"); sent++; sentPhones.push(group[i].phone); }
+        else if (outcome === "skipped") { await markScheduled(group[i].id, "skipped"); }
+        else if (outcome === "failed") { await markScheduled(group[i].id, "failed", "send failed"); failed++; }
+      }
+      if (campaign.replyFlowId && sentPhones.length) await armFlow(sentPhones, campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
     } catch (err) {
       for (const d of group) { await markScheduled(d.id, "failed", String(err)); failed++; }
     }

@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import { requireAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getBusinessProfile, updateBusinessProfile, setProfilePicture, type BusinessProfile } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
@@ -26,8 +26,10 @@ export async function GET(req: Request) {
 }
 
 // POST — JSON body updates the text fields; multipart (file) sets the photo.
+// Admin-role only: this changes the number's PUBLIC business profile (name, about,
+// photo) shown to every customer — a brand/config change, not a member task.
 export async function POST(req: Request) {
-  if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const ctype = req.headers.get("content-type") || "";
   try {

@@ -453,6 +453,15 @@ export async function markQueue(ids: string[], status: "sent" | "failed" | "skip
   await db().from("wa_send_queue").update({ status, processed_at: new Date().toISOString() }).in("id", ids);
 }
 
+// Release a claim WITHOUT completing it — used when a send aborted before reaching
+// these recipients. Clearing claimed_at lets the next drain re-claim them
+// immediately (status stays 'pending') instead of waiting out the 10-min stale
+// window. No-ops gracefully on a pre-0044 schema (no claimed_at column).
+export async function releaseQueueClaims(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db().from("wa_send_queue").update({ claimed_at: null }).in("id", ids).then(undefined, () => undefined);
+}
+
 export async function countPending(campaignId: string): Promise<number> {
   const { count } = await db().from("wa_send_queue").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("status", "pending");
   return count ?? 0;
