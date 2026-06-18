@@ -5,6 +5,7 @@ import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
+import { transcribeRemoteAudio } from "@/lib/voice";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
@@ -84,7 +85,17 @@ async function syncIgToLsq(conv: Conversation, body: string, direction: "inbound
 async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const senderId = String((ev.sender as Record<string, unknown>)?.id ?? "");
   const msg = ev.message as Record<string, unknown> | undefined;
-  const text = (msg?.text as string) ?? "";
+  let text = (msg?.text as string) ?? "";
+  // Inbound voice/audio DM → transcribe with the tenant's AI so it's answered
+  // like a typed message (Instagram delivers an attachment URL, not bytes).
+  if (!text.trim() && senderId && !(msg?.is_echo as boolean)) {
+    const atts = (msg?.attachments as { type?: string; payload?: { url?: string } }[]) ?? [];
+    const audioUrl = atts.find(a => a.type === "audio")?.payload?.url;
+    if (audioUrl) {
+      const t = await transcribeRemoteAudio(audioUrl, channel.tenantId);
+      if (t) text = t;
+    }
+  }
   // Ignore echoes (our own outbound) and non-text events.
   if (!senderId || !text.trim() || (msg?.is_echo as boolean)) return;
 

@@ -20,6 +20,28 @@ export function getCreds(channel?: ChannelCreds) {
   };
 }
 
+// Download an inbound media file (e.g. a voice note) by its media id. Meta gives
+// a media id on the webhook; we resolve it to a short-lived URL, then fetch the
+// bytes (both calls need the access token). Returns null on any failure so voice
+// transcription can degrade gracefully. Capped at 25 MB (WhatsApp's media limit).
+export async function downloadMedia(mediaId: string, channel?: ChannelCreds): Promise<{ data: Buffer; mimeType: string } | null> {
+  const { token } = getCreds(channel);
+  if (!token || !mediaId) return null;
+  try {
+    const meta = await fetch(`${GRAPH}/${mediaId}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+    if (!meta.ok) return null;
+    const { url, mime_type } = (await meta.json()) as { url?: string; mime_type?: string };
+    if (!url) return null;
+    const bin = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
+    if (!bin.ok) return null;
+    const buf = Buffer.from(await bin.arrayBuffer());
+    if (buf.length > 25 * 1024 * 1024) return null;
+    return { data: buf, mimeType: mime_type ?? "audio/ogg" };
+  } catch {
+    return null;
+  }
+}
+
 // Show a "typing…" indicator to the user while we compose a reply. Sent with
 // the read receipt for the inbound message; Meta displays it for up to ~25s or
 // until our next message arrives. Fire-and-forget — never blocks the reply.

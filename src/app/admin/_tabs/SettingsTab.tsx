@@ -514,6 +514,69 @@ function ApiKeysCard() {
 }
 
 
+// Voice replies — inbound voice notes are transcribed; optionally reply in voice.
+function VoiceSettingsCard() {
+  type VoiceState = { mode: "off" | "mirror" | "always"; keySet: boolean; providerIsOpenai: boolean };
+  const [st, setSt] = useState<VoiceState | null>(null);
+  const [mode, setMode] = useState<"off" | "mirror" | "always">("off");
+  const [key, setKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/voice").then(r => r.json()).then((d: VoiceState) => { setSt(d); setMode(d.mode ?? "off"); }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, openaiKey: key }) }).then(r => r.json());
+      setMsg(d.error ? d.error : "Saved.");
+      if (!d.error) { setKey(""); load(); }
+    } catch { setMsg("Connection error."); }
+    finally { setBusy(false); }
+  }
+
+  const needsKey = st && !st.providerIsOpenai && !st.keySet && mode !== "off";
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div>
+        <h3 className="text-sm font-bold text-ink-900">Voice replies</h3>
+        <p className="text-[12px] text-slate-500">Customers can <span className="font-semibold">send voice notes</span> (auto-transcribed and answered) on WhatsApp &amp; Instagram. Optionally have the AI <span className="font-semibold">reply in voice</span> too.</p>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        <div>
+          <label className="text-xs font-bold text-slate-400 uppercase">Reply in voice</label>
+          <select className={`${inp} w-full mt-1`} value={mode} onChange={e => setMode(e.target.value as VoiceState["mode"])}>
+            <option value="off">Off — always reply with text</option>
+            <option value="mirror">Mirror — voice only when they send voice</option>
+            <option value="always">Always — reply in voice every time</option>
+          </select>
+        </div>
+        {st && !st.providerIsOpenai && (
+          <div>
+            <label className="text-xs font-bold text-slate-400 uppercase">OpenAI voice key {st.keySet ? "(set)" : "(optional)"}</label>
+            <input className={`${inp} w-full mt-1`} type="password" placeholder={st.keySet ? "Leave blank to keep current" : "sk-… (for speech)"} value={key} onChange={e => setKey(e.target.value)} />
+          </div>
+        )}
+      </div>
+      <p className="text-[11px] text-slate-500">
+        {st?.providerIsOpenai
+          ? "Transcription + speech use your OpenAI AI key — nothing else to add."
+          : "Incoming voice notes are transcribed by your AI (Gemini does this natively). Replying in voice uses OpenAI text-to-speech, so add an OpenAI key above to enable it."}
+      </p>
+      {needsKey && <p className="text-[12px] font-medium text-amber-600">Add an OpenAI voice key to enable spoken replies — until then replies stay as text.</p>}
+      {msg && <p className={`text-[12px] font-medium ${msg === "Saved." ? "text-emerald-700" : "text-red-600"}`}>{msg}</p>}
+      <div className="flex items-center gap-2">
+        <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save"}</button>
+        {st?.keySet && <button onClick={async () => { await fetch("/api/admin/voice", { method: "DELETE" }); load(); }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Remove key</button>}
+      </div>
+    </section>
+  );
+}
+
 // Per-tenant LeadSquared CRM credentials — each workspace uses their own CRM.
 function LsqSettingsCard() {
   type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean };
@@ -714,6 +777,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </section>
       )}
 
+      {isAdmin && <VoiceSettingsCard />}
       {isAdmin && <LsqSettingsCard />}
       {isAdmin && <ApiKeysCard />}
     </div>

@@ -3,7 +3,8 @@ import {
   claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
 import { generateReply } from "./llm";
-import { sendText, sendCtaUrl } from "./whatsapp";
+import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
+import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech } from "./voice";
 import type { ChannelCreds } from "./channels";
 import { pushWaActivity } from "./leadsquared";
 import { emitEvent } from "./integrations";
@@ -47,7 +48,7 @@ async function sendSmart(phone: string, text: string, channel?: ChannelCreds): P
 
 // Produces and sends one AI reply for a conversation. Safe to call from both the
 // fire-and-forget worker and the cron sweep — claimReply ensures only one wins.
-export async function respondToConversation(conversationId: string): Promise<{ outcome: RespondOutcome; detail?: string }> {
+export async function respondToConversation(conversationId: string, opts: { inboundWasVoice?: boolean } = {}): Promise<{ outcome: RespondOutcome; detail?: string }> {
   const conv = await getConversation(conversationId);
   if (!conv) return { outcome: "skipped", detail: "no conversation" };
 
@@ -80,6 +81,19 @@ export async function respondToConversation(conversationId: string): Promise<{ o
     const channel: Channel | undefined = conv.channelId ? (await getChannel(conv.channelId)) ?? undefined : undefined;
     const lastUserMsg = [...history].reverse().find(m => m.role === "user")?.body ?? "";
 
+    // Voice reply: speak the answer when the workspace wants it ("always", or
+    // "mirror" the customer when they sent a voice note). WhatsApp only; falls
+    // back to a text message whenever speech synthesis isn't available/configured.
+    const voiceMode = await getVoiceReplyMode(conv.tenantId).catch(() => "off" as const);
+    const speakReply = conv.platform !== "instagram" && shouldSpeak(voiceMode, !!opts.inboundWasVoice);
+    const sendReply = async (body: string): Promise<{ id?: string; error?: string }> => {
+      if (speakReply) {
+        const v = await synthesizeSpeech(body, conv.tenantId);
+        if (v) return sendMedia(conv.phone, "audio", v.url, undefined, channel);
+      }
+      return sendSmart(conv.phone, body, channel);
+    };
+
     // ── Auto agent routing FIRST — every message, before any answer layer, so
     // FAQ/cache replies also speak in the right persona and the conversation
     // switches the moment the topic changes. One embedding call, reused by the
@@ -105,7 +119,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
       const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
-        const sent = await sendSmart(conv.phone, routed.answer, channel);
+        const sent = await sendReply(routed.answer);
         if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
         await appendConvMessage({ conversationId, role: "assistant", body: routed.answer, metaId: sent.id, source: "bot" });
         await touchOutbound(conversationId, routed.answer);
@@ -134,7 +148,7 @@ export async function respondToConversation(conversationId: string): Promise<{ o
       return { outcome: "escalated", detail: result.reason };
     }
 
-    const sent = await sendSmart(conv.phone, result.reply, channel);
+    const sent = await sendReply(result.reply);
     if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
     await appendConvMessage({ conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot" });
     await touchOutbound(conversationId, result.reply);

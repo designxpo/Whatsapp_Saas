@@ -9,7 +9,8 @@ import {
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { enroll, matchKeywordSequence } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
-import { sendText, sendTypingIndicator } from "@/lib/whatsapp";
+import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
+import { transcribeAudio } from "@/lib/voice";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
@@ -95,9 +96,23 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     return;
   }
 
-  const text = messageText(m).trim();
+  let text = messageText(m).trim();
   const contacts = (value.contacts as Record<string, unknown>[]) ?? [];
   const profileName = ((contacts[0]?.profile as Record<string, unknown>)?.name as string) ?? "";
+
+  // Inbound voice note → transcribe with the tenant's AI and treat the transcript
+  // as the message, so flows, the AI and CRM sync all work exactly as for text.
+  let voiceInbound = false;
+  if (!text && m.type === "audio") {
+    const audioId = (m.audio as Record<string, unknown> | undefined)?.id as string | undefined;
+    const media = audioId ? await downloadMedia(audioId, channel) : null;
+    const transcript = media ? await transcribeAudio(media, tid) : null;
+    if (transcript) { text = transcript; voiceInbound = true; }
+    else {
+      await sendText(from, "Sorry, I couldn't quite catch that voice note — could you type your question?", channel);
+      return;
+    }
+  }
 
   // Opt-out keyword — suppress, confirm, and stop. Never invoke the bot.
   if (OPTOUT_RE.test(text)) {
@@ -237,7 +252,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
     if (!flowHandled && !sequenceTriggered && process.env.LLM_BOT_ENABLED !== "false") {
       await sendTypingIndicator(id, channel);   // "typing…" while the AI composes
-      try { await respondToConversation(conv.id); }
+      try { await respondToConversation(conv.id, { inboundWasVoice: voiceInbound }); }
       catch (e) { console.error("[webhook] respond", conv.id, e); }
     }
   });
