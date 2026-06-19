@@ -102,8 +102,10 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Inbound voice note → transcribe with the tenant's AI and treat the transcript
   // as the message, so flows, the AI and CRM sync all work exactly as for text.
+  // (messageText returns a "[audio message]" placeholder for audio, so key off
+  // the type — never the text, which is non-empty here.)
   let voiceInbound = false;
-  if (!text && m.type === "audio") {
+  if (m.type === "audio") {
     const audioId = (m.audio as Record<string, unknown> | undefined)?.id as string | undefined;
     const media = audioId ? await downloadMedia(audioId, channel) : null;
     if (!media) console.warn(JSON.stringify({ tag: "voice_download_failed", from, audioId: !!audioId }));
