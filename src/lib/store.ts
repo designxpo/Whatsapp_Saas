@@ -608,8 +608,8 @@ export interface Conversation {
   agentId: string | null;
   primaryKbTag: string | null;  // scope AI knowledge to a flow's tagged docs (masterclass etc.)
   aiReplyCount: number;         // AI auto-replies sent so far (capped before human handoff)
-  platform: "whatsapp" | "instagram";   // which channel this chat arrived on
-  avatarUrl: string | null;     // profile image (Instagram); null for WhatsApp
+  platform: ConvPlatform;       // which channel this chat arrived on
+  avatarUrl: string | null;     // profile image (Instagram/Messenger); null for WhatsApp
   isComment: boolean;           // originated from an IG comment (AI reply flow), not a DM
   channelId: string | null;     // which WhatsApp number this chat lives on
   leadPhone: string | null;     // a real phone the lead shared (IG has no phone) — for CRM matching
@@ -626,6 +626,11 @@ export interface ConvMessage {
   mediaUrl?: string | null;    // e.g. an inbound voice note, playable in Live Chat
   mediaType?: string | null;   // its MIME type, e.g. "audio/ogg"
 }
+
+// Which channel a conversation arrived on. WhatsApp/Instagram are Meta numbers;
+// messenger = Facebook Messenger (PSID identity); webchat = website widget
+// (visitor-UUID identity). Only WhatsApp identifiers are phone numbers.
+export type ConvPlatform = "whatsapp" | "instagram" | "messenger" | "webchat";
 
 function mapConversation(r: Record<string, unknown>): Conversation {
   return {
@@ -645,7 +650,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     agentId: (r.agent_id as string | null) ?? null,
     primaryKbTag: (r.primary_kb_tag as string | null) ?? null,
     aiReplyCount: (r.ai_reply_count as number) ?? 0,
-    platform: (r.platform as "whatsapp" | "instagram") ?? "whatsapp",
+    platform: (r.platform as ConvPlatform) ?? "whatsapp",
     avatarUrl: (r.avatar_url as string | null) ?? null,
     isComment: (r.is_comment as boolean) ?? false,
     channelId: (r.channel_id as string | null) ?? null,
@@ -684,9 +689,10 @@ export async function escalateConversation(conversationId: string): Promise<void
 
 // Find-or-create by phone. Keeps the latest name if provided; stamps the
 // channel (receiving number) on create or when it was unknown.
-export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: "whatsapp" | "instagram" = "whatsapp", tenantId = DEFAULT_TENANT_ID): Promise<Conversation> {
-  // IG uses non-numeric IGSIDs, so only digit-normalize WhatsApp identifiers.
-  const p = platform === "instagram" ? phone.trim() : digits(phone);
+export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: ConvPlatform = "whatsapp", tenantId = DEFAULT_TENANT_ID): Promise<Conversation> {
+  // Only WhatsApp identifiers are phone numbers; IG/Messenger/webchat use opaque
+  // ids (IGSID / PSID / web:<uuid>), so digit-normalize WhatsApp alone.
+  const p = platform === "whatsapp" ? digits(phone) : phone.trim();
   const existing = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", p).maybeSingle();
   if (existing.data) {
     const row = existing.data as Record<string, unknown>;
@@ -699,7 +705,7 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     }
     return mapConversation(row);
   }
-  const contact = platform === "instagram" ? null : await getContactByPhone(p, tenantId);
+  const contact = platform === "whatsapp" ? await getContactByPhone(p, tenantId) : null;
   const base: Record<string, unknown> = { tenant_id: tenantId, phone: p, name: (name ?? contact?.name ?? "").trim(), contact_id: contact?.id ?? null, platform };
   let ins = await db().from("wa_conversations").insert(channelId ? { ...base, channel_id: channelId } : base).select().single();
   // channel_id / platform column missing (migration not applied) — retry minimal.

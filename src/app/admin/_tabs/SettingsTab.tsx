@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2 } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2, MessagesSquare } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
 
@@ -639,6 +639,84 @@ function LsqSettingsCard() {
   );
 }
 
+// ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
+const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", active: true, isDefault: false };
+
+function MessengerCard() {
+  const [pages, setPages] = useState<ChannelRow[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
+    setPages((d.channels ?? []).filter((c: ChannelRow) => c.kind === "messenger"));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim() || !form.pageId.trim()) { setMsg("Label and Facebook Page id are required."); return; }
+    if (!form.id && !form.token.trim()) { setMsg("Page access token is required for a new Page."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Remove this Facebook Page? Its conversations stay but it will stop replying.")) return;
+    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessagesSquare className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p>
+          <p className="text-xs text-slate-500 mt-0.5">Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</p>
+        </div>
+        <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
+      </div>
+
+      {pages.map(c => (
+        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><MessagesSquare className="w-4 h-4" /></div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[10px] font-bold text-brand-700"> · DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId}</p>
+          </div>
+          <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+
+      {form && (
+        <div className="border-2 border-blue-500/30 rounded-control p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Label, e.g. Main Page" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Facebook Page ID" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
+          </div>
+          <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Page access token — leave blank to keep the current one" : "Page access token (pages_messaging)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save Page"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+      {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet. Subscribe your Page to the <code className="font-mono">messenger</code> webhook at <code className="font-mono">/api/webhooks/messenger</code>.</p>}
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -694,6 +772,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       <UsageCard />
       {isAdmin && <ChannelsManager />}
+      {isAdmin && <MessengerCard />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 

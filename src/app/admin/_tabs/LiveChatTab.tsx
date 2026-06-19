@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, MessagesSquare, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -15,7 +15,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
-  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram">("all");
+  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger">("all");
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
 
@@ -30,7 +30,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   }, [load]);
 
   const q = search.trim().toLowerCase();
-  const onPlatform = (c: Conversation, p: "whatsapp" | "instagram") => (c.platform ?? "whatsapp") === p;
+  const onPlatform = (c: Conversation, p: "whatsapp" | "instagram" | "messenger") => (c.platform ?? "whatsapp") === p;
   // Split comment threads (IG comment → AI reply) from real DM chats.
   const chatsCount = convos.filter(c => !c.isComment).length;
   const commentsCount = convos.filter(c => !!c.isComment).length;
@@ -41,6 +41,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
   const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
   const igCount = inView.filter(c => onPlatform(c, "instagram")).length;
+  const fbCount = inView.filter(c => onPlatform(c, "messenger")).length;
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return "";
@@ -74,10 +75,11 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
           {/* Platform toggle — only for Chats; comments are Instagram-only. */}
           {view === "chats" && (
           <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
-            {([["all", "All", inView.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount]] as const).map(([k, label, n]) => (
+            {([["all", "All", inView.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount], ["messenger", "Messenger", fbCount]] as const).map(([k, label, n]) => (
               <button key={k} onClick={() => setPlatform(k)} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
                 {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
+                {k === "messenger" && <MessagesSquare className="w-3 h-3 text-blue-600" />}
                 {label} <span className="opacity-60">{n}</span>
               </button>
             ))}
@@ -95,8 +97,8 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
               className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="relative shrink-0 mt-0.5">
                 <ConvAvatar url={c.avatarUrl} label={c.name || c.phone} size={36} />
-                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : "WhatsApp"}>
-                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
+                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
+                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : c.platform === "messenger" ? <MessagesSquare className="w-2.5 h-2.5 text-blue-600" /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
@@ -336,8 +338,9 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     if (ok) setShowTemplate(false);
   }
   // Free-form replies only deliver inside Meta's 24h window; outside it the agent
-  // must send an approved template. WhatsApp only — IG has no template path.
-  const windowClosed = !!conv && conv.platform !== "instagram" &&
+  // must send an approved template. WhatsApp only — IG/Messenger have no template
+  // path, and web chat has no window.
+  const windowClosed = !!conv && conv.platform === "whatsapp" &&
     (!conv.lastInboundAt || Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000);
 
   return (
@@ -487,7 +490,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                       { icon: <Bot className="w-4 h-4" />, label: "Draft from knowledge base", on: draftReply },
                       { icon: <Sparkles className="w-4 h-4" />, label: "Rewrite my draft", on: () => setShowAssist(s => !s) },
                       { icon: <span className="text-base leading-none">⊞</span>, label: "Add reply buttons", on: () => setShowButtons(s => !s) },
-                      ...(conv?.platform !== "instagram" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
+                      ...(conv?.platform === "whatsapp" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
                       { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo or file", on: () => fileRef.current?.click() },
                     ].map(t => (
                       <button key={t.label} onClick={() => { setShowTools(false); t.on(); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink-600 hover:bg-canvas text-left">

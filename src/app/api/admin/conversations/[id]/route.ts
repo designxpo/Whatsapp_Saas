@@ -8,6 +8,7 @@ import {
 import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
+import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
 import { credsFor, getChannel } from "@/lib/channels";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
@@ -81,6 +82,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tid).catch(() => null))?.attributes);
           if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
         })();
+      } else if (conv.platform === "messenger") {
+        const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
+        if (!ch?.pageId || !ch?.token) return NextResponse.json({ error: "Facebook Page not connected for this chat" }, { status: 502 });
+        const creds = { pageId: ch.pageId, token: ch.token };
+        const sent = buttons.length > 0
+          ? await sendFbQuickReplies(creds, conv.phone, text, buttons.map((title, i) => ({ title, payload: `btn_${i + 1}` })), { lastInboundAt: conv.lastInboundAt })
+          : await sendFbMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Messenger send failed") }, { status: 502 });
+        messageId = sent.messageId;
       } else {
         // WhatsApp free-form is only allowed inside Meta's 24-hour window. The
         // AI always replies instantly (in-window); an agent replying later can
@@ -127,6 +137,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
         messageId = sent.messageId;
         if (caption) await sendIgMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt }).catch(() => undefined);
+      } else if (conv.platform === "messenger") {
+        const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
+        if (!ch?.pageId || !ch?.token) return NextResponse.json({ error: "Facebook Page not connected for this chat" }, { status: 502 });
+        if (kind === "document") return NextResponse.json({ error: "Messenger supports photos and videos here — paste the file link as a message instead." }, { status: 400 });
+        const creds = { pageId: ch.pageId, token: ch.token };
+        const sent = await sendFbMedia(creds, conv.phone, kind, url, { lastInboundAt: conv.lastInboundAt });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Messenger send failed") }, { status: 502 });
+        messageId = sent.messageId;
+        if (caption) await sendFbMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt }).catch(() => undefined);
       } else {
         if (conv.lastInboundAt && Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000) {
           return NextResponse.json({ error: "Outside WhatsApp's 24-hour window — the customer must message again before you can send media." }, { status: 409 });
@@ -146,7 +165,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Approved templates are the ONLY message type allowed OUTSIDE the 24h
       // window — the supported way to re-open a closed conversation. Meta bills
       // this as a business-initiated conversation. WhatsApp only (IG has none).
-      if (conv.platform === "instagram") return NextResponse.json({ error: "Templates are WhatsApp-only — on Instagram the user must message again first." }, { status: 400 });
+      if (conv.platform !== "whatsapp") return NextResponse.json({ error: "Templates are WhatsApp-only — on this channel the user must message again first." }, { status: 400 });
       const templateName = (body.templateName ?? "").trim();
       if (!templateName) return NextResponse.json({ error: "templateName required" }, { status: 400 });
       const languageCode = (body.languageCode ?? "en_US").trim() || "en_US";

@@ -15,7 +15,7 @@ export interface ChannelCreds {
   appId?: string | null;
 }
 
-export type ChannelKind = "whatsapp" | "instagram";
+export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat";
 
 export interface Channel extends ChannelCreds {
   id: string;
@@ -148,6 +148,17 @@ export async function getChannelByIgId(igUserId: string): Promise<Channel | null
   } catch { return null; }
 }
 
+// Inbound Messenger routing: the page webhook's entry.id is the Facebook Page id.
+// Filtered by kind so it never matches an Instagram channel that has the same
+// linked Page (IG channels also store page_id).
+export async function getChannelByPageId(pageId: string): Promise<Channel | null> {
+  if (!pageId) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*").eq("page_id", pageId).eq("kind", "messenger").maybeSingle();
+    return data ? mapChannel(data as Record<string, unknown>) : null;
+  } catch { return null; }
+}
+
 // The channel used when a send doesn't specify one: the explicit default, else
 // the first active channel, else null (= env credentials). Pass tenantId to
 // avoid falling back to another tenant's channel.
@@ -202,6 +213,32 @@ export async function saveInstagramChannel(input: {
     name: input.name.trim(),
     ig_user_id: input.igUserId.trim(),
     page_id: input.pageId?.trim() || null,
+    access_token: encryptSecret(input.token.trim()),
+    agent_id: input.agentId || null,
+    active: input.active ?? true,
+    is_default: input.isDefault ?? false,
+  };
+  if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
+  const q = input.id
+    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(row).select().single();
+  const { data, error } = await q;
+  if (error) throw error;
+  return mapChannel(data as Record<string, unknown>);
+}
+
+// Save a Facebook Messenger channel (Page id + Page access token; no WABA/IG).
+// Token is encrypted at rest and the row is tenant-scoped.
+export async function saveMessengerChannel(input: {
+  id?: string; tenantId?: string; name: string; pageId: string;
+  token: string; agentId?: string | null; active?: boolean; isDefault?: boolean;
+}): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const row = {
+    tenant_id: tenantId,
+    kind: "messenger",
+    name: input.name.trim(),
+    page_id: input.pageId.trim(),
     access_token: encryptSecret(input.token.trim()),
     agent_id: input.agentId || null,
     active: input.active ?? true,
