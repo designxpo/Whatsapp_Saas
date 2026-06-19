@@ -44,6 +44,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].join("\n");
 
   const parts = [persona];
+  // Whether the knowledge base actually returned anything for this question.
+  // Drives the grounding rules: with content we share specifics; with none we
+  // must not fabricate (e.g. the KB was deleted → share nothing we can't ground).
+  const hasContext = !!context.trim();
   if (agent?.constraintsText?.trim()) parts.push(`--- Constraints ---\n${agent.constraintsText.trim()}`);
   if (agent?.productInfo?.trim()) parts.push(`--- Product & service information ---\n${agent.productInfo.trim()}`);
   if (profile.trim()) parts.push([
@@ -54,7 +58,9 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   parts.push([
     "--- Grounding rules ---",
     "Answer factual questions ONLY using the Business context below. Do not invent facts, prices, policies, or availability.",
-    "When the Business context DOES contain the answer — including fees, prices, course details, dates, or durations — share those specifics directly and confidently. Quote the actual numbers/details from the context. Do NOT deflect to a counselor, say you'll 'get back to them', or withhold information that is right there in the context. Offer to connect a counselor only as a helpful EXTRA after giving what you know, or when the info genuinely isn't in the context.",
+    hasContext
+      ? "When the Business context DOES contain the answer — including fees, prices, course details, dates, or durations — share those specifics directly and confidently. Quote the actual numbers/details from the context. Do NOT deflect to a counselor, say you'll 'get back to them', or withhold information that is right there in the context. Offer to connect a counselor only as a helpful EXTRA after giving what you know, or when the info genuinely isn't in the context."
+      : "NO business information is available for this question — the knowledge base returned nothing. Do NOT state, guess, or imply ANY specific facts, prices, courses, dates, policies, or features; you have no verified source and must not rely on general knowledge. Reply briefly and warmly: ask one short clarifying question, or offer to connect them with the team. Never make up details.",
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
       : "",
