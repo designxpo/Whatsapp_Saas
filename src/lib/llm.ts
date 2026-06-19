@@ -106,7 +106,7 @@ export function nameIsAddressed(text: string, name: string): boolean {
   return new RegExp(`\\b(?:hey|hi+|hello+|helo|namaste|yo|dear|sir|maam|ma'?am|thanks?|thank\\s+you)\\s*[,!]?\\s+${n}\\b`, "i").test(text);
 }
 
-async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string, ctx: { lastUserText?: string; agentName?: string | null } = {}): Promise<void> {
+async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string, ctx: { lastUserText?: string; agentName?: string | null; existingName?: string | null } = {}): Promise<void> {
   const s = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
   let name = s(args.name);
   const email = s(args.email), city = s(args.city), interest = s(args.interest);
@@ -119,6 +119,10 @@ async function rememberCustomer(phone: string, args: Record<string, unknown>, te
     if (agentName && name.toLowerCase() === agentName) name = "";
     else if (ctx.lastUserText && nameIsAddressed(ctx.lastUserText, name)) name = "";
   }
+  // Never let an AI guess REPLACE a name already on file (the WhatsApp profile
+  // name the customer set themselves, or one an agent entered) — only fill a
+  // missing one. The manual "edit" path is separate and still overwrites freely.
+  if (name && (ctx.existingName ?? "").trim()) name = "";
 
   if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
   const attrs: Record<string, string> = {};
@@ -234,7 +238,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         const results = [];
         for (const c of res.toolCalls) {
           if (c.name === MEMORY_FN) {
-            if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name });
+            if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name, existingName: contact?.name });
             executed.push(MEMORY_FN);
             results.push({ id: c.id, name: c.name, status: "saved" });
             continue;
