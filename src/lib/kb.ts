@@ -210,6 +210,18 @@ export async function refreshDueUrlDocuments(opts: { olderThanHours?: number; ma
   return { checked: docs.length, updated, unchanged, failed };
 }
 
+// Cheap "does this tenant's KB actually cover this question?" probe. Embeds the
+// query once and checks the single best chunk against the same relevance floor RAG
+// uses (llm.ts MIN_SIMILARITY). The router calls this before letting a canned
+// FAQ/cache DEFLECTION ("contact our counsellor") stand: if the KB has the answer,
+// we defer to it. Returns the embedding so the caller can reuse it (no double cost).
+const COVERAGE_FLOOR = 0.45;   // keep in sync with MIN_SIMILARITY in llm.ts
+export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, embedding?: number[] | null): Promise<{ covered: boolean; top: number; embedding: number[] }> {
+  const emb = embedding ?? await embedQuery(query);
+  const top = (await matchChunks(emb, 1, tenantId))[0]?.similarity ?? 0;
+  return { covered: top >= COVERAGE_FLOOR, top, embedding: emb };
+}
+
 // Retrieve top-k business-doc chunks relevant to a query (tenant-scoped). When
 // primaryTag is set (a flow's masterclass etc.), strongly-matching tagged chunks
 // lead; the rest of the slots fall back to the general KB — so on-topic questions

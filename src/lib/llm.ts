@@ -194,10 +194,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   // (the no-context guard below keys off it, not the built-in tool).
   const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL];
 
-  // Retrieve business context for the latest question.
+  // Retrieve business context for the latest question. k=8 gives the model enough
+  // material to synthesise an answer that spans several documents (fees in one,
+  // schedule in another) rather than a thin single-chunk summary.
   let chunks: { content: string; similarity: number }[] = [];
   try {
-    chunks = await retrieve(lastUser.body, 6, tenantId, primaryKbTag);
+    chunks = await retrieve(lastUser.body, 8, tenantId, primaryKbTag);
   } catch (err) {
     console.error("[llm] retrieve failed:", err);
   }

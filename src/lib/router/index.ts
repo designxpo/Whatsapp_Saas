@@ -9,10 +9,22 @@ import { DEFAULT_TENANT_ID } from "../tenant";
 // so the semantic cache warms up over time.
 
 import { FALLBACK_REPLY, applyPersonaTone } from "@/lib/llm";
+import { kbCoverage } from "@/lib/kb";
 import { matchFaq } from "./faq";
 import { cacheLookup, cacheStore } from "./cache";
 import { loadMemory, saveMemory, resolveFollowUp, type ConvMemory } from "./memory";
 import { logRouterEvent } from "./metrics";
+
+// A canned answer that withholds the specifics and redirects to a human
+// ("contact our admissions team", "speak to a counsellor", "we'll get back to
+// you"). When one of these is about to be served BUT the knowledge base actually
+// has the answer, we defer to the KB instead — the KB is the source of truth and
+// a handoff is the last resort, never the default. (If the KB has nothing, the
+// deflection still stands, which keeps us honest when the KB is empty.)
+const DEFLECTION_RE = /\b(?:counsell?or|admissions?\s+(?:team|advisor|counsell?or|department)|(?:speak|talk|connect|chat|get\s+in\s+touch)\s+(?:to|with)\s+(?:an?\s+|our\s+|the\s+)?(?:counsell?or|advisor|team|expert|admissions|representative|executive|agent|someone)|(?:will|to)\s+reach\s+out|reach\s+out\s+to\s+you|get\s+back\s+to\s+you|contact\s+(?:our\s+team|admissions|us)|book\s+a\s+(?:free\s+)?(?:career\s+)?consultation)\b/i;
+export function looksLikeDeflection(answer: string): boolean {
+  return DEFLECTION_RE.test(answer || "");
+}
 
 
 export interface RouteResult {
@@ -51,6 +63,17 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   // Layer 2 — FAQ index (in-memory, no network)
   const faqHit = matchFaq(p.message, mem.lastCategory);
   if (faqHit) {
+    // A deflecting FAQ answer (e.g. the "fees" entry that says "contact admissions")
+    // must not shadow real KB content. If this tenant's KB covers the question, fall
+    // through to RAG so the actual answer is served. The probe is only paid on the
+    // rare deflection match, and reuses its embedding for the RAG cache write.
+    if (looksLikeDeflection(faqHit.faq.detailedAnswer)) {
+      const cov = await kbCoverage(p.message, tid).catch(() => null);
+      if (cov?.covered) {
+        logRouterEvent({ event: "FAQ_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
+        return { ...miss, queryEmbedding: cov.embedding };
+      }
+    }
     logRouterEvent({ event: "FAQ_MATCH", phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}:${faqHit.tier}`, score: faqHit.confidence, latencyMs: Date.now() - t0 });
     void saveMemory(p.conversationId, { lastFaqId: faqHit.faq.id, lastCategory: faqHit.faq.category, lastIntent: faqHit.faq.intentKeywords?.[0] });
     return { answer: await toned(faqHit.faq.detailedAnswer), source: "faq", faqId: faqHit.faq.id, confidence: faqHit.confidence, queryEmbedding: null };
@@ -61,6 +84,16 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   try {
     const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid);
     if (hit) {
+      // Same guard as the FAQ layer: a previously-cached deflection must not
+      // shadow KB content that now answers the question. Reuses the lookup's
+      // embedding for the probe, so no extra embedding call.
+      if (looksLikeDeflection(hit.answer)) {
+        const cov = await kbCoverage(p.message, tid, embedding).catch(() => null);
+        if (cov?.covered) {
+          logRouterEvent({ event: "CACHE_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `cache:${hit.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
+          return { ...miss, queryEmbedding: embedding };
+        }
+      }
       logRouterEvent({ event: "CACHE_HIT", phone: p.phone, question: p.message, ref: `cache:${hit.id}${hit.exact ? ":exact" : ""}`, score: hit.similarity, latencyMs: Date.now() - t0 });
       return { answer: await toned(hit.answer), source: "cache", confidence: hit.similarity, queryEmbedding: embedding };
     }
