@@ -86,9 +86,9 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
 const MEMORY_FN = "remember_customer";
 const MEMORY_TOOL: ChatTool = {
   name: MEMORY_FN,
-  description: "Save personal details the customer shares — their name, email, city, or what they're interested in — so you remember them next time. Call this AS SOON AS the customer tells you any of these, then continue the conversation normally.",
+  description: "Save personal details the customer reveals ABOUT THEMSELVES — their own name, email, city, or interest — so you remember them next time. Call this as soon as the customer shares any of these, then continue normally. Do NOT call it for a name the customer uses to greet or address you or someone else.",
   params: [
-    { name: "name", description: "The customer's name" },
+    { name: "name", description: "The customer's OWN name — only when they state it about themselves (e.g. \"I'm Riya\", \"my name is Riya\", \"this is Rohan\"). NEVER pass a name they use to greet or address you or someone else (e.g. \"Hey Maya\", \"Hi Digvijay\", \"thanks sir\") — that is not the customer's name. If unsure whether a name refers to the customer, leave it out." },
     { name: "email", description: "The customer's email address" },
     { name: "city", description: "The customer's city or location" },
     { name: "interest", description: "What the customer is interested in (course, product, topic)" },
@@ -96,9 +96,30 @@ const MEMORY_TOOL: ChatTool = {
   required: [],
 };
 
-async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string): Promise<void> {
+// "Hey Digvijay!", "Hi Maya", "thanks sir Rohan" — a name the customer uses to
+// GREET or ADDRESS someone is not their own name. The model occasionally misreads
+// these as a self-introduction, so we drop a captured name the latest message is
+// clearly addressing rather than stating.
+export function nameIsAddressed(text: string, name: string): boolean {
+  const n = name.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!n) return false;
+  return new RegExp(`\\b(?:hey|hi+|hello+|helo|namaste|yo|dear|sir|maam|ma'?am|thanks?|thank\\s+you)\\s*[,!]?\\s+${n}\\b`, "i").test(text);
+}
+
+async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string, ctx: { lastUserText?: string; agentName?: string | null } = {}): Promise<void> {
   const s = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
-  const name = s(args.name), email = s(args.email), city = s(args.city), interest = s(args.interest);
+  let name = s(args.name);
+  const email = s(args.email), city = s(args.city), interest = s(args.interest);
+
+  // Guard against the classic mis-capture: the customer addressing the assistant
+  // ("Hey Digvijay!") saved as the customer's name. Drop a name that equals the
+  // assistant's/counselor's own name, or that the latest message is addressing.
+  if (name) {
+    const agentName = (ctx.agentName ?? "").trim().toLowerCase();
+    if (agentName && name.toLowerCase() === agentName) name = "";
+    else if (ctx.lastUserText && nameIsAddressed(ctx.lastUserText, name)) name = "";
+  }
+
   if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
   const attrs: Record<string, string> = {};
   if (city) attrs.city = city;
@@ -213,7 +234,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         const results = [];
         for (const c of res.toolCalls) {
           if (c.name === MEMORY_FN) {
-            if (phone) await rememberCustomer(phone, c.args, tenantId);
+            if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name });
             executed.push(MEMORY_FN);
             results.push({ id: c.id, name: c.name, status: "saved" });
             continue;
