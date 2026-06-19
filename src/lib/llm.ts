@@ -54,6 +54,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   parts.push([
     "--- Grounding rules ---",
     "Answer factual questions ONLY using the Business context below. Do not invent facts, prices, policies, or availability.",
+    "When the Business context DOES contain the answer — including fees, prices, course details, dates, or durations — share those specifics directly and confidently. Quote the actual numbers/details from the context. Do NOT deflect to a counselor, say you'll 'get back to them', or withhold information that is right there in the context. Offer to connect a counselor only as a helpful EXTRA after giving what you know, or when the info genuinely isn't in the context.",
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
       : "",
