@@ -88,6 +88,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
+      // A human has stepped in → pause the bot for this chat so it doesn't reply
+      // over the agent. (Escalated chats now keep the bot on until this happens.)
+      // The agent can re-enable any time with "Turn bot on".
+      if (conv.botEnabled) await setBotEnabled(id, false);
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);
       return NextResponse.json({ success: true, messageId });
     }

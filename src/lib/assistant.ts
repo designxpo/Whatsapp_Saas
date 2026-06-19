@@ -57,9 +57,14 @@ export async function respondToConversation(conversationId: string, opts: { inbo
   const conv = await getConversation(conversationId);
   if (!conv) return { outcome: "skipped", detail: "no conversation" };
 
-  // Gating: global kill switch, per-conversation toggle, status, and bot ownership.
+  // Gating: global kill switch + the per-conversation bot toggle.
+  // NOTE: an "escalated" chat is NO LONGER silenced. Escalation only FLAGS the chat
+  // for a human; the bot keeps answering so the customer is never left waiting. The
+  // moment a human replies (Team Inbox / CRM), bot_enabled flips off and the bot
+  // steps aside. We only skip when the bot is explicitly off for this chat, or the
+  // chat is paused.
   if (process.env.LLM_BOT_ENABLED === "false") return { outcome: "skipped", detail: "bot disabled" };
-  if (!conv.botEnabled || conv.status !== "active") return { outcome: "skipped", detail: `status ${conv.status}` };
+  if (!conv.botEnabled || conv.status === "paused") return { outcome: "skipped", detail: `bot off / ${conv.status}` };
 
   // 24h customer-service window — free-form text only allowed within it.
   if (!conv.lastInboundAt || Date.now() - new Date(conv.lastInboundAt).getTime() > WINDOW_MS) {
@@ -92,7 +97,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     if (HUMAN_REQUEST_RE.test(lastUserMsg)) {
       await setConversationStatus(conversationId, "escalated");
       void emitEvent(conv.tenantId, "conversation.escalated", { conversationId, phone: conv.phone, name: conv.name, reason: "human requested", channel: conv.platform });
-      const handoff = "Connecting you with our team — someone will reply here shortly. 🙌";
+      const handoff = "I've flagged this for our team — someone will follow up with you here. In the meantime, I'm happy to keep helping with any questions! 🙌";
       const sent = await sendText(conv.phone, handoff, channel);
       if (sent.id) {
         await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });
@@ -159,7 +164,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
       // needed — best-effort, must never delay or fail the handoff reply.
       void emitEvent(conv.tenantId, "conversation.escalated", { conversationId, phone: conv.phone, name: conv.name, reason: result.reason ?? null, channel: conv.platform });
       // A function handoff supplies its own reply text; otherwise use the default.
-      const handoff = result.reply ?? "Thanks for reaching out — I'm connecting you with a team member who'll reply shortly.";
+      const handoff = result.reply ?? "Thanks for reaching out — I've flagged this for our team to follow up. Meanwhile, I'm happy to keep helping — what would you like to know?";
       const sent = await sendText(conv.phone, handoff, channel);
       if (sent.id) {
         await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });

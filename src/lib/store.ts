@@ -869,7 +869,9 @@ export async function conversationsAwaitingReply(limit = 20, minAgeMs = 120_000)
   const windowStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();   // still in the 24h window
   const cutoff = new Date(now - minAgeMs).toISOString();                   // settled for ≥ minAgeMs
   const { data } = await db().from("wa_conversations").select("*")
-    .eq("status", "active").eq("bot_enabled", true)
+    // active + escalated both qualify — an escalated chat keeps the bot helping
+    // until a human takes over (which flips bot_enabled off, excluding it here).
+    .in("status", ["active", "escalated"]).eq("bot_enabled", true)
     .gte("last_inbound_at", windowStart)
     .lte("last_inbound_at", cutoff)
     .order("last_inbound_at", { ascending: true }).limit(200);
