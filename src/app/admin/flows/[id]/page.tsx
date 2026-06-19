@@ -211,6 +211,7 @@ function ButtonsNode({ id, type, selected, data }: NodeProps) {
             onChange={e => set({ buttons: buttons.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
         </OptionRow>
       ))}
+      <input className={inp} placeholder="Save selection to attribute (optional, e.g. course)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
       <ReminderFields data={data} set={set} />
     </Shell>
   );
@@ -232,6 +233,7 @@ function ListNode({ id, type, selected, data }: NodeProps) {
         <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => rows.length < 10 && set({ rows: [...rows, { id: `row${rows.length + 1}`, title: "" }] })}>+ add option</button>
         {rows.length > 1 && <button className="nodrag text-[10px] font-bold text-ink-400 hover:text-red-500" onClick={() => set({ rows: rows.slice(0, -1) })}>− remove last</button>}
       </div>
+      <input className={inp} placeholder="Save selection to attribute (optional, e.g. course)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
       <ReminderFields data={data} set={set} />
     </Shell>
   );
@@ -255,9 +257,19 @@ function MediaNode({ id, type, selected, data }: NodeProps) {
 function AskNode({ id, type, selected, data }: NodeProps) {
   const set = useSet(id);
   return (
-    <Shell id={id} type={type} selected={selected} foot="The customer's reply is saved to the attribute, then the flow continues.">
+    <Shell id={id} type={type} selected={selected} foot="The customer's reply is saved to the attribute, then the flow continues. Validation re-asks (up to twice) if the answer doesn't fit.">
       <textarea className={inp} rows={2} maxLength={1024} placeholder="What do you want to ask?" value={str(data.question)} onChange={e => set({ question: e.target.value })} />
       <input className={inp} placeholder="Save answer to attribute (e.g. city)" value={str(data.attribute)} onChange={e => set({ attribute: e.target.value })} />
+      <select className={inp} value={str(data.validate) || "none"} onChange={e => set({ validate: e.target.value })}>
+        <option value="none">No validation</option>
+        <option value="city">Must be a real city / place</option>
+        <option value="email">Must be an email</option>
+        <option value="phone">Must be a phone number</option>
+        <option value="number">Must be a number</option>
+      </select>
+      {str(data.validate) && str(data.validate) !== "none" && (
+        <input className={inp} maxLength={300} placeholder="Re-ask message if invalid (optional)" value={str(data.retryText)} onChange={e => set({ retryText: e.target.value })} />
+      )}
       <ReminderFields data={data} set={set} />
       <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
     </Shell>

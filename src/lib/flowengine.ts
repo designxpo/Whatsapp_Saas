@@ -25,6 +25,7 @@ import {
   addContactTag, takeArmedFlow, updateContactProfile,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
+import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
 import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
 import { safeFetch } from "./ssrf";
@@ -264,6 +265,58 @@ function listSections(d: Record<string, unknown>): ListSection[] {
   }
   const rows = ((d.rows as { id: string; title: string; description?: string }[]) ?? []).filter(r => r.title?.trim()).slice(0, 10);
   return rows.length ? [{ title: "", rows }] : [];
+}
+
+// ── Variable substitution ─────────────────────────────────────────────────────
+// Flow text can reference the customer with {{...}}: {{name}}, {{phone}},
+// {{email}}, or any collected attribute ({{city}}, {{course}}). Unknown tokens
+// resolve to "" so a raw placeholder never leaks to the customer.
+interface ContactVars { name?: string | null; phone?: string; email?: string | null; attributes?: Record<string, string> }
+export function fillVars(text: string, c: ContactVars | null): string {
+  if (!text || !c || !text.includes("{{")) return text;
+  return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, raw: string) => {
+    const key = raw.trim().toLowerCase();
+    if (key === "name" || key === "firstname" || key === "first_name") return (c.name || "").trim().split(/\s+/)[0] || "";
+    if (key === "fullname" || key === "full_name") return (c.name || "").trim();
+    if (key === "phone" || key === "mobile") return c.phone || "";
+    if (key === "email") return (c.email || "").trim();
+    const attrs = c.attributes ?? {};
+    const hit = Object.keys(attrs).find(k => k.toLowerCase() === key);
+    return hit ? String(attrs[hit] ?? "") : "";
+  });
+}
+// Wrap a sender so every customer-facing TEXT/body/caption is variable-filled.
+// Option/row TITLES are left literal — option-matching reads them from node data,
+// so a filled title could break the tap resolution.
+function withVars(send: FlowSender, c: ContactVars | null): FlowSender {
+  if (!c) return send;
+  const f = (s: string) => fillVars(s, c);
+  return {
+    text: (b) => send.text(f(b)),
+    buttons: (b, btns) => send.buttons(f(b), btns),
+    list: (b, bt, sec) => send.list(f(b), bt, sec),
+    media: (k, u, cap) => send.media(k, u, cap != null ? f(cap) : cap),
+    product: (b, cat, p) => send.product(f(b), cat, p),
+    productCard: (b, img, bt, bu) => send.productCard(f(b), img, f(bt), bu),
+    productList: (h, b, cat, sec) => send.productList(f(h), f(b), cat, sec),
+    template: (n, l, params, h) => send.template(n, l, params.map(f), h),
+    carouselTemplate: (n, l, bp, cards) => send.carouselTemplate(n, l, bp.map(f), cards),
+    waform: (b, cta, fid) => send.waform(f(b), f(cta), fid),
+  };
+}
+
+// Validates an `ask` answer against the node's chosen rule. "city" uses a cheap
+// AI check (best-effort, tenant's provider). Everything else is deterministic.
+export async function validateInput(type: string, text: string, tenantId?: string): Promise<boolean> {
+  const t = (text || "").trim();
+  if (!t) return false;
+  switch (type) {
+    case "email": return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
+    case "phone": return t.replace(/\D/g, "").length >= 7;
+    case "number": return /^[\d\s,.\-+]+$/.test(t) && /\d/.test(t);
+    case "city": return await looksLikeCity(t, tenantId);
+    default: return true;
+  }
 }
 
 // Sends nodes starting at `node` until the flow waits for input or ends.
@@ -546,10 +599,14 @@ export async function handleFlowMessage(
   opts: { sender?: FlowSender; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string; tenantId?: string } = {},
 ): Promise<boolean> {
   const tid = opts.tenantId ?? opts.channel?.tenantId ?? DEFAULT_TENANT_ID;
-  const send = opts.sender ?? (opts.channel?.kind === "instagram"
+  const baseSend = opts.sender ?? (opts.channel?.kind === "instagram"
     ? igSender(convKey, phone, opts.channel, tid)
     : realSender(convKey, phone, opts.channel, tid));
   const isReal = !opts.sender;
+  // Load the contact once so flow text can resolve {{name}}/{{city}}/{{course}}…
+  // (kept up to date in-run as ask answers / menu picks are captured below).
+  const contact = await getContactByPhone(phone, tid).catch(() => null);
+  const send = withVars(baseSend, contact);
 
   // 1. Continue an in-progress session.
   const session = await getSession(convKey);
@@ -576,8 +633,23 @@ export async function handleFlowMessage(
       // An old menu tap takes priority over treating it as the answer.
       const rewound = await rewind();
       if (rewound !== null) return rewound;
+      // Validate the answer if the node requires it; on failure re-prompt and stay
+      // put. Give up after 2 tries so a customer is never trapped on one question.
+      const vtype = str(waiting.data.validate);
+      const tries = Number((session.state as Record<string, unknown>)?.tries ?? 0);
+      if (vtype && vtype !== "none" && tries < 2 && !(await validateInput(vtype, text, tid))) {
+        if (isReal) {
+          await send.text(str(waiting.data.retryText) || "Hmm, that doesn't look right — could you share a valid answer?");
+          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
+          await claimReply(convKey).catch(() => undefined);
+        }
+        return true;   // still waiting on this ask node
+      }
       const attr = str(waiting.data.attribute);
-      if (isReal && attr) await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
+      if (isReal && attr) {
+        await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
+        if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
+      }
       const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
       return consumed;
@@ -657,6 +729,16 @@ export async function handleFlowMessage(
 
     const optionId = matchOption(waiting, text);
     if (optionId) {
+      // Capture the chosen option onto a contact attribute (when the node sets
+      // "saveAs") so later messages can reference it, e.g. {{course}}.
+      const saveAs = str(waiting.data.saveAs);
+      if (isReal && saveAs) {
+        const label = optionLabel(waiting, optionId);
+        if (label) {
+          await setContactAttributes(phone, { [saveAs]: label }, tid).catch(() => undefined);
+          if (contact) contact.attributes = { ...(contact.attributes ?? {}), [saveAs]: label };  // live for {{saveAs}} this run
+        }
+      }
       const next = nextNode(flow.graph, waiting.id, optionId);
       // Safety net: an unconnected "talk to agent/human" option escalates to a
       // human instead of silently dead-ending back to the menu.

@@ -284,6 +284,27 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   }
 }
 
+// Lightweight validator for flow `ask` nodes set to validate a city/place. Uses
+// the tenant's chat provider for a yes/no classification. Best-effort: on any
+// error (missing key, rate limit) it returns true (accept) so a hiccup never
+// traps a customer mid-flow.
+export async function looksLikeCity(text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<boolean> {
+  const t = (text || "").trim();
+  if (t.length < 2 || t.length > 60) return false;
+  try {
+    const ai = await resolveTenantAi(tenantId);
+    const res = await runChat({
+      provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+      system: 'Answer with only "yes" or "no".',
+      turns: [{ role: "user", text: `Is "${t}" a real city, town, or place name (anywhere in the world)?` }],
+      maxTokens: 5,
+    });
+    return /\byes\b/i.test((res.text ?? "").trim());
+  } catch {
+    return true;
+  }
+}
+
 // Rewrites a factual FAQ/cache answer in the agent's persona voice, matching
 // the customer's language and the agent's style rules. Facts are preserved;
 // any failure (rate limit, etc.) falls back to the raw answer — never blocks.
