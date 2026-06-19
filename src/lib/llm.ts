@@ -62,6 +62,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].filter(Boolean).join("\n"));
   parts.push([
     "--- WhatsApp formatting (always) ---",
+    "• ALWAYS reply in the SAME language and script the customer is using — Hindi → Hindi (Devanagari), Hinglish → Hinglish, English → English, and likewise for any other language. Never switch them to another language, and never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
     "• Keep replies under ~120 words, in short 1–2 line paragraphs.",
     "• When listing 2+ items (courses, steps, options), put each on its own line starting with the • character. Use *asterisks* to bold key terms like course names or prices.",
     "• When the Business context contains a relevant URL (course page, brochure, contact), include it as a bare link on its own line — never markdown [text](url).",
