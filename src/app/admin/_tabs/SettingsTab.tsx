@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2, MessagesSquare } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2, MessagesSquare, MessageSquare, Copy, Check } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
 
@@ -717,6 +717,95 @@ function MessengerCard() {
   );
 }
 
+// ── Website web-chat widget (embed a live chat bubble on any site) ────────────
+type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[] };
+
+function WebchatCard() {
+  const [list, setList] = useState<WcRow[]>([]);
+  const [form, setForm] = useState<{ id?: string; name: string; origins: string; active: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  const load = useCallback(async () => {
+    const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
+    setList((d.channels ?? []).filter((c: WcRow) => c.kind === "webchat"));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const snippet = (siteKey: string) => `<script src="${origin}/api/widget/${siteKey}/loader.js" async></script>`;
+  function copy(text: string, key: string) { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(c => (c === key ? null : c)), 1500); }
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!confirm("Remove this web-chat widget? The embed snippet will stop working.")) return;
+    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    load();
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-brand-600" /> Website web chat</p>
+          <p className="text-xs text-slate-500 mt-0.5">Add a live-chat bubble to your website with one line of code. Visitor chats land in the same Live Chat inbox and your AI replies instantly.</p>
+        </div>
+        <button onClick={() => { setForm({ name: "", origins: "", active: true }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
+      </div>
+
+      {list.map(c => (
+        <div key={c.id} className="border border-line rounded-control px-3 py-2.5 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><MessageSquare className="w-4 h-4" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+              <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
+            </div>
+            <button onClick={() => { setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+          </div>
+          {c.siteKey && (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 truncate bg-canvas border border-line rounded-control px-2.5 py-1.5 text-[11px] font-mono text-ink-700">{snippet(c.siteKey)}</code>
+              <button onClick={() => copy(snippet(c.siteKey!), c.id)} className="shrink-0 px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1">
+                {copied === c.id ? <><Check className="w-3.5 h-3.5 text-emerald-600" /> Copied</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+              </button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {form && (
+        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+          <input className={`${inp} w-full`} placeholder="Widget name, e.g. Marketing site" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Allowed website origins (one per line — blank = allow anywhere)</p>
+            <textarea className={`${inp} w-full resize-none font-mono text-xs`} rows={3} placeholder={"https://www.yoursite.com\nhttps://shop.yoursite.com"} value={form.origins} onChange={e => setForm({ ...form, origins: e.target.value })} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save widget"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+        </div>
+      )}
+      {!list.length && !form && <p className="text-xs text-ink-400">No web-chat widget yet. Create one to get a copy-paste embed snippet.</p>}
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -773,6 +862,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <UsageCard />
       {isAdmin && <ChannelsManager />}
       {isAdmin && <MessengerCard />}
+      {isAdmin && <WebchatCard />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 

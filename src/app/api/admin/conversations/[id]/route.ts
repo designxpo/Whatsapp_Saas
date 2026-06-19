@@ -91,6 +91,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           : await sendFbMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt });
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Messenger send failed") }, { status: 502 });
         messageId = sent.messageId;
+      } else if (conv.platform === "webchat") {
+        // Web-chat has no external API and no 24h window — the agent reply is just
+        // persisted below and the visitor's widget picks it up on its next poll.
       } else {
         // WhatsApp free-form is only allowed inside Meta's 24-hour window. The
         // AI always replies instantly (in-window); an agent replying later can
@@ -146,6 +149,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Messenger send failed") }, { status: 502 });
         messageId = sent.messageId;
         if (caption) await sendFbMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt }).catch(() => undefined);
+      } else if (conv.platform === "webchat") {
+        // Web-chat: the media URL is persisted below; the widget renders it on poll.
       } else {
         if (conv.lastInboundAt && Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000) {
           return NextResponse.json({ error: "Outside WhatsApp's 24-hour window — the customer must message again before you can send media." }, { status: 409 });

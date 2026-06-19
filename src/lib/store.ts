@@ -725,6 +725,13 @@ export async function getConversationByPhone(phone: string, tenantId = DEFAULT_T
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
+// Exact-identity lookup (no digit-normalization) — for non-phone channels like
+// web chat where the identifier is web:<uuid>. Read-only; never creates.
+export async function getConversationByExactPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
+  const { data } = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", phone.trim()).maybeSingle();
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
 // An Instagram conversation linked to a real phone the lead shared (lead_phone).
 // Lets the CRM panel show the IG thread for a lead identified by phone.
 export async function getIgConversationByLeadPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
@@ -780,6 +787,25 @@ export async function getConvHistory(conversationId: string, limit = 20, tenantI
   if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at"));
   const rows = data.reverse();
   return rows.map(r => ({
+    id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string,
+    source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string,
+    mediaUrl: (r.media_url as string | null) ?? null, mediaType: (r.media_type as string | null) ?? null,
+  }));
+}
+
+// Messages newer than `since` (exclusive), oldest-first — drives the web-chat
+// widget's poll so it picks up AI + agent replies without a socket.
+export async function getConvMessagesSince(conversationId: string, since: string | null, tenantId?: string): Promise<ConvMessage[]> {
+  const fetchRows = async (cols: string) => {
+    let q = db().from("wa_conv_messages").select(cols).eq("conversation_id", conversationId);
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    if (since) q = q.gt("created_at", since);
+    const { data, error } = await q.order("created_at", { ascending: true }).limit(50);
+    return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
+  };
+  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type");
+  if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at"));
+  return data.map(r => ({
     id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string,
     source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string,
     mediaUrl: (r.media_url as string | null) ?? null, mediaType: (r.media_type as string | null) ?? null,

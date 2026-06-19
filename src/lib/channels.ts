@@ -4,6 +4,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // not applied) the META_WA_* env credentials are used — so single-number
 // setups keep working with zero configuration.
 
+import { randomBytes } from "crypto";
 import { db } from "./supabase";
 import { encryptSecret, readSecret } from "./crypto";
 
@@ -33,6 +34,9 @@ export interface Channel extends ChannelCreds {
   messagingHealth: string | null;   // AVAILABLE | FLAGGED | RESTRICTED
   marketingPaused: boolean;
   messagingTier: string | null;     // TIER_250 | TIER_1K | TIER_10K | TIER_100K | TIER_UNLIMITED
+  // Web-chat widget (kind="webchat"): public embed key + CORS origin allowlist.
+  siteKey: string | null;
+  allowedOrigins: string[];
 }
 
 // The per-24h send allowance implied by a Meta messaging-limit tier. null tier
@@ -70,6 +74,8 @@ function mapChannel(r: Record<string, unknown>): Channel {
     messagingHealth: (r.messaging_health as string | null) ?? null,
     marketingPaused: (r.marketing_paused as boolean) ?? false,
     messagingTier: (r.messaging_tier as string | null) ?? null,
+    siteKey: (r.site_key as string | null) ?? null,
+    allowedOrigins: (r.allowed_origins as string[] | null) ?? [],
   };
 }
 
@@ -155,6 +161,15 @@ export async function getChannelByPageId(pageId: string): Promise<Channel | null
   if (!pageId) return null;
   try {
     const { data } = await db().from("wa_channels").select("*").eq("page_id", pageId).eq("kind", "messenger").maybeSingle();
+    return data ? mapChannel(data as Record<string, unknown>) : null;
+  } catch { return null; }
+}
+
+// Inbound web-chat routing: the widget carries its public site key.
+export async function getChannelBySiteKey(siteKey: string): Promise<Channel | null> {
+  if (!siteKey) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*").eq("site_key", siteKey).eq("kind", "webchat").maybeSingle();
     return data ? mapChannel(data as Record<string, unknown>) : null;
   } catch { return null; }
 }
@@ -245,6 +260,33 @@ export async function saveMessengerChannel(input: {
     is_default: input.isDefault ?? false,
   };
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
+  const q = input.id
+    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(row).select().single();
+  const { data, error } = await q;
+  if (error) throw error;
+  return mapChannel(data as Record<string, unknown>);
+}
+
+// Save a website web-chat channel. A public site_key is minted once on create
+// (used in the embed script + to route inbound). allowedOrigins is the CORS
+// allowlist (empty = allow any origin). No external creds / token.
+export async function saveWebchatChannel(input: {
+  id?: string; tenantId?: string; name: string; allowedOrigins?: string[];
+  agentId?: string | null; active?: boolean;
+}): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const origins = (input.allowedOrigins ?? []).map(o => o.trim().replace(/\/$/, "")).filter(Boolean);
+  const row: Record<string, unknown> = {
+    tenant_id: tenantId,
+    kind: "webchat",
+    name: input.name.trim(),
+    allowed_origins: origins,
+    agent_id: input.agentId || null,
+    active: input.active ?? true,
+  };
+  // Mint a stable public key once, on create only.
+  if (!input.id) row.site_key = `wc_${randomBytes(16).toString("hex")}`;
   const q = input.id
     ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(row).select().single();
