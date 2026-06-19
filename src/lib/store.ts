@@ -623,6 +623,8 @@ export interface ConvMessage {
   body: string;
   source: "inbound" | "bot" | "agent";
   createdAt: string;
+  mediaUrl?: string | null;    // e.g. an inbound voice note, playable in Live Chat
+  mediaType?: string | null;   // its MIME type, e.g. "audio/ogg"
 }
 
 function mapConversation(r: Record<string, unknown>): Conversation {
@@ -743,24 +745,39 @@ export async function listConversations(opts: { status?: ConvStatus | null; limi
   return (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
 }
 
-export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string }): Promise<void> {
-  const { error } = await db().from("wa_conv_messages").insert({
+export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<void> {
+  const row: Record<string, unknown> = {
     tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, conversation_id: p.conversationId, role: p.role, body: p.body,
     meta_message_id: p.metaId ?? null, source: p.source,
-  });
+  };
+  if (p.mediaUrl) { row.media_url = p.mediaUrl; row.media_type = p.mediaType ?? null; }
+  let { error } = await db().from("wa_conv_messages").insert(row);
+  // Pre-migration safety: if the media columns aren't present yet (0052), retry
+  // without them so a voice note still logs as text instead of being dropped.
+  if (error && error.code === "42703" && p.mediaUrl) {
+    delete row.media_url; delete row.media_type;
+    ({ error } = await db().from("wa_conv_messages").insert(row));
+  }
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
   if (error && error.code !== "23505") throw error;
 }
 
 export async function getConvHistory(conversationId: string, limit = 20, tenantId?: string): Promise<ConvMessage[]> {
-  let q = db().from("wa_conv_messages")
-    .select("id, role, body, source, created_at")
-    .eq("conversation_id", conversationId);
-  if (tenantId) q = q.eq("tenant_id", tenantId);
-  const { data } = await q
-    .order("created_at", { ascending: false }).limit(limit);
-  const rows = (data ?? []).reverse();
-  return rows.map(r => ({ id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string, source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string }));
+  const fetchRows = async (cols: string) => {
+    let q = db().from("wa_conv_messages").select(cols).eq("conversation_id", conversationId);
+    if (tenantId) q = q.eq("tenant_id", tenantId);
+    const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
+    return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
+  };
+  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type");
+  // Pre-migration safety: fall back to the columns that always exist (0052).
+  if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at"));
+  const rows = data.reverse();
+  return rows.map(r => ({
+    id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string,
+    source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string,
+    mediaUrl: (r.media_url as string | null) ?? null, mediaType: (r.media_type as string | null) ?? null,
+  }));
 }
 
 // Already-logged check (idempotency before doing LLM work on a retried webhook).

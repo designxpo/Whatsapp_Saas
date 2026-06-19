@@ -91,19 +91,26 @@ export async function transcribeAudio(audio: InboundAudio, tenantId: string = DE
   }
 }
 
-// Transcribe a remote audio file by URL (Instagram delivers a CDN URL rather
-// than a media id). Fetches the bytes, then transcribes. Never throws.
-export async function transcribeRemoteAudio(url: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
+// Download a remote audio file (Instagram delivers a CDN URL, not bytes). Returns
+// the raw bytes so the caller can both transcribe AND re-host it for playback
+// (IG CDN URLs are short-lived, so we never store them directly). Never throws.
+export async function downloadRemoteAudio(url: string): Promise<InboundAudio | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const data = Buffer.from(await res.arrayBuffer());
     if (data.length > 25 * 1024 * 1024) return null;
-    return transcribeAudio({ data, mimeType: res.headers.get("content-type") || "audio/mp4" }, tenantId);
+    return { data, mimeType: res.headers.get("content-type") || "audio/mp4" };
   } catch (err) {
-    console.error("[voice] remote transcription failed:", errorMessage(err));
+    console.error("[voice] remote download failed:", errorMessage(err));
     return null;
   }
+}
+
+// Transcribe a remote audio file by URL.
+export async function transcribeRemoteAudio(url: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
+  const audio = await downloadRemoteAudio(url);
+  return audio ? transcribeAudio(audio, tenantId) : null;
 }
 
 // Synthesize speech for a reply and host it (public mp3 URL). Returns null when

@@ -11,6 +11,7 @@ import { enroll, matchKeywordSequence } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/voice";
+import { uploadAudio } from "@/lib/supabase";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
@@ -97,6 +98,8 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   let text = messageText(m).trim();
+  let mediaUrl: string | null = null;     // inbound voice note, re-hosted for Live Chat playback
+  let mediaType: string | null = null;
   const contacts = (value.contacts as Record<string, unknown>[]) ?? [];
   const profileName = ((contacts[0]?.profile as Record<string, unknown>)?.name as string) ?? "";
 
@@ -111,9 +114,12 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (!media) console.warn(JSON.stringify({ tag: "voice_download_failed", from, audioId: !!audioId }));
     const transcript = media ? await transcribeAudio(media, tid) : null;
     if (media && !transcript) console.warn(JSON.stringify({ tag: "voice_transcribe_failed", from, mime: media.mimeType }));
-    if (transcript) {
+    if (media && transcript) {
       text = transcript; voiceInbound = true;
-      console.log(JSON.stringify({ tag: "voice_transcribed", from, chars: transcript.length }));
+      // Re-host the clip so the agent can replay it next to the transcript.
+      mediaUrl = await uploadAudio(media.data, media.mimeType);
+      mediaType = mediaUrl ? media.mimeType : null;
+      console.log(JSON.stringify({ tag: "voice_transcribed", from, chars: transcript.length, stored: !!mediaUrl }));
     } else {
       await sendText(from, "Sorry, I couldn't quite catch that voice note — could you type your question?", channel);
       return;
@@ -167,7 +173,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid });
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.

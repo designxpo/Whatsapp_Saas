@@ -5,7 +5,8 @@ import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
-import { transcribeRemoteAudio } from "@/lib/voice";
+import { downloadRemoteAudio, transcribeAudio } from "@/lib/voice";
+import { uploadAudio } from "@/lib/supabase";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
@@ -86,14 +87,22 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const senderId = String((ev.sender as Record<string, unknown>)?.id ?? "");
   const msg = ev.message as Record<string, unknown> | undefined;
   let text = (msg?.text as string) ?? "";
+  let mediaUrl: string | null = null;     // inbound voice note, re-hosted for Live Chat playback
+  let mediaType: string | null = null;
   // Inbound voice/audio DM → transcribe with the tenant's AI so it's answered
-  // like a typed message (Instagram delivers an attachment URL, not bytes).
+  // like a typed message, and re-host the clip so the agent can replay it in
+  // Live Chat (Instagram delivers a short-lived attachment URL, not bytes).
   if (!text.trim() && senderId && !(msg?.is_echo as boolean)) {
     const atts = (msg?.attachments as { type?: string; payload?: { url?: string } }[]) ?? [];
     const audioUrl = atts.find(a => a.type === "audio")?.payload?.url;
     if (audioUrl) {
-      const t = await transcribeRemoteAudio(audioUrl, channel.tenantId);
-      if (t) text = t;
+      const audio = await downloadRemoteAudio(audioUrl);
+      if (audio) {
+        const t = await transcribeAudio(audio, channel.tenantId);
+        if (t) text = t;
+        mediaUrl = await uploadAudio(audio.data, audio.mimeType);
+        mediaType = mediaUrl ? audio.mimeType : null;
+      }
     }
   }
   // Ignore echoes (our own outbound) and non-text events.
@@ -118,7 +127,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
   if (conv.isComment) await setConversationComment(conv.id, false);   // a real DM → move to Chats
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId });
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, mediaUrl, mediaType });
   await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
   // Capture a phone the lead shares (IG has no number of its own) so the chat can
   // be matched to a CRM lead by phone, now and on later messages.
