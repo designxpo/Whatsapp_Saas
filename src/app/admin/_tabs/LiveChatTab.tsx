@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -235,6 +235,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [showAssist, setShowAssist] = useState(false);
   const [assisting, setAssisting] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
@@ -471,19 +472,32 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Type a reply… (type / for quick replies, ⌘↵ to send)" value={reply}
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
               onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(); }} />
-            <button onClick={() => setShowQuick(s => !s)} title="Quick replies" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showQuick ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⚡</button>
-            <button onClick={draftReply} disabled={drafting || busy} title="Draft a reply from the knowledge base" className="px-2.5 py-2 rounded-control border border-brand-200 text-brand-700 hover:bg-brand-50 text-sm font-bold disabled:opacity-60">
-              {drafting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
-            </button>
-            <button onClick={() => setShowAssist(s => !s)} disabled={assisting} title="AI assist (rewrite draft)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showAssist ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>{assisting ? <Loader2 className="w-4 h-4 animate-spin" /> : "✨"}</button>
-            <button onClick={() => setShowButtons(s => !s)} title="Quick-reply buttons" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showButtons ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⊞</button>
-            {conv?.platform !== "instagram" && (
-              <button onClick={() => setShowTemplate(s => !s)} title="Send approved template (works outside the 24h window)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTemplate ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}><LayoutTemplate className="w-4 h-4" /></button>
-            )}
             <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
-            <button onClick={() => fileRef.current?.click()} disabled={busy || uploading} title="Send a photo, video or file (text becomes the caption)" className="px-2.5 py-2 rounded-control border border-line text-ink-400 hover:bg-canvas text-sm font-bold disabled:opacity-60">
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
-            </button>
+            {/* All composer tools live in one menu so the reply box stays roomy. */}
+            <div className="relative">
+              <button onClick={() => setShowTools(s => !s)} title="Reply tools" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>
+                {drafting || assisting || uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className={`w-4 h-4 transition-transform ${showTools ? "rotate-45" : ""}`} />}
+              </button>
+              {showTools && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowTools(false)} />
+                  <div className="absolute bottom-full right-0 mb-2 w-52 bg-white border border-line rounded-card shadow-lg p-1 z-20">
+                    {[
+                      { icon: <Zap className="w-4 h-4" />, label: "Quick replies", on: () => setShowQuick(s => !s) },
+                      { icon: <Bot className="w-4 h-4" />, label: "Draft from knowledge base", on: draftReply },
+                      { icon: <Sparkles className="w-4 h-4" />, label: "Rewrite my draft", on: () => setShowAssist(s => !s) },
+                      { icon: <span className="text-base leading-none">⊞</span>, label: "Add reply buttons", on: () => setShowButtons(s => !s) },
+                      ...(conv?.platform !== "instagram" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
+                      { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo or file", on: () => fileRef.current?.click() },
+                    ].map(t => (
+                      <button key={t.label} onClick={() => { setShowTools(false); t.on(); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink-600 hover:bg-canvas text-left">
+                        <span className="text-ink-400 w-4 flex justify-center">{t.icon}</span> {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <button onClick={sendReply} disabled={busy || !reply.trim()} className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send</>}
             </button>
