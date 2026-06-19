@@ -665,6 +665,19 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     } finally { setSaving(false); }
   }
 
+  // The ON/OFF pills persist instantly (like every other toggle in the app) so a
+  // toggle survives a refresh without needing the separate "Save messages" click.
+  // We send the full local object so any in-progress text edit is saved too.
+  async function persistSettings(patch: { welcome?: WelcomeS; away?: AwayS }) {
+    setSaving(true);
+    try {
+      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      setSavedAt(Date.now());
+    } finally { setSaving(false); }
+  }
+  function toggleWelcome() { if (!welcome) return; const next = { ...welcome, enabled: !welcome.enabled }; setWelcome(next); void persistSettings({ welcome: next }); }
+  function toggleAway() { if (!away) return; const next = { ...away, enabled: !away.enabled }; setAway(next); void persistSettings({ away: next }); }
+
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
     await fetch("/api/admin/quick-replies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shortcut: qrShortcut, body: qrBody }) });
@@ -692,8 +705,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <p className="text-xs text-slate-500 mt-0.5">Sent once, the first time a contact ever messages you (before the AI answers).</p>
           </div>
           {welcome && (
-            <button onClick={() => setWelcome({ ...welcome, enabled: !welcome.enabled })}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold ${welcome.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+            <button onClick={toggleWelcome} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${welcome.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {welcome.enabled ? "ON" : "OFF"}
             </button>
           )}
@@ -711,8 +724,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <p className="text-xs text-slate-500 mt-0.5">Sent at most once per 12h per conversation. The AI keeps answering either way.</p>
           </div>
           {away && (
-            <button onClick={() => setAway({ ...away, enabled: !away.enabled })}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold ${away.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+            <button onClick={toggleAway} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${away.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {away.enabled ? "ON" : "OFF"}
             </button>
           )}
