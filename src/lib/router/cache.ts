@@ -11,6 +11,21 @@ import { normalize } from "./faq";
 // Paraphrase-level similarity. Below this we risk serving a wrong cached answer.
 const CACHE_SIMILARITY = 0.92;
 
+// The cache is shared across a tenant's customers, so it must only ever hold
+// generic, reusable answers. An answer that greets a specific person by name
+// ("Hi Govind!", "Hello Basit Kamal!") is conversation-specific — caching it
+// would replay one customer's name (and context) to another. Detect a greeting
+// immediately followed by a capitalised name, so "Hi there!" / "Hi! 👋 We…" stay
+// cacheable.
+const PERSONALIZED_GREETING = /^\s*\*{0,2}\s*(?:[Hh]i+|[Hh]ello+|[Hh]ey+|[Nn]amaste|[Dd]ear)\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+)?\s*[,!.]/;
+export function isPersonalizedAnswer(answer: string): boolean {
+  return PERSONALIZED_GREETING.test(answer || "");
+}
+
+async function purgeCache(id: string): Promise<void> {
+  try { await db().from("wa_semantic_cache").delete().eq("id", id); } catch { /* best-effort */ }
+}
+
 export interface CacheHit {
   id: string;
   answer: string;
@@ -31,8 +46,14 @@ export async function cacheLookup(question: string, precomputed?: number[] | nul
   const exact = await db().from("wa_semantic_cache")
     .select("id, answer").eq("tenant_id", tenantId).eq("normalized_question", norm).maybeSingle();
   if (exact.data) {
-    void bumpHit(exact.data.id as string);
-    return { hit: { id: exact.data.id as string, answer: exact.data.answer as string, similarity: 1, exact: true }, embedding: null };
+    const ans = exact.data.answer as string;
+    // Pre-fix poison: an old personalised entry must not be served — drop it and
+    // fall through to RAG so this customer gets a fresh, generic answer.
+    if (isPersonalizedAnswer(ans)) { void purgeCache(exact.data.id as string); }
+    else {
+      void bumpHit(exact.data.id as string);
+      return { hit: { id: exact.data.id as string, answer: ans, similarity: 1, exact: true }, embedding: null };
+    }
   }
 
   // Step 2 — vector similarity (reuse the caller's embedding when provided).
@@ -40,6 +61,7 @@ export async function cacheLookup(question: string, precomputed?: number[] | nul
   const { data } = await db().rpc("match_semantic_cache", { query_embedding: embedding, match_count: 1, p_tenant_id: tenantId });
   const top = (data as { id: string; answer: string; similarity: number }[] | null)?.[0];
   if (top && top.similarity >= CACHE_SIMILARITY) {
+    if (isPersonalizedAnswer(top.answer)) { void purgeCache(top.id); return { hit: null, embedding }; }
     void bumpHit(top.id);
     return { hit: { id: top.id, answer: top.answer, similarity: top.similarity, exact: false }, embedding };
   }
@@ -61,6 +83,8 @@ export async function cacheStore(question: string, answer: string, embedding: nu
   try {
     const norm = normalize(question);
     if (!norm || !answer.trim()) return;
+    // Never cache a name-personalised answer — the cache is shared across customers.
+    if (isPersonalizedAnswer(answer)) return;
     const emb = embedding ?? await embedQuery(question);
     // Unique on (tenant_id, normalized_question) — concurrent dup inserts no-op.
     await db().from("wa_semantic_cache").upsert(
