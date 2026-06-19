@@ -1,5 +1,5 @@
 "use client";
-import { MessagesSquare } from "lucide-react";
+import { Facebook } from "lucide-react";
 import { MessengerCard } from "./SettingsTab";
 
 // Facebook Messenger — first-class channel page (mirrors the Instagram tab).
@@ -7,7 +7,7 @@ export default function FacebookTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><MessagesSquare className="w-5 h-5 text-blue-600" /> Facebook Messenger</h2>
+        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Facebook className="w-5 h-5 text-blue-600" /> Facebook Messenger</h2>
         <p className="text-sm text-slate-500">Auto-reply to Facebook Page DMs with your AI — all within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</p>
       </div>
 

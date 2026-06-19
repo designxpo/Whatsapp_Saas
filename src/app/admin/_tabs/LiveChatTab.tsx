@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, MessagesSquare, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -88,7 +88,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
               <button key={k} onClick={() => setPlatform(k)} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
                 {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
-                {k === "messenger" && <MessagesSquare className="w-3 h-3 text-blue-600" />}
+                {k === "messenger" && <Facebook className="w-3 h-3 text-blue-600" />}
                 {k === "webchat" && <MessageSquare className="w-3 h-3 text-brand-600" />}
                 {label} <span className="opacity-60">{n}</span>
               </button>
@@ -108,7 +108,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="relative shrink-0 mt-0.5">
                 <ConvAvatar url={c.avatarUrl} label={c.name || c.phone} size={36} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
-                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : c.platform === "messenger" ? <MessagesSquare className="w-2.5 h-2.5 text-blue-600" /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
+                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">

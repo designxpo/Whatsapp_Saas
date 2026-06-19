@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2, MessagesSquare, MessageSquare, Copy, Check } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, Copy, Check } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
 
@@ -676,7 +676,7 @@ export function MessengerCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessagesSquare className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</p>
         </div>
         <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
@@ -684,7 +684,7 @@ export function MessengerCard() {
 
       {pages.map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><MessagesSquare className="w-4 h-4" /></div>
+          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[10px] font-bold text-brand-700"> · DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId}</p>
