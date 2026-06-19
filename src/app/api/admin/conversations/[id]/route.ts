@@ -1,10 +1,11 @@
-export const maxDuration = 30;
+export const maxDuration = 60;   // the "suggest" action runs an LLM call — must outlast the default
 import { NextResponse } from "next/server";
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound,
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
   setConversationAgent, markConversationRead, getContactByPhone, type ConvStatus,
 } from "@/lib/store";
+import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { credsFor, getChannel } from "@/lib/channels";
@@ -47,6 +48,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   try {
+    // Agent-assist: draft a KB-grounded reply for the agent to review/edit — NOT
+    // sent. Same pipeline the live bot uses (RAG + persona), so the suggestion
+    // reflects exactly what the bot would say. Returns "" when there's nothing
+    // grounded to offer (the UI then tells the agent to type their own).
+    if (body.action === "suggest") {
+      const history = await getConvHistory(id, 20, tid);
+      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, conv.agentId, tid, conv.primaryKbTag);
+      return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
+    }
     if (body.action === "reply") {
       const text = (body.body ?? "").trim();
       if (!text) return NextResponse.json({ error: "body required" }, { status: 400 });

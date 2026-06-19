@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -234,6 +234,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [aiPrompts, setAiPrompts] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [showAssist, setShowAssist] = useState(false);
   const [assisting, setAssisting] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
@@ -279,6 +280,21 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
       const d = await fetch("/api/admin/ai/transform", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ promptId, text: reply }) }).then(r => r.json());
       if (d.result) setReply(d.result);
     } finally { setAssisting(false); setShowAssist(false); }
+  }
+
+  // Draft a fresh reply from the knowledge base + this conversation (the same
+  // grounded pipeline the bot uses), and drop it into the box for review/edit.
+  // Unlike ✨ (which rewrites what you typed), this writes from scratch.
+  async function draftReply() {
+    setDrafting(true); setActError("");
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "suggest" }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setActError(d.error ?? `Couldn't draft a reply (HTTP ${res.status})`); return; }
+      if (d.suggestion?.trim()) setReply(d.suggestion.trim());
+      else setActError("Nothing in the knowledge base to draft from — type your own reply.");
+    } catch { setActError("Could not reach the server"); }
+    finally { setDrafting(false); }
   }
 
   async function act(payload: Record<string, unknown>): Promise<boolean> {
@@ -456,6 +472,9 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
               onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(); }} />
             <button onClick={() => setShowQuick(s => !s)} title="Quick replies" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showQuick ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⚡</button>
+            <button onClick={draftReply} disabled={drafting || busy} title="Draft a reply from the knowledge base" className="px-2.5 py-2 rounded-control border border-brand-200 text-brand-700 hover:bg-brand-50 text-sm font-bold disabled:opacity-60">
+              {drafting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+            </button>
             <button onClick={() => setShowAssist(s => !s)} disabled={assisting} title="AI assist (rewrite draft)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showAssist ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>{assisting ? <Loader2 className="w-4 h-4 animate-spin" /> : "✨"}</button>
             <button onClick={() => setShowButtons(s => !s)} title="Quick-reply buttons" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showButtons ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>⊞</button>
             {conv?.platform !== "instagram" && (
