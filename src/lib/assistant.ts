@@ -20,6 +20,11 @@ function dailyLimit(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "9
 export type RespondOutcome = "sent" | "escalated" | "skipped" | "failed";
 
 // ── Smart send: answers that reference a link get a tappable URL button ──────
+// An explicit "talk to a human" request. Kept tight (a clear request to reach a
+// person), so normal questions that merely contain "support"/"agent" don't trip
+// it. Used to route straight to a human before any FAQ/cache/AI answer.
+const HUMAN_REQUEST_RE = /\b(?:(?:talk|speak|chat|connect|transfer)\s+(?:(?:to|with|me)\s+)*(?:a\s+|an\s+|the\s+)?(?:human|agent|person|someone|representative|executive|counsell?or|advisor|team\s+member|live\s+agent)|(?:human|live|real)\s+(?:agent|person|support)|customer\s+care|call\s+me\s+back)\b/i;
+
 const URL_RE = /https?:\/\/[^\s)\]>"']+/;
 
 function linkButtonLabel(url: string): string {
@@ -80,6 +85,22 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // and prefer that number's default AI persona when the chat has no pin.
     const channel: Channel | undefined = conv.channelId ? (await getChannel(conv.channelId)) ?? undefined : undefined;
     const lastUserMsg = [...history].reverse().find(m => m.role === "user")?.body ?? "";
+
+    // ── Explicit human-handoff request → route straight to a person, BEFORE the
+    // FAQ/cache/AI layers. So "Talk to agent" always reaches a human instead of
+    // being answered by a cached reply or restarting the qualification flow.
+    if (HUMAN_REQUEST_RE.test(lastUserMsg)) {
+      await setConversationStatus(conversationId, "escalated");
+      void emitEvent(conv.tenantId, "conversation.escalated", { conversationId, phone: conv.phone, name: conv.name, reason: "human requested", channel: conv.platform });
+      const handoff = "Connecting you with our team — someone will reply here shortly. 🙌";
+      const sent = await sendText(conv.phone, handoff, channel);
+      if (sent.id) {
+        await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });
+        await touchOutbound(conversationId, handoff);
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: handoff, via: "bot", tenantId: conv.tenantId });
+      }
+      return { outcome: "escalated", detail: "human requested" };
+    }
 
     // Voice reply: speak the answer when the workspace wants it ("always", or
     // "mirror" the customer when they sent a voice note). WhatsApp only; falls
