@@ -106,9 +106,13 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   if (!text && m.type === "audio") {
     const audioId = (m.audio as Record<string, unknown> | undefined)?.id as string | undefined;
     const media = audioId ? await downloadMedia(audioId, channel) : null;
+    if (!media) console.warn(JSON.stringify({ tag: "voice_download_failed", from, audioId: !!audioId }));
     const transcript = media ? await transcribeAudio(media, tid) : null;
-    if (transcript) { text = transcript; voiceInbound = true; }
-    else {
+    if (media && !transcript) console.warn(JSON.stringify({ tag: "voice_transcribe_failed", from, mime: media.mimeType }));
+    if (transcript) {
+      text = transcript; voiceInbound = true;
+      console.log(JSON.stringify({ tag: "voice_transcribed", from, chars: transcript.length }));
+    } else {
       await sendText(from, "Sorry, I couldn't quite catch that voice note — could you type your question?", channel);
       return;
     }

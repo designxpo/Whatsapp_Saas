@@ -124,6 +124,26 @@ export interface ReplyResult {
   functionCalls?: string[]; // names of AI functions executed this turn
 }
 
+// Strip a leading "Name:" / "*Name*:" label the model sometimes prepends despite
+// the system prompt (e.g. "Maya: Hi there"). Removes a 1–2 TitleCase-word label
+// before a colon when it matches the agent's name OR looks like a name and isn't
+// a common content opener ("Note:", "Hours:", "Fees:"), so real content is kept.
+const NAME_PREFIX_RE = /^\s*\*{0,2}\s*([A-Z][a-zA-Z.'’-]+(?:\s+[A-Z][a-zA-Z.'’-]+)?)\s*\*{0,2}\s*:\s+/;
+const COMMON_LABELS = new Set([
+  "note", "tip", "tips", "hours", "fee", "fees", "price", "prices", "update", "reminder",
+  "hi", "hello", "hey", "warning", "important", "fyi", "ps", "re", "attention", "menu",
+  "options", "welcome", "thanks", "thank", "sure", "okay", "ok", "yes", "no", "namaste",
+]);
+export function stripLeadingName(text: string, agentName?: string | null): string {
+  const m = text.match(NAME_PREFIX_RE);
+  if (!m) return text;
+  const label = m[1].trim();
+  const first = label.split(/\s+/)[0].toLowerCase();
+  const matchesAgent = !!agentName && label.toLowerCase() === agentName.trim().toLowerCase();
+  if (!matchesAgent && COMMON_LABELS.has(first)) return text;
+  return text.slice(m[0].length).trimStart();
+}
+
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
@@ -210,7 +230,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         continue;
       }
 
-      const text = (res.text ?? "").trim();
+      const text = stripLeadingName((res.text ?? "").trim(), agent?.name);
       // Only an explicit escalate token hands off to a human. An empty model
       // reply must NOT escalate — fall back to a soft prompt instead.
       if (text.includes(ESCALATE_TOKEN)) {
@@ -262,7 +282,7 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
       turns: [{ role: "user", text: `CUSTOMER MESSAGE:\n${userMessage}\n\nFACTUAL ANSWER:\n${answer}` }],
       maxTokens: 512,
     });
-    return res.text || answer;
+    return stripLeadingName(res.text || answer, agent.name);
   } catch (err) {
     // AiKeyMissingError, rate limits, etc. — never block; serve the raw answer.
     console.error("[llm] persona tone failed (serving raw answer):", err);
