@@ -1,4 +1,8 @@
-export const maxDuration = 60;
+// Generous budget: an inbound voice note does a synchronous transcription AND
+// then an AI reply (in after()) — two sequential model calls that on a slow
+// moment can blow a 60s cap, killing the reply. (The cron is the backstop; this
+// keeps the live reply landing in the first place.)
+export const maxDuration = 180;
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
@@ -11,7 +15,7 @@ import { enroll, matchKeywordSequence } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/voice";
-import { uploadAudio } from "@/lib/supabase";
+import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
@@ -123,6 +127,24 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     } else {
       await sendText(from, "Sorry, I couldn't quite catch that voice note — could you type your question?", channel);
       return;
+    }
+  }
+
+  // Inbound image / video / document / sticker → re-host so it shows in Live Chat.
+  // The customer's caption (if any) becomes the message text; otherwise the
+  // "[image message]" placeholder is kept so the AI / list behave as before.
+  if (!mediaUrl && (m.type === "image" || m.type === "video" || m.type === "document" || m.type === "sticker")) {
+    const node = m[m.type] as Record<string, unknown> | undefined;
+    const mediaId = node?.id as string | undefined;
+    const media = mediaId ? await downloadMedia(mediaId, channel) : null;
+    if (media) {
+      mediaUrl = await uploadMedia(media.data, media.mimeType);
+      if (mediaUrl) {
+        mediaType = media.mimeType;
+        const caption = (node?.caption as string)?.trim();
+        if (caption) text = caption;
+        console.log(JSON.stringify({ tag: "media_stored", from, type: m.type, mime: media.mimeType }));
+      }
     }
   }
 

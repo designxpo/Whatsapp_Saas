@@ -858,6 +858,27 @@ export async function conversationsNeedingReply(limit = 20): Promise<Conversatio
   return (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
 }
 
+// Comprehensive cron safety net: conversations whose latest message is an
+// unanswered customer inbound — REGARDLESS of the needs_reply flag. This catches
+// the case where a live reply was claimed (needs_reply cleared) but then died
+// mid-flight (e.g. the serverless function timed out during a slow transcription
+// + reply), so nothing was ever sent and conversationsNeedingReply can't see it.
+// Quiet for ≥ minAgeMs so we never race a reply that's still being generated live.
+export async function conversationsAwaitingReply(limit = 20, minAgeMs = 120_000): Promise<Conversation[]> {
+  const now = Date.now();
+  const windowStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();   // still in the 24h window
+  const cutoff = new Date(now - minAgeMs).toISOString();                   // settled for ≥ minAgeMs
+  const { data } = await db().from("wa_conversations").select("*")
+    .eq("status", "active").eq("bot_enabled", true)
+    .gte("last_inbound_at", windowStart)
+    .lte("last_inbound_at", cutoff)
+    .order("last_inbound_at", { ascending: true }).limit(200);
+  const rows = (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
+  // Unanswered = no outbound yet, or the customer messaged after our last reply.
+  // (ISO timestamps compare correctly as strings.)
+  return rows.filter(c => !c.lastOutboundAt || (c.lastInboundAt ?? "") > c.lastOutboundAt).slice(0, limit);
+}
+
 // ── Knowledge base (RAG) ──────────────────────────────────────────────────────
 export type KbStatus = "processing" | "ready" | "failed";
 export type KbSourceType = "pdf" | "docx" | "text" | "url";

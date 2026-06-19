@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { cronOk } from "@/lib/apiauth";
-import { getDueScheduledCampaigns, campaignsWithPending, conversationsNeedingReply, pruneEphemeral } from "@/lib/store";
+import { getDueScheduledCampaigns, campaignsWithPending, conversationsAwaitingReply, reflagReply, pruneEphemeral } from "@/lib/store";
 import { fireScheduledCampaign, drainQueue, drainAutoSends } from "@/lib/campaign";
 import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
@@ -75,13 +75,20 @@ export async function POST(req: Request) {
       try { sequences = await drainSequences(100); } catch (e) { console.error("[cron] sequences", e); }
     }
 
-    // Fallback: AI replies whose fire-and-forget job was dropped.
+    // Fallback: AI replies whose fire-and-forget job was dropped OR died mid-flight
+    // (e.g. a slow voice transcription + reply that timed out the webhook function,
+    // leaving needs_reply cleared by the claim but no reply ever sent). The
+    // awaiting-reply sweep catches both; reflag each so respondToConversation can
+    // re-claim it.
     let aiReplies = 0;
     if (process.env.LLM_BOT_ENABLED !== "false") {
-      for (const c of await conversationsNeedingReply(20)) {
+      for (const c of await conversationsAwaitingReply(20)) {
         if (Date.now() - startedAt > DEADLINE) break;
-        try { const r = await respondToConversation(c.id); if (r.outcome === "sent" || r.outcome === "escalated") aiReplies++; }
-        catch (e) { console.error("[cron] aiReply", c.id, e); }
+        try {
+          await reflagReply(c.id);
+          const r = await respondToConversation(c.id);
+          if (r.outcome === "sent" || r.outcome === "escalated") aiReplies++;
+        } catch (e) { console.error("[cron] aiReply", c.id, e); }
       }
     }
 
