@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveWebchatChannel } from "@/lib/channels";
+import { saveWebchatChannel, type WebchatConfig } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  let body: { id?: string; name?: string; allowedOrigins?: string[] | string; agentId?: string | null; active?: boolean };
+  let body: { id?: string; name?: string; allowedOrigins?: string[] | string; agentId?: string | null; active?: boolean; widgetConfig?: WebchatConfig };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 });
   // Accept origins as an array or a comma/newline-separated string.
@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   try {
     const saved = await saveWebchatChannel({
       id: body.id, tenantId, name: body.name!, allowedOrigins: origins,
-      agentId: body.agentId ?? null, active: body.active,
+      agentId: body.agentId ?? null, active: body.active, widgetConfig: body.widgetConfig,
     });
     logActivity(await currentUser(), "channel.save", `web chat: ${saved.name}`);
     return NextResponse.json({ success: true, channel: saved });

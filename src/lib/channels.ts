@@ -18,6 +18,14 @@ export interface ChannelCreds {
 
 export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat";
 
+// Web-chat widget look & feel (kind="webchat"), injected into the embed loader.
+export interface WebchatConfig {
+  color?: string;                 // brand hex — bubble + header + visitor msgs
+  title?: string;                 // header text, e.g. "Chat with us"
+  welcome?: string;               // greeting shown when the panel first opens
+  position?: "right" | "left";    // launcher corner (default right)
+}
+
 export interface Channel extends ChannelCreds {
   id: string;
   tenantId: string;
@@ -37,6 +45,7 @@ export interface Channel extends ChannelCreds {
   // Web-chat widget (kind="webchat"): public embed key + CORS origin allowlist.
   siteKey: string | null;
   allowedOrigins: string[];
+  widgetConfig: WebchatConfig;   // look & feel (color, title, welcome, position)
 }
 
 // The per-24h send allowance implied by a Meta messaging-limit tier. null tier
@@ -76,6 +85,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     messagingTier: (r.messaging_tier as string | null) ?? null,
     siteKey: (r.site_key as string | null) ?? null,
     allowedOrigins: (r.allowed_origins as string[] | null) ?? [],
+    widgetConfig: (r.widget_config as WebchatConfig | null) ?? {},
   };
 }
 
@@ -271,9 +281,23 @@ export async function saveMessengerChannel(input: {
 // Save a website web-chat channel. A public site_key is minted once on create
 // (used in the embed script + to route inbound). allowedOrigins is the CORS
 // allowlist (empty = allow any origin). No external creds / token.
+// Validate/clamp widget look-&-feel before storing. The color is later injected
+// into the loader's CSS, so it MUST be a strict hex (no CSS-injection escape).
+export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): WebchatConfig {
+  const out: WebchatConfig = {};
+  const color = (c?.color ?? "").trim();
+  if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(color)) out.color = color;
+  const title = (c?.title ?? "").trim();
+  if (title) out.title = title.slice(0, 40);
+  const welcome = (c?.welcome ?? "").trim();
+  if (welcome) out.welcome = welcome.slice(0, 300);
+  if (c?.position === "left") out.position = "left";
+  return out;
+}
+
 export async function saveWebchatChannel(input: {
   id?: string; tenantId?: string; name: string; allowedOrigins?: string[];
-  agentId?: string | null; active?: boolean;
+  agentId?: string | null; active?: boolean; widgetConfig?: WebchatConfig;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const origins = (input.allowedOrigins ?? []).map(o => o.trim().replace(/\/$/, "")).filter(Boolean);
@@ -285,6 +309,7 @@ export async function saveWebchatChannel(input: {
     agent_id: input.agentId || null,
     active: input.active ?? true,
   };
+  if (input.widgetConfig !== undefined) row.widget_config = sanitizeWidgetConfig(input.widgetConfig);
   // Mint a stable public key once, on create only.
   if (!input.id) row.site_key = `wc_${randomBytes(16).toString("hex")}`;
   const q = input.id

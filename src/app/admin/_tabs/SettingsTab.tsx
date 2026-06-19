@@ -718,11 +718,14 @@ export function MessengerCard() {
 }
 
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
-type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[] };
+type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left" };
+type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left" };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
-  const [form, setForm] = useState<{ id?: string; name: string; origins: string; active: boolean } | null>(null);
+  const [form, setForm] = useState<WcForm | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -742,7 +745,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -760,7 +763,7 @@ export function WebchatCard() {
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-brand-600" /> Website web chat</p>
           <p className="text-xs text-slate-500 mt-0.5">Add a live-chat bubble to your website with one line of code. Visitor chats land in the same Live Chat inbox and your AI replies instantly.</p>
         </div>
-        <button onClick={() => { setForm({ name: "", origins: "", active: true }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
+        <button onClick={() => { setForm({ ...BLANK_WC }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
       </div>
 
       {list.map(c => (
@@ -771,7 +774,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -792,6 +795,31 @@ export function WebchatCard() {
             <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Allowed website origins (one per line — blank = allow anywhere)</p>
             <textarea className={`${inp} w-full resize-none font-mono text-xs`} rows={3} placeholder={"https://www.yoursite.com\nhttps://shop.yoursite.com"} value={form.origins} onChange={e => setForm({ ...form, origins: e.target.value })} />
           </div>
+
+          {/* ── Appearance ── */}
+          <p className="text-[11px] font-bold text-slate-400 uppercase pt-1">Appearance</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5">
+              <span className="shrink-0">Brand colour</span>
+              <input type="color" className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0" value={/^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#0783fd"} onChange={e => setForm({ ...form, color: e.target.value })} />
+              <input className={`${inp} flex-1 font-mono text-xs`} maxLength={7} value={form.color} onChange={e => setForm({ ...form, color: e.target.value })} />
+            </label>
+            <select className={inp} value={form.position} onChange={e => setForm({ ...form, position: e.target.value as "right" | "left" })}>
+              <option value="right">Bottom-right</option>
+              <option value="left">Bottom-left</option>
+            </select>
+          </div>
+          <input className={`${inp} w-full`} maxLength={40} placeholder="Header title, e.g. Acme Support" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+          <textarea className={`${inp} w-full resize-none`} rows={2} maxLength={300} placeholder="Welcome greeting shown when the chat opens (optional)" value={form.welcome} onChange={e => setForm({ ...form, welcome: e.target.value })} />
+          {/* Live preview of the launcher bubble + header */}
+          <div className="flex items-center gap-3 bg-canvas border border-line rounded-control px-3 py-2.5">
+            <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white" style={{ background: /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd" }}><MessageSquare className="w-4 h-4" /></span>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-ink-900 truncate">{form.title || "Chat with us"}</p>
+              <p className="text-[11px] text-ink-400 truncate">{form.welcome || "No welcome message"} · {form.position === "left" ? "bottom-left" : "bottom-right"}</p>
+            </div>
+          </div>
+
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
             <div className="flex-1" />
