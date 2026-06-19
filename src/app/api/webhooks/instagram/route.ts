@@ -5,8 +5,8 @@ import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
-import { downloadRemoteAudio, transcribeAudio } from "@/lib/voice";
-import { uploadAudio } from "@/lib/supabase";
+import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
+import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
@@ -87,26 +87,32 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const senderId = String((ev.sender as Record<string, unknown>)?.id ?? "");
   const msg = ev.message as Record<string, unknown> | undefined;
   let text = (msg?.text as string) ?? "";
-  let mediaUrl: string | null = null;     // inbound voice note, re-hosted for Live Chat playback
+  let mediaUrl: string | null = null;     // inbound media (voice/image/video), re-hosted for Live Chat
   let mediaType: string | null = null;
-  // Inbound voice/audio DM → transcribe with the tenant's AI so it's answered
-  // like a typed message, and re-host the clip so the agent can replay it in
-  // Live Chat (Instagram delivers a short-lived attachment URL, not bytes).
+  // Inbound media DM → re-host so it shows in Live Chat. Voice notes are also
+  // transcribed (tenant AI) so they're answered like text; images/videos are
+  // stored for display only (an agent replies manually). IG delivers a short-lived
+  // attachment URL, not bytes.
   if (!text.trim() && senderId && !(msg?.is_echo as boolean)) {
     const atts = (msg?.attachments as { type?: string; payload?: { url?: string } }[]) ?? [];
-    const audioUrl = atts.find(a => a.type === "audio")?.payload?.url;
-    if (audioUrl) {
-      const audio = await downloadRemoteAudio(audioUrl);
-      if (audio) {
-        const t = await transcribeAudio(audio, channel.tenantId);
-        if (t) text = t;
-        mediaUrl = await uploadAudio(audio.data, audio.mimeType);
-        mediaType = mediaUrl ? audio.mimeType : null;
+    const att = atts.find(a => a.type === "audio" || a.type === "image" || a.type === "video");
+    const url = att?.payload?.url;
+    if (url && att) {
+      const media = await downloadRemoteMedia(url);
+      if (media) {
+        if (att.type === "audio") {
+          const t = await transcribeAudio(media, channel.tenantId);
+          if (t) text = t;
+          mediaUrl = await uploadAudio(media.data, media.mimeType);
+        } else {
+          mediaUrl = await uploadMedia(media.data, media.mimeType);
+        }
+        mediaType = mediaUrl ? media.mimeType : null;
       }
     }
   }
-  // Ignore echoes (our own outbound) and non-text events.
-  if (!senderId || !text.trim() || (msg?.is_echo as boolean)) return;
+  // Ignore echoes; drop only truly empty events (no text AND no media).
+  if (!senderId || (msg?.is_echo as boolean) || (!text.trim() && !mediaUrl)) return;
 
   // Idempotency: Meta redelivers IG messaging events on timeout/non-2xx.
   // Claim the message id (mid) so a redelivery can't double-fire AI replies,
@@ -128,7 +134,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
   if (conv.isComment) await setConversationComment(conv.id, false);   // a real DM → move to Chats
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, mediaUrl, mediaType });
-  await touchInbound(conv.id, text);   // opens / refreshes the 24-hour window
+  await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24-hour window
   // Capture a phone the lead shares (IG has no number of its own) so the chat can
   // be matched to a CRM lead by phone, now and on later messages.
   if (!conv.leadPhone) {
@@ -151,6 +157,9 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     }
   }
 
+  // A media-only DM (image/video with no caption) is stored + shown in Live Chat
+  // above; don't run the bot on empty text (an agent replies manually).
+  if (!text.trim()) return;
   if (!conv.botEnabled) return;
 
   // Chatbot flows (platform='instagram') run first; AI is the fallback.

@@ -59,3 +59,35 @@ export async function uploadAudio(data: Buffer, mimeType: string): Promise<strin
     return null;
   }
 }
+
+// Sensible file extension for any stored media (image/video/document/audio).
+// Cosmetic only — the browser plays/shows by Content-Type — but keeps URLs tidy.
+function mediaExt(type: string, sub: string): string {
+  const SPECIAL: Record<string, string> = {
+    jpeg: "jpg", "svg+xml": "svg", quicktime: "mov", "3gpp": "3gp", "x-msvideo": "avi",
+    "x-matroska": "mkv", opus: "ogg", "x-m4a": "m4a", msword: "doc", plain: "txt",
+    "vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx", "vnd.ms-excel": "xls",
+    mpeg: type === "audio" ? "mp3" : "mpeg",      // audio/mpeg → mp3, video/mpeg → mpeg
+    mp4: type === "audio" ? "m4a" : "mp4",        // audio/mp4 → m4a, video/mp4 → mp4
+  };
+  return SPECIAL[sub] || sub.split("+")[0] || "bin";
+}
+
+// Upload arbitrary inbound/outbound media (image, video, document, audio) and
+// return a public URL. Best-effort: returns null on any failure.
+export async function uploadMedia(data: Buffer, mimeType: string): Promise<string | null> {
+  try {
+    const mime = (mimeType || "").split(";")[0].trim().toLowerCase() || "application/octet-stream";
+    const [type, sub = "bin"] = mime.split("/");
+    const folder = type === "image" ? "img" : type === "video" ? "vid" : type === "audio" ? "voice" : "file";
+    await ensureBucket();
+    const supabase = db();
+    const filename = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${mediaExt(type, sub)}`;
+    const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: mime, upsert: false });
+    if (error) return null;
+    return supabase.storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;
+  } catch {
+    return null;
+  }
+}

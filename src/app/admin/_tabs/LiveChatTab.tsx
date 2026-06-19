@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -238,6 +238,8 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [actError, setActError] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
   const [contact, setContact] = useState<{ email: string | null; tags: string[]; attributes: Record<string, string> } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef(0);
 
@@ -296,6 +298,22 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     const ok = await act({ action: "reply", body: reply.trim(), ...(buttons.length ? { buttons } : {}) });
     if (ok) { setReply(""); setBtns(["", "", ""]); setShowButtons(false); }
   }
+  // Send a photo/video/file to the customer: upload to public storage, then send
+  // it via WhatsApp/IG. Any text in the box rides along as the caption (WhatsApp).
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";                       // allow re-picking the same file
+    if (!file) return;
+    const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "document";
+    setUploading(true); setActError("");
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const up = await fetch("/api/upload", { method: "POST", body: fd }).then(r => r.json()).catch(() => ({}));
+      if (!up.url) { setActError(up.error || "Upload failed"); return; }
+      const ok = await act({ action: "media", url: up.url, kind, mediaType: file.type, caption: reply.trim() || undefined });
+      if (ok) setReply("");
+    } finally { setUploading(false); }
+  }
   async function sendTemplate(p: { templateName: string; languageCode: string; bodyParams: string[]; preview: string }) {
     const ok = await act({ action: "template", ...p });
     if (ok) setShowTemplate(false);
@@ -341,17 +359,29 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             const body = isComment ? m.body.slice(10) : m.body;
             const submitted = body.startsWith("[form] ");
             const sentMatch = body.match(/^([\s\S]*?)\n\[form:\s*(.+?)\]\s*$/);
-            const isAudio = !!m.mediaUrl && (m.mediaType?.startsWith("audio/") ?? false);
-            const hasTranscript = isAudio && !!body.trim() && !/^\[.*\]$/.test(body.trim());
+            const mt = m.mediaType ?? "";
+            const isImage = !!m.mediaUrl && mt.startsWith("image/");
+            const isVideo = !!m.mediaUrl && mt.startsWith("video/");
+            const isAudio = !!m.mediaUrl && mt.startsWith("audio/");
+            const isFile = !!m.mediaUrl && !isImage && !isVideo && !isAudio;
+            const isMedia = isImage || isVideo || isAudio || isFile;
+            // Show the caption/transcript only when it's real text (not the
+            // "[image message]" placeholder kept for messages with no caption).
+            const hasCaption = isMedia && !!body.trim() && !/^\[.*\]$/.test(body.trim());
             return (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
                 <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? "bg-pink-50 border border-pink-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
                   {isComment && <p className="text-[10px] font-bold text-pink-600 mb-0.5 flex items-center gap-1"><Instagram className="w-3 h-3" /> {m.role === "user" ? "comment" : "comment reply"}</p>}
-                  {isAudio ? (
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-ink-400 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice note</p>
-                      <audio controls preload="none" src={m.mediaUrl!} className="h-10 w-[240px] max-w-full" />
-                      {hasTranscript && <p className="whitespace-pre-wrap break-words text-[13px] text-ink-500 italic">“{body}”</p>}
+                  {isMedia ? (
+                    <div className="space-y-1.5">
+                      {isImage && <a href={m.mediaUrl!} target="_blank" rel="noreferrer"><img src={m.mediaUrl!} alt="" className="rounded-lg max-h-72 max-w-full object-cover" /></a>}
+                      {isVideo && <video controls preload="metadata" src={m.mediaUrl!} className="rounded-lg max-h-72 max-w-full" />}
+                      {isAudio && <>
+                        <p className="text-[10px] font-bold text-ink-400 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice note</p>
+                        <audio controls preload="none" src={m.mediaUrl!} className="h-10 w-[240px] max-w-full" />
+                      </>}
+                      {isFile && <a href={m.mediaUrl!} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-brand-700 underline text-[13px] font-semibold"><FileText className="w-4 h-4" /> Download file</a>}
+                      {hasCaption && <p className={`whitespace-pre-wrap break-words text-[13px] ${isAudio ? "text-ink-500 italic" : ""}`}>{isAudio ? `“${body}”` : body}</p>}
                     </div>
                   ) : submitted ? (
                     <div>
@@ -431,6 +461,10 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             {conv?.platform !== "instagram" && (
               <button onClick={() => setShowTemplate(s => !s)} title="Send approved template (works outside the 24h window)" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTemplate ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}><LayoutTemplate className="w-4 h-4" /></button>
             )}
+            <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
+            <button onClick={() => fileRef.current?.click()} disabled={busy || uploading} title="Send a photo, video or file (text becomes the caption)" className="px-2.5 py-2 rounded-control border border-line text-ink-400 hover:bg-canvas text-sm font-bold disabled:opacity-60">
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Paperclip className="w-4 h-4" />}
+            </button>
             <button onClick={sendReply} disabled={busy || !reply.trim()} className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send</>}
             </button>

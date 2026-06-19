@@ -99,6 +99,24 @@ export async function sendIgMessage(
   return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } });
 }
 
+// Send a media attachment (image/video/audio) by public URL. Same 24h-window and
+// rate rules as a text message. IG has no caption field on attachments, so any
+// caption must be sent as a separate text message by the caller.
+export async function sendIgMedia(
+  creds: IgCreds,
+  recipientIgsid: string,
+  kind: "image" | "video" | "audio",
+  url: string,
+  opts: { lastInboundAt?: string | null } = {},
+): Promise<IgSendResult> {
+  if (!recipientIgsid || !url) return { ok: false, error: "recipient and media URL required" };
+  if (!within24hWindow(opts.lastInboundAt)) {
+    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  }
+  if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
+  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { attachment: { type: kind, payload: { url } } } });
+}
+
 // Quick replies — tappable chips under a message (IG supports up to 13, titles
 // ≤20 chars). Used by the flow engine so menu options are selectable, not just
 // numbered text the user has to type back.

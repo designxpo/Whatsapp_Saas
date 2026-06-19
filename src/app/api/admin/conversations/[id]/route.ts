@@ -5,8 +5,8 @@ import {
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
   setConversationAgent, markConversationRead, getContactByPhone, type ConvStatus,
 } from "@/lib/store";
-import { sendText, sendButtons, sendTemplateSingle } from "@/lib/whatsapp";
-import { sendIgMessage, sendIgQuickReplies } from "@/lib/instagram";
+import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
+import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { credsFor, getChannel } from "@/lib/channels";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await currentTenantId();
@@ -89,6 +89,43 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid });
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);
+      return NextResponse.json({ success: true, messageId });
+    }
+    if (body.action === "media") {
+      // Agent sends a photo / video / file to the customer. The clip was already
+      // uploaded to public storage (via /api/upload); we just relay the URL.
+      const url = (body.url ?? "").trim();
+      const kind = body.kind;
+      if (!url || (kind !== "image" && kind !== "video" && kind !== "document")) {
+        return NextResponse.json({ error: "url and a valid kind (image|video|document) are required" }, { status: 400 });
+      }
+      const caption = (body.caption ?? "").trim();
+      const mediaType = (body.mediaType ?? "").trim() || (kind === "image" ? "image/*" : kind === "video" ? "video/*" : "application/octet-stream");
+      const logged = caption || `[${kind}]`;
+
+      let messageId: string | undefined;
+      if (conv.platform === "instagram") {
+        const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
+        if (!ch?.igUserId || !ch?.token) return NextResponse.json({ error: "Instagram account not connected for this chat" }, { status: 502 });
+        if (kind === "document") return NextResponse.json({ error: "Instagram supports photos and videos only — paste the file link as a message instead." }, { status: 400 });
+        const creds = { igUserId: ch.igUserId, token: ch.token };
+        const sent = await sendIgMedia(creds, conv.phone, kind, url, { lastInboundAt: conv.lastInboundAt });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
+        messageId = sent.messageId;
+        if (caption) await sendIgMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt }).catch(() => undefined);
+      } else {
+        if (conv.lastInboundAt && Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000) {
+          return NextResponse.json({ error: "Outside WhatsApp's 24-hour window — the customer must message again before you can send media." }, { status: 409 });
+        }
+        const channel = await credsFor(conv.channelId, tid);
+        const sent = await sendMedia(conv.phone, kind, url, caption || undefined, channel);
+        if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
+        messageId = sent.id;
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
+      }
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, mediaUrl: url, mediaType });
+      await touchOutbound(id, caption || `[${kind} sent]`);
+      logActivity(await currentUser(), "inbox.media", `${kind} to ${conv.phone}`);
       return NextResponse.json({ success: true, messageId });
     }
     if (body.action === "template") {
