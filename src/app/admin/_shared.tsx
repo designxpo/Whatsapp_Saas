@@ -12,7 +12,7 @@ export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 // The set of dashboard tabs (sidebar keys). The shell owns the active-tab state
 // and passes `goTo` to tabs for cross-tab navigation.
-export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
+export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "webchat" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
 
 // ── Shared style tokens ──────────────────────────────────────────────────────
 export const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400";

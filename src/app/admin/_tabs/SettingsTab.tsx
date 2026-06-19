@@ -642,7 +642,7 @@ function LsqSettingsCard() {
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
 const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", active: true, isDefault: false };
 
-function MessengerCard() {
+export function MessengerCard() {
   const [pages, setPages] = useState<ChannelRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
   const [busy, setBusy] = useState(false);
@@ -720,7 +720,7 @@ function MessengerCard() {
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[] };
 
-function WebchatCard() {
+export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
   const [form, setForm] = useState<{ id?: string; name: string; origins: string; active: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -861,8 +861,6 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       <UsageCard />
       {isAdmin && <ChannelsManager />}
-      {isAdmin && <MessengerCard />}
-      {isAdmin && <WebchatCard />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 

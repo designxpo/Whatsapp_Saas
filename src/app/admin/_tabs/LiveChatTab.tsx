@@ -15,7 +15,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
-  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger">("all");
+  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger" | "webchat">("all");
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
 
@@ -30,7 +30,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   }, [load]);
 
   const q = search.trim().toLowerCase();
-  const onPlatform = (c: Conversation, p: "whatsapp" | "instagram" | "messenger") => (c.platform ?? "whatsapp") === p;
+  const onPlatform = (c: Conversation, p: "whatsapp" | "instagram" | "messenger" | "webchat") => (c.platform ?? "whatsapp") === p;
   // Split comment threads (IG comment → AI reply) from real DM chats.
   const chatsCount = convos.filter(c => !c.isComment).length;
   const commentsCount = convos.filter(c => !!c.isComment).length;
@@ -42,6 +42,7 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
   const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
   const igCount = inView.filter(c => onPlatform(c, "instagram")).length;
   const fbCount = inView.filter(c => onPlatform(c, "messenger")).length;
+  const wcCount = inView.filter(c => onPlatform(c, "webchat")).length;
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return "";
@@ -74,12 +75,21 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
           {/* Platform toggle — only for Chats; comments are Instagram-only. */}
           {view === "chats" && (
-          <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
-            {([["all", "All", inView.length], ["whatsapp", "WhatsApp", waCount], ["instagram", "Instagram", igCount], ["messenger", "Messenger", fbCount]] as const).map(([k, label, n]) => (
-              <button key={k} onClick={() => setPlatform(k)} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
+          <div className="flex flex-wrap gap-1 p-0.5 bg-canvas rounded-control">
+            {([
+              ["all", "All", inView.length],
+              ["whatsapp", "WhatsApp", waCount],
+              ["instagram", "Instagram", igCount],
+              // Facebook + Web chat appear once there are conversations on them, so
+              // the row stays tidy until those channels are in use.
+              ...(fbCount > 0 ? [["messenger", "Facebook", fbCount] as const] : []),
+              ...(wcCount > 0 ? [["webchat", "Web chat", wcCount] as const] : []),
+            ] as const).map(([k, label, n]) => (
+              <button key={k} onClick={() => setPlatform(k)} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
                 {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
                 {k === "messenger" && <MessagesSquare className="w-3 h-3 text-blue-600" />}
+                {k === "webchat" && <MessageSquare className="w-3 h-3 text-brand-600" />}
                 {label} <span className="opacity-60">{n}</span>
               </button>
             ))}
