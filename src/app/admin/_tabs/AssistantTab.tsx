@@ -4,7 +4,7 @@
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
-import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
+import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
 
 // AI Knowledge Base: answer-engine split, latency/savings, personas, inbox.
 type RouterStatsData = {
@@ -16,7 +16,7 @@ type RouterStatsData = {
   faqEntries?: number;
 };
 
-function KnowledgeRail({ goTo }: { goTo: (t: Tab) => void }) {
+function KnowledgeRail({ goTo }: { goTo: GoTo }) {
   const a = useAnalytics();
   const [rs, setRs] = useState<RouterStatsData | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string; active: boolean }[] | null>(null);
@@ -49,8 +49,8 @@ function KnowledgeRail({ goTo }: { goTo: (t: Tab) => void }) {
       </RailCard>
       <RailCard title="Conversations" action="Live Chat" onAction={() => goTo("livechat")}>
         {!a ? railLoading : <>
-          <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat")} />
-          <StatRow label="Escalated" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat")} />
+          <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat", { filter: "needs_reply" })} />
+          <StatRow label="Escalated" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat", { filter: "escalated" })} />
           <StatRow label="Total" value={a.conversations.total} />
         </>}
       </RailCard>

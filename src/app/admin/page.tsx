@@ -364,7 +364,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
 
 
 // Home: inbox pulse, 14-day delivery funnel, audience health, quick actions.
-function HomeRail({ goTo }: { goTo: (t: Tab) => void }) {
+function HomeRail({ goTo }: { goTo: GoTo }) {
   const a = useAnalytics();
   const t = a?.messaging.totals;
   const pct = (n: number) => t && t.sent ? Math.round((n / t.sent) * 100) : 0;
@@ -372,9 +372,9 @@ function HomeRail({ goTo }: { goTo: (t: Tab) => void }) {
     <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
       <RailCard title="Inbox pulse" action="Live Chat" onAction={() => goTo("livechat")}>
         {!a ? railLoading : <>
-          <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat")} />
-          <StatRow label="Escalated to humans" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat")} />
-          <StatRow label="Active conversations" value={a.conversations.active} />
+          <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat", { filter: "needs_reply" })} />
+          <StatRow label="Escalated to humans" value={a.conversations.escalated} tone={a.conversations.escalated > 0 ? "bad" : undefined} onClick={() => goTo("livechat", { filter: "escalated" })} />
+          <StatRow label="Active conversations" value={a.conversations.active} onClick={() => goTo("livechat", { filter: "all" })} />
         </>}
       </RailCard>
       <RailCard title="Delivery — last 14 days" action="Analytics" onAction={() => goTo("analytics")}>
