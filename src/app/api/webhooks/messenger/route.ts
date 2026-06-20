@@ -2,11 +2,12 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
-import { sendFbMessage, getFbProfile, sendTypingOn, type FbCreds } from "@/lib/messenger";
+import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
+import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const AI_REPLY_CAP = 6;   // safety cap before escalating a runaway thread to a human
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
       for (const ev of (entry.messaging as Record<string, unknown>[]) ?? []) {
         try { await handleMessage(channel, ev); }
         catch (e) { console.error("[fb webhook] message", e); }
+      }
+      // Page feed changes carry post comments (item:"comment") → comment-to-DM.
+      for (const change of (entry.changes as Record<string, unknown>[]) ?? []) {
+        if (change.field !== "feed") continue;
+        try { await handleComment(channel, change.value as Record<string, unknown>); }
+        catch (e) { console.error("[fb webhook] comment", e); }
       }
     }
   } catch (err) {
@@ -111,28 +118,84 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   await aiRespond(channel, conv, text);
 }
 
-// Grounded AI responder with a per-conversation cap. After AI_REPLY_CAP replies
-// (or when the model escalates) it sends a hand-off message and escalates the
-// conversation to Live Chat for a human.
-async function aiRespond(channel: Channel, conv: Conversation, userText: string) {
+// Grounded AI responder. A direct DM (no commentId) replies in the DM and is
+// uncapped. A comment-triggered reply (commentId set) posts PUBLICLY under the
+// comment and is capped — after AI_REPLY_CAP replies (or when the model
+// escalates) it sends a hand-off message and escalates to Live Chat for a human.
+async function aiRespond(channel: Channel, conv: Conversation, userText: string, commentId?: string) {
   const creds = credsOf(channel);
   const tid = channel.tenantId;
   const now = new Date().toISOString();
   const deliver = async (msg: string): Promise<boolean> => {
+    if (commentId) return (await replyToFbComment(creds, commentId, msg)).ok;
     const r = await sendFbMessage(creds, conv.phone, msg, { lastInboundAt: now });
     if (!r.ok) console.warn("[fb webhook] ai reply blocked:", r.blockedBy, r.error);
     return r.ok;
   };
   const closeOut = async () => { await deliver(CLOSING_MSG); await escalateConversation(conv.id); };
 
-  if (conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
-  await sendTypingOn(creds, conv.phone);
+  // The cap applies to comment-triggered AI only; direct DMs stay uncapped.
+  if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
+  if (!commentId) await sendTypingOn(creds, conv.phone);
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, channel.agentId, tid, null, false);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid, null, false);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
-  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
+  // Tag comment replies so Live Chat shows them as comment replies, not DMs.
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid });
   await touchOutbound(conv.id, r.reply);
+  if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
+}
+
+// Comment → ManyChat-style automation. Matches the comment against this tenant's
+// saved rules (per-post + keyword), then sends ONE private reply / DM (the
+// comment is the opt-in; Meta allows a single private reply per comment) with an
+// optional link button, plus an optional public reply. When no rule matches, the
+// AI answers the comment publicly (capped). Most comments match nothing → no DM.
+async function handleComment(channel: Channel, value: Record<string, unknown>) {
+  // Page feed events also cover posts, reactions and shares — only NEW comments.
+  if (String(value.item ?? "") !== "comment" || String(value.verb ?? "") !== "add") return;
+  const tid = channel.tenantId;
+  const commentId = String(value.comment_id ?? "");
+  const text = String(value.message ?? "");
+  const from = (value.from as Record<string, unknown>) ?? {};
+  const fromId = String(from.id ?? "");
+  const fromName = String(from.name ?? "");
+  // Webhook post_id is the {pageId}_{postId} form — matches fetchFbPosts ids.
+  const postId = String(value.post_id ?? "") || null;
+  if (!commentId || !text) return;
+  if (fromId && channel.pageId && fromId === channel.pageId) return;   // never reply to ourselves
+
+  const rule = await matchCommentRule(text, postId, tid, channel.id);
+
+  // No fixed rule matched → let the AI answer the comment publicly, capped and
+  // escalating to a human after AI_REPLY_CAP replies.
+  if (!rule) {
+    if (!(await claimComment(commentId, null, tid))) return;
+    const conv = await getOrCreateConversation(fromId, fromName, channel.id, "messenger", tid);
+    // This thread came from a COMMENT → keep it in the Comments section.
+    await setConversationComment(conv.id, true);
+    if (!conv.botEnabled) return;   // a human is handling this thread
+    // Marker so Live Chat shows this came from a COMMENT, not a DM.
+    await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid });
+    await aiRespond(channel, conv, text, commentId);
+    return;
+  }
+
+  // Idempotency: claim the comment so a webhook redelivery can't double-DM.
+  if (!(await claimComment(commentId, rule.id, tid))) return;
+
+  const creds = credsOf(channel);
+  const buttons: FbButton[] = rule.buttonUrl
+    ? [{ type: "web_url", url: rule.buttonUrl, title: (rule.buttonLabel || "Open link").slice(0, 20) }]
+    : [];
+  const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons);
+  if (!sent.ok) { console.warn("[fb webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+
+  await bumpRuleMatch(rule.id, rule.matchCount, tid);
+  if (rule.publicReply) {
+    await replyToFbComment(creds, commentId, rule.publicReply).catch(e => console.error("[fb webhook] public reply", e));
+  }
 }

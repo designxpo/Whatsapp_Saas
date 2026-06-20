@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, Copy, Check, UploadCloud } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
 
@@ -642,17 +642,44 @@ function LsqSettingsCard() {
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
 const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", active: true, isDefault: false };
 
+// Comment-to-DM rules (ManyChat-style: multiple rules, per-post targeting). No
+// follow-gate — Facebook Pages have no is_user_follow_business comment flow.
+type FbCommentRule = {
+  id?: string; channelId: string | null; name: string; enabled: boolean;
+  postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
+  keyword: string; dmMessage: string; buttonLabel: string; buttonUrl: string; publicReply: string; matchCount?: number;
+};
+type FbPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
+const BLANK_FB_RULE: FbCommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttonLabel: "", buttonUrl: "", publicReply: "" };
+
 export function MessengerCard() {
   const [pages, setPages] = useState<ChannelRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Comment-to-DM rules
+  const [rules, setRules] = useState<FbCommentRule[]>([]);
+  const [posts, setPosts] = useState<FbPost[]>([]);
+  const [ruleForm, setRuleForm] = useState<FbCommentRule | null>(null);
+  const [pickAccount, setPickAccount] = useState(false);
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const loadRules = useCallback(() => { fetch("/api/admin/fb-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
     const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
     setPages((d.channels ?? []).filter((c: ChannelRow) => c.kind === "messenger"));
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadRules(); }, [loadRules]);
+  // Load the post grid for the Page the rule editor is targeting (only when the
+  // editor opens or the Page changes — so it won't refetch on every keystroke).
+  const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
+  useEffect(() => {
+    if (editorChannel === null) return;
+    const qs = editorChannel ? `?channelId=${encodeURIComponent(editorChannel)}` : "";
+    setPosts([]);
+    fetch(`/api/admin/fb-posts${qs}`).then(r => r.json()).then(d => setPosts(d.media ?? [])).catch(() => {});
+  }, [editorChannel]);
 
   async function save() {
     if (!form) return;
@@ -670,6 +697,27 @@ export function MessengerCard() {
     if (!confirm("Remove this Facebook Page? Its conversations stay but it will stop replying.")) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
+  }
+
+  async function saveRule() {
+    if (!ruleForm) return;
+    if (!ruleForm.dmMessage.trim()) { setMsg("DM message is required"); return; }
+    setRuleBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ruleForm) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed");
+      else { setRuleForm(null); loadRules(); }
+    } finally { setRuleBusy(false); }
+  }
+  async function toggleRule(r: FbCommentRule) {
+    await fetch("/api/admin/fb-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...r, enabled: !r.enabled }) }).catch(() => {});
+    loadRules();
+  }
+  async function delRule(id?: string) {
+    if (!id || !confirm("Delete this comment rule?")) return;
+    await fetch("/api/admin/fb-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+    loadRules();
   }
 
   return (
@@ -713,6 +761,101 @@ export function MessengerCard() {
         </div>
       )}
       {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet. Subscribe your Page to the <code className="font-mono">messenger</code> webhook at <code className="font-mono">/api/webhooks/messenger</code>.</p>}
+
+      {/* Comment-to-DM automation (ManyChat-style: multiple rules + per-post targeting) */}
+      <div className="border-t border-line pt-3 mt-1 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
+          <button onClick={() => { setMsg(null); if (pages.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_FB_RULE, channelId: pages[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
+        </div>
+        <p className="text-[11px] text-ink-400">When someone comments on a post, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by a keyword, and attach a link button — like ManyChat.</p>
+
+        {rules.map(r => {
+          const post = posts.find(p => p.id === r.postId);
+          const thumb = r.postThumbnail || post?.thumbnail;
+          return (
+            <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+              {thumb
+                ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                : <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{pages.length > 1 && r.channelId && <span className="text-[10px] font-bold text-blue-600"> · {pages.find(c => c.id === r.channelId)?.name ?? "Page"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{r.buttonUrl ? " · 🔗 button" : ""} · {r.matchCount ?? 0} sent</p>
+              </div>
+              <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-blue-600" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttonLabel: r.buttonLabel ?? "", buttonUrl: r.buttonUrl ?? "", publicReply: r.publicReply ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+              <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          );
+        })}
+        {!rules.length && !ruleForm && !pickAccount && <p className="text-xs text-ink-400">No comment rules yet — create one to turn post comments into DMs.</p>}
+
+        {/* Step 1: pick the Page so posts are never mixed across Pages. */}
+        {pickAccount && (
+          <div className="border-2 border-blue-500/30 rounded-control p-3 space-y-2">
+            <p className="text-xs font-bold text-ink-700">Which Facebook Page is this rule for?</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {pages.map(c => (
+                <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_FB_RULE, channelId: c.id }); setPickAccount(false); }}
+                  className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
+                  <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[10px] text-ink-400 font-mono truncate">{c.pageId}</p></div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPickAccount(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+        )}
+
+        {ruleForm && (
+          <div className="border-2 border-blue-500/30 rounded-control p-3 space-y-2">
+            {pages.length > 1 && (
+              <div className="flex items-center gap-2 text-xs">
+                <span className="px-2 py-1 rounded-control bg-blue-50 text-blue-600 font-bold flex items-center gap-1"><Facebook className="w-3.5 h-3.5" /> {pages.find(c => c.id === ruleForm.channelId)?.name ?? "Page"}</span>
+                <button type="button" onClick={() => { setRuleForm(null); setPickAccount(true); }} className="text-ink-400 hover:text-ink-900 font-semibold">Change Page</button>
+              </div>
+            )}
+            <input className={`${inp} w-full`} placeholder="Rule name (internal)" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
+            <div>
+              <p className="text-[11px] font-bold text-ink-500 mb-1.5">Target post {pages.length > 1 && ruleForm.channelId && <span className="text-ink-400 font-normal">· {pages.find(c => c.id === ruleForm.channelId)?.name}</span>}</p>
+              <div className="grid grid-cols-5 sm:grid-cols-6 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+                <button type="button" onClick={() => setRuleForm({ ...ruleForm, postId: null, postCaption: null, postPermalink: null, postThumbnail: null })}
+                  className={`aspect-square rounded-lg flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold border transition-colors ${!ruleForm.postId ? "ring-2 ring-blue-500 border-blue-500 text-blue-600 bg-blue-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
+                  <Facebook className="w-4 h-4" /> All
+                </button>
+                {posts.map(p => {
+                  const sel = ruleForm.postId === p.id;
+                  return (
+                    <button type="button" key={p.id} title={p.caption || "(no caption)"} onClick={() => setRuleForm({ ...ruleForm, postId: p.id, postCaption: p.caption, postPermalink: p.permalink, postThumbnail: p.thumbnail })}
+                      className={`relative aspect-square rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-blue-500 border-blue-500" : "border-line hover:opacity-90"}`}>
+                      {p.thumbnail
+                        ? <img src={p.thumbnail} alt="" className="w-full h-full object-cover" />
+                        : <div className="w-full h-full bg-canvas flex items-center justify-center text-ink-300"><Facebook className="w-4 h-4" /></div>}
+                      {sel && <span className="absolute inset-0 bg-blue-500/15 flex items-center justify-center"><Check className="w-5 h-5 text-white drop-shadow" /></span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {!posts.length && <p className="text-[11px] text-amber-600 mt-1.5">No posts loaded — the Page token needs <code className="font-mono">pages_read_engagement</code>. You can still create an &ldquo;All&rdquo; rule.</p>}
+            </div>
+            <input className={`${inp} w-full`} placeholder="Trigger keyword (optional — blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
+            <textarea className={`${inp} w-full`} rows={2} placeholder="DM message, e.g. Thanks for commenting! Here's your guide 📄" value={ruleForm.dmMessage} onChange={e => setRuleForm({ ...ruleForm, dmMessage: e.target.value })} />
+            <div className="grid grid-cols-2 gap-2">
+              <input className={inp} placeholder="Button label (optional, e.g. Download)" maxLength={20} value={ruleForm.buttonLabel} onChange={e => setRuleForm({ ...ruleForm, buttonLabel: e.target.value })} />
+              <input className={inp} placeholder="Button link https://… (optional)" value={ruleForm.buttonUrl} onChange={e => setRuleForm({ ...ruleForm, buttonUrl: e.target.value.trim() })} />
+            </div>
+            <input className={`${inp} w-full`} placeholder="Public reply under the comment (optional, e.g. Sent you a DM! 📩)" value={ruleForm.publicReply} onChange={e => setRuleForm({ ...ruleForm, publicReply: e.target.value })} />
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-blue-600" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} /> enabled</label>
+              <div className="flex-1" />
+              <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
+              <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+            </div>
+            {msg && <p className="text-xs text-red-500">{msg}</p>}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

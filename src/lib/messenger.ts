@@ -135,6 +135,104 @@ export async function sendFbQuickReplies(
   return postMessage(creds, { recipient: { id: recipientPsid }, message: { text: text.slice(0, 2000), quick_replies } });
 }
 
+// Buttons usable in Messenger message / private-reply templates.
+export type FbButton =
+  | { type: "web_url"; url: string; title: string }
+  | { type: "postback"; payload: string; title: string };
+
+function buttonTemplate(text: string, buttons: FbButton[]) {
+  return { attachment: { type: "template", payload: { template_type: "button", text: text.slice(0, 640), buttons: buttons.slice(0, 3) } } };
+}
+// Plain-text fallback when a button template is rejected — keeps any links usable.
+function buttonsAsText(text: string, buttons: FbButton[]): string {
+  const links = buttons.filter((b): b is Extract<FbButton, { type: "web_url" }> => b.type === "web_url").map(b => `${b.title}: ${b.url}`);
+  return [text, ...links].join("\n").slice(0, 2000);
+}
+
+// ── Comment-to-DM: one-time private reply to a Page comment ────────────────────
+// Meta allows ONE private reply per comment (the comment is the opt-in), sendable
+// for up to 7 days — so no 24h-window check here. Optional buttons (link/postback)
+// with a plain-text fallback if the button template is rejected.
+export async function sendFbPrivateReply(
+  creds: FbCreds,
+  commentId: string,
+  text: string,
+  buttons?: FbButton[] | null,
+): Promise<FbSendResult> {
+  if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
+  if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
+  const body = text.slice(0, 640);
+  if (buttons && buttons.length) {
+    const r = await postMessage(creds, { recipient: { comment_id: commentId }, message: buttonTemplate(body, buttons) });
+    if (r.ok) return r;
+    return postMessage(creds, { recipient: { comment_id: commentId }, message: { text: buttonsAsText(body, buttons) } });
+  }
+  return postMessage(creds, { recipient: { comment_id: commentId }, message: { text: body } });
+}
+
+// Standard DM with buttons (used after the comment, e.g. an unlocked reward).
+// Requires an open 24h window — the user's tap/message opens it.
+export async function sendFbButtons(
+  creds: FbCreds,
+  recipientPsid: string,
+  text: string,
+  buttons: FbButton[],
+  opts: { lastInboundAt?: string | null } = {},
+): Promise<FbSendResult> {
+  if (!recipientPsid || !text.trim()) return { ok: false, error: "recipient and text required" };
+  if (!within24hWindow(opts.lastInboundAt)) {
+    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  }
+  if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
+  const r = await postMessage(creds, { recipient: { id: recipientPsid }, message: buttonTemplate(text, buttons) });
+  if (r.ok) return r;
+  return postMessage(creds, { recipient: { id: recipientPsid }, message: { text: buttonsAsText(text, buttons) } });
+}
+
+// ── Public reply under a Page comment (optional) ──────────────────────────────
+export async function replyToFbComment(creds: FbCreds, commentId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}/comments`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text.slice(0, 2000) }),
+    });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j.error?.message || `Comment reply failed (${r.status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Comment reply error" };
+  }
+}
+
+export interface FbMedia { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string }
+
+// List the Page's recent posts so the UI can offer a post picker for
+// comment-automation rules. Best-effort; returns [] on any error. The post id is
+// the {pageId}_{postId} form, which matches the webhook's post_id for targeting.
+export async function fetchFbPosts(creds: FbCreds, limit = 25): Promise<FbMedia[]> {
+  if (!creds.pageId) return [];
+  try {
+    const fields = "id,message,full_picture,permalink_url,created_time,status_type";
+    const r = await fetch(`${GRAPH}/${creds.pageId}/posts?fields=${fields}&limit=${limit}`, {
+      headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store",
+    });
+    const j = await r.json();
+    if (!r.ok || !Array.isArray(j.data)) return [];
+    return (j.data as Record<string, unknown>[]).map(m => ({
+      id: String(m.id),
+      caption: (m.message as string) ?? "",
+      permalink: (m.permalink_url as string) ?? "",
+      thumbnail: (m.full_picture as string) ?? "",
+      mediaType: (m.status_type as string) ?? "",
+      timestamp: (m.created_time as string) ?? "",
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export interface FbProfile { name?: string; profilePic?: string }
 
 // Resolve a user's profile from their PSID (webhooks only carry the id). Works
