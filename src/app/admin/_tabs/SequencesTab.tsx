@@ -141,12 +141,22 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState<"" | "test" | "run" | "refresh">("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [contacts, setContacts] = useState<{ phone: string; name: string; withinWindow: boolean }[]>([]);
   const loadEnr = useCallback(() => { fetch("/api/admin/sequences/enrollments").then(r => r.json()).then(d => setEnr(d.enrollments ?? [])).catch(() => {}); }, []);
   useEffect(() => { loadEnr(); }, [loadEnr]);
 
+  // The picked sequence drives the platform — and the test sends on THAT platform
+  // (a WhatsApp sequence can't reach Instagram). Load valid contacts for it.
+  const selSeq = seqs.find(s => s.id === seqId) || null;
+  const platform = selSeq?.platform ?? "whatsapp";
+  useEffect(() => {
+    if (!seqId) { setContacts([]); return; }
+    fetch(`/api/admin/sequences/test-contacts?platform=${platform}`).then(r => r.json()).then(d => setContacts(d.contacts ?? [])).catch(() => setContacts([]));
+  }, [seqId, platform]);
+
   async function testEnroll() {
     if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to test." }); return; }
-    if (!phone.trim()) { setMsg({ ok: false, text: "Enter a number / IG id to test with." }); return; }
+    if (!phone.trim()) { setMsg({ ok: false, text: platform === "instagram" ? "Pick an Instagram contact (you can't message a handle)." : "Enter a WhatsApp number to test with." }); return; }
     setBusy("test"); setMsg(null);
     try {
       const res = await fetch("/api/admin/sequences/test-enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sequenceId: seqId, phone }) });
@@ -174,17 +184,24 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         <p className="text-[11px] text-ink-400">Enroll your own number to test a drip, force due steps to send now (instead of waiting for the scheduler), and watch every enrollment below.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => setSeqId(e.target.value)}>
+        <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => { setSeqId(e.target.value); setPhone(""); setMsg(null); }}>
           <option value="">Test sequence…</option>
           {seqs.map(s => <option key={s.id} value={s.id}>{s.name}{!s.active ? " (off)" : ""}</option>)}
         </select>
-        <input className={`${inp} w-44`} placeholder="Your number / IG id" value={phone} onChange={e => setPhone(e.target.value)} />
-        <button onClick={testEnroll} disabled={busy !== ""} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Enroll &amp; send</button>
+        {selSeq && <span className={`px-2 py-1.5 rounded-control text-[11px] font-bold shrink-0 ${platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>sends on {platform === "instagram" ? "Instagram" : "WhatsApp"}</span>}
+        {seqId && (
+          <select className={`${inp} w-48`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
+            <option value="">{contacts.length ? "Pick a contact who messaged you…" : "No contacts on this platform yet"}</option>
+            {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " ✅" : ""}</option>)}
+          </select>
+        )}
+        <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
+        <button onClick={testEnroll} disabled={busy !== "" || !seqId} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Enroll &amp; send</button>
         <button onClick={runNow} disabled={busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
         <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">A <b>text</b> first step only delivers if that number messaged you in the last 24h (WhatsApp/Instagram rule). For a cold test, make the first step an approved <b>template</b>, or message the business from your phone first.</p>
+      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
       {/* Enrollment monitor */}
       <div className="border border-line rounded-control overflow-hidden">

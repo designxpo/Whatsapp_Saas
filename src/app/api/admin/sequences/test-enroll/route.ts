@@ -27,7 +27,20 @@ export async function POST(req: Request) {
     const steps = await getSequenceSteps(sequenceId);
     if (!steps.length) return NextResponse.json({ error: "Add at least one step before testing" }, { status: 400 });
 
-    const phone = seq.platform === "instagram" ? rawPhone : rawPhone.replace(/\D/g, "");
+    // Validate the recipient for the sequence's platform so we never enrol an
+    // empty / unreachable target (an IG @handle is NOT a valid messaging id).
+    let phone: string;
+    if (seq.platform === "instagram") {
+      phone = rawPhone.replace(/^@/, "").trim();
+      if (!/^\d{3,}$/.test(phone)) {
+        return NextResponse.json({ error: "Instagram needs the contact's IGSID (a numeric id), not a username. Pick an Instagram contact from the list — it only has people who've DMed your IG." }, { status: 400 });
+      }
+    } else {
+      phone = rawPhone.replace(/\D/g, "");
+      if (phone.length < 8) {
+        return NextResponse.json({ error: "Enter a valid WhatsApp number in digits, with country code (e.g. 9198…)." }, { status: 400 });
+      }
+    }
     await enroll(sequenceId, { phone, platform: seq.platform }, tid);
     const processed = await drainSequences(50, tid);
 
