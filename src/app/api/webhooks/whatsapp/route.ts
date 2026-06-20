@@ -11,7 +11,7 @@ import {
   setContactAttributes, addContactTag, markOptedIn,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
-import { enroll, matchKeywordSequence } from "@/lib/sequences";
+import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/voice";
@@ -239,11 +239,14 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // After the 200 ack: welcome → away notice → AI reply, in that order so the
   // greeting lands before the answer. claimReply/claimWelcome guard double-sends.
   after(async () => {
+    // If a drip is already driving this contact, stay quiet — no welcome, no AI —
+    // so the sequence owns the thread (until it completes) and nothing collides.
+    const inSequence = await hasActiveEnrollment(from, tid).catch(() => false);
     try {
       const [welcome, away] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid)]);
 
       // First-ever message from this contact → one-time greeting.
-      if (welcome.enabled && !conv.welcomed && await claimWelcome(conv.id)) {
+      if (welcome.enabled && !conv.welcomed && !inSequence && await claimWelcome(conv.id)) {
         const sent = await sendText(from, welcome.text, channel);
         if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: welcome.text, metaId: sent.id, source: "bot" });
       }
@@ -284,7 +287,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       } catch (e) { console.error("[webhook] keyword sequence", conv.id, e); }
     }
 
-    if (!flowHandled && !sequenceTriggered && process.env.LLM_BOT_ENABLED !== "false") {
+    if (!flowHandled && !sequenceTriggered && !inSequence && process.env.LLM_BOT_ENABLED !== "false") {
       await sendTypingIndicator(id, channel);   // "typing…" while the AI composes
       try { await respondToConversation(conv.id, { inboundWasVoice: voiceInbound }); }
       catch (e) { console.error("[webhook] respond", conv.id, e); }

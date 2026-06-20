@@ -135,6 +135,15 @@ export async function stopEnrollment(sequenceId: string, phone: string): Promise
     .eq("sequence_id", sequenceId).eq("phone", phone);
 }
 
+// Is this contact currently being driven by a drip (tenant-scoped)? Used to
+// suppress the welcome + AI auto-reply while a sequence owns the conversation, so
+// they don't collide (the drip drives until it completes/stops, then AI resumes).
+export async function hasActiveEnrollment(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  if (!phone) return false;
+  const { data } = await db().from("wa_sequence_enrollments").select("id").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "active").limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
 // Recent enrollments (joined with the sequence name) for the admin monitor —
 // who's in a drip, which step, when it next runs, any send error. Tenant-scoped.
 export interface EnrollmentRow {
