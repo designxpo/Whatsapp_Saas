@@ -3,7 +3,7 @@
 import {
   Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
   Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
-  Rocket, TrendingUp, type LucideIcon,
+  Rocket, TrendingUp, MessagesSquare, Globe, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES } from "./ui";
 import { Marquee } from "./marquee";
@@ -16,6 +16,7 @@ import {
 const ICONS: Record<string, LucideIcon> = {
   bot: Bot, megaphone: Megaphone, workflow: Workflow, repeat: Repeat,
   shopping: ShoppingBag, instagram: Instagram, inbox: Inbox, shield: ShieldCheck,
+  messenger: MessagesSquare, webchat: Globe,
 };
 
 function FeatureIcon({ name }: { name: string }) {
@@ -112,8 +113,8 @@ function WhyVisual() {
           <span className="text-xs font-bold text-slate-900">Chat with Talko AI</span>
         </div>
         <div className="space-y-2 pt-3">
-          <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-1.5 text-xs text-slate-700">Is the Pro plan available?</div>
-          <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#0783fd] px-3 py-1.5 text-xs text-white">Yes! Pro is ₹4,999/mo with WhatsApp + Instagram and AI replies. Want a free trial?</div>
+          <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-1.5 text-xs text-slate-700">Which channels do you support?</div>
+          <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#0783fd] px-3 py-1.5 text-xs text-white">WhatsApp, Instagram, Messenger & a website web-chat widget — all in one inbox. Growth is ₹4,999/mo. Want a free trial?</div>
         </div>
       </div>
     </div>

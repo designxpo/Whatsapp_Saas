@@ -3,7 +3,7 @@
 
 export const SITE = {
   name: "Talko AI",
-  tagline: "AI conversations for WhatsApp & Instagram",
+  tagline: "AI conversations for WhatsApp, Instagram, Messenger & web chat",
   domainCta: { trial: "/signup", login: "/login" },
 };
 
@@ -15,10 +15,10 @@ export const NAV: { label: string; href: string }[] = [
 ];
 
 export const HERO = {
-  eyebrow: "WhatsApp + Instagram, on autopilot",
+  eyebrow: "WhatsApp · Instagram · Messenger · Web chat",
   title: "Turn every chat into a customer",
   subtitle:
-    "AI that replies, qualifies and sells on WhatsApp & Instagram — one inbox, on autopilot.",
+    "AI that replies, qualifies and sells across WhatsApp, Instagram, Facebook Messenger and your website — one inbox, on autopilot.",
   primary: { label: "Start free 14-day trial", href: "/signup" },
   secondary: { label: "See pricing", href: "/pricing" },
   note: "No credit card · Bring your own AI key · Cancel anytime",
@@ -41,13 +41,15 @@ export const FEATURES: Feature[] = [
   { icon: "repeat", title: "Drip sequences", body: "Automated follow-ups triggered by any event — set once, runs forever." },
   { icon: "shopping", title: "Catalog & checkout", body: "Show products, build carts and recover them — right in chat." },
   { icon: "instagram", title: "Instagram, done right", body: "Auto-reply to DMs and comments — fully within Meta's rules." },
-  { icon: "inbox", title: "One unified inbox", body: "Every conversation in one live inbox, with team assignment and labels." },
+  { icon: "messenger", title: "Facebook Messenger", body: "Auto-reply to Page DMs and turn comments into private replies — same AI, same inbox." },
+  { icon: "webchat", title: "Website web chat", body: "Drop a live-chat bubble on your site with one line of code — visitors chat with your AI instantly." },
+  { icon: "inbox", title: "One unified inbox", body: "WhatsApp, Instagram, Messenger and web chat — every conversation in one live inbox, with team assignment and labels." },
   { icon: "shield", title: "Multi-tenant & secure", body: "Per-business isolation, encrypted vaults and audit trails by design." },
 ];
 
 export type Step = { n: string; title: string; body: string };
 export const STEPS: Step[] = [
-  { n: "01", title: "Connect your channels", body: "Link a WhatsApp number and an Instagram account in a couple of clicks. Each gets its own AI persona and flows." },
+  { n: "01", title: "Connect your channels", body: "Link WhatsApp, Instagram and Facebook Messenger — or drop a web-chat widget on your site — in a couple of clicks. Each gets its own AI persona and flows." },
   { n: "02", title: "Teach your AI", body: "Upload docs, FAQs and product info. Add your own AI key and Talko AI grounds every reply on your business." },
   { n: "03", title: "Automate & broadcast", body: "Turn on auto-replies, launch broadcasts, build flows and sequences — then watch conversations convert." },
 ];
@@ -59,17 +61,17 @@ export type Tier = {
 export const TIERS: Tier[] = [
   {
     name: "Starter", priceMonthly: 1999, tagline: "For solo founders getting started",
-    features: ["1 WhatsApp number", "1,000 conversations / mo", "AI auto-replies (your key)", "Broadcasts & templates", "Unified inbox", "2 team seats"],
+    features: ["1 WhatsApp number", "Website web-chat widget", "1,000 conversations / mo", "AI auto-replies (your key)", "Broadcasts & templates", "Unified inbox", "2 team seats"],
     cta: "Start free trial", href: "/signup",
   },
   {
     name: "Growth", priceMonthly: 4999, tagline: "For growing teams that automate", highlighted: true,
-    features: ["3 channels (WhatsApp + Instagram)", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
+    features: ["WhatsApp, Instagram, Messenger & web chat", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
     cta: "Start free trial", href: "/signup",
   },
   {
     name: "Scale", priceMonthly: null, customLabel: "Custom", tagline: "For high-volume & multi-brand",
-    features: ["Unlimited channels", "Custom message volume", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
+    features: ["Every channel, unlimited numbers", "Custom message volume", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
     cta: "Talk to sales", href: "/signup",
   },
 ];
@@ -77,7 +79,7 @@ export const TIERS: Tier[] = [
 // ── "How your chatbot flow works" — node graph ───────────────────────────────
 export type FlowBranch = { title: string; body: string; tone: "sky" | "lavender" | "peach"; icon: string };
 export const CHAT_FLOW = {
-  trigger: { title: "Customer message", body: "Arrives on WhatsApp or Instagram", icon: "message" },
+  trigger: { title: "Customer message", body: "Arrives on WhatsApp, Instagram, Messenger or web chat", icon: "message" },
   brain: { title: "AI Assistant", body: "Understands intent & routes instantly", icon: "bot" },
   branches: [
     { tone: "sky", icon: "book", title: "Answer from knowledge base", body: "Grounded, on-brand reply in seconds — no human needed." },
@@ -104,11 +106,11 @@ export const TESTIMONIALS: Testimonial[] = [
 
 export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
-  { q: "Do I need my own WhatsApp Business account?", a: "Yes — Talko AI connects your own WhatsApp number and Instagram account through Meta's official APIs, so your brand and number stay yours. We guide you through connecting in minutes." },
+  { q: "Do I need my own WhatsApp Business account?", a: "For WhatsApp, Instagram and Messenger, yes — Talko AI connects your own number, Instagram account and Facebook Page through Meta's official APIs, so your brand stays yours. The website web-chat widget needs no Meta account at all — just paste one line of code on your site." },
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
   { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
-  { q: "Can I use it for both WhatsApp and Instagram?", a: "Yes. Both run through the same unified inbox, AI engine, flows and sequences — Instagram is a channel, not a separate product." },
+  { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere." },
   { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
 ];
 
@@ -159,7 +161,7 @@ export const POSTS: Post[] = [
 // actual product capability, not a static mock.
 export type CanvasNode = { id: string; icon: string; title: string; sub?: string; accent?: boolean };
 export const AGENT_CANVAS = {
-  trigger: { id: "trigger", icon: "zap", title: "Customer messages", sub: "WhatsApp or Instagram" },
+  trigger: { id: "trigger", icon: "zap", title: "Customer messages", sub: "WhatsApp · IG · Messenger · web" },
   agent: { id: "agent", icon: "bot", title: "AI Agent", sub: "Understands & decides", accent: true },
   // Sub-nodes that hang beneath the agent (the n8n "model / memory / tool" row).
   attachments: [
@@ -200,7 +202,7 @@ export const USE_CASES: UseCase[] = [
     tab: "Capture & qualify leads",
     problem: "Leads message after hours and go cold before sales replies",
     outcome: "Every lead captured, qualified and routed in seconds — 24/7, no rep online.",
-    trigger: { icon: "zap", title: "New enquiry", sub: "WhatsApp · IG · ad click" },
+    trigger: { icon: "zap", title: "New enquiry", sub: "WhatsApp · IG · Messenger · web" },
     brain: { icon: "bot", title: "AI qualifies", sub: "Intent, budget, timeline" },
     context: [
       { icon: "book", title: "Knowledge base", sub: "Answers on the spot" },
@@ -281,7 +283,7 @@ export const USE_CASES: UseCase[] = [
 export type ProblemSolution = { problem: string; solution: string; icon: string };
 export const PROBLEMS: ProblemSolution[] = [
   { icon: "clock", problem: "Leads message after hours and go cold before anyone replies.", solution: "AI replies in seconds, 24/7, in your brand voice — and books or escalates the ones that matter." },
-  { icon: "inbox", problem: "Conversations are scattered across WhatsApp, Instagram DMs and personal phones.", solution: "One unified inbox with team assignment, labels and quick replies across every channel." },
+  { icon: "inbox", problem: "Conversations are scattered across WhatsApp, Instagram, Messenger and your website.", solution: "One unified inbox with team assignment, labels and quick replies across every channel." },
   { icon: "megaphone", problem: "Broadcasts get the number flagged or banned by Meta.", solution: "Opt-in respected, 24h-window enforced, quality auto-pause and per-tier pacing baked in." },
   { icon: "shopping", problem: "Carts get abandoned and there's no way to follow up in chat.", solution: "Catalog, checkout and automated cart-recovery sequences — all inside the chat they already use." },
   { icon: "workflow", problem: "Every tool needs a developer and they don't talk to each other.", solution: "No-code flows, sequences and growth tools in one platform — launch in an afternoon, no engineers." },
@@ -292,7 +294,8 @@ export const PROBLEMS: ProblemSolution[] = [
 export const COMPARE_COLS = ["Talko AI", "Generic WhatsApp tools", "Point solutions + DIY"] as const;
 export type CompareRow = { feature: string; values: [boolean | string, boolean | string, boolean | string] };
 export const COMPARE_ROWS: CompareRow[] = [
-  { feature: "WhatsApp + Instagram in one inbox", values: [true, "WhatsApp only", false] },
+  { feature: "WhatsApp, Instagram & Messenger in one inbox", values: [true, "WhatsApp only", false] },
+  { feature: "Website live-chat widget (one-line embed)", values: [true, false, "Extra tool"] },
   { feature: "AI replies grounded on your knowledge base", values: [true, "Canned replies", "Separate chatbot"] },
   { feature: "Bring your own AI key (no per-message markup)", values: [true, false, false] },
   { feature: "No-code chatbot flow builder", values: [true, "Basic", "Extra tool"] },
@@ -319,6 +322,7 @@ export type IntegrationCategory = { title: string; blurb: string; items: Integra
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   { title: "Channels", blurb: "Meet customers where they already are.", items: [
     { name: "WhatsApp", slug: "whatsapp" }, { name: "Instagram", slug: "instagram" },
+    { name: "Messenger", slug: "messenger" }, { name: "Website web chat" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
     { name: "Gemini", slug: "googlegemini" }, { name: "OpenAI", slug: "openai" }, { name: "Anthropic", slug: "anthropic" },

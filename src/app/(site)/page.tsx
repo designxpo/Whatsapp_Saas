@@ -57,7 +57,7 @@ export default function HomePage() {
       {/* Features */}
       <Container className="py-8">
         <Reveal>
-          <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp and Instagram." />
+          <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger and your website." />
         </Reveal>
         <Reveal delay={120}><FeatureGrid /></Reveal>
       </Container>

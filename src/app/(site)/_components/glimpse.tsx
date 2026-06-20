@@ -70,8 +70,8 @@ function InboxGlimpse() {
         </div>
         {/* active chat */}
         <div className="flex flex-col bg-slate-50/60 p-3.5">
-          <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-[11px] text-slate-700 ring-1 ring-slate-100">Do you ship to Bangalore and the Pro price?</div>
-          <div className="ml-auto mt-2 max-w-[88%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-brand-600 to-brand-900 px-3 py-2 text-[11px] text-white">Yes — 2–3 days. Pro is ₹4,999/mo with WhatsApp + Instagram and AI replies. Start a free trial? 🚀</div>
+          <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-white px-3 py-2 text-[11px] text-slate-700 ring-1 ring-slate-100">Do you ship to Bangalore, and what's the plan price?</div>
+          <div className="ml-auto mt-2 max-w-[88%] rounded-2xl rounded-tr-sm bg-gradient-to-br from-brand-600 to-brand-900 px-3 py-2 text-[11px] text-white">Yes — 2–3 days. Growth is ₹4,999/mo with WhatsApp, Instagram, Messenger & web chat plus AI replies. Start a free trial? 🚀</div>
           <div className="ml-auto mt-1.5 flex items-center gap-1 text-[9px] font-semibold text-slate-400"><Bot className="h-2.5 w-2.5" /> Auto-replied by AI <CheckCheck className="h-2.5 w-2.5 text-[#0783fd]" /></div>
         </div>
       </div>

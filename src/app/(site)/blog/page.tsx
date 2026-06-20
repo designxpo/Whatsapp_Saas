@@ -7,7 +7,7 @@ import { POSTS } from "../_content/site";
 
 export const metadata: Metadata = {
   title: "Blog — Talko AI",
-  description: "Playbooks, product updates and compliance guides for automating WhatsApp and Instagram.",
+  description: "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger and website chat.",
 };
 
 export default function BlogPage() {

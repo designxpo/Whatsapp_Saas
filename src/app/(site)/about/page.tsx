@@ -5,7 +5,7 @@ import { ABOUT } from "../_content/site";
 
 export const metadata: Metadata = {
   title: "About — Talko AI",
-  description: "Talko AI helps businesses turn WhatsApp and Instagram conversations into growth — compliantly, transparently, and at scale.",
+  description: "Talko AI helps businesses turn WhatsApp, Instagram, Messenger and website conversations into growth — compliantly, transparently, and at scale.",
 };
 
 export default function AboutPage() {
