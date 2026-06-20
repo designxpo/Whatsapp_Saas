@@ -10,7 +10,7 @@ import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
   FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, INTEGRATION_CATEGORIES, WHY, CTA_BULLETS, type Feature,
-  PROBLEMS, COMPARE_COLS, COMPARE_ROWS,
+  PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE,
 } from "../_content/site";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -256,23 +256,29 @@ export function ProblemSolution() {
   );
 }
 
-// Comparison table — Talko AI vs the alternatives. First column highlighted.
+// Comparison table — Talko AI vs the global leaders. First column highlighted.
 function CompareCell({ value }: { value: boolean | string }) {
   if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" /></span>;
   if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" /></span>;
-  return <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-slate-500"><Minus className="h-3 w-3 text-slate-300" />{value}</span>;
+  return <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Minus className="h-3 w-3 shrink-0 text-slate-300" />{value}</span>;
 }
 export function ComparisonTable() {
+  // Derive the "all-in-one score" per column = how many capabilities are fully
+  // included (✓). Keeps the summary honest if rows are added or removed.
+  const scores = COMPARE_COLS.map((_, ci) => COMPARE_ROWS.filter(r => r.values[ci] === true).length);
+  const total = COMPARE_ROWS.length;
   return (
     <Container className="py-16">
-      <SectionTitle eyebrow="Compare" title="What you get with Talko AI that you don't elsewhere" subtitle="One platform instead of a stack of tools — AI and compliance built in." />
-      <div className="mx-auto mt-10 max-w-4xl overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="w-full min-w-[640px] border-collapse text-left">
+      <SectionTitle eyebrow="Talko AI vs the world"
+        title="More channels, more AI, more value — in one platform"
+        subtitle="The global leaders are each great in one lane. Talko AI does all of it together, on your own AI key." />
+      <div className="mx-auto mt-10 max-w-5xl overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="w-full min-w-[820px] border-collapse text-left">
           <thead>
             <tr className="border-b border-slate-200">
               <th className="px-5 py-4 text-sm font-bold text-slate-900">Capability</th>
               {COMPARE_COLS.map((col, i) => (
-                <th key={col} className={`px-5 py-4 text-center text-sm font-bold ${i === 0 ? "bg-[#0783fd]/5 text-[#0783fd]" : "text-slate-500"}`}>{col}</th>
+                <th key={col} className={`px-4 py-4 text-center text-sm font-bold ${i === 0 ? "rounded-t-xl bg-[#0783fd] text-white" : "text-slate-500"}`}>{col}</th>
               ))}
             </tr>
           </thead>
@@ -281,14 +287,24 @@ export function ComparisonTable() {
               <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
                 <td className="px-5 py-3.5 text-sm font-medium text-slate-700">{row.feature}</td>
                 {row.values.map((v, ci) => (
-                  <td key={ci} className={`px-5 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
+                  <td key={ci} className={`px-4 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
                 ))}
               </tr>
             ))}
+            {/* All-in-one score — visualizes "more features than anyone else". */}
+            <tr className="border-t-2 border-slate-200 bg-white">
+              <td className="px-5 py-4 text-sm font-extrabold text-slate-900">Capabilities included</td>
+              {scores.map((s, ci) => (
+                <td key={ci} className={`px-4 py-4 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}>
+                  <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#0783fd]" : "text-slate-400"}`}>{s}</span>
+                  <span className="text-[11px] font-semibold text-slate-300">/{total}</span>
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
-      <p className="mt-4 text-center text-xs text-slate-400">Comparison reflects typical capabilities of generic WhatsApp tools and assembling point solutions yourself.</p>
+      <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-400">{COMPARE_NOTE}</p>
     </Container>
   );
 }

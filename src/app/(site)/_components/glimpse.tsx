@@ -3,7 +3,7 @@
 // cards, slate text, blue accents, the analytics gradient. Server-safe.
 
 import {
-  MessageSquare, Instagram, Bot, CheckCheck, Users, Megaphone, Search, type LucideIcon,
+  MessageSquare, Instagram, MessagesSquare, Globe, Bot, CheckCheck, Users, Megaphone, Search, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle } from "./ui";
 import { Reveal } from "./motion";
@@ -44,7 +44,8 @@ function MiniArea({ values }: { values: number[] }) {
 const CONVOS: { name: string; msg: string; ch: LucideIcon; unread?: number; active?: boolean }[] = [
   { name: "Priya Sharma", msg: "Do you ship to Bangalore?", ch: MessageSquare, unread: 2, active: true },
   { name: "Rohit Verma", msg: "Is the Pro plan available?", ch: Instagram },
-  { name: "Sara Mathew", msg: "Thanks, that's perfect! 🙌", ch: MessageSquare },
+  { name: "Arjun Nair", msg: "Saw your Facebook post — price?", ch: MessagesSquare },
+  { name: "Website visitor", msg: "Hi, can I get a quick demo?", ch: Globe, unread: 1 },
 ];
 function InboxGlimpse() {
   return (
