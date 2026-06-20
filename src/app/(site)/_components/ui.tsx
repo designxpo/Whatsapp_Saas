@@ -38,12 +38,17 @@ export function Button({
 }
 
 export function SectionTitle({
-  eyebrow, title, subtitle, center = true,
-}: { eyebrow?: string; title: string; subtitle?: string; center?: boolean }) {
+  eyebrow, title, subtitle, center = true, level = 2,
+}: { eyebrow?: string; title: string; subtitle?: string; center?: boolean; level?: 1 | 2 }) {
+  // Render as <h1> (one per page, for SEO) or the default <h2> for sections.
+  const Heading = level === 1 ? "h1" : "h2";
+  const headingStyles = level === 1
+    ? "mt-4 text-balance text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl"
+    : "mt-4 text-balance text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl";
   return (
     <div className={`max-w-2xl ${center ? "mx-auto text-center" : ""}`}>
       {eyebrow && <div className={center ? "flex justify-center" : ""}><Eyebrow>{eyebrow}</Eyebrow></div>}
-      <h2 className="mt-4 text-balance text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">{title}</h2>
+      <Heading className={headingStyles}>{title}</Heading>
       {subtitle && <p className="mt-3 text-balance text-slate-500">{subtitle}</p>}
     </div>
   );

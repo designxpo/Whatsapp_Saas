@@ -31,6 +31,13 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
   box-shadow: 0 0 0 3px rgba(24, 119, 242, .15);
 }
 
+/* Visible keyboard focus for links, buttons and custom switches (WCAG 2.4.7). */
+a:focus-visible, button:focus-visible, [role="switch"]:focus-visible {
+  outline: 2px solid var(--green-700);
+  outline-offset: 2px;
+  border-radius: var(--r-control);
+}
+
 /* ── Marketing-site motion (subtle, decorative) ───────────────────────────── */
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .animate-floaty { animation: floaty 6s ease-in-out infinite; }

@@ -16,7 +16,7 @@ export default function BlogPage() {
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-20 pb-4">
-          <SectionTitle eyebrow="Blog" title="Discover our latest articles"
+          <SectionTitle level={1} eyebrow="Blog" title="Discover our latest articles"
             subtitle="Playbooks, product updates and compliance guides to help you get more from every conversation." />
         </Container>
       </section>

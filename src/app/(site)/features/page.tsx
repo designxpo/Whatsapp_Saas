@@ -15,7 +15,7 @@ export default function FeaturesPage() {
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-20 pb-4">
-          <SectionTitle eyebrow="Features" title="Powerful features for modern messaging"
+          <SectionTitle level={1} eyebrow="Features" title="Powerful features for modern messaging"
             subtitle="From the first hello to repeat purchases — Talko AI automates the whole conversation across WhatsApp, Instagram, Messenger and your website." />
         </Container>
       </section>

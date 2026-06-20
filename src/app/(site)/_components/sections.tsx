@@ -273,7 +273,7 @@ export function ComparisonTable() {
         title="More channels, more AI, more value — in one platform"
         subtitle="The global leaders are each great in one lane. Talko AI does all of it together, on your own AI key." />
       <div className="mx-auto mt-10 max-w-5xl overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="w-full min-w-[820px] border-collapse text-left">
+        <table aria-label="Talko AI capability comparison with global alternatives" className="w-full min-w-[820px] border-collapse text-left">
           <thead>
             <tr className="border-b border-slate-200">
               <th className="px-5 py-4 text-sm font-bold text-slate-900">Capability</th>

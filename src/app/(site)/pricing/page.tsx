@@ -15,7 +15,7 @@ export default function PricingPage() {
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-20 pb-4">
-          <SectionTitle eyebrow="Pricing" title="Simple and transparent pricing"
+          <SectionTitle level={1} eyebrow="Pricing" title="Simple and transparent pricing"
             subtitle="Every plan includes a 14-day free trial. AI replies run on your own provider key, so usage costs stay yours and predictable." />
         </Container>
       </section>

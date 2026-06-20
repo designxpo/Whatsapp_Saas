@@ -19,7 +19,7 @@ export function BrandMark({ name, slug, iconify, src }: { name: string; slug?: s
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={sources[idx]}
-      alt={`${name} logo`}
+      alt={name}
       title={name}
       className="h-10 w-auto max-w-[150px] object-contain transition duration-300 hover:scale-110"
       loading="lazy"

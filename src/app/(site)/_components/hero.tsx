@@ -76,7 +76,7 @@ export function Hero() {
           <div key={c.name}
             className={`absolute z-10 ${c.pos} ${FLOATS[i % FLOATS.length]} ${c.hide ? "hidden lg:flex" : "hidden sm:flex"} items-center justify-center rounded-full bg-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.22)] ring-1 ring-slate-100 ${c.size ?? "h-12 w-12"}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={c.src ?? `https://cdn.simpleicons.org/${c.slug}`} alt={`${c.name} logo`} title={c.name} className="h-1/2 w-1/2 object-contain" loading="lazy" />
+            <img src={c.src ?? `https://cdn.simpleicons.org/${c.slug}`} alt={c.name} title={c.name} className="h-1/2 w-1/2 object-contain" loading="lazy" />
           </div>
         ))}
 
@@ -143,7 +143,7 @@ export function Hero() {
             { name: "WooCommerce", slug: "woocommerce" },
           ].map(l => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/94a3b8`} alt={`${l.name} logo`} title={l.name} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
+            <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/94a3b8`} alt={l.name} title={l.name} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
           ))}
         </div>
       </div>
