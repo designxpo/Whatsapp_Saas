@@ -62,7 +62,7 @@ export async function getTenant(id: string): Promise<Tenant | null> {
   return data ? mapTenant(data as Record<string, unknown>) : null;
 }
 
-export async function updateTenant(id: string, p: Partial<{ status: TenantStatus; plan: string; paymentStatus: PaymentStatus; trialEndsAt: string | null; currentPeriodEnd: string | null; amountCents: number; currency: string; notes: string; features: Partial<TenantFeatures> }>): Promise<void> {
+export async function updateTenant(id: string, p: Partial<{ status: TenantStatus; plan: string; paymentStatus: PaymentStatus; trialEndsAt: string | null; currentPeriodEnd: string | null; amountCents: number; currency: string; notes: string; features: Partial<TenantFeatures>; grandfathered: boolean }>): Promise<void> {
   const row: Record<string, unknown> = {};
   if (p.status !== undefined) row.status = p.status;
   if (p.plan !== undefined) row.plan = p.plan;
@@ -72,9 +72,13 @@ export async function updateTenant(id: string, p: Partial<{ status: TenantStatus
   if (p.amountCents !== undefined) row.amount_cents = p.amountCents;
   if (p.currency !== undefined) row.currency = p.currency;
   if (p.notes !== undefined) row.notes = p.notes;
+  if (p.grandfathered !== undefined) row.grandfathered = p.grandfathered;
   if (p.features !== undefined) {
+    // Store the owner's explicit choice as per-tenant overrides (merged over any
+    // existing ones). The entitlement resolver layers these on top of plan
+    // defaults, so unchecking a box revokes and checking it grants.
     const current = await getTenant(id);
-    row.features = { ...DEFAULT_FEATURES, ...(current?.features ?? {}), ...p.features };
+    row.features = { ...(current?.features ?? {}), ...p.features };
   }
   if (Object.keys(row).length) { const { error } = await db().from("tenants").update(row).eq("id", id); if (error) throw error; }
 }

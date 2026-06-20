@@ -76,6 +76,21 @@ export const TIERS: Tier[] = [
   },
 ];
 
+// Instagram-first plans for creators & influencers — no WhatsApp business stack,
+// just the DM/comment automation creators actually need.
+export const CREATOR_TIERS: Tier[] = [
+  {
+    name: "Creator", priceMonthly: 999, tagline: "For individual creators & influencers",
+    features: ["1 Instagram account", "3,000 conversations / mo", "AI auto-replies (your key)", "Comment-to-DM & keyword replies", "Lead capture / link-in-bio", "Basic chatbot flows", "Merch catalog & checkout", "2 team seats"],
+    cta: "Start free trial", href: "/signup",
+  },
+  {
+    name: "Creator Pro", priceMonthly: 2499, tagline: "For creator-led brands & agencies", highlighted: true,
+    features: ["Up to 3 Instagram accounts", "Messenger & website web chat", "10,000 conversations / mo", "Drip sequences & WhatsApp Forms", "Meta Ads & AI Hub", "5 team seats", "Priority support"],
+    cta: "Start free trial", href: "/signup",
+  },
+];
+
 // ── "How your chatbot flow works" — node graph ───────────────────────────────
 export type FlowBranch = { title: string; body: string; tone: "sky" | "lavender" | "peach"; icon: string };
 export const CHAT_FLOW = {
@@ -111,6 +126,7 @@ export const FAQS: Faq[] = [
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
   { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
   { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere." },
+  { q: "Do you have a plan for creators & influencers?", a: "Yes — our Creator and Creator Pro plans are Instagram-first, built for creators who don't need the WhatsApp business stack. You get AI auto-replies, comment-to-DM and keyword automation, link-in-bio lead capture, basic flows and a merch catalog from ₹999/mo. Creator Pro adds Messenger, multiple Instagram accounts, ads and more volume." },
   { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
 ];
 

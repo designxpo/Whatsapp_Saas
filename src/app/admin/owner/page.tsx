@@ -3,18 +3,19 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save } from "lucide-react";
+import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 
 const inp = "border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900";
-type Features = { whatsapp: boolean; instagram: boolean; sequences: boolean; commerce: boolean; growth: boolean; ai_autoreply: boolean; ads: boolean };
+type Features = Record<string, boolean>;
 type Tenant = {
   id: string; name: string; slug: string; status: string; plan: string; company: string | null;
   ownerName: string | null; ownerEmail: string | null; ownerPhone: string | null; industry: string | null;
   teamSize: string | null; useCase: string | null; expectedVolume: string | null;
   paymentStatus: string; trialEndsAt: string | null; amountCents: number; currency: string; notes: string | null;
-  features: Features; contacts: number; conversations: number; createdAt: string;
+  features: Features; grandfathered: boolean; contacts: number; conversations: number; createdAt: string;
 };
 type Stats = { total: number; active: number; trialing: number; suspended: number; mrrCents: number };
-type PlanLimits = { contacts: number; messages_per_month: number; channels: number; team_seats: number };
+type PlanLimits = { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number };
 type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean; stripePriceId?: string | null };
 type Ann = { id: string; title: string; body: string; level: "info" | "success" | "warning"; pinned: boolean; active: boolean; createdAt: string };
 type TenantHealthRow = {
@@ -23,9 +24,8 @@ type TenantHealthRow = {
   ai: { configured: boolean }; kb: { ready: number; total: number }; crm: { configured: boolean };
   integrations: { active: number; errored: number };
 };
-const FEATURE_KEYS: (keyof Features)[] = ["whatsapp", "instagram", "sequences", "commerce", "growth", "ai_autoreply", "ads"];
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
-const PLANS = ["trial", "starter", "growth", "scale"];
+const PLAN_FALLBACK = ["trial", "creator", "creator-pro", "starter", "growth", "scale"];
 const PAYMENTS = ["trialing", "active", "past_due", "cancelled", "none"];
 
 export default function OwnerPortal() {
@@ -75,7 +75,8 @@ export default function OwnerPortal() {
 
   // ── Plans ──
   const [planDraft, setPlanDraft] = useState<Plan | null>(null);
-  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true }, sort: plans.length, active: true, stripePriceId: "" };
+  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: Object.fromEntries(FEATURE_KEYS.map(k => [k, true])), sort: plans.length, active: true, stripePriceId: "" };
+  const planOptions = plans.length ? plans.map(p => p.key) : PLAN_FALLBACK;
   async function savePlan() {
     if (!planDraft || !planDraft.key.trim() || !planDraft.name.trim()) return;
     await fetch("/api/owner/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planDraft) });
@@ -104,7 +105,7 @@ export default function OwnerPortal() {
     setBusy(true);
     try {
       await fetch("/api/owner/tenants", { method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: draft.id, status: draft.status, plan: draft.plan, paymentStatus: draft.paymentStatus, amountCents: draft.amountCents, trialEndsAt: draft.trialEndsAt, notes: draft.notes, features: draft.features }) });
+        body: JSON.stringify({ id: draft.id, status: draft.status, plan: draft.plan, paymentStatus: draft.paymentStatus, amountCents: draft.amountCents, trialEndsAt: draft.trialEndsAt, notes: draft.notes, features: draft.features, grandfathered: draft.grandfathered }) });
       setOpen(null); load();
     } finally { setBusy(false); }
   }
@@ -238,16 +239,20 @@ export default function OwnerPortal() {
                   {(t.industry || t.useCase) && <p className="text-[11px] text-ink-500">Signup: {t.industry} · goal: {t.useCase} · team {t.teamSize} · volume {t.expectedVolume}</p>}
                   <div className="flex flex-wrap gap-2">
                     <label className="text-[11px] text-ink-500">Status <select className={inp} value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
-                    <label className="text-[11px] text-ink-500">Plan <select className={inp} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })}>{PLANS.map(s => <option key={s}>{s}</option>)}</select></label>
+                    <label className="text-[11px] text-ink-500">Plan <select className={inp} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })}>{planOptions.map(s => <option key={s}>{s}</option>)}</select></label>
                     <label className="text-[11px] text-ink-500">Payment <select className={inp} value={draft.paymentStatus} onChange={e => setDraft({ ...draft, paymentStatus: e.target.value })}>{PAYMENTS.map(s => <option key={s}>{s}</option>)}</select></label>
                     <label className="text-[11px] text-ink-500">Price/mo (₹) <input type="number" className={`${inp} w-24`} value={Math.round(draft.amountCents / 100)} onChange={e => setDraft({ ...draft, amountCents: Math.max(0, Number(e.target.value) || 0) * 100 })} /></label>
                     <label className="text-[11px] text-ink-500">Trial ends <input type="date" className={inp} value={draft.trialEndsAt ? draft.trialEndsAt.slice(0, 10) : ""} onChange={e => setDraft({ ...draft, trialEndsAt: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
                   </div>
-                  <div>
-                    <p className="text-[11px] font-bold text-ink-400 uppercase mb-1">Features</p>
-                    <div className="flex flex-wrap gap-3">
+                  <label className="flex items-center gap-2 text-[11px] font-semibold text-ink-600 bg-white border border-line rounded-control px-3 py-2 w-fit cursor-pointer">
+                    <input type="checkbox" className="accent-brand-700 w-4 h-4" checked={draft.grandfathered} onChange={e => setDraft({ ...draft, grandfathered: e.target.checked })} />
+                    Grandfathered — full access regardless of plan (turn off to enforce the plan + overrides below)
+                  </label>
+                  <div className={draft.grandfathered ? "opacity-40 pointer-events-none" : ""}>
+                    <p className="text-[11px] font-bold text-ink-400 uppercase mb-1">Feature overrides <span className="font-normal normal-case">— grant or revoke per tenant (overrides the plan)</span></p>
+                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
                       {FEATURE_KEYS.map(k => (
-                        <label key={k} className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={draft.features[k]} onChange={e => setDraft({ ...draft, features: { ...draft.features, [k]: e.target.checked } })} /> {k}</label>
+                        <label key={k} className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={!!draft.features[k]} onChange={e => setDraft({ ...draft, features: { ...draft.features, [k]: e.target.checked } })} /> {FEATURE_META[k].label} <span className="text-ink-300">· {k}</span></label>
                       ))}
                     </div>
                   </div>
@@ -274,7 +279,7 @@ export default function OwnerPortal() {
             <div key={p.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2 text-xs">
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-ink-900">{p.name} <span className="text-ink-400 font-mono">{p.key}</span> {!p.active && <span className="text-red-500">· off</span>}</p>
-                <p className="text-ink-400">{money(p.priceCents, p.currency)}/{p.interval} · {p.limits.contacts || "∞"} contacts · {p.limits.messages_per_month || "∞"} msgs/mo · {p.limits.channels || "∞"} channels · {p.limits.team_seats || "∞"} seats</p>
+                <p className="text-ink-400">{money(p.priceCents, p.currency)}/{p.interval} · {p.limits.contacts || "∞"} contacts · {p.limits.conversations_per_month || "∞"} convos/mo · {p.limits.messages_per_month || "∞"} msgs/mo · {p.limits.channels || "∞"} channels · {p.limits.team_seats || "∞"} seats</p>
               </div>
               <button onClick={() => setPlanDraft({ ...p })} className="px-2 py-1 rounded-control border border-line font-bold text-ink-600 hover:bg-canvas">Edit</button>
               <button onClick={() => delPlan(p.id)} className="px-2 py-1 rounded-control border border-red-200 text-red-600 hover:bg-red-50 font-bold">Del</button>
@@ -287,6 +292,7 @@ export default function OwnerPortal() {
               <label className="text-[11px] text-ink-500">Price/mo (₹) <input type="number" className={`${inp} w-full`} value={Math.round(planDraft.priceCents / 100)} onChange={e => setPlanDraft({ ...planDraft, priceCents: Math.max(0, Number(e.target.value) || 0) * 100 })} /></label>
               <label className="text-[11px] text-ink-500 flex items-center gap-1.5 pt-4"><input type="checkbox" className="accent-brand-700" checked={planDraft.active} onChange={e => setPlanDraft({ ...planDraft, active: e.target.checked })} /> active</label>
               <label className="text-[11px] text-ink-500">Contacts (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.contacts} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, contacts: Number(e.target.value) || 0 } })} /></label>
+              <label className="text-[11px] text-ink-500">Conversations/mo (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.conversations_per_month} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, conversations_per_month: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Messages/mo (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.messages_per_month} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, messages_per_month: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Channels (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.channels} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, channels: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Team seats (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.team_seats} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, team_seats: Number(e.target.value) || 0 } })} /></label>

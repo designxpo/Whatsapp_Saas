@@ -3,6 +3,7 @@ import { Container, Glow, SectionTitle } from "../_components/ui";
 import { Testimonials, CtaBand } from "../_components/sections";
 import { PricingTiers } from "../_components/pricing";
 import { Faq } from "../_components/chrome";
+import { CREATOR_TIERS } from "../_content/site";
 
 export const metadata: Metadata = {
   title: "Pricing — Talko AI",
@@ -23,6 +24,17 @@ export default function PricingPage() {
       <Container className="pb-8">
         <PricingTiers />
         <p className="mt-8 text-center text-xs text-slate-500">Prices in INR, billed monthly. Need annual billing or a custom volume? <span className="font-semibold text-[#0783fd]">Talk to sales.</span></p>
+      </Container>
+
+      {/* Instagram-first plans for creators & influencers */}
+      <Container className="py-12">
+        <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
+          <SectionTitle eyebrow="For creators & influencers"
+            title="Instagram-first plans for creators"
+            subtitle="No WhatsApp business stack to pay for — just the Instagram DM & comment automation creators actually need. Reply to every DM, turn comments into DMs, and capture leads on autopilot." />
+          <PricingTiers tiers={CREATOR_TIERS} showToggle={false} />
+          <p className="mt-8 text-center text-xs text-slate-500">Need WhatsApp too? See the business plans above — or <span className="font-semibold text-[#0783fd]">talk to sales</span> for a custom mix.</p>
+        </div>
       </Container>
 
       <Testimonials />

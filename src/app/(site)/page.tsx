@@ -49,8 +49,9 @@ export default function HomePage() {
       <Container className="py-12">
         <SectionTitle eyebrow="Pricing" title="Simple, transparent pricing" subtitle="Free for 14 days. Cancel anytime." />
         <PricingTiers />
-        <div className="mt-8 text-center">
+        <div className="mt-8 flex flex-col items-center gap-2 text-center">
           <Link href="/pricing" className="text-sm font-bold text-[#0783fd] hover:underline">Compare all plans →</Link>
+          <Link href="/pricing" className="text-xs font-semibold text-slate-500 hover:text-[#0783fd]">Creating on Instagram? See Creator plans from ₹999/mo →</Link>
         </div>
       </Container>
 

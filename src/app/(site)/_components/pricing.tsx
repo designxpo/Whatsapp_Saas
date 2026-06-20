@@ -3,17 +3,19 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "./ui";
-import { TIERS } from "../_content/site";
+import { TIERS, type Tier } from "../_content/site";
 
 const ANNUAL_DISCOUNT = 0.2; // 20% off when billed annually
 
 function inr(n: number) { return `₹${n.toLocaleString("en-IN")}`; }
 
-export function PricingTiers() {
+export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tier[]; showToggle?: boolean }) {
   const [annual, setAnnual] = useState(false);
+  const cols = tiers.length >= 3 ? "lg:grid-cols-3" : "sm:grid-cols-2 lg:max-w-3xl lg:mx-auto";
 
   return (
     <>
+      {showToggle && (
       <div className="mt-8 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <span className={`text-sm font-semibold ${!annual ? "text-slate-900" : "text-slate-400"}`}>Monthly</span>
         <button
@@ -29,9 +31,10 @@ export function PricingTiers() {
           Annually <span className="rounded-full bg-[#DDEFE4] px-2 py-0.5 text-[11px] font-bold text-[#2f9e6e]">Save 20%</span>
         </span>
       </div>
+      )}
 
-      <div className="mt-10 grid gap-6 lg:grid-cols-3">
-        {TIERS.map(t => {
+      <div className={`mt-10 grid gap-6 ${cols}`}>
+        {tiers.map(t => {
           const monthlyEq = t.priceMonthly == null ? null : Math.round(t.priceMonthly * (annual ? 1 - ANNUAL_DISCOUNT : 1));
           return (
             <div
