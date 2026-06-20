@@ -3,6 +3,7 @@ import { db } from "./supabase";
 import { createCampaign, getContactByPhone, dailySentCount, type Contact } from "./store";
 import { sendCampaign } from "./whatsapp";
 import { credsFor } from "./channels";
+import { getDailyCap } from "./quota";
 
 
 // ── API broadcasting rules engine ─────────────────────────────────────────────
@@ -261,8 +262,6 @@ export async function processEvent(params: {
 
 // ── Drain (called from the cron) ─────────────────────────────────────────────
 
-function dailyLimit(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
-
 export async function drainRuleSends(max = 100): Promise<{ sent: number; failed: number; skipped: number }> {
   const out = { sent: 0, failed: 0, skipped: 0 };
   let due: Record<string, unknown>[] = [];
@@ -279,7 +278,7 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
   const headroomByTenant = new Map<string, number>();
   const headroomFor = async (tid: string): Promise<number> => {
     if (!headroomByTenant.has(tid)) {
-      headroomByTenant.set(tid, Math.max(0, dailyLimit() - (await dailySentCount(tid).catch(() => 0))));
+      headroomByTenant.set(tid, Math.max(0, (await getDailyCap(tid)) - (await dailySentCount(tid).catch(() => 0))));
     }
     return headroomByTenant.get(tid)!;
   };

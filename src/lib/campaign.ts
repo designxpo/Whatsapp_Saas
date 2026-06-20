@@ -4,16 +4,17 @@ import {
   type Campaign,
 } from "./store";
 import { sendCampaign, getCreds } from "./whatsapp";
-import { credsFor, getChannel, isMarketingSendable, tierDailyCap, type Channel } from "./channels";
+import { credsFor, getChannel, isMarketingSendable, type Channel } from "./channels";
+import { getDailyCapForTier } from "./quota";
 
 const CHUNK = Math.max(1, parseInt(process.env.WA_SEND_CHUNK ?? "80", 10));
 
-// Operator safety cap (env). The EFFECTIVE per-24h cap is the smaller of this and
-// the number's real Meta tier, so a fresh/low-tier number can't overshoot Meta.
-function safetyCap(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
+// The EFFECTIVE per-24h cap is a safe fraction (WA_SAFETY_PCT, default 80%) of
+// the number's real Meta tier — so a fresh/low-tier number can't overshoot Meta,
+// and the cap rises automatically as Meta lifts the tier. Falls back to
+// WA_DAILY_LIMIT when the tier is unknown.
 function effectiveCap(ch: Channel | null): number {
-  const tier = tierDailyCap(ch?.messagingTier);
-  return tier == null ? safetyCap() : Math.min(safetyCap(), tier);
+  return getDailyCapForTier(ch?.messagingTier);
 }
 
 // Bucket claimed queue rows by their per-recipient send outcome. sendCampaign

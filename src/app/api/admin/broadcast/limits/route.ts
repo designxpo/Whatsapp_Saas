@@ -1,21 +1,23 @@
 import { NextResponse, after } from "next/server";
 import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getCreds } from "@/lib/whatsapp";
-import { credsFor, recordChannelQuality } from "@/lib/channels";
+import { credsFor, recordChannelQuality, tierDailyCap } from "@/lib/channels";
 import { dailySentCount } from "@/lib/store";
+import { getDailyCapForTier, safeCapFromTier, SAFETY_PCT } from "@/lib/quota";
 
 export const dynamic = "force-dynamic";
 
 // GET ?channelId= — today's send count vs the platform cap, plus the number's
-// Meta messaging tier and quality rating. Meta fields degrade to an error
-// string when the Graph API is unreachable (e.g. a Meta outage).
+// Meta messaging tier and quality rating. The platform cap is derived from the
+// Meta tier (a safe fraction of it), so it tracks Meta automatically and stays
+// conservatively below the ceiling. Meta fields degrade to an error string when
+// the Graph API is unreachable (e.g. a Meta outage) — the cap then falls back.
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const channelId = new URL(req.url).searchParams.get("channelId");
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const { token, phoneId } = getCreds(await credsFor(channelId, tid));
 
-  const dailyCap = parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10);
   const sentToday = await dailySentCount(tid).catch(() => 0);
 
   let quality: string | null = null, tier: string | null = null, displayPhone: string | null = null, metaError: string | null = null;
@@ -43,5 +45,12 @@ export async function GET(req: Request) {
     metaError = "WhatsApp credentials not configured";
   }
 
-  return NextResponse.json({ dailyCap, sentToday, quality, tier, displayPhone, metaError });
+  // The applied cap: a safe % of the Meta tier, else the env fallback. We also
+  // surface the raw Meta ceiling + the safety % so the UI can explain the gap.
+  const dailyCap = getDailyCapForTier(tier);
+  const rawTier = tierDailyCap(tier);
+  const metaTierCap = rawTier != null && Number.isFinite(rawTier) ? rawTier : null;
+  const capSource = safeCapFromTier(tier) !== null ? "meta" : "fallback";
+
+  return NextResponse.json({ dailyCap, sentToday, quality, tier, metaTierCap, safetyPct: SAFETY_PCT, capSource, displayPhone, metaError });
 }

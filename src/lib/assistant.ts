@@ -13,9 +13,9 @@ import { isAutoRouteEnabled, pickAgentForQuery } from "./aihub";
 import { embedQuery } from "./kb";
 import { setConversationAgent } from "./store";
 import { getChannel, type Channel } from "./channels";
+import { getDailyCap } from "./quota";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
-function dailyLimit(): number { return parseInt(process.env.WA_DAILY_LIMIT ?? "900", 10); }
 
 export type RespondOutcome = "sent" | "escalated" | "skipped" | "failed";
 
@@ -76,9 +76,9 @@ export async function respondToConversation(conversationId: string, opts: { inbo
   // number lives in tenant B's wa_optouts, so calling optoutSet() with no arg
   // (which defaults to DEFAULT_TENANT_ID) would silently ignore the opt-out for
   // every non-owner tenant — a consent/compliance bug.
-  const [optedOut, sentToday] = await Promise.all([isOptedOut(conv.phone, conv.tenantId), dailySentCount(conv.tenantId)]);
+  const [optedOut, sentToday, dailyCap] = await Promise.all([isOptedOut(conv.phone, conv.tenantId), dailySentCount(conv.tenantId), getDailyCap(conv.tenantId, conv.channelId)]);
   if (optedOut) return { outcome: "skipped", detail: "opted out" };
-  if (sentToday >= dailyLimit()) return { outcome: "skipped", detail: "daily cap reached" };
+  if (sentToday >= dailyCap) return { outcome: "skipped", detail: "daily cap reached" };
 
   // Claim — only one runner proceeds.
   if (!(await claimReply(conversationId))) return { outcome: "skipped", detail: "already claimed" };

@@ -16,7 +16,7 @@ function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: Re
   const a = useAnalytics();
   const [tpls, setTpls] = useState<{ name: string; status: string }[] | null>(null);
   const [camps, setCamps] = useState<{ id: string; name?: string | null; templateName: string; status: string; sentCount: number; totalRecipients: number }[] | null>(null);
-  const [limits, setLimits] = useState<{ dailyCap: number; sentToday: number; quality: string | null; tier: string | null; displayPhone: string | null; metaError: string | null } | null>(null);
+  const [limits, setLimits] = useState<{ dailyCap: number; sentToday: number; quality: string | null; tier: string | null; metaTierCap: number | null; safetyPct: number; capSource: string; displayPhone: string | null; metaError: string | null } | null>(null);
   useEffect(() => { fetch("/api/admin/templates").then(r => r.json()).then(d => setTpls(d.templates ?? [])).catch(() => setTpls([])); }, []);
   useEffect(() => { fetch("/api/admin/campaigns").then(r => r.json()).then(d => setCamps((d.campaigns ?? []).slice(0, 4))).catch(() => setCamps([])); }, []);
   useEffect(() => { fetch("/api/admin/broadcast/limits").then(r => r.json()).then(setLimits).catch(() => {}); }, []);
@@ -38,7 +38,9 @@ function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: Re
             : limits.metaError ? "unavailable" : (quality ?? "—")
           } />
           {limits.metaError && <p className="text-[11px] text-amber-600">Meta status check failed — {limits.metaError.length > 60 ? "Meta API unreachable right now (likely their outage)." : limits.metaError}</p>}
-          <p className="text-[11px] text-slate-400">When the cap is reached, remaining sends queue and resume automatically after midnight. The cap protects your Meta tier and quality rating.</p>
+          <p className="text-[11px] text-slate-400">{limits.capSource === "meta" && limits.metaTierCap
+            ? <>Cap = <b>{limits.safetyPct}%</b> of your Meta tier ({limits.metaTierCap.toLocaleString()}/day) — kept low for safety, and it rises automatically as Meta lifts your tier.</>
+            : <>Meta tier unavailable, so using the safe fallback cap. When the cap is reached, sends queue and resume after midnight.</>}</p>
         </>}
       </RailCard>
       <RailCard title="Sending health" action="Analytics" onAction={() => goTo("analytics")}>
