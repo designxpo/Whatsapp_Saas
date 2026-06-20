@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug } from "lucide-react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -31,6 +31,7 @@ const FormsTab = dynamic(() => import("./_tabs/FormsTab"), { ssr: false, loading
 const BroadcastTab = dynamic(() => import("./_tabs/BroadcastTab"), { ssr: false, loading: () => tabLoading });
 const LiveChatTab = dynamic(() => import("./_tabs/LiveChatTab"), { ssr: false, loading: () => tabLoading });
 const ContactsTab = dynamic(() => import("./_tabs/ContactsTab"), { ssr: false, loading: () => tabLoading });
+const PipelineTab = dynamic(() => import("./_tabs/PipelineTab"), { ssr: false, loading: () => tabLoading });
 const SettingsTab = dynamic(() => import("./_tabs/SettingsTab"), { ssr: false, loading: () => tabLoading });
 
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
@@ -41,6 +42,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "livechat", label: "Live Chat", icon: <MessageSquare className="w-[18px] h-[18px]" /> },
       { key: "broadcast", label: "Broadcast", icon: <Send className="w-[18px] h-[18px]" /> },
       { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" /> },
+      { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" /> },
       { key: "campaigns", label: "History", icon: <History className="w-[18px] h-[18px]" /> },
       { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" /> },
       { key: "ads", label: "Meta Ads", icon: <Megaphone className="w-[18px] h-[18px]" /> },
@@ -76,7 +78,7 @@ const TAB_TITLES: Record<Tab, string> = {
   home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", webchat: "Web Chat", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
-  contacts: "Contacts", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status", integrations: "Integrations",
+  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status", integrations: "Integrations",
 };
 
 export default function Admin() {
@@ -224,6 +226,7 @@ export default function Admin() {
           {tab === "forms" && <FormsTab goTo={setTab} />}
           {tab === "analytics" && <AnalyticsTab />}
           {tab === "contacts" && <ContactsTab goTo={setTab} />}
+          {tab === "pipeline" && <PipelineTab goTo={setTab} />}
           {tab === "campaigns" && <CampaignsTab goTo={setTab} />}
           {tab === "optouts" && <OptoutsTab />}
           {tab === "setup" && <SetupTab goTo={setTab} />}
