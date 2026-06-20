@@ -4,7 +4,7 @@
 // own lazy-loaded tab. Tenant scoping is handled server-side by the APIs.
 import { useState, useEffect, useCallback } from "react";
 import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { inp, type Tab } from "../_shared";
+import { inp, type GoTo } from "../_shared";
 
 type PStage = { id: string; name: string; position: number; color: string | null; lsqStage: string | null; onEnterTag: string | null; onEnterSequenceId: string | null; isWon: boolean; isLost: boolean };
 type PCard = { contactId: string; name: string; phone: string; tags: string[]; stageId: string; lastMessage: string | null; lastInboundAt: string | null };
@@ -103,7 +103,7 @@ function AddLeadBox({ onPick, onClose }: { onPick: (contactId: string) => void; 
   );
 }
 
-export default function PipelineTab({ goTo }: { goTo: (t: Tab) => void }) {
+export default function PipelineTab({ goTo }: { goTo: GoTo }) {
   const [stages, setStages] = useState<PStage[]>([]);
   const [cards, setCards] = useState<PCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -185,7 +185,7 @@ export default function PipelineTab({ goTo }: { goTo: (t: Tab) => void }) {
                         <select className={`${inp} !py-1 text-[11px] flex-1`} value={c.stageId} onChange={e => move(c.contactId, e.target.value)} title="Move to stage">
                           {stages.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
                         </select>
-                        <button onClick={() => goTo("livechat")} className="p-1 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Open in Live Chat"><ExternalLink className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => goTo("livechat", { openPhone: c.phone })} className="p-1 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Open in Live Chat"><ExternalLink className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}

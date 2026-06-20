@@ -14,6 +14,17 @@ export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 // and passes `goTo` to tabs for cross-tab navigation.
 export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "webchat" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
 
+// A deep-link "intent" carried alongside a tab switch, so Home stat cards, the
+// Sales Pipeline, and Contacts can open Live Chat already focused on a specific
+// person and/or a filter. LiveChatTab consumes it once, then it's cleared.
+export type ChatIntent = {
+  openPhone?: string;                                                              // open this person's chat once it loads
+  filter?: "all" | "needs_reply" | "escalated" | "bot_off";                        // pre-apply a status filter
+  platform?: "all" | "whatsapp" | "instagram" | "messenger" | "webchat";          // pre-apply a channel filter
+  view?: "chats" | "comments";
+};
+export type GoTo = (t: Tab, intent?: ChatIntent) => void;
+
 // ── Shared style tokens ──────────────────────────────────────────────────────
 export const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400";
 export const btnPrimary = "px-4 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";

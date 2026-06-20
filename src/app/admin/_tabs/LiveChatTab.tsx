@@ -5,19 +5,20 @@
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
 import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
-import { type Conversation, ConvAvatar, statusBadge, inp, type Tab } from "../_shared";
+import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; mediaUrl?: string | null; mediaType?: string | null };
 
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
-function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
+function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
   const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger" | "webchat">("all");
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
+  const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
 
   const load = useCallback(() => {
     fetch("/api/admin/conversations").then(r => r.ok ? r.json() : { conversations: [] })
@@ -28,6 +29,24 @@ function LiveChatTab({ goTo }: { goTo: (t: Tab) => void }) {
     const t = setInterval(() => { if (!document.hidden) load(); }, 10_000);
     return () => clearInterval(t);
   }, [load]);
+
+  // Apply a deep-link intent on arrival (Home cards / Pipeline / Contacts).
+  // Opening a specific person clears any filter so their chat can't be hidden.
+  useEffect(() => {
+    if (!intent) return;
+    if (intent.openPhone) { setPendingPhone(intent.openPhone); setView("chats"); setPlatform("all"); setFilter("all"); }
+    else { if (intent.view) setView(intent.view); if (intent.platform) setPlatform(intent.platform); if (intent.filter) setFilter(intent.filter); }
+    clearIntent();
+  }, [intent, clearIntent]);
+
+  // Once conversations are loaded, open the deep-linked person (match by number).
+  useEffect(() => {
+    if (!pendingPhone || convos.length === 0) return;
+    const norm = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
+    const match = convos.find(c => norm(c.phone) === norm(pendingPhone));
+    if (match) setSelected(match.id);
+    setPendingPhone(null);   // resolved (found or not) — stop retrying on each refresh
+  }, [pendingPhone, convos]);
 
   const q = search.trim().toLowerCase();
   const onPlatform = (c: Conversation, p: "whatsapp" | "instagram" | "messenger" | "webchat") => (c.platform ?? "whatsapp") === p;

@@ -6,7 +6,7 @@
 // (its own webpack chunk) rather than inside either tab. Pure relocation.
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database } from "lucide-react";
-import { inp, type Tab } from "../_shared";
+import { inp, type GoTo } from "../_shared";
 
 type SalesBrief = { temperature: "hot" | "warm" | "cold"; summary: string; interestedIn: string; intent: string; objections: string; nextStep: string; talkingPoints: string[] };
 type CrmLead = { id: string; stage: string | null; owner: string | null; score: number | null; source: string | null; fields: { label: string; value: string }[] };
@@ -19,7 +19,7 @@ type LeadProfile = {
   clicks: { url: string; clicks: number; at: string | null }[];
 };
 
-function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; onClose: () => void; onChanged: () => void; goTo: (t: Tab) => void }) {
+function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; onClose: () => void; onChanged: () => void; goTo: GoTo }) {
   const [p, setP] = useState<LeadProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -128,7 +128,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
 
             {/* Actions */}
             <div className="flex gap-2">
-              <button onClick={() => { onClose(); goTo("livechat"); }} className="flex-1 px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Open chat</button>
+              <button onClick={() => { onClose(); goTo("livechat", { openPhone: phone }); }} className="flex-1 px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5"><MessageSquare className="w-3.5 h-3.5" /> Open chat</button>
               <button disabled={busy} onClick={toggleOptout} className={`flex-1 px-3 py-2 rounded-control border text-xs font-bold ${c.status === "active" ? "border-red-200 text-red-600 hover:bg-red-50" : "border-brand-200 text-brand-700 hover:bg-brand-50"}`}>
                 {c.status === "active" ? "Opt out" : "Re-subscribe"}
               </button>
@@ -255,7 +255,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <p className={sectionTitle}>Conversation</p>
-                {p?.conversation && <button onClick={() => { onClose(); goTo("livechat"); }} className="text-[11px] font-bold text-brand-700 hover:underline">Open in Live Chat →</button>}
+                {p?.conversation && <button onClick={() => { onClose(); goTo("livechat", { openPhone: phone }); }} className="text-[11px] font-bold text-brand-700 hover:underline">Open in Live Chat →</button>}
               </div>
               {!p?.conversation ? <p className="text-xs text-slate-400">No conversation yet — they haven&apos;t messaged you, or you haven&apos;t broadcast to them.</p> : (
                 <>

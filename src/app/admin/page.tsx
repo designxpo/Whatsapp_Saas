@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
-import { type Tab, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
+import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
@@ -84,6 +84,11 @@ const TAB_TITLES: Record<Tab, string> = {
 export default function Admin() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("home");
+  // A pending deep-link for Live Chat (set by Home cards / Pipeline / Contacts,
+  // consumed by LiveChatTab on arrival). goTo switches tab and carries it along.
+  const [chatIntent, setChatIntent] = useState<ChatIntent | null>(null);
+  const goTo = useCallback<GoTo>((t, intent) => { setChatIntent(intent ?? null); setTab(t); }, []);
+  const clearChatIntent = useCallback(() => setChatIntent(null), []);
   const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
@@ -145,7 +150,7 @@ export default function Admin() {
                 {g.items.map(n => {
                   const active = tab === n.key;
                   return (
-                    <button key={n.key} onClick={() => setTab(n.key)}
+                    <button key={n.key} onClick={() => goTo(n.key)}
                       className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
                       {n.icon}{n.label}
                     </button>
@@ -209,32 +214,32 @@ export default function Admin() {
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">
-          {tab === "home" && <HomeTab goTo={setTab} />}
-          {tab === "livechat" && <LiveChatTab goTo={setTab} />}
-          {tab === "broadcast" && <BroadcastTab goTo={setTab} />}
-          {tab === "ads" && <AdsTab goTo={setTab} />}
+          {tab === "home" && <HomeTab goTo={goTo} />}
+          {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
+          {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
+          {tab === "ads" && <AdsTab goTo={goTo} />}
           {tab === "instagram" && <InstagramTab />}
           {tab === "facebook" && <FacebookTab />}
           {tab === "webchat" && <WebchatTab />}
-          {tab === "assistant" && <AssistantTab goTo={setTab} />}
+          {tab === "assistant" && <AssistantTab goTo={goTo} />}
           {tab === "flows" && <FlowsTab />}
           {tab === "sequences" && <SequencesTab />}
           {tab === "catalog" && <CatalogTab />}
           {tab === "growth" && <GrowthTab />}
-          {tab === "aihub" && <AiHubTab goTo={setTab} />}
+          {tab === "aihub" && <AiHubTab goTo={goTo} />}
           {tab === "templates" && <TemplatesTab />}
-          {tab === "forms" && <FormsTab goTo={setTab} />}
+          {tab === "forms" && <FormsTab goTo={goTo} />}
           {tab === "analytics" && <AnalyticsTab />}
-          {tab === "contacts" && <ContactsTab goTo={setTab} />}
-          {tab === "pipeline" && <PipelineTab goTo={setTab} />}
-          {tab === "campaigns" && <CampaignsTab goTo={setTab} />}
+          {tab === "contacts" && <ContactsTab goTo={goTo} />}
+          {tab === "pipeline" && <PipelineTab goTo={goTo} />}
+          {tab === "campaigns" && <CampaignsTab goTo={goTo} />}
           {tab === "optouts" && <OptoutsTab />}
-          {tab === "setup" && <SetupTab goTo={setTab} />}
-          {tab === "integrations" && <IntegrationsTab goTo={setTab} />}
-          {tab === "settings" && <SettingsTab goTo={setTab} />}
+          {tab === "setup" && <SetupTab goTo={goTo} />}
+          {tab === "integrations" && <IntegrationsTab goTo={goTo} />}
+          {tab === "settings" && <SettingsTab goTo={goTo} />}
         </main>
       </div>
-      {showTour && <Walkthrough goTo={setTab} onDone={() => setShowTour(false)} />}
+      {showTour && <Walkthrough goTo={goTo} onDone={() => setShowTour(false)} />}
     </div>
   );
 }
@@ -290,7 +295,7 @@ interface SystemStatus {
   counts: { contacts: number; kbDocuments: number; conversations: number; needsAttention: number };
 }
 
-function HomeTab({ goTo }: { goTo: (t: Tab) => void }) {
+function HomeTab({ goTo }: { goTo: GoTo }) {
   const [s, setS] = useState<SystemStatus | null>(null);
   useEffect(() => { fetch("/api/admin/system/status").then(r => r.json()).then(setS).catch(() => undefined); }, []);
 
@@ -312,13 +317,15 @@ function HomeTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* At a glance */}
       {s && (
         <div className="grid grid-cols-4 gap-3">
-          {[
-            { label: "Contacts", value: s.counts.contacts, tab: "contacts" as Tab },
-            { label: "Knowledge docs", value: s.counts.kbDocuments, tab: "assistant" as Tab },
-            { label: "Conversations", value: s.counts.conversations, tab: "livechat" as Tab },
-            { label: "Need attention", value: s.counts.needsAttention, tab: "livechat" as Tab },
-          ].map(c => (
-            <button key={c.label} onClick={() => goTo(c.tab)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
+          {([
+            { label: "Contacts", value: s.counts.contacts, tab: "contacts" },
+            { label: "Knowledge docs", value: s.counts.kbDocuments, tab: "assistant" },
+            { label: "Conversations", value: s.counts.conversations, tab: "livechat" },
+            // "Need attention" counts escalated chats — open Live Chat already
+            // filtered to exactly that set.
+            { label: "Need attention", value: s.counts.needsAttention, tab: "livechat", intent: { filter: "escalated" } },
+          ] as { label: string; value: number; tab: Tab; intent?: ChatIntent }[]).map(c => (
+            <button key={c.label} onClick={() => goTo(c.tab, c.intent)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
               <p className={`text-2xl font-extrabold ${c.label === "Need attention" && c.value > 0 ? "text-red-500" : ""}`}>{c.value}</p>
               <p className="text-xs text-slate-500 font-medium">{c.label}</p>
             </button>
