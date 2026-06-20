@@ -8,11 +8,14 @@ import { HERO, SOCIAL_PROOF } from "../_content/site";
 // Brand chips that float around the orbit. slug → cdn.simpleicons.org (brand
 // colour). Positions are percentages within the centred stage; some hide on
 // smaller screens. (All slugs verified to resolve on Simple Icons.)
-type Chip = { name: string; slug: string; pos: string; size?: string; hide?: boolean };
+// slug → cdn.simpleicons.org; src → an explicit logo URL (e.g. Iconify, for marks
+// Simple Icons dropped like OpenAI). Every chip gently floats (staggered).
+type Chip = { name: string; slug?: string; src?: string; pos: string; size?: string; hide?: boolean };
 const CHIPS: Chip[] = [
   { name: "WhatsApp", slug: "whatsapp", pos: "left-[2%] top-[30%]", size: "h-14 w-14" },
   { name: "Instagram", slug: "instagram", pos: "left-[11%] top-[58%]" },
   { name: "Gemini", slug: "googlegemini", pos: "left-[22%] top-[16%]", hide: true },
+  { name: "ChatGPT", src: "https://api.iconify.design/logos:openai-icon.svg", pos: "left-[46%] top-[3%]", hide: true },
   { name: "Razorpay", slug: "razorpay", pos: "left-[5%] top-[76%]", hide: true },
   { name: "Shopify", slug: "shopify", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
   { name: "Messenger", slug: "messenger", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
@@ -21,6 +24,9 @@ const CHIPS: Chip[] = [
   { name: "Stripe", slug: "stripe", pos: "right-[5%] top-[74%]", hide: true },
   { name: "HubSpot", slug: "hubspot", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },
 ];
+
+// Staggered float classes so the chips don't bob in unison.
+const FLOATS = ["animate-floaty", "animate-floaty-slow", "animate-floaty-delay"];
 
 // Concentric ring diameters (px) — drawn as centred circles behind the headline.
 const RINGS = [280, 460, 660, 880];
@@ -62,11 +68,11 @@ export function Hero() {
         <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.12),transparent_70%)] blur-2xl" />
 
         {/* Floating brand chips */}
-        {CHIPS.map(c => (
+        {CHIPS.map((c, i) => (
           <div key={c.name}
-            className={`absolute z-10 ${c.pos} ${c.hide ? "hidden lg:flex" : "hidden sm:flex"} items-center justify-center rounded-full bg-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.22)] ring-1 ring-slate-100 ${c.size ?? "h-12 w-12"}`}>
+            className={`absolute z-10 ${c.pos} ${FLOATS[i % FLOATS.length]} ${c.hide ? "hidden lg:flex" : "hidden sm:flex"} items-center justify-center rounded-full bg-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.22)] ring-1 ring-slate-100 ${c.size ?? "h-12 w-12"}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={`https://cdn.simpleicons.org/${c.slug}`} alt={`${c.name} logo`} title={c.name} className="h-1/2 w-1/2 object-contain" loading="lazy" />
+            <img src={c.src ?? `https://cdn.simpleicons.org/${c.slug}`} alt={`${c.name} logo`} title={c.name} className="h-1/2 w-1/2 object-contain" loading="lazy" />
           </div>
         ))}
 
