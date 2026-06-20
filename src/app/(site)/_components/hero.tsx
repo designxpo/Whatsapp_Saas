@@ -17,7 +17,7 @@ const CHIPS: Chip[] = [
   { name: "Shopify", slug: "shopify", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
   { name: "Messenger", slug: "messenger", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
   { name: "Meta", slug: "meta", pos: "right-[11%] top-[56%]" },
-  { name: "Anthropic", slug: "anthropic", pos: "right-[22%] top-[15%]", hide: true },
+  { name: "Claude", slug: "claude", pos: "right-[22%] top-[15%]", hide: true },
   { name: "Stripe", slug: "stripe", pos: "right-[5%] top-[74%]", hide: true },
   { name: "HubSpot", slug: "hubspot", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },
 ];
@@ -27,9 +27,9 @@ const RINGS = [280, 460, 660, 880];
 
 // The little "live in your inbox" activity feed that floats over the hero.
 const ACTIVITY = [
-  { initials: "PS", tone: "from-[#25D366] to-[#128C7E]", name: "Priya Sharma", action: "messaged on WhatsApp", meta: "AI replied in 2s · lead captured", dot: "#25D366" },
-  { initials: "RM", tone: "from-[#E1306C] to-[#C13584]", name: "Rahul Mehta", action: "DM'd on Instagram", meta: "Booked a demo for Fri 3pm", dot: "#E1306C" },
-  { initials: "AW", tone: "from-brand-500 to-brand-800", name: "Website visitor", action: "started a web chat", meta: "Answered from your knowledge base", dot: "#0783fd" },
+  { initials: "PS", tone: "from-[#25D366] to-[#128C7E]", img: "https://randomuser.me/api/portraits/women/65.jpg", name: "Priya Sharma", action: "messaged on WhatsApp", meta: "AI replied in 2s · lead captured", dot: "#25D366" },
+  { initials: "RM", tone: "from-[#E1306C] to-[#C13584]", img: "https://randomuser.me/api/portraits/men/45.jpg", name: "Rahul Mehta", action: "DM'd on Instagram", meta: "Booked a demo for Fri 3pm", dot: "#E1306C" },
+  { initials: "AW", tone: "from-brand-500 to-brand-800", img: "https://randomuser.me/api/portraits/women/32.jpg", name: "Website visitor", action: "started a web chat", meta: "Answered from your knowledge base", dot: "#0783fd" },
 ];
 
 function RatingBadge({ label, score }: { label: string; score: string }) {
@@ -91,7 +91,7 @@ export function Hero() {
 
           {/* Live-activity card — what the inbox does, in motion */}
           <div className="relative mx-auto mt-12 max-w-md">
-            <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
+            <div className="animate-floaty rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
               <div className="flex items-center justify-between px-2 pb-2 pt-1">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Live in your inbox</span>
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#2f9e6e]">
@@ -102,8 +102,12 @@ export function Hero() {
               <div className="space-y-1.5">
                 {ACTIVITY.map(a => (
                   <div key={a.name} className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-left">
-                    <span className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
-                      {a.initials}
+                    <span className="relative h-9 w-9 shrink-0">
+                      <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
+                        {a.initials}
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={a.img} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                      </span>
                       <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: a.dot }} />
                     </span>
                     <div className="min-w-0 flex-1">
