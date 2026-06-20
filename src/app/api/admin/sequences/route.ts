@@ -3,6 +3,7 @@ import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } fro
 import { listSequences, getSequenceSteps, createSequence, updateSequence, deleteSequence, setSequenceSteps, type SequenceTriggerKind, type SequenceStepAction } from "@/lib/sequences";
 import { logActivity } from "@/lib/team";
 import { getChannel } from "@/lib/channels";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
   if (!body.name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const gate = await guardFeature(tid, "sequences"); if (gate) return gate;
     // A client-supplied channelId must belong to this tenant — the sequence
     // cron later sends from it, so a foreign id = cross-tenant credential abuse.
     if (body.channelId && !(await getChannel(body.channelId, tid))) {

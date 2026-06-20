@@ -7,7 +7,9 @@ import { hashPassword } from "./team";
 
 export type PaymentStatus = "trialing" | "active" | "past_due" | "cancelled" | "none";
 export type TenantStatus = "active" | "trialing" | "suspended" | "cancelled";
-export interface TenantFeatures { whatsapp: boolean; instagram: boolean; sequences: boolean; commerce: boolean; growth: boolean; ai_autoreply: boolean; ads: boolean }
+// Per-tenant feature OVERRIDES — a sparse key→bool map layered on top of the
+// plan defaults by the entitlement resolver (canonical keys: FEATURE_KEYS).
+export type TenantFeatures = Record<string, boolean>;
 
 export interface Tenant {
   id: string; name: string; slug: string; status: TenantStatus; plan: string;
@@ -15,7 +17,7 @@ export interface Tenant {
   industry: string | null; teamSize: string | null; useCase: string | null; expectedVolume: string | null; source: string | null;
   paymentStatus: PaymentStatus; trialEndsAt: string | null; currentPeriodEnd: string | null;
   amountCents: number; currency: string; notes: string | null;
-  features: TenantFeatures; onboarded: boolean; createdAt: string;
+  features: TenantFeatures; grandfathered: boolean; onboarded: boolean; createdAt: string;
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
 }
 
@@ -34,7 +36,8 @@ function mapTenant(r: Record<string, unknown>): Tenant {
     trialEndsAt: (r.trial_ends_at as string | null) ?? null, currentPeriodEnd: (r.current_period_end as string | null) ?? null,
     amountCents: (r.amount_cents as number) ?? 0, currency: (r.currency as string) ?? "INR",
     notes: (r.notes as string | null) ?? null,
-    features: { ...DEFAULT_FEATURES, ...((r.features as Partial<TenantFeatures>) ?? {}) },
+    features: { ...DEFAULT_FEATURES, ...((r.features as TenantFeatures) ?? {}) },
+    grandfathered: (r.grandfathered as boolean) ?? false,
     onboarded: (r.onboarded as boolean) ?? false, createdAt: r.created_at as string,
     stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
     stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
@@ -189,6 +192,9 @@ export async function createTenantFromSignup(p: {
     company: p.company.trim(), owner_name: p.ownerName.trim(), owner_email: email, owner_phone: p.ownerPhone ?? null,
     industry: p.industry ?? null, team_size: p.teamSize ?? null, use_case: p.useCase ?? null,
     expected_volume: p.expectedVolume ?? null, source: p.source ?? "signup", trial_ends_at: trialEnds,
+    // New tenants are plan-driven: empty feature overrides + not grandfathered,
+    // so entitlements resolve from the (trial) plan, not all-features-on.
+    features: {}, grandfathered: false,
   }).select("id").single();
   if (ins.error) throw ins.error;
   const tenantId = ins.data!.id as string;

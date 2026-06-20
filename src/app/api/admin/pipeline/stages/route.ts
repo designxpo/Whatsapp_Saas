@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { ensureSeeded, saveStage, deleteStage, reorderStages } from "@/lib/pipeline";
 import { logActivity } from "@/lib/team";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  { const gate = await guardFeature(tid, "pipeline"); if (gate) return gate; }
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

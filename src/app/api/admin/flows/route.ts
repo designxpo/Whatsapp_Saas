@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listFlows, createFlow } from "@/lib/flowengine";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const gate = await guardFeature(tid, "flows"); if (gate) return gate;
     return NextResponse.json({ flow: await createFlow(name, tid) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

@@ -3,15 +3,18 @@
 
 import { db } from "./supabase";
 
-export interface PlanLimits { contacts: number; messages_per_month: number; channels: number; team_seats: number }
-export interface PlanFeatures { whatsapp: boolean; instagram: boolean; sequences: boolean; commerce: boolean; growth: boolean; ai_autoreply: boolean; ads: boolean }
+export interface PlanLimits { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number }
+// Feature entitlements are an open key→bool map (canonical keys: FEATURE_KEYS in
+// entitlements.ts). Kept as a Record so new feature keys never force a type change.
+export type PlanFeatures = Record<string, boolean>;
 export interface Plan {
   id: string; key: string; name: string; priceCents: number; currency: string; interval: string;
   limits: PlanLimits; features: PlanFeatures; sort: number; active: boolean;
   stripePriceId: string | null;   // Stripe Price this plan maps to (null → not purchasable via Stripe)
 }
 
-const DEF_LIMITS: PlanLimits = { contacts: 0, messages_per_month: 0, channels: 1, team_seats: 2 };
+const DEF_LIMITS: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2 };
+// Unknown/legacy plans fall back to everything-on (fail-open); real plans carry explicit flags.
 const DEF_FEATURES: PlanFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
 
 function mapPlan(r: Record<string, unknown>): Plan {
@@ -19,7 +22,7 @@ function mapPlan(r: Record<string, unknown>): Plan {
     id: r.id as string, key: r.key as string, name: r.name as string,
     priceCents: (r.price_cents as number) ?? 0, currency: (r.currency as string) ?? "INR", interval: (r.interval as string) ?? "month",
     limits: { ...DEF_LIMITS, ...((r.limits as Partial<PlanLimits>) ?? {}) },
-    features: { ...DEF_FEATURES, ...((r.features as Partial<PlanFeatures>) ?? {}) },
+    features: { ...DEF_FEATURES, ...((r.features as PlanFeatures) ?? {}) },
     sort: (r.sort as number) ?? 0, active: (r.active as boolean) ?? true,
     stripePriceId: (r.stripe_price_id as string | null) ?? null,
   };

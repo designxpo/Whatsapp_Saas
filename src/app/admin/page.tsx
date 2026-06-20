@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
+import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
 import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
@@ -90,12 +91,14 @@ export default function Admin() {
   const goTo = useCallback<GoTo>((t, intent) => { setChatIntent(intent ?? null); setTab(t); }, []);
   const clearChatIntent = useCallback(() => setChatIntent(null), []);
   const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
+  const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json()).then(d => {
       const u = d.user ?? null;
       setMe(u);
+      setEnt(d.entitlements ?? null);
       setBanner(d.banner ?? null);
       // The product owner can browse this app interface (the platform's default
       // workspace) AND jump to the Owner Portal via the sidebar. When viewing a
@@ -104,6 +107,10 @@ export default function Admin() {
       if (d.needsWalkthrough || welcome) setShowTour(true);
     }).catch(() => {});
   }, [router]);
+
+  // If the active tab isn't entitled (e.g. deep-linked or after a plan change),
+  // fall back to Home so a hidden feature can never render.
+  useEffect(() => { if (ent && !tabAllowed(tab, ent)) setTab("home"); }, [ent, tab]);
 
   const impersonating = !!me?.isPlatformOwner && !!me?.tenantId && me.tenantId !== DEFAULT_TENANT_ID;
   async function exitImpersonation() {
@@ -141,13 +148,17 @@ export default function Admin() {
           </div>
         )}
 
-        {/* Grouped nav */}
+        {/* Grouped nav — items the tenant's plan doesn't include are hidden
+            entirely (when entitlement enforcement is on; otherwise all show). */}
         <nav className="flex-1 px-3 py-2 overflow-y-auto">
-          {NAV_GROUPS.map(g => (
+          {NAV_GROUPS.map(g => {
+            const items = g.items.filter(n => tabAllowed(n.key, ent));
+            if (!items.length) return null;
+            return (
             <div key={g.group} className="mb-4">
               <p className="px-3 mb-1.5 text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{g.group}</p>
               <div className="space-y-0.5">
-                {g.items.map(n => {
+                {items.map(n => {
                   const active = tab === n.key;
                   return (
                     <button key={n.key} onClick={() => goTo(n.key)}
@@ -158,7 +169,8 @@ export default function Admin() {
                 })}
               </div>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <div className="p-3 border-t border-line space-y-1">
@@ -186,6 +198,16 @@ export default function Admin() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {(() => {
+          const a = accountState(ent);
+          if (a.active) return null;
+          return (
+            <div className="shrink-0 px-6 py-2 text-[12px] font-semibold text-center bg-red-50 text-red-700 border-b border-red-200 flex items-center justify-center gap-3">
+              ⚠️ {a.message}
+              <button onClick={() => setTab("settings")} className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Manage billing</button>
+            </div>
+          );
+        })()}
         {banner && (
           <div className={`shrink-0 px-6 py-2 text-[12px] font-medium text-center ${banner.level === "warning" ? "bg-amber-50 text-amber-800 border-b border-amber-200" : banner.level === "success" ? "bg-emerald-50 text-emerald-800 border-b border-emerald-200" : "bg-brand-50 text-brand-800 border-b border-brand-100"}`}>
             <b>{banner.title}</b>{banner.body ? ` — ${banner.body}` : ""}
@@ -208,9 +230,11 @@ export default function Admin() {
           <p className="text-[13px] text-ink-400">
             Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{TAB_TITLES[tab]}</span>
           </p>
-          <button onClick={() => setTab("broadcast")} className={btnPrimary}>
-            <Send className="w-4 h-4" /> New broadcast
-          </button>
+          {tabAllowed("broadcast", ent) && (
+            <button onClick={() => setTab("broadcast")} className={btnPrimary}>
+              <Send className="w-4 h-4" /> New broadcast
+            </button>
+          )}
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">

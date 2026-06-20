@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listProducts, saveProduct, deleteProduct, type Product } from "@/lib/commerce";
 import { logActivity } from "@/lib/team";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   if (!body.name?.trim()) return NextResponse.json({ error: "Product name is required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const gate = await guardFeature(tid, "commerce"); if (gate) return gate;
     const p = await saveProduct({ ...body, name: body.name! }, tid);
     logActivity(await currentUser(), "product.save", p.name);
     return NextResponse.json({ success: true, product: p });

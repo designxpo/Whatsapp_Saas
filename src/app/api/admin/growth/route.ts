@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listGrowthTools, saveGrowthTool, deleteGrowthTool, type GrowthTool, type GrowthKind } from "@/lib/growth";
 import { logActivity } from "@/lib/team";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
   if (!body.name?.trim() || !body.kind || !body.slug?.trim()) return NextResponse.json({ error: "name, kind and slug are required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const gate = await guardFeature(tid, "growth"); if (gate) return gate;
     const t = await saveGrowthTool({ ...body, name: body.name!, kind: body.kind!, slug: body.slug! }, tid);
     logActivity(await currentUser(), "growth.save", t.name);
     return NextResponse.json({ success: true, tool: t });

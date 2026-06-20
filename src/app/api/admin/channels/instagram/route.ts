@@ -3,6 +3,7 @@ import { saveInstagramChannel, getChannel } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` 
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  { const gate = await guardFeature(tenantId, "ch_instagram"); if (gate) return gate; }
   let body: { id?: string; name?: string; igUserId?: string; pageId?: string; token?: string; agentId?: string | null; active?: boolean; isDefault?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.igUserId?.trim()) {

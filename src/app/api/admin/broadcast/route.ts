@@ -5,6 +5,7 @@ import { recipientsForAudience } from "@/lib/store";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { checkLimit } from "@/lib/usage";
+import { guardFeature, guardAccount } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: BroadcastInput;
   try { body = (await req.json()) as BroadcastInput; } catch { return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 }); }
+  { const tid0 = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const acct = await guardAccount(tid0); if (acct) return acct;
+    const gate = await guardFeature(tid0, "broadcasts"); if (gate) return gate; }
   // Enforce the monthly-message cap before sending (best-effort recipient count).
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;

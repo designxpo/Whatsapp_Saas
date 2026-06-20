@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import { getTenantSetting, getTenantSecret, setTenantSetting, setTenantSecret } from "@/lib/store";
 import { LSQ_KEYS, verifyLsq } from "@/lib/leadsquared";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  { const gate = await guardFeature(tid, "crm"); if (gate) return gate; }
   let b: { accessKey?: string; secretKey?: string; host?: string; activityCode?: string; taskCategory?: string; igHandleField?: string; autoCreate?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

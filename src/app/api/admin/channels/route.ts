@@ -3,6 +3,7 @@ import { listChannels, getChannel, saveChannel, deleteChannel, type Channel } fr
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
+import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export async function GET() {
 // POST — create/update a channel. Leave token empty on edit to keep the old one.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  { const gate = await guardFeature((await currentTenantId()) ?? DEFAULT_TENANT_ID, "ch_whatsapp"); if (gate) return gate; }
   let body: Partial<Channel> & { name?: string; phoneId?: string; wabaId?: string; token?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.phoneId?.trim() || !body.wabaId?.trim()) {
