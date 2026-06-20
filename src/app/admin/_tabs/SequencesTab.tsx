@@ -2,7 +2,7 @@
 
 // Sequences (drip) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X } from "lucide-react";
+import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X, FlaskConical, Send, Zap, RefreshCw, Sparkles } from "lucide-react";
 import { inp, ChannelSelect, ImgFallback } from "../_shared";
 
 // ── Sequences (drip) ──────────────────────────────────────────────────────────
@@ -123,6 +123,89 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
   );
 }
 
+// Test + monitor a drip: enroll one number on demand, force the due steps to run
+// (without waiting for the cron), and watch every enrollment's progress + errors.
+type EnrRow = { id: string; sequenceName: string; phone: string; platform: string; currentStep: number; status: string; nextRunAt: string | null; lastError: string | null; updatedAt: string | null };
+function fmtWhen(s: string | null): string {
+  if (!s) return "—";
+  const d = new Date(s); if (isNaN(d.getTime())) return "—";
+  const diff = d.getTime() - Date.now();
+  const abs = Math.abs(diff), m = Math.round(abs / 60000), h = Math.round(abs / 3600000), days = Math.round(abs / 86400000);
+  const rel = m < 1 ? "now" : m < 60 ? `${m}m` : h < 48 ? `${h}h` : `${days}d`;
+  return diff >= 0 ? `in ${rel}` : `${rel} ago`;
+}
+const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-600", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
+function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
+  const [enr, setEnr] = useState<EnrRow[]>([]);
+  const [seqId, setSeqId] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState<"" | "test" | "run" | "refresh">("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const loadEnr = useCallback(() => { fetch("/api/admin/sequences/enrollments").then(r => r.json()).then(d => setEnr(d.enrollments ?? [])).catch(() => {}); }, []);
+  useEffect(() => { loadEnr(); }, [loadEnr]);
+
+  async function testEnroll() {
+    if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to test." }); return; }
+    if (!phone.trim()) { setMsg({ ok: false, text: "Enter a number / IG id to test with." }); return; }
+    setBusy("test"); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/sequences/test-enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sequenceId: seqId, phone }) });
+      const d = await res.json();
+      setMsg(res.ok ? { ok: true, text: d.note || "Enrolled." } : { ok: false, text: d.error || "Failed" });
+      loadEnr();
+    } catch { setMsg({ ok: false, text: "Connection error" }); }
+    finally { setBusy(""); }
+  }
+  async function runNow() {
+    setBusy("run"); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/sequences/run", { method: "POST" });
+      const d = await res.json();
+      setMsg(res.ok ? { ok: true, text: `Processed ${d.processed} due step(s) now.` } : { ok: false, text: d.error || "Failed" });
+      loadEnr();
+    } catch { setMsg({ ok: false, text: "Connection error" }); }
+    finally { setBusy(""); }
+  }
+
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p>
+        <p className="text-[11px] text-ink-400">Enroll your own number to test a drip, force due steps to send now (instead of waiting for the scheduler), and watch every enrollment below.</p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => setSeqId(e.target.value)}>
+          <option value="">Test sequence…</option>
+          {seqs.map(s => <option key={s.id} value={s.id}>{s.name}{!s.active ? " (off)" : ""}</option>)}
+        </select>
+        <input className={`${inp} w-44`} placeholder="Your number / IG id" value={phone} onChange={e => setPhone(e.target.value)} />
+        <button onClick={testEnroll} disabled={busy !== ""} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Enroll &amp; send</button>
+        <button onClick={runNow} disabled={busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
+        <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+      </div>
+      {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
+      <p className="text-[10px] text-ink-400">A <b>text</b> first step only delivers if that number messaged you in the last 24h (WhatsApp/Instagram rule). For a cold test, make the first step an approved <b>template</b>, or message the business from your phone first.</p>
+
+      {/* Enrollment monitor */}
+      <div className="border border-line rounded-control overflow-hidden">
+        <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
+          <div className="col-span-3">Sequence</div><div className="col-span-3">Contact</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
+        </div>
+        {enr.length === 0 && <p className="px-3 py-3 text-xs text-ink-400">No enrollments yet. Enroll a number above, or wire a trigger (keyword / growth tool) and have someone message you.</p>}
+        {enr.map(e => (
+          <div key={e.id} className="grid grid-cols-12 gap-2 px-3 py-2 border-t border-line text-[12px] items-center">
+            <div className="col-span-3 truncate font-medium text-ink-800">{e.sequenceName}</div>
+            <div className="col-span-3 truncate font-mono text-ink-600">{e.phone}<span className="text-ink-300"> · {e.platform === "instagram" ? "IG" : "WA"}</span></div>
+            <div className="col-span-2 text-ink-600">#{(e.currentStep ?? 0) + 1}</div>
+            <div className="col-span-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${ENR_BADGE[e.status] ?? "bg-slate-100 text-slate-500"}`}>{e.status}</span></div>
+            <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SequencesTab() {
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
@@ -165,6 +248,15 @@ function SequencesTab() {
         <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New sequence</button>
       </div>
 
+      {/* How a sequence actually fires — the part that's easy to miss. */}
+      <div className="bg-brand-50/60 border border-brand-700/15 rounded-card p-4 text-[12px] text-ink-700 space-y-1.5">
+        <p className="font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-700" /> How a sequence runs</p>
+        <p><b>1. A trigger enrols someone.</b> A sequence does nothing on its own — it needs an entry point: a <b>keyword</b> they send, a <b>growth tool</b> opt-in, an Instagram <b>story reply</b>, a cart/order event, or the <b>Test</b> box below. Set the trigger on the sequence, then make sure that path exists.</p>
+        <p><b>2. The schedule sends the steps.</b> A background job runs <b>every ~5 minutes</b> and delivers each step once its wait is up. <b>Step 1&apos;s wait</b> counts from enrolment (0 = send immediately); every later step&apos;s wait counts from the previous step.</p>
+        <p><b>3. The 24-hour rule applies.</b> Plain <b>text/media</b> steps only deliver if the contact messaged you in the last 24h. To reach people outside that window, make the step an approved <b>template</b>.</p>
+        <p className="text-ink-400">Not sure it&apos;s working? Use <b>Test &amp; monitor</b> below — enroll your own number and click <b>Run due steps now</b>.</p>
+      </div>
+
       {seqs.map(s => (
         <div key={s.id} className="bg-white rounded-card border border-line p-4 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Workflow className="w-4 h-4" /></div>
@@ -178,6 +270,7 @@ function SequencesTab() {
       ))}
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
 
+      <SeqMonitorPanel seqs={seqs} />
       <LsqDripPanel seqs={seqs} />
 
       {form && (

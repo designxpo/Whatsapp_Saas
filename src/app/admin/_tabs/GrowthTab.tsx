@@ -2,7 +2,7 @@
 
 // Growth tools tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Plus, Trash2, TrendingUp } from "lucide-react";
+import { Copy, Plus, Trash2, TrendingUp, Download, Sparkles } from "lucide-react";
 import { inp } from "../_shared";
 
 // ── Growth tools ──────────────────────────────────────────────────────────────
@@ -48,18 +48,31 @@ function GrowthTab() {
         <button onClick={() => { setForm({ ...EMPTY_GROWTH }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New tool</button>
       </div>
 
-      {tools.map(t => (
+      {/* How a growth tool actually works — the 3-step opt-in chain. */}
+      <div className="bg-brand-50/60 border border-brand-700/15 rounded-card p-4 text-[12px] text-ink-700 space-y-1.5">
+        <p className="font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-700" /> How a growth tool works</p>
+        <p><b>1. Share the link or QR.</b> Every tool is one short link <span className="font-mono">{origin || "…"}/g/&lt;slug&gt;</span> (and a matching QR). Put it in a bio, ad, poster or email.</p>
+        <p><b>2. It opens WhatsApp/Instagram pre-filled.</b> Clicking it sends the person into a chat with your <b>opt-in message</b> already typed (from the WhatsApp number, IG username, or custom URL you set).</p>
+        <p><b>3. When they hit send, we act.</b> The webhook spots the opt-in text and <b>tags</b> them + <b>enrolls</b> them into the sequence you chose, and counts a conversion. Matching is case-insensitive &amp; “contains”, so keep the opt-in text <b>distinctive</b> (e.g. <span className="font-mono">GET GUIDE</span>, not <span className="font-mono">hi</span>).</p>
+        <p className="text-ink-400">The <b>Type</b> dropdown is just a label for you — every type produces the same link + QR.</p>
+      </div>
+
+      {tools.map(t => {
+        const dest = t.config?.url ? t.config.url : t.config?.number ? `wa.me/${t.config.number.replace(/\D/g, "")}` : t.config?.igUsername ? `ig.me/${t.config.igUsername.replace(/^@/, "")}` : "no destination set";
+        return (
         <div key={t.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><TrendingUp className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{t.name} <span className="text-[10px] font-bold text-ink-400">· {GROWTH_KINDS.find(k => k[0] === t.kind)?.[1] ?? t.kind}</span></p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">{origin}/g/{t.slug} · {t.clicks} clicks · {t.conversions} conv.</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">{origin}/g/{t.slug} → {dest} · {t.clicks} clicks · {t.conversions} conv.</p>
           </div>
           <button onClick={() => navigator.clipboard.writeText(`${origin}/g/${t.slug}`)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 flex items-center gap-1"><Copy className="w-3 h-3" /> Link</button>
+          <a href={`/api/admin/growth/qr?slug=${encodeURIComponent(t.slug)}`} download={`qr-${t.slug}.png`} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 flex items-center gap-1"><Download className="w-3 h-3" /> QR</a>
           <button onClick={() => setForm({ id: t.id, name: t.name, kind: t.kind, slug: t.slug, prefill: t.prefill ?? "", number: t.config?.number ?? "", igUsername: t.config?.igUsername ?? "", url: t.config?.url ?? "", tag: t.tag ?? "", sequenceId: t.sequenceId ?? "", active: t.active })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(t.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
-      ))}
+        );
+      })}
       {!tools.length && !form && <p className="text-xs text-ink-400">No growth tools yet.</p>}
 
       {form && (
@@ -78,6 +91,25 @@ function GrowthTab() {
               {seqs.map(s => <option key={s.id} value={s.id}>Enroll: {s.name}</option>)}
             </select>
           </div>
+          <p className="text-[11px] text-ink-400">Set <b>one</b> destination — a WhatsApp number, an Instagram username, <i>or</i> a custom URL. The <b>opt-in message</b> is what gets pre-typed in the chat and what we match on when they reply, so keep it distinctive. To start a drip on opt-in, pick a sequence above.</p>
+
+          {/* Shareable link + QR for the saved tool */}
+          {form.id && form.slug ? (
+            <div className="flex items-center gap-3 bg-canvas border border-line rounded-control p-3">
+              <img src={`/api/admin/growth/qr?slug=${encodeURIComponent(form.slug)}`} alt="QR code" className="w-24 h-24 rounded bg-white border border-line shrink-0" />
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-[11px] font-semibold text-ink-500">Share this link or QR</p>
+                <code className="block truncate text-[11px] font-mono text-ink-700">{origin}/g/{form.slug}</code>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => navigator.clipboard.writeText(`${origin}/g/${form.slug}`)} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-600 hover:bg-white flex items-center gap-1"><Copy className="w-3 h-3" /> Copy link</button>
+                  <a href={`/api/admin/growth/qr?slug=${encodeURIComponent(form.slug)}`} download={`qr-${form.slug}.png`} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-600 hover:bg-white flex items-center gap-1"><Download className="w-3 h-3" /> Download QR</a>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-ink-400">💡 Save the tool to generate its shareable link + QR code.</p>
+          )}
+
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
             <div className="flex-1" />

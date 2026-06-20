@@ -135,6 +135,31 @@ export async function stopEnrollment(sequenceId: string, phone: string): Promise
     .eq("sequence_id", sequenceId).eq("phone", phone);
 }
 
+// Recent enrollments (joined with the sequence name) for the admin monitor —
+// who's in a drip, which step, when it next runs, any send error. Tenant-scoped.
+export interface EnrollmentRow {
+  id: string; sequenceId: string; sequenceName: string; phone: string; platform: string;
+  currentStep: number; status: string; nextRunAt: string | null; lastError: string | null;
+  updatedAt: string | null; createdAt: string | null;
+}
+export async function listRecentEnrollments(limit = 100, tenantId = DEFAULT_TENANT_ID): Promise<EnrollmentRow[]> {
+  const { data } = await db().from("wa_sequence_enrollments").select("*").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(limit);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  const ids = [...new Set(rows.map(r => r.sequence_id as string))];
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data: sd } = await db().from("wa_sequences").select("id,name").eq("tenant_id", tenantId).in("id", ids);
+    for (const s of (sd ?? []) as Record<string, unknown>[]) names.set(s.id as string, s.name as string);
+  }
+  return rows.map(r => ({
+    id: r.id as string, sequenceId: r.sequence_id as string, sequenceName: names.get(r.sequence_id as string) ?? "—",
+    phone: r.phone as string, platform: (r.platform as string) ?? "whatsapp",
+    currentStep: (r.current_step as number) ?? 0, status: (r.status as string) ?? "active",
+    nextRunAt: (r.next_run_at as string | null) ?? null, lastError: (r.last_error as string | null) ?? null,
+    updatedAt: (r.updated_at as string | null) ?? null, createdAt: (r.created_at as string | null) ?? null,
+  }));
+}
+
 // ── Execution ─────────────────────────────────────────────────────────────────
 async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: SequenceStep): Promise<{ ok: boolean; error?: string }> {
   const channel = seq.channelId ? (await getChannel(seq.channelId)) ?? undefined : undefined;
@@ -169,10 +194,11 @@ async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: Se
 
 // Drain due enrollments — called by the cron. Advances each one step; failures
 // are recorded but still advance (so a bad step never wedges the sequence).
-export async function drainSequences(max = 100): Promise<number> {
+export async function drainSequences(max = 100, tenantId?: string): Promise<number> {
   const now = new Date().toISOString();
-  const { data } = await db().from("wa_sequence_enrollments")
-    .select("*").eq("status", "active").lte("next_run_at", now).order("next_run_at").limit(max);
+  let q = db().from("wa_sequence_enrollments").select("*").eq("status", "active").lte("next_run_at", now);
+  if (tenantId) q = q.eq("tenant_id", tenantId);   // admin "run now" scopes to one tenant; cron drains all
+  const { data } = await q.order("next_run_at").limit(max);
 
   let processed = 0;
   for (const enr of (data ?? []) as Record<string, unknown>[]) {
