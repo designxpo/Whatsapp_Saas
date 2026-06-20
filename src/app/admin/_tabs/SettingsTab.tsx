@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, Copy, Check } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, Copy, Check, UploadCloud } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
 
@@ -718,10 +718,10 @@ export function MessengerCard() {
 }
 
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
-type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left" };
+type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string };
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
-type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left" };
-const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right" };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
@@ -729,7 +729,23 @@ export function WebchatCard() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [iconBusy, setIconBusy] = useState(false);
+  const iconRef = useRef<HTMLInputElement | null>(null);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  // Upload a launcher icon image → public URL → stored in the widget config.
+  async function uploadIcon(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !form) return;
+    setIconBusy(true); setMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const up = await fetch("/api/upload", { method: "POST", body: fd }).then(r => r.json()).catch(() => ({}));
+      if (up.url) setForm(f => (f ? { ...f, iconUrl: up.url } : f));
+      else setMsg(up.error || "Icon upload failed");
+    } finally { setIconBusy(false); }
+  }
 
   const load = useCallback(async () => {
     const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
@@ -745,7 +761,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position } }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -774,7 +790,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -811,9 +827,21 @@ export function WebchatCard() {
           </div>
           <input className={`${inp} w-full`} maxLength={40} placeholder="Header title, e.g. Acme Support" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
           <textarea className={`${inp} w-full resize-none`} rows={2} maxLength={300} placeholder="Welcome greeting shown when the chat opens (optional)" value={form.welcome} onChange={e => setForm({ ...form, welcome: e.target.value })} />
+          {/* Chat-icon upload — upload your logo (e.g. WhatsApp) or leave blank for the default bubble */}
+          <div className="flex items-center gap-2.5 border border-line rounded-control px-2.5 py-2">
+            <span className="text-xs text-ink-600 shrink-0">Chat icon</span>
+            <input ref={iconRef} type="file" accept="image/*" hidden onChange={uploadIcon} />
+            <button onClick={() => iconRef.current?.click()} disabled={iconBusy} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60 flex items-center gap-1.5">
+              {iconBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />} Upload logo
+            </button>
+            {form.iconUrl && <button onClick={() => setForm({ ...form, iconUrl: "" })} className="text-[11px] font-semibold text-ink-400 hover:text-red-600">Remove</button>}
+            <span className="text-[11px] text-ink-400 truncate">{form.iconUrl ? "custom logo set" : "default chat bubble"}</span>
+          </div>
           {/* Live preview of the launcher bubble + header */}
           <div className="flex items-center gap-3 bg-canvas border border-line rounded-control px-3 py-2.5">
-            <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white" style={{ background: /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd" }}><MessageSquare className="w-4 h-4" /></span>
+            <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white overflow-hidden" style={{ background: /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd" }}>
+              {form.iconUrl ? <img src={form.iconUrl} alt="" className="w-full h-full object-cover" /> : <MessageSquare className="w-4 h-4" />}
+            </span>
             <div className="min-w-0">
               <p className="text-xs font-bold text-ink-900 truncate">{form.title || "Chat with us"}</p>
               <p className="text-[11px] text-ink-400 truncate">{form.welcome || "No welcome message"} · {form.position === "left" ? "bottom-left" : "bottom-right"}</p>

@@ -23,6 +23,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
     title: wc.title || "Chat with us",
     welcome: wc.welcome || "",
     position: wc.position === "left" ? "left" : "right",
+    icon: wc.iconUrl || "",
   });
 
   const js = "(function(){\n" +
@@ -50,7 +51,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-note{text-align:center;color:#9aa0a6;font-size:11px;padding:4px 0 8px;}';\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var btn = document.createElement('button'); btn.className = 'twc-btn'; btn.setAttribute('aria-label','Chat with us');\n" +
-"  btn.innerHTML = '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z\"></path></svg>';\n" +
+"  if (CFG.icon) { var im = document.createElement('img'); im.src = CFG.icon; im.setAttribute('alt',''); im.style.cssText='width:32px;height:32px;border-radius:50%;object-fit:cover'; btn.appendChild(im); }\n" +
+"  else { btn.innerHTML = '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z\"></path></svg>'; }\n" +
 "  var panel = document.createElement('div'); panel.className = 'twc-panel';\n" +
 "  panel.innerHTML = '<div class=\"twc-head\"><span class=\"twc-ttl\"></span><button aria-label=\"Close\">&times;</button></div>' +\n" +
 "    '<div class=\"twc-body\"></div>' +\n" +

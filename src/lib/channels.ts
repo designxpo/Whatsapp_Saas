@@ -24,6 +24,7 @@ export interface WebchatConfig {
   title?: string;                 // header text, e.g. "Chat with us"
   welcome?: string;               // greeting shown when the panel first opens
   position?: "right" | "left";    // launcher corner (default right)
+  iconUrl?: string;               // custom launcher icon (uploaded logo); default = chat bubble
 }
 
 export interface Channel extends ChannelCreds {
@@ -292,6 +293,10 @@ export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): Webch
   const welcome = (c?.welcome ?? "").trim();
   if (welcome) out.welcome = welcome.slice(0, 300);
   if (c?.position === "left") out.position = "left";
+  // Custom launcher icon: must be an https URL (it becomes an <img src> in the
+  // loader). Reject anything else so the embed can't be coerced into a bad src.
+  const iconUrl = (c?.iconUrl ?? "").trim();
+  if (/^https:\/\/\S+$/i.test(iconUrl) && iconUrl.length <= 600) out.iconUrl = iconUrl;
   return out;
 }
 
