@@ -139,7 +139,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   if (!commentId) await sendTypingOn(creds, conv.phone);
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid, null, false);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, false);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;

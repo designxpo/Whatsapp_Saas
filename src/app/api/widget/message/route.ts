@@ -50,7 +50,7 @@ export async function POST(req: Request) {
   if (conv.aiReplyCount >= AI_REPLY_CAP) return closeOut();
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, channel.agentId, tid, null, false);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, false);
   if (!r.reply || r.escalate) return closeOut();
 
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });

@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
   try {
     const history = await getConvHistory(conv.id, 20);
-    const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), phone, conv.agentId, conv.tenantId, conv.primaryKbTag);
+    const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), phone, conv.agentId, conv.tenantId, conv.primaryKbTag);
     return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
   } catch (err) {
     const busy = err instanceof Error && /AI_BUSY/.test(err.message);

@@ -4,7 +4,7 @@ import {
 } from "./store";
 import { generateReply } from "./llm";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
-import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech } from "./voice";
+import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech, visionInlineMime } from "./voice";
 import type { ChannelCreds } from "./channels";
 import { pushWaActivity } from "./leadsquared";
 import { emitEvent } from "./integrations";
@@ -92,7 +92,13 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // Reply from the number this conversation lives on (env creds when unset),
     // and prefer that number's default AI persona when the chat has no pin.
     const channel: Channel | undefined = conv.channelId ? (await getChannel(conv.channelId)) ?? undefined : undefined;
-    const lastUserMsg = [...history].reverse().find(m => m.role === "user")?.body ?? "";
+    const lastUser = [...history].reverse().find(m => m.role === "user");
+    const lastUserMsg = lastUser?.body ?? "";
+    // When the newest message is a file the AI can SEE (image / PDF / video),
+    // bypass the text-only Knowledge Router (FAQ + semantic cache) — the answer
+    // depends on the file's contents, so it must go straight to the multimodal
+    // model, and must never be served from (or written to) the text cache.
+    const lastHasMedia = !!lastUser?.mediaUrl && !!visionInlineMime(lastUser.mediaType);
 
     // ── Explicit human-handoff request → route straight to a person, BEFORE the
     // FAQ/cache/AI layers. So "Talk to agent" always reaches a human instead of
@@ -144,7 +150,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     } catch (e) { console.error("[assistant] auto-route:", e); }
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
-    if (lastUserMsg) {
+    if (lastUserMsg && !lastHasMedia) {
       const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
@@ -182,8 +188,9 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     await appendConvMessage({ conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot" });
     await touchOutbound(conversationId, result.reply);
     void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot", tenantId: conv.tenantId });
-    // Warm the semantic cache so the next similar question skips RAG.
-    if (lastUserMsg) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId });
+    // Warm the semantic cache so the next similar question skips RAG. Skipped for
+    // media messages — the answer is about the file, not reusable by its caption.
+    if (lastUserMsg && !lastHasMedia) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId });
     return { outcome: "sent" };
   } catch (err) {
     await reflagReply(conversationId);

@@ -202,7 +202,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const history = await getConvHistory(conv.id, 20);
   // On DMs where we still have no phone for this IG lead, let the AI ask for it once.
   const askPhone = !commentId && !conv.leadPhone;
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, "") })), conv.phone, channel.agentId, tid, null, askPhone);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, askPhone);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;

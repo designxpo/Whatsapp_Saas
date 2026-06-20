@@ -7,11 +7,22 @@
 // tool-calling loop lives in `llm.ts` and is provider-agnostic: it appends the
 // assistant's tool calls + the tool results to `turns` and calls `runChat` again.
 
-import { GoogleGenAI, Type, type Content } from "@google/genai";
+import { GoogleGenAI, Type, type Content, type Part } from "@google/genai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
 export type AiProvider = "gemini" | "openai" | "anthropic";
+
+// Which inline media each provider can natively SEE in a chat turn. Images: all
+// three. PDFs: Gemini + Anthropic (OpenAI Chat Completions takes images only).
+// Video: Gemini only. Used by the reply pipeline to pick what's worth attaching.
+export function providerSupportsMedia(provider: AiProvider, mimeType: string): boolean {
+  const m = (mimeType || "").toLowerCase();
+  if (m.startsWith("image/")) return true;
+  if (m === "application/pdf") return provider === "gemini" || provider === "anthropic";
+  if (m.startsWith("video/")) return provider === "gemini";
+  return false;
+}
 
 // Default chat model per provider when the tenant hasn't pinned one.
 export const DEFAULT_CHAT_MODEL: Record<AiProvider, string> = {
@@ -29,10 +40,14 @@ export interface ChatTool {
   required: string[];
 }
 
+// Inline media a user turn carries so the model can SEE it (base64-encoded bytes
+// + MIME). Pre-filtered to what the chosen provider supports before it gets here.
+export interface ChatMedia { mimeType: string; data: string }
+
 // Normalized conversation turns — rebuilt into each provider's wire format on
 // every call (stateless), so the loop never threads provider objects around.
 export type ChatTurn =
-  | { role: "user"; text: string }
+  | { role: "user"; text: string; media?: ChatMedia[] }
   | { role: "assistant"; text: string }
   | { role: "assistant"; calls: ToolCall[] }
   | { role: "tool"; results: ToolResult[] };
@@ -48,6 +63,7 @@ export interface RunChatOpts {
   turns: ChatTurn[];
   tools?: ChatTool[];
   maxTokens?: number;
+  timeoutMs?: number;   // per-attempt cap; raise it for heavy media (e.g. video)
 }
 
 export interface ChatResult {
@@ -113,13 +129,18 @@ export async function runChat(opts: RunChatOpts): Promise<ChatResult> {
       case "openai": return runOpenAI(opts);
       case "anthropic": return runAnthropic(opts);
     }
-  });
+  }, 4, opts.timeoutMs ?? 24000);
 }
 
 // ── Gemini ─────────────────────────────────────────────────────────────────────
 function runGemini(opts: RunChatOpts): Promise<ChatResult> {
   const contents: Content[] = opts.turns.map((t): Content => {
-    if (t.role === "user") return { role: "user", parts: [{ text: t.text }] };
+    if (t.role === "user") {
+      const parts: Part[] = [];
+      for (const md of t.media ?? []) parts.push({ inlineData: { mimeType: md.mimeType, data: md.data } });
+      if (t.text || parts.length === 0) parts.push({ text: t.text });
+      return { role: "user", parts };
+    }
     if (t.role === "tool") return { role: "user", parts: t.results.map(r => ({ functionResponse: { name: r.name, response: { status: r.status } } })) };
     if ("calls" in t) return { role: "model", parts: t.calls.map(c => ({ functionCall: { name: c.name, args: c.args } })) };
     return { role: "model", parts: [{ text: t.text }] };
@@ -156,7 +177,14 @@ function runGemini(opts: RunChatOpts): Promise<ChatResult> {
 async function runOpenAI(opts: RunChatOpts): Promise<ChatResult> {
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: "system", content: opts.system }];
   for (const t of opts.turns) {
-    if (t.role === "user") messages.push({ role: "user", content: t.text });
+    if (t.role === "user") {
+      if (t.media?.length) {
+        const content: OpenAI.Chat.ChatCompletionContentPart[] = [];
+        if (t.text) content.push({ type: "text", text: t.text });
+        for (const md of t.media) if (md.mimeType.startsWith("image/")) content.push({ type: "image_url", image_url: { url: `data:${md.mimeType};base64,${md.data}` } });
+        messages.push({ role: "user", content: content.length ? content : t.text });
+      } else messages.push({ role: "user", content: t.text });
+    }
     else if (t.role === "tool") for (const r of t.results) messages.push({ role: "tool", tool_call_id: r.id, content: r.status });
     else if ("calls" in t) messages.push({
       role: "assistant", content: null,
@@ -202,7 +230,17 @@ async function runOpenAI(opts: RunChatOpts): Promise<ChatResult> {
 async function runAnthropic(opts: RunChatOpts): Promise<ChatResult> {
   const messages: Anthropic.MessageParam[] = [];
   for (const t of opts.turns) {
-    if (t.role === "user") messages.push({ role: "user", content: t.text });
+    if (t.role === "user") {
+      if (t.media?.length) {
+        const blocks: Anthropic.ContentBlockParam[] = [];
+        if (t.text) blocks.push({ type: "text", text: t.text });
+        for (const md of t.media) {
+          if (md.mimeType.startsWith("image/")) blocks.push({ type: "image", source: { type: "base64", media_type: md.mimeType as Anthropic.Base64ImageSource["media_type"], data: md.data } });
+          else if (md.mimeType === "application/pdf") blocks.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: md.data } });
+        }
+        messages.push({ role: "user", content: blocks.length ? blocks : t.text });
+      } else messages.push({ role: "user", content: t.text });
+    }
     else if (t.role === "tool") messages.push({
       role: "user",
       content: t.results.map(r => ({ type: "tool_result" as const, tool_use_id: r.id, content: r.status })),

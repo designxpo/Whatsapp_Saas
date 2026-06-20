@@ -55,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // grounded to offer (the UI then tells the agent to type their own).
     if (body.action === "suggest") {
       const history = await getConvHistory(id, 20, tid);
-      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body })), conv.phone, conv.agentId, tid, conv.primaryKbTag);
+      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, conv.agentId, tid, conv.primaryKbTag);
       return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
     }
     if (body.action === "reply") {

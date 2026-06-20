@@ -48,6 +48,20 @@ export async function getVoiceReplyMode(tenantId: string = DEFAULT_TENANT_ID): P
 // mime "audio/ogg; codecs=opus" → "audio/ogg"; pick a filename extension for the
 // OpenAI upload (Whisper infers the format from the name).
 function baseMime(m: string): string { return (m || "").split(";")[0].trim().toLowerCase(); }
+
+// Maps an inbound media MIME type to the type a vision model can SEE in a chat
+// turn — images, PDFs, and (short) videos. Audio is handled via transcription;
+// other documents (docx, xlsx…) aren't supported as inline data → null. The
+// reply pipeline filters this further by what the tenant's provider accepts.
+export function visionInlineMime(mime?: string | null): string | null {
+  const m = baseMime(mime || "");
+  if (!m) return null;
+  if (m === "image/jpg") return "image/jpeg";
+  if (m.startsWith("image/")) return m;
+  if (m.startsWith("video/")) return m;
+  if (m === "application/pdf") return m;
+  return null;
+}
 function extFor(mime: string): string {
   const m = baseMime(mime);
   if (m.includes("ogg")) return "ogg";

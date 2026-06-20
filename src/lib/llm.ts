@@ -1,7 +1,8 @@
 import { retrieve } from "./kb";
 import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
-import { runChat, type ChatTool, type ChatTurn } from "./ai/chat";
+import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type ChatMedia } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
+import { downloadRemoteMedia, visionInlineMime } from "./voice";
 import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
 
 // Below this cosine similarity, retrieved context is treated as irrelevant.
@@ -180,9 +181,22 @@ export function stripLeadingName(text: string, agentName?: string | null): strin
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
-export async function generateReply(history: { role: "user" | "assistant"; body: string }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
+
+  // ── Inbound media (image / PDF / short video) → let the model SEE it. ──
+  // Find the newest customer turns carrying a file a vision model can look at.
+  // Cheap (no network yet) so it can gate the no-context fallback below; bytes
+  // are fetched later, only once we know we're calling the model.
+  const MEDIA_MAX = 4, MEDIA_BUDGET = 16 * 1024 * 1024;
+  const mediaTurns: { idx: number; mime: string; url: string }[] = [];
+  for (let i = history.length - 1; i >= 0 && mediaTurns.length < MEDIA_MAX; i--) {
+    if (history[i].role !== "user" || !history[i].mediaUrl) continue;
+    const mime = visionInlineMime(history[i].mediaType);
+    if (mime) mediaTurns.push({ idx: i, mime, url: history[i].mediaUrl! });
+  }
+  const hasVisionMedia = mediaTurns.length > 0;
 
   // Agent persona + function tools (both optional — defaults preserve old behavior).
   const [agent, functions] = await Promise.all([
@@ -208,7 +222,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   // No relevant knowledge AND no agent/tools to carry the conversation → don't
   // hand off to a human (that frustrated users on greetings); keep the chat open
   // with a soft prompt for more detail.
-  if (relevant.length === 0 && !agent && functions.length === 0) {
+  if (relevant.length === 0 && !agent && functions.length === 0 && !hasVisionMedia) {
     return { reply: SOFT_FALLBACK, escalate: false, reason: "no relevant context", usedChunks: 0 };
   }
 
@@ -232,15 +246,49 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     throw err;
   }
 
-  const turns: ChatTurn[] = history.map((m): ChatTurn =>
-    m.role === "assistant" ? { role: "assistant", text: m.body } : { role: "user", text: m.body });
+  // Pull inline bytes for the media turns THIS provider can see (parallel, budget-
+  // capped), re-hosted URL → base64. A failed / oversized / unsupported file is
+  // just dropped — the turn keeps its text, so a heavy attachment never breaks the
+  // chat. (Provider capabilities differ: images everywhere, PDFs on Gemini +
+  // Anthropic, video on Gemini only.)
+  const inlineByIdx = new Map<number, ChatMedia[]>();
+  if (hasVisionMedia) {
+    const supported = mediaTurns.filter(t => providerSupportsMedia(ai.provider, t.mime));
+    const dls = await Promise.all(supported.map(async t => {
+      const dl = await downloadRemoteMedia(t.url).catch(() => null);
+      return dl ? { idx: t.idx, mime: t.mime, data: dl.data } : null;
+    }));
+    let used = 0;
+    for (const f of dls) {
+      if (!f || used + f.data.length > MEDIA_BUDGET) continue;
+      used += f.data.length;
+      const arr = inlineByIdx.get(f.idx) ?? [];
+      arr.push({ mimeType: f.mime, data: f.data.toString("base64") });
+      inlineByIdx.set(f.idx, arr);
+    }
+  }
+  const sawMedia = inlineByIdx.size > 0;
+
+  const turns: ChatTurn[] = history.map((m, i): ChatTurn => {
+    if (m.role === "assistant") return { role: "assistant", text: m.body };
+    const media = inlineByIdx.get(i);
+    // A media-only turn carries a "[image message]" placeholder. Once the model
+    // can see the file, swap it for a clear instruction; otherwise keep the text.
+    const placeholder = /^\[(image|video|document|sticker) message\]$/.test(m.body.trim());
+    const text = media && placeholder ? "(The customer sent the attached file with no caption — look at it and respond.)" : m.body;
+    return media ? { role: "user", text, media } : { role: "user", text: m.body };
+  });
+
+  const systemWithMedia = sawMedia
+    ? system + "\n\nThe customer has attached one or more files (image, PDF, or video). Examine the attached file(s) and answer about what you actually see in them. Never say you cannot open, view, or access files."
+    : system;
 
   try {
     let escalateViaFn = false;
     const executed: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system, turns, tools, maxTokens: 1024 });
+      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens: 1024, timeoutMs: sawMedia ? 60000 : undefined });
 
       // Function-calling round: execute each call, feed results back, continue.
       if (res.toolCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
