@@ -1,30 +1,31 @@
-// Home hero — a white "orbit panel" on a soft grey band: concentric rings,
-// floating channel/integration chips, trust badges, dual CTAs and a live-activity
-// card adapted to Talko's inbox. Server-safe (no client hooks).
+// Home hero — a full-bleed white "orbit" hero: concentric rings, floating
+// channel/integration chips, trust badges, dual CTAs and a live-activity card
+// adapted to Talko's inbox. Server-safe (no client hooks).
 import { ArrowRight, Star, Check } from "lucide-react";
 import { Button } from "./ui";
 import { HERO, SOCIAL_PROOF } from "../_content/site";
 
 // Brand chips that float around the orbit. slug → cdn.simpleicons.org (brand
-// colour). Positions are percentages within the panel; some hide on small screens.
+// colour). Positions are percentages within the centred stage; some hide on
+// smaller screens. (All slugs verified to resolve on Simple Icons.)
 type Chip = { name: string; slug: string; pos: string; size?: string; hide?: boolean };
 const CHIPS: Chip[] = [
-  { name: "WhatsApp", slug: "whatsapp", pos: "left-[6%] top-[30%]", size: "h-14 w-14" },
-  { name: "Instagram", slug: "instagram", pos: "left-[16%] top-[58%]" },
-  { name: "Gemini", slug: "googlegemini", pos: "left-[27%] top-[16%]", hide: true },
-  { name: "Razorpay", slug: "razorpay", pos: "left-[9%] top-[74%]", hide: true },
-  { name: "Shopify", slug: "shopify", pos: "left-[30%] top-[80%]", size: "h-11 w-11", hide: true },
-  { name: "Messenger", slug: "messenger", pos: "right-[6%] top-[28%]", size: "h-14 w-14" },
-  { name: "Meta", slug: "meta", pos: "right-[16%] top-[56%]" },
-  { name: "OpenAI", slug: "openai", pos: "right-[27%] top-[15%]", hide: true },
-  { name: "Stripe", slug: "stripe", pos: "right-[9%] top-[72%]", hide: true },
-  { name: "HubSpot", slug: "hubspot", pos: "right-[29%] top-[80%]", size: "h-11 w-11", hide: true },
+  { name: "WhatsApp", slug: "whatsapp", pos: "left-[2%] top-[30%]", size: "h-14 w-14" },
+  { name: "Instagram", slug: "instagram", pos: "left-[11%] top-[58%]" },
+  { name: "Gemini", slug: "googlegemini", pos: "left-[22%] top-[16%]", hide: true },
+  { name: "Razorpay", slug: "razorpay", pos: "left-[5%] top-[76%]", hide: true },
+  { name: "Shopify", slug: "shopify", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
+  { name: "Messenger", slug: "messenger", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
+  { name: "Meta", slug: "meta", pos: "right-[11%] top-[56%]" },
+  { name: "Anthropic", slug: "anthropic", pos: "right-[22%] top-[15%]", hide: true },
+  { name: "Stripe", slug: "stripe", pos: "right-[5%] top-[74%]", hide: true },
+  { name: "HubSpot", slug: "hubspot", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },
 ];
 
-// Concentric ring radii (px at the widest breakpoint) — drawn as centred circles.
-const RINGS = [260, 410, 560, 720];
+// Concentric ring diameters (px) — drawn as centred circles behind the headline.
+const RINGS = [280, 460, 660, 880];
 
-// The little "live in your inbox" activity feed that floats over the panel.
+// The little "live in your inbox" activity feed that floats over the hero.
 const ACTIVITY = [
   { initials: "PS", tone: "from-[#25D366] to-[#128C7E]", name: "Priya Sharma", action: "messaged on WhatsApp", meta: "AI replied in 2s · lead captured", dot: "#25D366" },
   { initials: "RM", tone: "from-[#E1306C] to-[#C13584]", name: "Rahul Mehta", action: "DM'd on Instagram", meta: "Booked a demo for Fri 3pm", dot: "#E1306C" },
@@ -44,11 +45,13 @@ function RatingBadge({ label, score }: { label: string; score: string }) {
 
 export function Hero() {
   return (
-    <section className="bg-[#f2f3f5] px-2.5 pt-2.5 pb-10 sm:px-4 sm:pt-4">
-      <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[1.75rem] border border-slate-200/70 bg-white sm:rounded-[2.25rem]">
+    <section className="relative overflow-hidden bg-white pb-4">
+      {/* Centred stage — rings, chips and content cluster here so they stay
+          balanced while the white background fills the full width (no side gap). */}
+      <div className="relative mx-auto max-w-6xl px-5">
         {/* Concentric orbit rings, centred on the hero */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 flex items-start justify-center">
-          <div className="relative mt-[150px]">
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
+          <div className="relative mt-[170px]">
             {RINGS.map(d => (
               <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/70"
                 style={{ width: d, height: d }} />
@@ -56,7 +59,7 @@ export function Hero() {
           </div>
         </div>
         {/* Soft brand glow behind the headline */}
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-24 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.12),transparent_70%)] blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.12),transparent_70%)] blur-2xl" />
 
         {/* Floating brand chips */}
         {CHIPS.map(c => (
@@ -68,7 +71,7 @@ export function Hero() {
         ))}
 
         {/* Centred hero content */}
-        <div className="relative z-20 px-5 pt-14 pb-16 text-center sm:pt-20">
+        <div className="relative z-20 pt-14 pb-12 text-center sm:pt-20">
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
             <RatingBadge label="Google reviews" score="4.9" />
             <span className="hidden h-3 w-px bg-slate-200 sm:block" />
@@ -113,21 +116,21 @@ export function Hero() {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Trust line + grayscale logo wall */}
-        <div className="relative z-20 border-t border-slate-100 px-5 py-8">
-          <p className="text-center text-xs font-semibold text-slate-400">{SOCIAL_PROOF}</p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-x-9 gap-y-5 opacity-70 grayscale">
-            {[
-              { name: "Shopify", slug: "shopify" }, { name: "Stripe", slug: "stripe" },
-              { name: "Razorpay", slug: "razorpay" }, { name: "HubSpot", slug: "hubspot" },
-              { name: "Zapier", slug: "zapier" }, { name: "Meta", slug: "meta" },
-              { name: "WooCommerce", slug: "woocommerce" },
-            ].map(l => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/64748b`} alt={`${l.name} logo`} title={l.name} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
-            ))}
-          </div>
+      {/* Trust line + grayscale logo wall — full width */}
+      <div className="mx-auto max-w-5xl px-5 pt-6">
+        <p className="text-center text-xs font-semibold text-slate-400">{SOCIAL_PROOF}</p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-9 gap-y-5 opacity-70">
+          {[
+            { name: "Shopify", slug: "shopify" }, { name: "Stripe", slug: "stripe" },
+            { name: "Razorpay", slug: "razorpay" }, { name: "HubSpot", slug: "hubspot" },
+            { name: "Zapier", slug: "zapier" }, { name: "Meta", slug: "meta" },
+            { name: "WooCommerce", slug: "woocommerce" },
+          ].map(l => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/94a3b8`} alt={`${l.name} logo`} title={l.name} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
+          ))}
         </div>
       </div>
     </section>
