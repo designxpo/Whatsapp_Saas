@@ -58,9 +58,13 @@ export function Hero() {
         {/* Concentric orbit rings, centred on the hero */}
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
           <div className="relative mt-[170px]">
-            {RINGS.map(d => (
-              <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-200/70"
-                style={{ width: d, height: d }} />
+            {RINGS.map((d, i) => (
+              <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: d, height: d }}>
+                {/* inner element rotates → carries a dot around the ring */}
+                <span className={`absolute inset-0 rounded-full border border-slate-200/70 ${i % 2 ? "animate-orbit-rev" : "animate-orbit"}`}>
+                  <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0783fd] shadow-[0_0_10px_rgba(7,131,253,0.6)] ${i % 2 ? "h-2 w-2 opacity-50" : "h-2.5 w-2.5 opacity-70"}`} />
+                </span>
+              </span>
             ))}
           </div>
         </div>

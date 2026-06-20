@@ -37,6 +37,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible {
 .animate-floaty-slow { animation: floaty 9s ease-in-out infinite; }
 .animate-floaty-delay { animation: floaty 7s ease-in-out infinite; animation-delay: 1.5s; }
 
+/* Hero orbit rings — a slow continuous rotation (carries a dot around the ring). */
+@keyframes orbit-rotate { to { transform: rotate(360deg); } }
+.animate-orbit { animation: orbit-rotate 42s linear infinite; }
+.animate-orbit-rev { animation: orbit-rotate 58s linear infinite reverse; }
+
 /* Connector "data flowing" dash. */
 @keyframes dashmove { to { stroke-dashoffset: -16; } }
 .animate-dash { stroke-dasharray: 4 8; animation: dashmove 1s linear infinite; }
