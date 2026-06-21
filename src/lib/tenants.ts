@@ -191,15 +191,22 @@ export async function createTenantFromSignup(p: {
   }
   const trialEnds = new Date(Date.now() + 14 * 24 * 3600 * 1000).toISOString();
 
-  const ins = await db().from("tenants").insert({
+  const baseRow = {
     name: p.company.trim(), slug, status: "trialing", plan: "trial", payment_status: "trialing",
     company: p.company.trim(), owner_name: p.ownerName.trim(), owner_email: email, owner_phone: p.ownerPhone ?? null,
     industry: p.industry ?? null, team_size: p.teamSize ?? null, use_case: p.useCase ?? null,
     expected_volume: p.expectedVolume ?? null, source: p.source ?? "signup", trial_ends_at: trialEnds,
-    // New tenants are plan-driven: empty feature overrides + not grandfathered,
-    // so entitlements resolve from the (trial) plan, not all-features-on.
-    features: {}, grandfathered: false,
-  }).select("id").single();
+    // New tenants are plan-driven: empty feature overrides so entitlements
+    // resolve from the (trial) plan, not all-features-on.
+    features: {},
+  };
+  // `grandfathered` (migration 0059) defaults to false in the DB. Only set it
+  // explicitly when the column exists, so signup keeps working before 0059 is
+  // applied (retry once without it on a missing-column error).
+  let ins = await db().from("tenants").insert({ ...baseRow, grandfathered: false }).select("id").single();
+  if (ins.error && /grandfathered/i.test(ins.error.message ?? "")) {
+    ins = await db().from("tenants").insert(baseRow).select("id").single();
+  }
   if (ins.error) throw ins.error;
   const tenantId = ins.data!.id as string;
 
