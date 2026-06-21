@@ -307,23 +307,24 @@ export const PROBLEMS: ProblemSolution[] = [
 ];
 
 // ── Comparison: Talko AI vs the global leaders ───────────────────────────────
-// Columns are well-known global players, each strong in one lane (WATI →
-// WhatsApp, Respond.io → omnichannel inbox, ManyChat → IG/Messenger, Tidio →
-// website chat). Cells reflect publicly available capabilities as of June 2026
-// and are a positioning snapshot, not a spec sheet — Talko's edge is doing all
-// of it in one platform, on your own AI key. The summary row (count of ✓) is
-// derived in the component, so adding/removing a row keeps the score honest.
-export const COMPARE_COLS = ["Talko AI", "WATI", "Respond.io", "ManyChat", "Tidio"] as const;
+// Columns are well-known players, each strong in one lane (WATI / AiSensy /
+// Interakt → WhatsApp Business API, Respond.io → omnichannel inbox, ManyChat →
+// IG/Messenger, Tidio → website chat). Cells reflect publicly available
+// capabilities as of June 2026 and are a positioning snapshot, not a spec sheet
+// — Talko's edge is doing all of it in one platform, on your own AI key. The
+// summary row (count of ✓) is derived in the component, so adding/removing a
+// row or column keeps the score honest.
+export const COMPARE_COLS = ["Talko AI", "WATI", "AiSensy", "Interakt", "Respond.io", "ManyChat", "Tidio"] as const;
 export type CompareRow = { feature: string; values: (boolean | string)[] };
 export const COMPARE_ROWS: CompareRow[] = [
-  { feature: "WhatsApp, Instagram, Messenger & website chat — one inbox", values: [true, "WhatsApp only", true, "No web chat", "Web-first"] },
-  { feature: "AI replies grounded on your own knowledge base", values: [true, "Add-on", "Add-on", "Basic", true] },
-  { feature: "Bring your own AI key — no per-message AI markup", values: [true, false, false, false, false] },
-  { feature: "No-code chatbot flows & drip sequences", values: [true, true, true, true, "Flows only"] },
-  { feature: "Catalog & in-chat checkout / cart recovery", values: [true, "Add-on", false, "Via apps", "Shopify only"] },
-  { feature: "Meta anti-ban guardrails (opt-in · 24h · auto-pause)", values: [true, "Partial", "Partial", "Partial", false] },
-  { feature: "Multi-tenant isolation & encrypted key vault", values: [true, "Varies", "Varies", "Varies", "Varies"] },
-  { feature: "Predictable pricing — no per-contact fees", values: [true, "Per-conversation", "Per-seat + AI", "Per-contact", "Per-seat + AI"] },
+  { feature: "WhatsApp, Instagram, Messenger & website chat — one inbox", values: [true, "WhatsApp only", "WhatsApp only", "WhatsApp only", true, "No web chat", "Web-first"] },
+  { feature: "AI replies grounded on your own knowledge base", values: [true, "Add-on", "Add-on", "Add-on", "Add-on", "Basic", true] },
+  { feature: "Bring your own AI key — no per-message AI markup", values: [true, false, false, false, false, false, false] },
+  { feature: "No-code chatbot flows & drip sequences", values: [true, true, true, "Basic", true, true, "Flows only"] },
+  { feature: "Catalog & in-chat checkout / cart recovery", values: [true, "Add-on", "Add-on", true, false, "Via apps", "Shopify only"] },
+  { feature: "Meta anti-ban guardrails (opt-in · 24h · auto-pause)", values: [true, "Partial", "Partial", "Partial", "Partial", "Partial", false] },
+  { feature: "Multi-tenant isolation & encrypted key vault", values: [true, "Varies", "Varies", "Varies", "Varies", "Varies", "Varies"] },
+  { feature: "Predictable pricing — no per-contact fees", values: [true, "Per-conversation", "Per-conversation", "Per-conversation", "Per-seat + AI", "Per-contact", "Per-seat + AI"] },
 ];
 export const COMPARE_NOTE =
   "Based on publicly available information as of June 2026. Each tool is excellent in its core lane — Talko AI's advantage is covering every channel in one platform on your own AI key. Capabilities change; check each provider for current details.";
