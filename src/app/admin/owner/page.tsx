@@ -102,6 +102,12 @@ export default function OwnerPortal() {
   async function delAnn(id: string) { await fetch("/api/owner/announcements", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); }
 
   function edit(t: Tenant) { setOpen(open === t.id ? null : t.id); setDraft({ ...t, features: { ...t.features } }); }
+  // Open a tenant's editor AND scroll it into view (used from the requests card,
+  // whose Manage button otherwise expands an editor far down the page).
+  function manage(t: Tenant) {
+    setOpen(t.id); setDraft({ ...t, features: { ...t.features } });
+    setTimeout(() => document.getElementById(`tenant-${t.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+  }
 
   async function save() {
     if (!draft) return;
@@ -166,7 +172,7 @@ export default function OwnerPortal() {
                     <p className="font-bold text-ink-900 truncate">{t?.company || t?.name || r.actorEmail}</p>
                     <p className="text-ink-400 truncate">{r.detail} · {r.actorEmail} · {r.at.slice(0, 16).replace("T", " ")}</p>
                   </div>
-                  {t && <button onClick={() => edit(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white font-bold shrink-0">Manage</button>}
+                  {t && <button onClick={() => manage(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white font-bold shrink-0">Manage</button>}
                 </div>
               );
             })}
@@ -244,7 +250,7 @@ export default function OwnerPortal() {
             <input className={`${inp} w-56`} placeholder="Search name / email / slug…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
           {tenants.filter(t => { const s = q.trim().toLowerCase(); return !s || [t.name, t.company, t.ownerEmail, t.slug].some(v => (v ?? "").toLowerCase().includes(s)); }).map(t => (
-            <div key={t.id} className="bg-white rounded-card border border-line">
+            <div key={t.id} id={`tenant-${t.id}`} className="bg-white rounded-card border border-line scroll-mt-4">
               <div className="p-4 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-ink-900 truncate">{t.company || t.name} <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${badge(t.status)}`}>{t.status}</span> <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-ink-50 text-ink-500">{t.plan}</span></p>

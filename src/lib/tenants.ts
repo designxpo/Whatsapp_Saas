@@ -80,7 +80,16 @@ export async function updateTenant(id: string, p: Partial<{ status: TenantStatus
     const current = await getTenant(id);
     row.features = { ...(current?.features ?? {}), ...p.features };
   }
-  if (Object.keys(row).length) { const { error } = await db().from("tenants").update(row).eq("id", id); if (error) throw error; }
+  if (!Object.keys(row).length) return;
+  let { error } = await db().from("tenants").update(row).eq("id", id);
+  // `grandfathered` (migration 0059) may not exist yet — retry without it so the
+  // rest of the update still applies before the migration is run.
+  if (error && /grandfathered/i.test(error.message ?? "")) {
+    delete row.grandfathered;
+    if (Object.keys(row).length) ({ error } = await db().from("tenants").update(row).eq("id", id));
+    else error = null;
+  }
+  if (error) throw error;
 }
 
 // ── Stripe billing sync ───────────────────────────────────────────────────────
