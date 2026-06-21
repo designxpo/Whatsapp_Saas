@@ -268,44 +268,50 @@ export function ComparisonTable() {
   const scores = COMPARE_COLS.map((_, ci) => COMPARE_ROWS.filter(r => r.values[ci] === true).length);
   const total = COMPARE_ROWS.length;
   return (
-    <Container className="py-16">
-      <SectionTitle eyebrow="Talko AI vs the world"
-        title="More channels, more AI, more value — in one platform"
-        subtitle="The global leaders are each great in one lane. Talko AI does all of it together, on your own AI key." />
-      <div className="mx-auto mt-10 max-w-5xl overflow-x-auto rounded-2xl border border-slate-200">
-        <table aria-label="Talko AI capability comparison with global alternatives" className="w-full min-w-[1080px] border-collapse text-left">
-          <thead>
-            <tr className="border-b border-slate-200">
-              <th className="px-5 py-4 text-sm font-bold text-slate-900">Capability</th>
-              {COMPARE_COLS.map((col, i) => (
-                <th key={col} className={`px-4 py-4 text-center text-sm font-bold ${i === 0 ? "rounded-t-xl bg-[#0783fd] text-white" : "text-slate-500"}`}>{col}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {COMPARE_ROWS.map((row, ri) => (
-              <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
-                <td className="px-5 py-3.5 text-sm font-medium text-slate-700">{row.feature}</td>
-                {row.values.map((v, ci) => (
-                  <td key={ci} className={`px-4 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
+    <section className="py-16">
+      <Container>
+        <SectionTitle eyebrow="Talko AI vs the world"
+          title="More channels, more AI, more value — in one platform"
+          subtitle="The global leaders are each great in one lane. Talko AI does all of it together, on your own AI key." />
+      </Container>
+      {/* Wider than the page container so all 7 competitors fit without scrolling
+          on desktop; table-fixed keeps columns even; scrolls only on small screens. */}
+      <div className="mx-auto mt-10 w-full max-w-7xl px-4 sm:px-8">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200">
+          <table aria-label="Talko AI capability comparison with global alternatives" className="w-full min-w-[860px] table-fixed border-collapse text-left">
+            <thead>
+              <tr className="border-b border-slate-200">
+                <th className="w-[24%] px-4 py-3.5 text-[13px] font-bold text-slate-900">Capability</th>
+                {COMPARE_COLS.map((col, i) => (
+                  <th key={col} className={`px-2 py-3.5 text-center text-[12px] font-bold leading-tight ${i === 0 ? "rounded-t-xl bg-[#0783fd] text-white" : "text-slate-500"}`}>{col}</th>
                 ))}
               </tr>
-            ))}
-            {/* All-in-one score — visualizes "more features than anyone else". */}
-            <tr className="border-t-2 border-slate-200 bg-white">
-              <td className="px-5 py-4 text-sm font-extrabold text-slate-900">Capabilities included</td>
-              {scores.map((s, ci) => (
-                <td key={ci} className={`px-4 py-4 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}>
-                  <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#0783fd]" : "text-slate-400"}`}>{s}</span>
-                  <span className="text-[11px] font-semibold text-slate-300">/{total}</span>
-                </td>
+            </thead>
+            <tbody>
+              {COMPARE_ROWS.map((row, ri) => (
+                <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
+                  <td className="px-4 py-3 text-[12.5px] font-medium leading-snug text-slate-700">{row.feature}</td>
+                  {row.values.map((v, ci) => (
+                    <td key={ci} className={`px-2 py-3 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
+                  ))}
+                </tr>
               ))}
-            </tr>
-          </tbody>
-        </table>
+              {/* All-in-one score — visualizes "more features than anyone else". */}
+              <tr className="border-t-2 border-slate-200 bg-white">
+                <td className="px-4 py-3.5 text-[12.5px] font-extrabold text-slate-900">Capabilities included</td>
+                {scores.map((s, ci) => (
+                  <td key={ci} className={`px-2 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}>
+                    <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#0783fd]" : "text-slate-400"}`}>{s}</span>
+                    <span className="text-[11px] font-semibold text-slate-300">/{total}</span>
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-400">{COMPARE_NOTE}</p>
       </div>
-      <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-400">{COMPARE_NOTE}</p>
-    </Container>
+    </section>
   );
 }
 
