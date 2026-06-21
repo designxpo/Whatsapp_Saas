@@ -44,6 +44,9 @@ export default function OwnerPortal() {
   const [analytics, setAnalytics] = useState<{ newThisMonth: number; trialsEndingSoon: number; signupsByDay: { date: string; count: number }[] } | null>(null);
   const [health, setHealth] = useState<TenantHealthRow[]>([]);
   const [q, setQ] = useState("");
+  // Editable plan→feature matrix (synced from plans; saved back per plan).
+  const [matrix, setMatrix] = useState<Record<string, Record<string, boolean>>>({});
+  const [matrixBusy, setMatrixBusy] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/owner/tenants");
@@ -61,6 +64,24 @@ export default function OwnerPortal() {
     await fetch("/api/owner/flags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, enabled }) }).catch(() => {});
   }
   useEffect(() => { load(); }, [load]);
+  // Keep the feature matrix in sync with the loaded plans.
+  useEffect(() => {
+    const m: Record<string, Record<string, boolean>> = {};
+    for (const p of plans) m[p.key] = { ...p.features };
+    setMatrix(m);
+  }, [plans]);
+  function toggleMatrix(planKey: string, featKey: string, val: boolean) {
+    setMatrix(m => ({ ...m, [planKey]: { ...m[planKey], [featKey]: val } }));
+  }
+  async function saveMatrix() {
+    setMatrixBusy(true);
+    try {
+      await Promise.all(plans.map(p =>
+        fetch("/api/owner/plans", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...p, features: matrix[p.key] ?? p.features }) })));
+      await load();
+    } finally { setMatrixBusy(false); }
+  }
 
   async function removeTenant(t: Tenant) {
     const name = t.company || t.name;
@@ -303,6 +324,45 @@ export default function OwnerPortal() {
             </div>
           )}
         </div>
+
+        {/* Features per plan — the entitlement defaults for tenants on each plan */}
+        {plans.length > 0 && (
+          <div className="bg-white rounded-card border border-line p-4 space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-slate-400 uppercase">Features per plan</p>
+                <p className="text-[11px] text-ink-400 mt-0.5">Tick which features each plan unlocks. This sets the default entitlement for every tenant on that plan (per-tenant overrides still win).</p>
+              </div>
+              <button onClick={saveMatrix} disabled={matrixBusy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60 shrink-0">
+                {matrixBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="text-left p-2 font-bold text-ink-700 sticky left-0 bg-white">Feature</th>
+                    {plans.map(p => (
+                      <th key={p.key} className="p-2 text-center font-bold text-ink-700 whitespace-nowrap">{p.name}<span className="block text-[10px] font-normal text-ink-300">{p.key}</span></th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {FEATURE_KEYS.map(k => (
+                    <tr key={k} className="border-b border-line/60 hover:bg-canvas/40">
+                      <td className="p-2 text-ink-600 sticky left-0 bg-white">{FEATURE_META[k].label} <span className="text-ink-300">· {k}</span></td>
+                      {plans.map(p => (
+                        <td key={p.key} className="p-2 text-center">
+                          <input type="checkbox" className="accent-brand-700 w-4 h-4 cursor-pointer" checked={!!matrix[p.key]?.[k]} onChange={e => toggleMatrix(p.key, k, e.target.checked)} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Announcements */}
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
