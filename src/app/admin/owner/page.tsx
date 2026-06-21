@@ -290,6 +290,15 @@ export default function OwnerPortal() {
               <label className="text-[11px] text-ink-500">Channels (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.channels} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, channels: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Team seats (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.team_seats} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, team_seats: Number(e.target.value) || 0 } })} /></label>
               <label className="col-span-2 text-[11px] text-ink-500">Stripe Price ID (price_… — required to sell this plan via Stripe) <input className={`${inp} w-full font-mono`} placeholder="price_1AbcD… (leave blank if not on Stripe)" value={planDraft.stripePriceId ?? ""} onChange={e => setPlanDraft({ ...planDraft, stripePriceId: e.target.value.trim() })} /></label>
+              {/* Which features this plan includes — the tenant entitlement defaults. */}
+              <div className="col-span-2 border-t border-line pt-2">
+                <p className="text-[11px] font-bold text-ink-400 uppercase mb-1.5">Included features</p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                  {FEATURE_KEYS.map(k => (
+                    <label key={k} className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={!!planDraft.features[k]} onChange={e => setPlanDraft({ ...planDraft, features: { ...planDraft.features, [k]: e.target.checked } })} /> {FEATURE_META[k].label} <span className="text-ink-300">· {k}</span></label>
+                  ))}
+                </div>
+              </div>
               <div className="col-span-2 flex gap-2"><button onClick={savePlan} className="px-4 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold">Save plan</button><button onClick={() => setPlanDraft(null)} className="px-2 text-xs text-ink-400">Cancel</button></div>
             </div>
           )}

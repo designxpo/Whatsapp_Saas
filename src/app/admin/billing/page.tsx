@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, CreditCard, Check, ArrowLeft, ExternalLink } from "lucide-react";
+import { Loader2, CreditCard, Check, X, ArrowLeft, ExternalLink } from "lucide-react";
+import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 
 type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
-type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; purchasable: boolean };
+type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean };
 type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean };
 
 const money = (c: number, cur: string) => `${cur === "INR" ? "₹" : cur + " "}${(c / 100).toLocaleString()}`;
@@ -125,12 +126,27 @@ export default function BillingPage() {
               <div key={p.key} className={`bg-white rounded-card border p-5 flex flex-col ${isCurrent ? "border-brand-700 ring-1 ring-brand-700/20" : "border-line"}`}>
                 <p className="text-sm font-extrabold text-ink-900">{p.name}</p>
                 <p className="text-2xl font-extrabold text-ink-900 mt-1">{p.priceCents === 0 ? "Free" : money(p.priceCents, p.currency)}<span className="text-xs font-medium text-ink-400">{p.priceCents ? `/${p.interval}` : ""}</span></p>
-                <ul className="mt-3 space-y-1.5 text-xs text-ink-600 flex-1">
+                <ul className="mt-3 space-y-1.5 text-xs text-ink-600">
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.contacts)} contacts</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {p.limits.conversations_per_month != null ? `${lim(p.limits.conversations_per_month)} conversations/mo` : `${lim(p.limits.messages_per_month)} messages/mo`}</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.channels)} channel(s)</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.team_seats)} team seats</li>
                 </ul>
+                {/* Per-plan feature breakdown — included (✓) vs not in this plan (✗). */}
+                <div className="mt-3 border-t border-line pt-3 flex-1">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-ink-400 mb-1.5">Features</p>
+                  <ul className="space-y-1">
+                    {FEATURE_KEYS.map(k => {
+                      const on = p.features?.[k] === true;
+                      return (
+                        <li key={k} className={`flex items-center gap-1.5 text-[11px] ${on ? "text-ink-600" : "text-ink-300"}`}>
+                          {on ? <Check className="w-3 h-3 text-brand-600 shrink-0" /> : <X className="w-3 h-3 shrink-0" />}
+                          <span className={on ? "" : "line-through"}>{FEATURE_META[k].label}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
                 <div className="mt-4">
                   {isCurrent ? (
                     <span className="block text-center text-xs font-bold text-brand-700 py-2">Your plan</span>
