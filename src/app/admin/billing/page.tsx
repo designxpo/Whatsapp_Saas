@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, CreditCard, Check, ArrowLeft, ExternalLink } from "lucide-react";
 
-type Limits = { contacts: number; messages_per_month: number; channels: number; team_seats: number };
+type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
 type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; purchasable: boolean };
 type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean };
 
@@ -26,6 +26,7 @@ export default function BillingPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [requested, setRequested] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +55,19 @@ export default function BillingPage() {
     } finally { setBusy(null); }
   }
 
+  // Team-managed billing (no self-serve Stripe): record an upgrade request the
+  // owner sees in the Owner Portal and actions there.
+  async function requestUpgrade(planKey: string, planName: string) {
+    setBusy(planKey); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/billing/request", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey }) });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Could not send request"); return; }
+      setRequested(s => new Set(s).add(planKey));
+      setBanner(`✅ Request sent — our team will move you to ${planName} shortly.`);
+    } finally { setBusy(null); }
+  }
+
   async function portal() {
     setBusy("portal"); setMsg(null);
     try {
@@ -78,7 +92,7 @@ export default function BillingPage() {
 
         {banner && <div className="bg-brand-50 text-brand-800 text-sm rounded-card px-4 py-3">{banner}</div>}
         {msg && <div className="bg-red-50 text-red-700 text-sm rounded-card px-4 py-3">{msg}</div>}
-        {!stripeOn && <div className="bg-amber-50 text-amber-800 text-sm rounded-card px-4 py-3">Online payments aren&apos;t enabled yet. Your plan is managed by the team — contact support to change it.</div>}
+        {!stripeOn && <div className="bg-amber-50 text-amber-800 text-sm rounded-card px-4 py-3">Online payments aren&apos;t enabled yet — billing is managed by our team. Pick a plan below and tap <b>Request</b>; we&apos;ll switch you over and confirm.</div>}
 
         {/* Current subscription */}
         {current && (
@@ -113,18 +127,22 @@ export default function BillingPage() {
                 <p className="text-2xl font-extrabold text-ink-900 mt-1">{p.priceCents === 0 ? "Free" : money(p.priceCents, p.currency)}<span className="text-xs font-medium text-ink-400">{p.priceCents ? `/${p.interval}` : ""}</span></p>
                 <ul className="mt-3 space-y-1.5 text-xs text-ink-600 flex-1">
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.contacts)} contacts</li>
-                  <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.messages_per_month)} messages/mo</li>
+                  <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {p.limits.conversations_per_month != null ? `${lim(p.limits.conversations_per_month)} conversations/mo` : `${lim(p.limits.messages_per_month)} messages/mo`}</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.channels)} channel(s)</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.team_seats)} team seats</li>
                 </ul>
                 <div className="mt-4">
                   {isCurrent ? (
                     <span className="block text-center text-xs font-bold text-brand-700 py-2">Your plan</span>
-                  ) : !stripeOn || !p.purchasable ? (
-                    <button disabled className="w-full py-2 rounded-control bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed">{p.purchasable ? "Unavailable" : "Contact sales"}</button>
-                  ) : (
+                  ) : stripeOn && p.purchasable ? (
                     <button onClick={() => checkout(p.key)} disabled={busy === p.key} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5">
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
+                    </button>
+                  ) : requested.has(p.key) ? (
+                    <span className="block text-center text-xs font-bold text-emerald-600 py-2">✓ Requested</span>
+                  ) : (
+                    <button onClick={() => requestUpgrade(p.key, p.name)} disabled={busy === p.key} className="w-full py-2 rounded-control border border-brand-700 text-brand-700 hover:bg-brand-50 text-xs font-bold flex items-center justify-center gap-1.5">
+                      {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Request {p.name}
                     </button>
                   )}
                 </div>
