@@ -127,16 +127,16 @@ export default function Admin() {
     <div className="min-h-screen flex bg-canvas">
       <aside className="w-64 shrink-0 bg-white border-r border-line flex flex-col h-screen sticky top-0">
         {/* Logo block */}
-        <div className="px-5 py-5">
-          <BrandLogo height={40} className="max-w-[200px]" fallback={
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center shrink-0">
-                <MessageSquare className="w-[18px] h-[18px] text-white" />
+        <div className="px-5 py-4">
+          <BrandLogo height={28} className="max-w-[150px]" fallback={
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-4 h-4 text-white" />
               </div>
-              <p className="text-[15px] font-bold text-ink-900 leading-tight">Talko AI</p>
+              <p className="text-[13px] font-bold text-ink-900 leading-tight">Talko AI</p>
             </div>
           } />
-          <p className="text-[11px] text-ink-400 leading-tight truncate mt-1.5">AI conversations for WhatsApp &amp; Instagram</p>
+          <p className="text-[10px] text-ink-400 leading-tight truncate mt-1.5">AI conversations for WhatsApp &amp; Instagram</p>
         </div>
 
         {/* Owner-only: jump to the platform control plane. Tenants never see this. */}
