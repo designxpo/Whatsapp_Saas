@@ -11,7 +11,10 @@ export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    return NextResponse.json({ users: await listUsers(tid), owner: process.env.ADMIN_USER ?? null });
+    // The env owner account belongs to the platform's OWN workspace only — never
+    // expose the operator's email to a tenant. Only the default workspace sees it.
+    const owner = tid === DEFAULT_TENANT_ID ? (process.env.ADMIN_USER ?? null) : null;
+    return NextResponse.json({ users: await listUsers(tid), owner });
   } catch (err) {
     return NextResponse.json({ users: [], notice: errorMessage(err) });
   }

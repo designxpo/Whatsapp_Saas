@@ -9,11 +9,14 @@ export const dynamic = "force-dynamic";
 // never password hashes or login history.
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const users = await listUsers((await currentTenantId()) ?? DEFAULT_TENANT_ID);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const users = await listUsers(tid);
   const members = users
     .filter(u => u.active)
     .map(u => ({ name: u.name || u.email, email: u.email, title: u.title, role: u.role }));
-  const owner = process.env.ADMIN_USER;
+  // Only the platform's own workspace lists the env owner as an assignee — a
+  // tenant must never see the operator's email.
+  const owner = tid === DEFAULT_TENANT_ID ? process.env.ADMIN_USER : null;
   if (owner && !members.some(m => m.email === owner)) {
     members.unshift({ name: owner, email: owner, title: "Owner", role: "admin" });
   }
