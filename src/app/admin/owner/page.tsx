@@ -68,7 +68,7 @@ export default function OwnerPortal() {
     if (typed === null) return;
     const res = await fetch("/api/owner/tenants", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, confirmName: typed }) });
     if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Delete failed"); return; }
-    setOpen(null); load();
+    closeEditor(); load();
   }
 
   const planMix = plans.length ? plans.map(p => ({ key: p.key, name: p.name, count: tenants.filter(t => t.plan === p.key).length })) : [];
@@ -101,13 +101,10 @@ export default function OwnerPortal() {
   }
   async function delAnn(id: string) { await fetch("/api/owner/announcements", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); }
 
-  function edit(t: Tenant) { setOpen(open === t.id ? null : t.id); setDraft({ ...t, features: { ...t.features } }); }
-  // Open a tenant's editor AND scroll it into view (used from the requests card,
-  // whose Manage button otherwise expands an editor far down the page).
-  function manage(t: Tenant) {
-    setOpen(t.id); setDraft({ ...t, features: { ...t.features } });
-    setTimeout(() => document.getElementById(`tenant-${t.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
-  }
+  // Manage opens the editor as a centered modal (driven by `draft`), so it's
+  // always visible regardless of where the click came from or page scroll.
+  function edit(t: Tenant) { setOpen(t.id); setDraft({ ...t, features: { ...t.features } }); }
+  function closeEditor() { setOpen(null); setDraft(null); }
 
   async function save() {
     if (!draft) return;
@@ -115,7 +112,7 @@ export default function OwnerPortal() {
     try {
       await fetch("/api/owner/tenants", { method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: draft.id, status: draft.status, plan: draft.plan, paymentStatus: draft.paymentStatus, amountCents: draft.amountCents, trialEndsAt: draft.trialEndsAt, notes: draft.notes, features: draft.features, grandfathered: draft.grandfathered }) });
-      setOpen(null); load();
+      closeEditor(); load();
     } finally { setBusy(false); }
   }
 
@@ -172,7 +169,7 @@ export default function OwnerPortal() {
                     <p className="font-bold text-ink-900 truncate">{t?.company || t?.name || r.actorEmail}</p>
                     <p className="text-ink-400 truncate">{r.detail} · {r.actorEmail} · {r.at.slice(0, 16).replace("T", " ")}</p>
                   </div>
-                  {t && <button onClick={() => manage(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white font-bold shrink-0">Manage</button>}
+                  {t && <button onClick={() => edit(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white font-bold shrink-0">Manage</button>}
                 </div>
               );
             })}
@@ -250,7 +247,7 @@ export default function OwnerPortal() {
             <input className={`${inp} w-56`} placeholder="Search name / email / slug…" value={q} onChange={e => setQ(e.target.value)} />
           </div>
           {tenants.filter(t => { const s = q.trim().toLowerCase(); return !s || [t.name, t.company, t.ownerEmail, t.slug].some(v => (v ?? "").toLowerCase().includes(s)); }).map(t => (
-            <div key={t.id} id={`tenant-${t.id}`} className="bg-white rounded-card border border-line scroll-mt-4">
+            <div key={t.id} className="bg-white rounded-card border border-line">
               <div className="p-4 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-bold text-ink-900 truncate">{t.company || t.name} <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${badge(t.status)}`}>{t.status}</span> <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-ink-50 text-ink-500">{t.plan}</span></p>
@@ -258,39 +255,8 @@ export default function OwnerPortal() {
                 </div>
                 <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${badge(t.paymentStatus)}`}>{t.paymentStatus}</span>
                 <button onClick={() => impersonate(t.id)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1"><LogIn className="w-3 h-3" /> View</button>
-                <button onClick={() => edit(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white text-xs font-bold">{open === t.id ? "Close" : "Manage"}</button>
+                <button onClick={() => edit(t)} className="px-2.5 py-1 rounded-control bg-ink-950 text-white text-xs font-bold">Manage</button>
               </div>
-
-              {open === t.id && draft && draft.id === t.id && (
-                <div className="border-t border-line p-4 space-y-3 bg-canvas/40">
-                  {(t.industry || t.useCase) && <p className="text-[11px] text-ink-500">Signup: {t.industry} · goal: {t.useCase} · team {t.teamSize} · volume {t.expectedVolume}</p>}
-                  <div className="flex flex-wrap gap-2">
-                    <label className="text-[11px] text-ink-500">Status <select className={inp} value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
-                    <label className="text-[11px] text-ink-500">Plan <select className={inp} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })}>{planOptions.map(s => <option key={s}>{s}</option>)}</select></label>
-                    <label className="text-[11px] text-ink-500">Payment <select className={inp} value={draft.paymentStatus} onChange={e => setDraft({ ...draft, paymentStatus: e.target.value })}>{PAYMENTS.map(s => <option key={s}>{s}</option>)}</select></label>
-                    <label className="text-[11px] text-ink-500">Price/mo (₹) <input type="number" className={`${inp} w-24`} value={Math.round(draft.amountCents / 100)} onChange={e => setDraft({ ...draft, amountCents: Math.max(0, Number(e.target.value) || 0) * 100 })} /></label>
-                    <label className="text-[11px] text-ink-500">Trial ends <input type="date" className={inp} value={draft.trialEndsAt ? draft.trialEndsAt.slice(0, 10) : ""} onChange={e => setDraft({ ...draft, trialEndsAt: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
-                  </div>
-                  <label className="flex items-center gap-2 text-[11px] font-semibold text-ink-600 bg-white border border-line rounded-control px-3 py-2 w-fit cursor-pointer">
-                    <input type="checkbox" className="accent-brand-700 w-4 h-4" checked={draft.grandfathered} onChange={e => setDraft({ ...draft, grandfathered: e.target.checked })} />
-                    Grandfathered — full access regardless of plan (turn off to enforce the plan + overrides below)
-                  </label>
-                  <div className={draft.grandfathered ? "opacity-40 pointer-events-none" : ""}>
-                    <p className="text-[11px] font-bold text-ink-400 uppercase mb-1">Feature overrides <span className="font-normal normal-case">— grant or revoke per tenant (overrides the plan)</span></p>
-                    <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
-                      {FEATURE_KEYS.map(k => (
-                        <label key={k} className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={!!draft.features[k]} onChange={e => setDraft({ ...draft, features: { ...draft.features, [k]: e.target.checked } })} /> {FEATURE_META[k].label} <span className="text-ink-300">· {k}</span></label>
-                      ))}
-                    </div>
-                  </div>
-                  <textarea className={`${inp} w-full`} rows={2} placeholder="Owner notes (internal)" value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
-                  <div className="flex items-center gap-2">
-                    <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Save className="w-3.5 h-3.5" /> {busy ? "Saving…" : "Save changes"}</button>
-                    <div className="flex-1" />
-                    <button onClick={() => removeTenant(t)} className="px-3 py-1.5 rounded-control border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold">Delete tenant</button>
-                  </div>
-                </div>
-              )}
             </div>
           ))}
           {!tenants.length && <p className="text-xs text-ink-400">No tenants yet — they appear here when people sign up.</p>}
@@ -358,6 +324,49 @@ export default function OwnerPortal() {
           </div>
         )}
       </div>
+
+      {/* Tenant editor — centered modal so it's always visible (no scrolling). */}
+      {draft && (
+        <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-start justify-center p-4 overflow-y-auto" onClick={closeEditor}>
+          <div className="bg-white rounded-card border border-line w-full max-w-2xl my-8 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 p-4 border-b border-line sticky top-0 bg-white z-10">
+              <div className="min-w-0">
+                <p className="text-sm font-extrabold text-ink-900 truncate">{draft.company || draft.name}</p>
+                <p className="text-[11px] text-ink-400 truncate">{draft.ownerEmail} · {draft.plan}</p>
+              </div>
+              <button onClick={closeEditor} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Close</button>
+            </div>
+            <div className="p-4 space-y-3">
+              {(draft.industry || draft.useCase) && <p className="text-[11px] text-ink-500">Signup: {draft.industry} · goal: {draft.useCase} · team {draft.teamSize} · volume {draft.expectedVolume}</p>}
+              <div className="flex flex-wrap gap-2">
+                <label className="text-[11px] text-ink-500">Status <select className={inp} value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })}>{STATUSES.map(s => <option key={s}>{s}</option>)}</select></label>
+                <label className="text-[11px] text-ink-500">Plan <select className={inp} value={draft.plan} onChange={e => setDraft({ ...draft, plan: e.target.value })}>{planOptions.map(s => <option key={s}>{s}</option>)}</select></label>
+                <label className="text-[11px] text-ink-500">Payment <select className={inp} value={draft.paymentStatus} onChange={e => setDraft({ ...draft, paymentStatus: e.target.value })}>{PAYMENTS.map(s => <option key={s}>{s}</option>)}</select></label>
+                <label className="text-[11px] text-ink-500">Price/mo (₹) <input type="number" className={`${inp} w-24`} value={Math.round(draft.amountCents / 100)} onChange={e => setDraft({ ...draft, amountCents: Math.max(0, Number(e.target.value) || 0) * 100 })} /></label>
+                <label className="text-[11px] text-ink-500">Trial ends <input type="date" className={inp} value={draft.trialEndsAt ? draft.trialEndsAt.slice(0, 10) : ""} onChange={e => setDraft({ ...draft, trialEndsAt: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
+              </div>
+              <label className="flex items-center gap-2 text-[11px] font-semibold text-ink-600 bg-canvas/60 border border-line rounded-control px-3 py-2 cursor-pointer">
+                <input type="checkbox" className="accent-brand-700 w-4 h-4" checked={draft.grandfathered} onChange={e => setDraft({ ...draft, grandfathered: e.target.checked })} />
+                Grandfathered — full access regardless of plan (turn off to enforce the plan + overrides below)
+              </label>
+              <div className={draft.grandfathered ? "opacity-40 pointer-events-none" : ""}>
+                <p className="text-[11px] font-bold text-ink-400 uppercase mb-1">Feature overrides <span className="font-normal normal-case">— grant or revoke per tenant (overrides the plan)</span></p>
+                <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                  {FEATURE_KEYS.map(k => (
+                    <label key={k} className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={!!draft.features[k]} onChange={e => setDraft({ ...draft, features: { ...draft.features, [k]: e.target.checked } })} /> {FEATURE_META[k].label} <span className="text-ink-300">· {k}</span></label>
+                  ))}
+                </div>
+              </div>
+              <textarea className={`${inp} w-full`} rows={2} placeholder="Owner notes (internal)" value={draft.notes ?? ""} onChange={e => setDraft({ ...draft, notes: e.target.value })} />
+              <div className="flex items-center gap-2 pt-1">
+                <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Save className="w-3.5 h-3.5" /> {busy ? "Saving…" : "Save changes"}</button>
+                <div className="flex-1" />
+                <button onClick={() => removeTenant(draft)} className="px-3 py-1.5 rounded-control border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold">Delete tenant</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
