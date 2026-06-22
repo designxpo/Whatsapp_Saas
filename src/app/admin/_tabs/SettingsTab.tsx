@@ -581,7 +581,7 @@ function VoiceSettingsCard() {
 // via "Add an integration" → LeadSquared). Its old dedicated card lived here.
 
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
-const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", active: true, isDefault: false };
+const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", agentId: "", active: true, isDefault: false };
 
 // Comment-to-DM rules (ManyChat-style: multiple rules, per-post targeting). No
 // follow-gate — Facebook Pages have no is_user_follow_business comment flow.
@@ -596,6 +596,7 @@ const BLANK_FB_RULE: FbCommentRule = { channelId: null, name: "", enabled: true,
 export function MessengerCard() {
   const [pages, setPages] = useState<ChannelRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   // Comment-to-DM rules
@@ -612,6 +613,7 @@ export function MessengerCard() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadRules(); }, [loadRules]);
+  useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   // Load the post grid for the Page the rule editor is targeting (only when the
   // editor opens or the Page changes — so it won't refetch on every keystroke).
   const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
@@ -676,9 +678,9 @@ export function MessengerCard() {
           <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><Facebook className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[10px] font-bold text-brand-700"> · DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -691,6 +693,10 @@ export function MessengerCard() {
             <input className={inp} placeholder="Facebook Page ID" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Page access token — leave blank to keep the current one" : "Page access token (pages_messaging)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this Page">
+            <option value="">AI persona: global default</option>
+            {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+          </select>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
