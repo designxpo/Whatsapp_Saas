@@ -169,7 +169,11 @@ export async function createLeadTask(leadId: string, p: { name: string; notes?: 
 async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
   const digits = (phone || "").replace(/\D/g, "");
   if (!digits) return null;
-  for (const candidate of [`+${digits}`, digits]) {
+  // Try E.164 (+<cc><num>) and bare digits, plus the last-10 form so a lead stored
+  // WITHOUT a country code (common for Indian numbers) still matches the WhatsApp
+  // sender id (e.g. 91XXXXXXXXXX vs a lead saved as XXXXXXXXXX).
+  const last10 = digits.length > 10 ? digits.slice(-10) : "";
+  for (const candidate of [`+${digits}`, digits, ...(last10 ? [`+${last10}`, last10] : [])]) {
     const url = `${c.host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&phone=${encodeURIComponent(candidate)}`;
     const res = await fetch(url);
     if (!res.ok) continue;
@@ -356,11 +360,14 @@ export async function pushWaActivity(p: {
     const arrow = p.direction === "inbound" ? "⬅️ Lead" : "➡️ " + (p.via === "bot" ? "AI Assistant" : p.via === "crm" ? "Sales (CRM)" : "Agent");
     const note = `${arrow}: ${p.body}`.slice(0, 1800);
 
-    await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
+    const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
     });
+    // Don't let a rejected push vanish — a wrong activity code / expired key / bad
+    // region host would otherwise fail silently and look like "nothing synced".
+    if (!res.ok) console.error(`[leadsquared] activity push HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
   } catch (err) {
     console.error("[leadsquared] activity push failed:", errorMessage(err));
   }
@@ -392,11 +399,12 @@ export async function pushIgActivity(p: {
       : "➡️ " + (p.via === "bot" ? "AI Assistant" : "Agent") + " (Instagram)";
     const note = `${arrow}: ${p.body}`.slice(0, 1800);
 
-    await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
+    const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
     });
+    if (!res.ok) console.error(`[leadsquared] IG activity push HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
   } catch (err) {
     console.error("[leadsquared] IG activity push failed:", errorMessage(err));
   }
