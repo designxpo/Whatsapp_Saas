@@ -8,7 +8,7 @@ import { DEFAULT_TENANT_ID } from "../tenant";
 // generateReply() as before and should call recordRagAnswer() with the result
 // so the semantic cache warms up over time.
 
-import { FALLBACK_REPLY, applyPersonaTone } from "@/lib/llm";
+import { FALLBACK_REPLY, SOFT_FALLBACK, CLARIFY_REPLY, applyPersonaTone } from "@/lib/llm";
 import { kbCoverage } from "@/lib/kb";
 import { matchFaq } from "./faq";
 import { cacheLookup, cacheStore } from "./cache";
@@ -39,7 +39,7 @@ export function routerEnabled(): boolean {
   return process.env.KNOWLEDGE_ROUTER_ENABLED !== "false";
 }
 
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string }): Promise<RouteResult> {
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null }): Promise<RouteResult> {
   const t0 = Date.now();
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
@@ -82,7 +82,7 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 
   // Layer 3 — global semantic cache (one embedding call, no generation)
   try {
-    const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid);
+    const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid, p.contactName);
     if (hit) {
       // Same guard as the FAQ layer: a previously-cached deflection must not
       // shadow KB content that now answers the question. Reuses the lookup's
@@ -109,8 +109,11 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 // Call after the RAG fallback produced a real (non-escalation) answer.
 // The generic FALLBACK_REPLY (returned on LLM API errors) must never be cached —
 // it would permanently shadow the real answer for that question.
-export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string }): void {
+export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string; contactName?: string | null }): void {
   logRouterEvent({ event: "RAG_USED", phone: p.phone, question: p.question });
-  if (p.answer.trim() === FALLBACK_REPLY) return;
-  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID);
+  // Generic non-answers (API-error fallback, empty/ambiguous nudges) must never be
+  // cached. `contactName` lets cacheStore refuse a name-personalised answer.
+  const a = p.answer.trim();
+  if (a === FALLBACK_REPLY || a === SOFT_FALLBACK || a === CLARIFY_REPLY) return;
+  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID, p.contactName);
 }

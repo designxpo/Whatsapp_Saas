@@ -12,14 +12,34 @@ import { normalize } from "./faq";
 const CACHE_SIMILARITY = 0.92;
 
 // The cache is shared across a tenant's customers, so it must only ever hold
-// generic, reusable answers. An answer that greets a specific person by name
-// ("Hi Govind!", "Hello Basit Kamal!") is conversation-specific — caching it
-// would replay one customer's name (and context) to another. Detect a greeting
-// immediately followed by a capitalised name, so "Hi there!" / "Hi! 👋 We…" stay
-// cacheable.
+// generic, reusable answers. An answer that names a specific person — whether as
+// a leading greeting ("Hi Govind!") OR a trailing direct-address ("…any other
+// questions, Govind Kumar?") — is conversation-specific; caching it would replay
+// one customer's name to another customer of the SAME tenant (tenant scoping
+// alone does not stop this). We detect BOTH forms, plus (when known) the
+// requesting/answering contact's own name anywhere in the text.
 const PERSONALIZED_GREETING = /^\s*\*{0,2}\s*(?:[Hh]i+|[Hh]ello+|[Hh]ey+|[Nn]amaste|[Dd]ear)\s+[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+)?\s*[,!.]/;
-export function isPersonalizedAnswer(answer: string): boolean {
-  return PERSONALIZED_GREETING.test(answer || "");
+// A capitalised name used as direct address at the very END of the answer.
+const TRAILING_ADDRESS = /[,!?.]\s*(?:[Hh]i+|[Hh]ello+|[Hh]ey+|[Nn]amaste|[Dd]ear)?\s*[A-Z][a-zA-Z'’-]+(?:\s+[A-Z][a-zA-Z'’-]+)?\s*[!?.]+\s*$/;
+// Generic closers that legitimately END on a capitalised word — stay cacheable.
+const SIGNOFF = /\b(thanks|thank you|cheers|regards|welcome|best|congrats|congratulations|sincerely|hello|hi|hey|namaste|sure|okay|ok|yes|no|great|awesome|perfect|today|tomorrow|soon|here|you)\b/i;
+function hasTrailingName(a: string): boolean {
+  const m = a.match(TRAILING_ADDRESS);
+  if (!m) return false;
+  const tail = m[0].replace(/^[,!?.\s]+/, "").replace(/[!?.\s]+$/, "");
+  return !SIGNOFF.test(tail);
+}
+function nameInAnswer(a: string, knownName?: string | null): boolean {
+  const n = (knownName ?? "").trim();
+  if (n.length <= 1) return false;
+  const esc = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${esc}\\b`, "i").test(a);
+}
+// `knownName` (when supplied) is the answering/requesting contact's name — catches
+// mid-sentence personalisation ("Sure Govind, here are the details.").
+export function isPersonalizedAnswer(answer: string, knownName?: string | null): boolean {
+  const a = answer || "";
+  return PERSONALIZED_GREETING.test(a) || hasTrailingName(a) || nameInAnswer(a, knownName);
 }
 
 async function purgeCache(id: string): Promise<void> {
@@ -38,7 +58,7 @@ export interface CacheLookup {
   embedding: number[] | null;   // returned so the RAG path can reuse it for the write
 }
 
-export async function cacheLookup(question: string, precomputed?: number[] | null, tenantId = DEFAULT_TENANT_ID): Promise<CacheLookup> {
+export async function cacheLookup(question: string, precomputed?: number[] | null, tenantId = DEFAULT_TENANT_ID, requesterName?: string | null): Promise<CacheLookup> {
   const norm = normalize(question);
   if (!norm) return { hit: null, embedding: null };
 
@@ -47,9 +67,10 @@ export async function cacheLookup(question: string, precomputed?: number[] | nul
     .select("id, answer").eq("tenant_id", tenantId).eq("normalized_question", norm).maybeSingle();
   if (exact.data) {
     const ans = exact.data.answer as string;
-    // Pre-fix poison: an old personalised entry must not be served — drop it and
-    // fall through to RAG so this customer gets a fresh, generic answer.
-    if (isPersonalizedAnswer(ans)) { void purgeCache(exact.data.id as string); }
+    // Poison guard: a personalised entry (greeting/trailing name, or THIS
+    // requester's own name) must not be served — drop it and fall through to RAG
+    // so this customer gets a fresh, generic answer.
+    if (isPersonalizedAnswer(ans, requesterName)) { void purgeCache(exact.data.id as string); }
     else {
       void bumpHit(exact.data.id as string);
       return { hit: { id: exact.data.id as string, answer: ans, similarity: 1, exact: true }, embedding: null };
@@ -61,7 +82,7 @@ export async function cacheLookup(question: string, precomputed?: number[] | nul
   const { data } = await db().rpc("match_semantic_cache", { query_embedding: embedding, match_count: 1, p_tenant_id: tenantId });
   const top = (data as { id: string; answer: string; similarity: number }[] | null)?.[0];
   if (top && top.similarity >= CACHE_SIMILARITY) {
-    if (isPersonalizedAnswer(top.answer)) { void purgeCache(top.id); return { hit: null, embedding }; }
+    if (isPersonalizedAnswer(top.answer, requesterName)) { void purgeCache(top.id); return { hit: null, embedding }; }
     void bumpHit(top.id);
     return { hit: { id: top.id, answer: top.answer, similarity: top.similarity, exact: false }, embedding };
   }
@@ -79,12 +100,12 @@ async function bumpHit(id: string): Promise<void> {
 
 // Store a RAG-produced answer. Reuses the lookup's embedding when available.
 // The cache is tenant-scoped — answers must never cross tenants.
-export async function cacheStore(question: string, answer: string, embedding: number[] | null, source = "rag", tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function cacheStore(question: string, answer: string, embedding: number[] | null, source = "rag", tenantId = DEFAULT_TENANT_ID, knownName?: string | null): Promise<void> {
   try {
     const norm = normalize(question);
     if (!norm || !answer.trim()) return;
     // Never cache a name-personalised answer — the cache is shared across customers.
-    if (isPersonalizedAnswer(answer)) return;
+    if (isPersonalizedAnswer(answer, knownName)) return;
     const emb = embedding ?? await embedQuery(question);
     // Unique on (tenant_id, normalized_question) — concurrent dup inserts no-op.
     await db().from("wa_semantic_cache").upsert(

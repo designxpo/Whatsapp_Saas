@@ -25,6 +25,23 @@ export const FALLBACK_REPLY =
 export const SOFT_FALLBACK =
   "Thanks for reaching out! 🙂 Could you tell me a little more about what you're looking for? I'm happy to help — or just type \"agent\" anytime to reach our team.";
 
+// Sent when a low-stakes / ambiguous one-off ("??", "ok", "huh") produced no
+// usable answer (empty model reply or a transient API error). A warm nudge for
+// detail is far better than a false "a team member will get back to you" promise.
+export const CLARIFY_REPLY =
+  "Sorry, I didn't quite get that 🙂 Could you tell me a bit more about what you're looking for?";
+// Punctuation-only / filler / single tiny token — nudge for clarity, don't hand off.
+const AMBIGUOUS_RE = /^(?:[?.!]+|h+u+h+|hm+|hu+|o+k+(?:ay)?|k+|ya+|yo+|he+y+|hi+|hello+|wat|wut|what\??)$/i;
+function isLowStakes(text: string): boolean {
+  const t = (text || "").trim();
+  if (!t) return true;
+  if (AMBIGUOUS_RE.test(t)) return true;
+  // A very short message with NO real word (3+ letters) — pure filler like "k",
+  // "yo", "..". A short but substantive token ("price?", "demo", "ROI?") is NOT
+  // low-stakes: on a model hiccup it deserves the team-handoff, not a nudge.
+  return t.length <= 6 && !/[A-Za-z]{3,}/.test(t) && !HANDOFF_RE.test(t);
+}
+
 // AI Hub functions → normalized chat tools (provider-agnostic).
 function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
   if (fns.length === 0) return undefined;
@@ -158,24 +175,46 @@ export interface ReplyResult {
   functionCalls?: string[]; // names of AI functions executed this turn
 }
 
-// Strip a leading "Name:" / "*Name*:" label the model sometimes prepends despite
-// the system prompt (e.g. "Maya: Hi there"). Removes a 1–2 TitleCase-word label
-// before a colon when it matches the agent's name OR looks like a name and isn't
-// a common content opener ("Note:", "Hours:", "Fees:"), so real content is kept.
-const NAME_PREFIX_RE = /^\s*\*{0,2}\s*([A-Z][a-zA-Z.'’-]+(?:\s+[A-Z][a-zA-Z.'’-]+)?)\s*\*{0,2}\s*:\s+/;
+// Strip a leading persona/name label the model sometimes prepends despite the
+// system prompt — e.g. "Maya:", "*Maya*:", "MAYA SUPPORT:", "MAYA CUSTOMER
+// SUPPORT:", "**MAYA SUPPORT:**", "SUPPORT:". Two passes:
+//   1) a ROLE label — any (0–2 word) name followed by a role word (support/
+//      sales/team…), any case, colon optionally bold-wrapped and no whitespace
+//      required after it ("MAYA SUPPORT:The…"). This is what leaked in production:
+//      "**MAYA SUPPORT:**" slipped past the old name-only regex because the bold
+//      "**" sat between the colon and the space.
+//   2) a 1–2 TitleCase-word personal name, kept when it's a common content opener
+//      ("Note:", "Fees:", "Total:", "Contact:") so real content survives.
+const ROLE_WORDS = "(?:support|sales|service|team|helpdesk|care|assistant|bot|agent|concierge|advisor|counsell?or)";
+const ROLE_PREFIX_RE = new RegExp(
+  "^\\s*\\*{0,2}\\s*(?:[A-Za-z][\\w.'’-]*\\s+){0,2}" + ROLE_WORDS + "(?:\\s+" + ROLE_WORDS + ")*\\s*\\*{0,2}\\s*:\\*{0,2}\\s*",
+  "i",
+);
+const NAME_PREFIX_RE = /^\s*\*{0,2}\s*([A-Z][a-zA-Z.'’-]+(?:\s+[A-Z][a-zA-Z.'’-]+)?)\s*\*{0,2}\s*:\*{0,2}\s+/;
 const COMMON_LABELS = new Set([
   "note", "tip", "tips", "hours", "fee", "fees", "price", "prices", "update", "reminder",
   "hi", "hello", "hey", "warning", "important", "fyi", "ps", "re", "attention", "menu",
   "options", "welcome", "thanks", "thank", "sure", "okay", "ok", "yes", "no", "namaste",
+  // Common "Label: value" content openers — keep these intact.
+  "total", "subtotal", "duration", "module", "level", "day", "week", "step", "date", "time",
+  "contact", "info", "email", "phone", "address", "website", "location", "venue", "amount", "discount",
 ]);
 export function stripLeadingName(text: string, agentName?: string | null): string {
+  // Pass 1 — role/persona label, regardless of agent name or case.
+  const r = text.match(ROLE_PREFIX_RE);
+  if (r) {
+    const out = text.slice(r[0].length).trimStart();
+    if (out) return out;   // never strip away the whole message
+  }
+  // Pass 2 — a 1–2 word personal-name label.
   const m = text.match(NAME_PREFIX_RE);
   if (!m) return text;
   const label = m[1].trim();
   const first = label.split(/\s+/)[0].toLowerCase();
   const matchesAgent = !!agentName && label.toLowerCase() === agentName.trim().toLowerCase();
   if (!matchesAgent && COMMON_LABELS.has(first)) return text;
-  return text.slice(m[0].length).trimStart();
+  const out = text.slice(m[0].length).trimStart();
+  return out || text;
 }
 
 // Generates a grounded reply from conversation history. `history` must end with
@@ -329,15 +368,20 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         return { reply: null, escalate: true, reason: "model escalated", usedChunks: relevant.length, functionCalls: executed };
       }
       if (!text) {
-        return { reply: SOFT_FALLBACK, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
+        // A trivial/ambiguous one-off ("??") deserves a clarifying nudge.
+        const reply = isLowStakes(lastUser.body) ? CLARIFY_REPLY : SOFT_FALLBACK;
+        return { reply, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
       }
       return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed };
     }
-    return { reply: FALLBACK_REPLY, escalate: false, reason: "tool loop exhausted", usedChunks: relevant.length, functionCalls: executed };
+    const exhausted = isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
+    return { reply: exhausted, escalate: false, reason: "tool loop exhausted", usedChunks: relevant.length, functionCalls: executed };
   } catch (err) {
     console.error("[llm] generate failed:", err);
-    // API failure → surface a safe fallback rather than nothing.
-    return { reply: FALLBACK_REPLY, escalate: false, reason: "generation error (fallback)", usedChunks: relevant.length };
+    // API failure → a clarifying nudge for low-stakes input; otherwise the safe
+    // team-handoff fallback. Never a false "a human will reply" for a bare "??".
+    const reply = isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
+    return { reply, escalate: false, reason: "generation error (fallback)", usedChunks: relevant.length };
   }
 }
 

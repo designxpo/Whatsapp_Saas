@@ -1,0 +1,16 @@
+-- One-time privacy scrub of the semantic answer cache (wa_semantic_cache).
+--
+-- Before the accompanying code fix, a RAG answer that wove a specific customer's
+-- name into the text — as a greeting ("Hi Govind!"), a trailing direct-address
+-- ("…any other questions, Govind Kumar?"), OR mid-sentence ("Sure Govind, …") —
+-- could be cached and then replayed to a DIFFERENT customer of the SAME tenant.
+-- Tenant scoping does not stop a within-tenant bleed; the content guard does.
+--
+-- The new code refuses to cache name-personalised answers (write guard) and
+-- purges structurally-detectable ones on read. But a LEGACY row that names a
+-- THIRD party mid-sentence carries no structural marker the read guard can
+-- detect, so we flush the cache once here (all tenants). The semantic cache is a
+-- rebuildable performance layer holding only generic Q&A: every entry simply
+-- re-warms from a fresh, now-guarded RAG answer the next time that question is
+-- asked. No customer-facing data is lost — only a one-time loss of cache hits.
+delete from wa_semantic_cache;

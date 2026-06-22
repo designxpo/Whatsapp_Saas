@@ -151,7 +151,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
     if (lastUserMsg && !lastHasMedia) {
-      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId });
+      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
         const sent = await sendReply(routed.answer);
@@ -190,7 +190,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot", tenantId: conv.tenantId });
     // Warm the semantic cache so the next similar question skips RAG. Skipped for
     // media messages — the answer is about the file, not reusable by its caption.
-    if (lastUserMsg && !lastHasMedia) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId });
+    if (lastUserMsg && !lastHasMedia) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name });
     return { outcome: "sent" };
   } catch (err) {
     await reflagReply(conversationId);
