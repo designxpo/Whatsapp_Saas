@@ -2,8 +2,8 @@
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Loader2, Plus, Trash2 } from "lucide-react";
-import { type Tab, inp } from "../_shared";
+import { Copy, Loader2, Trash2, ArrowLeft } from "lucide-react";
+import { type Tab, inp, ImgFallback } from "../_shared";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
 type Integration = {
@@ -36,6 +36,32 @@ const TOKEN_HELP: Record<string, string> = {
   calcom: "Cal.com → Settings → Developer → API Keys for the key; the Event Type ID is in the event type's URL (…/event-types/123).",
   leadsquared: "LeadSquared → My Profile → Settings → API and Webhooks for the Access Key & Secret Key; the Activity code is the event code of a Custom Activity (e.g. \"WhatsApp Message\").",
 };
+
+// The catalog of connectable tools, shown as clickable logo cards. `slug` →
+// cdn.simpleicons.org (the same monochrome brand marks the marketing site uses);
+// null → a lettered tile (e.g. LeadSquared, which Simple Icons doesn't carry).
+const CATALOG: { kind: string; slug: string | null; blurb: string }[] = [
+  { kind: "hubspot", slug: "hubspot", blurb: "Sync new contacts into HubSpot CRM." },
+  { kind: "pipedrive", slug: "pipedrive", blurb: "Sync new people into Pipedrive CRM." },
+  { kind: "leadsquared", slug: null, blurb: "Sync every chat to the lead's LeadSquared timeline." },
+  { kind: "razorpay", slug: "razorpay", blurb: "Send Razorpay payment links inside the chat." },
+  { kind: "stripe", slug: "stripe", blurb: "Send Stripe payment links inside the chat." },
+  { kind: "shopify", slug: "shopify", blurb: "Import your Shopify product catalog." },
+  { kind: "woocommerce", slug: "woocommerce", blurb: "Import your WooCommerce catalog." },
+  { kind: "calcom", slug: "caldotcom", blurb: "Let customers book meetings via Cal.com." },
+  { kind: "slack", slug: "slack", blurb: "Post events to a Slack channel." },
+  { kind: "teams", slug: "microsoftteams", blurb: "Post events to a Microsoft Teams channel." },
+  { kind: "webhook", slug: "zapier", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },
+];
+
+// A connector's brand mark — Simple Icons CDN, falling back to a lettered tile if
+// there's no slug or the image fails to load.
+function Logo({ kind, slug }: { kind: string; slug: string | null }) {
+  const initial = (KIND_LABELS[kind] ?? kind).replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase() || "?";
+  const box = "w-10 h-10 rounded-xl bg-brand-50 text-brand-700 flex items-center justify-center font-extrabold text-sm shrink-0";
+  if (!slug) return <div className={box}>{initial}</div>;
+  return <ImgFallback url={`https://cdn.simpleicons.org/${slug}`} imgClass="w-10 h-10 rounded-xl bg-canvas object-contain p-2 shrink-0" boxClass={box} icon={initial} />;
+}
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [items, setItems] = useState<Integration[] | null>(null);
@@ -108,6 +134,12 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     load();
   }
 
+  // Clicking a catalog card opens the setup form for THAT connector (kind fixed).
+  function openSetup(kind: string) {
+    setForm({ kind, name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
+    setMsg(null); setNewSecret(null); setAdding(true);
+  }
+
   const statusBadge = (s: Integration["status"]) => {
     const map = { connected: "bg-emerald-100 text-emerald-700", error: "bg-red-100 text-red-600", unverified: "bg-slate-100 text-slate-500" };
     const label = { connected: "Connected", error: "Error", unverified: "Not tested" };
@@ -115,7 +147,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   };
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="max-w-5xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
         <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync leads to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
@@ -134,11 +166,11 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
       )}
 
-      {/* Existing connections */}
-      <div className="space-y-2">
-        {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
-        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations connected yet — add one below.</p>}
-        {items?.map(i => (
+      {/* Connected integrations — manage, test, pause or remove */}
+      {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
+      {!!items?.length && <div className="space-y-2">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Connected ({items.length})</p>
+        {items.map(i => (
           <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -169,17 +201,18 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
           </section>
         ))}
-      </div>
+      </div>}
 
-      {/* Add a webhook */}
+      {/* Add an integration — browse the logo catalog, then set up the chosen one */}
       {adding ? (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
-          <h3 className="text-sm font-bold text-ink-900">Add an integration</h3>
-          <div>
-            <label className="text-xs font-bold text-slate-400 uppercase">Type</label>
-            <select className={`${inp} w-full mt-1`} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>
-              {Object.entries(KIND_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
+          <div className="flex items-center gap-2.5">
+            <Logo kind={form.kind} slug={CATALOG.find(c => c.kind === form.kind)?.slug ?? null} />
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold text-ink-900 truncate">Set up {KIND_LABELS[form.kind]}</h3>
+              <p className="text-[11px] text-slate-500 truncate">{CATALOG.find(c => c.kind === form.kind)?.blurb}</p>
+            </div>
+            <button onClick={() => { setAdding(false); setMsg(null); setNewSecret(null); }} className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-0.5 shrink-0"><ArrowLeft className="w-3.5 h-3.5" /> All integrations</button>
           </div>
           <input className={`${inp} w-full`} placeholder={isToken ? `Name (e.g. ${KIND_LABELS[form.kind]})` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           {isToken ? (
@@ -244,7 +277,24 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
         </section>
       ) : (
-        <button onClick={() => { setAdding(true); setNewSecret(null); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold"><Plus className="w-4 h-4" /> Add an integration</button>
+        <div className="space-y-2">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Add an integration</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {CATALOG.map(c => {
+              const conns = (items ?? []).filter(i => i.kind === c.kind);
+              return (
+                <button key={c.kind} onClick={() => openSetup(c.kind)} className="text-left bg-white rounded-card border border-line p-4 flex flex-col gap-2 hover:border-brand-500 hover:shadow-sm transition-colors">
+                  <div className="flex items-start justify-between gap-2">
+                    <Logo kind={c.kind} slug={c.slug} />
+                    {!!conns.length && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">{conns.length > 1 ? `${conns.length} connected` : "Connected"}</span>}
+                  </div>
+                  <p className="text-sm font-bold text-ink-900 leading-tight">{KIND_LABELS[c.kind]}</p>
+                  <p className="text-[11px] text-slate-500 leading-snug">{c.blurb}</p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
