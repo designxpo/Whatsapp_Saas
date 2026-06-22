@@ -83,7 +83,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
           <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
             {([["chats", "Chats", chatsCount], ["comments", "Comments", commentsCount]] as const).map(([k, label, n]) => (
               <button key={k} onClick={() => { setView(k); setSelected(null); setPlatform("all"); }} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${view === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
-                {k === "chats" ? <MessageSquare className="w-3 h-3" /> : <Instagram className="w-3 h-3 text-pink-600" />}
+                {k === "chats" ? <MessageSquare className="w-3 h-3" /> : <MessageCircle className="w-3 h-3 text-ink-500" />}
                 {label} <span className="opacity-60">{n}</span>
               </button>
             ))}
@@ -405,6 +405,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               return <div key={m.id} className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div>;
             }
             const isComment = m.body.startsWith("[comment] ");
+            const commentIsFb = isComment && conv?.platform === "messenger";
             const body = isComment ? m.body.slice(10) : m.body;
             const submitted = body.startsWith("[form] ");
             const sentMatch = body.match(/^([\s\S]*?)\n\[form:\s*(.+?)\]\s*$/);
@@ -419,8 +420,8 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             const hasCaption = isMedia && !!body.trim() && !/^\[.*\]$/.test(body.trim());
             return (
               <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
-                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? "bg-pink-50 border border-pink-200 text-ink-900" : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
-                  {isComment && <p className="text-[10px] font-bold text-pink-600 mb-0.5 flex items-center gap-1"><Instagram className="w-3 h-3" /> {m.role === "user" ? "comment" : "comment reply"}</p>}
+                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                  {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
                     <div className="space-y-1.5">
                       {isImage && <a href={m.mediaUrl!} target="_blank" rel="noreferrer"><img src={m.mediaUrl!} alt="" className="rounded-lg max-h-72 max-w-full object-cover" /></a>}
