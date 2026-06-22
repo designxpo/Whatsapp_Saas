@@ -10,7 +10,8 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //   Activity code           — event code of a Custom Activity (e.g. "WhatsApp Message")
 
 import { errorMessage } from "./errors";
-import { getTenantSetting, setTenantSetting, getTenantSecret } from "./store";
+import { getTenantSetting, getTenantSecret } from "./store";
+import { listIntegrations, getIntegrationSecret, setIntegrationError, type Integration } from "./integrations";
 
 
 export interface LsqCreds {
@@ -28,22 +29,18 @@ export const LSQ_KEYS = {
 
 const boolish = (v: string | null | undefined) => /^(1|true|yes|on)$/i.test(v ?? "");
 
-// ── Sync health (parity with the integrations hub's visible status) ───────────
-// LSQ lives outside the connector framework, so failures used to be console-only.
-// We record the last sync failure to a tenant setting and surface it in Settings,
-// so a tenant can SEE when sync breaks. Cleared when they re-save / disconnect.
-export const LSQ_SYNC_ERROR_KEY = "lsq_last_sync_error";
-export type LsqSyncError = { at: string; detail: string };
+// LeadSquared is a connection in the Integrations hub — find this tenant's active
+// one (its creds + visible status live on it).
+async function findLsqIntegration(tenantId: string): Promise<Integration | null> {
+  try { return (await listIntegrations(tenantId)).find(i => i.kind === "leadsquared" && i.active) ?? null; }
+  catch { return null; }
+}
 
+// Surface a sync failure on the LeadSquared connection's hub card (same visible
+// status the other connectors get). A successful "Test" flips it back to connected.
 async function noteLsqFailure(tenantId: string, detail: string): Promise<void> {
-  try { await setTenantSetting(tenantId, LSQ_SYNC_ERROR_KEY, { at: new Date().toISOString(), detail: detail.slice(0, 300) } satisfies LsqSyncError); } catch { /* best-effort */ }
-}
-
-export async function getLsqSyncError(tenantId: string = DEFAULT_TENANT_ID): Promise<LsqSyncError | null> {
-  return getTenantSetting<LsqSyncError | null>(tenantId, LSQ_SYNC_ERROR_KEY, null);
-}
-export async function clearLsqSyncError(tenantId: string): Promise<void> {
-  try { await setTenantSetting(tenantId, LSQ_SYNC_ERROR_KEY, null); } catch { /* best-effort */ }
+  try { const integ = await findLsqIntegration(tenantId); if (integ) await setIntegrationError(integ.id, tenantId, detail); }
+  catch { /* best-effort — never break the message path */ }
 }
 
 // Platform env creds — fallback for the default tenant only.
@@ -61,9 +58,36 @@ function envCfg(): LsqCreds | null {
   };
 }
 
-// Resolve a tenant's LeadSquared credentials (their own settings first; env only
-// for the default tenant). Returns null when this tenant has no CRM configured.
+// Resolve a tenant's LeadSquared credentials. Source order:
+//   1) their LeadSquared connection in the Integrations hub (how it's set up now)
+//   2) legacy per-tenant settings (configured before LSQ moved into the hub)
+//   3) platform env — default tenant only
+// Returns null when this tenant has no CRM configured.
 export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<LsqCreds | null> {
+  // 1) Integrations hub connection — both keys live in its encrypted secret as
+  //    JSON {accessKey, secretKey}; host/activityCode/etc. live in its config.
+  try {
+    const integ = await findLsqIntegration(tenantId);
+    if (integ) {
+      let accessKey = "", secretKey = "";
+      try { const k = JSON.parse((await getIntegrationSecret(integ.id, tenantId)) ?? "") as { accessKey?: string; secretKey?: string }; accessKey = k.accessKey ?? ""; secretKey = k.secretKey ?? ""; } catch { /* malformed secret */ }
+      const cfg = integ.config as Record<string, unknown>;
+      const host = String(cfg.host ?? "").replace(/\/+$/, "");
+      const activityCode = parseInt(String(cfg.activityCode ?? ""), 10);
+      if (accessKey && secretKey && host && Number.isFinite(activityCode)) {
+        return {
+          accessKey, secretKey, host, activityCode,
+          taskCategory: String(cfg.taskCategory ?? "") || "2",
+          igHandleField: String(cfg.igHandleField ?? "").trim(),
+          autoCreate: !!cfg.autoCreate,
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[leadsquared] hub cred resolve failed:", errorMessage(err));
+  }
+
+  // 2) Legacy per-tenant settings — kept so setups made before the hub keep syncing.
   try {
     const accessKey = (await getTenantSecret(tenantId, LSQ_KEYS.accessKey)) ?? "";
     const secretKey = (await getTenantSecret(tenantId, LSQ_KEYS.secretKey)) ?? "";
@@ -78,8 +102,10 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
       };
     }
   } catch (err) {
-    console.error("[leadsquared] cred resolve failed:", errorMessage(err));
+    console.error("[leadsquared] legacy cred resolve failed:", errorMessage(err));
   }
+
+  // 3) Platform env — default tenant only.
   if (tenantId === DEFAULT_TENANT_ID) return envCfg();
   return null;
 }

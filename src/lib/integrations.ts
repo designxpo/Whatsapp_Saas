@@ -51,7 +51,7 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 //   pipedrive  — sync persons into Pipedrive (API token)
 //   razorpay   — generate payment links (key id + secret)
 //   stripe     — generate payment links (secret key)
-export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom";
+export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "leadsquared" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
 // Webhook-style kinds POST to a URL. slack/teams are webhooks with the format
@@ -61,8 +61,10 @@ export const WEBHOOK_KINDS: IntegrationKind[] = ["webhook", "slack", "teams"];
 export function formatForKind(kind: IntegrationKind): WebhookFormat {
   return kind === "slack" ? "slack" : kind === "teams" ? "teams" : "generic";
 }
-// CRM kinds authenticate with a single pasted token.
-export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive"];
+// CRM kinds. Most authenticate with a single pasted token; LeadSquared takes an
+// Access Key + Secret Key (kept together in the encrypted secret) and is handled
+// specially by the create route.
+export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive", "leadsquared"];
 // Payment kinds expose createPaymentLink() instead of subscribing to events.
 export const PAYMENT_KINDS: IntegrationKind[] = ["razorpay", "stripe"];
 // Store kinds expose fetchProducts() for one-way catalog import.
@@ -77,6 +79,7 @@ export const KIND_LABELS: Record<IntegrationKind, string> = {
   teams: "Microsoft Teams",
   hubspot: "HubSpot",
   pipedrive: "Pipedrive",
+  leadsquared: "LeadSquared",
   razorpay: "Razorpay",
   stripe: "Stripe",
   shopify: "Shopify",
@@ -317,6 +320,18 @@ export async function getIntegration(id: string, tenantId: string = DEFAULT_TENA
 async function getSecret(id: string, tenantId: string): Promise<string | null> {
   const { data } = await tdb(tenantId).from("wa_integrations").select("secret").eq("id", id).maybeSingle();
   return readSecret((data as { secret?: string } | null)?.secret ?? null);
+}
+
+// Read a connection's decrypted secret from outside this module — used by
+// lib/leadsquared.ts, whose creds live in the tenant's `leadsquared` connection.
+export async function getIntegrationSecret(id: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
+  return getSecret(id, tenantId);
+}
+// Mark a connection as errored from outside the deliver() path (LeadSquared syncs
+// directly, not via emitEvent) so its failure shows on the hub card. A successful
+// Test (verifyIntegration) flips it back to "connected".
+export async function setIntegrationError(id: string, tenantId: string, detail: string): Promise<void> {
+  await setStatus(id, tenantId, "error", detail.slice(0, 300), true);
 }
 
 export interface IntegrationInput {
@@ -635,12 +650,34 @@ const calcomConnector: Connector = {
   },
 };
 
+// ── LeadSquared — CRM timeline sync (Access Key + Secret Key) ─────────────────
+// One CRM option among many. Unlike the generic connectors it doesn't deliver()
+// per event — its rich sync (timeline, lead snapshot, pipeline stage, drips) runs
+// through lib/leadsquared.ts, which reads these same creds from this connection.
+// The connector only needs verify() for the "Test" button. Both keys live in the
+// encrypted secret as JSON {accessKey, secretKey}; host/activityCode/etc. are config.
+const leadsquaredConnector: Connector = {
+  async verify(i, secret) {
+    let accessKey = "", secretKey = "";
+    try { const k = JSON.parse(secret ?? "") as { accessKey?: string; secretKey?: string }; accessKey = k.accessKey ?? ""; secretKey = k.secretKey ?? ""; } catch { /* missing / non-JSON secret */ }
+    const host = String(i.config.host ?? "").replace(/\/+$/, "");
+    if (!accessKey || !secretKey || !host) return { ok: false, detail: "Add your Access Key, Secret Key and API host." };
+    try {
+      const res = await fetch(`${host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}&phone=${encodeURIComponent("+10000000000")}`, { signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your LeadSquared keys work." };
+      if (res.status === 401 || res.status === 403) return { ok: false, detail: "LeadSquared rejected the keys — double-check your Access Key and Secret Key." };
+      return { ok: false, detail: `LeadSquared returned HTTP ${res.status} — check the API host region (e.g. https://api-in21.leadsquared.com).` };
+    } catch { return { ok: false, detail: "Couldn't reach LeadSquared — check the API host URL, then try again." }; }
+  },
+};
+
 const CONNECTORS: Record<IntegrationKind, Connector> = {
   webhook: webhookConnector,
   slack: webhookConnector,   // webhook with format pre-set to "slack"
   teams: webhookConnector,   // webhook with format pre-set to "teams"
   hubspot: hubspotConnector,
   pipedrive: pipedriveConnector,
+  leadsquared: leadsquaredConnector,
   razorpay: razorpayConnector,
   stripe: stripeConnector,
   shopify: shopifyConnector,

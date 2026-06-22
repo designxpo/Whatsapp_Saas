@@ -8,7 +8,7 @@ import { listChannels, type Channel } from "./channels";
 import { getTenantAiStatus, resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { validateKey } from "./ai/chat";
 import { listDocuments } from "./store";
-import { resolveLsq, verifyLsq } from "./leadsquared";
+import { resolveLsq } from "./leadsquared";
 import { integrationsHealth, listIntegrations } from "./integrations";
 import { errorMessage } from "./errors";
 
@@ -143,27 +143,21 @@ export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
       hint: v.ok ? undefined : "Re-enter the Instagram token / account ID in Settings.", fixTab: "instagram" });
   }
 
-  // 5) CRM & tools — optional. We don't push any one CRM: this step is satisfied
-  // by LeadSquared OR any connected hub integration (HubSpot, Pipedrive, Slack,
-  // Google Sheets, webhooks, …), and always points to the Integrations hub where
-  // the tenant picks whichever tools they prefer.
-  const [lsq, integrations] = await Promise.all([
-    resolveLsq(tenantId).catch(() => null),
-    listIntegrations(tenantId).catch(() => []),
-  ]);
-  const activeCount = integrations.filter(i => i.active).length;
-  if (lsq) {
-    const v = await verifyLsq(tenantId);
-    steps.push({ key: "crm", title: "Connect your CRM & tools", status: v.ok ? "ok" : "error",
-      detail: v.ok ? `LeadSquared connected${activeCount ? ` · ${activeCount} other integration${activeCount === 1 ? "" : "s"}` : ""}` : v.detail, optional: true,
-      hint: v.ok ? undefined : "Check your LeadSquared keys in Settings, or connect another tool in Integrations.", fixTab: v.ok ? "integrations" : "settings" });
-  } else if (activeCount) {
-    steps.push({ key: "crm", title: "Connect your CRM & tools", status: "ok",
-      detail: `${activeCount} integration${activeCount === 1 ? "" : "s"} connected.`, optional: true, fixTab: "integrations" });
-  } else {
+  // 5) CRM & tools — optional. We don't push any one CRM: satisfied by ANY
+  // connected integration (HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets,
+  // webhooks…). LeadSquared is now a connection like the rest, so it's just
+  // counted here. Always points to the Integrations hub where the tenant picks.
+  const integrations = await listIntegrations(tenantId).catch(() => []);
+  const active = integrations.filter(i => i.active);
+  const errored = active.filter(i => i.status === "error");
+  if (!active.length) {
     steps.push({ key: "crm", title: "Connect your CRM & tools", status: "todo", optional: true,
       detail: "Not connected (optional).",
       hint: "Connect your CRM or tools — HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets, webhooks and more — so chats and leads flow into the systems you already use.", fixTab: "integrations" });
+  } else {
+    steps.push({ key: "crm", title: "Connect your CRM & tools", status: errored.length ? "warn" : "ok",
+      detail: errored.length ? `${active.length} connected · ${errored.length} need attention` : `${active.length} connected.`, optional: true,
+      hint: errored.length ? "An integration reported an error — open Integrations to check it." : undefined, fixTab: "integrations" });
   }
 
   return steps;

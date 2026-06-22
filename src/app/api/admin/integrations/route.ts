@@ -9,7 +9,7 @@ import { errorMessage } from "@/lib/errors";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "razorpay", "stripe", "shopify", "woocommerce", "calcom"];
+const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[] };
+  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqAutoCreate?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
@@ -64,6 +64,16 @@ export async function POST(req: Request) {
     const eventTypeId = (b.eventTypeId ?? "").trim();
     if (!secretInput || !eventTypeId) return NextResponse.json({ error: "Add your Cal.com API key and the Event Type ID to book." }, { status: 400 });
     config = { eventTypeId };
+  } else if (kind === "leadsquared") {
+    // Two keys + a few config fields. Both keys are stored together in the
+    // encrypted secret; host/activityCode/etc. go in config.
+    const accessKey = (b.lsqAccessKey ?? "").trim();
+    const secretKey = (b.token ?? "").trim();
+    const host = (b.lsqHost ?? "").trim().replace(/\/+$/, "");
+    const activityCode = (b.lsqActivityCode ?? "").trim();
+    if (!accessKey || !secretKey || !host || !activityCode) return NextResponse.json({ error: "Add your Access Key, Secret Key, API host and Activity code." }, { status: 400 });
+    config = { host, activityCode, taskCategory: (b.lsqTaskCategory ?? "").trim() || null, igHandleField: (b.lsqIgHandleField ?? "").trim() || null, autoCreate: !!b.lsqAutoCreate };
+    secretInput = JSON.stringify({ accessKey, secretKey });
   } else if (CRM_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
     if (!secretInput) return NextResponse.json({ error: "Paste your API token to connect." }, { status: 400 });

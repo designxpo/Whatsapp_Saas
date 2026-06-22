@@ -20,8 +20,8 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "contact.optout", label: "Contact opted out" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };
-const CRM_KINDS = ["hubspot", "pipedrive"];
+const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };
+const CRM_KINDS = ["hubspot", "pipedrive", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
 const SCHEDULE_KINDS = ["calcom"];
@@ -34,12 +34,13 @@ const TOKEN_HELP: Record<string, string> = {
   shopify: "Shopify → Settings → Apps → Develop apps → create a custom app with read_products, then paste its Admin API access token.",
   woocommerce: "WooCommerce → Settings → Advanced → REST API → add a key with Read access, then paste the Consumer key and secret.",
   calcom: "Cal.com → Settings → Developer → API Keys for the key; the Event Type ID is in the event type's URL (…/event-types/123).",
+  leadsquared: "LeadSquared → My Profile → Settings → API and Webhooks for the Access Key & Secret Key; the Activity code is the event code of a Custom Activity (e.g. \"WhatsApp Message\").",
 };
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", events: ["contact.created", "conversation.escalated"] as string[] });
+  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
   const isCrm = CRM_KINDS.includes(form.kind);
   const isPayment = PAYMENT_KINDS.includes(form.kind);
   const isStore = STORE_KINDS.includes(form.kind);
@@ -69,7 +70,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       else {
         setNewSecret(d.secret ?? null);
         setMsg({ ok: true, text: "Added. Hit Test to confirm it's connected." });
-        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", events: ["contact.created", "conversation.escalated"] });
+        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
         setAdding(false);
         load();
       }
@@ -117,7 +118,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="max-w-3xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync leads to HubSpot or Pipedrive, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
+        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync leads to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
       </div>
 
       {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
@@ -146,7 +147,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   {statusBadge(i.status)}
                   {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
                 </div>
-                <p className="text-[11px] text-slate-500 truncate">{SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · books meetings` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
+                <p className="text-[11px] text-slate-500 truncate">{SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · books meetings` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
@@ -168,19 +169,6 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
           </section>
         ))}
-        {/* LeadSquared is one CRM option among many. It happens to be configured on
-            its own Settings card (it powers live timeline sync); listed here so it
-            sits alongside the other connectors rather than being singled out. */}
-        <section className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-ink-900 truncate">LeadSquared</h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Set up in Settings</span>
-            </div>
-            <p className="text-[11px] text-slate-500 truncate">LeadSquared CRM · syncs every chat to the lead timeline</p>
-          </div>
-          <button onClick={() => goTo("settings")} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas shrink-0">Open settings</button>
-        </section>
       </div>
 
       {/* Add a webhook */}
@@ -203,11 +191,25 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <input className={`${inp} w-full`} placeholder="Consumer key (ck_…)" value={form.consumerKey} onChange={e => setForm({ ...form, consumerKey: e.target.value })} />
               </>}
               {form.kind === "calcom" && <input className={`${inp} w-full`} placeholder="Event Type ID (e.g. 123)" value={form.eventTypeId} onChange={e => setForm({ ...form, eventTypeId: e.target.value })} />}
-              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
+              {form.kind === "leadsquared" && <>
+                <input className={`${inp} w-full`} placeholder="Access Key" value={form.lsqAccessKey} onChange={e => setForm({ ...form, lsqAccessKey: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="API host (e.g. https://api-in21.leadsquared.com)" value={form.lsqHost} onChange={e => setForm({ ...form, lsqHost: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="Activity code (e.g. 100)" value={form.lsqActivityCode} onChange={e => setForm({ ...form, lsqActivityCode: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="Task category (optional, default 2)" value={form.lsqTaskCategory} onChange={e => setForm({ ...form, lsqTaskCategory: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="IG handle field (optional, e.g. mx_Instagram)" value={form.lsqIgHandleField} onChange={e => setForm({ ...form, lsqIgHandleField: e.target.value })} />
+              </>}
+              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : form.kind === "leadsquared" ? "Secret Key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
               <p className="text-[11px] text-slate-500">{TOKEN_HELP[form.kind]}</p>
               {isPayment && <p className="text-[11px] text-slate-500">A payment link is sent automatically when a customer checks out an order.</p>}
               {isStore && <p className="text-[11px] text-slate-500">After connecting, hit “Sync now” to import your products into the catalog. One-way; re-sync anytime.</p>}
               {isSchedule && <p className="text-[11px] text-slate-500">Add a “Book meeting” node to a chatbot flow — it shows live Cal.com slots and books the chosen time.</p>}
+              {form.kind === "leadsquared" && <>
+                <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer">
+                  <input type="checkbox" className="accent-brand-700" checked={form.lsqAutoCreate} onChange={e => setForm({ ...form, lsqAutoCreate: e.target.checked })} />
+                  Auto-create a lead for new inbound contacts (off = only sync to existing leads)
+                </label>
+                <p className="text-[11px] text-slate-500">Every chat syncs to the lead's timeline; stage &amp; owner show in Live Chat. Pipeline stages and CRM drips also use this connection.</p>
+              </>}
             </div>
           ) : (
             <>
@@ -234,6 +236,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <button onClick={create} disabled={busy || (isEventKind && !form.events.length) || (
               isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
               : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
+              : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
               : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
               : !form.url.trim()
             )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>

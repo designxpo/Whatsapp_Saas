@@ -577,72 +577,8 @@ function VoiceSettingsCard() {
   );
 }
 
-// Per-tenant LeadSquared CRM credentials — each workspace uses their own CRM.
-function LsqSettingsCard() {
-  type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean; lastSyncError?: { at: string; detail: string } | null };
-  const [st, setSt] = useState<LsqState | null>(null);
-  const [form, setForm] = useState({ accessKey: "", secretKey: "", host: "", activityCode: "", taskCategory: "", igHandleField: "", autoCreate: false });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const load = useCallback(() => {
-    fetch("/api/admin/leadsquared/settings").then(r => r.json()).then((d: LsqState) => {
-      setSt(d);
-      setForm(f => ({ ...f, host: d.host ?? "", activityCode: d.activityCode ?? "", taskCategory: d.taskCategory ?? "", igHandleField: d.igHandleField ?? "", autoCreate: !!d.autoCreate }));
-    }).catch(() => {});
-  }, []);
-  useEffect(() => { load(); }, [load]);
-
-  async function save() {
-    setBusy(true); setMsg(null);
-    try {
-      const d = await fetch("/api/admin/leadsquared/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }).then(r => r.json());
-      if (d.error) setMsg({ ok: false, text: d.error });
-      else { setMsg({ ok: !!d.verify?.ok, text: d.verify?.detail || "Saved." }); setForm(f => ({ ...f, accessKey: "", secretKey: "" })); load(); }
-    } catch { setMsg({ ok: false, text: "Connection error." }); }
-    finally { setBusy(false); }
-  }
-  async function disconnect() {
-    if (!confirm("Disconnect LeadSquared? Chats will stop syncing to your CRM.")) return;
-    setBusy(true);
-    try { await fetch("/api/admin/leadsquared/settings", { method: "DELETE" }); setMsg(null); load(); }
-    finally { setBusy(false); }
-  }
-
-  return (
-    <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-bold text-ink-900">LeadSquared CRM</h3>
-          <p className="text-[12px] text-slate-500">Your own LeadSquared keys. Chats sync to each lead&apos;s timeline; stage/owner show in Live Chat. Used only by your workspace.</p>
-        </div>
-        {st?.configured && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">Connected</span>}
-      </div>
-      {st?.lastSyncError && (
-        <p className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-control px-2.5 py-1.5">
-          ⚠️ Last sync failed{st.lastSyncError.at ? ` (${new Date(st.lastSyncError.at).toLocaleString()})` : ""}: {st.lastSyncError.detail}. Check the activity code / keys below and Save to retry.
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-2">
-        <input className={inp} placeholder={st?.secretKeySet ? "Access Key — leave blank to keep current" : "Access Key"} value={form.accessKey} onChange={e => setForm({ ...form, accessKey: e.target.value })} />
-        <input className={inp} type="password" placeholder={st?.secretKeySet ? "Secret Key — leave blank to keep current" : "Secret Key"} value={form.secretKey} onChange={e => setForm({ ...form, secretKey: e.target.value })} />
-        <input className={inp} placeholder="API host (e.g. https://api-in21.leadsquared.com)" value={form.host} onChange={e => setForm({ ...form, host: e.target.value })} />
-        <input className={inp} placeholder="Activity code (e.g. 100)" value={form.activityCode} onChange={e => setForm({ ...form, activityCode: e.target.value })} />
-        <input className={inp} placeholder="Task category (optional, default 2)" value={form.taskCategory} onChange={e => setForm({ ...form, taskCategory: e.target.value })} />
-        <input className={inp} placeholder="IG handle field (optional, e.g. mx_Instagram)" value={form.igHandleField} onChange={e => setForm({ ...form, igHandleField: e.target.value })} />
-      </div>
-      <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer">
-        <input type="checkbox" className="accent-brand-700" checked={form.autoCreate} onChange={e => setForm({ ...form, autoCreate: e.target.checked })} />
-        Auto-create a lead for new inbound contacts (off = only sync to existing leads)
-      </label>
-      {msg && <p className={`text-[12px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
-      <div className="flex items-center gap-2">
-        <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save & verify"}</button>
-        {st?.configured && <button onClick={disconnect} disabled={busy} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Disconnect</button>}
-      </div>
-    </section>
-  );
-}
+// LeadSquared CRM moved into the Integrations hub (added like any other connector
+// via "Add an integration" → LeadSquared). Its old dedicated card lived here.
 
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
 const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", active: true, isDefault: false };
@@ -1162,7 +1098,6 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       )}
 
       {isAdmin && <VoiceSettingsCard />}
-      {isAdmin && <LsqSettingsCard />}
       {isAdmin && <ApiKeysCard />}
     </div>
     <SettingsRail goTo={goTo} />
