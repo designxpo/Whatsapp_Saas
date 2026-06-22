@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Menu, X, ChevronDown, Bot } from "lucide-react";
 import { NAV, SITE, FAQS } from "../_content/site";
+import { LEGAL_NAV } from "../_content/legal";
 import { BrandLogo } from "@/components/BrandLogo";
 
 function Wordmark({ dark = false }: { dark?: boolean }) {
@@ -89,8 +90,15 @@ export function SiteFooter() {
           </form>
         </div>
       </div>
-      <div className="border-t border-white/15 px-5 py-6 text-center text-xs text-white/70">
-        © {year} {SITE.name}. All rights reserved.
+      <div className="border-t border-white/15 px-5 py-6">
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 text-xs text-white/70 sm:flex-row sm:px-3">
+          <p>© {year} {SITE.name}. All rights reserved.</p>
+          <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+            {LEGAL_NAV.map(l => (
+              <Link key={l.slug} href={`/legal/${l.slug}`} className="transition-colors hover:text-white">{l.label}</Link>
+            ))}
+          </nav>
+        </div>
       </div>
     </footer>
   );

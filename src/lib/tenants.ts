@@ -185,6 +185,7 @@ export async function platformAnalytics(): Promise<{
 export async function createTenantFromSignup(p: {
   company: string; ownerName: string; ownerEmail: string; password: string;
   ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; source?: string;
+  termsVersion?: string;
 }): Promise<{ tenantId: string; email: string }> {
   const email = p.ownerEmail.trim().toLowerCase();
   // Reject if the email already has an account.
@@ -209,11 +210,15 @@ export async function createTenantFromSignup(p: {
     // resolve from the (trial) plan, not all-features-on.
     features: {},
   };
-  // `grandfathered` (migration 0059) defaults to false in the DB. Only set it
-  // explicitly when the column exists, so signup keeps working before 0059 is
-  // applied (retry once without it on a missing-column error).
-  let ins = await db().from("tenants").insert({ ...baseRow, grandfathered: false }).select("id").single();
-  if (ins.error && /grandfathered/i.test(ins.error.message ?? "")) {
+  // Optional columns added by later migrations: `grandfathered` (0059) and the
+  // legal-consent pair `terms_accepted_at` / `terms_version` (0060). Insert with
+  // them when present; on a missing-column error, retry without them so signup
+  // keeps working before those migrations are applied (the audit log below is
+  // the durable consent record either way).
+  const acceptedAt = new Date().toISOString();
+  const optional = { grandfathered: false, terms_accepted_at: p.termsVersion ? acceptedAt : null, terms_version: p.termsVersion ?? null };
+  let ins = await db().from("tenants").insert({ ...baseRow, ...optional }).select("id").single();
+  if (ins.error && /grandfathered|terms_accepted_at|terms_version/i.test(ins.error.message ?? "")) {
     ins = await db().from("tenants").insert(baseRow).select("id").single();
   }
   if (ins.error) throw ins.error;
@@ -223,6 +228,9 @@ export async function createTenantFromSignup(p: {
     email, name: p.ownerName.trim(), password_hash: hashPassword(p.password), role: "admin", tenant_id: tenantId,
   }).select("id").single();
   if (u.error) throw u.error;
+
+  // Durable consent record (best-effort; survives even if 0060 isn't applied yet).
+  if (p.termsVersion) await ownerAudit(email, "signup.terms_accepted", tenantId, `Accepted Terms, Privacy & Acceptable Use — version ${p.termsVersion}`);
 
   return { tenantId, email };
 }

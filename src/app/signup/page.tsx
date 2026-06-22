@@ -14,15 +14,17 @@ const VOLUMES = ["< 1,000 / mo", "1,000–10,000 / mo", "10,000–100,000 / mo",
 export default function SignupPage() {
   const router = useRouter();
   const [f, setF] = useState({ company: "", ownerName: "", ownerEmail: "", ownerPhone: "", password: "", industry: INDUSTRIES[0], teamSize: TEAM_SIZES[1], useCase: GOALS[0], expectedVolume: VOLUMES[1] });
+  const [accept, setAccept] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string) => setF(s => ({ ...s, [k]: v }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!accept) { setError("Please accept the Terms of Service and Privacy Policy to continue."); return; }
     setLoading(true); setError(null);
     try {
-      const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
+      const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, acceptTerms: true }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Signup failed"); return; }
       router.push("/admin?welcome=1");
@@ -57,8 +59,18 @@ export default function SignupPage() {
           <select className={inp} value={f.expectedVolume} onChange={e => set("expectedVolume", e.target.value)}>{VOLUMES.map(o => <option key={o}>{o}</option>)}</select>
         </div>
 
+        <label className="flex items-start gap-2.5 text-xs text-ink-500 cursor-pointer">
+          <input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brand-700 focus:ring-brand-700" />
+          <span>
+            I agree to Talko AI&apos;s{" "}
+            <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Terms of Service</a>,{" "}
+            <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Privacy Policy</a>{" "}and{" "}
+            <a href="/legal/acceptable-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Acceptable Use Policy</a>.
+          </span>
+        </label>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
-        <button disabled={loading} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+        <button disabled={loading || !accept} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed transition-colors">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Create my account
         </button>
         <p className="text-center text-xs text-ink-400">Already have an account? <a href="/login" className="font-semibold text-brand-700 hover:underline">Sign in</a></p>
