@@ -349,8 +349,8 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
     { name: "Gemini", slug: "googlegemini" }, { name: "OpenAI", slug: "openai" }, { name: "Anthropic", slug: "anthropic" },
   ] },
-  { title: "CRM", blurb: "Every new lead syncs automatically.", items: [
-    { name: "LeadSquared" }, { name: "HubSpot", slug: "hubspot" }, { name: "Pipedrive", iconify: "logos:pipedrive" },
+  { title: "CRM", blurb: "New leads sync to whichever CRM you already use.", items: [
+    { name: "HubSpot", slug: "hubspot" }, { name: "LeadSquared" }, { name: "Pipedrive", iconify: "logos:pipedrive" },
   ] },
   { title: "Payments", blurb: "Send a pay link and get paid inside the chat.", items: [
     { name: "Razorpay", slug: "razorpay" }, { name: "Stripe", slug: "stripe" },

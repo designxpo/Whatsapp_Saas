@@ -579,7 +579,7 @@ function VoiceSettingsCard() {
 
 // Per-tenant LeadSquared CRM credentials — each workspace uses their own CRM.
 function LsqSettingsCard() {
-  type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean };
+  type LsqState = { configured: boolean; accessKeyHint: string | null; secretKeySet: boolean; host: string | null; activityCode: string | null; taskCategory: string | null; igHandleField: string | null; autoCreate: boolean; lastSyncError?: { at: string; detail: string } | null };
   const [st, setSt] = useState<LsqState | null>(null);
   const [form, setForm] = useState({ accessKey: "", secretKey: "", host: "", activityCode: "", taskCategory: "", igHandleField: "", autoCreate: false });
   const [busy, setBusy] = useState(false);
@@ -618,6 +618,11 @@ function LsqSettingsCard() {
         </div>
         {st?.configured && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">Connected</span>}
       </div>
+      {st?.lastSyncError && (
+        <p className="text-[12px] text-red-700 bg-red-50 border border-red-100 rounded-control px-2.5 py-1.5">
+          ⚠️ Last sync failed{st.lastSyncError.at ? ` (${new Date(st.lastSyncError.at).toLocaleString()})` : ""}: {st.lastSyncError.detail}. Check the activity code / keys below and Save to retry.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-2">
         <input className={inp} placeholder={st?.secretKeySet ? "Access Key — leave blank to keep current" : "Access Key"} value={form.accessKey} onChange={e => setForm({ ...form, accessKey: e.target.value })} />
         <input className={inp} type="password" placeholder={st?.secretKeySet ? "Secret Key — leave blank to keep current" : "Secret Key"} value={form.secretKey} onChange={e => setForm({ ...form, secretKey: e.target.value })} />

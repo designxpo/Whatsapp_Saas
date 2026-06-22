@@ -10,7 +10,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //   Activity code           — event code of a Custom Activity (e.g. "WhatsApp Message")
 
 import { errorMessage } from "./errors";
-import { getTenantSetting, getTenantSecret } from "./store";
+import { getTenantSetting, setTenantSetting, getTenantSecret } from "./store";
 
 
 export interface LsqCreds {
@@ -27,6 +27,24 @@ export const LSQ_KEYS = {
 } as const;
 
 const boolish = (v: string | null | undefined) => /^(1|true|yes|on)$/i.test(v ?? "");
+
+// ── Sync health (parity with the integrations hub's visible status) ───────────
+// LSQ lives outside the connector framework, so failures used to be console-only.
+// We record the last sync failure to a tenant setting and surface it in Settings,
+// so a tenant can SEE when sync breaks. Cleared when they re-save / disconnect.
+export const LSQ_SYNC_ERROR_KEY = "lsq_last_sync_error";
+export type LsqSyncError = { at: string; detail: string };
+
+async function noteLsqFailure(tenantId: string, detail: string): Promise<void> {
+  try { await setTenantSetting(tenantId, LSQ_SYNC_ERROR_KEY, { at: new Date().toISOString(), detail: detail.slice(0, 300) } satisfies LsqSyncError); } catch { /* best-effort */ }
+}
+
+export async function getLsqSyncError(tenantId: string = DEFAULT_TENANT_ID): Promise<LsqSyncError | null> {
+  return getTenantSetting<LsqSyncError | null>(tenantId, LSQ_SYNC_ERROR_KEY, null);
+}
+export async function clearLsqSyncError(tenantId: string): Promise<void> {
+  try { await setTenantSetting(tenantId, LSQ_SYNC_ERROR_KEY, null); } catch { /* best-effort */ }
+}
 
 // Platform env creds — fallback for the default tenant only.
 function envCfg(): LsqCreds | null {
@@ -367,9 +385,15 @@ export async function pushWaActivity(p: {
     });
     // Don't let a rejected push vanish — a wrong activity code / expired key / bad
     // region host would otherwise fail silently and look like "nothing synced".
-    if (!res.ok) console.error(`[leadsquared] activity push HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    // Record it so the tenant SEES it in Settings (parity with the hub's status).
+    if (!res.ok) {
+      const detail = `HTTP ${res.status} (activity event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 200)}`;
+      console.error(`[leadsquared] activity push ${detail} (lead ${leadId})`);
+      await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, detail);
+    }
   } catch (err) {
     console.error("[leadsquared] activity push failed:", errorMessage(err));
+    await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, errorMessage(err));
   }
 }
 
@@ -404,8 +428,13 @@ export async function pushIgActivity(p: {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
     });
-    if (!res.ok) console.error(`[leadsquared] IG activity push HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    if (!res.ok) {
+      const detail = `HTTP ${res.status} (activity event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 200)}`;
+      console.error(`[leadsquared] IG activity push ${detail} (lead ${leadId})`);
+      await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, detail);
+    }
   } catch (err) {
     console.error("[leadsquared] IG activity push failed:", errorMessage(err));
+    await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, errorMessage(err));
   }
 }

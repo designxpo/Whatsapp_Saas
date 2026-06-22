@@ -9,7 +9,7 @@ import { getTenantAiStatus, resolveTenantAi, AiKeyMissingError } from "./ai/keys
 import { validateKey } from "./ai/chat";
 import { listDocuments } from "./store";
 import { resolveLsq, verifyLsq } from "./leadsquared";
-import { integrationsHealth } from "./integrations";
+import { integrationsHealth, listIntegrations } from "./integrations";
 import { errorMessage } from "./errors";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -143,16 +143,27 @@ export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
       hint: v.ok ? undefined : "Re-enter the Instagram token / account ID in Settings.", fixTab: "instagram" });
   }
 
-  // 5) LeadSquared CRM — optional, verified live (read-only).
-  const lsq = await resolveLsq(tenantId).catch(() => null);
-  if (!lsq) {
-    steps.push({ key: "crm", title: "LeadSquared CRM", status: "todo", optional: true,
-      detail: "Not connected (optional).",
-      hint: "Add your LeadSquared keys to sync every chat onto the lead's timeline and pull stage/owner into Live Chat.", fixTab: "settings" });
-  } else {
+  // 5) CRM & tools — optional. We don't push any one CRM: this step is satisfied
+  // by LeadSquared OR any connected hub integration (HubSpot, Pipedrive, Slack,
+  // Google Sheets, webhooks, …), and always points to the Integrations hub where
+  // the tenant picks whichever tools they prefer.
+  const [lsq, integrations] = await Promise.all([
+    resolveLsq(tenantId).catch(() => null),
+    listIntegrations(tenantId).catch(() => []),
+  ]);
+  const activeCount = integrations.filter(i => i.active).length;
+  if (lsq) {
     const v = await verifyLsq(tenantId);
-    steps.push({ key: "crm", title: "LeadSquared CRM", status: v.ok ? "ok" : "error", detail: v.detail, optional: true,
-      hint: v.ok ? undefined : "Check your Access Key, Secret Key and API host in Settings → LeadSquared.", fixTab: "settings" });
+    steps.push({ key: "crm", title: "Connect your CRM & tools", status: v.ok ? "ok" : "error",
+      detail: v.ok ? `LeadSquared connected${activeCount ? ` · ${activeCount} other integration${activeCount === 1 ? "" : "s"}` : ""}` : v.detail, optional: true,
+      hint: v.ok ? undefined : "Check your LeadSquared keys in Settings, or connect another tool in Integrations.", fixTab: v.ok ? "integrations" : "settings" });
+  } else if (activeCount) {
+    steps.push({ key: "crm", title: "Connect your CRM & tools", status: "ok",
+      detail: `${activeCount} integration${activeCount === 1 ? "" : "s"} connected.`, optional: true, fixTab: "integrations" });
+  } else {
+    steps.push({ key: "crm", title: "Connect your CRM & tools", status: "todo", optional: true,
+      detail: "Not connected (optional).",
+      hint: "Connect your CRM or tools — HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets, webhooks and more — so chats and leads flow into the systems you already use.", fixTab: "integrations" });
   }
 
   return steps;

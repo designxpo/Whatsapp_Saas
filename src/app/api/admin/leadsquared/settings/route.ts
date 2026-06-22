@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import { getTenantSetting, getTenantSecret, setTenantSetting, setTenantSecret } from "@/lib/store";
-import { LSQ_KEYS, verifyLsq } from "@/lib/leadsquared";
+import { LSQ_KEYS, verifyLsq, getLsqSyncError, clearLsqSyncError } from "@/lib/leadsquared";
 import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
@@ -27,6 +27,7 @@ export async function GET() {
       taskCategory: await getTenantSetting<string | null>(tid, LSQ_KEYS.taskCategory, null),
       igHandleField: await getTenantSetting<string | null>(tid, LSQ_KEYS.igHandleField, null),
       autoCreate: /^(1|true|yes|on)$/i.test((await getTenantSetting<string | null>(tid, LSQ_KEYS.autoCreate, null)) ?? ""),
+      lastSyncError: await getLsqSyncError(tid),
     });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
     await setTenantSetting(tid, LSQ_KEYS.taskCategory, (b.taskCategory ?? "").trim() || null);
     await setTenantSetting(tid, LSQ_KEYS.igHandleField, (b.igHandleField ?? "").trim() || null);
     await setTenantSetting(tid, LSQ_KEYS.autoCreate, b.autoCreate ? "true" : "false");
+    await clearLsqSyncError(tid);   // re-saving keys is the recovery action — reset the visible sync error
 
     const verify = await verifyLsq(tid);
     return NextResponse.json({ success: true, verify });
@@ -73,6 +75,7 @@ export async function DELETE() {
     await setTenantSecret(tid, LSQ_KEYS.secretKey, "");
     await setTenantSetting(tid, LSQ_KEYS.host, null);
     await setTenantSetting(tid, LSQ_KEYS.activityCode, null);
+    await clearLsqSyncError(tid);
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

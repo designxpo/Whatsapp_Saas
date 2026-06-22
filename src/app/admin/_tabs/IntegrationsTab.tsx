@@ -135,20 +135,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {/* Existing connections */}
       <div className="space-y-2">
-        {/* LeadSquared is configured on its own Settings card (it powers live CRM
-            timeline sync); surfaced here so all CRMs are visible in one place. */}
-        <section className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-ink-900 truncate">LeadSquared</h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Set up in Settings</span>
-            </div>
-            <p className="text-[11px] text-slate-500 truncate">LeadSquared CRM · syncs every chat to the lead timeline</p>
-          </div>
-          <button onClick={() => goTo("settings")} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas shrink-0">Open settings</button>
-        </section>
         {items === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
-        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No other integrations connected yet — add one below.</p>}
+        {items?.length === 0 && <p className="text-sm text-slate-400 bg-white rounded-card border border-line p-5 text-center">No integrations connected yet — add one below.</p>}
         {items?.map(i => (
           <section key={i.id} className="bg-white rounded-card border border-line p-4 space-y-2">
             <div className="flex items-center justify-between gap-3">
@@ -180,6 +168,19 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
           </section>
         ))}
+        {/* LeadSquared is one CRM option among many. It happens to be configured on
+            its own Settings card (it powers live timeline sync); listed here so it
+            sits alongside the other connectors rather than being singled out. */}
+        <section className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-ink-900 truncate">LeadSquared</h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 shrink-0">Set up in Settings</span>
+            </div>
+            <p className="text-[11px] text-slate-500 truncate">LeadSquared CRM · syncs every chat to the lead timeline</p>
+          </div>
+          <button onClick={() => goTo("settings")} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas shrink-0">Open settings</button>
+        </section>
       </div>
 
       {/* Add a webhook */}
