@@ -310,6 +310,10 @@ export async function saveWebchatChannel(input: {
     tenant_id: tenantId,
     kind: "webchat",
     name: input.name.trim(),
+    // A website widget has no Meta token, but wa_channels.access_token is NOT NULL
+    // (only phone_number_id/waba_id were made nullable). Store an empty string so
+    // the insert succeeds; readSecret("") → "" on read.
+    access_token: "",
     allowed_origins: origins,
     agent_id: input.agentId || null,
     active: input.active ?? true,
