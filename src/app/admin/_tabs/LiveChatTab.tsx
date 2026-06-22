@@ -99,10 +99,10 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               ["all", "All", inView.length],
               ["whatsapp", "WhatsApp", waCount],
               ["instagram", "Instagram", igCount],
-              // Facebook + Web chat appear once there are conversations on them, so
-              // the row stays tidy until those channels are in use.
-              ...(fbCount > 0 ? [["messenger", "Facebook", fbCount] as const] : []),
-              ...(wcCount > 0 ? [["webchat", "Web chat", wcCount] as const] : []),
+              // All channels always show (like WhatsApp/Instagram) so a connected
+              // channel is visible even before its first conversation lands.
+              ["messenger", "Facebook", fbCount],
+              ["webchat", "Web chat", wcCount],
             ] as const).map(([k, label, n]) => (
               <button key={k} onClick={() => setPlatform(k)} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
