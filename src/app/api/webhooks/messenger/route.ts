@@ -13,14 +13,17 @@ const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const AI_REPLY_CAP = 6;   // safety cap before escalating a runaway thread to a human
 const CLOSING_MSG = "Thanks for reaching out! 🙌 Our team will connect with you shortly.";
 
-// GET — Meta webhook verification handshake (shared verify token, same Meta app
-// as WhatsApp/Instagram).
+// GET — Meta webhook verification handshake (same Meta app as WhatsApp/Instagram).
+// Accepts the shared verify token, or falls back to the WhatsApp one
+// (META_WA_WEBHOOK_VERIFY_TOKEN) so a separate token never has to be configured.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)) {
+  const ok = constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)
+          || constEq(token ?? "", process.env.META_WA_WEBHOOK_VERIFY_TOKEN);
+  if (mode === "subscribe" && ok) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
