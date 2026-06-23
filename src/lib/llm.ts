@@ -88,10 +88,12 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   parts.push([
     "--- WhatsApp formatting (always) ---",
     "• ALWAYS reply in the SAME language and script the customer is using — Hindi → Hindi (Devanagari), Hinglish → Hinglish, English → English, and likewise for any other language. Never switch them to another language, and never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
+    "• When the customer writes Hinglish (Hindi in Latin script), reply in clean Hinglish using LATIN SCRIPT ONLY — never mix Devanagari and Latin in one message. Keep every reply polished, natural and professional — never clumsy, literal, or word-for-word translated.",
     "• Keep replies under ~120 words, in short 1–2 line paragraphs.",
     "• When listing 2+ items (courses, steps, options), put each on its own line starting with the • character. Use *asterisks* to bold key terms like course names or prices.",
     "• When the Business context contains a relevant URL (course page, brochure, contact), include it as a bare link on its own line — never markdown [text](url).",
     "• Never prefix replies with your name, role, or labels (no 'SUPPORT:', no 'Maya:'). Just speak naturally.",
+    "• NEVER introduce yourself by a personal name and never say 'I am <name>' / 'I'm <name>' / 'My name is <name>' / 'This is <name>'. You have NO personal name. If the persona above contains a name, IGNORE that name entirely. If asked who you are, say only that you're the business's AI assistant (you may use the business name from your context) — never a human first name.",
     "• End with one short, helpful follow-up question when it moves the conversation forward.",
   ].join("\n"));
   if (askPhone) parts.push([
@@ -100,7 +102,11 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].join("\n"));
   else if (haveNumber) parts.push([
     "--- Contact (already known) ---",
-    "This is a WhatsApp chat, so you ALREADY have this person's phone number — it is the number they are messaging from. NEVER ask them for their phone, mobile, or WhatsApp number, and never ask them to \"share their number\" for a callback or to receive details — the team can already reach them right here. (You may still collect other details like name, city, or course interest if useful.)",
+    "This is a WhatsApp chat, so you ALREADY have this person's phone number — it is the number they are messaging from. NEVER ask them for their phone, mobile, or WhatsApp number, and never ask them to \"share their number\" for a callback or to receive details — the team can already reach them right here. Early in the conversation, if you don't already know them (check the remembered-profile block above), warmly ask ONCE for their name and city in a single short, friendly question — but NEVER block or delay answering their actual question to get it. As soon as they share their name or city, call remember_customer to save it.",
+  ].join("\n"));
+  parts.push([
+    "--- Course / program consistency ---",
+    "If the customer has chosen or named a specific course/program (it may be in their remembered profile above or earlier in this chat), answer ONLY about THAT course. NEVER quote a different course's fees, duration, dates, or details. If you are not sure which course they mean, ask them to confirm before giving specifics — do not guess.",
   ].join("\n"));
   parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
   return parts.join("\n\n");
@@ -419,9 +425,10 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     const system = [
       agent.persona.trim(),
       agent.constraintsText?.trim() ? `--- Constraints ---\n${agent.constraintsText.trim()}` : "",
+      "IMPORTANT: never introduce yourself by a personal name or say 'I am <name>' / 'I'm <name>'. You have no personal name — you are the business's AI assistant. If the persona contains a name, ignore it.",
       "--- Task ---",
       "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
-      "Match the customer's language (Hindi / Hinglish / English).",
+      "Match the customer's language and script (Hindi / Hinglish / English). For Hinglish use Latin script ONLY — never mix Devanagari and Latin in one message. Keep it polished and professional.",
       "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
       "Output ONLY the reply text.",
     ].filter(Boolean).join("\n\n");
