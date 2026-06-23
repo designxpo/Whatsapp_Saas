@@ -26,6 +26,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
     welcome: wc.welcome || "",
     position: wc.position === "left" ? "left" : "right",
     icon: wc.iconUrl || "",
+    logoFit: wc.logoFit === "contain" ? "contain" : "cover",
   });
 
   const js = "(function(){\n" +
@@ -38,18 +39,22 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var BRAND = CFG.color, SIDE = CFG.position;\n" +
 "  function shade(hex){ try{ var h=hex.replace('#',''); if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];} var n=parseInt(h,16); var r=Math.max(0,((n>>16)&255)-18),g=Math.max(0,((n>>8)&255)-18),b=Math.max(0,(n&255)-18); return 'rgb('+r+','+g+','+b+')'; }catch(e){ return hex; } }\n" +
 "  var DARK = shade(BRAND);\n" +
+"  var FIT = CFG.logoFit === 'contain' ? 'contain' : 'cover';\n" +
+"  var AVRAD = FIT === 'contain' ? '8px' : '50%';\n" +                                  // square-ish box for a full logo, circle for a cropped one
+"  var HAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : 'rgba(255,255,255,.22)';\n" +
+"  var BAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : BRAND;\n" +
 "  var css = '' +\n" +
 "   '.twc-launch{position:fixed;bottom:20px;' + SIDE + ':20px;width:60px;height:60px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s ease;}' +\n" +
 "   '.twc-launch:hover{transform:scale(1.06);}' +\n" +
 "   '.twc-launch svg{width:28px;height:28px;}' +\n" +
-"   '.twc-launch img{width:34px;height:34px;border-radius:50%;object-fit:cover;}' +\n" +
+"   '.twc-launch img{width:34px;height:34px;border-radius:' + AVRAD + ';object-fit:' + FIT + ';}' +\n" +
 "   '.twc-launch .twc-x{display:none;font-size:26px;line-height:1;}' +\n" +
 "   '.twc-launch.open .twc-ic{display:none;} .twc-launch.open .twc-x{display:block;}' +\n" +
 "   '.twc-panel{position:fixed;bottom:92px;' + SIDE + ':20px;width:374px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 16px 56px rgba(0,0,0,.26);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;opacity:0;transform:translateY(12px);transition:opacity .18s ease,transform .18s ease;}' +\n" +
 "   '.twc-panel.open{display:flex;opacity:1;transform:translateY(0);}' +\n" +
 "   '.twc-head{background:linear-gradient(135deg,' + BRAND + ',' + DARK + ');color:#fff;padding:14px 16px;display:flex;align-items:center;gap:11px;}' +\n" +
-"   '.twc-head .twc-av{width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden;flex:0 0 auto;}' +\n" +
-"   '.twc-head .twc-av img{width:100%;height:100%;object-fit:cover;}' +\n" +
+"   '.twc-head .twc-av{width:38px;height:38px;border-radius:' + AVRAD + ';background:' + HAVBG + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden;flex:0 0 auto;}' +\n" +
+"   '.twc-head .twc-av img{width:100%;height:100%;object-fit:' + FIT + ';}' +\n" +
 "   '.twc-head .twc-meta{flex:1;min-width:0;} .twc-head .twc-ttl{font-weight:700;font-size:15px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +\n" +
 "   '.twc-head .twc-sub{font-size:11.5px;opacity:.85;display:flex;align-items:center;gap:5px;margin-top:1px;}' +\n" +
 "   '.twc-head .twc-dot{width:7px;height:7px;border-radius:50%;background:#5ee08a;box-shadow:0 0 0 2px rgba(94,224,138,.3);}' +\n" +
@@ -57,8 +62,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-body{flex:1;overflow-y:auto;padding:16px 14px;background:#f5f6f8;display:flex;flex-direction:column;gap:3px;}' +\n" +
 "   '.twc-row{display:flex;align-items:flex-end;gap:8px;margin-top:7px;max-width:100%;}' +\n" +
 "   '.twc-row.u{justify-content:flex-end;}' +\n" +
-"   '.twc-bav{width:26px;height:26px;border-radius:50%;background:' + BRAND + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto;overflow:hidden;}' +\n" +
-"   '.twc-bav img{width:100%;height:100%;object-fit:cover;}' +\n" +
+"   '.twc-bav{width:26px;height:26px;border-radius:' + AVRAD + ';background:' + BAVBG + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex:0 0 auto;overflow:hidden;}' +\n" +
+"   '.twc-bav img{width:100%;height:100%;object-fit:' + FIT + ';}' +\n" +
 "   '.twc-msg{max-width:76%;padding:10px 13px;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word;box-shadow:0 1px 1.5px rgba(0,0,0,.06);}' +\n" +
 "   '.twc-row.b .twc-msg{background:#fff;color:#15181c;border-radius:16px 16px 16px 4px;}' +\n" +
 "   '.twc-row.u .twc-msg{background:' + BRAND + ';color:#fff;border-radius:16px 16px 4px 16px;}' +\n" +

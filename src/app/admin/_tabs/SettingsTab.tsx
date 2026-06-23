@@ -808,10 +808,10 @@ export function MessengerCard() {
 }
 
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
-type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string };
+type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain" };
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
-type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string };
-const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "" };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain" };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
@@ -851,7 +851,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl } }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -880,7 +880,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -927,10 +927,16 @@ export function WebchatCard() {
             {form.iconUrl && <button onClick={() => setForm({ ...form, iconUrl: "" })} className="text-[11px] font-semibold text-ink-400 hover:text-red-600">Remove</button>}
             <span className="text-[11px] text-ink-400 truncate">{form.iconUrl ? "custom logo set" : "default chat bubble"}</span>
           </div>
+          {form.iconUrl && (
+            <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer select-none" title="Crop fills a circle (may clip a non-square logo). Fit shows the whole logo, any shape.">
+              <input type="checkbox" checked={form.logoFit === "contain"} onChange={e => setForm({ ...form, logoFit: e.target.checked ? "contain" : "cover" })} />
+              Fit whole logo (don&apos;t crop) — for any logo shape
+            </label>
+          )}
           {/* Live preview of the launcher bubble + header */}
           <div className="flex items-center gap-3 bg-canvas border border-line rounded-control px-3 py-2.5">
-            <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white overflow-hidden" style={{ background: /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd" }}>
-              {form.iconUrl ? <img src={form.iconUrl} alt="" className="w-full h-full object-cover" /> : <MessageSquare className="w-4 h-4" />}
+            <span className={`shrink-0 w-9 h-9 ${form.iconUrl && form.logoFit === "contain" ? "rounded-lg" : "rounded-full"} flex items-center justify-center text-white overflow-hidden`} style={{ background: form.iconUrl && form.logoFit === "contain" ? "transparent" : (/^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd") }}>
+              {form.iconUrl ? <img src={form.iconUrl} alt="" className={`w-full h-full ${form.logoFit === "contain" ? "object-contain" : "object-cover"}`} /> : <MessageSquare className="w-4 h-4" />}
             </span>
             <div className="min-w-0">
               <p className="text-xs font-bold text-ink-900 truncate">{form.title || "Chat with us"}</p>
