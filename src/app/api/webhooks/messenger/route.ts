@@ -42,7 +42,12 @@ export async function POST(req: Request) {
     const body = JSON.parse(raw);
     for (const entry of body.entry ?? []) {
       const channel = await getChannelByPageId(String(entry.id ?? ""));
-      if (!channel || !channel.active) continue;
+      if (!channel || !channel.active) {
+        // Events ARE arriving but nothing stores them — almost always the cause of
+        // "Facebook 0" in Live Chat: no active Messenger channel matches this Page.
+        console.warn(`[fb webhook] received events for Page ${entry.id} but no ACTIVE Messenger channel matches that Page ID — add/activate a Facebook channel with this exact Page ID in the portal.`);
+        continue;
+      }
       for (const ev of (entry.messaging as Record<string, unknown>[]) ?? []) {
         try { await handleMessage(channel, ev); }
         catch (e) { console.error("[fb webhook] message", e); }

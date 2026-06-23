@@ -44,7 +44,10 @@ export async function POST(req: Request) {
     for (const entry of body.entry ?? []) {
       // entry.id is the IG professional account id → resolves the tenant's channel.
       const channel = await getChannelByIgId(String(entry.id ?? ""));
-      if (!channel || !channel.active) continue;
+      if (!channel || !channel.active) {
+        console.warn(`[ig webhook] received events for IG account ${entry.id} but no ACTIVE Instagram channel matches that account id — check the Instagram channel in the portal (and that its token hasn't expired).`);
+        continue;
+      }
 
       // Inbound DMs (Instagram messaging uses a Messenger-style `messaging` array).
       for (const ev of (entry.messaging as Record<string, unknown>[]) ?? []) {
