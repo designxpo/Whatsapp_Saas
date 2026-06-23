@@ -949,16 +949,16 @@ function Editor({ flowId }: { flowId: string }) {
         <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
         <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
-        <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 max-w-md bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
-        <div className="flex items-center gap-1.5 flex-wrap" title="Tick the channels this flow should run on">
+        <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 min-w-0 max-w-[240px] bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
+        <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
           {FLOW_CHANNELS.map(c => {
             const on = parseKinds(platform).has(c.k);
             return (
-              <button key={c.k} type="button" aria-pressed={on}
+              <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
                 onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
-                className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
-                <span className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[10px] leading-none ${on ? "bg-brand-600 border-brand-600 text-white" : "border-ink-300"}`}>{on ? "✓" : ""}</span>
-                {c.icon} {c.label}
+                className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
+                <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
+                <span className="hidden xl:inline">{c.label}</span>
               </button>
             );
           })}
