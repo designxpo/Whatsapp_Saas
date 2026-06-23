@@ -30,6 +30,17 @@ export const SOFT_FALLBACK =
 // detail is far better than a false "a team member will get back to you" promise.
 export const CLARIFY_REPLY =
   "Sorry, I didn't quite get that 🙂 Could you tell me a bit more about what you're looking for?";
+
+// A greeting / opener must ALWAYS get a warm hello — never "I didn't get that".
+// The prompt makes the model greet normally; this is the safety net for when the
+// model returns nothing or errors on a greeting, so a bare "hi" can never fall
+// through to CLARIFY_REPLY.
+export const GREETING_REPLY =
+  "Hi there! 👋 Welcome — how can I help you today? 😊";
+const GREETING_RE = /^\s*(?:hi+|hey+|hello+|helo+|hiya|yo+|hola|namaste|namaskar|salaam|good\s*(?:morning|afternoon|evening|day)|gm|greetings)[\s!.,]*$/i;
+function isGreeting(text: string): boolean {
+  return GREETING_RE.test((text || "").trim());
+}
 // Punctuation-only / filler / single tiny token — nudge for clarity, don't hand off.
 const AMBIGUOUS_RE = /^(?:[?.!]+|h+u+h+|hm+|hu+|o+k+(?:ay)?|k+|ya+|yo+|he+y+|hi+|hello+|wat|wut|what\??)$/i;
 function isLowStakes(text: string): boolean {
@@ -377,19 +388,21 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         return { reply: null, escalate: true, reason: "model escalated", usedChunks: relevant.length, functionCalls: executed };
       }
       if (!text) {
-        // A trivial/ambiguous one-off ("??") deserves a clarifying nudge.
-        const reply = isLowStakes(lastUser.body) ? CLARIFY_REPLY : SOFT_FALLBACK;
+        // A greeting always gets a warm hello; a trivial/ambiguous one-off ("??")
+        // gets a clarifying nudge; otherwise a soft prompt — never a non-answer.
+        const reply = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : SOFT_FALLBACK;
         return { reply, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
       }
       return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed };
     }
-    const exhausted = isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
+    const exhausted = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
     return { reply: exhausted, escalate: false, reason: "tool loop exhausted", usedChunks: relevant.length, functionCalls: executed };
   } catch (err) {
     console.error("[llm] generate failed:", err);
-    // API failure → a clarifying nudge for low-stakes input; otherwise the safe
-    // team-handoff fallback. Never a false "a human will reply" for a bare "??".
-    const reply = isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
+    // API failure → a warm hello for a greeting, a clarifying nudge for low-stakes
+    // input, otherwise the safe team-handoff fallback. Never "I didn't get that"
+    // for a "hi".
+    const reply = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
     return { reply, escalate: false, reason: "generation error (fallback)", usedChunks: relevant.length };
   }
 }
