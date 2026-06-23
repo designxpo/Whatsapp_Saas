@@ -229,19 +229,12 @@ export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, em
 export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primaryTag?: string | null): Promise<{ content: string; similarity: number }[]> {
   const emb = await embedQuery(query);
   if (!primaryTag) return matchChunks(emb, k, tenantId);
-  const PRIMARY_FLOOR = 0.5;   // below this, the tagged docs don't really cover the question → fall back
-  const [tagged, general] = await Promise.all([
-    matchChunksByTag(emb, k, primaryTag, tenantId).catch(() => []),
-    matchChunks(emb, k, tenantId),
-  ]);
+  // A course/flow tag is set → answer EXCLUSIVELY from that course's docs so
+  // another course's fees/duration/details can never bleed in. Only when the
+  // tagged docs genuinely don't cover the question do we fall back to general KB.
+  const PRIMARY_FLOOR = 0.5;
+  const tagged = await matchChunksByTag(emb, k, primaryTag, tenantId).catch(() => []);
   const lead = tagged.filter(c => c.similarity >= PRIMARY_FLOOR);
-  const out: { content: string; similarity: number }[] = [];
-  const seen = new Set<string>();
-  for (const c of [...lead, ...general]) {
-    if (out.length >= k) break;
-    if (seen.has(c.content)) continue;
-    seen.add(c.content);
-    out.push({ content: c.content, similarity: c.similarity });
-  }
-  return out;
+  if (lead.length) return lead.slice(0, k).map(c => ({ content: c.content, similarity: c.similarity }));
+  return matchChunks(emb, k, tenantId);   // tagged docs don't cover it → general KB fallback
 }

@@ -39,7 +39,7 @@ export function routerEnabled(): boolean {
   return process.env.KNOWLEDGE_ROUTER_ENABLED !== "false";
 }
 
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null }): Promise<RouteResult> {
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null }): Promise<RouteResult> {
   const t0 = Date.now();
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
@@ -80,6 +80,14 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   }
   logRouterEvent({ event: "FAQ_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
+  // Course-scoped chats skip the shared answer cache entirely — a cached answer
+  // is course-blind and could replay another course's specifics to a lead who
+  // picked a different course. Go straight to the course-scoped RAG path.
+  if (p.primaryKbTag) {
+    logRouterEvent({ event: "CACHE_MISS", phone: p.phone, question: p.message, ref: "course-scoped:skip", latencyMs: Date.now() - t0 });
+    return { ...miss, queryEmbedding: p.queryEmbedding ?? null };
+  }
+
   // Layer 3 — global semantic cache (one embedding call, no generation)
   try {
     const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid, p.contactName);
@@ -109,11 +117,14 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 // Call after the RAG fallback produced a real (non-escalation) answer.
 // The generic FALLBACK_REPLY (returned on LLM API errors) must never be cached —
 // it would permanently shadow the real answer for that question.
-export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string; contactName?: string | null }): void {
+export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null }): void {
   logRouterEvent({ event: "RAG_USED", phone: p.phone, question: p.question });
   // Generic non-answers (API-error fallback, empty/ambiguous nudges) must never be
   // cached. `contactName` lets cacheStore refuse a name-personalised answer.
   const a = p.answer.trim();
   if (a === FALLBACK_REPLY || a === SOFT_FALLBACK || a === CLARIFY_REPLY) return;
+  // A course-scoped answer is specific to that course — never write it to the
+  // shared cache, or a different course's lead could be served it.
+  if (p.primaryKbTag) return;
   void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID, p.contactName);
 }
