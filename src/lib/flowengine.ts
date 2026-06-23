@@ -44,9 +44,22 @@ export interface FlowNode {
 }
 export interface FlowEdge { id: string; source: string; sourceHandle?: string | null; target: string }
 export interface FlowGraph { nodes: FlowNode[]; edges: FlowEdge[] }
+// Which channel kind(s) a flow runs on. Individual kinds, plus "both" (legacy:
+// WhatsApp + Instagram) and "all" (every channel kind, incl. Facebook + web chat).
+export type FlowPlatform = "whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all";
+
+// Does a flow that targets `target` run on a channel of kind `kind`?
+//   all  → every channel kind        both → WhatsApp + Instagram only (legacy)
+//   else → exact kind match
+export function flowRunsOn(target: FlowPlatform, kind: string): boolean {
+  if (target === "all") return true;
+  if (target === "both") return kind === "whatsapp" || kind === "instagram";
+  return target === kind;
+}
+
 export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
-  platform: "whatsapp" | "instagram" | "messenger" | "both";   // which channel kind(s) this flow runs on
+  platform: FlowPlatform;       // which channel kind(s) this flow runs on
   channelId: string | null;     // scope to one number/account (null = every one of that platform)
   primaryKbTag: string | null;  // AI in this flow answers from KB docs with this tag first
   graph: FlowGraph; createdAt: string; updatedAt: string;
@@ -93,7 +106,7 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "messenger" | "both"; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: FlowPlatform; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
@@ -107,10 +120,10 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
   if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
-    const triedPlatform = patch.platform === "instagram" || patch.platform === "messenger" || patch.platform === "both";
+    const triedPlatform = patch.platform === "instagram" || patch.platform === "messenger" || patch.platform === "webchat" || patch.platform === "both" || patch.platform === "all";
     delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
-    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023_flow_platform.sql + 0046_flow_platform_both.sql + 0062_flow_platform_messenger.sql), then save again.");
+    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064_flow_platform_all.sql), then save again.");
   }
   if (error) throw error;
 }
@@ -628,7 +641,7 @@ async function triggerByKeyword(
   } else {
     const platform = opts.channel?.kind ?? "whatsapp";
     flows = (await listFlows(tid)).filter(f => f.active)
-      .filter(f => f.platform === "both" || (f.platform ?? "whatsapp") === platform)
+      .filter(f => flowRunsOn(f.platform ?? "whatsapp", platform))
       .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
   }
   const t = norm(text);

@@ -92,7 +92,7 @@ function FlowsTab() {
           <div key={f.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between gap-3">
             <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="text-left min-w-0 flex-1">
               <p className="text-sm font-bold text-brand-dark flex items-center gap-1.5">{f.name}
-                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${f.platform === "instagram" ? "bg-pink-50 text-pink-600" : f.platform === "messenger" ? "bg-blue-50 text-blue-600" : f.platform === "both" ? "bg-violet-50 text-violet-600" : "bg-emerald-50 text-emerald-700"}`}>{f.platform === "instagram" ? "Instagram" : f.platform === "messenger" ? "Facebook" : f.platform === "both" ? "WA + IG" : "WhatsApp"}</span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${f.platform === "instagram" ? "bg-pink-50 text-pink-600" : f.platform === "messenger" ? "bg-blue-50 text-blue-600" : f.platform === "webchat" ? "bg-sky-50 text-sky-700" : f.platform === "all" ? "bg-amber-50 text-amber-700" : f.platform === "both" ? "bg-violet-50 text-violet-600" : "bg-emerald-50 text-emerald-700"}`}>{f.platform === "instagram" ? "Instagram" : f.platform === "messenger" ? "Facebook" : f.platform === "webchat" ? "Website" : f.platform === "all" ? "All" : f.platform === "both" ? "WA + IG" : "WhatsApp"}</span>
               </p>
               <p className="text-[11px] text-slate-400 truncate">
                 {f.triggerKeywords.length ? `triggers: ${f.triggerKeywords.join(", ")}` : "no trigger keywords yet"} · {(f.graph?.nodes?.length ?? 1) - 1} steps
