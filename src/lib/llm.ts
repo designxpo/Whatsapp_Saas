@@ -238,24 +238,24 @@ export function stripLeadingName(text: string, agentName?: string | null): strin
   return out || text;
 }
 
-// Build the text we EMBED for RAG retrieval. A clear, standalone question is used
-// as-is. But a short / context-dependent follow-up — "what about the fees?", "and
-// the duration?", "tell me more", "yes that one" — carries no topic on its own, so
-// embedding it alone lands the search nowhere and the model answers with no
-// grounding (the classic "thin reply"). For those we fuse the message with the
-// last couple of USER turns so the embedding actually lands on the right course/
-// section. We anchor on prior *user* turns only (never the bot's own words) so the
-// query stays the customer's intent.
-function retrievalQuery(history: { role: "user" | "assistant"; body: string }[]): string {
+// Build the text we EMBED for RAG retrieval. A message is anaphoric/elliptical —
+// it leans on the prior turn for its subject — when it OPENS with a back-reference
+// ("and the duration?", "what about placements", "tell me more", "that one") or is
+// a BARE aspect word with no subject of its own ("fees?", "duration",
+// "placements?"). We fuse ONLY these with the single prior user turn. A
+// self-contained question — even a short one like "Python course fees?" — carries
+// its own subject and must retrieve on its own terms, so we must NOT fuse it (that
+// would drift it toward the prior topic).
+const FOLLOWUP_OPENER = /^(?:and|also|but|what about|how about|what if|tell me more|tell me|more|elaborate|go on|continue|that one|that|this|it|they|them|those|same|again|ok(?:ay)?|yes|yeah|yep|sure|cool)\b/i;
+const BARE_ASPECT = /^(?:cost|costs|price|pricing|fees?|fee structure|duration|timing|timings|placements?|syllabus|curriculum|eligibility|scope|salary|certificate|certification|emi|discount|scholarship|details?|info|more info)\s*\??$/i;
+
+export function retrievalQuery(history: { role: "user" | "assistant"; body: string }[]): string {
   const userTurns = history.filter(m => m.role === "user" && m.body?.trim());
   const last = userTurns[userTurns.length - 1]?.body.trim() ?? "";
   if (!last) return "";
-  const words = last.split(/\s+/).filter(Boolean).length;
-  const followUpish = words <= 4
-    || /^(and|also|what about|how about|tell me more|more|elaborate|explain|details?|cost|price|fees?|duration|timing|ok(ay)?|yes|sure|that|this|it)\b/i.test(last);
-  if (!followUpish) return last;
-  const prior = userTurns.slice(0, -1).slice(-2).map(m => m.body.trim());
-  return [...prior, last].join(" ").slice(0, 500);
+  if (!FOLLOWUP_OPENER.test(last) && !BARE_ASPECT.test(last)) return last;   // self-contained → on its own terms
+  const prev = userTurns[userTurns.length - 2]?.body.trim();
+  return prev ? `${prev} ${last}`.slice(0, 400) : last;
 }
 
 // Generates a grounded reply from conversation history. `history` must end with

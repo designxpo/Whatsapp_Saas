@@ -36,7 +36,13 @@ export const DEFAULT_CHAT_MODEL: Record<AiProvider, string> = {
 // thinking (fastest, least intelligent — the old behaviour). Gemini 3.5 Flash
 // thinks fast, so dynamic is the best intelligence/latency balance. Set
 // GEMINI_CHAT_THINKING_BUDGET=0 to revert, or a positive integer to cap it.
-const GEMINI_THINKING_BUDGET = Number(process.env.GEMINI_CHAT_THINKING_BUDGET ?? "-1");
+// Parse defensively: a present-but-empty or non-numeric value must fall back to
+// -1, never silently become 0 (Number("") === 0) or forward NaN into the API.
+const GEMINI_THINKING_BUDGET = (() => {
+  const raw = process.env.GEMINI_CHAT_THINKING_BUDGET?.trim();
+  const n = raw ? Number(raw) : -1;
+  return Number.isFinite(n) ? n : -1;
+})();
 
 // A single tool the model may call (mirrors an AI Hub function).
 export interface ChatTool {

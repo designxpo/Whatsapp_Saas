@@ -11,7 +11,16 @@ import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
 
-// POST /api/cron/process-queue — run on a schedule (every 5–15 min).
+// Vercel Cron invokes paths with a GET and an "Authorization: Bearer <CRON_SECRET>"
+// header (set automatically from the CRON_SECRET env var) — which cronOk already
+// accepts. So GET just delegates to the same work POST does, letting Vercel Cron
+// (vercel.json, every minute) drive tight flow reminders reliably, while the
+// GitHub Actions */5 pinger stays as a backup. All work is idempotent.
+export async function GET(req: Request) {
+  return POST(req);
+}
+
+// POST /api/cron/process-queue — run on a schedule (every minute via Vercel Cron).
 // 1) fire due scheduled campaigns, 2) drain pending queues, 3) drain auto-sends.
 export async function POST(req: Request) {
   if (!cronOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
