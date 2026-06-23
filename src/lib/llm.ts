@@ -87,7 +87,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].filter(Boolean).join("\n"));
   parts.push([
     "--- WhatsApp formatting (always) ---",
-    "• ALWAYS reply in the SAME language and script the customer is using — Hindi → Hindi (Devanagari), Hinglish → Hinglish, English → English, and likewise for any other language. Never switch them to another language, and never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
+    "• LANGUAGE — decide per message from the customer's LATEST message only, never from the conversation as a whole. DEFAULT to English: open in English, and reply in English whenever the latest message is in English OR its language is unclear (a greeting, 'ok'/'yes'/'thanks', a single word, emojis, or just numbers). Use Hindi (Devanagari), Hinglish, or another language ONLY when the customer's LATEST message is clearly written in it. If the customer SWITCHES — e.g. earlier messages were Hinglish but their latest one is in English — switch with them immediately and reply in English; likewise switch to Hinglish only when their latest message is Hinglish. Never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
     "• When the customer writes Hinglish (Hindi in Latin script), reply in clean Hinglish using LATIN SCRIPT ONLY — never mix Devanagari and Latin in one message. Keep every reply polished, natural and professional — never clumsy, literal, or word-for-word translated.",
     "• Keep replies under ~120 words, in short 1–2 line paragraphs.",
     "• When listing 2+ items (courses, steps, options), put each on its own line starting with the • character. Use *asterisks* to bold key terms like course names or prices.",
@@ -428,7 +428,7 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
       "IMPORTANT: never introduce yourself by a personal name or say 'I am <name>' / 'I'm <name>'. You have no personal name — you are the business's AI assistant. If the persona contains a name, ignore it.",
       "--- Task ---",
       "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
-      "Match the customer's language and script (Hindi / Hinglish / English). For Hinglish use Latin script ONLY — never mix Devanagari and Latin in one message. Keep it polished and professional.",
+      "Reply in the language of the customer's LATEST message, decided per message — DEFAULT to English, and switch back to English the moment their latest message is in English (even if earlier ones were Hinglish). Use Hindi/Hinglish only when their latest message clearly is. For Hinglish use Latin script ONLY — never mix Devanagari and Latin in one message. Keep it polished and professional.",
       "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
       "Output ONLY the reply text.",
     ].filter(Boolean).join("\n\n");
