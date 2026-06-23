@@ -853,6 +853,13 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     if (!conv?.phone || !conv.last_inbound_at) continue;
     if (Date.now() - new Date(conv.last_inbound_at as string).getTime() > 23.5 * 3600_000) continue;
 
+    // Stop-on-reply, incl. OFF-SCRIPT free-text the AI answers WITHOUT advancing the
+    // flow (e.g. the lead asks a question instead of tapping a button): if any inbound
+    // landed after we entered this node or sent the last nudge, the lead is engaged —
+    // don't nudge "you haven't replied". updated_at re-stamps on node entry and on
+    // every send, so last_inbound_at > updated_at means "replied since we last acted".
+    if (new Date(conv.last_inbound_at as string) > new Date(s.updated_at as string)) continue;
+
     // Atomic claim BEFORE sending — compare-and-swap on the exact updated_at we read.
     // Only the cron tick that still sees this timestamp wins, so overlapping ticks
     // (the 1-min pinger + GitHub */5) can't double-send the same nudge. A customer
