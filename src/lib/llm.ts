@@ -4,6 +4,7 @@ import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type Chat
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { downloadRemoteMedia, visionInlineMime } from "./voice";
 import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
+import { readBehavior, behaviorBlock } from "./behavior";
 
 // Below this cosine similarity, retrieved context is treated as irrelevant.
 const MIN_SIMILARITY = 0.45;
@@ -66,7 +67,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = ""): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
@@ -100,6 +101,8 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     `If the user EXPLICITLY asks for a human/agent, or raises a complaint or sensitive issue, reply with exactly ${ESCALATE_TOKEN} and nothing else. Never escalate, go silent, or stall just because a message is short, a greeting, or vague — handle those yourself.`,
     "Never promise anything our context doesn't support. No medical, legal, or financial advice.",
   ].filter(Boolean).join("\n"));
+  // Behaviour read (sentiment / journey stage / urgency) — adapts tone + next step.
+  if (behavior.trim()) parts.push(behavior.trim());
   parts.push([
     "--- WhatsApp formatting (always) ---",
     "• LANGUAGE — decide per message from the customer's LATEST message only, never from the conversation as a whole. DEFAULT to English: open in English, and reply in English whenever the latest message is in English OR its language is unclear (a greeting, 'ok'/'yes'/'thanks', a single word, emojis, or just numbers). Use Hindi (Devanagari), Hinglish, or another language ONLY when the customer's LATEST message is clearly written in it. If the customer SWITCHES — e.g. earlier messages were Hinglish but their latest one is in English — switch with them immediately and reply in English; likewise switch to Hinglish only when their latest message is Hinglish. Never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
@@ -330,7 +333,9 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   const profile = knownProfile(contact);
 
   const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone);
+  // Zero-cost behaviour read → adapts tone + next step (educate / convert / de-escalate).
+  const behavior = behaviorBlock(readBehavior(history));
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
