@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, incAiReplies } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
+import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
 
 const AI_REPLY_CAP = 8;   // safety cap before handing the chat to a human
@@ -41,11 +42,22 @@ export async function POST(req: Request) {
   // the Live Chat inbox and the widget picks it up via polling.
   if (!conv.botEnabled) return NextResponse.json({ ok: true }, { headers: cors });
 
+  // Chatbot flow first (a flow targeting "webchat"/"all" whose keyword matches, or
+  // an in-progress session). It runs synchronously and we return its messages —
+  // text bubbles + tappable quick-reply chips — inline so the widget shows them at
+  // once. If no flow handles the message, fall through to the AI reply below.
+  const flowOut: WebchatOut[] = [];
+  const flowHandled = await handleFlowMessage(conv.id, conv.phone, text, { channel, collector: flowOut, tenantId: tid }).catch(() => false);
+  if (flowHandled && flowOut.length) {
+    const at = flowOut[flowOut.length - 1]?.at;
+    return NextResponse.json({ ok: true, messages: flowOut, reply: flowOut[0]?.body, at }, { headers: cors });
+  }
+
   const closeOut = async () => {
     const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid });
     await touchOutbound(conv.id, CLOSING_MSG);
     await escalateConversation(conv.id);
-    return NextResponse.json({ ok: true, reply: CLOSING_MSG, escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
+    return NextResponse.json({ ok: true, reply: CLOSING_MSG, messages: [{ id: saved?.id, at: saved?.createdAt, body: CLOSING_MSG, from: "bot" }], escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
   };
   if (conv.aiReplyCount >= AI_REPLY_CAP) return closeOut();
 
@@ -60,5 +72,5 @@ export async function POST(req: Request) {
   await incAiReplies(conv.id, conv.aiReplyCount);
   // Return the saved message's id + timestamp so the widget seeds its dedup state
   // and the next poll won't re-render this same reply (the double-bubble bug).
-  return NextResponse.json({ ok: true, reply: r.reply, id: saved?.id, at: saved?.createdAt }, { headers: cors });
+  return NextResponse.json({ ok: true, reply: r.reply, messages: [{ id: saved?.id, at: saved?.createdAt, body: r.reply, from: "bot" }], id: saved?.id, at: saved?.createdAt }, { headers: cors });
 }

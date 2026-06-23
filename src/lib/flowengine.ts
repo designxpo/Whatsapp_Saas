@@ -657,17 +657,51 @@ async function triggerByKeyword(
   return null;
 }
 
+// A message the web-chat widget renders: text bubble + optional tappable quick-
+// reply chips (from a flow's buttons/list) or an inline image/video. The flow runs
+// synchronously inside the POST, so the route collects these and returns them
+// inline; they're also persisted so a reload / the poll still shows the text.
+export interface WebchatOut { id?: string; at?: string; body: string; options?: string[]; mediaUrl?: string; from: "bot" }
+
+// Web-chat sender — mirrors igSender, but instead of a platform API it appends bot
+// messages to the conversation AND pushes them into `out` for the route to return
+// inline. Menu options become quick-reply chips; the persisted body also lists them
+// as text so the inbox / a reloaded widget still shows the choices.
+function webchatSender(conversationId: string, out: WebchatOut[], tenantId = DEFAULT_TENANT_ID): FlowSender {
+  const push = async (cleanBody: string, options?: { id: string; title: string }[], mediaUrl?: string): Promise<{ id?: string; error?: string }> => {
+    const persist = options && options.length ? cleanBody + "\n" + options.map(o => "• " + o.title).join("\n") : cleanBody;
+    const saved = await appendConvMessage({ conversationId, role: "assistant", body: (persist || mediaUrl || "").slice(0, 4000), source: "bot", tenantId }).catch(() => null);
+    await touchOutbound(conversationId, (persist || mediaUrl || "").slice(0, 200)).catch(() => undefined);
+    out.push({ id: saved?.id, at: saved?.createdAt, body: cleanBody, options: options?.map(o => o.title), mediaUrl, from: "bot" });
+    return { id: saved?.id ?? "wc" };
+  };
+  return {
+    async text(body) { return push(body); },
+    async buttons(body, buttons) { return push(body, buttons); },
+    async list(body, _bt, sections) { return push(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
+    async media(kind, url, caption) { return kind === "document" ? push(caption ? caption + "\n" + url : url) : push(caption ?? "", undefined, url); },
+    async product(body) { return push(body); },
+    async productCard(body, _img, buttonText, buttonUrl) { return push(body + "\n" + buttonText + ": " + buttonUrl); },
+    async productList(header, body) { return push([header, body].filter(s => s && s.trim()).join("\n") || "Have a look:"); },
+    async template(_n, _l, bodyParams) { return bodyParams.length ? push(bodyParams.join(" ")) : { id: "wc_noop" }; },
+    async carouselTemplate(_n, _l, bubbleParams) { return bubbleParams.length ? push(bubbleParams.join(" ")) : { id: "wc_noop" }; },
+    async waform(body, cta) { return push(body + "\n(" + cta + ")"); },
+  };
+}
+
 export async function handleFlowMessage(
   convKey: string,
   phone: string,
   text: string,
-  opts: { sender?: FlowSender; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string; tenantId?: string } = {},
+  opts: { sender?: FlowSender; collector?: WebchatOut[]; onlyFlowId?: string; allowInactive?: boolean; channel?: Channel; adFlowId?: string; tenantId?: string } = {},
 ): Promise<boolean> {
   const tid = opts.tenantId ?? opts.channel?.tenantId ?? DEFAULT_TENANT_ID;
   const baseSend = opts.sender ?? (opts.channel?.kind === "instagram"
     ? igSender(convKey, phone, opts.channel, tid)
     : opts.channel?.kind === "messenger"
     ? fbSender(convKey, phone, opts.channel, tid)
+    : opts.channel?.kind === "webchat"
+    ? webchatSender(convKey, opts.collector ?? [], tid)
     : realSender(convKey, phone, opts.channel, tid));
   const isReal = !opts.sender;
   // Load the contact once so flow text can resolve {{name}}/{{city}}/{{course}}…
