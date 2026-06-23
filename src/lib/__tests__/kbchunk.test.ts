@@ -85,4 +85,30 @@ describe("reconstructText — strip header + merge overlap (reprocess round-trip
     const reChunked = chunkText(once);
     expect(reChunked.some(c => c.heading === "Fees")).toBe(true);
   });
+
+  // A PDF that lost its line breaks becomes one long no-newline blob, which the
+  // chunker hard-splits mid-character with a fixed overlap. Reconstruct must
+  // recover it EXACTLY — the overlap-merge must not over-collapse on repetition.
+  it("a long no-newline blob hard-split into chunks reconstructs exactly", () => {
+    let blob = "";
+    for (let i = 0; i < 3000; i++) blob += String.fromCharCode(33 + (i % 90));
+    const rebuilt = reconstructText(headeredChunks("Doc", chunkText(blob)));
+    expect(rebuilt).toBe(blob);
+  });
+
+  it("a literal '## ' inside ordinary body text is not mistaken for a heading or lost", () => {
+    const text = "Use ## to start a comment in the config file.\n\nThen save and restart the service to apply.";
+    expect(chunkText(text).every(c => c.heading === null)).toBe(true);
+    const rebuilt = reconstructText(headeredChunks("Doc", chunkText(text)));
+    expect(rebuilt).toContain("Then save and restart");
+  });
+
+  it("a bare-label section stays stable across THREE reprocess cycles", () => {
+    const text = "Total Fees:\n\nINR 50,000 payable in instalments.";
+    const once = reconstructText(headeredChunks("Doc", chunkText(text)));
+    const twice = reconstructText(headeredChunks("Doc", chunkText(once)));
+    const thrice = reconstructText(headeredChunks("Doc", chunkText(twice)));
+    expect(twice).toBe(once);
+    expect(thrice).toBe(once);
+  });
 });

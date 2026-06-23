@@ -215,10 +215,11 @@ function stripHeader(content: string): string {
   return content.replace(HEADER_PREFIX_RE, "");
 }
 // Append b to a, collapsing the largest suffix-of-a == prefix-of-b overlap. The
-// real per-chunk overlap is always ~OVERLAP (150) chars, so we require a fairly
-// long match (≥40) — short enough to always catch the genuine overlap, long
-// enough that a coincidental suffix/prefix collision can't silently drop content.
-function mergeOverlap(a: string, b: string, maxOverlap = OVERLAP + 100): string {
+// TRUE per-chunk overlap is never more than OVERLAP (150) chars, so we cap the
+// search there — capping higher lets periodic/repetitive text (e.g. a no-newline
+// blob hard-split mid-char) match BEYOND the real overlap and drop real content.
+// The ≥40 floor keeps a coincidental short collision from collapsing distinct text.
+function mergeOverlap(a: string, b: string, maxOverlap = OVERLAP): string {
   const max = Math.min(maxOverlap, a.length, b.length);
   for (let len = max; len >= 40; len--) {
     if (a.slice(a.length - len) === b.slice(0, len)) return a + b.slice(len);
