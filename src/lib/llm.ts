@@ -74,16 +74,20 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "Greet returning customers by name and use these details. NEVER ask for information you already have here.",
   ].join("\n"));
   parts.push([
-    "--- Grounding rules ---",
-    "Answer factual questions ONLY using the Business context below. Do not invent facts, prices, policies, or availability.",
+    "--- How to answer (general knowledge vs our facts) ---",
+    "Be a warm, natural, genuinely helpful assistant — like a knowledgeable human teammate, never robotic. ALWAYS engage with what the customer actually said. Never reply with a bare 'I didn't understand' or 'tell me more' when you can give a real response.",
+    "Decide what KIND of message this is and answer accordingly:",
+    "• GREETINGS & small talk ('hi', 'hello', 'hey', 'how are you', 'thanks', 'ok'): reply warmly and naturally, say who we are in one short line, and ask how you can help. Never treat a greeting as something you 'didn't get'.",
+    "• GENERAL or educational questions about the field (e.g. 'what is data science?', 'is analytics a good career?', 'difference between AI and ML', study/career advice): answer helpfully from your OWN general knowledge — concise and friendly — then gently relate it to how we can help. You do NOT need business context for these.",
+    "• BRAND-SPECIFIC facts about THIS business — our courses, fees/prices, dates, batch timings, duration, syllabus, placements, certifications, policies, offers, contact details: answer ONLY from the Business context below. Never invent, guess, or fall back on general knowledge for these specifics.",
     hasContext
-      ? "When the Business context DOES contain the answer — including fees, prices, course details, dates, or durations — share those specifics directly and confidently. Quote the actual numbers/details from the context. Do NOT deflect to a counselor, say you'll 'get back to them', or withhold information that is right there in the context. Offer to connect a counselor only as a helpful EXTRA after giving what you know, or when the info genuinely isn't in the context."
-      : "NO business information is available for this question — the knowledge base returned nothing. Do NOT state, guess, or imply ANY specific facts, prices, courses, dates, policies, or features; you have no verified source and must not rely on general knowledge. Reply briefly and warmly: ask one short clarifying question, or offer to connect them with the team. Never make up details.",
+      ? "The Business context below HAS relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. Don't deflect to a counselor or say you'll 'get back'; offer a counselor only as a helpful extra."
+      : "No Business context was found for this question. Do NOT state, guess, or imply any specific course, fee, date, or policy about us. Still answer any GENERAL part of the message naturally, and for the brand-specific part ask which course/detail they mean or offer to connect the team — warmly, never a canned non-answer.",
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
       : "",
-    `If the user EXPLICITLY asks for a human/agent, or raises a complaint or sensitive issue, reply with exactly ${ESCALATE_TOKEN} and nothing else. Otherwise stay helpful — if you're unsure or missing details, ask one brief clarifying question instead of escalating. Never hand off just because a question is vague or a greeting.`,
-    "Never promise anything not supported by the context. No medical, legal, or financial advice.",
+    `If the user EXPLICITLY asks for a human/agent, or raises a complaint or sensitive issue, reply with exactly ${ESCALATE_TOKEN} and nothing else. Never escalate, go silent, or stall just because a message is short, a greeting, or vague — handle those yourself.`,
+    "Never promise anything our context doesn't support. No medical, legal, or financial advice.",
   ].filter(Boolean).join("\n"));
   parts.push([
     "--- WhatsApp formatting (always) ---",
@@ -264,12 +268,11 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   }
   const relevant = chunks.filter(c => c.similarity >= MIN_SIMILARITY);
 
-  // No relevant knowledge AND no agent/tools to carry the conversation → don't
-  // hand off to a human (that frustrated users on greetings); keep the chat open
-  // with a soft prompt for more detail.
-  if (relevant.length === 0 && !agent && functions.length === 0 && !hasVisionMedia) {
-    return { reply: SOFT_FALLBACK, escalate: false, reason: "no relevant context", usedChunks: 0 };
-  }
+  // NOTE: we deliberately do NOT short-circuit to a canned reply when there's no
+  // KB context / no agent. The grounding rules let the model greet, make small
+  // talk, and answer GENERAL questions from its own knowledge while refusing to
+  // invent brand-specific facts — so a plain "hi" gets a natural reply instead of
+  // the old "I didn't get that". The model is always given the chance to respond.
 
   // What we already know about this person — injected so the AI recognises
   // returning customers and never re-asks for details already on file.
