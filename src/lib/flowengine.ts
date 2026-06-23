@@ -206,6 +206,15 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
 // fall back to a numbered text menu. Either way matchOption resolves the tap or
 // the typed number. Sends respect the 24h window (the flow runs right after the
 // inbound, so it's open).
+
+// A Meta quick-reply title is capped at 20 chars. Truncate a longer label for
+// DISPLAY only — the tap carries the option's payload/id, so matchOption still
+// resolves the choice. This keeps tappable buttons instead of dropping a
+// long-labelled menu to a plain numbered list.
+function clipTitle(t: string): string {
+  const s = (t || "").trim();
+  return s.length > 20 ? s.slice(0, 19).trimEnd() + "…" : s;
+}
 function igSender(conversationId: string, phone: string, channel: Channel, tenantId = DEFAULT_TENANT_ID): FlowSender {
   const creds = { igUserId: channel.igUserId ?? "", token: channel.token };
   const log = async (body: string, metaId?: string) => {
@@ -219,11 +228,13 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     return { id: r.messageId, error: r.error };
   };
   const numberedMenu = (body: string, opts: string[]) => sendIg(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
-  // Tappable chips when they fit IG's limits; otherwise numbered text.
+  // Tappable chips. Long labels are truncated for display (not dropped to text),
+  // so the menu still gets buttons; only >13 options (IG's max) or an API rejection
+  // falls back to a numbered text menu.
   const chips = async (body: string, options: { id: string; title: string }[]): Promise<{ id?: string; error?: string }> => {
-    const fits = options.length > 0 && options.length <= 13 && options.every(o => o.title.length <= 20);
-    if (!fits) return numberedMenu(body, options.map(o => o.title));
-    const r = await sendIgQuickReplies(creds, phone, body, options.map(o => ({ title: o.title, payload: o.id })), { lastInboundAt: new Date().toISOString() });
+    if (options.length === 0) return sendIg(body);
+    if (options.length > 13) return numberedMenu(body, options.map(o => o.title));
+    const r = await sendIgQuickReplies(creds, phone, body, options.map(o => ({ title: clipTitle(o.title), payload: o.id })), { lastInboundAt: new Date().toISOString() });
     if (!r.ok) return numberedMenu(body, options.map(o => o.title));   // fallback if rejected
     await log(`${body}\n[options: ${options.map(o => o.title).join(" | ")}]`, r.messageId);
     return { id: r.messageId };
@@ -263,10 +274,12 @@ function fbSender(conversationId: string, phone: string, channel: Channel, tenan
     return { id: r.messageId, error: r.error };
   };
   const numberedMenu = (body: string, opts: string[]) => sendFb(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
+  // Long labels are truncated for display (not dropped to text); only >13 options
+  // (Messenger's max) or an API rejection falls back to a numbered text menu.
   const chips = async (body: string, options: { id: string; title: string }[]): Promise<{ id?: string; error?: string }> => {
-    const fits = options.length > 0 && options.length <= 13 && options.every(o => o.title.length <= 20);
-    if (!fits) return numberedMenu(body, options.map(o => o.title));
-    const r = await sendFbQuickReplies(creds, phone, body, options.map(o => ({ title: o.title, payload: o.id })), { lastInboundAt: now() });
+    if (options.length === 0) return sendFb(body);
+    if (options.length > 13) return numberedMenu(body, options.map(o => o.title));
+    const r = await sendFbQuickReplies(creds, phone, body, options.map(o => ({ title: clipTitle(o.title), payload: o.id })), { lastInboundAt: now() });
     if (!r.ok) return numberedMenu(body, options.map(o => o.title));   // fallback if rejected
     await log(`${body}\n[options: ${options.map(o => o.title).join(" | ")}]`, r.messageId);
     return { id: r.messageId };
