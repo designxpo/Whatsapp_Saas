@@ -78,7 +78,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-foot .twc-send{width:40px;height:40px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}' +\n" +
 "   '.twc-foot .twc-send:disabled{opacity:.5;cursor:default;} .twc-foot .twc-send svg{width:19px;height:19px;}' +\n" +
 "   '.twc-pow{text-align:center;color:#aab0b8;font-size:10.5px;padding:0 0 8px;background:#fff;}' +\n" +
-"   '@media (max-width:600px){ .twc-launch{width:52px;height:52px;bottom:12%;' + SIDE + ':15px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} }';\n" +
+"   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:12%;' + SIDE + ':15px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} }';\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var initial = (CFG.title || 'A').trim().charAt(0).toUpperCase();\n" +
 "  var SEND_SVG = '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"22\" y1=\"2\" x2=\"11\" y2=\"13\"></line><polygon points=\"22 2 15 22 11 13 2 9 22 2\"></polygon></svg>';\n" +
