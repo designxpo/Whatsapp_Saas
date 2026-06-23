@@ -6,7 +6,7 @@ import { fireScheduledCampaign, drainQueue, drainAutoSends } from "@/lib/campaig
 import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
-import { drainSequences } from "@/lib/sequences";
+import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
 import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
@@ -69,6 +69,14 @@ export async function POST(req: Request) {
       try { cartRecoveries = await drainAbandonedCarts(60); } catch (e) { console.error("[cron] cartrecovery", e); }
     }
 
+    // Inactivity re-engagement → enroll conversations that have gone quiet into
+    // their tenant's "inactivity" nudge sequence (before draining, so a 0-delay
+    // first step can fire on this same tick).
+    let inactiveNudges = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { inactiveNudges = await drainInactiveLeads(100); } catch (e) { console.error("[cron] inactivity", e); }
+    }
+
     // Drip sequences — advance due enrollments one step (follow-ups, cart recovery).
     let sequences = 0;
     if (Date.now() - startedAt < DEADLINE) {
@@ -102,7 +110,7 @@ export async function POST(req: Request) {
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, sequences, aiReplies, kbSync });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiReplies, kbSync });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

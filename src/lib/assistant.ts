@@ -14,7 +14,7 @@ import { embedQuery } from "./kb";
 import { setConversationAgent } from "./store";
 import { getChannel, type Channel } from "./channels";
 import { getDailyCap } from "./quota";
-import { hasActiveEnrollment } from "./sequences";
+import { hasActiveDripEnrollment } from "./sequences";
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -77,7 +77,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
   // number lives in tenant B's wa_optouts, so calling optoutSet() with no arg
   // (which defaults to DEFAULT_TENANT_ID) would silently ignore the opt-out for
   // every non-owner tenant — a consent/compliance bug.
-  const [optedOut, sentToday, dailyCap, inSequence] = await Promise.all([isOptedOut(conv.phone, conv.tenantId), dailySentCount(conv.tenantId), getDailyCap(conv.tenantId, conv.channelId), hasActiveEnrollment(conv.phone, conv.tenantId)]);
+  const [optedOut, sentToday, dailyCap, inSequence] = await Promise.all([isOptedOut(conv.phone, conv.tenantId), dailySentCount(conv.tenantId), getDailyCap(conv.tenantId, conv.channelId), hasActiveDripEnrollment(conv.phone, conv.tenantId)]);
   if (optedOut) return { outcome: "skipped", detail: "opted out" };
   if (sentToday >= dailyCap) return { outcome: "skipped", detail: "daily cap reached" };
   // A sequence is driving this contact → let the drip own the thread, no AI reply.

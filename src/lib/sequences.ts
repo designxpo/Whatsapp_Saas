@@ -17,7 +17,7 @@ import { getConversationByPhone } from "./store";
 
 export type SequenceTriggerKind =
   | "manual" | "keyword" | "tag_added" | "opt_in" | "story_reply"
-  | "comment" | "cart_abandoned" | "order_placed" | "ad_referral";
+  | "comment" | "cart_abandoned" | "order_placed" | "ad_referral" | "inactivity";
 
 export interface SequenceStepAction {
   type: "text" | "template" | "media";
@@ -144,6 +144,19 @@ export async function hasActiveEnrollment(phone: string, tenantId = DEFAULT_TENA
   return (data?.length ?? 0) > 0;
 }
 
+// Like hasActiveEnrollment, but EXCLUDES inactivity re-engagement nudges. A
+// returning lead who is mid-nudge must still get an immediate AI reply (the nudge
+// is then stopped by the next drain via the reply guard) — only a "real" drip
+// (keyword/cart/etc.) should own the thread and suppress the AI.
+export async function hasActiveDripEnrollment(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  if (!phone) return false;
+  const { data } = await db().from("wa_sequence_enrollments").select("sequence_id").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "active");
+  const ids = [...new Set((data ?? []).map(r => (r as Record<string, unknown>).sequence_id as string))];
+  if (!ids.length) return false;
+  const { data: seqs } = await db().from("wa_sequences").select("id").in("id", ids).neq("trigger_kind", "inactivity");
+  return (seqs?.length ?? 0) > 0;
+}
+
 // Recent enrollments (joined with the sequence name) for the admin monitor —
 // who's in a drip, which step, when it next runs, any send error. Tenant-scoped.
 export interface EnrollmentRow {
@@ -214,6 +227,19 @@ export async function drainSequences(max = 100, tenantId?: string): Promise<numb
     try {
       const seq = await getSequence(enr.sequence_id as string, (enr.tenant_id as string) ?? DEFAULT_TENANT_ID);
       if (!seq || !seq.active) { await db().from("wa_sequence_enrollments").update({ status: "stopped" }).eq("id", enr.id as string); continue; }
+      // Inactivity re-engagement nudges must STOP the moment the lead replies or a
+      // human takes over — never keep nudging someone who came back or is being
+      // handled by a person. (Other sequence kinds run to completion as designed.)
+      if (seq.triggerKind === "inactivity") {
+        const conv = await getConversationByPhone(enr.phone as string, seq.tenantId).catch(() => null);
+        const exUpdated = enr.updated_at as string | null;
+        const repliedSince = !!conv?.lastInboundAt && !!exUpdated && new Date(conv.lastInboundAt) > new Date(exUpdated);
+        const humanTookOver = !!conv && (conv.botEnabled === false || conv.status !== "active");
+        if (repliedSince || humanTookOver) {
+          await db().from("wa_sequence_enrollments").update({ status: "stopped", updated_at: new Date().toISOString() }).eq("id", enr.id as string);
+          continue;
+        }
+      }
       const steps = await getSequenceSteps(seq.id);
       const idx = (enr.current_step as number) ?? 0;
       const step = steps[idx];
@@ -232,4 +258,53 @@ export async function drainSequences(max = 100, tenantId?: string): Promise<numb
     }
   }
   return processed;
+}
+
+// Inactivity re-engagement — enroll conversations that have gone quiet (the bot
+// sent the last message and the lead never replied) into their tenant's
+// "inactivity" sequence, so a staged nudge (e.g. 10 min → 3 h → 24 h) can win
+// them back. Each tenant's sequence triggerValue is the minutes of silence
+// before the FIRST step; later steps use their own delays. Nudges stop on reply
+// or human takeover (see drainSequences). Any step >24 h after the lead's last
+// inbound MUST be a WhatsApp template — free session text is rejected then.
+export async function drainInactiveLeads(max = 100): Promise<number> {
+  // Only tenants with an active inactivity sequence do any work.
+  const { data: seqs } = await db().from("wa_sequences")
+    .select("id, tenant_id, platform, trigger_value")
+    .eq("trigger_kind", "inactivity").eq("active", true);
+
+  let started = 0;
+  for (const s of (seqs ?? []) as Record<string, unknown>[]) {
+    const tid = (s.tenant_id as string) ?? DEFAULT_TENANT_ID;
+    const seqId = s.id as string;
+    const platform = (s.platform as "whatsapp" | "instagram") ?? "whatsapp";
+    const idleMinutes = Math.max(1, parseInt((s.trigger_value as string) ?? "", 10) || 10);
+    const cutoff = new Date(Date.now() - idleMinutes * 60_000).toISOString();
+    const { data } = await db().from("wa_conversations")
+      .select("id, phone, platform, last_inbound_at, last_outbound_at")
+      .eq("tenant_id", tid).eq("status", "active").eq("bot_enabled", true).eq("platform", platform)
+      .not("last_outbound_at", "is", null).lte("last_outbound_at", cutoff)
+      .limit(max);
+
+    for (const c of (data ?? []) as Record<string, unknown>[]) {
+      const phone = c.phone as string;
+      if (!phone) continue;
+      const li = c.last_inbound_at as string | null;
+      const lo = c.last_outbound_at as string | null;
+      if (!lo || (li && new Date(li) >= new Date(lo))) continue;   // only chats awaiting a reply
+      if (await hasActiveEnrollment(phone, tid)) continue;          // don't collide with another drip
+      // Don't re-nudge the same silent stretch unless the lead replied since.
+      const { data: ex } = await db().from("wa_sequence_enrollments")
+        .select("updated_at").eq("sequence_id", seqId).eq("phone", phone).maybeSingle();
+      if (ex) {
+        const exUpdated = (ex as Record<string, unknown>).updated_at as string | null;
+        if (!li || !exUpdated || new Date(li) <= new Date(exUpdated)) continue;
+      }
+      try {
+        await enroll(seqId, { phone, platform: (c.platform as "whatsapp" | "instagram") ?? platform, conversationId: (c.id as string) ?? null }, tid);
+        started++;
+      } catch (e) { console.error("[sequences] inactivity enroll", e); }
+    }
+  }
+  return started;
 }
