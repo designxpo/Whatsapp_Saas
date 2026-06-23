@@ -1036,6 +1036,21 @@ export async function matchChunks(queryEmbedding: number[], k = 6, tenantId = DE
 
 // Tenant-scoped vector search restricted to documents with a given tag (a flow's
 // primary topic). Returns [] if the 0047 function isn't applied (degrades to global).
+// Keyword (full-text) search over a tenant's chunks. Returns [] if the 0063
+// function isn't applied yet — retrieval then degrades cleanly to vector-only.
+export async function matchChunksText(queryText: string, k = 6, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; rank: number }[]> {
+  const { data, error } = await db().rpc("match_kb_chunks_text", { query_text: queryText, match_count: k, p_tenant_id: tenantId });
+  if (error) return [];
+  return (data ?? []).map((r: Record<string, unknown>) => ({ content: r.content as string, documentId: r.document_id as string, rank: r.rank as number }));
+}
+
+// Tenant-scoped, tag-filtered keyword search (mirror of matchChunksByTag). [] if 0063 not applied.
+export async function matchChunksTextByTag(queryText: string, k: number, tag: string, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; rank: number }[]> {
+  const { data, error } = await db().rpc("match_kb_chunks_text_by_tag", { query_text: queryText, match_count: k, p_tenant_id: tenantId, doc_tag: tag });
+  if (error) return [];
+  return (data ?? []).map((r: Record<string, unknown>) => ({ content: r.content as string, documentId: r.document_id as string, rank: r.rank as number }));
+}
+
 export async function matchChunksByTag(queryEmbedding: number[], k: number, tag: string, tenantId = DEFAULT_TENANT_ID): Promise<{ content: string; documentId: string; similarity: number }[]> {
   const { data, error } = await db().rpc("match_kb_chunks_by_tag", { query_embedding: queryEmbedding, match_count: k, p_tenant_id: tenantId, doc_tag: tag });
   if (error) return [];

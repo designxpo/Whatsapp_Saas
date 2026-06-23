@@ -1,7 +1,7 @@
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
+import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, matchChunksText, matchChunksTextByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
 
@@ -348,15 +348,61 @@ export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, em
 // primaryTag is set (a flow's masterclass etc.), strongly-matching tagged chunks
 // lead; the rest of the slots fall back to the general KB — so on-topic questions
 // are answered from the masterclass and off-topic ones still get a default answer.
+// ── Hybrid retrieval (vector + keyword, fused by RRF) ─────────────────────────
+const RRF_K = 60;            // standard Reciprocal Rank Fusion constant
+const VEC_FLOOR = 0.45;      // drop weak vector hits before fusing (matches MIN_SIMILARITY in llm.ts)
+const KW_SIM = 0.5;          // similarity assigned to a keyword match (survives the floor)
+const HYBRID_POOL = 20;      // candidates pulled from each retriever before fusion
+
+// Reciprocal Rank Fusion: combine the vector list and the keyword list by RANK,
+// not raw score (the two scores aren't comparable). A chunk both retrievers rank
+// highly rises to the top; an exact-term match only keyword search found is still
+// recovered. `similarity` carries the real cosine for a vector hit, and at least
+// KW_SIM for any keyword hit, so the downstream relevance floor keeps it.
+export function fuseHybrid(
+  vec: { content: string; similarity: number }[],
+  kw: { content: string; rank: number }[],
+  k: number,
+): { content: string; similarity: number }[] {
+  const score = new Map<string, number>();
+  const sim = new Map<string, number>();
+  const bump = (content: string, rank: number) => score.set(content, (score.get(content) ?? 0) + 1 / (RRF_K + rank + 1));
+  vec.forEach((c, i) => { bump(c.content, i); sim.set(c.content, c.similarity); });
+  kw.forEach((c, i) => { bump(c.content, i); sim.set(c.content, Math.max(sim.get(c.content) ?? 0, KW_SIM)); });
+  return [...score.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, k)
+    .map(([content]) => ({ content, similarity: sim.get(content) ?? KW_SIM }));
+}
+
 export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primaryTag?: string | null): Promise<{ content: string; similarity: number }[]> {
-  const emb = await embedQuery(query);
-  if (!primaryTag) return matchChunks(emb, k, tenantId);
+  const q = (query || "").trim();
+  if (!q) return [];
+  const emb = await embedQuery(q);
+
+  if (!primaryTag) {
+    const [vec, kw] = await Promise.all([
+      matchChunks(emb, HYBRID_POOL, tenantId).catch(() => []),
+      matchChunksText(q, HYBRID_POOL, tenantId),
+    ]);
+    return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);
+  }
+
   // A course/flow tag is set → answer EXCLUSIVELY from that course's docs so
   // another course's fees/duration/details can never bleed in. Only when the
-  // tagged docs genuinely don't cover the question do we fall back to general KB.
+  // tagged docs genuinely don't cover the question (neither retriever finds
+  // anything) do we fall back to the general KB.
   const PRIMARY_FLOOR = 0.5;
-  const tagged = await matchChunksByTag(emb, k, primaryTag, tenantId).catch(() => []);
-  const lead = tagged.filter(c => c.similarity >= PRIMARY_FLOOR);
-  if (lead.length) return lead.slice(0, k).map(c => ({ content: c.content, similarity: c.similarity }));
-  return matchChunks(emb, k, tenantId);   // tagged docs don't cover it → general KB fallback
+  const [vecTag, kwTag] = await Promise.all([
+    matchChunksByTag(emb, HYBRID_POOL, primaryTag, tenantId).catch(() => []),
+    matchChunksTextByTag(q, HYBRID_POOL, primaryTag, tenantId),
+  ]);
+  const vecLead = vecTag.filter(c => c.similarity >= PRIMARY_FLOOR);
+  if (vecLead.length || kwTag.length) return fuseHybrid(vecLead, kwTag, k);
+
+  const [vec, kw] = await Promise.all([
+    matchChunks(emb, HYBRID_POOL, tenantId).catch(() => []),
+    matchChunksText(q, HYBRID_POOL, tenantId),
+  ]);
+  return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);
 }
