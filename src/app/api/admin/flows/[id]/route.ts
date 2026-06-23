@@ -21,7 +21,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 // PUT — save builder state. Body: { name?, active?, triggerKeywords?, channelId?, graph? }
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { name?: string; active?: boolean; triggerKeywords?: string[]; platform?: "whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all"; channelId?: string | null; graph?: FlowGraph };
+  let body: { name?: string; active?: boolean; triggerKeywords?: string[]; platform?: string; channelId?: string | null; graph?: FlowGraph };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;

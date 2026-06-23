@@ -779,6 +779,29 @@ function AdTriggersPanel({ flowId, onClose }: { flowId: string; onClose: () => v
   );
 }
 
+// The channels a flow can run on, as tickable options. `platform` is stored as a
+// channel kind, a comma-set of kinds ("whatsapp,messenger"), or legacy "both"/"all".
+const FLOW_CHANNELS = [
+  { k: "whatsapp", label: "WhatsApp", emoji: "📱" },
+  { k: "instagram", label: "Instagram", emoji: "📷" },
+  { k: "messenger", label: "Facebook", emoji: "💬" },
+  { k: "webchat", label: "Website", emoji: "🌐" },
+] as const;
+const ALL_KINDS = FLOW_CHANNELS.map(c => c.k);
+function parseKinds(v: string): Set<string> {
+  const s = (v ?? "").trim();
+  if (!s) return new Set(["whatsapp"]);
+  if (s === "all") return new Set(ALL_KINDS);
+  if (s === "both") return new Set(["whatsapp", "instagram"]);
+  return new Set(s.split(",").map(x => x.trim()).filter(Boolean));
+}
+function serializeKinds(set: Set<string>): string {
+  const arr = ALL_KINDS.filter(k => set.has(k));
+  if (arr.length === 0) return "whatsapp";   // a flow must run somewhere
+  if (arr.length === ALL_KINDS.length) return "all";
+  return arr.join(",");
+}
+
 function Editor({ flowId }: { flowId: string }) {
   const router = useRouter();
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -786,7 +809,7 @@ function Editor({ flowId }: { flowId: string }) {
   const [name, setName] = useState("");
   const [keywords, setKeywords] = useState("");
   const [active, setActive] = useState(false);
-  const [platform, setPlatform] = useState<"whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all">("whatsapp");
+  const [platform, setPlatform] = useState<string>("whatsapp");   // a channel kind or comma-set, e.g. "whatsapp,messenger"
   const [channelId, setChannelId] = useState<string | null>(null);
   const [primaryKbTag, setPrimaryKbTag] = useState("");
   const [kbTags, setKbTags] = useState<string[]>([]);
@@ -804,7 +827,7 @@ function Editor({ flowId }: { flowId: string }) {
   // Which chat skin the simulator renders in. Defaults to the flow's platform but
   // can be toggled to preview how the same flow looks on the other channel.
   const [simView, setSimView] = useState<"whatsapp" | "instagram">("whatsapp");
-  useEffect(() => { setSimView(platform === "instagram" ? "instagram" : "whatsapp"); }, [platform]);
+  useEffect(() => { const k = parseKinds(platform); setSimView(k.has("instagram") && !k.has("whatsapp") ? "instagram" : "whatsapp"); }, [platform]);
   const { screenToFlowPosition } = useReactFlow();
   const counter = useRef(1);
 
@@ -816,7 +839,7 @@ function Editor({ flowId }: { flowId: string }) {
     fetch(`/api/admin/flows/${flowId}`).then(r => r.json()).then(d => {
       if (!d.flow) return;
       setName(d.flow.name); setActive(d.flow.active); setKeywords((d.flow.triggerKeywords ?? []).join(", "));
-      setPlatform(["instagram", "messenger", "webchat", "both", "all"].includes(d.flow.platform) ? d.flow.platform : "whatsapp");
+      setPlatform((d.flow.platform || "whatsapp").trim() || "whatsapp");
       setChannelId(d.flow.channelId ?? null);
       setPrimaryKbTag(d.flow.primaryKbTag ?? "");
       setNodes((d.flow.graph.nodes ?? []).map((n: { id: string; type: string; position: { x: number; y: number }; data: NodeData }) => ({ ...n, data: n.data ?? {} })));
@@ -913,20 +936,25 @@ function Editor({ flowId }: { flowId: string }) {
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
         <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
         <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 max-w-md bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
-        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 font-medium" value={platform} onChange={e => { setPlatform(e.target.value as "whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all"); setChannelId(null); }} title="Which channel(s) this flow runs on">
-          <option value="whatsapp">📱 WhatsApp</option>
-          <option value="instagram">📷 Instagram</option>
-          <option value="messenger">💬 Facebook (Messenger)</option>
-          <option value="webchat">🌐 Website chat</option>
-          <option value="both">📱 + 📷 WhatsApp + Instagram</option>
-          <option value="all">✨ All platforms</option>
-        </select>
-        {channels.filter(c => c.kind === platform).length > 0 && (
-          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${platform === "instagram" ? "account" : platform === "messenger" ? "page" : platform === "webchat" ? "site" : "number"} this flow runs on`}>
-            <option value="">All {platform === "instagram" ? "accounts" : platform === "messenger" ? "pages" : platform === "webchat" ? "sites" : "numbers"}</option>
-            {channels.filter(c => c.kind === platform).map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
+        <div className="flex items-center gap-1.5 flex-wrap" title="Tick the channels this flow should run on">
+          {FLOW_CHANNELS.map(c => {
+            const on = parseKinds(platform).has(c.k);
+            return (
+              <button key={c.k} type="button" aria-pressed={on}
+                onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
+                className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
+                <span className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[10px] leading-none ${on ? "bg-brand-600 border-brand-600 text-white" : "border-ink-300"}`}>{on ? "✓" : ""}</span>
+                {c.emoji} {c.label}
+              </button>
+            );
+          })}
+        </div>
+        {(() => { const k = parseKinds(platform); const only = k.size === 1 ? [...k][0] : null; const matches = only ? channels.filter(c => c.kind === only) : []; return only && matches.length > 0 ? (
+          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${only === "instagram" ? "account" : only === "messenger" ? "page" : only === "webchat" ? "site" : "number"} this flow runs on`}>
+            <option value="">All {only === "instagram" ? "accounts" : only === "messenger" ? "pages" : only === "webchat" ? "sites" : "numbers"}</option>
+            {matches.map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
           </select>
-        )}
+        ) : null; })()}
         <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
           <option value="">🧠 Default knowledge</option>
           {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}

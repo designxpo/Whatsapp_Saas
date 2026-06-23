@@ -95,7 +95,26 @@ export function useAnalytics(): AnalyticsData | null {
 
 // Flow + AI-Hub types — shared because the Home/Knowledge rails (FlowsRail,
 // AiHubRail) render these alongside the Flows / AI-Hub tabs themselves.
-export type FlowSummary = { id: string; name: string; active: boolean; platform?: "whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all"; triggerKeywords: string[]; updatedAt: string; graph: { nodes: unknown[] } };
+export type FlowSummary = { id: string; name: string; active: boolean; platform?: string; triggerKeywords: string[]; updatedAt: string; graph: { nodes: unknown[] } };
+
+// A flow's platform is a channel kind, a comma-set ("whatsapp,messenger"), or
+// legacy "both"/"all". Render a compact badge from the resolved set.
+export function flowPlatformBadge(p?: string): { label: string; cls: string } {
+  const order = ["whatsapp", "instagram", "messenger", "webchat"];
+  const v = (p ?? "").trim();
+  const set = !v ? new Set(["whatsapp"]) : v === "all" ? new Set(order) : v === "both" ? new Set(["whatsapp", "instagram"]) : new Set(v.split(",").map(s => s.trim()).filter(Boolean));
+  const kinds = order.filter(k => set.has(k));
+  if (kinds.length >= 4) return { label: "All", cls: "bg-amber-50 text-amber-700" };
+  if (kinds.length === 1) {
+    const one = kinds[0];
+    if (one === "instagram") return { label: "Instagram", cls: "bg-pink-50 text-pink-600" };
+    if (one === "messenger") return { label: "Facebook", cls: "bg-blue-50 text-blue-600" };
+    if (one === "webchat") return { label: "Website", cls: "bg-sky-50 text-sky-700" };
+    return { label: "WhatsApp", cls: "bg-emerald-50 text-emerald-700" };
+  }
+  const short: Record<string, string> = { whatsapp: "WA", instagram: "IG", messenger: "FB", webchat: "Web" };
+  return { label: kinds.map(k => short[k]).join(" · "), cls: "bg-violet-50 text-violet-600" };
+}
 export type AiAgentT = { id?: string; name: string; description: string; persona: string; constraintsText: string; productInfo: string; model: string | null; active: boolean; routingKeywords?: string };
 export type AiParamT = { name: string; description: string; required: boolean; saveToAttribute: string };
 export type AiFunctionT = { id?: string; name: string; description: string; parameters: AiParamT[]; webhookUrl: string | null; escalate: boolean; active: boolean };

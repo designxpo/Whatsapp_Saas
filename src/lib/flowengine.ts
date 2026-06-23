@@ -44,17 +44,25 @@ export interface FlowNode {
 }
 export interface FlowEdge { id: string; source: string; sourceHandle?: string | null; target: string }
 export interface FlowGraph { nodes: FlowNode[]; edges: FlowEdge[] }
-// Which channel kind(s) a flow runs on. Individual kinds, plus "both" (legacy:
-// WhatsApp + Instagram) and "all" (every channel kind, incl. Facebook + web chat).
-export type FlowPlatform = "whatsapp" | "instagram" | "messenger" | "webchat" | "both" | "all";
+// A flow's platform is stored as the channel kind(s) it runs on. A multi-channel
+// flow stores a comma-separated SET, e.g. "whatsapp,messenger,webchat". Legacy
+// single values and keywords still resolve: "all" = every kind, "both" = WhatsApp
+// + Instagram. (Free text — the app validates; the DB check was dropped in 0065.)
+export type FlowPlatform = string;
+export const FLOW_PLATFORM_KINDS = ["whatsapp", "instagram", "messenger", "webchat"] as const;
+
+// Expand a stored platform value into the set of channel kinds it runs on.
+export function platformKinds(value: string | null | undefined): Set<string> {
+  const v = (value ?? "").trim();
+  if (!v) return new Set(["whatsapp"]);     // historic default — NOT every channel
+  if (v === "all") return new Set(FLOW_PLATFORM_KINDS);
+  if (v === "both") return new Set(["whatsapp", "instagram"]);
+  return new Set(v.split(",").map(s => s.trim()).filter(Boolean));
+}
 
 // Does a flow that targets `target` run on a channel of kind `kind`?
-//   all  → every channel kind        both → WhatsApp + Instagram only (legacy)
-//   else → exact kind match
-export function flowRunsOn(target: FlowPlatform, kind: string): boolean {
-  if (target === "all") return true;
-  if (target === "both") return kind === "whatsapp" || kind === "instagram";
-  return target === kind;
+export function flowRunsOn(target: string, kind: string): boolean {
+  return platformKinds(target).has(kind);
 }
 
 export interface Flow {
@@ -120,10 +128,10 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
   if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
-    const triedPlatform = patch.platform === "instagram" || patch.platform === "messenger" || patch.platform === "webchat" || patch.platform === "both" || patch.platform === "all";
+    const triedPlatform = typeof patch.platform === "string" && patch.platform !== "whatsapp";
     delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
-    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064_flow_platform_all.sql), then save again.");
+    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064 + 0065_flow_platform_multi.sql), then save again.");
   }
   if (error) throw error;
 }
