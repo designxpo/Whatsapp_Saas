@@ -220,22 +220,41 @@ const COMMON_LABELS = new Set([
   "total", "subtotal", "duration", "module", "level", "day", "week", "step", "date", "time",
   "contact", "info", "email", "phone", "address", "website", "location", "venue", "amount", "discount",
 ]);
+// Remove a MID-sentence self-introduction by personal name — "I'm Asha, an
+// admissions assistant", "I am Asha.", "My name is Asha", "this is Asha",
+// "Asha here", "— Asha". The assistant has NO personal name, but a persona that
+// names itself slips past the system prompt, so we strip the KNOWN agent name out
+// of any self-intro after the fact. We target the configured name only (never any
+// capitalised word), so real content like "I'm happy to help" is never touched.
+function scrubSelfIntro(text: string, agentName?: string | null): string {
+  const name = (agentName ?? "").trim();
+  if (!name || !text) return text;
+  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = text;
+  out = out.replace(new RegExp(`\\b(I'?m|I am)\\s+${n}\\s*,\\s*`, "gi"), "$1 ");                 // "I'm Asha, an advisor" → "I'm an advisor"
+  out = out.replace(new RegExp(`\\b(?:my name is|this is|I'?m|I am)\\s+${n}\\b\\.?`, "gi"), ""); // "My name is Asha." → ""
+  out = out.replace(new RegExp(`\\b${n}\\s+here\\b\\.?,?`, "gi"), "");                           // "Asha here," → ""
+  out = out.replace(new RegExp(`[—–-]\\s*${n}\\s*$`, "i"), "");                                  // "— Asha" sign-off
+  if (out === text) return text;                          // nothing scrubbed → leave spacing untouched
+  return out.replace(/\s{2,}/g, " ").replace(/\s+([,.!?])/g, "$1").trim();
+}
+
 export function stripLeadingName(text: string, agentName?: string | null): string {
   // Pass 1 — role/persona label, regardless of agent name or case.
   const r = text.match(ROLE_PREFIX_RE);
   if (r) {
     const out = text.slice(r[0].length).trimStart();
-    if (out) return out;   // never strip away the whole message
+    if (out) return scrubSelfIntro(out, agentName);   // never strip away the whole message
   }
   // Pass 2 — a 1–2 word personal-name label.
   const m = text.match(NAME_PREFIX_RE);
-  if (!m) return text;
+  if (!m) return scrubSelfIntro(text, agentName);
   const label = m[1].trim();
   const first = label.split(/\s+/)[0].toLowerCase();
   const matchesAgent = !!agentName && label.toLowerCase() === agentName.trim().toLowerCase();
-  if (!matchesAgent && COMMON_LABELS.has(first)) return text;
+  if (!matchesAgent && COMMON_LABELS.has(first)) return scrubSelfIntro(text, agentName);
   const out = text.slice(m[0].length).trimStart();
-  return out || text;
+  return scrubSelfIntro(out || text, agentName);
 }
 
 // Build the text we EMBED for RAG retrieval. A message is anaphoric/elliptical —

@@ -38,4 +38,25 @@ describe("stripLeadingName", () => {
   it("leaves text with no leading label untouched", () => {
     expect(stripLeadingName("Your order is confirmed.", "Maya")).toBe("Your order is confirmed.");
   });
+
+  describe("mid-sentence self-introduction by the agent name", () => {
+    it("drops 'I'm <Name>,' but keeps the role clause", () => {
+      expect(stripLeadingName("I'm doing great, thanks! 😊 I'm Asha, an admissions assistant for AnalytixLabs. How can I help?", "Asha"))
+        .toBe("I'm doing great, thanks! 😊 I'm an admissions assistant for AnalytixLabs. How can I help?");
+    });
+    it("drops a 'My name is <Name>.' sentence", () => {
+      expect(stripLeadingName("My name is Asha. How can I help you today?", "Asha")).toBe("How can I help you today?");
+    });
+    it("drops 'this is <Name>' and '<Name> here'", () => {
+      expect(stripLeadingName("Hi! This is Asha. Welcome!", "Asha")).toBe("Hi! Welcome!");
+      expect(stripLeadingName("Asha here, happy to help!", "Asha")).toBe("happy to help!");
+    });
+    it("does NOT touch a normal 'I'm <adjective>' when it isn't the agent name", () => {
+      expect(stripLeadingName("I'm happy to help with our courses!", "Asha")).toBe("I'm happy to help with our courses!");
+      expect(stripLeadingName("I'm doing great, thanks for asking!", "Asha")).toBe("I'm doing great, thanks for asking!");
+    });
+    it("no-ops when no agent name is known", () => {
+      expect(stripLeadingName("I'm Asha, your advisor.", null)).toBe("I'm Asha, your advisor.");
+    });
+  });
 });
