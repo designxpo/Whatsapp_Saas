@@ -779,14 +779,28 @@ function AdTriggersPanel({ flowId, onClose }: { flowId: string; onClose: () => v
   );
 }
 
+// Brand logo glyphs for the channel toggles (inline SVG — no extra deps).
+const ICON_WHATSAPP = (
+  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#25D366" d="M.057 24l1.687-6.163a11.867 11.867 0 01-1.587-5.946C.16 5.335 5.495 0 12.05 0a11.817 11.817 0 018.413 3.488 11.824 11.824 0 013.48 8.414c-.003 6.557-5.338 11.892-11.893 11.892a11.9 11.9 0 01-5.688-1.448L.057 24zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884a9.86 9.86 0 001.515 5.26l-.999 3.648 3.973-1.042zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.247-.694.247-1.289.173-1.413z"/></svg>
+);
+const ICON_INSTAGRAM = (
+  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#E4405F" d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163C8.741 0 8.332.014 7.052.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+);
+const ICON_MESSENGER = (
+  <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="#0084FF" d="M12 0C5.373 0 0 4.974 0 11.111c0 3.498 1.744 6.614 4.469 8.654V24l4.088-2.242c1.092.301 2.246.464 3.443.464 6.627 0 12-4.975 12-11.111C24 4.974 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259L10.732 8l3.131 3.259L19.752 8l-6.559 6.963z"/></svg>
+);
+const ICON_WEBSITE = (
+  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+);
+
 // The channels a flow can run on, as tickable options. `platform` is stored as a
 // channel kind, a comma-set of kinds ("whatsapp,messenger"), or legacy "both"/"all".
 const FLOW_CHANNELS = [
-  { k: "whatsapp", label: "WhatsApp", emoji: "📱" },
-  { k: "instagram", label: "Instagram", emoji: "📷" },
-  { k: "messenger", label: "Facebook", emoji: "💬" },
-  { k: "webchat", label: "Website", emoji: "🌐" },
-] as const;
+  { k: "whatsapp", label: "WhatsApp", icon: ICON_WHATSAPP },
+  { k: "instagram", label: "Instagram", icon: ICON_INSTAGRAM },
+  { k: "messenger", label: "Facebook", icon: ICON_MESSENGER },
+  { k: "webchat", label: "Website", icon: ICON_WEBSITE },
+];
 const ALL_KINDS = FLOW_CHANNELS.map(c => c.k);
 function parseKinds(v: string): Set<string> {
   const s = (v ?? "").trim();
@@ -944,7 +958,7 @@ function Editor({ flowId }: { flowId: string }) {
                 onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
                 className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
                 <span className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[10px] leading-none ${on ? "bg-brand-600 border-brand-600 text-white" : "border-ink-300"}`}>{on ? "✓" : ""}</span>
-                {c.emoji} {c.label}
+                {c.icon} {c.label}
               </button>
             );
           })}
