@@ -26,10 +26,17 @@ export function providerSupportsMedia(provider: AiProvider, mimeType: string): b
 
 // Default chat model per provider when the tenant hasn't pinned one.
 export const DEFAULT_CHAT_MODEL: Record<AiProvider, string> = {
-  gemini: "gemini-2.5-flash",
+  gemini: "gemini-3.5-flash",
   openai: "gpt-4o-mini",
   anthropic: "claude-opus-4-8",
 };
+
+// How hard a Gemini chat reply may THINK. -1 = dynamic: it reasons only as much as
+// the message needs (~0 on a greeting, deeper on a course comparison). 0 disables
+// thinking (fastest, least intelligent — the old behaviour). Gemini 3.5 Flash
+// thinks fast, so dynamic is the best intelligence/latency balance. Set
+// GEMINI_CHAT_THINKING_BUDGET=0 to revert, or a positive integer to cap it.
+const GEMINI_THINKING_BUDGET = Number(process.env.GEMINI_CHAT_THINKING_BUDGET ?? "-1");
 
 // A single tool the model may call (mirrors an AI Hub function).
 export interface ChatTool {
@@ -162,7 +169,9 @@ function runGemini(opts: RunChatOpts): Promise<ChatResult> {
     config: {
       systemInstruction: opts.system,
       maxOutputTokens: opts.maxTokens ?? 1024,
-      thinkingConfig: { thinkingBudget: 0 }, // chat replies don't need extended reasoning
+      // Dynamic thinking by default — the model reasons only when the message needs
+      // it. Tunable via GEMINI_CHAT_THINKING_BUDGET (0 = off, for lowest latency).
+      thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
       ...(tools ? { tools } : {}),
     },
   }).then(res => ({

@@ -238,6 +238,26 @@ export function stripLeadingName(text: string, agentName?: string | null): strin
   return out || text;
 }
 
+// Build the text we EMBED for RAG retrieval. A clear, standalone question is used
+// as-is. But a short / context-dependent follow-up — "what about the fees?", "and
+// the duration?", "tell me more", "yes that one" — carries no topic on its own, so
+// embedding it alone lands the search nowhere and the model answers with no
+// grounding (the classic "thin reply"). For those we fuse the message with the
+// last couple of USER turns so the embedding actually lands on the right course/
+// section. We anchor on prior *user* turns only (never the bot's own words) so the
+// query stays the customer's intent.
+function retrievalQuery(history: { role: "user" | "assistant"; body: string }[]): string {
+  const userTurns = history.filter(m => m.role === "user" && m.body?.trim());
+  const last = userTurns[userTurns.length - 1]?.body.trim() ?? "";
+  if (!last) return "";
+  const words = last.split(/\s+/).filter(Boolean).length;
+  const followUpish = words <= 4
+    || /^(and|also|what about|how about|tell me more|more|elaborate|explain|details?|cost|price|fees?|duration|timing|ok(ay)?|yes|sure|that|this|it)\b/i.test(last);
+  if (!followUpish) return last;
+  const prior = userTurns.slice(0, -1).slice(-2).map(m => m.body.trim());
+  return [...prior, last].join(" ").slice(0, 500);
+}
+
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
@@ -273,7 +293,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   // schedule in another) rather than a thin single-chunk summary.
   let chunks: { content: string; similarity: number }[] = [];
   try {
-    chunks = await retrieve(lastUser.body, 8, tenantId, primaryKbTag);
+    chunks = await retrieve(retrievalQuery(history), 8, tenantId, primaryKbTag);
   } catch (err) {
     console.error("[llm] retrieve failed:", err);
   }
