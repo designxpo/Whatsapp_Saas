@@ -214,10 +214,13 @@ const HEADER_PREFIX_RE = /^\[[^\]\n]{1,160}\]\n\n/;
 function stripHeader(content: string): string {
   return content.replace(HEADER_PREFIX_RE, "");
 }
-// Append b to a, collapsing the largest suffix-of-a == prefix-of-b overlap.
+// Append b to a, collapsing the largest suffix-of-a == prefix-of-b overlap. The
+// real per-chunk overlap is always ~OVERLAP (150) chars, so we require a fairly
+// long match (≥40) — short enough to always catch the genuine overlap, long
+// enough that a coincidental suffix/prefix collision can't silently drop content.
 function mergeOverlap(a: string, b: string, maxOverlap = OVERLAP + 100): string {
   const max = Math.min(maxOverlap, a.length, b.length);
-  for (let len = max; len >= 16; len--) {
+  for (let len = max; len >= 40; len--) {
     if (a.slice(a.length - len) === b.slice(0, len)) return a + b.slice(len);
   }
   return a + "\n\n" + b;
