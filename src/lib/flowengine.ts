@@ -21,7 +21,7 @@ import { sendIgMessage, sendIgQuickReplies } from "./instagram";
 import { sendFbMessage, sendFbMedia, sendFbQuickReplies } from "./messenger";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
-  appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
+  appendConvMessage, touchOutbound, setConversationStatus,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag, takeArmedFlow, updateContactProfile,
 } from "./store";
@@ -560,10 +560,10 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
       }
       case "handoff": {
         if (str(d.text)) await send.text(str(d.text));
-        if (isReal) {
-          await setConversationStatus(convKey, "escalated").catch(() => undefined);
-          await setBotEnabled(convKey, false).catch(() => undefined);
-        }
+        // Flag the chat for a human, but DON'T turn the bot off — it keeps
+        // answering follow-ups until a human actually replies from the inbox
+        // (that's what pauses the bot). The AI/system never disables itself.
+        if (isReal) await setConversationStatus(convKey, "escalated").catch(() => undefined);
         await endSession(convKey);
         return true;
       }
@@ -800,7 +800,6 @@ export async function handleFlowMessage(
         if (isReal) {
           await send.text("Connecting you with our team — someone will reply here shortly. 🙌");
           await setConversationStatus(convKey, "escalated").catch(() => undefined);
-          await setBotEnabled(convKey, false).catch(() => undefined);
           await claimReply(convKey).catch(() => undefined);
         }
         await endSession(convKey);
