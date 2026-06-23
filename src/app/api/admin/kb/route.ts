@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
 import { createDocument, listDocuments, deleteDocument, setDocStatus, setDocTag, type KbSourceType } from "@/lib/store";
-import { ingestDocument, jsonToText, syncUrlDocument } from "@/lib/kb";
+import { ingestDocument, jsonToText, syncUrlDocument, reingestDocument } from "@/lib/kb";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
@@ -58,6 +58,16 @@ export async function POST(req: Request) {
     if (body.retag) {
       await setDocTag(body.retag as string, (body.tag as string)?.trim() || null, tid);
       return NextResponse.json({ success: true });
+    }
+    // Reprocess — re-chunk + re-embed with the current chunker (no re-upload).
+    // { reprocess: "<id>" } for one document, or { reprocess: "all" } for the KB.
+    if (body.reprocess) {
+      const docs = await listDocuments(tid);
+      const targets = body.reprocess === "all" ? docs : docs.filter(d => d.id === body.reprocess);
+      if (targets.length === 0) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+      for (const d of targets) await setDocStatus(d.id, "processing", {}, tid);
+      after(async () => { for (const d of targets) await reingestDocument(d); });
+      return NextResponse.json({ success: true, count: targets.length });
     }
     // Manual "Sync now" — re-crawl a URL document on demand (re-embeds only if changed).
     if (body.resync) {

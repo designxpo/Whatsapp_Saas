@@ -1,7 +1,7 @@
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
-import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, type KbSourceType, type KbDocument } from "./store";
+import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
 
@@ -115,36 +115,121 @@ export function jsonToText(raw: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// ── Chunking: paragraph-aware windows (~1000 chars) with overlap ──────────────
+// ── Chunking: heading-aware paragraph windows (~1000 chars) with overlap ──────
 const TARGET = 1000;     // chars per chunk
 const OVERLAP = 150;     // chars carried into the next chunk for context continuity
 
-export function chunkText(text: string): string[] {
+// A chunk plus the nearest section heading above it, so the caller can prepend a
+// "[Document › Section]" context line — what stops a fees/schedule chunk from
+// being applied to the wrong course.
+export interface KbChunk { content: string; heading: string | null }
+
+// Is this paragraph a SECTION HEADING (a label for what follows), not body text?
+// We are deliberately conservative — only signals that are almost never real data:
+//   • a markdown heading            "## Fees", "### Eligibility"
+//   • a bare label line             "Fees:", "Course Duration :"  (colon, nothing after)
+// A "key: value" line ("Fees: ₹50,000") is DATA and stays in the body. Anything
+// flagged as a heading rides on the next chunk as its prefix, so it is never lost.
+function asHeading(para: string): string | null {
+  const line = para.trim();
+  if (!line || line.includes("\n") || line.length > 60) return null;
+  const md = line.match(/^#{1,6}\s+(.{1,58})$/);
+  if (md) return md[1].trim();
+  const label = line.match(/^([A-Za-z][\w &/().'+-]{1,56}):$/);   // colon, nothing after
+  if (label) return label[1].trim();
+  return null;
+}
+
+// Heading-aware splitter. Returns each chunk tagged with the section it falls
+// under. A heading both opens a new section AND forces a chunk boundary, so one
+// section's content never shares a chunk with another's.
+export function chunkText(text: string): KbChunk[] {
   const clean = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!clean) return [];
   const paras = clean.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-  const chunks: string[] = [];
+  const chunks: KbChunk[] = [];
   let buf = "";
-  const flush = () => { if (buf.trim()) chunks.push(buf.trim()); };
+  let section: string | null = null;     // the heading currently in effect
+  let bufSection: string | null = null;  // the heading captured when buf started
+  const flush = () => { if (buf.trim()) chunks.push({ content: buf.trim(), heading: bufSection }); };
 
   for (const para of paras) {
-    // A single oversized paragraph: hard-split it.
+    const head = asHeading(para);
+    // A heading opens a new section AND a new chunk boundary. We keep the heading
+    // line in the body (normalized to "## x" so it's always re-detected) — this is
+    // what lets headings survive a later reconstruct/reprocess — and also expose it
+    // as the chunk's section label for the "[doc › section]" prefix.
+    if (head) { flush(); buf = "## " + head; section = head; bufSection = head; continue; }
+
+    // Oversized block (a big table or one long paragraph): split on LINE
+    // boundaries so table rows / list items stay intact (never mid-row); only a
+    // single monster line with no breaks is hard-split mid-char as a last resort.
     if (para.length > TARGET * 1.5) {
-      flush(); buf = "";
-      for (let i = 0; i < para.length; i += TARGET - OVERLAP) {
-        chunks.push(para.slice(i, i + TARGET));
+      flush(); buf = ""; bufSection = section;
+      let sub = "";
+      const flushSub = () => { if (sub.trim()) chunks.push({ content: sub.trim(), heading: section }); sub = ""; };
+      for (const ln of para.split("\n")) {
+        if (ln.length > TARGET * 1.5) {
+          flushSub();
+          for (let i = 0; i < ln.length; i += TARGET - OVERLAP) chunks.push({ content: ln.slice(i, i + TARGET), heading: section });
+          continue;
+        }
+        if (sub.length + ln.length + 1 > TARGET && sub) { flushSub(); sub = ln; }
+        else sub = sub ? sub + "\n" + ln : ln;
       }
+      flushSub();
       continue;
     }
+
     if (buf.length + para.length + 2 > TARGET && buf) {
       flush();
-      buf = buf.slice(Math.max(0, buf.length - OVERLAP)) + "\n\n" + para; // carry overlap
+      buf = buf.slice(Math.max(0, buf.length - OVERLAP)) + "\n\n" + para;   // carry overlap
+      bufSection = section;
     } else {
+      if (!buf) bufSection = section;
       buf = buf ? buf + "\n\n" + para : para;
     }
   }
   flush();
   return chunks;
+}
+
+// Prepend a compact context header to every chunk so BOTH the embedding and the
+// model know which document/section the text came from. This is the core of the
+// "brand-centric" fix — each chunk now self-identifies its course/section.
+export function headeredChunks(title: string, chunks: KbChunk[]): string[] {
+  const t = (title || "").trim().slice(0, 120);
+  return chunks.map(c => {
+    const label = c.heading ? `${t} › ${c.heading}` : t;
+    return label ? `[${label}]\n\n${c.content}` : c.content;
+  });
+}
+
+// ── Reconstruct original text from stored chunks (for re-processing) ───────────
+// The raw source text isn't retained — only chunks are. To re-chunk an existing
+// document with an improved chunker WITHOUT a re-upload, we rebuild its text from
+// the stored chunks: strip the "[…]" context header we prepended, then merge out
+// the per-chunk character overlap so sentences aren't duplicated.
+const HEADER_PREFIX_RE = /^\[[^\]\n]{1,160}\]\n\n/;
+function stripHeader(content: string): string {
+  return content.replace(HEADER_PREFIX_RE, "");
+}
+// Append b to a, collapsing the largest suffix-of-a == prefix-of-b overlap.
+function mergeOverlap(a: string, b: string, maxOverlap = OVERLAP + 100): string {
+  const max = Math.min(maxOverlap, a.length, b.length);
+  for (let len = max; len >= 16; len--) {
+    if (a.slice(a.length - len) === b.slice(0, len)) return a + b.slice(len);
+  }
+  return a + "\n\n" + b;
+}
+export function reconstructText(chunkContents: string[]): string {
+  let out = "";
+  for (const raw of chunkContents) {
+    const body = stripHeader(raw).trim();
+    if (!body) continue;
+    out = out ? mergeOverlap(out, body) : body;
+  }
+  return out;
 }
 
 // ── Full ingest: extract → chunk → embed → store. Updates document status. ────
@@ -156,8 +241,10 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
       await setDocStatus(docId, "failed", { error: "No extractable text found", chunkCount: 0 }, tenantId);
       return;
     }
-    const embeddings = await embedTexts(chunks, "RETRIEVAL_DOCUMENT");
-    const rows = chunks.map((content, i) => ({ content, embedding: embeddings[i] }));
+    const doc = await getDocument(docId, tenantId).catch(() => null);   // for the "[title › section]" header
+    const contents = headeredChunks(doc?.title ?? "", chunks);
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const rows = contents.map((content, i) => ({ content, embedding: embeddings[i] }));
     const n = await replaceChunks(docId, rows, tenantId);
     await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
     await setDocSync(docId, sha256(text), tenantId);   // baseline hash for future change detection
@@ -187,8 +274,9 @@ export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unc
       await setDocStatus(doc.id, "failed", { error: "No extractable text found", chunkCount: 0 }, tid);
       return "failed";
     }
-    const embeddings = await embedTexts(chunks, "RETRIEVAL_DOCUMENT");
-    const n = await replaceChunks(doc.id, chunks.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
+    const contents = headeredChunks(doc.title, chunks);
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
     await setDocSync(doc.id, hash, tid);
     return "updated";
@@ -208,6 +296,37 @@ export async function refreshDueUrlDocuments(opts: { olderThanHours?: number; ma
     if (r === "updated") updated++; else if (r === "unchanged") unchanged++; else failed++;
   }
   return { checked: docs.length, updated, unchanged, failed };
+}
+
+// Re-chunk + re-embed an EXISTING document with the current chunker — used to roll
+// an improved chunking/header strategy onto a tenant's live KB with no re-upload.
+// URL docs are re-crawled (freshest source); everything else is rebuilt from its
+// stored chunks. Replaces the document's chunks in place.
+export async function reingestDocument(doc: KbDocument): Promise<"updated" | "failed"> {
+  const tid = doc.tenantId;
+  try {
+    const text = doc.sourceType === "url" && doc.sourceRef
+      ? await extractText("url", { url: doc.sourceRef })
+      : reconstructText(await getChunks(doc.id, tid));
+    if (!text.trim()) {
+      await setDocStatus(doc.id, "failed", { error: "Nothing to reprocess (no stored text)", chunkCount: 0 }, tid);
+      return "failed";
+    }
+    const chunks = chunkText(text);
+    if (chunks.length === 0) {
+      await setDocStatus(doc.id, "failed", { error: "No extractable text found", chunkCount: 0 }, tid);
+      return "failed";
+    }
+    const contents = headeredChunks(doc.title, chunks);
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
+    await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
+    await setDocSync(doc.id, sha256(text), tid);
+    return "updated";
+  } catch (err) {
+    await setDocStatus(doc.id, "failed", { error: errorMessage(err) }, tid);
+    return "failed";
+  }
 }
 
 // Cheap "does this tenant's KB actually cover this question?" probe. Embeds the

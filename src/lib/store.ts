@@ -974,6 +974,18 @@ export async function listDocuments(tenantId = DEFAULT_TENANT_ID): Promise<KbDoc
   return (data ?? []).map(r => mapDocument(r as Record<string, unknown>));
 }
 
+// Single document by id (used by ingest to read its title for the chunk header).
+export async function getDocument(id: string, tenantId = DEFAULT_TENANT_ID): Promise<KbDocument | null> {
+  const { data } = await db().from("kb_documents").select("*").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
+  return data ? mapDocument(data as Record<string, unknown>) : null;
+}
+
+// A document's chunk bodies in order (used to reconstruct text for re-processing).
+export async function getChunks(documentId: string, tenantId = DEFAULT_TENANT_ID): Promise<string[]> {
+  const { data } = await db().from("kb_chunks").select("content").eq("tenant_id", tenantId).eq("document_id", documentId).order("chunk_index", { ascending: true });
+  return (data ?? []).map(r => (r as { content: string }).content);
+}
+
 export async function deleteDocument(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("kb_documents").delete().eq("tenant_id", tenantId).eq("id", id);   // chunks cascade
 }
