@@ -109,22 +109,51 @@ function Shell({ id, type, selected, children, target = true, foot }: {
   );
 }
 
+// A staged no-reply reminder: each delay is measured from the previous nudge.
+type Reminder = { minutes: number; text: string };
+function readReminders(data: NodeData): Reminder[] {
+  const raw = data.reminders;
+  if (Array.isArray(raw)) return (raw as Reminder[]).map(r => ({ minutes: Math.max(0, Number(r?.minutes ?? 0)), text: str(r?.text) }));
+  const mins = Number(data.reminderMinutes ?? 0);   // legacy single-reminder config
+  return mins > 0 ? [{ minutes: mins, text: str(data.reminderText) }] : [];
+}
+
 // Optional "no reply → nudge" config shared by the waiting blocks (buttons/list/ask).
+// Supports a STAGED chain — e.g. ping after 1 min, then again after a few hours if
+// the lead still hasn't replied. Each delay counts from the previous reminder.
 function ReminderFields({ data, set }: { data: NodeData; set: (p: NodeData) => void }) {
-  const mins = Number(data.reminderMinutes ?? 0);
+  const reminders = readReminders(data);
+  // Persist as the `reminders` array and clear the legacy single fields so the
+  // flow engine reads one source of truth.
+  const save = (next: Reminder[]) => set({ reminders: next, reminderMinutes: 0, reminderText: "" });
+  const update = (i: number, patch: Partial<Reminder>) => save(reminders.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   return (
-    <div className="border-t border-line pt-1.5 mt-1.5 space-y-1">
+    <div className="border-t border-line pt-1.5 mt-1.5 space-y-1.5">
       <div className="flex items-center gap-1.5">
         <BellRing className="w-3 h-3 text-ink-400" />
-        <span className="text-[10px] font-bold text-ink-400">If no reply in</span>
-        <input type="number" min={0} max={1380} className={`${inp} !w-14 !py-0.5`} placeholder="off"
-          value={mins || ""} onChange={e => set({ reminderMinutes: Math.max(0, parseInt(e.target.value || "0", 10)) })} />
-        <span className="text-[10px] text-ink-400">min, send:</span>
+        <span className="text-[10px] font-bold text-ink-400">No-reply reminders</span>
       </div>
-      {mins > 0 && (
-        <input className={inp} maxLength={1024} placeholder="Reminder message, e.g. Still there? Pick an option 👆"
-          value={str(data.reminderText)} onChange={e => set({ reminderText: e.target.value })} />
-      )}
+      {reminders.map((r, i) => (
+        <div key={i} className="space-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-ink-400 w-[68px] shrink-0">{i === 0 ? "If no reply in" : "then after"}</span>
+            <input type="number" min={1} max={1380} className={`${inp} !w-14 !py-0.5`} placeholder="min"
+              value={r.minutes || ""} onChange={e => update(i, { minutes: Math.max(0, parseInt(e.target.value || "0", 10)) })} />
+            <span className="text-[10px] text-ink-400">min, send:</span>
+          </div>
+          <input className={inp} maxLength={1024} placeholder="Reminder message, e.g. Still there? Pick an option 👆"
+            value={r.text} onChange={e => update(i, { text: e.target.value })} />
+        </div>
+      ))}
+      <div className="flex items-center gap-3">
+        <button type="button" className="nodrag text-[10px] font-bold text-brand-700 hover:underline"
+          onClick={() => save([...reminders, { minutes: reminders.length ? 180 : 1, text: "" }])}>+ add reminder</button>
+        {reminders.length > 0 && (
+          <button type="button" className="nodrag text-[10px] font-bold text-ink-400 hover:text-red-500"
+            onClick={() => save(reminders.slice(0, -1))}>− remove last</button>
+        )}
+      </div>
+      {reminders.length > 1 && <p className="text-[10px] text-ink-300 leading-snug">Each delay counts from the previous reminder. Free-text only sends inside WhatsApp&apos;s 24h window.</p>}
     </div>
   );
 }
@@ -652,8 +681,10 @@ function validateGraph(nodes: Node[], edges: Edge[], keywords: string, active: b
       for (const c of (d.cards as { mediaUrl?: string }[]) ?? []) if (str(c.mediaUrl).trim() && !/^https:\/\//.test(str(c.mediaUrl).trim())) add("Card media links must start with https:// and be publicly reachable.");
     }
     if (n.type === "agent" && !str(d.agentId)) add("Choose which AI agent should take over from here.");
-    if ((n.type === "buttons" || n.type === "list" || n.type === "ask" || n.type === "waform") && Number(d.reminderMinutes ?? 0) > 0 && !str(d.reminderText).trim()) {
-      add("You set a reminder time but no reminder message — type what the nudge should say.");
+    if (n.type === "buttons" || n.type === "list" || n.type === "ask" || n.type === "waform") {
+      const rs = readReminders(d);
+      if (rs.some(r => r.minutes > 0 && !r.text.trim())) add("A reminder has a time but no message — type what the nudge should say.");
+      if (rs.some(r => !!r.text.trim() && !(r.minutes > 0))) add("A reminder has a message but no time — set how many minutes to wait.");
     }
   }
   return issues;

@@ -804,9 +804,24 @@ export async function handleFlowMessage(
 }
 
 // ── No-reply reminders (called from the cron) ─────────────────────────────────
-// Waiting blocks (buttons/list/ask) can set reminderMinutes + reminderText:
-// if the customer hasn't answered after that long, send one nudge and keep
-// waiting. One reminder per waiting step; replying or moving on resets it.
+// Waiting blocks (buttons/list/ask) can set a STAGED chain of reminders: if the
+// customer hasn't answered, nudge after the first delay, then again after each
+// later delay (each measured from the PREVIOUS nudge). Replying or moving to a
+// new node resets the chain (fresh session state). Legacy single-reminder configs
+// (reminderMinutes + reminderText) are read as a one-step chain.
+function reminderSteps(data: Record<string, unknown> | undefined): { minutes: number; text: string }[] {
+  if (!data) return [];
+  const raw = data.reminders;
+  if (Array.isArray(raw)) {
+    return raw
+      .map(r => ({ minutes: Math.max(0, Number((r as { minutes?: unknown })?.minutes ?? 0)), text: str((r as { text?: unknown })?.text) }))
+      .filter(r => r.minutes > 0 && !!r.text.trim());
+  }
+  const mins = Number(data.reminderMinutes ?? 0);
+  const text = str(data.reminderText);
+  return mins > 0 && text.trim() ? [{ minutes: mins, text }] : [];
+}
+
 export async function drainFlowReminders(max = 50): Promise<number> {
   const { data } = await db().from("wa_flow_sessions").select("*").limit(500);
   let sent = 0;
@@ -816,28 +831,45 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     const convKey = s.conversation_id as string;
     if (convKey.startsWith("sim:")) continue;                       // simulator sessions
     const state = ((s.state as Record<string, unknown>) ?? {});
-    if (state.reminded) continue;
 
     const sTid = (s.tenant_id as string) ?? DEFAULT_TENANT_ID;
     if (!flowCache.has(s.flow_id as string)) flowCache.set(s.flow_id as string, await getFlow(s.flow_id as string, sTid));
     const flow = flowCache.get(s.flow_id as string);
     if (!flow?.active) continue;
     const node = nodeById(flow.graph, s.current_node as string);
-    const mins = Number(node?.data?.reminderMinutes ?? 0);
-    const text = str(node?.data?.reminderText);
-    if (!node || !mins || !text.trim()) continue;
-    if (Date.now() - new Date(s.updated_at as string).getTime() < mins * 60_000) continue;
+    const reminders = reminderSteps(node?.data as Record<string, unknown> | undefined);
+    if (!node || !reminders.length) continue;
+
+    // Which nudge is next? Legacy boolean `reminded` counts as one already sent.
+    const sentCount = Number(state.remindersSent ?? (state.reminded ? 1 : 0));
+    if (sentCount >= reminders.length) continue;                    // whole chain delivered
+    const step = reminders[sentCount];
+    // Each delay is measured from the previous send: updated_at re-stamps on every
+    // nudge (and on node entry), so the chain fires step-by-step, not all at once.
+    if (Date.now() - new Date(s.updated_at as string).getTime() < step.minutes * 60_000) continue;
 
     // Meta compliance: free-form sends only inside the 24h customer window.
     const { data: conv } = await db().from("wa_conversations").select("*").eq("id", convKey).maybeSingle();
     if (!conv?.phone || !conv.last_inbound_at) continue;
     if (Date.now() - new Date(conv.last_inbound_at as string).getTime() > 23.5 * 3600_000) continue;
 
+    // Atomic claim BEFORE sending — compare-and-swap on the exact updated_at we read.
+    // Only the cron tick that still sees this timestamp wins, so overlapping ticks
+    // (the 1-min pinger + GitHub */5) can't double-send the same nudge. A customer
+    // reply advances the session (new updated_at), so the CAS also fails then and the
+    // stale nudge is suppressed — stop-on-reply for free. The claim re-stamps
+    // updated_at, arming the timer for the next step in the chain.
+    const nextState = { ...state, remindersSent: sentCount + 1 };
+    delete (nextState as Record<string, unknown>).reminded;          // drop legacy flag
+    const claimed = await db().from("wa_flow_sessions")
+      .update({ state: nextState, updated_at: new Date().toISOString() })
+      .eq("conversation_id", convKey).eq("updated_at", s.updated_at as string)
+      .select("conversation_id");
+    if (!claimed.data?.length) continue;                            // another tick won / customer replied
+
     // Reply from the same number the chat lives on.
     const channel = conv.channel_id ? (await getChannel(conv.channel_id as string)) ?? undefined : undefined;
-    const r = await realSender(convKey, conv.phone as string, channel, (conv.tenant_id as string) ?? sTid).text(text);
-    // Mark reminded either way so a hard failure can't loop every cron tick.
-    await db().from("wa_flow_sessions").update({ state: { ...state, reminded: true } }).eq("conversation_id", convKey);
+    const r = await realSender(convKey, conv.phone as string, channel, (conv.tenant_id as string) ?? sTid).text(step.text);
     if (!r.error) sent++;
   }
   return sent;
