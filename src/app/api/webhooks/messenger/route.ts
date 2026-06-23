@@ -8,6 +8,7 @@ import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
 import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments";
+import { handleFlowMessage } from "@/lib/flowengine";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const AI_REPLY_CAP = 6;   // safety cap before escalating a runaway thread to a human
@@ -118,6 +119,10 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // empty text (an agent replies manually).
   if (!text.trim()) return;
   if (!conv.botEnabled) return;
+  // Chatbot flows run BEFORE the AI (mirrors WhatsApp/Instagram): a keyword/menu
+  // flow scoped to this Page handles the message; otherwise fall through to the AI.
+  const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
+  if (flowHandled) return;
   await aiRespond(channel, conv, text);
 }
 

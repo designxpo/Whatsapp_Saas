@@ -18,6 +18,7 @@ import {
 } from "./whatsapp";
 import { sendWaFormMessage } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
+import { sendFbMessage, sendFbMedia, sendFbQuickReplies } from "./messenger";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus, setBotEnabled,
@@ -45,7 +46,7 @@ export interface FlowEdge { id: string; source: string; sourceHandle?: string | 
 export interface FlowGraph { nodes: FlowNode[]; edges: FlowEdge[] }
 export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
-  platform: "whatsapp" | "instagram" | "both";   // which channel kind(s) this flow runs on
+  platform: "whatsapp" | "instagram" | "messenger" | "both";   // which channel kind(s) this flow runs on
   channelId: string | null;     // scope to one number/account (null = every one of that platform)
   primaryKbTag: string | null;  // AI in this flow answers from KB docs with this tag first
   graph: FlowGraph; createdAt: string; updatedAt: string;
@@ -92,7 +93,7 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "both"; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: "whatsapp" | "instagram" | "messenger" | "both"; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
@@ -106,10 +107,10 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
   if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
-    const triedPlatform = patch.platform === "instagram" || patch.platform === "both";
+    const triedPlatform = patch.platform === "instagram" || patch.platform === "messenger" || patch.platform === "both";
     delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
-    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023_flow_platform.sql + 0046_flow_platform_both.sql), then save again.");
+    if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023_flow_platform.sql + 0046_flow_platform_both.sql + 0062_flow_platform_messenger.sql), then save again.");
   }
   if (error) throw error;
 }
@@ -219,6 +220,57 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     async template(_templateName, _lang, bodyParams) { return bodyParams.length ? sendIg(bodyParams.join(" ")) : { id: "ig_noop" }; },
     async carouselTemplate(_templateName, _lang, bubbleParams) { return bubbleParams.length ? sendIg(bubbleParams.join(" ")) : { id: "ig_noop" }; },
     async waform(body, cta) { return sendIg(`${body}\n(${cta})`); },
+  };
+}
+
+// Facebook Messenger sender — mirrors igSender. Menu options render as tappable
+// QUICK REPLIES (≤13, titles ≤20 chars); when they don't fit, fall back to a
+// numbered text menu (matchOption resolves the tapped payload or the typed
+// number). Sends respect the 24h window (the flow runs right after the inbound,
+// so it's open). conv.phone holds the PSID; creds come from the Page channel.
+function fbSender(conversationId: string, phone: string, channel: Channel, tenantId = DEFAULT_TENANT_ID): FlowSender {
+  const creds = { pageId: channel.pageId ?? "", token: channel.token };
+  const now = () => new Date().toISOString();
+  const log = async (body: string, metaId?: string) => {
+    if (!metaId) return;
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
+    await touchOutbound(conversationId, body).catch(() => undefined);
+  };
+  const sendFb = async (body: string): Promise<{ id?: string; error?: string }> => {
+    const r = await sendFbMessage(creds, phone, body, { lastInboundAt: now() });
+    await log(body, r.messageId);
+    return { id: r.messageId, error: r.error };
+  };
+  const numberedMenu = (body: string, opts: string[]) => sendFb(opts.length ? `${body}\n\n${opts.map((t, i) => `${i + 1}. ${t}`).join("\n")}` : body);
+  const chips = async (body: string, options: { id: string; title: string }[]): Promise<{ id?: string; error?: string }> => {
+    const fits = options.length > 0 && options.length <= 13 && options.every(o => o.title.length <= 20);
+    if (!fits) return numberedMenu(body, options.map(o => o.title));
+    const r = await sendFbQuickReplies(creds, phone, body, options.map(o => ({ title: o.title, payload: o.id })), { lastInboundAt: now() });
+    if (!r.ok) return numberedMenu(body, options.map(o => o.title));   // fallback if rejected
+    await log(`${body}\n[options: ${options.map(o => o.title).join(" | ")}]`, r.messageId);
+    return { id: r.messageId };
+  };
+  return {
+    async text(body) { return sendFb(body); },
+    async buttons(body, buttons) { return chips(body, buttons); },
+    async list(body, _bt, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
+    async media(kind, url, caption) {
+      // Messenger media is image/video/audio by URL with no caption field, and has
+      // no "document" kind — send a document as a text link instead.
+      if (kind === "document") return sendFb(caption ? `${caption}\n${url}` : url);
+      const r = await sendFbMedia(creds, phone, kind, url, { lastInboundAt: now() });
+      await log(`[${kind}] ${url}`, r.messageId);
+      if (caption?.trim()) await sendFb(caption);
+      return { id: r.messageId, error: r.error };
+    },
+    async product(body) { return sendFb(body); },
+    async productCard(body, _imageUrl, buttonText, buttonUrl) { return sendFb(`${body}\n${buttonText}: ${buttonUrl}`); },
+    // Messenger has no catalog/template messages — send the text so the flow still
+    // says something instead of going silent (same as Instagram).
+    async productList(header, body) { return sendFb([header, body].filter(s => s?.trim()).join("\n") || "Have a look:"); },
+    async template(_templateName, _lang, bodyParams) { return bodyParams.length ? sendFb(bodyParams.join(" ")) : { id: "fb_noop" }; },
+    async carouselTemplate(_templateName, _lang, bubbleParams) { return bubbleParams.length ? sendFb(bubbleParams.join(" ")) : { id: "fb_noop" }; },
+    async waform(body, cta) { return sendFb(`${body}\n(${cta})`); },
   };
 }
 
@@ -601,6 +653,8 @@ export async function handleFlowMessage(
   const tid = opts.tenantId ?? opts.channel?.tenantId ?? DEFAULT_TENANT_ID;
   const baseSend = opts.sender ?? (opts.channel?.kind === "instagram"
     ? igSender(convKey, phone, opts.channel, tid)
+    : opts.channel?.kind === "messenger"
+    ? fbSender(convKey, phone, opts.channel, tid)
     : realSender(convKey, phone, opts.channel, tid));
   const isReal = !opts.sender;
   // Load the contact once so flow text can resolve {{name}}/{{city}}/{{course}}…
