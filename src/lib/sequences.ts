@@ -245,6 +245,18 @@ export async function drainSequences(max = 100, tenantId?: string): Promise<numb
       const step = steps[idx];
       if (!step) { await db().from("wa_sequence_enrollments").update({ status: "completed", updated_at: new Date().toISOString() }).eq("id", enr.id as string); continue; }
 
+      // Atomic claim before sending: compare-and-swap this row out of the due set —
+      // only the runner that still sees the exact next_run_at we read wins. Stops two
+      // overlapping cron ticks (the 1-min pinger + GitHub */5, which can run at once)
+      // from both executing the same step and double-sending the nudge. A crash after
+      // the claim leaves a short lease so the row retries once it expires, not wedges.
+      const lease = new Date(Date.now() + 5 * 60_000).toISOString();
+      const claimed = await db().from("wa_sequence_enrollments")
+        .update({ next_run_at: lease })
+        .eq("id", enr.id as string).eq("status", "active").eq("next_run_at", enr.next_run_at as string)
+        .select("id");
+      if (!claimed.data?.length) continue;   // another tick already claimed this step
+
       const res = await executeStep(seq, enr, step);
 
       const nextStep = steps[idx + 1];
