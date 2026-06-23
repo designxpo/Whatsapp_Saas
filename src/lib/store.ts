@@ -758,21 +758,26 @@ export async function listConversations(opts: { status?: ConvStatus | null; limi
   return (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
 }
 
-export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<void> {
+// Returns the persisted row's id + created_at so callers (e.g. the web-chat
+// widget) can seed their client-side dedup state and avoid double-rendering a
+// reply that also arrives via polling. null when the insert was swallowed (dup).
+export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<{ id: string; createdAt: string } | null> {
   const row: Record<string, unknown> = {
     tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, conversation_id: p.conversationId, role: p.role, body: p.body,
     meta_message_id: p.metaId ?? null, source: p.source,
   };
   if (p.mediaUrl) { row.media_url = p.mediaUrl; row.media_type = p.mediaType ?? null; }
-  let { error } = await db().from("wa_conv_messages").insert(row);
+  let { data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single();
   // Pre-migration safety: if the media columns aren't present yet (0052), retry
   // without them so a voice note still logs as text instead of being dropped.
   if (error && error.code === "42703" && p.mediaUrl) {
     delete row.media_url; delete row.media_type;
-    ({ error } = await db().from("wa_conv_messages").insert(row));
+    ({ data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single());
   }
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
   if (error && error.code !== "23505") throw error;
+  if (!data) return null;
+  return { id: (data as Record<string, unknown>).id as string, createdAt: (data as Record<string, unknown>).created_at as string };
 }
 
 export async function getConvHistory(conversationId: string, limit = 20, tenantId?: string): Promise<ConvMessage[]> {

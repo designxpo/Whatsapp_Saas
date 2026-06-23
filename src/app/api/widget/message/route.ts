@@ -1,7 +1,7 @@
 export const maxDuration = 60;   // runs an LLM reply
 import { NextResponse } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, incAiReplies } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
 
@@ -42,10 +42,10 @@ export async function POST(req: Request) {
   if (!conv.botEnabled) return NextResponse.json({ ok: true }, { headers: cors });
 
   const closeOut = async () => {
-    await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid });
+    const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid });
     await touchOutbound(conv.id, CLOSING_MSG);
     await escalateConversation(conv.id);
-    return NextResponse.json({ ok: true, reply: CLOSING_MSG, escalated: true }, { headers: cors });
+    return NextResponse.json({ ok: true, reply: CLOSING_MSG, escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
   };
   if (conv.aiReplyCount >= AI_REPLY_CAP) return closeOut();
 
@@ -53,7 +53,12 @@ export async function POST(req: Request) {
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, false);
   if (!r.reply || r.escalate) return closeOut();
 
-  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
+  const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
   await touchOutbound(conv.id, r.reply);
-  return NextResponse.json({ ok: true, reply: r.reply }, { headers: cors });
+  // Count the AI reply so the per-conversation cap actually trips (it was never
+  // incremented before, so a web-chat thread could be auto-answered forever).
+  await incAiReplies(conv.id, conv.aiReplyCount);
+  // Return the saved message's id + timestamp so the widget seeds its dedup state
+  // and the next poll won't re-render this same reply (the double-bubble bug).
+  return NextResponse.json({ ok: true, reply: r.reply, id: saved?.id, at: saved?.createdAt }, { headers: cors });
 }
