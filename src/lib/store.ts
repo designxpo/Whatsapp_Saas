@@ -684,7 +684,12 @@ export async function incAiReplies(conversationId: string, current: number): Pro
 
 // Hand a conversation off to a human: escalate, flag for reply, stop the bot.
 export async function escalateConversation(conversationId: string): Promise<void> {
-  await db().from("wa_conversations").update({ status: "escalated", needs_reply: true, bot_enabled: false }).eq("id", conversationId).then(() => {}, () => {});
+  // Flag the chat for a human (status + needs_reply) but DO NOT turn the bot off.
+  // Per the rule "only a human turns the bot off", auto-disabling here was the
+  // recurring "bot keeps going silent" regression: it fired on the AI reply cap and
+  // on any handoff/complaint, permanently muting the bot. The bot now stays on
+  // until a human actually takes over (an inbox/CRM reply or the manual toggle).
+  await db().from("wa_conversations").update({ status: "escalated", needs_reply: true }).eq("id", conversationId).then(() => {}, () => {});
 }
 
 // Find-or-create by phone. Keeps the latest name if provided; stamps the
