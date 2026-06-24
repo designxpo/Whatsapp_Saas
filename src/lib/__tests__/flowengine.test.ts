@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 // importing the module never tries to construct a client.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure routing tests"); } }));
 
-import { nextNode, matchOption, optionLabel, type FlowGraph, type FlowNode } from "@/lib/flowengine";
+import { nextNode, matchOption, optionLabel, looksConversational, type FlowGraph, type FlowNode } from "@/lib/flowengine";
 
 // Node factory — `position` is required by the builder type but irrelevant here.
 const n = (id: string, type: string, data: Record<string, unknown> = {}): FlowNode => ({ id, type, position: { x: 0, y: 0 }, data });
@@ -63,6 +63,27 @@ describe("matchOption (reply → option id)", () => {
   it("ignores out-of-range numbers", () => {
     expect(matchOption(buttonsNode, "9")).toBeNull();
     expect(matchOption(buttonsNode, "0")).toBeNull();
+  });
+});
+
+describe("looksConversational (ask-node escape hatch)", () => {
+  it("treats questions / greetings as conversational (bail out of the field)", () => {
+    expect(looksConversational("how ar you")).toBe(true);       // the reported bug
+    expect(looksConversational("how are you?")).toBe(true);
+    expect(looksConversational("what courses do you offer")).toBe(true);
+    expect(looksConversational("can you help me")).toBe(true);
+    expect(looksConversational("tell me the price")).toBe(true);
+    expect(looksConversational("hi")).toBe(true);
+    expect(looksConversational("hello there")).toBe(true);
+    expect(looksConversational("thanks")).toBe(true);
+    expect(looksConversational("anything here?")).toBe(true);   // a trailing ?
+  });
+  it("does NOT flag a botched answer (so the user still gets a retry)", () => {
+    expect(looksConversational("john at gmail")).toBe(false);   // typo'd email → retry
+    expect(looksConversational("john.doe@gmail")).toBe(false);  // missing TLD → retry
+    expect(looksConversational("9876543")).toBe(false);         // short phone → retry
+    expect(looksConversational("Mumbai")).toBe(false);
+    expect(looksConversational("")).toBe(false);
   });
 });
 

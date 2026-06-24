@@ -405,6 +405,19 @@ export async function validateInput(type: string, text: string, tenantId?: strin
   }
 }
 
+// A reply to an `ask` step that reads like a question or greeting rather than an
+// attempt to answer the field. When the user is clearly talking to us (not
+// botching the field), we bail out of the flow and let the AI take over instead
+// of nagging — a visitor typing "how are you" must never be stuck on "that's not
+// a valid email". Only consulted when the answer already FAILED validation.
+export function looksConversational(text: string): boolean {
+  if ((text || "").includes("?")) return true;
+  const s = norm(text);
+  if (!s) return false;
+  return /^(hi|hii+|hey+|hello+|yo|hola|namaste|thanks|thank you|thx|ok|okay|cool|great|good (morning|afternoon|evening)|sup)\b/.test(s)
+    || /^(how|what|whats|why|who|whom|whose|when|where|which|can|could|would|will|shall|should|do|does|did|is|are|am|may|might|tell me|explain|help|i (want|need|have|am)|please|you there|u there)\b/.test(s);
+}
+
 // Sends nodes starting at `node` until the flow waits for input or ends.
 // `menuNodeId`: the interactive node this run branched from — when the branch
 // dead-ends (no outgoing edge, no explicit End node), the session returns
@@ -773,11 +786,15 @@ export async function handleFlowMessage(
       // An old menu tap takes priority over treating it as the answer.
       const rewound = await rewind();
       if (rewound !== null) return rewound;
-      // Validate the answer if the node requires it; on failure re-prompt and stay
-      // put. Give up after 2 tries so a customer is never trapped on one question.
+      // Validate the answer if the node requires it.
       const vtype = str(waiting.data.validate);
       const tries = Number((session.state as Record<string, unknown>)?.tries ?? 0);
-      if (vtype && vtype !== "none" && tries < 2 && !(await validateInput(vtype, text, tid))) {
+      if (vtype && vtype !== "none" && !(await validateInput(vtype, text, tid))) {
+        // The reply isn't a valid answer. If the user is clearly asking/chatting
+        // rather than botching the field, or they've already missed twice, stop
+        // nagging — end the flow and let the AI handle the conversation (don't
+        // store the junk value, don't loop on "that's not a valid email").
+        if (looksConversational(text) || tries >= 2) { await endSession(convKey); return false; }
         if (isReal) {
           await send.text(str(waiting.data.retryText) || "Hmm, that doesn't look right — could you share a valid answer?");
           await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
