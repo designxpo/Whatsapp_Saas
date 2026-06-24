@@ -40,7 +40,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  function shade(hex){ try{ var h=hex.replace('#',''); if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];} var n=parseInt(h,16); var r=Math.max(0,((n>>16)&255)-18),g=Math.max(0,((n>>8)&255)-18),b=Math.max(0,(n&255)-18); return 'rgb('+r+','+g+','+b+')'; }catch(e){ return hex; } }\n" +
 "  var DARK = shade(BRAND);\n" +
 "  var FIT = CFG.logoFit === 'contain' ? 'contain' : 'cover';\n" +
-"  var AVRAD = FIT === 'contain' ? '8px' : '50%';\n" +                                  // square-ish box for a full logo, circle for a cropped one
+"  var AVRAD = FIT === 'contain' ? '8px' : '50%';\n" +
+"  var LOGO = !!CFG.icon;\n" +                                                            // custom logo uploaded -> launcher is the bare logo, no brand circle                                  // square-ish box for a full logo, circle for a cropped one
 "  var HAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : 'rgba(255,255,255,.22)';\n" +
 "  var BAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : BRAND;\n" +
 "  var css = '' +\n" +
@@ -83,7 +84,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-foot .twc-send{width:40px;height:40px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}' +\n" +
 "   '.twc-foot .twc-send:disabled{opacity:.5;cursor:default;} .twc-foot .twc-send svg{width:19px;height:19px;}' +\n" +
 "   '.twc-pow{text-align:center;color:#aab0b8;font-size:10.5px;padding:0 0 8px;background:#fff;}' +\n" +
-"   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:12%;' + SIDE + ':15px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} html[data-twc-trig] .twc-launch{display:none!important;} }';\n" +
+"   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:12%;' + SIDE + ':15px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} html[data-twc-trig] .twc-launch{display:none!important;} }' +\n" +
+"   (LOGO ? '.twc-launch{background:transparent;box-shadow:none;} .twc-launch .twc-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;} .twc-launch .twc-ic img{width:100%;height:100%;border-radius:' + AVRAD + ';object-fit:' + FIT + ';filter:drop-shadow(0 5px 14px rgba(0,0,0,.30));} .twc-launch.open{background:' + BRAND + ';box-shadow:0 8px 24px rgba(0,0,0,.22);} .twc-launch.open .twc-x{color:#fff;}' : '');\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var initial = (CFG.title || 'A').trim().charAt(0).toUpperCase();\n" +
 "  var SEND_SVG = '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"22\" y1=\"2\" x2=\"11\" y2=\"13\"></line><polygon points=\"22 2 15 22 11 13 2 9 22 2\"></polygon></svg>';\n" +
