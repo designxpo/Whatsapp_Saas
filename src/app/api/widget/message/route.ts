@@ -1,12 +1,11 @@
-export const maxDuration = 60;   // runs an LLM reply
+export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, incAiReplies } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
 
-const AI_REPLY_CAP = 8;   // safety cap before handing the chat to a human
 const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
 
 export async function OPTIONS(req: Request) {
@@ -59,7 +58,11 @@ export async function POST(req: Request) {
     await escalateConversation(conv.id);
     return NextResponse.json({ ok: true, reply: CLOSING_MSG, messages: [{ id: saved?.id, at: saved?.createdAt, body: CLOSING_MSG, from: "bot" }], escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
   };
-  if (conv.aiReplyCount >= AI_REPLY_CAP) return closeOut();
+  // No reply cap on web-chat DMs: like the IG/Messenger DM paths (which only cap
+  // public comment loops), a website chat is a real support/sales thread that
+  // legitimately runs many turns — capping it muted the bot to a canned line
+  // forever, which read exactly as "the bot stopped working". The AI keeps
+  // answering; only a human (or a genuine model escalate below) hands it off.
 
   const history = await getConvHistory(conv.id, 20);
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, false);
@@ -67,9 +70,6 @@ export async function POST(req: Request) {
 
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
   await touchOutbound(conv.id, r.reply);
-  // Count the AI reply so the per-conversation cap actually trips (it was never
-  // incremented before, so a web-chat thread could be auto-answered forever).
-  await incAiReplies(conv.id, conv.aiReplyCount);
   // Return the saved message's id + timestamp so the widget seeds its dedup state
   // and the next poll won't re-render this same reply (the double-bubble bug).
   return NextResponse.json({ ok: true, reply: r.reply, messages: [{ id: saved?.id, at: saved?.createdAt, body: r.reply, from: "bot" }], id: saved?.id, at: saved?.createdAt }, { headers: cors });

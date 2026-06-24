@@ -1,4 +1,4 @@
-export const maxDuration = 60;
+export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";

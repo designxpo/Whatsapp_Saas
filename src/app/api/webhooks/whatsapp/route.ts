@@ -239,6 +239,10 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // After the 200 ack: welcome → away notice → AI reply, in that order so the
   // greeting lands before the answer. claimReply/claimWelcome guard double-sends.
   after(async () => {
+    // A human owns the chat → the bot stays silent on every path (welcome, away,
+    // flow AND ai), matching IG/Messenger/web-chat. bot_enabled is flipped off only
+    // by a human (inbox reply / CRM / manual toggle); "escalated" is NOT silenced.
+    if (!conv.botEnabled || conv.status === "paused") return;
     // If a drip is already driving this contact, stay quiet — no welcome, no AI —
     // so the sequence owns the thread (until it completes) and nothing collides.
     const inSequence = await hasActiveEnrollment(from, tid).catch(() => false);

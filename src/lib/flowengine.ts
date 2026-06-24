@@ -410,10 +410,24 @@ export async function validateInput(type: string, text: string, tenantId?: strin
 // dead-ends (no outgoing edge, no explicit End node), the session returns
 // there so the user can still pick the other menu options.
 // Returns true if the conversation is now (or was) inside the flow.
-async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, phone: string, send: FlowSender, isReal: boolean, menuNodeId?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, phone: string, baseSend: FlowSender, isReal: boolean, menuNodeId?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   const g = flow.graph;
   let steps = 0;
   let cur = node;
+  // Track whether this run actually emitted anything to the user. A run that
+  // walks into a dead-ended branch (e.g. an unconnected condition/ask edge, or an
+  // answered ask whose outgoing edge is missing) without sending must report "not
+  // handled" so the channel falls through to the AI — otherwise IG/Messenger,
+  // which have no AI fallback once a flow is "handled", strand the user in total
+  // silence. Wrapping the sender covers every node's send sites in one place.
+  let sent = false;
+  const send: FlowSender = new Proxy(baseSend, {
+    get(target, prop, recv) {
+      const v = Reflect.get(target, prop, recv);
+      if (typeof v !== "function") return v;
+      return (...a: unknown[]) => { sent = true; return (v as (...x: unknown[]) => unknown).apply(target, a); };
+    },
+  }) as FlowSender;
   while (cur && steps++ < MAX_STEPS) {
     const d = cur.data ?? {};
     switch (cur.type) {
@@ -609,9 +623,13 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
   }
   // Dead end (branch with no continuation) — go back to the menu we came from
   // so the remaining options keep working; only an End node closes the flow.
-  if (menuNodeId) await saveSession(convKey, flow.id, menuNodeId, {}, tenantId);
-  else await endSession(convKey);
-  return true;
+  if (menuNodeId) { await saveSession(convKey, flow.id, menuNodeId, {}, tenantId); return true; }
+  await endSession(convKey);
+  // Nothing more to send and no menu to fall back to: report whether this run
+  // emitted anything. If it sent (a flow that simply ended without an End node)
+  // it's handled; if it sent nothing (a dead-ended branch) return false so the
+  // channel's AI answers instead of leaving the user with silence.
+  return sent;
 }
 
 // Match an inbound reply against the interactive node the session is waiting on.
@@ -791,6 +809,10 @@ export async function handleFlowMessage(
       if (isReal && await markFormAbandoned(convKey, tid)) {
         await appendConvMessage({ conversationId: convKey, role: "assistant", body: "[form-abandoned]", source: "bot", tenantId: tid }).catch(() => undefined);
       }
+      // The user moved on without submitting → fully exit the flow so the next
+      // message starts clean (otherwise the stale waform session lingered ~24h
+      // and a late "[form]…" echo or old menu tap could resume an abandoned flow).
+      await endSession(convKey).catch(() => undefined);
       return false;
     }
 
