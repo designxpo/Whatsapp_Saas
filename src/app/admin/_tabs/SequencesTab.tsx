@@ -291,7 +291,8 @@ function SequencesTab() {
       <LsqDripPanel seqs={seqs} />
 
       {form && (
-        <div className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onClick={() => setForm(null)}>
+        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-3xl flex flex-col xl:flex-row gap-5">
           <div className="flex-1 min-w-0 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Sequence name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -336,6 +337,7 @@ function SequencesTab() {
           </div>
           </div>
           <SequencePreview platform={form.platform} steps={form.steps} />
+        </div>
         </div>
       )}
     </div>
