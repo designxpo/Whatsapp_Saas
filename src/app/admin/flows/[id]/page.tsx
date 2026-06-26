@@ -946,61 +946,72 @@ function Editor({ flowId }: { flowId: string }) {
     <div className="h-screen flex flex-col bg-canvas">
       {/* Top bar */}
       <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 z-20">
-        <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
-        <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
-        <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
-        <input className="border border-line rounded-control px-3 py-1.5 text-xs flex-1 min-w-0 max-w-[240px] bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
-        <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
-          {FLOW_CHANNELS.map(c => {
-            const on = parseKinds(platform).has(c.k);
-            return (
-              <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
-                onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
-                className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
-                <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
-                <span className="hidden xl:inline">{c.label}</span>
-              </button>
-            );
-          })}
+        {/* Left — back + flow name (never shrinks) */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
+          <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
+          <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-36 lg:w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
         </div>
-        {(() => { const k = parseKinds(platform); const only = k.size === 1 ? [...k][0] : null; const matches = only ? channels.filter(c => c.kind === only) : []; return only && matches.length > 0 ? (
-          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${only === "instagram" ? "account" : only === "messenger" ? "page" : only === "webchat" ? "site" : "number"} this flow runs on`}>
-            <option value="">All {only === "instagram" ? "accounts" : only === "messenger" ? "pages" : only === "webchat" ? "sites" : "numbers"}</option>
-            {matches.map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
-          </select>
-        ) : null; })()}
-        <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
-          <option value="">🧠 Default knowledge</option>
-          {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
-          {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
-        </select>
-        <div className="flex-1" />
-        {issues.length > 0 && (
-          <div className="relative">
-            <button onClick={() => setShowIssues(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
-              <AlertTriangle className="w-3.5 h-3.5" /> {issues.length} issue{issues.length > 1 ? "s" : ""}
-            </button>
-            {showIssues && (
-              <div className="absolute right-0 top-9 w-80 bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-bold text-ink-400 uppercase">Fix before going live</p>
-                  <button onClick={() => setShowIssues(false)} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
-                </div>
-                {issues.map((s, i) => <p key={i} className="text-xs text-ink-600">• {s.msg}</p>)}
-              </div>
-            )}
+
+        {/* Middle — flow config; scrolls horizontally when the bar is tight so the
+            actions on the right always stay visible and never wrap/clip. */}
+        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto py-1">
+          <input className="border border-line rounded-control px-3 py-1.5 text-xs w-56 shrink-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
+          <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
+            {FLOW_CHANNELS.map(c => {
+              const on = parseKinds(platform).has(c.k);
+              return (
+                <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
+                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
+                  className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
+                  <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
+                  <span className="hidden xl:inline">{c.label}</span>
+                </button>
+              );
+            })}
           </div>
-        )}
-        <div className="relative">
-          <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-bold"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
-          {showAdTriggers && <AdTriggersPanel flowId={flowId} onClose={() => setShowAdTriggers(false)} />}
+          {(() => { const k = parseKinds(platform); const only = k.size === 1 ? [...k][0] : null; const matches = only ? channels.filter(c => c.kind === only) : []; return only && matches.length > 0 ? (
+            <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 shrink-0 max-w-[180px]" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${only === "instagram" ? "account" : only === "messenger" ? "page" : only === "webchat" ? "site" : "number"} this flow runs on`}>
+              <option value="">All {only === "instagram" ? "accounts" : only === "messenger" ? "pages" : only === "webchat" ? "sites" : "numbers"}</option>
+              {matches.map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
+            </select>
+          ) : null; })()}
+          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
+            <option value="">🧠 Default knowledge</option>
+            {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
+            {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
+          </select>
         </div>
-        <button onClick={() => setActive(a => !a)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400"}`}>{active ? "● Active" : "○ Inactive"}</button>
-        <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
-        <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 transition-colors">
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          {Date.now() - savedAt < 2500 ? "Saved ✓" : "Save"}
-        </button>
+
+        {/* Right — actions; pinned, never shrink or wrap */}
+        <div className="flex items-center gap-2 shrink-0">
+          {issues.length > 0 && (
+            <div className="relative">
+              <button onClick={() => setShowIssues(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold whitespace-nowrap">
+                <AlertTriangle className="w-3.5 h-3.5" /> {issues.length} issue{issues.length > 1 ? "s" : ""}
+              </button>
+              {showIssues && (
+                <div className="absolute right-0 top-9 w-80 bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-ink-400 uppercase">Fix before going live</p>
+                    <button onClick={() => setShowIssues(false)} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {issues.map((s, i) => <p key={i} className="text-xs text-ink-600">• {s.msg}</p>)}
+                </div>
+              )}
+            </div>
+          )}
+          <div className="relative">
+            <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-bold whitespace-nowrap"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
+            {showAdTriggers && <AdTriggersPanel flowId={flowId} onClose={() => setShowAdTriggers(false)} />}
+          </div>
+          <button onClick={() => setActive(a => !a)} className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400"}`}>{active ? "● Active" : "○ Inactive"}</button>
+          <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
+          <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {Date.now() - savedAt < 2500 ? "Saved ✓" : "Save"}
+          </button>
+        </div>
       </header>
 
       <div className="flex-1 flex min-h-0">
