@@ -26,6 +26,24 @@ export function verifyMetaSignature(raw: string, sigHeader: string | null, secre
   return crypto.timingSafeEqual(a, b);
 }
 
+// Parse + verify Meta's `signed_request` (data-deletion & deauthorize callbacks).
+// Format: "<base64url HMAC-SHA256 sig>.<base64url JSON payload>", where the sig is
+// HMAC of the *encoded payload string* keyed by the app secret. FAIL-CLOSED: any
+// missing secret / malformed input / bad signature returns null. Returns the
+// decoded payload object on success (contains user_id, issued_at, …).
+export function verifySignedRequest(signed: string, secret: string | undefined): Record<string, unknown> | null {
+  if (!secret || !signed || !signed.includes(".")) return null;
+  const [encSig, encPayload] = signed.split(".", 2);
+  if (!encSig || !encPayload) return null;
+  let provided: Buffer;
+  try { provided = Buffer.from(encSig, "base64url"); } catch { return null; }
+  const expected = crypto.createHmac("sha256", secret).update(encPayload).digest();
+  if (provided.length !== expected.length || !crypto.timingSafeEqual(provided, expected)) return null;
+  try {
+    return JSON.parse(Buffer.from(encPayload, "base64url").toString("utf8")) as Record<string, unknown>;
+  } catch { return null; }
+}
+
 function bearer(req: Request): string {
   const h = req.headers.get("authorization") ?? "";
   return h.startsWith("Bearer ") ? h.slice(7) : "";

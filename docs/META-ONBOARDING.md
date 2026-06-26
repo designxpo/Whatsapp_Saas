@@ -157,13 +157,21 @@ The moment `NEXT_PUBLIC_META_APP_ID` + the config IDs are present, the
 
 ---
 
-## Step 7 — (Optional but recommended) Data deletion callback
+## Step 7 — Data deletion callback (built ✓)
 
-Meta prefers a real **Data Deletion Request Callback** over an instructions URL. If
-required for approval, add a small endpoint (e.g. `/api/webhooks/meta-deletion`) that
-verifies the signed request with `META_APP_SECRET` and deletes/queues deletion of that
-user's data, returning the confirmation JSON Meta expects. *(Not built yet — ask and
-I'll add it.)* Until then, the Privacy Policy URL covers the instructions requirement.
+Meta prefers a real **Data Deletion Request Callback** over an instructions URL — it's
+already implemented:
+
+- **Callback URL:** `https://whatsapp-saas-navy.vercel.app/api/webhooks/meta-deletion`
+  → paste this in **App settings → Basic → User Data Deletion → Data Deletion Request URL**.
+- It verifies Meta's `signed_request` against `META_APP_SECRET`, records the request
+  (table `meta_deletion_requests`, migration **0061**; falls back to the audit log if
+  not yet applied), and returns the required `{ url, confirmation_code }` JSON.
+- **Status page:** `https://whatsapp-saas-navy.vercel.app/legal/data-deletion?code=…`
+  (also reachable without a code as user-facing deletion instructions).
+
+To enable: apply migration `0061_meta_deletion.sql` in Supabase (optional — the
+callback works without it) and ensure `META_APP_SECRET` is set (Step 6).
 
 ---
 
