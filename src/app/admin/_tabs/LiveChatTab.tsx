@@ -3,12 +3,29 @@
 // Live Chat: 3-pane chat workspace (conversation list / thread / contact info).
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; mediaUrl?: string | null; mediaType?: string | null };
+
+// WhatsApp-style day-divider label: Today / Yesterday / weekday (last week) /
+// "12 June 2026" for anything older.
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(new Date()) - startOf(d)) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return d.toLocaleDateString(undefined, { weekday: "long" });
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+}
+// True when message `i` opens a new calendar day vs. the previous message.
+function startsNewDay(messages: { createdAt: string }[], i: number): boolean {
+  if (i === 0) return true;
+  return new Date(messages[i - 1].createdAt).toDateString() !== new Date(messages[i].createdAt).toDateString();
+}
 
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
@@ -399,10 +416,14 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-canvas/60">
-          {messages.map(m => {
+          {messages.map((m, i) => {
+            // WhatsApp-style centered day divider whenever the calendar day changes.
+            const dateDivider = startsNewDay(messages, i)
+              ? <div className="flex justify-center my-2"><span className="text-[11px] font-semibold text-ink-500 bg-white border border-line rounded-full px-3 py-1 shadow-sm">{dayLabel(m.createdAt)}</span></div>
+              : null;
             // Form lifecycle markers render as status cards, not plain bubbles.
             if (m.body === "[form-abandoned]") {
-              return <div key={m.id} className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div>;
+              return <Fragment key={m.id}>{dateDivider}<div className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div></Fragment>;
             }
             const isComment = m.body.startsWith("[comment] ");
             const commentIsFb = isComment && conv?.platform === "messenger";
@@ -419,7 +440,9 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             // "[image message]" placeholder kept for messages with no caption).
             const hasCaption = isMedia && !!body.trim() && !/^\[.*\]$/.test(body.trim());
             return (
-              <div key={m.id} className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
+              <Fragment key={m.id}>
+              {dateDivider}
+              <div className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
                 <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
                   {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
@@ -458,6 +481,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                   </p>
                 </div>
               </div>
+              </Fragment>
             );
           })}
           {messages.length === 0 && <p className="text-center text-ink-400 text-sm py-10">No messages yet.</p>}
