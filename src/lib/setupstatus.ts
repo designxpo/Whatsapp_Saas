@@ -10,13 +10,16 @@ import { validateKey } from "./ai/chat";
 import { listDocuments } from "./store";
 import { resolveLsq } from "./leadsquared";
 import { integrationsHealth, listIntegrations } from "./integrations";
+import { getEntitlements } from "./entitlements";
+import { getPlan } from "./plans";
+import type { FeatureKey } from "./entitlement-registry";
 import { errorMessage } from "./errors";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
 
 export type StepStatus = "ok" | "warn" | "todo" | "error";
 export interface SetupStep {
-  key: "whatsapp" | "instagram" | "ai" | "kb" | "crm";
+  key: "whatsapp" | "instagram" | "messenger" | "webchat" | "ai" | "kb" | "crm";
   title: string;
   status: StepStatus;
   detail: string;        // plain-English current state
@@ -24,6 +27,15 @@ export interface SetupStep {
   fixTab?: string;       // portal tab where the tenant fixes it
   optional?: boolean;
 }
+
+// The checklist + a summary of what the tenant's PLAN includes, so the wizard
+// only asks for the channels/tools their subscription actually grants.
+export interface SetupPlanSummary {
+  key: string;
+  name: string;
+  includedChannels: { key: string; label: string }[];
+}
+export interface SetupChecklist { steps: SetupStep[]; plan: SetupPlanSummary }
 
 // Turn a Meta Graph error into a non-technical, actionable sentence.
 function metaErrorToEnglish(err: { code?: number; message?: string } | null, kind: "whatsapp" | "instagram"): string {
@@ -75,6 +87,22 @@ async function verifyInstagram(ch: Channel): Promise<{ ok: boolean; detail: stri
   }
 }
 
+async function verifyMessenger(ch: Channel): Promise<{ ok: boolean; detail: string }> {
+  if (!ch.token || !ch.pageId) return { ok: false, detail: "Missing the Page access token or Page ID — re-enter them in the Messenger tab." };
+  try {
+    const res = await fetch(`${GRAPH}/${ch.pageId}?fields=name`, {
+      headers: { Authorization: `Bearer ${ch.token}` }, signal: AbortSignal.timeout(8000),
+    });
+    const data = await res.json().catch(() => ({} as Record<string, unknown>));
+    if (res.ok && data?.id) return { ok: true, detail: `Connected — ${(data.name as string) || ch.name}.` };
+    const err = (data?.error as { code?: number; message?: string }) ?? null;
+    if (err?.code === 190) return { ok: false, detail: "The Page access token is invalid or expired — generate a fresh one and save again." };
+    return { ok: false, detail: err?.message ? `Meta couldn't verify this: ${err.message}` : "Meta couldn't verify this Facebook Page connection." };
+  } catch {
+    return { ok: false, detail: "Couldn't reach Meta to verify right now — try again in a moment." };
+  }
+}
+
 // Live check of the tenant's AI key (one cheap generation). Used by the explicit
 // "Test" button — the status sweep only reports configured/not to stay fast.
 export async function verifyAiLive(tenantId: string): Promise<{ ok: boolean; detail: string }> {
@@ -88,79 +116,97 @@ export async function verifyAiLive(tenantId: string): Promise<{ ok: boolean; det
   }
 }
 
-// The full per-tenant setup checklist, with WhatsApp/Instagram verified live.
-export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
-  const channels = await listChannels(tenantId).catch(() => [] as Channel[]);
+// The full per-tenant setup checklist — PLAN-AWARE. We only ask the tenant to
+// set up the channels & tools their subscription actually includes (an
+// Instagram-only Creator is never asked for WhatsApp). The plan's first included
+// channel is the required one to go live; the rest are optional "add when ready".
+// WhatsApp / Instagram / Messenger are verified live against Meta.
+export async function getSetupChecklist(tenantId: string): Promise<SetupChecklist> {
+  const [channels, ent] = await Promise.all([
+    listChannels(tenantId).catch(() => [] as Channel[]),
+    getEntitlements(tenantId).catch(() => null),
+  ]);
+  // Use the resolved plan feature-map directly (independent of the enforcement
+  // kill-switch): the wizard is guidance about the plan, not an access gate.
+  const has = (k: FeatureKey) => !ent || ent.features[k] === true;
+
   const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp");
   const ig = channels.filter(c => c.kind === "instagram");
+  const fb = channels.filter(c => c.kind === "messenger");
+  const web = channels.filter(c => c.kind === "webchat");
+
+  type ChannelDef = { feat: FeatureKey; key: SetupStep["key"]; short: string; build: () => Promise<SetupStep> | SetupStep };
+  const channelDefs: ChannelDef[] = [
+    { feat: "ch_whatsapp", key: "whatsapp", short: "WhatsApp", build: async () => {
+      if (!wa.length) return { key: "whatsapp", title: "WhatsApp number", status: "todo", detail: "No WhatsApp number connected yet.", hint: "Tap “Connect with Facebook” to set it up in one click — or paste the IDs from Meta.", fixTab: "settings" };
+      const v = await verifyWhatsApp(wa.find(c => c.isDefault) ?? wa[0]);
+      return { key: "whatsapp", title: "WhatsApp number", status: v.ok ? "ok" : "error", detail: v.detail, hint: v.ok ? undefined : "Reconnect in Settings → Channels.", fixTab: "settings" };
+    } },
+    { feat: "ch_instagram", key: "instagram", short: "Instagram", build: async () => {
+      if (!ig.length) return { key: "instagram", title: "Instagram", status: "todo", detail: "Not connected yet.", hint: "Connect your Instagram professional account to handle DMs and comment-to-DM from one inbox.", fixTab: "instagram" };
+      const v = await verifyInstagram(ig.find(c => c.isDefault) ?? ig[0]);
+      return { key: "instagram", title: "Instagram", status: v.ok ? "ok" : "error", detail: v.detail, hint: v.ok ? undefined : "Reconnect in the Instagram tab.", fixTab: "instagram" };
+    } },
+    { feat: "ch_messenger", key: "messenger", short: "Messenger", build: async () => {
+      if (!fb.length) return { key: "messenger", title: "Facebook Messenger", status: "todo", detail: "Not connected yet.", hint: "Connect your Facebook Page to auto-reply to Messenger DMs and comments.", fixTab: "facebook" };
+      const v = await verifyMessenger(fb.find(c => c.isDefault) ?? fb[0]);
+      return { key: "messenger", title: "Facebook Messenger", status: v.ok ? "ok" : "error", detail: v.detail, hint: v.ok ? undefined : "Reconnect in the Messenger tab.", fixTab: "facebook" };
+    } },
+    { feat: "ch_webchat", key: "webchat", short: "Web chat", build: () => {
+      if (!web.length) return { key: "webchat", title: "Website web chat", status: "todo", detail: "No web-chat widget yet.", hint: "Create a widget and paste the one-line snippet on your site — no Meta setup needed.", fixTab: "webchat" };
+      return { key: "webchat", title: "Website web chat", status: "ok", detail: `Widget ready${web.length > 1 ? ` (${web.length})` : ""} — paste the snippet on your site to go live.`, fixTab: "webchat" };
+    } },
+  ];
+
+  const includedDefs = channelDefs.filter(d => has(d.feat));
+  const primaryKey = includedDefs[0]?.key;
+
   const steps: SetupStep[] = [];
-
-  // 1) WhatsApp — required.
-  if (!wa.length) {
-    steps.push({ key: "whatsapp", title: "WhatsApp number", status: "todo",
-      detail: "No WhatsApp number connected yet.",
-      hint: "Connect your WhatsApp Business number so you can send and receive messages.", fixTab: "settings" });
-  } else {
-    const def = wa.find(c => c.isDefault) ?? wa[0];
-    const v = await verifyWhatsApp(def);
-    steps.push({ key: "whatsapp", title: "WhatsApp number", status: v.ok ? "ok" : "error", detail: v.detail,
-      hint: v.ok ? undefined : "Re-enter the token / Phone Number ID in Settings → Channels.", fixTab: "settings" });
+  // Channel steps — only the ones the plan grants; primary is required, rest optional.
+  for (const d of includedDefs) {
+    const step = await d.build();
+    step.optional = d.key !== primaryKey;
+    steps.push(step);
   }
 
-  // 2) AI key — required for auto-replies (configured/not; "Test" does a live call).
-  const ai = await getTenantAiStatus(tenantId).catch(() => ({ configured: false, provider: "gemini", model: "", keyHint: null }));
-  if (!ai.configured) {
-    steps.push({ key: "ai", title: "AI assistant key", status: "todo",
-      detail: "No AI key added — automatic replies are off.",
-      hint: "Add your AI provider key (Gemini, OpenAI or Anthropic) so the assistant can answer customers.", fixTab: "settings" });
-  } else {
-    steps.push({ key: "ai", title: "AI assistant key", status: "ok",
-      detail: `Configured — ${ai.provider} · ${ai.model || "default model"}.`, fixTab: "settings" });
+  // AI key + knowledge base — only when the plan includes AI auto-replies.
+  if (has("ai_autoreply")) {
+    const ai = await getTenantAiStatus(tenantId).catch(() => ({ configured: false, provider: "gemini", model: "", keyHint: null }));
+    steps.push(ai.configured
+      ? { key: "ai", title: "AI assistant key", status: "ok", detail: `Configured — ${ai.provider} · ${ai.model || "default model"}.`, fixTab: "aihub" }
+      : { key: "ai", title: "AI assistant key", status: "todo", detail: "No AI key added — automatic replies are off.", hint: "Add your AI provider key (Gemini, OpenAI or Anthropic) so the assistant can answer customers.", fixTab: "aihub" });
+
+    const docs = await listDocuments(tenantId).catch(() => []);
+    const ready = docs.filter(d => d.status === "ready").length;
+    steps.push(!docs.length
+      ? { key: "kb", title: "Knowledge base", status: "warn", optional: true, detail: "No documents added — the AI has nothing to answer from.", hint: "Upload your brochure, FAQ, or website so replies are grounded in your business.", fixTab: "assistant" }
+      : { key: "kb", title: "Knowledge base", status: ready ? "ok" : "warn", optional: true, detail: `${ready}/${docs.length} document${docs.length === 1 ? "" : "s"} ready.`, hint: ready ? undefined : "Some documents are still processing or failed — open the Knowledge Base tab.", fixTab: "assistant" });
   }
 
-  // 3) Knowledge base — recommended (the AI answers from it).
-  const docs = await listDocuments(tenantId).catch(() => []);
-  const ready = docs.filter(d => d.status === "ready").length;
-  if (!docs.length) {
-    steps.push({ key: "kb", title: "Knowledge base", status: "warn",
-      detail: "No documents added — the AI has nothing to answer from.",
-      hint: "Upload your brochure, FAQ, or website so replies are grounded in your business.", fixTab: "assistant" });
-  } else {
-    steps.push({ key: "kb", title: "Knowledge base", status: ready ? "ok" : "warn",
-      detail: `${ready}/${docs.length} document${docs.length === 1 ? "" : "s"} ready.`,
-      hint: ready ? undefined : "Some documents are still processing or failed — open the Knowledge Base tab.", fixTab: "assistant" });
+  // CRM & tools — optional, only when the plan includes CRM sync. Satisfied by
+  // ANY connected integration (HubSpot, Pipedrive, LeadSquared, Slack, Sheets…).
+  if (has("crm")) {
+    const integrations = await listIntegrations(tenantId).catch(() => []);
+    const active = integrations.filter(i => i.active);
+    const errored = active.filter(i => i.status === "error");
+    steps.push(!active.length
+      ? { key: "crm", title: "Connect your CRM & tools", status: "todo", optional: true, detail: "Not connected (optional).", hint: "Connect your CRM or tools — HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets, webhooks and more — so chats and leads flow into the systems you already use.", fixTab: "integrations" }
+      : { key: "crm", title: "Connect your CRM & tools", status: errored.length ? "warn" : "ok", optional: true, detail: errored.length ? `${active.length} connected · ${errored.length} need attention` : `${active.length} connected.`, hint: errored.length ? "An integration reported an error — open Integrations to check it." : undefined, fixTab: "integrations" });
   }
 
-  // 4) Instagram — optional.
-  if (!ig.length) {
-    steps.push({ key: "instagram", title: "Instagram", status: "todo", optional: true,
-      detail: "Not connected (optional).",
-      hint: "Connect Instagram to handle DMs and comment-to-DM from the same inbox.", fixTab: "instagram" });
-  } else {
-    const def = ig.find(c => c.isDefault) ?? ig[0];
-    const v = await verifyInstagram(def);
-    steps.push({ key: "instagram", title: "Instagram", status: v.ok ? "ok" : "error", detail: v.detail, optional: true,
-      hint: v.ok ? undefined : "Re-enter the Instagram token / account ID in Settings.", fixTab: "instagram" });
-  }
+  const planRow = ent ? await getPlan(ent.plan).catch(() => null) : null;
+  const plan: SetupPlanSummary = {
+    key: ent?.plan ?? "trial",
+    name: planRow?.name ?? (ent?.plan ? ent.plan.charAt(0).toUpperCase() + ent.plan.slice(1) : "Trial"),
+    includedChannels: includedDefs.map(d => ({ key: d.key, label: d.short })),
+  };
 
-  // 5) CRM & tools — optional. We don't push any one CRM: satisfied by ANY
-  // connected integration (HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets,
-  // webhooks…). LeadSquared is now a connection like the rest, so it's just
-  // counted here. Always points to the Integrations hub where the tenant picks.
-  const integrations = await listIntegrations(tenantId).catch(() => []);
-  const active = integrations.filter(i => i.active);
-  const errored = active.filter(i => i.status === "error");
-  if (!active.length) {
-    steps.push({ key: "crm", title: "Connect your CRM & tools", status: "todo", optional: true,
-      detail: "Not connected (optional).",
-      hint: "Connect your CRM or tools — HubSpot, Pipedrive, LeadSquared, Slack, Google Sheets, webhooks and more — so chats and leads flow into the systems you already use.", fixTab: "integrations" });
-  } else {
-    steps.push({ key: "crm", title: "Connect your CRM & tools", status: errored.length ? "warn" : "ok",
-      detail: errored.length ? `${active.length} connected · ${errored.length} need attention` : `${active.length} connected.`, optional: true,
-      hint: errored.length ? "An integration reported an error — open Integrations to check it." : undefined, fixTab: "integrations" });
-  }
+  return { steps, plan };
+}
 
-  return steps;
+// Back-compat: the live "Test" verifier (and owner views) consume just the steps.
+export async function getSetupStatus(tenantId: string): Promise<SetupStep[]> {
+  return (await getSetupChecklist(tenantId)).steps;
 }
 
 // Lightweight per-tenant health rollup for the platform-owner view — DB reads

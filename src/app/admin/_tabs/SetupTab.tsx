@@ -6,10 +6,12 @@ import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshC
 import { type Tab } from "../_shared";
 
 type SetupCheck = { key: string; title: string; status: "ok" | "warn" | "todo" | "error"; detail: string; hint?: string; fixTab?: string; optional?: boolean };
+type PlanSummary = { key: string; name: string; includedChannels: { key: string; label: string }[] };
 
 // Self-serve onboarding: each integration verified live, in plain English.
 function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [steps, setSteps] = useState<SetupCheck[] | null>(null);
+  const [plan, setPlan] = useState<PlanSummary | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
@@ -18,7 +20,7 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
   const load = useCallback(() => {
     setBusy(true); setLoadErr(null);
     fetch("/api/admin/setup/status").then(r => r.json())
-      .then(d => { if (d.steps) setSteps(d.steps); else setLoadErr(d.error || "Could not load setup status."); })
+      .then(d => { if (d.steps) { setSteps(d.steps); setPlan(d.plan ?? null); } else setLoadErr(d.error || "Could not load setup status."); })
       .catch(() => setLoadErr("Connection error."))
       .finally(() => setBusy(false));
   }, []);
@@ -54,6 +56,23 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check
         </button>
       </div>
+
+      {plan && (
+        <div className="rounded-card border border-brand-100 bg-brand-50 px-4 py-3">
+          <p className="text-sm text-ink-900">
+            On the <span className="font-extrabold capitalize">{plan.name}</span> plan — we&apos;ll only ask you to set up what it includes.
+          </p>
+          {plan.includedChannels.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {plan.includedChannels.map((c, i) => (
+                <span key={c.key} className="rounded-full bg-white border border-brand-200 text-brand-700 text-[11px] font-bold px-2.5 py-0.5">
+                  {c.label}{i === 0 ? " · required" : ""}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {steps && (
         <div className="rounded-card border border-line bg-white px-4 py-3 text-sm">
