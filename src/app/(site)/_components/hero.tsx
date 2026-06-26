@@ -52,7 +52,7 @@ function RatingBadge({ label, score }: { label: string; score: string }) {
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden bg-white pb-4">
+    <section className="relative overflow-hidden pb-4">
       {/* Centred stage — rings, chips and content cluster here so they stay
           balanced while the white background fills the full width (no side gap). */}
       <div className="relative mx-auto max-w-6xl px-5">
