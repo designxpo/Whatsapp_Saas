@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { countContacts, listDocuments, listConversations } from "@/lib/store";
-import { lsqConfigured } from "@/lib/leadsquared";
+import { verifyLsq } from "@/lib/leadsquared";
 import { routerEnabled } from "@/lib/router";
 import { faqCount } from "@/lib/router/faq";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
@@ -21,7 +21,7 @@ export async function GET() {
   ]);
 
   const readyDocs = kbDocs.filter(d => d.status === "ready");
-  const lsqOk = await lsqConfigured(tid);
+  const lsq = await verifyLsq(tid).catch(() => ({ ok: false, detail: "LeadSquared health check failed." }));
   const steps = {
     database: {
       ok: dbOk.ok,
@@ -53,9 +53,9 @@ export async function GET() {
         : "Set META_WA_WEBHOOK_SECRET + VERIFY_TOKEN, then register the URL in Meta",
     },
     crm: {
-      ok: lsqOk,
+      ok: lsq.ok,
       label: "LeadSquared CRM (optional)",
-      detail: lsqOk ? "Timeline sync active" : "Optional — add your LeadSquared keys in Settings to sync chats to the CRM",
+      detail: lsq.detail,
     },
   };
 

@@ -423,30 +423,32 @@ export async function pushWaActivity(p: {
   }
 }
 
-// Instagram version of pushWaActivity. IG users have no phone, so the lead is
-// resolved by a known phone first (shared in chat / captured by a flow), then by
-// Instagram handle (needs the tenant's lsq_ig_handle_field). Never throws.
-export async function pushIgActivity(p: {
-  igUserId: string;
-  handle?: string | null;
+// Generic CRM timeline push for the no-native-phone channels (Instagram /
+// Messenger / Web chat). The lead is resolved by a known phone first (shared in
+// chat / captured by a flow), then by handle (Instagram, needs the tenant's
+// lsq_ig_handle_field). The note is labelled with the channel. Never throws, and
+// records the failure on the integration so it's visible in Settings.
+export async function pushChatActivity(p: {
   phone?: string | null;
+  handle?: string | null;
   direction: "inbound" | "outbound";
   body: string;
   via?: "lead" | "bot" | "agent";
+  channel: string;                 // "Instagram" | "Messenger" | "Web chat"
   tenantId?: string;
 }): Promise<void> {
-  const c = await resolveLsq(p.tenantId ?? DEFAULT_TENANT_ID);
+  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  const c = await resolveLsq(tid);
   if (!c) return;
   try {
     let leadId: string | null = null;
     if (p.phone) leadId = await findLeadId(p.phone, c);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle, c);
-    if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: "Instagram" }, p.tenantId ?? DEFAULT_TENANT_ID);
+    if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.channel }, tid);
     if (!leadId) return;
 
-    const arrow = p.direction === "inbound"
-      ? "⬅️ Lead (Instagram)"
-      : "➡️ " + (p.via === "bot" ? "AI Assistant" : "Agent") + " (Instagram)";
+    const who = p.via === "bot" ? "AI Assistant" : p.via === "agent" ? "Agent" : "Sales";
+    const arrow = p.direction === "inbound" ? `⬅️ Lead (${p.channel})` : `➡️ ${who} (${p.channel})`;
     const note = `${arrow}: ${p.body}`.slice(0, 1800);
 
     const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
@@ -456,11 +458,24 @@ export async function pushIgActivity(p: {
     });
     if (!res.ok) {
       const detail = `HTTP ${res.status} (activity event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 200)}`;
-      console.error(`[leadsquared] IG activity push ${detail} (lead ${leadId})`);
-      await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, detail);
+      console.error(`[leadsquared] ${p.channel} activity push ${detail} (lead ${leadId})`);
+      await noteLsqFailure(tid, detail);
     }
   } catch (err) {
-    console.error("[leadsquared] IG activity push failed:", errorMessage(err));
-    await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, errorMessage(err));
+    console.error(`[leadsquared] ${p.channel} activity push failed:`, errorMessage(err));
+    await noteLsqFailure(tid, errorMessage(err));
   }
+}
+
+// Instagram convenience wrapper — kept for existing callers.
+export async function pushIgActivity(p: {
+  igUserId: string;
+  handle?: string | null;
+  phone?: string | null;
+  direction: "inbound" | "outbound";
+  body: string;
+  via?: "lead" | "bot" | "agent";
+  tenantId?: string;
+}): Promise<void> {
+  return pushChatActivity({ phone: p.phone, handle: p.handle, direction: p.direction, body: p.body, via: p.via, channel: "Instagram", tenantId: p.tenantId });
 }

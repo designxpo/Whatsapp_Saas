@@ -1,8 +1,9 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, type Conversation } from "@/lib/store";
+import { pushChatActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -119,6 +120,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24h window
+  if (text.trim()) after(() => syncFbToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
 
   // A media-only message is stored + shown in Live Chat; don't run the bot on
   // empty text (an agent replies manually).
@@ -129,6 +131,17 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
   if (flowHandled) return;
   await aiRespond(channel, conv, text);
+}
+
+// Mirror a Messenger message onto the lead's LeadSquared timeline. FB users have
+// no phone, so the lead is matched by a phone shared in chat / captured by a flow
+// (Messenger has no handle field). Never throws.
+async function syncFbToLsq(conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", tenantId: string) {
+  try {
+    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
+    if (!phone) return;   // no phone to match a CRM lead — skip
+    await pushChatActivity({ phone, direction, body, via, channel: "Messenger", tenantId });
+  } catch { /* CRM sync must never break Messenger handling */ }
 }
 
 // Grounded AI responder. A direct DM (no commentId) replies in the DM and is
@@ -159,6 +172,8 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid });
   await touchOutbound(conv.id, r.reply);
+  const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
+  if (!commentId) after(() => syncFbToLsq(conv, aiReply, "outbound", "bot", tid));   // DM AI replies → LeadSquared
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 
