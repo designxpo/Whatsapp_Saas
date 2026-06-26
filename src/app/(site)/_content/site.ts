@@ -370,11 +370,12 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
 // Flat list for the marquee strip (derived — keep one source of truth).
 export const INTEGRATIONS: IntegrationBrand[] = INTEGRATION_CATEGORIES.flatMap(c => c.items);
 
-// "Why teams choose Talko AI" — pastel benefit cards.
-export type Benefit = { title: string; body: string; tone: "mint" | "sky" | "peach" };
+// "Why teams choose Talko AI" — pastel benefit cards. Tones span three colour
+// families (green / violet / amber) so the section isn't a wall of blue.
+export type Benefit = { title: string; body: string; tone: "mint" | "violet" | "peach" };
 export const WHY: Benefit[] = [
   { tone: "mint", title: "Replies in your brand voice", body: "Grounded AI answers from your own knowledge base — accurate, on-brand, and instant, not generic canned text." },
-  { tone: "sky", title: "Compliant, data-driven automation", body: "Official Meta APIs, opt-in respected, guardrails in code. Scale conversations without risking your number." },
+  { tone: "violet", title: "Compliant, data-driven automation", body: "Official Meta APIs, opt-in respected, guardrails in code. Scale conversations without risking your number." },
   { tone: "peach", title: "Save time and money", body: "Bring your own AI key for predictable costs, replace a stack of tools, and let automation handle the busywork." },
 ];
 

@@ -9,7 +9,7 @@ import { Container, SectionTitle, Card, Button, TONES } from "./ui";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
-  FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, INTEGRATION_CATEGORIES, WHY, CTA_BULLETS, type Feature,
+  FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, INTEGRATION_CATEGORIES, CTA_BULLETS, type Feature,
   PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE,
 } from "../_content/site";
 
@@ -68,58 +68,7 @@ export function ThreeSteps() {
   );
 }
 
-// "Why teams choose Talko AI" — split: visual + pastel benefit cards.
-export function WhyChoose() {
-  return (
-    <Container className="py-16">
-      <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
-        <SectionTitle title="Why teams choose Talko AI" subtitle="Talko AI learns your business and works the way your customers already chat." />
-        <div className="mt-12 grid items-center gap-10 lg:grid-cols-2">
-          <WhyVisual />
-          <div>
-            <h3 className="text-xl font-extrabold text-slate-900">Why <span className="text-[#0783fd]">Talko AI</span>?</h3>
-            <p className="mt-2 text-sm text-slate-500">Reply faster, capture every lead, and run conversations at scale without growing your team.</p>
-            <div className="mt-6 space-y-4">
-              {WHY.map(b => {
-                const tone = TONES[b.tone];
-                return (
-                  <div key={b.title} className={`rounded-2xl ${tone.bg} p-5`}>
-                    <div className="flex items-start gap-3">
-                      <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${tone.icon}`}><Check className="h-4 w-4" /></span>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">{b.title}</h4>
-                        <p className="mt-1 text-sm leading-relaxed text-slate-600">{b.body}</p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </div>
-    </Container>
-  );
-}
-
-// A faux "chat over lifestyle" visual for the why-choose split.
-function WhyVisual() {
-  return (
-    <div className="relative">
-      <div className="aspect-[4/3] w-full rounded-2xl bg-gradient-to-br from-[#E7F0FF] via-white to-[#D9ECF7]" />
-      <div className="absolute bottom-5 left-5 w-[72%] max-w-xs rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-        <div className="flex items-center gap-2 border-b border-slate-100 pb-2">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#0783fd] text-white"><Bot className="h-3.5 w-3.5" /></span>
-          <span className="text-xs font-bold text-slate-900">Chat with Talko AI</span>
-        </div>
-        <div className="space-y-2 pt-3">
-          <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-slate-100 px-3 py-1.5 text-xs text-slate-700">Which channels do you support?</div>
-          <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#0783fd] px-3 py-1.5 text-xs text-white">WhatsApp, Instagram, Messenger & a website web-chat widget — all in one inbox. Growth is ₹4,999/mo. Want a free trial?</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// "Why teams choose Talko AI" lives in ./why-choose (client — scroll parallax).
 
 // Tiny decorative sparkline for a KPI card.
 function Spark({ pts, light = false }: { pts: number[]; light?: boolean }) {

@@ -62,10 +62,13 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
   );
 }
 
-// Pastel tones for feature / step / benefit cards.
+// Pastel tones for feature / step / benefit cards. A small spread of colour
+// families (not just brand blue) so sections read varied and professional.
 export const TONES: Record<string, { bg: string; icon: string; ring: string }> = {
   peach: { bg: "bg-[#FDEBD2]", icon: "bg-[#F6B26B] text-white", ring: "ring-[#F6B26B]/30" },
   lavender: { bg: "bg-[#E7F0FF]", icon: "bg-[#0783fd] text-white", ring: "ring-[#0783fd]/30" },
   sky: { bg: "bg-[#D9ECF7]", icon: "bg-[#4FA6D9] text-white", ring: "ring-[#4FA6D9]/30" },
   mint: { bg: "bg-[#DDEFE4]", icon: "bg-[#4CAF82] text-white", ring: "ring-[#4CAF82]/30" },
+  violet: { bg: "bg-[#EDE9FF]", icon: "bg-[#7c5cff] text-white", ring: "ring-[#7c5cff]/30" },
+  rose: { bg: "bg-[#FFE6EF]", icon: "bg-[#ef4d86] text-white", ring: "ring-[#ef4d86]/30" },
 };

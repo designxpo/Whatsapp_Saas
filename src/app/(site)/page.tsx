@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Container, SectionTitle } from "./_components/ui";
-import { FeatureGrid, ThreeSteps, WhyChoose, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable } from "./_components/sections";
+import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable } from "./_components/sections";
+import { WhyChoose } from "./_components/why-choose";
 import { PricingTiers } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
