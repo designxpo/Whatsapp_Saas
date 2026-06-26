@@ -3,6 +3,7 @@
 // adapted to Talko's inbox. Server-safe (no client hooks).
 import { ArrowRight, Star, Check } from "lucide-react";
 import { Button, GradientText } from "./ui";
+import { Parallax } from "./motion";
 import { HERO, SOCIAL_PROOF } from "../_content/site";
 
 // Brand chips that float around the orbit. slug → cdn.simpleicons.org (brand
@@ -69,10 +70,15 @@ export function Hero() {
           </div>
         </div>
         {/* Soft multi-colour ambient glow behind the headline — brand blue with
-            violet and mint accents so the hero light isn't mono-blue. */}
+            violet and mint accents so the hero light isn't mono-blue. The two
+            accent glows drift on scroll (opposite directions) for depth. */}
         <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.14),transparent_70%)] blur-2xl" />
-        <div aria-hidden className="pointer-events-none absolute left-[34%] top-20 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.12),transparent_70%)] blur-2xl" />
-        <div aria-hidden className="pointer-events-none absolute left-[66%] top-40 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(52,211,153,0.11),transparent_70%)] blur-2xl" />
+        <Parallax speed={80} className="pointer-events-none absolute inset-0">
+          <div className="absolute left-[34%] top-20 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.13),transparent_70%)] blur-2xl" />
+        </Parallax>
+        <Parallax speed={-64} className="pointer-events-none absolute inset-0">
+          <div className="absolute left-[66%] top-40 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(52,211,153,0.12),transparent_70%)] blur-2xl" />
+        </Parallax>
 
         {/* Floating brand chips */}
         {CHIPS.map((c, i) => (

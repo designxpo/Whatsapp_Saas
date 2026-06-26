@@ -3,38 +3,13 @@
 // "Why teams choose Talko AI" — a real product screen on a multi-colour gradient
 // stage, with subtle scroll parallax. Layers (backdrop, frame, pill, blobs) move
 // at different rates for depth. Parallax is fully disabled under reduced-motion.
-import { useEffect, useRef, useState } from "react";
+import { useRef } from "react";
 import { Bot, Check, Sparkles } from "lucide-react";
 import { Container, SectionTitle, TONES } from "./ui";
+import { useParallax } from "./motion";
 import { WHY } from "../_content/site";
 
-// Tracks how far `ref` is through the viewport, as p ∈ ~[-1, 1] (−1 below the
-// fold, 0 centred, +1 above). Layers multiply p by their own strength (px).
-// Returns 0 forever when the user prefers reduced motion (no transforms).
-function useParallax(ref: React.RefObject<HTMLElement | null>) {
-  const [p, setP] = useState(0);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof window === "undefined") return;
-    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    let raf = 0;
-    const update = () => {
-      const r = el.getBoundingClientRect();
-      const vh = window.innerHeight || 1;
-      const center = r.top + r.height / 2;
-      const next = (vh / 2 - center) / (vh / 2 + r.height / 2); // ~ -1..1
-      setP(Math.round(next * 100) / 100);
-    };
-    const onScroll = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("scroll", onScroll); window.removeEventListener("resize", onScroll); };
-  }, [ref]);
-  return p;
-}
-
-const shift = (p: number, strength: number) => ({ transform: `translate3d(0, ${(p * strength).toFixed(1)}px, 0)` });
+const shift = (p: number, strength: number) => ({ transform: `translate3d(0, ${(p * strength).toFixed(1)}px, 0)`, willChange: "transform" });
 
 export function WhyChoose() {
   const ref = useRef<HTMLDivElement>(null);
@@ -50,9 +25,9 @@ export function WhyChoose() {
       >
         {/* Drifting colour blobs — the parallax background layer. */}
         <div aria-hidden className="pointer-events-none absolute inset-0">
-          <div style={shift(p, 34)} className="absolute -left-16 top-4 h-64 w-64 rounded-full bg-[#7c5cff]/15 blur-3xl" />
-          <div style={shift(p, -28)} className="absolute -right-10 top-24 h-72 w-72 rounded-full bg-[#34d399]/15 blur-3xl" />
-          <div style={shift(p, 20)} className="absolute bottom-0 left-1/3 h-56 w-56 rounded-full bg-[#F6B26B]/15 blur-3xl" />
+          <div style={shift(p, 110)} className="absolute -left-16 top-4 h-64 w-64 rounded-full bg-[#7c5cff]/20 blur-3xl" />
+          <div style={shift(p, -90)} className="absolute -right-10 top-24 h-72 w-72 rounded-full bg-[#34d399]/20 blur-3xl" />
+          <div style={shift(p, 64)} className="absolute bottom-0 left-1/3 h-56 w-56 rounded-full bg-[#F6B26B]/20 blur-3xl" />
         </div>
 
         <div className="relative">
@@ -63,11 +38,11 @@ export function WhyChoose() {
           {/* LEFT — real product screen on an aurora gradient, with parallax. */}
           <div className="relative">
             {/* Aurora gradient backdrop (sits behind, drifts opposite the frame). */}
-            <div aria-hidden style={shift(p, -22)}
+            <div aria-hidden style={shift(p, -70)}
               className="absolute -inset-5 -z-10 rotate-2 rounded-[34px] opacity-70 blur-2xl
                          bg-[linear-gradient(135deg,#0783fd_0%,#6f8cff_38%,#a06bff_66%,#34d399_100%)]" />
 
-            <div style={shift(p, 14)} className="lg:-rotate-[1.2deg]">
+            <div style={shift(p, 40)} className="lg:-rotate-[1.2deg]">
               <div className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_30px_70px_-30px_rgba(124,92,255,0.35),0_10px_28px_-14px_rgba(0,0,0,0.12)]">
                 <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
                   <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
@@ -81,7 +56,7 @@ export function WhyChoose() {
             </div>
 
             {/* Floating accent pill — foreground layer, drifts most. */}
-            <div aria-hidden style={shift(p, -42)}
+            <div aria-hidden style={shift(p, -96)}
               className="absolute -bottom-4 left-4 flex items-center gap-2 rounded-full border border-slate-100 bg-white/95 px-3.5 py-2 shadow-[0_16px_40px_-18px_rgba(7,131,253,0.5)] backdrop-blur sm:left-8">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0783fd] to-[#7c5cff] text-white"><Bot className="h-4 w-4" /></span>
               <span className="text-[12px] font-bold text-slate-900">AI replied in 2s</span>

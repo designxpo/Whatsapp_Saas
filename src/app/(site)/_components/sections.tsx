@@ -6,6 +6,7 @@ import {
   Rocket, TrendingUp, MessagesSquare, Globe, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
+import { Parallax } from "./motion";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
@@ -50,7 +51,14 @@ const STEP_TONES = ["peach", "violet", "mint"] as const;
 export function ThreeSteps() {
   return (
     <Container className="py-16">
-      <div className="rounded-[28px] px-5 py-12 sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_100%_0%,#FFF4E8_0%,#FFFFFF_46%,#EFF4FF_100%)]">
+      <div className="relative overflow-hidden rounded-[28px] px-5 py-12 sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_100%_0%,#FFF4E8_0%,#FFFFFF_46%,#EFF4FF_100%)]">
+        <Parallax speed={90} className="pointer-events-none absolute inset-0">
+          <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full bg-[#F6B26B]/18 blur-3xl" />
+        </Parallax>
+        <Parallax speed={-72} className="pointer-events-none absolute inset-0">
+          <div className="absolute -bottom-12 left-8 h-60 w-60 rounded-full bg-[#7c5cff]/16 blur-3xl" />
+        </Parallax>
+        <div className="relative">
         <SectionTitle title="Get started in three easy steps" subtitle="Go live in an afternoon." />
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {STEPS.map((s, i) => {
@@ -64,6 +72,7 @@ export function ThreeSteps() {
               </div>
             );
           })}
+        </div>
         </div>
       </div>
     </Container>
@@ -126,12 +135,20 @@ export function StatsBand() {
 export function IntegrationsStrip() {
   return (
     <Container className="py-16">
-      <div className="rounded-[28px] px-5 py-10 text-center sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_0%_100%,#EAFBF1_0%,#FFFFFF_50%,#F4F0FF_100%)]">
+      <div className="relative overflow-hidden rounded-[28px] px-5 py-10 text-center sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_0%_100%,#EAFBF1_0%,#FFFFFF_50%,#F4F0FF_100%)]">
+        <Parallax speed={84} className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-12 -bottom-10 h-56 w-56 rounded-full bg-[#34d399]/16 blur-3xl" />
+        </Parallax>
+        <Parallax speed={-66} className="pointer-events-none absolute inset-0">
+          <div className="absolute -right-12 -top-10 h-56 w-56 rounded-full bg-[#7c5cff]/16 blur-3xl" />
+        </Parallax>
+        <div className="relative">
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Channels, AI, CRM, payments, e-commerce, scheduling and automation — all in one place.</p>
         <Marquee durationSec={30} gapClass="gap-x-12" className="mt-8 py-2">
           {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
         </Marquee>
+        </div>
       </div>
     </Container>
   );
@@ -274,6 +291,13 @@ export function CtaBand() {
       <div className={`relative overflow-hidden rounded-[28px] ${GRADIENTS.aurora} px-6 py-14 sm:px-12`}>
         {/* Soft colour-mesh overlay so the block reads rich, not a flat slab. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-70 [background:radial-gradient(60%_80%_at_15%_10%,rgba(52,211,153,0.28),transparent_60%),radial-gradient(50%_70%_at_95%_90%,rgba(255,180,107,0.22),transparent_60%)]" />
+        {/* Drifting light blooms — parallax depth on the CTA block. */}
+        <Parallax speed={70} className="pointer-events-none absolute inset-0">
+          <div className="absolute -left-10 top-0 h-60 w-60 rounded-full bg-white/15 blur-3xl" />
+        </Parallax>
+        <Parallax speed={-56} className="pointer-events-none absolute inset-0">
+          <div className="absolute -bottom-16 right-10 h-64 w-64 rounded-full bg-[#34d399]/25 blur-3xl" />
+        </Parallax>
         <div className="relative grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <h2 className="text-balance text-3xl font-extrabold leading-tight text-white sm:text-4xl">Ready to transform your customer conversations?</h2>
