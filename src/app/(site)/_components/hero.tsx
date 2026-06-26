@@ -1,9 +1,10 @@
 // Home hero — a full-bleed white "orbit" hero: concentric rings, floating
 // channel/integration chips, trust badges, dual CTAs and a live-activity card
 // adapted to Talko's inbox. Server-safe (no client hooks).
-import { ArrowRight, Star, Check } from "lucide-react";
+import { ArrowRight, Star } from "lucide-react";
 import { Button } from "./ui";
 import { HERO, SOCIAL_PROOF } from "../_content/site";
+import { TalkoDashboard } from "./hero-dashboard";
 
 // Brand chips that float around the orbit. slug → cdn.simpleicons.org (brand
 // colour). Positions are percentages within the centred stage; some hide on
@@ -11,32 +12,17 @@ import { HERO, SOCIAL_PROOF } from "../_content/site";
 // slug → cdn.simpleicons.org; src → an explicit logo URL (e.g. Iconify, for marks
 // Simple Icons dropped like OpenAI). Every chip gently floats (staggered).
 type Chip = { name: string; slug?: string; src?: string; pos: string; size?: string; hide?: boolean };
+// A few channel marks float around the headline to frame the hero (wide screens
+// only, kept clear of the dashboard below).
 const CHIPS: Chip[] = [
-  { name: "WhatsApp", slug: "whatsapp", pos: "left-[2%] top-[30%]", size: "h-14 w-14" },
-  { name: "Instagram", slug: "instagram", pos: "left-[11%] top-[58%]" },
-  { name: "Gemini", slug: "googlegemini", pos: "left-[22%] top-[16%]", hide: true },
-  { name: "ChatGPT", src: "https://api.iconify.design/logos:openai-icon.svg", pos: "left-[46%] top-[3%]", hide: true },
-  { name: "Razorpay", slug: "razorpay", pos: "left-[5%] top-[76%]", hide: true },
-  { name: "Shopify", slug: "shopify", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
-  { name: "Messenger", slug: "messenger", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
-  { name: "Meta", slug: "meta", pos: "right-[11%] top-[56%]" },
-  { name: "Claude", slug: "claude", pos: "right-[22%] top-[15%]", hide: true },
-  { name: "Stripe", slug: "stripe", pos: "right-[5%] top-[74%]", hide: true },
-  { name: "HubSpot", slug: "hubspot", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },
+  { name: "WhatsApp", slug: "whatsapp", pos: "left-[5%] top-[12%]", size: "h-14 w-14", hide: true },
+  { name: "Instagram", slug: "instagram", pos: "left-[13%] top-[34%]", hide: true },
+  { name: "Messenger", slug: "messenger", pos: "right-[5%] top-[11%]", size: "h-14 w-14", hide: true },
+  { name: "Meta", slug: "meta", pos: "right-[13%] top-[33%]", hide: true },
 ];
 
 // Staggered float classes so the chips don't bob in unison.
 const FLOATS = ["animate-floaty", "animate-floaty-slow", "animate-floaty-delay"];
-
-// Concentric ring diameters (px) — drawn as centred circles behind the headline.
-const RINGS = [280, 460, 660, 880];
-
-// The little "live in your inbox" activity feed that floats over the hero.
-const ACTIVITY = [
-  { initials: "PS", tone: "from-[#25D366] to-[#128C7E]", img: "https://randomuser.me/api/portraits/women/65.jpg", name: "Priya Sharma", action: "messaged on WhatsApp", meta: "AI replied in 2s · lead captured", dot: "#25D366" },
-  { initials: "RM", tone: "from-[#E1306C] to-[#C13584]", img: "https://randomuser.me/api/portraits/men/45.jpg", name: "Rahul Mehta", action: "DM'd on Instagram", meta: "Booked a demo for Fri 3pm", dot: "#E1306C" },
-  { initials: "AW", tone: "from-brand-500 to-brand-800", img: "https://randomuser.me/api/portraits/women/32.jpg", name: "Website visitor", action: "started a web chat", meta: "Answered from your knowledge base", dot: "#0783fd" },
-];
 
 function RatingBadge({ label, score }: { label: string; score: string }) {
   return (
@@ -55,21 +41,9 @@ export function Hero() {
       {/* Centred stage — rings, chips and content cluster here so they stay
           balanced while the white background fills the full width (no side gap). */}
       <div className="relative mx-auto max-w-6xl px-5">
-        {/* Concentric orbit rings, centred on the hero */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
-          <div className="relative mt-[170px]">
-            {RINGS.map((d, i) => (
-              <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: d, height: d }}>
-                {/* inner element rotates → carries a dot around the ring */}
-                <span className={`absolute inset-0 rounded-full border border-slate-200/70 ${i % 2 ? "animate-orbit-rev" : "animate-orbit"}`}>
-                  <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0783fd] shadow-[0_0_10px_rgba(7,131,253,0.6)] ${i % 2 ? "h-2 w-2 opacity-50" : "h-2.5 w-2.5 opacity-70"}`} />
-                </span>
-              </span>
-            ))}
-          </div>
-        </div>
-        {/* Soft brand glow behind the headline */}
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.12),transparent_70%)] blur-2xl" />
+        {/* Soft brand glows behind the headline + dashboard */}
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-24 h-72 w-[36rem] max-w-[90vw] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse,rgba(7,131,253,0.14),transparent_70%)] blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-[28rem] h-80 w-[48rem] max-w-[95vw] -translate-x-1/2 rounded-[40%] bg-[radial-gradient(ellipse,rgba(7,131,253,0.10),transparent_70%)] blur-3xl" />
 
         {/* Floating brand chips */}
         {CHIPS.map((c, i) => (
@@ -99,35 +73,9 @@ export function Hero() {
           </div>
           <p className="mt-4 text-xs font-medium text-slate-400">{HERO.note}</p>
 
-          {/* Live-activity card — what the inbox does, in motion */}
-          <div className="relative mx-auto mt-12 max-w-md">
-            <div className="animate-floaty rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
-              <div className="flex items-center justify-between px-2 pb-2 pt-1">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Live in your inbox</span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#2f9e6e]">
-                  <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2f9e6e] opacity-60" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2f9e6e]" /></span>
-                  Auto-replied by AI
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {ACTIVITY.map(a => (
-                  <div key={a.name} className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-left">
-                    <span className="relative h-9 w-9 shrink-0">
-                      <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
-                        {a.initials}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.img} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-                      </span>
-                      <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: a.dot }} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] text-slate-900"><span className="font-bold">{a.name}</span> <span className="text-slate-500">{a.action}</span></p>
-                      <p className="flex items-center gap-1 truncate text-[11px] text-slate-400"><Check className="h-3 w-3 text-[#0783fd]" /> {a.meta}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {/* Product "money shot" — the live Talko AI dashboard */}
+          <div className="relative mx-auto mt-14 max-w-5xl px-1 sm:px-0">
+            <TalkoDashboard />
           </div>
         </div>
       </div>
