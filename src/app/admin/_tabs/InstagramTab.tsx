@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, Instagram, Loader2, MessageCircle, Plus, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
-import { launchInstagramSignup, instagramSignupReady } from "@/lib/embedded-signup-client";
+import { launchInstagramSignup, instagramSignupReady, metaPreview } from "@/lib/embedded-signup-client";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
@@ -97,6 +97,7 @@ function InstagramManager() {
   }
 
   async function connectWithMeta() {
+    if (!instagramSignupReady()) { setMsg("Preview only — one-click “Connect with Facebook” isn’t enabled yet. Finish the Meta setup (App ID + Instagram config) to turn it on. For now, use “Add manually”."); return; }
     setBusy(true); setMsg(null);
     try {
       const { code } = await launchInstagramSignup();
@@ -140,10 +141,13 @@ function InstagramManager() {
           <p className="text-xs text-slate-500 mt-0.5">Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {instagramSignupReady() && (
-            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect with Facebook
-            </button>
+          {(instagramSignupReady() || metaPreview()) && (
+            <div className="flex items-center gap-1.5">
+              <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect with Facebook
+              </button>
+              {!instagramSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
+            </div>
           )}
           <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>

@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
-import { launchWhatsAppSignup, whatsappSignupReady } from "@/lib/embedded-signup-client";
+import { launchWhatsAppSignup, whatsappSignupReady, metaPreview } from "@/lib/embedded-signup-client";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -251,6 +251,7 @@ function ChannelsManager() {
   }
 
   async function connectWithMeta() {
+    if (!whatsappSignupReady()) { setMsg("Preview only — one-click “Connect with Facebook” isn’t enabled yet. Finish the Meta setup (App ID + Embedded Signup config) to turn it on. For now, use “Add manually”."); return; }
     setBusy(true); setMsg(null);
     try {
       const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup();
@@ -273,10 +274,13 @@ function ChannelsManager() {
           <p className="text-xs text-slate-500 mt-0.5">Connect multiple numbers/WABAs — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {whatsappSignupReady() && (
-            <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
-            </button>
+          {(whatsappSignupReady() || metaPreview()) && (
+            <div className="flex items-center gap-1.5">
+              <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
+              </button>
+              {!whatsappSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
+            </div>
           )}
           <button onClick={() => { setForm({ ...EMPTY_CHANNEL }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>

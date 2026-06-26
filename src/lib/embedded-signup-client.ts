@@ -33,6 +33,12 @@ declare global {
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
 
+// Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
+// buttons even before the Meta Tech Provider app is configured, so the operator
+// can see their placement. Clicking shows a "setup pending" message rather than
+// launching (the real flow needs APP_ID + a config_id). Remove the env var to hide.
+export const metaPreview = () => process.env.NEXT_PUBLIC_META_PREVIEW === "1";
+
 let sdkPromise: Promise<void> | null = null;
 function loadSdk(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Not in a browser"));
