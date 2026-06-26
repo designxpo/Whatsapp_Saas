@@ -17,6 +17,8 @@ export const NAV: { label: string; href: string }[] = [
 export const HERO = {
   eyebrow: "WhatsApp · Instagram · Messenger · Web chat",
   title: "Turn every chat into a customer",
+  titleAccent: "a customer", // rendered with the brand→violet gradient
+
   subtitle:
     "AI that replies, qualifies and sells across WhatsApp, Instagram, Facebook Messenger and your website — one inbox, on autopilot.",
   primary: { label: "Start free 14-day trial", href: "/signup" },

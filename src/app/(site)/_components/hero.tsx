@@ -2,7 +2,7 @@
 // channel/integration chips, trust badges, dual CTAs and a live-activity card
 // adapted to Talko's inbox. Server-safe (no client hooks).
 import { ArrowRight, Star, Check } from "lucide-react";
-import { Button } from "./ui";
+import { Button, GradientText } from "./ui";
 import { HERO, SOCIAL_PROOF } from "../_content/site";
 
 // Brand chips that float around the orbit. slug → cdn.simpleicons.org (brand
@@ -62,14 +62,17 @@ export function Hero() {
               <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: d, height: d }}>
                 {/* inner element rotates → carries a dot around the ring */}
                 <span className={`absolute inset-0 rounded-full border border-slate-200/70 ${i % 2 ? "animate-orbit-rev" : "animate-orbit"}`}>
-                  <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0783fd] shadow-[0_0_10px_rgba(7,131,253,0.6)] ${i % 2 ? "h-2 w-2 opacity-50" : "h-2.5 w-2.5 opacity-70"}`} />
+                  <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full ${i % 2 ? "h-2 w-2 bg-[#7c5cff] opacity-50 shadow-[0_0_10px_rgba(124,92,255,0.6)]" : "h-2.5 w-2.5 bg-[#0783fd] opacity-70 shadow-[0_0_10px_rgba(7,131,253,0.6)]"}`} />
                 </span>
               </span>
             ))}
           </div>
         </div>
-        {/* Soft brand glow behind the headline */}
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.12),transparent_70%)] blur-2xl" />
+        {/* Soft multi-colour ambient glow behind the headline — brand blue with
+            violet and mint accents so the hero light isn't mono-blue. */}
+        <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.14),transparent_70%)] blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute left-[34%] top-20 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.12),transparent_70%)] blur-2xl" />
+        <div aria-hidden className="pointer-events-none absolute left-[66%] top-40 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(52,211,153,0.11),transparent_70%)] blur-2xl" />
 
         {/* Floating brand chips */}
         {CHIPS.map((c, i) => (
@@ -89,7 +92,9 @@ export function Hero() {
           </div>
 
           <h1 className="mx-auto mt-6 max-w-3xl text-balance text-[2.5rem] font-extrabold leading-[1.05] tracking-tight text-slate-900 sm:text-6xl">
-            {HERO.title}
+            {HERO.titleAccent && HERO.title.endsWith(HERO.titleAccent)
+              ? <>{HERO.title.slice(0, -HERO.titleAccent.length)}<GradientText>{HERO.titleAccent}</GradientText></>
+              : HERO.title}
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-balance text-base text-slate-500 sm:text-lg">{HERO.subtitle}</p>
 

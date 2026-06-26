@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X, ChevronDown, Bot } from "lucide-react";
 import { NAV, SITE, FAQS } from "../_content/site";
 import { LEGAL_NAV } from "../_content/legal";
+import { GRADIENTS } from "./ui";
 import { BrandLogo } from "@/components/BrandLogo";
 
 function Wordmark({ dark = false }: { dark?: boolean }) {
@@ -47,7 +48,7 @@ export function SiteNav() {
         </div>
         <div className="hidden items-center gap-3 md:flex">
           <Link href={SITE.domainCta.login} className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#0783fd]">Sign in</Link>
-          <Link href={SITE.domainCta.trial} className="rounded-full bg-gradient-to-br from-brand-600 to-brand-900 px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(24,119,242,0.8)] transition-opacity hover:opacity-90">Sign up now</Link>
+          <Link href={SITE.domainCta.trial} className={`rounded-full ${GRADIENTS.brand} px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(106,92,255,0.8)] transition-opacity hover:opacity-90`}>Sign up now</Link>
         </div>
         <button onClick={() => setOpen(v => !v)} className="md:hidden text-slate-700" aria-label="Toggle menu">
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -61,7 +62,7 @@ export function SiteNav() {
             ))}
             <div className="mt-2 flex flex-col gap-2">
               <Link href={SITE.domainCta.login} className="rounded-full border border-slate-200 px-4 py-2 text-center text-sm font-bold text-slate-700">Sign in</Link>
-              <Link href={SITE.domainCta.trial} className="rounded-full bg-gradient-to-br from-brand-600 to-brand-900 px-4 py-2 text-center text-sm font-bold text-white">Sign up now</Link>
+              <Link href={SITE.domainCta.trial} className={`rounded-full ${GRADIENTS.brand} px-4 py-2 text-center text-sm font-bold text-white`}>Sign up now</Link>
             </div>
           </div>
         </div>
@@ -73,7 +74,7 @@ export function SiteNav() {
 export function SiteFooter() {
   const year = new Date().getFullYear();
   return (
-    <footer className="bg-gradient-to-br from-brand-600 to-brand-900 text-white">
+    <footer className={`${GRADIENTS.deep} text-white`}>
       <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-14 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr_1.4fr]">
         <div>
           <Wordmark dark />

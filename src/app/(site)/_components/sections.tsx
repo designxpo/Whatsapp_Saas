@@ -5,7 +5,7 @@ import {
   Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
   Rocket, TrendingUp, MessagesSquare, Globe, type LucideIcon,
 } from "lucide-react";
-import { Container, SectionTitle, Card, Button, TONES } from "./ui";
+import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
@@ -19,10 +19,12 @@ const ICONS: Record<string, LucideIcon> = {
   messenger: MessagesSquare, webchat: Globe,
 };
 
-function FeatureIcon({ name }: { name: string }) {
+// Gradient icon chip (white icon). `i` cycles through the harmonised palette so
+// a dense grid reads as a gradient family, not a wall of blue.
+function FeatureIcon({ name, i = 0 }: { name: string; i?: number }) {
   const Icon = ICONS[name] ?? Bot;
   return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]">
+    <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
       <Icon className="h-5 w-5" />
     </span>
   );
@@ -31,9 +33,9 @@ function FeatureIcon({ name }: { name: string }) {
 export function FeatureGrid({ items = FEATURES }: { items?: Feature[] }) {
   return (
     <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map(f => (
+      {items.map((f, i) => (
         <Card key={f.title}>
-          <FeatureIcon name={f.icon} />
+          <FeatureIcon name={f.icon} i={i} />
           <h3 className="mt-4 text-base font-bold text-slate-900">{f.title}</h3>
           <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.body}</p>
         </Card>
@@ -44,11 +46,11 @@ export function FeatureGrid({ items = FEATURES }: { items?: Feature[] }) {
 
 // "Simplified in three easy steps" — pastel cards in a soft gray container.
 const STEP_ICONS = [Search, GitCompare, BadgeCheck];
-const STEP_TONES = ["peach", "lavender", "sky"] as const;
+const STEP_TONES = ["peach", "violet", "mint"] as const;
 export function ThreeSteps() {
   return (
     <Container className="py-16">
-      <div className="rounded-[28px] bg-slate-50 px-5 py-12 sm:px-10">
+      <div className="rounded-[28px] px-5 py-12 sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_100%_0%,#FFF4E8_0%,#FFFFFF_46%,#EFF4FF_100%)]">
         <SectionTitle title="Get started in three easy steps" subtitle="Go live in an afternoon." />
         <div className="mt-10 grid gap-5 md:grid-cols-3">
           {STEPS.map((s, i) => {
@@ -87,6 +89,8 @@ const STAT_META: { icon: LucideIcon; trend: string; spark: number[] }[] = [
   { icon: Clock, trend: "always on", spark: [6, 6, 7, 6, 8, 7, 9] },
   { icon: Rocket, trend: "go live", spark: [2, 5, 4, 7, 9, 8, 12] },
 ];
+// Soft tinted icon chips for the non-hero stat cards — violet / teal / amber.
+const STAT_TINT = ["bg-[#7c5cff]/12 text-[#7c5cff]", "bg-[#16b8a6]/14 text-[#0d9488]", "bg-[#f6a84b]/16 text-[#e07b1f]"];
 
 export function StatsBand() {
   return (
@@ -102,10 +106,10 @@ export function StatsBand() {
           return (
             <div
               key={s.label}
-              className={`relative overflow-hidden rounded-2xl border p-5 ${hero ? "border-transparent bg-gradient-to-br from-brand-600 to-brand-900 text-white shadow-[0_20px_50px_-25px_rgba(24,119,242,0.7)]" : "border-slate-200 bg-white"}`}
+              className={`relative overflow-hidden rounded-2xl border p-5 ${hero ? `border-transparent ${GRADIENTS.aurora} text-white shadow-[0_20px_50px_-25px_rgba(106,92,255,0.7)]` : "border-slate-200 bg-white"}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : "bg-[#0783fd]/10 text-[#0783fd]"}`}><Icon className="h-4 w-4" /></span>
+                <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : STAT_TINT[(i - 1) % STAT_TINT.length]}`}><Icon className="h-4 w-4" /></span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hero ? "bg-white/15 text-white" : "bg-[#DDEFE4] text-[#2f9e6e]"}`}>{m.trend}</span>
               </div>
               <div className={`mt-4 text-4xl font-extrabold tracking-tight ${hero ? "text-white" : "text-slate-900"}`}>{s.value}</div>
@@ -122,7 +126,7 @@ export function StatsBand() {
 export function IntegrationsStrip() {
   return (
     <Container className="py-16">
-      <div className="rounded-[28px] bg-slate-50 px-5 py-10 text-center sm:px-10">
+      <div className="rounded-[28px] px-5 py-10 text-center sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_0%_100%,#EAFBF1_0%,#FFFFFF_50%,#F4F0FF_100%)]">
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Channels, AI, CRM, payments, e-commerce, scheduling and automation — all in one place.</p>
         <Marquee durationSec={30} gapClass="gap-x-12" className="mt-8 py-2">
@@ -166,7 +170,7 @@ export function Testimonials() {
             <div className="flex gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}</div>
             <blockquote className="mt-4 flex-1 text-[15px] font-medium leading-relaxed text-slate-700">“{t.quote}”</blockquote>
             <figcaption className="mt-6 flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0783fd] text-sm font-bold text-white">{t.name.charAt(0)}</span>
+              <span className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${GRADIENTS.brand}`}>{t.name.charAt(0)}</span>
               <span>
                 <span className="block text-sm font-bold text-slate-900">{t.name}</span>
                 <span className="block text-xs text-slate-500">{t.role}</span>
@@ -188,11 +192,11 @@ export function ProblemSolution() {
     <Container className="py-16">
       <SectionTitle eyebrow="Why it matters" title="The problems you're losing sleep over — solved" subtitle="The manual parts of messaging, handled by one platform." />
       <div className="mt-12 grid gap-5 md:grid-cols-2">
-        {PROBLEMS.map(p => {
+        {PROBLEMS.map((p, i) => {
           const Icon = PROBLEM_ICONS[p.icon] ?? Inbox;
           return (
             <div key={p.problem} className="flex gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)]">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><Icon className="h-5 w-5" /></span>
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}><Icon className="h-5 w-5" /></span>
               <div>
                 <p className="text-sm font-bold text-slate-900">{p.problem}</p>
                 <p className="mt-2 flex gap-2 text-sm leading-relaxed text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f9e6e]" />{p.solution}</p>
@@ -232,7 +236,7 @@ export function ComparisonTable() {
               <tr className="border-b border-slate-200">
                 <th className="w-[24%] px-4 py-3.5 text-[13px] font-bold text-slate-900">Capability</th>
                 {COMPARE_COLS.map((col, i) => (
-                  <th key={col} className={`px-2 py-3.5 text-center text-[12px] font-bold leading-tight ${i === 0 ? "rounded-t-xl bg-[#0783fd] text-white" : "text-slate-500"}`}>{col}</th>
+                  <th key={col} className={`px-2 py-3.5 text-center text-[12px] font-bold leading-tight ${i === 0 ? `rounded-t-xl ${GRADIENTS.brand} text-white` : "text-slate-500"}`}>{col}</th>
                 ))}
               </tr>
             </thead>
@@ -267,8 +271,10 @@ export function ComparisonTable() {
 export function CtaBand() {
   return (
     <Container className="py-16">
-      <div className="overflow-hidden rounded-[28px] bg-gradient-to-br from-brand-600 to-brand-900 px-6 py-14 sm:px-12">
-        <div className="grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
+      <div className={`relative overflow-hidden rounded-[28px] ${GRADIENTS.aurora} px-6 py-14 sm:px-12`}>
+        {/* Soft colour-mesh overlay so the block reads rich, not a flat slab. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 opacity-70 [background:radial-gradient(60%_80%_at_15%_10%,rgba(52,211,153,0.28),transparent_60%),radial-gradient(50%_70%_at_95%_90%,rgba(255,180,107,0.22),transparent_60%)]" />
+        <div className="relative grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <h2 className="text-balance text-3xl font-extrabold leading-tight text-white sm:text-4xl">Ready to transform your customer conversations?</h2>
             <ul className="mt-6 space-y-2.5">

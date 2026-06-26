@@ -5,6 +5,39 @@ import Link from "next/link";
 
 export const PURPLE = "#0783fd";
 
+// ── Cohesive gradient system ────────────────────────────────────────────────
+// Brand blue (#0783fd) is always the anchor. It extends into indigo → violet,
+// with mint and amber as supporting accents, so the whole site reads as one
+// gradient family instead of flat blue. Use these everywhere a gradient is
+// needed rather than ad-hoc one-offs.
+export const GRADIENTS = {
+  // Primary CTA / accent — brand blue flowing into indigo-violet.
+  brand: "bg-gradient-to-br from-[#0783fd] via-[#3274ff] to-[#6a5cff]",
+  brandHover: "hover:from-[#2a96ff] hover:via-[#4f7bff] hover:to-[#7c5cff]",
+  // Big colour-block surfaces (CTA band, stat hero, hero accents).
+  aurora: "bg-[linear-gradient(120deg,#0668D6_0%,#0783fd_28%,#5b6dff_62%,#8a5cff_100%)]",
+  // Grounded deep block (footer) — blue into deep indigo.
+  deep: "bg-[linear-gradient(135deg,#063e7e_0%,#0668D6_48%,#4f49c7_100%)]",
+} as const;
+
+// Rotating gradient icon-chip backgrounds (white icon on top). Cycle these
+// across grids so dense icon rows aren't a wall of one colour. Harmonised so
+// neighbouring chips never clash.
+export const ICON_GRADIENTS = [
+  "bg-gradient-to-br from-[#0783fd] to-[#5b6dff]",   // blue → indigo
+  "bg-gradient-to-br from-[#7c5cff] to-[#a472ff]",   // violet
+  "bg-gradient-to-br from-[#16b8a6] to-[#0ea5e9]",   // teal → sky
+  "bg-gradient-to-br from-[#f6a84b] to-[#ef5e7e]",   // amber → rose
+  "bg-gradient-to-br from-[#34c98a] to-[#0d9488]",   // mint → teal
+  "bg-gradient-to-br from-[#4f8bff] to-[#8a5cff]",   // sky → violet
+];
+
+// Inline gradient text — brand blue → violet. For one highlighted word/phrase
+// in an otherwise dark heading (keep most text readable slate).
+export function GradientText({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`bg-gradient-to-r from-[#0783fd] via-[#4f6bff] to-[#8a5cff] bg-clip-text text-transparent ${className}`}>{children}</span>;
+}
+
 export function Container({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`mx-auto w-full max-w-6xl px-5 sm:px-8 ${className}`}>{children}</div>;
 }
@@ -31,7 +64,7 @@ export function Button({
 }: { href: string; children: React.ReactNode; variant?: "primary" | "ghost"; className?: string }) {
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-colors";
   const styles = variant === "primary"
-    ? "bg-gradient-to-br from-brand-600 to-brand-900 text-white shadow-[0_8px_24px_-8px_rgba(24,119,242,0.7)] hover:from-brand-500 hover:to-brand-800"
+    ? `${GRADIENTS.brand} ${GRADIENTS.brandHover} text-white shadow-[0_10px_28px_-10px_rgba(106,92,255,0.65)]`
     : "border border-[#0783fd]/30 bg-white text-[#0783fd] hover:bg-[#0783fd]/5";
   if (href.startsWith("http")) return <a href={href} className={`${base} ${styles} ${className}`}>{children}</a>;
   return <Link href={href} className={`${base} ${styles} ${className}`}>{children}</Link>;

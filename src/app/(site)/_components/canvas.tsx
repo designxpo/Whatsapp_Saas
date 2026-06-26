@@ -9,7 +9,7 @@ import {
   Zap, Bot, Sparkles, History, BookOpen, ShoppingBag, Split, UserPlus, Bell,
   MessageSquare, Repeat, type LucideIcon,
 } from "lucide-react";
-import { SectionTitle } from "./ui";
+import { SectionTitle, GRADIENTS } from "./ui";
 import { Reveal } from "./motion";
 import { AGENT_CANVAS, type CanvasNode } from "../_content/site";
 
@@ -48,7 +48,7 @@ function Node({ node, dots = "x", className = "w-48" }: { node: CanvasNode; dots
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       {showOut && <span aria-hidden className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       <div className="flex items-center gap-2.5">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${node.accent ? "bg-[#0783fd] text-white animate-pulsesoft" : "bg-[#0783fd]/10 text-[#0783fd]"}`}>
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${node.accent ? `${GRADIENTS.brand} text-white animate-pulsesoft` : "bg-[#0783fd]/10 text-[#0783fd]"}`}>
           <Ico name={node.icon} className="h-4 w-4" />
         </span>
         <div className="min-w-0">
