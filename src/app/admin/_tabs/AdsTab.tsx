@@ -15,15 +15,30 @@ type AdsData = {
   pageId: string;
   account: { name: string; currency: string; status: number } | null;
   error: string | null;
-  campaigns: { id: string; name: string; effectiveStatus: string; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
+  campaigns: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
   attribution: { adId: string; headline: string; contacts: number; leads: number }[];
   portalCampaignIds?: string[];
 };
+type Delivery = { label: string; phase: "active" | "learning" | "limited" | "off" | "review" | "error" | "other" };
 type AdDraftSummary = { id: string; name: string; updatedAt: string };
 type AdsDrill = {
-  adsets: { id: string; name: string; effectiveStatus: string; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
-  ads: { id: string; name: string; effectiveStatus: string; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
+  adsets: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
+  ads: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
 };
+
+// Meta's "Delivery" column → pill colours. Learning = amber (still optimising),
+// Active = green/brand, Learning limited = orange (stuck), Off = grey, issues = red.
+function deliveryPill(d?: Delivery): { cls: string; label: string } {
+  const phase = d?.phase ?? "other";
+  const cls =
+    phase === "active" ? "bg-brand-100 text-brand-700"
+    : phase === "learning" ? "bg-amber-100 text-amber-700"
+    : phase === "limited" ? "bg-orange-100 text-orange-700"
+    : phase === "review" ? "bg-sky-100 text-sky-700"
+    : phase === "error" ? "bg-rose-100 text-rose-700"
+    : "bg-slate-100 text-slate-500";
+  return { cls, label: d?.label ?? "—" };
+}
 
 function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [data, setData] = useState<AdsData | null>(null);
@@ -95,8 +110,6 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
     { spend: 0, impressions: 0, clicks: 0, conversations: 0 },
   );
   const leadsTotal = (data?.attribution ?? []).reduce((n, a) => n + a.leads, 0);
-  const statusPill = (s: string) =>
-    s === "ACTIVE" ? "bg-brand-100 text-brand-700" : s === "PAUSED" ? "bg-slate-100 text-slate-500" : "bg-amber-100 text-amber-700";
 
   const campaignCard = (c: AdsData["campaigns"][number]) => (
     <div key={c.id} className="bg-white rounded-card border border-line p-4 space-y-2.5">
@@ -106,7 +119,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-[11px] text-slate-400">{c.objective.toLowerCase().replace(/_/g, " ")}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${statusPill(c.effectiveStatus)}`}>{c.effectiveStatus}</span>
+          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${deliveryPill(c.delivery).cls}`}>{deliveryPill(c.delivery).label}</span>
           {isAdmin && (c.effectiveStatus === "ACTIVE"
             ? <button disabled={busy === c.id} onClick={() => act(c.id, "pause")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas disabled:opacity-50">Pause</button>
             : c.effectiveStatus === "PAUSED" && <button disabled={busy === c.id} onClick={() => act(c.id, "resume")} className="px-3 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold disabled:opacity-50">Resume</button>)}
@@ -1559,7 +1572,7 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
 
 // ── Dedicated ad detail view — full Meta analytics for one node + child cards ──
 type NodeFull = {
-  id: string; name: string; effectiveStatus: string; level: "campaign" | "adset" | "ad";
+  id: string; name: string; effectiveStatus: string; delivery?: Delivery; level: "campaign" | "adset" | "ad";
   objective: string | null; dailyBudget: number | null; thumbnailUrl: string | null;
   dateStart: string | null; dateStop: string | null;
   spend: number; impressions: number; reach: number; frequency: number;
@@ -1567,7 +1580,7 @@ type NodeFull = {
   conversations: number; costPerConversation: number | null;
   actions: { type: string; value: number }[]; costPerAction: { type: string; value: number }[];
 };
-type ChildRow = { id: string; name: string; effectiveStatus: string; thumbnailUrl?: string | null; dailyBudget?: number | null; optimizationGoal?: string; spend: number; clicks: number; ctr: number; conversations: number };
+type ChildRow = { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl?: string | null; dailyBudget?: number | null; optimizationGoal?: string; spend: number; clicks: number; ctr: number; conversations: number };
 
 const ACTION_LABELS_META: Record<string, string> = {
   link_click: "Link clicks", landing_page_view: "Landing page views", post_engagement: "Post engagement",
@@ -1612,7 +1625,6 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
     } finally { setBusy(""); setBudgetEdit(null); }
   }
 
-  const statusPill = (s: string) => s === "ACTIVE" ? "bg-brand-100 text-brand-700" : s === "PAUSED" ? "bg-slate-100 text-slate-500" : "bg-amber-100 text-amber-700";
   const levelLabel = node.level === "campaign" ? "Campaign" : node.level === "adset" ? "Ad set" : "Ad";
   const childLevel: "adset" | "ad" = node.level === "campaign" ? "adset" : "ad";
 
@@ -1648,7 +1660,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
               {kind === "adset" && <p className="text-[10px] text-slate-400 truncate">{c.optimizationGoal}{c.dailyBudget != null ? ` · ${money(c.dailyBudget)}/day` : ""}</p>}
             </div>
             {wasteful && <span className="text-[9px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full shrink-0">REVIEW</span>}
-            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${statusPill(c.effectiveStatus)}`}>{c.effectiveStatus}</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${deliveryPill(c.delivery).cls}`}>{deliveryPill(c.delivery).label}</span>
           </div>
           <div className="grid grid-cols-4 gap-1 text-center">
             {[["spend", money(c.spend)], ["clicks", c.clicks.toLocaleString()], ["chats", c.conversations.toLocaleString()], [cpr.l, cpr.v]].map(([l, v]) => (
@@ -1688,7 +1700,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
               <p className="text-[11px] text-slate-400">{full.dateStart && full.dateStop ? `${full.dateStart} → ${full.dateStop}` : ""}{full.dailyBudget != null ? ` · ${money(full.dailyBudget)}/day` : ""}</p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${statusPill(full.effectiveStatus)}`}>{full.effectiveStatus}</span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${deliveryPill(full.delivery).cls}`}>{deliveryPill(full.delivery).label}</span>
               {isAdmin && <button disabled={busy === full.id} onClick={() => act(full.id, full.effectiveStatus === "ACTIVE" ? "pause" : "resume")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas">{full.effectiveStatus === "ACTIVE" ? "Pause" : "Resume"}</button>}
               {isAdmin && node.level === "campaign" && <button disabled={busy === full.id} onClick={() => { if (confirm(`Duplicate "${full.name}"? The copy is created PAUSED.`)) act(full.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas"><Copy className="w-3 h-3" /></button>}
             </div>

@@ -68,10 +68,38 @@ export async function setAdsPageId(pageId: string, tenantId = DEFAULT_TENANT_ID)
 
 export interface AdAccountInfo { name: string; currency: string; status: number; timezoneName?: string }
 
+// Meta's "Delivery" column. The raw effective_status only says ACTIVE/PAUSED;
+// the Learning vs Active distinction lives in the ad SET's learning_stage_info.
+// We derive a single human label + a phase tag the UI colours, exactly mirroring
+// what Ads Manager shows ("Learning", "Active", "Learning limited", …).
+export type DeliveryPhase = "active" | "learning" | "limited" | "off" | "review" | "error" | "other";
+export interface Delivery { label: string; phase: DeliveryPhase }
+
+function deliveryOf(effectiveStatus: string | undefined, learning?: string): Delivery {
+  const es = (effectiveStatus || "").toUpperCase();
+  const l = (learning || "").toUpperCase();
+  if (es === "ACTIVE") {
+    if (l === "LEARNING") return { label: "Learning", phase: "learning" };
+    if (l === "FAIL" || l === "LEARNING_LIMITED") return { label: "Learning limited", phase: "limited" };
+    return { label: "Active", phase: "active" };   // SUCCESS / WAIVING / none → fully out of learning
+  }
+  if (es === "PAUSED" || es === "ADSET_PAUSED" || es === "CAMPAIGN_PAUSED") return { label: "Off", phase: "off" };
+  if (es === "IN_PROCESS" || es === "PENDING_REVIEW" || es === "PENDING_BILLING_INFO") return { label: "In review", phase: "review" };
+  if (es === "DISAPPROVED" || es === "WITH_ISSUES" || es === "DISABLED") return { label: es === "DISAPPROVED" ? "Rejected" : "Issue", phase: "error" };
+  if (!es || es === "UNKNOWN") return { label: "—", phase: "other" };
+  return { label: es.charAt(0) + es.slice(1).toLowerCase().replace(/_/g, " "), phase: "other" };
+}
+
+// learning_stage_info → status string (the ad-set learning phase from Meta).
+function learnStatus(row: Record<string, unknown>): string | undefined {
+  return ((row.learning_stage_info as Record<string, unknown>)?.status as string) || undefined;
+}
+
 export interface AdCampaign {
   id: string;
   name: string;
   effectiveStatus: string;       // ACTIVE | PAUSED | ...
+  delivery: Delivery;            // Meta's Delivery column (Learning/Active/…)
   objective: string;
   dailyBudget: number | null;    // major currency units (Meta stores minor)
   spend: number;
@@ -132,6 +160,7 @@ export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?
       id: c.id as string,
       name: c.name as string,
       effectiveStatus: (c.effective_status as string) ?? "UNKNOWN",
+      delivery: deliveryOf(c.effective_status as string),   // campaign learning is per-ad-set; show Active/Off here
       objective: ((c.objective as string) ?? "").replace(/^OUTCOME_/, ""),
       dailyBudget: c.daily_budget ? Number(c.daily_budget) / 100 : null,
       spend: Number(ins.spend ?? 0),
@@ -174,12 +203,12 @@ function insightsOf(row: Record<string, unknown>) {
   };
 }
 
-export interface AdSetRow { id: string; name: string; effectiveStatus: string; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
-export interface AdRow { id: string; name: string; effectiveStatus: string; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
+export interface AdSetRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
+export interface AdRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
 
 export async function listAdSets(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
   const r = await graphGet(`${campaignId}/adsets`, {
-    fields: `name,effective_status,daily_budget,optimization_goal,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
+    fields: `name,effective_status,learning_stage_info,daily_budget,optimization_goal,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "50",
   });
   if (!r.ok || !r.data) return { ok: false, adsets: [], error: r.error };
@@ -187,6 +216,7 @@ export async function listAdSets(campaignId: string, preset: DatePreset, tz?: st
     ok: true,
     adsets: ((r.data.data as Record<string, unknown>[]) ?? []).map(a => ({
       id: a.id as string, name: a.name as string, effectiveStatus: (a.effective_status as string) ?? "UNKNOWN",
+      delivery: deliveryOf(a.effective_status as string, learnStatus(a)),
       dailyBudget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
       optimizationGoal: ((a.optimization_goal as string) ?? "").replace(/_/g, " ").toLowerCase(),
       ...insightsOf(a),
@@ -195,8 +225,10 @@ export async function listAdSets(campaignId: string, preset: DatePreset, tz?: st
 }
 
 export async function listAds(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; ads: AdRow[]; error?: string }> {
+  // An ad's delivery follows its ad set's learning phase, so pull the parent
+  // ad set's learning_stage_info alongside the ad's own effective_status.
   const r = await graphGet(`${campaignId}/ads`, {
-    fields: `name,effective_status,creative{thumbnail_url},insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
+    fields: `name,effective_status,adset{learning_stage_info},creative{thumbnail_url},insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "100",
   });
   if (!r.ok || !r.data) return { ok: false, ads: [], error: r.error };
@@ -204,6 +236,7 @@ export async function listAds(campaignId: string, preset: DatePreset, tz?: strin
     ok: true,
     ads: ((r.data.data as Record<string, unknown>[]) ?? []).map(a => ({
       id: a.id as string, name: a.name as string, effectiveStatus: (a.effective_status as string) ?? "UNKNOWN",
+      delivery: deliveryOf(a.effective_status as string, learnStatus((a.adset as Record<string, unknown>) ?? {})),
       thumbnailUrl: ((a.creative as Record<string, unknown>)?.thumbnail_url as string) ?? null,
       ...insightsOf(a),
     })),
@@ -215,6 +248,7 @@ export interface NodeInsights {
   id: string;
   name: string;
   effectiveStatus: string;
+  delivery: Delivery;
   level: "campaign" | "adset" | "ad";
   objective: string | null;
   dailyBudget: number | null;
@@ -237,10 +271,11 @@ const INSIGHT_FIELDS = "spend,impressions,reach,frequency,clicks,unique_clicks,i
 function num(v: unknown): number { return Number(v ?? 0) || 0; }
 
 export async function getNodeInsights(nodeId: string, level: NodeInsights["level"], preset: DatePreset, tz?: string): Promise<{ ok: boolean; node?: NodeInsights; error?: string }> {
-  const extra = level === "campaign" ? ",objective,daily_budget" : level === "adset" ? ",daily_budget,optimization_goal" : ",creative{thumbnail_url}";
+  const extra = level === "campaign" ? ",objective,daily_budget" : level === "adset" ? ",daily_budget,optimization_goal,learning_stage_info" : ",creative{thumbnail_url},adset{learning_stage_info}";
   const r = await graphGet(nodeId, { fields: `name,effective_status${extra},insights.${dateFilter(preset, tz)}{${INSIGHT_FIELDS}}` });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
   const d = r.data;
+  const learning = level === "adset" ? learnStatus(d) : level === "ad" ? learnStatus((d.adset as Record<string, unknown>) ?? {}) : undefined;
   const ins = ((d.insights as Record<string, unknown>)?.data as Record<string, unknown>[])?.[0] ?? {};
   const actions = ((ins.actions as { action_type: string; value: string }[]) ?? []).map(a => ({ type: a.action_type, value: num(a.value) }));
   const costs = ((ins.cost_per_action_type as { action_type: string; value: string }[]) ?? []).map(a => ({ type: a.action_type, value: num(a.value) }));
@@ -252,6 +287,7 @@ export async function getNodeInsights(nodeId: string, level: NodeInsights["level
       id: nodeId,
       name: (d.name as string) ?? "",
       effectiveStatus: (d.effective_status as string) ?? "UNKNOWN",
+      delivery: deliveryOf(d.effective_status as string, learning),
       level,
       objective: ((d.objective as string) ?? "").replace(/^OUTCOME_/, "") || null,
       dailyBudget: d.daily_budget ? num(d.daily_budget) / 100 : null,
