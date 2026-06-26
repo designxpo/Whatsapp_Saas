@@ -37,6 +37,14 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={inter.variable}>
+      <head>
+        {/* No-JS safety net: scroll-reveal bakes a hidden state into SSR markup
+            (opacity:0). If JS never runs, force every [data-reveal] element
+            visible so no content is lost. (Reduced-motion has its own rule.) */}
+        <noscript>
+          <style>{`[data-reveal]{opacity:1!important;transform:none!important}`}</style>
+        </noscript>
+      </head>
       <body>{children}</body>
     </html>
   );

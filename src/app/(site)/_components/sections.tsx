@@ -6,7 +6,7 @@ import {
   Rocket, TrendingUp, MessagesSquare, Globe, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
-import { Parallax } from "./motion";
+import { Parallax, Reveal } from "./motion";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
@@ -35,11 +35,13 @@ export function FeatureGrid({ items = FEATURES }: { items?: Feature[] }) {
   return (
     <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {items.map((f, i) => (
-        <Card key={f.title}>
-          <FeatureIcon name={f.icon} i={i} />
-          <h3 className="mt-4 text-base font-bold text-slate-900">{f.title}</h3>
-          <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.body}</p>
-        </Card>
+        <Reveal key={f.title} delay={(i % 3) * 90} className="h-full">
+          <Card className="h-full">
+            <FeatureIcon name={f.icon} i={i} />
+            <h3 className="mt-4 text-base font-bold text-slate-900">{f.title}</h3>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.body}</p>
+          </Card>
+        </Reveal>
       ))}
     </div>
   );
@@ -65,11 +67,13 @@ export function ThreeSteps() {
             const Icon = STEP_ICONS[i] ?? Search;
             const tone = TONES[STEP_TONES[i] ?? "lavender"];
             return (
-              <div key={s.n} className={`rounded-2xl ${tone.bg} p-6`}>
-                <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}><Icon className="h-5 w-5" /></span>
-                <h3 className="mt-4 text-base font-extrabold text-slate-900">{s.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
-              </div>
+              <Reveal key={s.n} delay={i * 110} className="h-full">
+                <div className={`h-full rounded-2xl ${tone.bg} p-6`}>
+                  <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}><Icon className="h-5 w-5" /></span>
+                  <h3 className="mt-4 text-base font-extrabold text-slate-900">{s.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
+                </div>
+              </Reveal>
             );
           })}
         </div>
@@ -113,9 +117,9 @@ export function StatsBand() {
           const Icon = m.icon;
           const hero = i === 0;
           return (
+            <Reveal key={s.label} delay={i * 90} className="h-full">
             <div
-              key={s.label}
-              className={`relative overflow-hidden rounded-2xl border p-5 ${hero ? `border-transparent ${GRADIENTS.aurora} text-white shadow-[0_20px_50px_-25px_rgba(106,92,255,0.7)]` : "border-slate-200 bg-white"}`}
+              className={`relative h-full overflow-hidden rounded-2xl border p-5 ${hero ? `border-transparent ${GRADIENTS.aurora} text-white shadow-[0_20px_50px_-25px_rgba(106,92,255,0.7)]` : "border-slate-200 bg-white"}`}
             >
               <div className="flex items-center justify-between">
                 <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : STAT_TINT[(i - 1) % STAT_TINT.length]}`}><Icon className="h-4 w-4" /></span>
@@ -125,6 +129,7 @@ export function StatsBand() {
               <div className={`mt-1 text-sm ${hero ? "text-white/80" : "text-slate-500"}`}>{s.label}</div>
               <div className="mt-3 opacity-80"><Spark pts={m.spark} light={hero} /></div>
             </div>
+            </Reveal>
           );
         })}
       </div>
@@ -163,14 +168,16 @@ export function IntegrationsGrid() {
         title="Connects with the tools you already use"
         subtitle="Set each up in minutes from your dashboard — no code required." />
       <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-        {INTEGRATION_CATEGORIES.map(cat => (
-          <div key={cat.title} className="rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
+        {INTEGRATION_CATEGORIES.map((cat, i) => (
+          <Reveal key={cat.title} delay={(i % 3) * 90} className="h-full">
+          <div className="h-full rounded-[24px] border border-slate-100 bg-white p-6 shadow-sm">
             <h3 className="text-sm font-extrabold text-slate-900">{cat.title}</h3>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">{cat.blurb}</p>
             <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-5">
               {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
             </div>
           </div>
+          </Reveal>
         ))}
       </div>
     </Container>
@@ -212,13 +219,15 @@ export function ProblemSolution() {
         {PROBLEMS.map((p, i) => {
           const Icon = PROBLEM_ICONS[p.icon] ?? Inbox;
           return (
-            <div key={p.problem} className="flex gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)]">
+            <Reveal key={p.problem} delay={(i % 2) * 90} className="h-full">
+            <div className="flex h-full gap-4 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)]">
               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}><Icon className="h-5 w-5" /></span>
               <div>
                 <p className="text-sm font-bold text-slate-900">{p.problem}</p>
                 <p className="mt-2 flex gap-2 text-sm leading-relaxed text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f9e6e]" />{p.solution}</p>
               </div>
             </div>
+            </Reveal>
           );
         })}
       </div>
@@ -246,7 +255,7 @@ export function ComparisonTable() {
       </Container>
       {/* Wider than the page container so all 7 competitors fit without scrolling
           on desktop; table-fixed keeps columns even; scrolls only on small screens. */}
-      <div className="mx-auto mt-10 w-full max-w-7xl px-4 sm:px-8">
+      <Reveal className="mx-auto mt-10 w-full max-w-7xl px-4 sm:px-8">
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
           <table aria-label="Talko AI capability comparison with global alternatives" className="w-full min-w-[860px] table-fixed border-collapse text-left">
             <thead>
@@ -272,15 +281,15 @@ export function ComparisonTable() {
                 {scores.map((s, ci) => (
                   <td key={ci} className={`px-2 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}>
                     <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#0783fd]" : "text-slate-400"}`}>{s}</span>
-                    <span className="text-[11px] font-semibold text-slate-300">/{total}</span>
+                    <span className="text-[11px] font-semibold text-slate-400">/{total}</span>
                   </td>
                 ))}
               </tr>
             </tbody>
           </table>
         </div>
-        <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-400">{COMPARE_NOTE}</p>
-      </div>
+        <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-500">{COMPARE_NOTE}</p>
+      </Reveal>
     </section>
   );
 }
@@ -298,7 +307,7 @@ export function CtaBand() {
         <Parallax speed={-56} className="pointer-events-none absolute inset-0">
           <div className="absolute -bottom-16 right-10 h-64 w-64 rounded-full bg-[#34d399]/25 blur-3xl" />
         </Parallax>
-        <div className="relative grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
+        <Reveal className="relative grid items-center gap-8 lg:grid-cols-[1.3fr_1fr]">
           <div>
             <h2 className="text-balance text-3xl font-extrabold leading-tight text-white sm:text-4xl">Ready to transform your customer conversations?</h2>
             <ul className="mt-6 space-y-2.5">
@@ -321,7 +330,7 @@ export function CtaBand() {
               ))}
             </div>
           </div>
-        </div>
+        </Reveal>
       </div>
     </Container>
   );

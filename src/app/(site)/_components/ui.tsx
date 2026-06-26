@@ -2,6 +2,7 @@
 // white canvas, soft pastel cards, violet accent (#0783fd), rounded & friendly.
 
 import Link from "next/link";
+import { Reveal } from "./motion";
 
 export const PURPLE = "#0783fd";
 
@@ -79,11 +80,11 @@ export function SectionTitle({
     ? "mt-4 text-balance text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl"
     : "mt-4 text-balance text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl";
   return (
-    <div className={`max-w-2xl ${center ? "mx-auto text-center" : ""}`}>
+    <Reveal className={`max-w-2xl ${center ? "mx-auto text-center" : ""}`}>
       {eyebrow && <div className={center ? "flex justify-center" : ""}><Eyebrow>{eyebrow}</Eyebrow></div>}
       <Heading className={headingStyles}>{title}</Heading>
-      {subtitle && <p className="mt-3 text-balance text-slate-500">{subtitle}</p>}
-    </div>
+      {subtitle && <p className="mt-3 text-balance text-slate-600">{subtitle}</p>}
+    </Reveal>
   );
 }
 

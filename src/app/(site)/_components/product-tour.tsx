@@ -5,6 +5,7 @@
 // all screenshots stay mounted (opacity toggle) so switching is instant.
 import { useState } from "react";
 import Link from "next/link";
+import { Parallax } from "./motion";
 import {
   MessageSquare, Workflow, Megaphone, BarChart3, LayoutGrid, Sparkles, Plug, ShoppingBag,
   Check, ArrowRight, type LucideIcon,
@@ -103,7 +104,7 @@ export function ProductTour() {
         </div>
 
         {/* Browser frame — all screenshots stacked, only the active one shown (instant switch) */}
-        <div className="order-1 lg:order-2">
+        <Parallax speed={28} className="order-1 lg:order-2">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(7,131,253,0.22),0_8px_24px_-12px_rgba(0,0,0,0.10)]">
             <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
@@ -117,7 +118,7 @@ export function ProductTour() {
               ))}
             </div>
           </div>
-        </div>
+        </Parallax>
       </div>
     </div>
   );

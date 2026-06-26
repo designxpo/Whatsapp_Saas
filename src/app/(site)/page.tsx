@@ -7,7 +7,6 @@ import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
 import { PlatformGlimpse } from "./_components/glimpse";
 import { Hero } from "./_components/hero";
-import { Reveal } from "./_components/motion";
 import { Faq } from "./_components/chrome";
 
 export default function HomePage() {
@@ -32,10 +31,8 @@ export default function HomePage() {
 
       {/* Features */}
       <Container className="py-8">
-        <Reveal>
-          <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger and your website." />
-        </Reveal>
-        <Reveal delay={120}><FeatureGrid /></Reveal>
+        <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger and your website." />
+        <FeatureGrid />
       </Container>
 
       <WhyChoose />

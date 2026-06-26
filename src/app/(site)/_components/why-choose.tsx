@@ -9,7 +9,10 @@ import { Container, SectionTitle, TONES } from "./ui";
 import { useParallax } from "./motion";
 import { WHY } from "../_content/site";
 
-const shift = (p: number, strength: number) => ({ transform: `translate3d(0, ${(p * strength).toFixed(1)}px, 0)`, willChange: "transform" });
+// translate3d alone GPU-promotes these layers for the brief time they scroll;
+// a permanent will-change on 7 layers would keep that many compositor layers
+// resident for the whole page (memory cost on low-end devices) for no gain.
+const shift = (p: number, strength: number) => ({ transform: `translate3d(0, ${(p * strength).toFixed(1)}px, 0)` });
 
 export function WhyChoose() {
   const ref = useRef<HTMLDivElement>(null);

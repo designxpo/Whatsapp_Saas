@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { Button, GRADIENTS } from "./ui";
+import { Reveal } from "./motion";
 import { TIERS, type Tier } from "../_content/site";
 
 const ANNUAL_DISCOUNT = 0.2; // 20% off when billed annually
@@ -34,12 +35,12 @@ export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tie
       )}
 
       <div className={`mt-10 grid gap-6 ${cols}`}>
-        {tiers.map(t => {
+        {tiers.map((t, ti) => {
           const monthlyEq = t.priceMonthly == null ? null : Math.round(t.priceMonthly * (annual ? 1 - ANNUAL_DISCOUNT : 1));
           return (
+            <Reveal key={t.name} delay={ti * 100} className="h-full">
             <div
-              key={t.name}
-              className={`relative rounded-2xl border p-7 transition-shadow ${t.highlighted ? "border-[#0783fd] bg-white shadow-[0_22px_55px_-20px_rgba(106,92,255,0.5)]" : "border-slate-200 bg-white hover:shadow-[0_12px_30px_-16px_rgba(24,119,242,0.4)]"}`}
+              className={`relative h-full rounded-2xl border p-7 transition-shadow ${t.highlighted ? "border-[#0783fd] bg-white shadow-[0_22px_55px_-20px_rgba(106,92,255,0.5)]" : "border-slate-200 bg-white hover:shadow-[0_12px_30px_-16px_rgba(24,119,242,0.4)]"}`}
             >
               {t.highlighted && <span className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full ${GRADIENTS.brand} px-3 py-1 text-[11px] font-bold text-white`}>Most popular</span>}
               <h3 className="text-sm font-extrabold text-slate-900">{t.name}</h3>
@@ -58,6 +59,7 @@ export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tie
                 ))}
               </ul>
             </div>
+            </Reveal>
           );
         })}
       </div>

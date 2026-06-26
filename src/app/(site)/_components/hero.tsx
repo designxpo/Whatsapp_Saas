@@ -108,10 +108,10 @@ export function Hero() {
             <Button href={HERO.primary.href}>{HERO.primary.label} <ArrowRight className="h-4 w-4" /></Button>
             <Button href="/signup" variant="ghost">Talk to sales team</Button>
           </div>
-          <p className="mt-4 text-xs font-medium text-slate-400">{HERO.note}</p>
+          <p className="mt-4 text-xs font-medium text-slate-500">{HERO.note}</p>
 
-          {/* Live-activity card — what the inbox does, in motion */}
-          <div className="relative mx-auto mt-12 max-w-md">
+          {/* Live-activity card — what the inbox does, in motion (drifts on scroll) */}
+          <Parallax speed={-34} className="relative mx-auto mt-12 max-w-md">
             <div className="animate-floaty rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
               <div className="flex items-center justify-between px-2 pb-2 pt-1">
                 <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Live in your inbox</span>
@@ -139,13 +139,13 @@ export function Hero() {
                 ))}
               </div>
             </div>
-          </div>
+          </Parallax>
         </div>
       </div>
 
       {/* Trust line + grayscale logo wall — full width */}
       <div className="mx-auto max-w-5xl px-5 pt-6">
-        <p className="text-center text-xs font-semibold text-slate-400">{SOCIAL_PROOF}</p>
+        <p className="text-center text-xs font-semibold text-slate-500">{SOCIAL_PROOF}</p>
         <div className="mt-5 flex flex-wrap items-center justify-center gap-x-9 gap-y-5 opacity-70">
           {[
             { name: "Shopify", slug: "shopify" }, { name: "Stripe", slug: "stripe" },
