@@ -66,7 +66,7 @@ export async function setAdsPageId(pageId: string, tenantId = DEFAULT_TENANT_ID)
   await setTenantSetting(tenantId, "ads_page", { pageId: pageId.trim() });
 }
 
-export interface AdAccountInfo { name: string; currency: string; status: number }
+export interface AdAccountInfo { name: string; currency: string; status: number; timezoneName?: string }
 
 export interface AdCampaign {
   id: string;
@@ -84,15 +84,42 @@ export interface AdCampaign {
 
 export type DatePreset = "today" | "last_7d" | "last_30d";
 
-export async function getAdAccount(accountId: string): Promise<{ ok: boolean; account?: AdAccountInfo; error?: string }> {
-  const r = await graphGet(`act_${accountId}`, { fields: "name,currency,account_status" });
-  if (!r.ok || !r.data) return { ok: false, error: r.error };
-  return { ok: true, account: { name: r.data.name as string, currency: r.data.currency as string, status: r.data.account_status as number } };
+// Meta's last_7d/last_30d PRESETS end at YESTERDAY — they EXCLUDE today. That's
+// why a campaign's "today" spend/impressions could exceed its "7 days" totals:
+// today's data was simply missing from the rolling window. Instead we build an
+// explicit time_range that INCLUDES today, anchored to the ad ACCOUNT's timezone
+// (Meta reads the date strings in the account's zone), so the windows are
+// cumulative and the displayed range matches. `tz` = account timezone_name; falls
+// back to UTC, which on a UTC server is still correct to the day.
+function ymdInTz(tz: string | undefined, offsetDays: number): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: tz || "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const g = (t: string) => Number(p.find(x => x.type === t)?.value);
+  const dt = new Date(Date.UTC(g("year"), g("month") - 1, g("day") + offsetDays));
+  return dt.toISOString().slice(0, 10);
+}
+function dateFilter(preset: DatePreset, tz?: string): string {
+  const days = preset === "today" ? 1 : preset === "last_30d" ? 30 : 7;
+  const until = ymdInTz(tz, 0);                 // today, in the account's timezone
+  const since = ymdInTz(tz, -(days - 1));       // inclusive window ending today
+  return `time_range({'since':'${since}','until':'${until}'})`;
 }
 
-export async function listAdCampaigns(accountId: string, preset: DatePreset): Promise<{ ok: boolean; campaigns: AdCampaign[]; error?: string }> {
+export async function getAdAccount(accountId: string): Promise<{ ok: boolean; account?: AdAccountInfo; error?: string }> {
+  const r = await graphGet(`act_${accountId}`, { fields: "name,currency,account_status,timezone_name" });
+  if (!r.ok || !r.data) return { ok: false, error: r.error };
+  return { ok: true, account: { name: r.data.name as string, currency: r.data.currency as string, status: r.data.account_status as number, timezoneName: (r.data.timezone_name as string) || undefined } };
+}
+
+// The account's reporting timezone (e.g. "Asia/Kolkata") — used to anchor the
+// insight date windows so "today" matches the account, not the UTC server clock.
+export async function getAccountTimezone(accountId: string): Promise<string | undefined> {
+  const r = await graphGet(`act_${accountId}`, { fields: "timezone_name" });
+  return (r.data?.timezone_name as string) || undefined;
+}
+
+export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; campaigns: AdCampaign[]; error?: string }> {
   const r = await graphGet(`act_${accountId}/campaigns`, {
-    fields: `name,effective_status,objective,daily_budget,insights.date_preset(${preset}){spend,impressions,clicks,ctr,cpc,actions}`,
+    fields: `name,effective_status,objective,daily_budget,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "50",
   });
   if (!r.ok || !r.data) return { ok: false, campaigns: [], error: r.error };
@@ -150,9 +177,9 @@ function insightsOf(row: Record<string, unknown>) {
 export interface AdSetRow { id: string; name: string; effectiveStatus: string; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
 export interface AdRow { id: string; name: string; effectiveStatus: string; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
 
-export async function listAdSets(campaignId: string, preset: DatePreset): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
+export async function listAdSets(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
   const r = await graphGet(`${campaignId}/adsets`, {
-    fields: `name,effective_status,daily_budget,optimization_goal,insights.date_preset(${preset}){spend,impressions,clicks,ctr,cpc,actions}`,
+    fields: `name,effective_status,daily_budget,optimization_goal,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "50",
   });
   if (!r.ok || !r.data) return { ok: false, adsets: [], error: r.error };
@@ -167,9 +194,9 @@ export async function listAdSets(campaignId: string, preset: DatePreset): Promis
   };
 }
 
-export async function listAds(campaignId: string, preset: DatePreset): Promise<{ ok: boolean; ads: AdRow[]; error?: string }> {
+export async function listAds(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; ads: AdRow[]; error?: string }> {
   const r = await graphGet(`${campaignId}/ads`, {
-    fields: `name,effective_status,creative{thumbnail_url},insights.date_preset(${preset}){spend,impressions,clicks,ctr,cpc,actions}`,
+    fields: `name,effective_status,creative{thumbnail_url},insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "100",
   });
   if (!r.ok || !r.data) return { ok: false, ads: [], error: r.error };
@@ -209,9 +236,9 @@ const INSIGHT_FIELDS = "spend,impressions,reach,frequency,clicks,unique_clicks,i
 
 function num(v: unknown): number { return Number(v ?? 0) || 0; }
 
-export async function getNodeInsights(nodeId: string, level: NodeInsights["level"], preset: DatePreset): Promise<{ ok: boolean; node?: NodeInsights; error?: string }> {
+export async function getNodeInsights(nodeId: string, level: NodeInsights["level"], preset: DatePreset, tz?: string): Promise<{ ok: boolean; node?: NodeInsights; error?: string }> {
   const extra = level === "campaign" ? ",objective,daily_budget" : level === "adset" ? ",daily_budget,optimization_goal" : ",creative{thumbnail_url}";
-  const r = await graphGet(nodeId, { fields: `name,effective_status${extra},insights.date_preset(${preset}){${INSIGHT_FIELDS}}` });
+  const r = await graphGet(nodeId, { fields: `name,effective_status${extra},insights.${dateFilter(preset, tz)}{${INSIGHT_FIELDS}}` });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
   const d = r.data;
   const ins = ((d.insights as Record<string, unknown>)?.data as Record<string, unknown>[])?.[0] ?? {};
@@ -242,13 +269,13 @@ export async function getNodeInsights(nodeId: string, level: NodeInsights["level
 
 // Children cards for a detail view: a campaign shows its ad sets + ads; an ad
 // set shows its ads. Meta's /{id}/ads edge works for both campaign and ad set.
-export async function getNodeChildren(level: NodeInsights["level"], id: string, preset: DatePreset): Promise<{ adsets: AdSetRow[]; ads: AdRow[] }> {
+export async function getNodeChildren(level: NodeInsights["level"], id: string, preset: DatePreset, tz?: string): Promise<{ adsets: AdSetRow[]; ads: AdRow[] }> {
   if (level === "campaign") {
-    const [s, a] = await Promise.all([listAdSets(id, preset), listAds(id, preset)]);
+    const [s, a] = await Promise.all([listAdSets(id, preset, tz), listAds(id, preset, tz)]);
     return { adsets: s.adsets, ads: a.ads };
   }
   if (level === "adset") {
-    const a = await listAds(id, preset);
+    const a = await listAds(id, preset, tz);
     return { adsets: [], ads: a.ads };
   }
   return { adsets: [], ads: [] };

@@ -17,9 +17,12 @@ export async function GET(req: Request) {
   const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ connected: false, accountId: "", pageId });
 
-  const [acct, camps, attribution, portalIds] = await Promise.all([
-    getAdAccount(accountId),
-    listAdCampaigns(accountId, preset),
+  // Fetch the account first so we know its reporting timezone, then anchor the
+  // campaign insight windows to it (so "today" is included and matches the account).
+  const acct = await getAdAccount(accountId);
+  const tz = acct.account?.timezoneName;
+  const [camps, attribution, portalIds] = await Promise.all([
+    listAdCampaigns(accountId, preset, tz),
     adAttribution(tid).catch(() => []),
     listPortalCampaignIds(tid).catch(() => []),
   ]);

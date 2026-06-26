@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
-import { listAdSets, listAds, type DatePreset } from "@/lib/ads";
+import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { listAdSets, listAds, getAdsAccountId, getAccountTimezone, type DatePreset } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +13,8 @@ export async function GET(req: Request) {
   const preset: DatePreset = presetRaw === "today" || presetRaw === "last_30d" ? presetRaw : "last_7d";
   if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
 
-  const [sets, ads] = await Promise.all([listAdSets(campaignId, preset), listAds(campaignId, preset)]);
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tz = await getAccountTimezone(await getAdsAccountId(tid)).catch(() => undefined);
+  const [sets, ads] = await Promise.all([listAdSets(campaignId, preset, tz), listAds(campaignId, preset, tz)]);
   return NextResponse.json({ adsets: sets.adsets, ads: ads.ads, error: sets.error ?? ads.error ?? null });
 }
