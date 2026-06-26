@@ -5,6 +5,13 @@
 -- match_kb_chunks (0026) and match_kb_chunks_by_tag (0047). Until applied, the
 -- keyword RPCs error and the app degrades to vector-only retrieval.
 
+-- Prerequisite from 0047: the kb_documents.tag column this migration filters on.
+-- Guarded (idempotent) so 0063 applies even if 0047 hasn't run yet. NOTE: 0047
+-- also defines the tag-scoped VECTOR RPC (match_kb_chunks_by_tag) — apply 0047 in
+-- full so tag-scoped AI retrieval works, not just this keyword half.
+alter table kb_documents add column if not exists tag text;
+create index if not exists kb_docs_tag_idx on kb_documents (tag);
+
 -- A maintained tsvector of each chunk's text + a GIN index for fast @@ matching.
 alter table kb_chunks add column if not exists content_tsv tsvector
   generated always as (to_tsvector('english', content)) stored;
