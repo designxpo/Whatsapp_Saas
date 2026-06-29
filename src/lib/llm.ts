@@ -476,6 +476,7 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
       "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
       "Reply in the language of the customer's LATEST message, decided per message — DEFAULT to English, and switch back to English the moment their latest message is in English (even if earlier ones were Hinglish). Use Hindi/Hinglish only when their latest message clearly is. For Hinglish use Latin script ONLY — never mix Devanagari and Latin in one message. Keep it polished and professional.",
       "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
+      "Preserve any URL/link EXACTLY, as a bare link (never markdown) — never drop, shorten, or alter it.",
       "Output ONLY the reply text.",
     ].filter(Boolean).join("\n\n");
     const res = await runChat({
