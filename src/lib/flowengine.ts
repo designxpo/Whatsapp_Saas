@@ -26,6 +26,7 @@ import {
   addContactTag, takeArmedFlow, updateContactProfile,
 } from "./store";
 import { recordFormSent, markFormAbandoned } from "./formresponses";
+import { syncLeadProfile } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
 import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
@@ -806,6 +807,14 @@ export async function handleFlowMessage(
       if (isReal && attr) {
         await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
+        // Mirror a CRM-relevant capture (email / city) onto the LSQ lead. Without
+        // this, the flow-collected email never reached the CRM. Real phone only,
+        // so web-chat/IG synthetic conversation ids never create junk leads.
+        if (/email|city/i.test(attr) && phone.replace(/\D/g, "").length >= 10) {
+          const a = contact?.attributes ?? {};
+          const pick = (re: RegExp) => { for (const [k, v] of Object.entries(a)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
+          void syncLeadProfile({ phone, email: pick(/email/i), city: pick(/city/i), name: contact?.name ?? undefined }, tid);
+        }
       }
       const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
       if (isReal && consumed) await claimReply(convKey).catch(() => undefined);

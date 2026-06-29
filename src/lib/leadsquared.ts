@@ -160,6 +160,39 @@ export async function createOrUpdateLead(p: { phone: string; name?: string; sour
   }
 }
 
+// Push a lead's flow/AI-CAPTURED profile fields (email, city) onto the matching
+// LSQ lead — the missing half of the sync: we created leads from phone only and
+// posted activity notes, but never wrote the email the qualification flow
+// collected, so leads landed with a blank Email. Updates the EXISTING lead BY ID
+// via Lead.Update, so the Source / Owner / ProspectStage are preserved (never
+// overwritten with "WhatsApp"). Creates a lead only when none exists and the
+// tenant's auto-create is on. Fire-and-forget; never throws.
+export async function syncLeadProfile(p: { phone: string; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+  const c = await resolveLsq(tenantId);
+  if (!c) return;
+  try {
+    const email = (p.email || "").trim();
+    const city = (p.city || "").trim();
+    const name = (p.name || "").trim();
+    const fields: { Attribute: string; Value: string }[] = [];
+    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.push({ Attribute: "EmailAddress", Value: email });
+    if (city) fields.push({ Attribute: "mx_City", Value: city });
+    if (!fields.length) return;   // nothing CRM-relevant to write
+
+    const leadId = await findLeadId(p.phone, c);
+    if (leadId) {
+      const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
+      });
+      if (!res.ok) console.error(`[leadsquared] profile update HTTP ${res.status} (lead ${leadId}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
+    } else if (c.autoCreate) {
+      await createOrUpdateLead({ phone: p.phone, name: name || undefined, source: "WhatsApp", fields }, tenantId);
+    }
+  } catch (err) {
+    console.error("[leadsquared] profile sync failed:", errorMessage(err));
+  }
+}
+
 // Returns the lead's ProspectID by phone, creating it only if auto-create is on.
 export async function ensureLead(phone: string, name?: string, source?: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
   const c = await resolveLsq(tenantId);

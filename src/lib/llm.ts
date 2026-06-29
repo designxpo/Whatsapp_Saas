@@ -5,6 +5,7 @@ import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { downloadRemoteMedia, visionInlineMime } from "./voice";
 import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
 import { readBehavior, behaviorBlock } from "./behavior";
+import { syncLeadProfile } from "./leadsquared";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
@@ -206,6 +207,10 @@ async function rememberCustomer(phone: string, args: Record<string, unknown>, te
   if (city) attrs.city = city;
   if (interest) attrs.interest = interest;
   if (Object.keys(attrs).length) await setContactAttributes(phone, attrs, tenantId).catch(() => undefined);
+  // Mirror an AI-captured email/city onto the LSQ lead (same gap the flow had).
+  if ((email || city) && phone.replace(/\D/g, "").length >= 10) {
+    void syncLeadProfile({ phone, email: email || undefined, city: city || undefined, name: name || undefined }, tenantId);
+  }
 }
 
 // Compact "what we already know" block for the system prompt.

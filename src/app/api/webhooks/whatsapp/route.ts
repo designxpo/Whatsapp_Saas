@@ -19,7 +19,7 @@ import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
-import { pushWaActivity } from "@/lib/leadsquared";
+import { pushWaActivity, syncLeadProfile } from "@/lib/leadsquared";
 import { emitEvent } from "@/lib/integrations";
 import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours } from "@/lib/messaging-settings";
 import { loadMemory, saveMemory } from "@/lib/router/memory";
@@ -192,6 +192,10 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   const answers = formAnswers(m);
   if (answers && Object.keys(answers).length) {
     await setContactAttributes(from, answers, tid).catch(() => undefined);
+    // Mirror a form-captured email/city onto the LSQ lead (same gap the ask path had).
+    const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
+    const fEmail = pick(/email/i), fCity = pick(/city/i);
+    if (fEmail || fCity) void syncLeadProfile({ phone: from, email: fEmail, city: fCity, name: profileName }, tid);
   }
 
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
