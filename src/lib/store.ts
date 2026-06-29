@@ -766,23 +766,89 @@ export async function listConversations(opts: { status?: ConvStatus | null; limi
 // Returns the persisted row's id + created_at so callers (e.g. the web-chat
 // widget) can seed their client-side dedup state and avoid double-rendering a
 // reply that also arrives via polling. null when the insert was swallowed (dup).
-export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null }): Promise<{ id: string; createdAt: string } | null> {
+export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null; coverageBand?: string | null; topSim?: number | null; groundingDeferred?: boolean; groundingStripped?: unknown[] }): Promise<{ id: string; createdAt: string } | null> {
   const row: Record<string, unknown> = {
     tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, conversation_id: p.conversationId, role: p.role, body: p.body,
     meta_message_id: p.metaId ?? null, source: p.source,
   };
   if (p.mediaUrl) { row.media_url = p.mediaUrl; row.media_type = p.mediaType ?? null; }
+  // Grounding telemetry (0066) — how well the KB covered this reply + what the
+  // firewall did. Optional so callers without it (inbound, flows) are unaffected.
+  if (p.coverageBand != null) row.coverage_band = p.coverageBand;
+  if (p.topSim != null) row.top_sim = p.topSim;
+  if (p.groundingDeferred) row.grounding_deferred = true;
+  if (p.groundingStripped && p.groundingStripped.length) row.grounding_stripped = p.groundingStripped;
   let { data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single();
-  // Pre-migration safety: if the media columns aren't present yet (0052), retry
-  // without them so a voice note still logs as text instead of being dropped.
-  if (error && error.code === "42703" && p.mediaUrl) {
-    delete row.media_url; delete row.media_type;
+  // Pre-migration safety: if optional columns aren't present yet (media 0052 /
+  // grounding 0066), retry without them so the message still logs.
+  if (error && error.code === "42703") {
+    for (const k of ["media_url", "media_type", "coverage_band", "top_sim", "grounding_deferred", "grounding_stripped"]) delete row[k];
     ({ data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single());
   }
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
   if (error && error.code !== "23505") throw error;
   if (!data) return null;
   return { id: (data as Record<string, unknown>).id as string, createdAt: (data as Record<string, unknown>).created_at as string };
+}
+
+// ── Grounding audit (anti-hallucination L4) ──────────────────────────────────
+// Records one async semantic-audit verdict, tenant-scoped. Fire-and-forget; never
+// throws. No-ops gracefully if 0066 hasn't been applied yet (table missing).
+export interface GroundingAuditRow {
+  tenantId?: string; conversationId: string; messageId?: string | null; question: string; reply: string;
+  coverageBand?: string | null; topSim?: number | null; usedChunks?: number | null; chunkSims?: number[];
+  grounded: boolean; unsupportedClaims?: unknown; droppedSubquestions?: unknown; sanitizerActions?: unknown; model?: string;
+}
+export async function recordGroundingAudit(a: GroundingAuditRow): Promise<void> {
+  await db().from("wa_grounding_audits").insert({
+    tenant_id: a.tenantId ?? DEFAULT_TENANT_ID, conversation_id: a.conversationId, message_id: a.messageId ?? null,
+    question: a.question?.slice(0, 2000) ?? "", reply: a.reply?.slice(0, 4000) ?? "",
+    coverage_band: a.coverageBand ?? null, top_sim: a.topSim ?? null,
+    used_chunks: a.usedChunks ?? null, chunk_sims: a.chunkSims ?? null,
+    grounded: a.grounded, unsupported_claims: a.unsupportedClaims ?? null,
+    dropped_subquestions: a.droppedSubquestions ?? null, sanitizer_actions: a.sanitizerActions ?? null,
+    model: a.model ?? null,
+  }).then(() => {}, (e) => console.error("[grounding-audit] persist failed:", e?.message ?? e));
+}
+
+export interface GroundingAuditView {
+  id: string; conversationId: string; question: string; reply: string;
+  coverageBand: string | null; topSim: number | null; grounded: boolean;
+  unsupportedClaims: unknown; droppedSubquestions: unknown; sanitizerActions: unknown;
+  createdAt: string; contactName: string | null; phone: string | null;
+}
+
+// Flagged (grounded=false) audits for one tenant, newest first.
+export async function listGroundingAudits(opts: { tenantId?: string; limit?: number; onlyFlagged?: boolean } = {}): Promise<GroundingAuditView[]> {
+  let q = db().from("wa_grounding_audits")
+    .select("id, conversation_id, question, reply, coverage_band, top_sim, grounded, unsupported_claims, dropped_subquestions, sanitizer_actions, created_at, wa_conversations(name, phone)")
+    .eq("tenant_id", opts.tenantId ?? DEFAULT_TENANT_ID)
+    .order("created_at", { ascending: false }).limit(opts.limit ?? 50);
+  if (opts.onlyFlagged !== false) q = q.eq("grounded", false);
+  const { data, error } = await q;
+  if (error) return [];   // table missing (pre-migration) or transient → empty
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(r => {
+    const conv = (r.wa_conversations as Record<string, unknown> | null) ?? null;
+    return {
+      id: r.id as string, conversationId: r.conversation_id as string,
+      question: (r.question as string) ?? "", reply: (r.reply as string) ?? "",
+      coverageBand: (r.coverage_band as string) ?? null, topSim: (r.top_sim as number) ?? null,
+      grounded: !!r.grounded, unsupportedClaims: r.unsupported_claims, droppedSubquestions: r.dropped_subquestions,
+      sanitizerActions: r.sanitizer_actions, createdAt: r.created_at as string,
+      contactName: (conv?.name as string) ?? null, phone: (conv?.phone as string) ?? null,
+    };
+  });
+}
+
+// Aggregate grounding health for the admin header — deferral + flag rates.
+export async function groundingStats(tenantId = DEFAULT_TENANT_ID, sinceDays = 7): Promise<{ deferred: number; flagged: number; audited: number }> {
+  const since = new Date(Date.now() - sinceDays * 86400_000).toISOString();
+  const [def, flag, aud] = await Promise.all([
+    db().from("wa_conv_messages").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("grounding_deferred", true).gte("created_at", since).then(r => r.count ?? 0, () => 0),
+    db().from("wa_grounding_audits").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("grounded", false).gte("created_at", since).then(r => r.count ?? 0, () => 0),
+    db().from("wa_grounding_audits").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since).then(r => r.count ?? 0, () => 0),
+  ]);
+  return { deferred: def, flagged: flag, audited: aud };
 }
 
 export async function getConvHistory(conversationId: string, limit = 20, tenantId?: string): Promise<ConvMessage[]> {

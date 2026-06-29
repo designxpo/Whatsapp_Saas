@@ -388,6 +388,42 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
 
 
 // Home: inbox pulse, 14-day delivery funnel, audience health, quick actions.
+// Grounding health — the anti-hallucination feedback loop. Shows how often the
+// firewall had to defer a specific (a KB-gap signal) and the AI replies the async
+// auditor flagged as likely-ungrounded, each opening the chat for review.
+type GroundingData = {
+  stats: { deferred: number; flagged: number; audited: number };
+  flagged: { id: string; conversationId: string; question: string; reply: string; coverageBand: string | null; unsupportedClaims: unknown; createdAt: string; contactName: string | null; phone: string | null }[];
+};
+function GroundingRail({ goTo }: { goTo: GoTo }) {
+  const [g, setG] = useState<GroundingData | null>(null);
+  useEffect(() => { fetch("/api/admin/grounding").then(r => r.json()).then(setG).catch(() => undefined); }, []);
+  if (!g) return null;
+  const claims = (c: unknown): string[] => Array.isArray(c) ? c.filter(x => typeof x === "string") : [];
+  return (
+    <RailCard title="Grounding health · 7d" action="Live Chat" onAction={() => goTo("livechat", { filter: "escalated" })}>
+      <StatRow label="Specifics deferred" value={g.stats.deferred} tone={g.stats.deferred > 0 ? "warn" : undefined} />
+      <StatRow label="Replies flagged" value={g.stats.flagged} tone={g.stats.flagged > 0 ? "bad" : undefined} />
+      {g.stats.audited === 0 && g.stats.deferred === 0 && (
+        <p className="text-[11px] text-slate-400 pt-1">No grounding issues — or the auditor isn’t enabled yet (set <code className="text-[10px]">GROUNDING_AUDIT</code>).</p>
+      )}
+      {g.flagged.length > 0 && (
+        <div className="pt-1.5 mt-1 border-t border-line space-y-1.5">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">Flagged replies</p>
+          {g.flagged.slice(0, 4).map(f => (
+            <button key={f.id} onClick={() => goTo("livechat", { filter: "all" })} className="block w-full text-left rounded-md px-1.5 py-1 hover:bg-canvas">
+              <p className="text-[11px] font-semibold text-ink-800 truncate">{f.question || "(reply)"}</p>
+              {claims(f.unsupportedClaims).length > 0 && (
+                <p className="text-[10px] text-rose-600 truncate">⚠ {claims(f.unsupportedClaims)[0]}</p>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </RailCard>
+  );
+}
+
 function HomeRail({ goTo }: { goTo: GoTo }) {
   const a = useAnalytics();
   const t = a?.messaging.totals;
@@ -401,6 +437,7 @@ function HomeRail({ goTo }: { goTo: GoTo }) {
           <StatRow label="Active conversations" value={a.conversations.active} onClick={() => goTo("livechat", { filter: "all" })} />
         </>}
       </RailCard>
+      <GroundingRail goTo={goTo} />
       <RailCard title="Delivery — last 14 days" action="Analytics" onAction={() => goTo("analytics")}>
         {!t ? railLoading : t.sent === 0
           ? <p className="text-xs text-slate-400">No sends yet — this fills in after your first broadcast.</p>

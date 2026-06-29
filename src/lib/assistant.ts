@@ -9,6 +9,7 @@ import type { ChannelCreds } from "./channels";
 import { pushWaActivity } from "./leadsquared";
 import { emitEvent } from "./integrations";
 import { routeMessage, recordRagAnswer } from "./router";
+import { auditReply } from "./guard/audit";
 import { isAutoRouteEnabled, pickAgentForQuery } from "./aihub";
 import { embedQuery } from "./kb";
 import { setConversationAgent } from "./store";
@@ -185,12 +186,30 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     const sent = await sendReply(result.reply);
     if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
-    await appendConvMessage({ conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot" });
+    // Persist the reply WITH its grounding telemetry (coverage band + what the
+    // firewall stripped/deferred) so KB gaps are visible after the fact.
+    const saved = await appendConvMessage({
+      conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot", tenantId: conv.tenantId,
+      coverageBand: result.coverageBand, topSim: result.topSim,
+      groundingDeferred: result.groundingActions?.some(a => a.disposition === "defer"),
+      groundingStripped: result.groundingActions,
+    });
     await touchOutbound(conversationId, result.reply);
     void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot", tenantId: conv.tenantId });
-    // Warm the semantic cache so the next similar question skips RAG. Skipped for
-    // media messages — the answer is about the file, not reusable by its caption.
-    if (lastUserMsg && !lastHasMedia) recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: conv.primaryKbTag });
+    // Async semantic grounding audit — the reply is ALREADY sent, so this is off
+    // the customer's hot path. Catches claims the firewall can't, on the tenant's
+    // own AI key, and gates the cache so a flagged answer is never reused. The
+    // conversation is unaffected on any error (incl. a tenant with no AI key).
+    if (lastUserMsg && !lastHasMedia) {
+      const verdict = await auditReply({
+        tenantId: conv.tenantId, conversationId, messageId: saved?.id, question: lastUserMsg, reply: result.reply,
+        context: result.context ?? "", chunkSims: result.chunkSims, coverageBand: result.coverageBand,
+        topSim: result.topSim, sanitizerActions: result.groundingActions,
+      }).catch(() => null);
+      if (!verdict || verdict.shouldCache) {
+        recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: conv.primaryKbTag });
+      }
+    }
     return { outcome: "sent" };
   } catch (err) {
     await reflagReply(conversationId);
