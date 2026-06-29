@@ -19,8 +19,11 @@ import { DEFAULT_TENANT_ID } from "../tenant";
 
 export type AuditMode = "off" | "shadow" | "active";
 export function auditMode(): AuditMode {
-  const m = (process.env.GROUNDING_AUDIT || "shadow").toLowerCase();
-  return m === "off" || m === "active" ? (m as AuditMode) : "shadow";
+  // Default OFF on the multi-tenant SaaS — the audit runs on each TENANT's own AI
+  // key, so it must be an explicit operator opt-in, not an automatic cost. Set
+  // GROUNDING_AUDIT=shadow to observe, =active to flag.
+  const m = (process.env.GROUNDING_AUDIT || "off").toLowerCase();
+  return m === "shadow" || m === "active" ? (m as AuditMode) : "off";
 }
 
 export interface AuditInput {
