@@ -5,9 +5,32 @@ import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { downloadRemoteMedia, visionInlineMime } from "./voice";
 import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
 import { readBehavior, behaviorBlock } from "./behavior";
+import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
+// Persona/email scrubbers now live in the shared guard module; re-exported so
+// existing importers (and tests) keep resolving them from "@/lib/llm".
+export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
 
 // Below this cosine similarity, retrieved context is treated as irrelevant.
 const MIN_SIMILARITY = 0.45;
+// Above this, a single chunk is strong enough to quote specifics from confidently.
+const SOLID_SIMILARITY = 0.62;
+
+// How well the KB covers the question — graduated, not binary. A lone marginal
+// chunk ('thin') is the upstream cause of fabricated specifics: the model treats
+// any non-empty context as license to assert. The band lets the prompt demand
+// deferral on thin evidence while staying confident on solid evidence.
+export type CoverageBand = "none" | "thin" | "solid";
+function coverageBand(sims: number[]): CoverageBand {
+  if (!sims.length) return "none";
+  const top = Math.max(...sims);
+  const strong = sims.filter(s => s >= 0.55).length;
+  return top >= SOLID_SIMILARITY || strong >= 2 ? "solid" : "thin";
+}
+
+// The business's approved contact details — the firewall's allow-set floor. In
+// the multi-tenant SaaS these are empty by default (per-tenant config supplies
+// them); an unset value simply means "nothing extra is pre-approved".
+const APPROVED_PHONES = (process.env.PUBLIC_CONTACT_PHONE || "").split(",").map(s => s.trim()).filter(Boolean);
 const ESCALATE_TOKEN = "[[ESCALATE]]";
 // A genuine human-handoff / complaint signal. The model occasionally emits the
 // escalate token on a benign one-word menu tap ("Fees", "Courses"), which would
@@ -67,17 +90,17 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = ""): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none"): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
   ].join("\n");
 
   const parts = [persona];
-  // Whether the knowledge base actually returned anything for this question.
-  // Drives the grounding rules: with content we share specifics; with none we
-  // must not fabricate (e.g. the KB was deleted → share nothing we can't ground).
-  const hasContext = !!context.trim();
+  // How strongly the knowledge base actually covers this question. Drives the
+  // grounding rules: 'solid' → quote specifics confidently; 'thin' → a single
+  // marginal chunk, so answer the general part but DEFER brand specifics rather
+  // than over-asserting from weak evidence; 'none' → share nothing we can't ground.
   if (agent?.constraintsText?.trim()) parts.push(`--- Constraints ---\n${agent.constraintsText.trim()}`);
   if (agent?.productInfo?.trim()) parts.push(`--- Product & service information ---\n${agent.productInfo.trim()}`);
   if (profile.trim()) parts.push([
@@ -94,8 +117,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "• BRAND-SPECIFIC facts about THIS business — our courses, fees/prices, dates, batch timings, duration, syllabus, placements, certifications, policies, offers, contact details: answer ONLY from the Business context below. Never invent, guess, or fall back on general knowledge for these specifics.",
     "• CONTACT DETAILS — share a phone number, email, or link ONLY if it appears verbatim in the Business context. NEVER invent or guess one, and never make up a department/staff address such as training@, admissions@, or support@. If the context has no contact detail for what they ask, offer to connect them with our team rather than giving an address.",
     "• MULTI-PART questions — when the customer asks about more than one thing (e.g. fees AND duration), address EVERY part of their question. Never answer one and silently skip the other; if you can only answer some, cover those and offer to get the rest.",
-    hasContext
-      ? "The Business context below HAS relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. But state a specific fee, duration, date, or number ONLY if you can actually SEE it in the context: if the context covers the course yet not the exact detail asked, say you'll connect them with our team for that specific point — do NOT fill the gap from memory. Don't deflect on details the context DOES contain; offer a counselor only as a helpful extra."
+    coverage === "solid"
+      ? "The Business context below HAS strong, relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. But state a specific fee, duration, date, or number ONLY if you can actually SEE it in the context: if the context covers the course yet not the exact detail asked, say you'll connect them with our team for that specific point — do NOT fill the gap from memory. Don't deflect on details the context DOES contain; offer a counselor only as a helpful extra."
+      : coverage === "thin"
+      ? "The Business context below is THIN for this question — only a weak, partial match. Answer any GENERAL part naturally, but do NOT assert a specific fee, duration, date, syllabus, or policy from a single marginal chunk — it is likely the wrong course or an unrelated detail. State only what is unmistakably present, and for the exact specifics say you'll connect them with our team. Never fabricate to fill the gap."
       : "No Business context was found for this question. Do NOT state, guess, or imply any specific course, fee, date, or policy about us. Still answer any GENERAL part of the message naturally, and for the brand-specific part ask which course/detail they mean or offer to connect the team — warmly, never a canned non-answer.",
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
@@ -199,83 +224,17 @@ export interface ReplyResult {
   reason?: string;
   usedChunks: number;
   functionCalls?: string[]; // names of AI functions executed this turn
+  // Grounding metadata (success path) — for telemetry + the async semantic auditor.
+  context?: string;            // the retrieved context this reply was allowed to draw from
+  coverageBand?: CoverageBand; // how strongly the KB covered the question
+  topSim?: number;             // best chunk similarity
+  chunkSims?: number[];        // all relevant chunk similarities
+  groundingActions?: GroundingAction[];  // what the firewall rewrote/stripped/deferred
 }
 
-// Strip a leading persona/name label the model sometimes prepends despite the
-// system prompt — e.g. "Maya:", "*Maya*:", "MAYA SUPPORT:", "MAYA CUSTOMER
-// SUPPORT:", "**MAYA SUPPORT:**", "SUPPORT:". Two passes:
-//   1) a ROLE label — any (0–2 word) name followed by a role word (support/
-//      sales/team…), any case, colon optionally bold-wrapped and no whitespace
-//      required after it ("MAYA SUPPORT:The…"). This is what leaked in production:
-//      "**MAYA SUPPORT:**" slipped past the old name-only regex because the bold
-//      "**" sat between the colon and the space.
-//   2) a 1–2 TitleCase-word personal name, kept when it's a common content opener
-//      ("Note:", "Fees:", "Total:", "Contact:") so real content survives.
-const ROLE_WORDS = "(?:support|sales|service|team|helpdesk|care|assistant|bot|agent|concierge|advisor|counsell?or)";
-const ROLE_PREFIX_RE = new RegExp(
-  "^\\s*\\*{0,2}\\s*(?:[A-Za-z][\\w.'’-]*\\s+){0,2}" + ROLE_WORDS + "(?:\\s+" + ROLE_WORDS + ")*\\s*\\*{0,2}\\s*:\\*{0,2}\\s*",
-  "i",
-);
-const NAME_PREFIX_RE = /^\s*\*{0,2}\s*([A-Z][a-zA-Z.'’-]+(?:\s+[A-Z][a-zA-Z.'’-]+)?)\s*\*{0,2}\s*:\*{0,2}\s+/;
-const COMMON_LABELS = new Set([
-  "note", "tip", "tips", "hours", "fee", "fees", "price", "prices", "update", "reminder",
-  "hi", "hello", "hey", "warning", "important", "fyi", "ps", "re", "attention", "menu",
-  "options", "welcome", "thanks", "thank", "sure", "okay", "ok", "yes", "no", "namaste",
-  // Common "Label: value" content openers — keep these intact.
-  "total", "subtotal", "duration", "module", "level", "day", "week", "step", "date", "time",
-  "contact", "info", "email", "phone", "address", "website", "location", "venue", "amount", "discount",
-]);
-// Remove a MID-sentence self-introduction by personal name — "I'm Asha, an
-// admissions assistant", "I am Asha.", "My name is Asha", "this is Asha",
-// "Asha here", "— Asha". The assistant has NO personal name, but a persona that
-// names itself slips past the system prompt, so we strip the KNOWN agent name out
-// of any self-intro after the fact. We target the configured name only (never any
-// capitalised word), so real content like "I'm happy to help" is never touched.
-function scrubSelfIntro(text: string, agentName?: string | null): string {
-  const name = (agentName ?? "").trim();
-  if (!name || !text) return text;
-  const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  let out = text;
-  out = out.replace(new RegExp(`\\b(I'?m|I am)\\s+${n}\\s*,\\s*`, "gi"), "$1 ");                 // "I'm Asha, an advisor" → "I'm an advisor"
-  out = out.replace(new RegExp(`\\b(?:my name is|this is|I'?m|I am)\\s+${n}\\b\\.?`, "gi"), ""); // "My name is Asha." → ""
-  out = out.replace(new RegExp(`\\b${n}\\s+here\\b\\.?,?`, "gi"), "");                           // "Asha here," → ""
-  out = out.replace(new RegExp(`[—–-]\\s*${n}\\s*$`, "i"), "");                                  // "— Asha" sign-off
-  if (out === text) return text;                          // nothing scrubbed → leave spacing untouched
-  return out.replace(/\s{2,}/g, " ").replace(/\s+([,.!?])/g, "$1").trim();
-}
-
-// The model has a habit of inventing plausible-looking staff/department emails
-// (training@, admissions@, support@…) when asked for contact details — none of
-// which are real. Only the approved public inbox may survive; every other address
-// on the same domain is deterministically rewritten to it. Multi-tenant, so the
-// approved email comes from config (PUBLIC_CONTACT_EMAIL) and the scrub is a no-op
-// when unset. URLs (no '@') are never touched.
-const PUBLIC_CONTACT_EMAIL = (process.env.PUBLIC_CONTACT_EMAIL || "").trim().toLowerCase();
-export function scrubContactEmails(text: string, approved: string = PUBLIC_CONTACT_EMAIL): string {
-  const email = approved.trim().toLowerCase();
-  const domain = email.split("@")[1];
-  if (!text || !domain) return text;   // no approved email configured → no-op
-  const re = new RegExp(`[A-Za-z0-9._%+-]+@${domain.replace(/\./g, "\\.")}`, "gi");
-  return text.replace(re, m => (m.toLowerCase() === email ? m : email));
-}
-
-export function stripLeadingName(text: string, agentName?: string | null): string {
-  // Pass 1 — role/persona label, regardless of agent name or case.
-  const r = text.match(ROLE_PREFIX_RE);
-  if (r) {
-    const out = text.slice(r[0].length).trimStart();
-    if (out) return scrubSelfIntro(out, agentName);   // never strip away the whole message
-  }
-  // Pass 2 — a 1–2 word personal-name label.
-  const m = text.match(NAME_PREFIX_RE);
-  if (!m) return scrubSelfIntro(text, agentName);
-  const label = m[1].trim();
-  const first = label.split(/\s+/)[0].toLowerCase();
-  const matchesAgent = !!agentName && label.toLowerCase() === agentName.trim().toLowerCase();
-  if (!matchesAgent && COMMON_LABELS.has(first)) return scrubSelfIntro(text, agentName);
-  const out = text.slice(m[0].length).trimStart();
-  return scrubSelfIntro(out || text, agentName);
-}
+// Persona-label / self-intro scrubbing + the contact-email guard moved to
+// src/lib/guard/sanitize.ts so every outbound path shares ONE chokepoint
+// (sanitizeOutbound). They are re-exported above for back-compat.
 
 // Build the text we EMBED for RAG retrieval. A message is anaphoric/elliptical —
 // it leans on the prior turn for its subject — when it OPENS with a back-reference
@@ -337,6 +296,9 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     console.error("[llm] retrieve failed:", err);
   }
   const relevant = chunks.filter(c => c.similarity >= MIN_SIMILARITY);
+  const chunkSims = relevant.map(c => c.similarity);
+  const topSim = chunkSims.length ? Math.max(...chunkSims) : 0;
+  const coverage = coverageBand(chunkSims);
 
   // NOTE: we deliberately do NOT short-circuit to a canned reply when there's no
   // KB context / no agent. The grounding rules let the model greet, make small
@@ -349,10 +311,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   const contact = phone ? await getContactByPhone(phone, tenantId).catch(() => null) : null;
   const profile = knownProfile(contact);
 
-  const context = relevant.map((c, i) => `[${i + 1}] ${c.content}`).join("\n\n");
+  // Annotate weak chunks so the model sees the evidence strength inline, not just
+  // a wall of equally-authoritative-looking text.
+  const context = relevant.map((c, i) => `[${i + 1}${c.similarity < 0.55 ? " · weak" : ""}] ${c.content}`).join("\n\n");
   // Zero-cost behaviour read → adapts tone + next step (educate / convert / de-escalate).
   const behavior = behaviorBlock(readBehavior(history));
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
@@ -433,7 +397,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         continue;
       }
 
-      const text = scrubContactEmails(stripLeadingName((res.text ?? "").trim(), agent?.name));
+      // Single outbound chokepoint: strip any persona label + enforce that every
+      // high-risk specific (contact, price, %, duration…) traces to the retrieved
+      // context or the approved contact config — else rewrite/strip/defer it.
+      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES });
+      const text = guarded.text;
+      if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));
       // Only an explicit escalate token hands off to a human. An empty model
       // reply must NOT escalate — fall back to a soft prompt instead.
       if (text.includes(ESCALATE_TOKEN)) {
@@ -454,7 +423,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         const reply = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : SOFT_FALLBACK;
         return { reply, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
       }
-      return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed };
+      return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed, context, coverageBand: coverage, topSim, chunkSims, groundingActions: guarded.actions };
     }
     const exhausted = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
     return { reply: exhausted, escalate: false, reason: "tool loop exhausted", usedChunks: relevant.length, functionCalls: executed };
@@ -514,7 +483,10 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
       turns: [{ role: "user", text: `CUSTOMER MESSAGE:\n${userMessage}\n\nFACTUAL ANSWER:\n${answer}` }],
       maxTokens: 512,
     });
-    return stripLeadingName(res.text || answer, agent.name);
+    // Sanitize against the ORIGINAL factual answer as the allow-set: the persona
+    // rewrite must not introduce an email/number/duration that wasn't in the
+    // curated source (a tone pass occasionally invents a contact line).
+    return sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES }).text;
   } catch (err) {
     // AiKeyMissingError, rate limits, etc. — never block; serve the raw answer.
     console.error("[llm] persona tone failed (serving raw answer):", err);
