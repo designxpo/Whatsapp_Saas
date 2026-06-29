@@ -92,8 +92,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "• GREETINGS & small talk ('hi', 'hello', 'hey', 'how are you', 'thanks', 'ok'): reply warmly and naturally, say who we are in one short line, and ask how you can help. Never treat a greeting as something you 'didn't get'.",
     "• GENERAL or educational questions about the field (e.g. 'what is data science?', 'is analytics a good career?', 'difference between AI and ML', study/career advice): answer helpfully from your OWN general knowledge — concise and friendly — then gently relate it to how we can help. You do NOT need business context for these.",
     "• BRAND-SPECIFIC facts about THIS business — our courses, fees/prices, dates, batch timings, duration, syllabus, placements, certifications, policies, offers, contact details: answer ONLY from the Business context below. Never invent, guess, or fall back on general knowledge for these specifics.",
+    "• CONTACT DETAILS — share a phone number, email, or link ONLY if it appears verbatim in the Business context. NEVER invent or guess one, and never make up a department/staff address such as training@, admissions@, or support@. If the context has no contact detail for what they ask, offer to connect them with our team rather than giving an address.",
+    "• MULTI-PART questions — when the customer asks about more than one thing (e.g. fees AND duration), address EVERY part of their question. Never answer one and silently skip the other; if you can only answer some, cover those and offer to get the rest.",
     hasContext
-      ? "The Business context below HAS relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. Don't deflect to a counselor or say you'll 'get back'; offer a counselor only as a helpful extra."
+      ? "The Business context below HAS relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. But state a specific fee, duration, date, or number ONLY if you can actually SEE it in the context: if the context covers the course yet not the exact detail asked, say you'll connect them with our team for that specific point — do NOT fill the gap from memory. Don't deflect on details the context DOES contain; offer a counselor only as a helpful extra."
       : "No Business context was found for this question. Do NOT state, guess, or imply any specific course, fee, date, or policy about us. Still answer any GENERAL part of the message naturally, and for the brand-specific part ask which course/detail they mean or offer to connect the team — warmly, never a canned non-answer.",
     hasTools
       ? "When you have collected the details a function needs (per its description), CALL the function. You may keep conversing when context is missing — collecting details does not require business context."
@@ -240,6 +242,21 @@ function scrubSelfIntro(text: string, agentName?: string | null): string {
   out = out.replace(new RegExp(`[—–-]\\s*${n}\\s*$`, "i"), "");                                  // "— Asha" sign-off
   if (out === text) return text;                          // nothing scrubbed → leave spacing untouched
   return out.replace(/\s{2,}/g, " ").replace(/\s+([,.!?])/g, "$1").trim();
+}
+
+// The model has a habit of inventing plausible-looking staff/department emails
+// (training@, admissions@, support@…) when asked for contact details — none of
+// which are real. Only the approved public inbox may survive; every other address
+// on the same domain is deterministically rewritten to it. Multi-tenant, so the
+// approved email comes from config (PUBLIC_CONTACT_EMAIL) and the scrub is a no-op
+// when unset. URLs (no '@') are never touched.
+const PUBLIC_CONTACT_EMAIL = (process.env.PUBLIC_CONTACT_EMAIL || "").trim().toLowerCase();
+export function scrubContactEmails(text: string, approved: string = PUBLIC_CONTACT_EMAIL): string {
+  const email = approved.trim().toLowerCase();
+  const domain = email.split("@")[1];
+  if (!text || !domain) return text;   // no approved email configured → no-op
+  const re = new RegExp(`[A-Za-z0-9._%+-]+@${domain.replace(/\./g, "\\.")}`, "gi");
+  return text.replace(re, m => (m.toLowerCase() === email ? m : email));
 }
 
 export function stripLeadingName(text: string, agentName?: string | null): string {
@@ -416,7 +433,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
         continue;
       }
 
-      const text = stripLeadingName((res.text ?? "").trim(), agent?.name);
+      const text = scrubContactEmails(stripLeadingName((res.text ?? "").trim(), agent?.name));
       // Only an explicit escalate token hands off to a human. An empty model
       // reply must NOT escalate — fall back to a soft prompt instead.
       if (text.includes(ESCALATE_TOKEN)) {
