@@ -78,6 +78,32 @@ describe("GroundingFirewall — fabricated specifics (the duration/fee incidents
   });
 });
 
+describe("GroundingFirewall — coherent, on-topic deferrals (the 'duration answered as fees' fix)", () => {
+  it("names the deferral after what the customer ASKED, not the stray token that tripped it", () => {
+    // Duration question; the model fabricated a fee. The deferral must read 'duration', not 'fees'.
+    const r = enforceGrounding("Our fee is around ₹49,999 for that.", "", { questionHint: "what is the course duration?" });
+    expect(r.text).toContain("duration");
+    expect(r.text).not.toContain("49,999");
+    expect(r.text).not.toMatch(/exact fees/);
+  });
+
+  it("keeps the grounded answer first and puts the deferral LAST (no leading off-topic deferral)", () => {
+    const ctx = "[1] The program covers Excel, SQL, Python, and BI tools with hands-on projects.";
+    const reply = "The fee is ₹49,999. It covers Excel, SQL, Python, and BI tools with hands-on projects.";
+    const r = enforceGrounding(reply, ctx, { questionHint: "which program is best for me?" });
+    expect(r.text).toMatch(/^It covers Excel/);                                       // grounded answer leads
+    expect(r.text).not.toContain("49,999");
+    expect(r.text.trim()).toMatch(/our team will share the latest confirmed information\.$/);  // single deferral trails
+  });
+
+  it("collapses several ungrounded sentences into ONE deferral and keeps the benign line", () => {
+    const reply = "The fee is ₹49,999. The duration is 8 months. Anything else I can help with?";
+    const r = enforceGrounding(reply, "", { questionHint: "fees and duration?" });
+    expect((r.text.match(/our team will share/g) ?? []).length).toBe(1);
+    expect(r.text).toContain("Anything else I can help with?");
+  });
+});
+
 describe("sanitizeOutbound — composed persona + grounding chokepoint", () => {
   it("strips a persona label AND rewrites an invented email in one pass", () => {
     const r = sanitizeOutbound("MAYA SUPPORT: Please email training@analytixlabs.co.in.", { agentName: "Maya", context: "", approvedEmail: APPROVED });

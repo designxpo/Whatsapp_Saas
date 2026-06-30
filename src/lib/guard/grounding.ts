@@ -21,6 +21,7 @@ export interface GroundingOptions {
   approvedEmail?: string;            // the business's real public inbox (rewrite target for invented company-domain emails)
   approvedPhones?: string[];         // approved contact phone(s) — always allowed
   enabled?: Partial<Record<GroundingClass, boolean>>;  // per-class override
+  questionHint?: string;             // the customer's latest message — makes a deferral on-topic ("duration", not "fees")
 }
 
 export interface GroundingAction {
@@ -118,8 +119,22 @@ const DEFER_NOUN: Partial<Record<GroundingClass, string>> = {
   CURRENCY: "exact fees", PERCENT: "exact figures", DURATION: "exact duration and schedule",
   PHONE: "contact details", DATE: "exact dates", NUMBER: "exact numbers",
 };
-function deferClause(cls: GroundingClass): string {
-  return `For the ${DEFER_NOUN[cls] ?? "exact details"}, our team will share the latest confirmed information.`;
+// What the CUSTOMER actually asked about — so a deferral reads on-topic regardless
+// of which stray token tripped it. (A duration question where the model fabricated a
+// fee must defer "the exact duration", never "the exact fees".) Null = no clear topic,
+// fall back to the triggering class's noun.
+function questionNoun(hint?: string): string | null {
+  const h = (hint ?? "").toLowerCase();
+  if (!h) return null;
+  if (/\b(fee|fees|cost|costs|price|pricing|charge|charges|emi|tuition|payment|how much)\b/.test(h)) return "exact fees";
+  if (/\b(duration|how long|months?|weeks?|years?|hours?|timeline|time it takes|schedule|timing|timings)\b/.test(h)) return "exact duration and schedule";
+  if (/\b(date|dates|start date|starting|begins?|commence|next batch|batch date)\b/.test(h)) return "exact dates";
+  if (/\b(discount|scholarship|placement rate|percentage|percent)\b/.test(h)) return "exact figures";
+  if (/\b(call|phone|mobile|number|contact|whatsapp|email|reach)\b/.test(h)) return "contact details";
+  return null;
+}
+function deferClause(cls: GroundingClass, preferredNoun?: string | null): string {
+  return `For the ${preferredNoun ?? DEFER_NOUN[cls] ?? "exact details"}, our team will share the latest confirmed information.`;
 }
 
 function isEnabled(cls: GroundingClass, opts: GroundingOptions): boolean {
@@ -173,26 +188,32 @@ export function enforceGrounding(text: string, context: string, opts: GroundingO
   if (sentenceClasses.length) {
     const grounded: Partial<Record<GroundingClass, Set<string>>> = {};
     for (const c of sentenceClasses) grounded[c] = groundedSet(c, context, opts);
+    const preferredNoun = questionNoun(opts.questionHint);
 
+    // Keep every grounded sentence in order; drop each sentence that asserts an
+    // ungrounded specific. The grounded answer therefore ALWAYS leads, and a single
+    // on-topic deferral (never several) trails it — so a stray fabricated fee can no
+    // longer push an irrelevant "For the exact fees…" to the front of the reply.
     const sentences = out.split(/(?<=[.!?])\s+/);
-    let lastDeferred = "";
-    const rebuilt = sentences.map(sentence => {
+    const kept: string[] = [];
+    let deferralClause = "";
+    for (const sentence of sentences) {
+      let deferred = false;
       for (const cls of sentenceClasses) {
-        const tokens = classTokens(cls, sentence);
         const g = grounded[cls]!;
-        const ungrounded = tokens.find(t => !g.has(t.norm));
+        const ungrounded = classTokens(cls, sentence).find(t => !g.has(t.norm));
         if (ungrounded) {
           actions.push({ cls, original: ungrounded.raw, disposition: "defer" });
-          const clause = deferClause(cls);
-          if (clause === lastDeferred) return "";          // collapse repeats
-          lastDeferred = clause;
-          return clause;
+          deferralClause = deferClause(cls, preferredNoun);   // last one wins; on-topic noun preferred
+          deferred = true;
+          break;
         }
       }
-      lastDeferred = "";
-      return sentence;
-    });
-    out = rebuilt.filter(Boolean).join(" ");
+      if (!deferred && sentence.trim()) kept.push(sentence);
+    }
+    const pieces = [...kept];
+    if (deferralClause) pieces.push(deferralClause);
+    out = pieces.join(" ");
   }
 
   out = out.replace(/[ \t]{2,}/g, " ").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").replace(/\s+([,.!?])/g, "$1").trim();

@@ -118,6 +118,9 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "• BRAND-SPECIFIC facts about THIS business — our courses, fees/prices, dates, batch timings, duration, syllabus, placements, certifications, policies, offers, contact details: answer ONLY from the Business context below. Never invent, guess, or fall back on general knowledge for these specifics.",
     "• CONTACT DETAILS — share a phone number, email, or link ONLY if it appears verbatim in the Business context. NEVER invent or guess one, and never make up a department/staff address such as training@, admissions@, or support@. If the context has no contact detail for what they ask, offer to connect them with our team rather than giving an address.",
     "• MULTI-PART questions — when the customer asks about more than one thing (e.g. fees AND duration), address EVERY part of their question. Never answer one and silently skip the other; if you can only answer some, cover those and offer to get the rest.",
+    "• STAY ON THE QUESTION — answer ONLY what they asked. Do NOT volunteer a fee, price, duration, or date they didn't ask about; an unrequested specific reads as off-topic and may be withheld anyway. If they ask about duration, talk about duration — not fees.",
+    "• 'WHICH PROGRAM / COURSE IS BEST FOR ME' and similar advice questions — do NOT deflect with fees or a generic line. Briefly ask 1–2 quick qualifying questions (their background and goal), and recommend a suitable program from the Business context. This is guidance, not a brand-specific fact lookup.",
+    "• NEVER REPEAT YOURSELF — do not send a message that just restates one you already sent in this chat. If the customer affirms ('yes', 'sure', 'tell me more') but you have no NEW grounded detail to add, do something DIFFERENT: ask a specific qualifying question, give the next concrete step, or offer to connect them with our team — never re-send your previous reply reworded.",
     coverage === "solid"
       ? "The Business context below HAS strong, relevant info — quote the actual specifics (numbers, names, dates) directly and confidently. But state a specific fee, duration, date, or number ONLY if you can actually SEE it in the context: if the context covers the course yet not the exact detail asked, say you'll connect them with our team for that specific point — do NOT fill the gap from memory. Don't deflect on details the context DOES contain; offer a counselor only as a helpful extra."
       : coverage === "thin"
@@ -377,7 +380,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     const executed: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens: 1024, timeoutMs: sawMedia ? 60000 : undefined });
+      // Ample token headroom so a heavy thinking pass (which counts against the
+      // output budget on thinking models) can never starve and truncate the visible
+      // reply mid-sentence. Replies stay short via the prompt + firewall. Tune with
+      // GEMINI_CHAT_MAX_TOKENS.
+      const maxTokens = Math.max(512, parseInt(process.env.GEMINI_CHAT_MAX_TOKENS ?? "", 10) || 2048);
+      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens, timeoutMs: sawMedia ? 60000 : undefined });
 
       // Function-calling round: execute each call, feed results back, continue.
       if (res.toolCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
@@ -405,7 +413,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
       // Single outbound chokepoint: strip any persona label + enforce that every
       // high-risk specific (contact, price, %, duration…) traces to the retrieved
       // context or the approved contact config — else rewrite/strip/defer it.
-      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES });
+      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
       const text = guarded.text;
       if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));
       // Only an explicit escalate token hands off to a human. An empty model
@@ -539,7 +547,7 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     // Sanitize against the ORIGINAL factual answer as the allow-set: the persona
     // rewrite must not introduce an email/number/duration that wasn't in the
     // curated source (a tone pass occasionally invents a contact line).
-    return sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES }).text;
+    return sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
   } catch (err) {
     // AiKeyMissingError, rate limits, etc. — never block; serve the raw answer.
     console.error("[llm] persona tone failed (serving raw answer):", err);
