@@ -7,6 +7,7 @@ import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
 import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
+import { drainAiFollowups } from "@/lib/followups";
 import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
@@ -92,6 +93,14 @@ export async function POST(req: Request) {
       try { sequences = await drainSequences(100); } catch (e) { console.error("[cron] sequences", e); }
     }
 
+    // AI follow-ups — re-engage chats that have gone quiet (the bot spoke last and
+    // the customer never replied) with ONE short, context-aware AI nudge, INSIDE the
+    // 24h window only. All channels, every tenant; stops on reply / human takeover.
+    let aiFollowups = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { aiFollowups = await drainAiFollowups(50); } catch (e) { console.error("[cron] aifollowups", e); }
+    }
+
     // Fallback: AI replies whose fire-and-forget job was dropped OR died mid-flight
     // (e.g. a slow voice transcription + reply that timed out the webhook function,
     // leaving needs_reply cleared by the claim but no reply ever sent). The
@@ -119,7 +128,7 @@ export async function POST(req: Request) {
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiReplies, kbSync });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, kbSync });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

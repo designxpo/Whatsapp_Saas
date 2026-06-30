@@ -463,6 +463,53 @@ export async function looksLikeCity(text: string, tenantId = "00000000-0000-0000
   }
 }
 
+// Compose a short, context-aware re-engagement nudge for a chat that has gone
+// quiet (we sent the last message — often a question — and the customer never
+// replied). Single-shot via the tenant's chat provider, NO retrieval and NO
+// tools: the only facts allowed are what was already said, so the grounding
+// firewall validates against the transcript itself and strips any invented
+// price/date/email/link. The caller owns the 24h-window + bot-enabled + opt-out
+// gating; this only writes the text. Returns null when there's nothing safe to
+// send (empty output, fully stripped, or the tenant has no AI key).
+export async function composeFollowup(
+  history: { role: "user" | "assistant"; body: string }[],
+  opts: { tenantId?: string; agentName?: string | null } = {},
+): Promise<{ text: string; groundingActions: GroundingAction[] } | null> {
+  const tenantId = opts.tenantId ?? "00000000-0000-0000-0000-000000000001";
+  const transcript = (history ?? []).filter(m => m.body?.trim()).slice(-12);
+  if (!transcript.length) return null;
+  const convText = transcript.map(m => `${m.role === "user" ? "Customer" : "Us"}: ${m.body.trim()}`).join("\n");
+  const system = [
+    "You are the SAME business assistant continuing an existing chat — not a new conversation.",
+    "The customer has gone quiet: they did not reply to your last message. Write ONE brief, warm follow-up nudge to gently re-engage them.",
+    "RULES:",
+    "• 1–2 short sentences. Friendly and low-pressure — never pushy, needy, or guilt-trippy.",
+    "• This is a CONTINUATION: do NOT greet from scratch, do NOT open with hi/hello as if it's first contact, and NEVER introduce yourself by any name.",
+    "• If your last message asked a question, gently re-offer to help with that. Otherwise, lightly check whether they have any questions.",
+    "• Introduce NO new facts — no prices, fees, dates, durations, phone numbers, email addresses, links, or claims that aren't already present in the conversation above. If you have nothing specific to add, stay general ('just checking if you had any questions about …').",
+    "• Reply in the SAME language the customer was using (English by default; clean Hinglish in Latin script only if they wrote Hinglish).",
+    "• Output ONLY the message text — no quotes, no labels, no preamble.",
+  ].join("\n");
+  let res;
+  try {
+    const ai = await resolveTenantAi(tenantId);
+    res = await runChat({
+      provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system,
+      turns: [{ role: "user", text: `--- Conversation so far ---\n${convText}\n\n--- Your follow-up nudge ---` }],
+      maxTokens: 160,
+    });
+  } catch { return null; }   // no key / busy / unavailable — skip this nudge, never block the cron
+  const raw = (res.text ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+  if (raw.length < 2) return null;
+  // Grounding firewall: the transcript is the ONLY allowed source of facts, so any
+  // invented specific is stripped/deferred exactly as on the live reply path. This
+  // also scrubs any accidental self-introduction by name.
+  const guarded = sanitizeOutbound(raw, { agentName: opts.agentName ?? undefined, context: convText, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES });
+  const text = guarded.text.trim();
+  if (text.length < 2) return null;
+  return { text, groundingActions: guarded.actions };
+}
+
 // Rewrites a factual FAQ/cache answer in the agent's persona voice, matching
 // the customer's language and the agent's style rules. Facts are preserved;
 // any failure (rate limit, etc.) falls back to the raw answer — never blocks.

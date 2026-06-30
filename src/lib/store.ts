@@ -936,6 +936,10 @@ export async function touchInbound(id: string, lastMessage: string): Promise<voi
   await db().from("wa_conversations").update({
     last_inbound_at: new Date().toISOString(), last_message: lastMessage.slice(0, 280), needs_reply: true,
   }).eq("id", id);
+  // The customer is back — clear the AI-follow-up counter so a future quiet stretch
+  // is eligible for a fresh nudge. Isolated + best-effort so a pre-migration DB
+  // (columns absent) can NEVER break the critical inbound path.
+  await db().from("wa_conversations").update({ followup_count: 0, last_followup_at: null }).eq("id", id).then(() => {}, () => {});
 }
 
 export async function touchOutbound(id: string, lastMessage: string): Promise<void> {
