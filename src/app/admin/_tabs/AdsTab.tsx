@@ -1709,14 +1709,19 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
             : <img src={videoUrl} alt="" className="w-full aspect-square object-cover bg-black" />)
         : <div className="w-full aspect-square bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-400 text-xs">Your video appears here</div>)
     : format === "carousel"
-    ? <div className="flex gap-1.5 overflow-x-auto p-1.5 bg-canvas snap-x">
-        {cards.map((c, i) => (
-          <div key={i} className="shrink-0 w-[120px] snap-start rounded-md border border-line overflow-hidden bg-white">
+    // Real Meta carousel: one big card fills most of the width with the next
+    // peeking; each card carries its OWN image + headline + description + button.
+    ? <div className="flex gap-2 overflow-x-auto px-2.5 pb-1 snap-x snap-mandatory">
+        {(cards.length ? cards : [{ imageUrl: null, headline: "", description: "" }, { imageUrl: null, headline: "", description: "" }]).map((c, i) => (
+          <div key={i} className={`shrink-0 ${cards.length > 1 ? "w-[80%]" : "w-full"} snap-start rounded-lg border border-line overflow-hidden bg-white`}>
             {c.imageUrl
               // eslint-disable-next-line @next/next/no-img-element
               ? <img src={c.imageUrl} alt="" className="w-full aspect-square object-cover" />
               : <div className="w-full aspect-square bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-slate-400 text-[10px]">Card {i + 1}</div>}
-            <div className="px-1.5 py-1"><p className="text-[10px] font-bold text-ink-900 truncate">{c.headline || `Card ${i + 1}`}</p>{c.description && <p className="text-[9px] text-slate-400 truncate">{c.description}</p>}</div>
+            <div className="flex items-center justify-between gap-2 bg-canvas px-2 py-1.5">
+              <div className="min-w-0"><p className="text-[11px] font-bold text-ink-900 truncate leading-tight">{c.headline || `Card ${i + 1}`}</p>{c.description && <p className="text-[9px] text-slate-400 truncate">{c.description}</p>}</div>
+              <button className="shrink-0 text-[10px] font-bold bg-slate-200 text-ink-900 rounded-md px-2 py-1">{ctaLabel}</button>
+            </div>
           </div>
         ))}
       </div>
@@ -1803,7 +1808,7 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
             <MoreHorizontal className="w-4 h-4 text-ink-700" />
           </div>
           {img}
-          <button className="w-full flex items-center justify-between bg-canvas px-2.5 py-2 border-y border-line"><span className="text-[11px] font-bold text-ink-900">{ctaLabel}</span><ChevronRight className="w-3.5 h-3.5 text-ink-500" /></button>
+          {format !== "carousel" && <button className="w-full flex items-center justify-between bg-canvas px-2.5 py-2 border-y border-line"><span className="text-[11px] font-bold text-ink-900">{ctaLabel}</span><ChevronRight className="w-3.5 h-3.5 text-ink-500" /></button>}
           <div className="flex items-center gap-3 px-2.5 pt-2">
             <Heart className="w-4 h-4 text-ink-800" /><MessageCircle className="w-4 h-4 text-ink-800" /><Send className="w-4 h-4 text-ink-800" /><Bookmark className="w-4 h-4 text-ink-800 ml-auto" />
           </div>
@@ -1821,10 +1826,12 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
           </div>
           <p className="text-[11px] text-ink-800 px-2.5 pb-2 whitespace-pre-wrap line-clamp-4">{primaryText || "Your primary text appears here — the hook that makes people stop scrolling."}</p>
           {img}
+          {format !== "carousel" && (
           <div className="flex items-center justify-between gap-2 bg-canvas px-2.5 py-2">
             <div className="min-w-0"><p className="text-[9px] text-slate-400 uppercase truncate">{description || "your site"}</p><p className="text-xs font-bold text-ink-900 truncate">{headline || "Your headline"}</p></div>
             <button className="shrink-0 text-[11px] font-bold bg-slate-200 text-ink-900 rounded-md px-2.5 py-1.5">{ctaLabel}</button>
           </div>
+          )}
           <div className="flex items-center justify-around px-2.5 py-1.5 border-t border-line text-slate-500">
             <span className="flex items-center gap-1 text-[10px] font-semibold"><ThumbsUp className="w-3.5 h-3.5" /> Like</span>
             <span className="flex items-center gap-1 text-[10px] font-semibold"><MessageCircle className="w-3.5 h-3.5" /> Comment</span>
