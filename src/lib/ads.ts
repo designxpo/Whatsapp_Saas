@@ -477,6 +477,7 @@ const OBJECTIVE_OPT_GOAL: Record<AdObjective, string> = {
 export interface CtwaInput {
   accountId: string;
   pageId: string;
+  campaignId?: string | null;          // set → add an ad set to this EXISTING campaign (skip campaign creation)
   name: string;
   objective: AdObjective;
   specialAdCategories: string[];       // [] | ["CREDIT"] | ["EMPLOYMENT"] | ["HOUSING"] | ["ISSUES_ELECTIONS_POLITICS"] | ["FINANCIAL_PRODUCTS_SERVICES"]
@@ -713,20 +714,33 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
   const status = input.activate ? "ACTIVE" : "PAUSED";
   const minor = (major: number) => String(Math.round(major * 100));
   const budgetField = input.budgetType === "lifetime" ? "lifetime_budget" : "daily_budget";
-  const cbo = input.budgetLevel === "campaign";
+  let cbo = input.budgetLevel === "campaign";
 
-  // Campaign — holds the budget + bid strategy under CBO (Advantage campaign budget).
-  const campParams: Record<string, string> = {
-    name: input.name, objective: input.objective, status,
-    special_ad_categories: JSON.stringify(input.specialAdCategories ?? []), buying_type: "AUCTION",
-  };
-  if (cbo) {
-    campParams[budgetField] = minor(input.budget);
-    campParams.bid_strategy = input.bidStrategy;
+  let campaignId: string;
+  if (input.campaignId) {
+    // Add an ad set to an EXISTING campaign. Detect its budget mode from Meta so the
+    // ad set gets its own budget only when the campaign is ABO — a CBO campaign holds
+    // the budget itself and rejects a per-ad-set budget. This makes the result correct
+    // regardless of the caller's budgetLevel toggle.
+    campaignId = input.campaignId;
+    const c = await graphGet(campaignId, { fields: "daily_budget,lifetime_budget" });
+    if (!c.ok) return { ok: false, error: c.error, stage: "campaign" };
+    const cd = (c.data ?? {}) as Record<string, unknown>;
+    cbo = Number(cd.daily_budget ?? 0) > 0 || Number(cd.lifetime_budget ?? 0) > 0;
+  } else {
+    // Campaign — holds the budget + bid strategy under CBO (Advantage campaign budget).
+    const campParams: Record<string, string> = {
+      name: input.name, objective: input.objective, status,
+      special_ad_categories: JSON.stringify(input.specialAdCategories ?? []), buying_type: "AUCTION",
+    };
+    if (cbo) {
+      campParams[budgetField] = minor(input.budget);
+      campParams.bid_strategy = input.bidStrategy;
+    }
+    const camp = await graphPost(`act_${input.accountId}/campaigns`, campParams);
+    if (!camp.ok) return { ok: false, error: camp.error, stage: "campaign" };
+    campaignId = camp.data?.id as string;
   }
-  const camp = await graphPost(`act_${input.accountId}/campaigns`, campParams);
-  if (!camp.ok) return { ok: false, error: camp.error, stage: "campaign" };
-  const campaignId = camp.data?.id as string;
 
   const targeting = buildTargetingSpec(input);
 

@@ -13,7 +13,7 @@ export const maxDuration = 60;
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: {
-    name?: string; budget?: number; activate?: boolean;
+    name?: string; budget?: number; activate?: boolean; campaignId?: string | null;
     objective?: AdObjective; specialAdCategories?: string[];
     conversionLocation?: "WHATSAPP" | "MESSENGER" | "WEBSITE" | "INSTANT_FORM";
     websiteUrl?: string | null; pixelId?: string | null; conversionEvent?: string | null; leadFormId?: string | null; ctaType?: string | null;
@@ -31,8 +31,11 @@ export async function POST(req: Request) {
   const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   if (!pageId) return NextResponse.json({ error: "Set your Facebook Page ID first (Meta Ads → settings)" }, { status: 400 });
-  if (!body.name?.trim()) return NextResponse.json({ error: "Give the campaign a name" }, { status: 400 });
-  if (!body.budget || body.budget <= 0) return NextResponse.json({ error: "Set a budget" }, { status: 400 });
+  if (!body.name?.trim()) return NextResponse.json({ error: body.campaignId ? "Give the ad set a name" : "Give the campaign a name" }, { status: 400 });
+  // A new campaign always needs a budget; adding an ad set to an EXISTING campaign
+  // needs one only when it's ABO (per-ad-set budget). A CBO campaign holds the budget.
+  const budgetRequired = !body.campaignId || body.budgetLevel === "adset";
+  if (budgetRequired && (!body.budget || body.budget <= 0)) return NextResponse.json({ error: "Set a budget" }, { status: 400 });
   if (body.budgetType === "lifetime" && !body.endTime) return NextResponse.json({ error: "Lifetime budgets need an end date" }, { status: 400 });
   if (body.conversionLocation === "WEBSITE" && !body.websiteUrl?.trim()) return NextResponse.json({ error: "Add the website URL people should land on" }, { status: 400 });
   if (body.conversionLocation === "INSTANT_FORM" && !body.leadFormId) return NextResponse.json({ error: "Pick a lead form (create one in Ads Manager first if none appear)" }, { status: 400 });
@@ -47,6 +50,7 @@ export async function POST(req: Request) {
 
   const r = await createCtwaCampaign({
     accountId, pageId,
+    campaignId: body.campaignId?.trim() || null,
     name: body.name.trim(),
     objective: body.objective ?? "OUTCOME_ENGAGEMENT",
     specialAdCategories: Array.isArray(body.specialAdCategories) ? body.specialAdCategories : [],
@@ -58,7 +62,7 @@ export async function POST(req: Request) {
     ctaType: body.ctaType ?? null,
     budgetLevel: body.budgetLevel === "campaign" ? "campaign" : "adset",
     budgetType: body.budgetType === "lifetime" ? "lifetime" : "daily",
-    budget: body.budget,
+    budget: body.budget ?? 0,
     startTime: body.startTime ?? null,
     endTime: body.endTime ?? null,
     bidStrategy: body.bidStrategy ?? "LOWEST_COST_WITHOUT_CAP",

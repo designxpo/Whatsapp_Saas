@@ -234,7 +234,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   // ── Full-page ad builder (replaces the dashboard while creating) ──
   if (building) {
-    return <CreateAdBuilder currency={cur} hasPage={!!data?.pageId}
+    return <CreateAdBuilder currency={cur} hasPage={!!data?.pageId} campaigns={(data?.campaigns ?? []).map(c => ({ id: c.id, name: c.name, objective: c.objective, dailyBudget: c.dailyBudget }))}
       draftId={resumeDraft?.id ?? null} draftData={resumeDraft?.data ?? null}
       onClose={() => { setBuilding(false); loadDrafts(); }}
       onCreated={() => { setBuilding(false); setData(null); load(); loadDrafts(); }} />;
@@ -623,9 +623,13 @@ const PERF_GOALS = (destination: string, hasPixel: boolean): [string, string][] 
   return hasPixel ? [["OFFSITE_CONVERSIONS", "Maximise conversions"], ...base] : base;
 };
 
-function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initialDraftId, draftData }: { currency: string; hasPage: boolean; onClose: () => void; onCreated: () => void; draftId?: string | null; draftData?: Record<string, unknown> | null }) {
+function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated, draftId: initialDraftId, draftData }: { currency: string; hasPage: boolean; campaigns?: { id: string; name: string; objective: string; dailyBudget: number | null }[]; onClose: () => void; onCreated: () => void; draftId?: string | null; draftData?: Record<string, unknown> | null }) {
   const TOTAL = 5;
   const [step, setStep] = useState(1);
+  // "existing" → add an ad set to an already-created campaign (multiple ad sets per
+  // campaign). The campaign's objective is inherited; its budget mode (CBO/ABO) too.
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [intoCampaignId, setIntoCampaignId] = useState("");
   const [name, setName] = useState("");
   const [objective, setObjective] = useState<typeof OBJECTIVES[number]["key"]>("OUTCOME_ENGAGEMENT");
   const [optGoal, setOptGoal] = useState("");
@@ -808,6 +812,7 @@ function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initi
       const d = await fetch("/api/admin/meta/create", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          campaignId: intoCampaignId || undefined,
           name: name.trim(), objective, conversionLocation: destination, specialAdCategories: specialCats,
           websiteUrl: websiteUrl.trim() || null, pixelId: pixelId || null, conversionEvent: conversionEvent || null,
           leadFormId: leadFormId || null, ctaType,
@@ -909,9 +914,13 @@ function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, locations, interests, languages, ageMin, ageMax, gender, advantage, includeAuds, excludeAuds, placements, platforms, positions, objective, optGoal, pixelId, destination]);
 
+  // Adding an ad set to an existing campaign: inherit its objective + budget mode.
+  const intoCampaign = mode === "existing" ? (campaigns.find(c => c.id === intoCampaignId) ?? null) : null;
+  const addingToExisting = !!intoCampaign;
+  const existingCbo = !!intoCampaign && intoCampaign.dailyBudget != null;   // campaign-level budget → CBO
   const canNext =
-    step === 1 ? name.trim().length > 0
-    : step === 2 ? Number(budget) > 0 && (budgetType !== "lifetime" || !!endDate) && (!bidNeedsAmount || Number(bidAmount) > 0) && (destination !== "WEBSITE" || websiteUrl.trim().length > 0) && (destination !== "INSTANT_FORM" || !!leadFormId)
+    step === 1 ? name.trim().length > 0 && (mode === "new" || !!intoCampaignId)
+    : step === 2 ? (existingCbo || Number(budget) > 0) && (budgetType !== "lifetime" || !!endDate) && (!bidNeedsAmount || Number(bidAmount) > 0) && (destination !== "WEBSITE" || websiteUrl.trim().length > 0) && (destination !== "INSTANT_FORM" || !!leadFormId)
     : step === 3 ? locations.length > 0
     : step === 4 ? primaryText.trim().length > 0 && headline.trim().length > 0
       && (creativeFormat !== "video" || !!videoId)
@@ -940,8 +949,8 @@ function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initi
       <button onClick={onClose} className="text-xs font-bold text-brand-700 flex items-center gap-1 hover:gap-1.5 transition-all"><ArrowLeft className="w-3.5 h-3.5" /> Back to campaigns</button>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> New ad</h2>
-          <p className="text-[11px] text-slate-400">Step {step} of {TOTAL} — {stepTitle}</p>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> {addingToExisting ? "New ad set" : "New ad"}</h2>
+          <p className="text-[11px] text-slate-400">Step {step} of {TOTAL} — {stepTitle}{addingToExisting ? ` · in ${intoCampaign!.name}` : ""}</p>
         </div>
       </div>
       <div className="flex gap-1">{Array.from({ length: TOTAL }, (_, i) => i + 1).map(s => <div key={s} className={`h-1 flex-1 rounded-full ${s <= step ? "bg-brand-700" : "bg-line"}`} />)}</div>
@@ -949,24 +958,59 @@ function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initi
         {!hasPage && <div className="bg-amber-50 border border-amber-200 rounded-control px-3 py-2 text-xs text-amber-800">Save your Facebook Page ID first (banner on the Ads page) — Click-to-WhatsApp ads run from a Page with your WhatsApp number connected.</div>}
 
         {step === 1 && (
-          <div className={field}>
-            <p className={lbl}>Campaign name <span className="font-normal text-slate-400">(internal — customers never see it)</span></p>
-            <input className={`${inp} w-full`} placeholder="e.g. Data Science — June intake" value={name} onChange={e => setName(e.target.value)} autoFocus />
-            <p className="text-[11px] text-slate-400">Name it so you&apos;ll recognise it later in reports — audience + offer is a good pattern.</p>
+          <div className="space-y-3">
+            {campaigns.length > 0 && (
+              <div className={field}>
+                <p className={lbl}>What are you creating?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { setMode("new"); setIntoCampaignId(""); }} className={`text-left rounded-control border p-2.5 transition-colors ${mode === "new" ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
+                    <p className="text-xs font-bold text-ink-900">New campaign</p>
+                    <p className="text-[11px] text-slate-500">Fresh campaign with its first ad set.</p>
+                  </button>
+                  <button onClick={() => setMode("existing")} className={`text-left rounded-control border p-2.5 transition-colors ${mode === "existing" ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
+                    <p className="text-xs font-bold text-ink-900">Add ad set to a campaign</p>
+                    <p className="text-[11px] text-slate-500">A new audience under an existing campaign.</p>
+                  </button>
+                </div>
+              </div>
+            )}
+            {mode === "existing" && (
+              <div className={field}>
+                <p className={lbl}>Campaign to add the ad set to</p>
+                <select className={`${inp} w-full`} value={intoCampaignId} onChange={e => {
+                  const id = e.target.value; setIntoCampaignId(id);
+                  const c = campaigns.find(x => x.id === id);
+                  if (c) { setObjective(c.objective as typeof OBJECTIVES[number]["key"]); setBudgetLevel(c.dailyBudget != null ? "campaign" : "adset"); }
+                }}>
+                  <option value="">Choose a campaign…</option>
+                  {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.dailyBudget != null ? " · CBO" : " · ABO"}</option>)}
+                </select>
+                <p className="text-[11px] text-slate-400">The ad set inherits this campaign&apos;s goal{existingCbo ? " and shared budget (CBO)" : " (you set this ad set's own budget next)"}.</p>
+              </div>
+            )}
+            <div className={field}>
+              <p className={lbl}>{addingToExisting ? "Ad set name" : "Campaign name"} <span className="font-normal text-slate-400">(internal — customers never see it)</span></p>
+              <input className={`${inp} w-full`} placeholder={addingToExisting ? "e.g. Retargeting — website visitors" : "e.g. Data Science — June intake"} value={name} onChange={e => setName(e.target.value)} autoFocus />
+              <p className="text-[11px] text-slate-400">Name it so you&apos;ll recognise it later in reports — audience + offer is a good pattern.</p>
+            </div>
           </div>
         )}
 
         {step === 2 && <>
           <div className={field}>
             <p className={lbl}>Campaign goal</p>
-            <div className="grid grid-cols-1 gap-1.5">
-              {OBJECTIVES.map(o => (
-                <button key={o.key} onClick={() => setObjective(o.key)} className={`text-left rounded-control border p-2.5 transition-colors ${objective === o.key ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
-                  <p className="text-xs font-bold text-ink-900">{o.label}</p>
-                  <p className="text-[11px] text-slate-500">{o.hint}</p>
-                </button>
-              ))}
-            </div>
+            {addingToExisting ? (
+              <div className="bg-canvas rounded-control px-3 py-2 text-xs text-ink-900"><b>{OBJECTIVES.find(o => o.key === objective)?.label ?? objective}</b> <span className="text-slate-400 font-normal">· inherited from {intoCampaign!.name}</span></div>
+            ) : (
+              <div className="grid grid-cols-1 gap-1.5">
+                {OBJECTIVES.map(o => (
+                  <button key={o.key} onClick={() => setObjective(o.key)} className={`text-left rounded-control border p-2.5 transition-colors ${objective === o.key ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
+                    <p className="text-xs font-bold text-ink-900">{o.label}</p>
+                    <p className="text-[11px] text-slate-500">{o.hint}</p>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div className={field}>
             <p className={lbl}>Conversion location — where people go after they click</p>
@@ -1028,35 +1072,43 @@ function CreateAdBuilder({ currency, hasPage, onClose, onCreated, draftId: initi
               <div className="bg-canvas rounded-control px-3 py-2 text-xs font-bold text-ink-900">{perfGoal}</div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className={field}>
-              <p className={lbl}>Budget control</p>
-              <select className={`${inp} w-full`} value={budgetLevel} onChange={e => setBudgetLevel(e.target.value as "adset" | "campaign")}>
-                <option value="adset">Ad-set budget (ABO)</option>
-                <option value="campaign">Campaign budget — Advantage (CBO)</option>
-              </select>
-            </div>
-            <div className={field}>
-              <p className={lbl}>Budget type</p>
-              <select className={`${inp} w-full`} value={budgetType} onChange={e => setBudgetType(e.target.value as "daily" | "lifetime")}>
-                <option value="daily">Daily</option>
-                <option value="lifetime">Lifetime</option>
-              </select>
-            </div>
-          </div>
-          <p className="text-[11px] text-slate-400 -mt-1">{budgetLevel === "campaign" ? "CBO: Meta splits one budget across ad sets automatically — best when you add multiple audiences." : "ABO: this ad set gets its own fixed budget — best for tight control."}</p>
-          <div className="grid grid-cols-2 gap-2">
-            <div className={field}>
-              <p className={lbl}>{budgetType === "lifetime" ? "Total budget" : "Daily budget"} ({currency || "acct currency"})</p>
-              <input className={`${inp} w-full`} type="number" min="1" value={budget} onChange={e => setBudget(e.target.value)} />
-            </div>
-            {budgetType === "lifetime" && (
+          {existingCbo ? (
+            <div className="bg-canvas rounded-control px-3 py-2 text-[11px] text-slate-500">This campaign uses a shared <b>Advantage campaign budget (CBO)</b> — Meta splits it across ad sets automatically, so this ad set doesn&apos;t take its own budget.</div>
+          ) : <>
+            <div className="grid grid-cols-2 gap-2">
               <div className={field}>
-                <p className={lbl}>Run until</p>
-                <input className={`${inp} w-full`} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                <p className={lbl}>Budget control</p>
+                {addingToExisting ? (
+                  <div className="bg-canvas rounded-control px-3 py-2 text-xs font-bold text-ink-900">Ad-set budget (ABO)</div>
+                ) : (
+                  <select className={`${inp} w-full`} value={budgetLevel} onChange={e => setBudgetLevel(e.target.value as "adset" | "campaign")}>
+                    <option value="adset">Ad-set budget (ABO)</option>
+                    <option value="campaign">Campaign budget — Advantage (CBO)</option>
+                  </select>
+                )}
               </div>
-            )}
-          </div>
+              <div className={field}>
+                <p className={lbl}>Budget type</p>
+                <select className={`${inp} w-full`} value={budgetType} onChange={e => setBudgetType(e.target.value as "daily" | "lifetime")}>
+                  <option value="daily">Daily</option>
+                  <option value="lifetime">Lifetime</option>
+                </select>
+              </div>
+            </div>
+            {!addingToExisting && <p className="text-[11px] text-slate-400 -mt-1">{budgetLevel === "campaign" ? "CBO: Meta splits one budget across ad sets automatically — best when you add multiple audiences." : "ABO: this ad set gets its own fixed budget — best for tight control."}</p>}
+            <div className="grid grid-cols-2 gap-2">
+              <div className={field}>
+                <p className={lbl}>{budgetType === "lifetime" ? "Total budget" : "Daily budget"} ({currency || "acct currency"})</p>
+                <input className={`${inp} w-full`} type="number" min="1" value={budget} onChange={e => setBudget(e.target.value)} />
+              </div>
+              {budgetType === "lifetime" && (
+                <div className={field}>
+                  <p className={lbl}>Run until</p>
+                  <input className={`${inp} w-full`} type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </div>
+              )}
+            </div>
+          </>}
           <div className={field}>
             <p className={lbl}>Bidding</p>
             <select className={`${inp} w-full`} value={bidStrategy} onChange={e => setBidStrategy(e.target.value as typeof bidStrategy)}>
