@@ -1461,6 +1461,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                         {cardUploading === i ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                           // eslint-disable-next-line @next/next/no-img-element
                           : c.imagePreview ? <img src={c.imagePreview} alt="" className="w-full h-full object-cover" />
+                          : c.imageHash ? <CircleCheck className="w-4 h-4 text-brand-600" /* saved — preview not loaded */ />
                           : <UploadCloud className="w-4 h-4 text-slate-400" />}
                         <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadCardImage(i, f); e.currentTarget.value = ""; }} />
                       </label>
@@ -1538,6 +1539,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                             {ec.cardUploading === ci ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
                               // eslint-disable-next-line @next/next/no-img-element
                               : c.imagePreview ? <img src={c.imagePreview} alt="" className="w-full h-full object-cover" />
+                              : c.imageHash ? <CircleCheck className="w-3.5 h-3.5 text-brand-600" /* saved — preview not loaded */ />
                               : <UploadCloud className="w-3.5 h-3.5 text-slate-400" />}
                             <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadExtraCardImage(i, ci, f); e.currentTarget.value = ""; }} />
                           </label>
