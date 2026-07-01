@@ -1019,16 +1019,27 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const intoCampaign = mode === "existing" ? (allCampaigns.find(c => c.id === intoCampaignId) ?? null) : null;
   const addingToExisting = !!intoCampaign;
   const existingCbo = !!intoCampaign && intoCampaign.dailyBudget != null;   // campaign-level budget → CBO
+  // What (if anything) is stopping this creative from being launch-ready. A
+  // carousel's headline lives per-card, so no ad-level headline is required there.
+  const creativeIssue = (label: string, c: { format: "single" | "video" | "carousel"; primaryText: string; headline: string; videoId: string | null; cards: { imageHash: string | null; headline: string }[] }): string | null => {
+    if (!c.primaryText.trim()) return `${label}: add the primary text`;
+    if (c.format !== "carousel" && !c.headline.trim()) return `${label}: add a headline`;
+    if (c.format === "video" && !c.videoId) return `${label}: upload a video`;
+    if (c.format === "carousel") {
+      if (c.cards.length < 2) return `${label}: add at least 2 cards`;
+      const bad = c.cards.findIndex(cc => !cc.imageHash || !cc.headline.trim());
+      if (bad >= 0) return `${label}: Card ${bad + 1} needs an image and a headline`;
+    }
+    return null;
+  };
+  const step4Issue: string | null =
+    creativeIssue("Creative 1", { format: creativeFormat, primaryText, headline, videoId, cards })
+    ?? extraCreatives.reduce<string | null>((acc, ec, i) => acc ?? creativeIssue(`Creative ${i + 2}`, { format: ec.format, primaryText: ec.primaryText, headline: ec.headline, videoId: ec.videoId, cards: ec.cards }), null);
   const canNext =
     step === 1 ? name.trim().length > 0 && (mode === "new" || !!intoCampaignId)
     : step === 2 ? (existingCbo || Number(budget) > 0) && (budgetType !== "lifetime" || !!endDate) && (!bidNeedsAmount || Number(bidAmount) > 0) && (destination !== "WEBSITE" || websiteUrl.trim().length > 0) && (destination !== "INSTANT_FORM" || !!leadFormId)
     : step === 3 ? locations.length > 0
-    : step === 4 ? primaryText.trim().length > 0 && headline.trim().length > 0
-      && (creativeFormat !== "video" || !!videoId)
-      && (creativeFormat !== "carousel" || (cards.length >= 2 && cards.every(c => c.imageHash && c.headline.trim().length > 0)))
-      && extraCreatives.every(ec => ec.primaryText.trim().length > 0 && ec.headline.trim().length > 0
-          && (ec.format !== "video" || !!ec.videoId)
-          && (ec.format !== "carousel" || (ec.cards.length >= 2 && ec.cards.every(c => c.imageHash && c.headline.trim().length > 0))))
+    : step === 4 ? step4Issue === null
     : true;
   const stepTitle = ["", "Campaign name", "Goal & budget", "Audience", "Ad creative", "Review & launch"][step];
   const field = "space-y-1";
@@ -1566,6 +1577,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
         </>}
 
         {err && <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">{err}</p>}
+        {step === 4 && step4Issue && <p className="text-[11px] text-amber-600 text-right">{step4Issue} to continue.</p>}
 
         <div className="flex items-center justify-between pt-1">
           <button onClick={() => step > 1 ? setStep(step - 1) : onClose()} className="px-3 py-2 text-xs font-bold text-ink-600 hover:text-ink-900">{step > 1 ? "← Back" : "Cancel"}</button>

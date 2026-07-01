@@ -47,8 +47,10 @@ export async function POST(req: Request) {
   for (let i = 0; i < creatives.length; i++) {
     const c = creatives[i];
     const where = creatives.length > 1 ? ` (creative ${i + 1})` : "";
-    if (!c?.primaryText?.trim() || !c?.headline?.trim()) return NextResponse.json({ error: `Write the ad text and headline${where}` }, { status: 400 });
     const fmt = c?.format ?? "single";
+    if (!c?.primaryText?.trim()) return NextResponse.json({ error: `Write the ad text${where}` }, { status: 400 });
+    // Carousel headlines live per-card, so no ad-level headline is required there.
+    if (fmt !== "carousel" && !c?.headline?.trim()) return NextResponse.json({ error: `Write the headline${where}` }, { status: 400 });
     if (fmt === "video" && !c?.videoId) return NextResponse.json({ error: `Upload a video for the video ad${where}` }, { status: 400 });
     if (fmt === "carousel") {
       const cards = c?.cards ?? [];
