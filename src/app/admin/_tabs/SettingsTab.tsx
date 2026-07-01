@@ -288,7 +288,7 @@ function ChannelsManager() {
 
       {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
 
-      {channels.map(c => (
+      {channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp").map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
@@ -302,6 +302,12 @@ function ChannelsManager() {
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
+
+      {channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp").length === 0 && (
+        <p className="text-[11px] text-ink-400 border border-dashed border-line rounded-control px-3 py-3">
+          No extra WhatsApp numbers added. Instagram, Web Chat and Facebook are separate channels and live in their own tabs, not here.
+        </p>
+      )}
 
       {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} onClose={() => setProfileFor(null)} />}
 
