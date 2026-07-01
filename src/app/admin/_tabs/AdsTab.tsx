@@ -629,6 +629,26 @@ const PERF_GOALS = (destination: string, hasPixel: boolean): [string, string][] 
   return hasPixel ? [["OFFSITE_CONVERSIONS", "Maximise conversions"], ...base] : base;
 };
 
+// Downscale large images in the browser before upload. Serverless functions cap
+// the request body (~4.5MB) — a big PNG would fail there — and Meta recommends
+// 1080px anyway. Small images pass through untouched; non-images (video) too.
+async function prepImage(f: File): Promise<File> {
+  if (!f.type.startsWith("image/") || f.size <= 1_200_000) return f;
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => {
+      const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(f);
+    });
+    const scale = Math.min(1, 1080 / Math.max(img.width, img.height));
+    const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d"); if (!ctx) return f;
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h);   // flatten transparency for JPEG
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, "image/jpeg", 0.9));
+    return blob && blob.size < f.size ? new File([blob], f.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : f;
+  } catch { return f; }
+}
+
 function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated, draftId: initialDraftId, draftData }: { currency: string; hasPage: boolean; campaigns?: { id: string; name: string; objective: string; dailyBudget: number | null }[]; onClose: () => void; onCreated: () => void; draftId?: string | null; draftData?: Record<string, unknown> | null }) {
   const TOTAL = 5;
   const [step, setStep] = useState(1);
@@ -805,36 +825,43 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, name, objective, optGoal, destination, websiteUrl, pixelId, conversionEvent, leadFormId, ctaType, specialCats, budgetLevel, budgetType, budget, startDate, endDate, bidStrategy, bidAmount, locations, interests, languages, ageMin, ageMax, gender, advantage, placements, platforms, positions, includeAuds, excludeAuds, primaryText, headline, description, urlTags, creativeFormat, imageHash, imageName, videoId, videoName, cards, extraCreatives, advantageCreative, flowId, flowScope]);
 
+  // Every upload sets an optimistic preview first. If the request fails (no hash
+  // back, or a network / non-JSON error), we REVERT that preview and surface the
+  // error — so a visible thumbnail always means the hash actually saved.
   async function uploadImage(f: File) {
     setUploading(true); setErr(null);
+    setImagePreview(URL.createObjectURL(f));          // instant local preview
     try {
-      setImagePreview(URL.createObjectURL(f));          // instant local preview
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", await prepImage(f));
       const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
-      if (d.imageHash) { setImageHash(d.imageHash); setImageName(f.name); } else setErr(d.error || "Upload failed");
-    } finally { setUploading(false); }
+      if (d.imageHash) { setImageHash(d.imageHash); setImageName(f.name); }
+      else { setErr(d.error || "Image upload failed — please try again."); setImagePreview(null); }
+    } catch { setErr("Image upload failed — please try again."); setImagePreview(null); }
+    finally { setUploading(false); }
   }
 
   async function uploadVideo(f: File) {
     setUploading(true); setErr(null);
+    setVideoPreview(URL.createObjectURL(f));          // instant local preview
     try {
-      setVideoPreview(URL.createObjectURL(f));          // instant local preview
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", await prepImage(f));
       const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
-      if (d.videoId) { setVideoId(d.videoId); setVideoName(f.name); } else setErr(d.error || "Video upload failed");
-    } finally { setUploading(false); }
+      if (d.videoId) { setVideoId(d.videoId); setVideoName(f.name); }
+      else { setErr(d.error || "Video upload failed — please try again."); setVideoPreview(null); }
+    } catch { setErr("Video upload failed — please try again."); setVideoPreview(null); }
+    finally { setUploading(false); }
   }
 
   async function uploadCardImage(i: number, f: File) {
     setCardUploading(i); setErr(null);
-    const preview = URL.createObjectURL(f);
-    setCards(cs => cs.map((c, x) => x === i ? { ...c, imagePreview: preview } : c));
+    setCards(cs => cs.map((c, x) => x === i ? { ...c, imagePreview: URL.createObjectURL(f) } : c));
     try {
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", await prepImage(f));
       const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
       if (d.imageHash) setCards(cs => cs.map((c, x) => x === i ? { ...c, imageHash: d.imageHash, imageName: f.name } : c));
-      else setErr(d.error || "Upload failed");
-    } finally { setCardUploading(null); }
+      else { setErr(d.error || "Card image upload failed — please try again."); setCards(cs => cs.map((c, x) => x === i ? { ...c, imagePreview: null } : c)); }
+    } catch { setErr("Card image upload failed — please try again."); setCards(cs => cs.map((c, x) => x === i ? { ...c, imagePreview: null } : c)); }
+    finally { setCardUploading(null); }
   }
 
   // Upload media for an extra creative (image or video), by index.
@@ -842,25 +869,27 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     setExtra(i, { uploading: true, ...(kind === "image" ? { imagePreview: URL.createObjectURL(f) } : { videoPreview: URL.createObjectURL(f) }) });
     setErr(null);
     try {
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", await prepImage(f));
       const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
       if (kind === "image" && d.imageHash) setExtra(i, { imageHash: d.imageHash, imageName: f.name });
       else if (kind === "video" && d.videoId) setExtra(i, { videoId: d.videoId, videoName: f.name });
-      else setErr(d.error || "Upload failed");
-    } finally { setExtra(i, { uploading: false }); }
+      else { setErr(d.error || "Upload failed — please try again."); setExtra(i, kind === "image" ? { imagePreview: null } : { videoPreview: null }); }
+    } catch { setErr("Upload failed — please try again."); setExtra(i, kind === "image" ? { imagePreview: null } : { videoPreview: null }); }
+    finally { setExtra(i, { uploading: false }); }
   }
 
   // Upload a carousel-card image for an extra creative (creative index + card index).
   async function uploadExtraCardImage(ci: number, cardIdx: number, f: File) {
-    const preview = URL.createObjectURL(f);
-    setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: cardIdx, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imagePreview: preview } : cc) } : c));
+    setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: cardIdx, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imagePreview: URL.createObjectURL(f) } : cc) } : c));
     setErr(null);
+    const clearPreview = () => setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imagePreview: null } : cc) } : c));
     try {
-      const fd = new FormData(); fd.append("file", f);
+      const fd = new FormData(); fd.append("file", await prepImage(f));
       const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
       if (d.imageHash) setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imageHash: d.imageHash, imageName: f.name } : cc) } : c));
-      else setErr(d.error || "Upload failed");
-    } finally { setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: null } : c)); }
+      else { setErr(d.error || "Card image upload failed — please try again."); clearPreview(); }
+    } catch { setErr("Card image upload failed — please try again."); clearPreview(); }
+    finally { setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: null } : c)); }
   }
 
   async function create() {
