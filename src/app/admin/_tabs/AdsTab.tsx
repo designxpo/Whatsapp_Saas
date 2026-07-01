@@ -703,6 +703,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const [extraCreatives, setExtraCreatives] = useState<{ format: "single" | "video"; imageHash: string | null; imageName: string; imagePreview: string | null; videoId: string | null; videoName: string; videoPreview: string | null; primaryText: string; headline: string; description: string; uploading: boolean }[]>([]);
   const setExtra = (i: number, patch: Partial<typeof extraCreatives[number]>) => setExtraCreatives(cs => cs.map((c, x) => x === i ? { ...c, ...patch } : c));
   const [placement, setPlacement] = useState<string>("fb_feed");
+  const [previewIdx, setPreviewIdx] = useState(0);   // which creative the preview pane shows (0 = primary)
   const [realPreviews, setRealPreviews] = useState<{ key: string; label: string; html: string }[] | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewErr, setPreviewErr] = useState<string | null>(null);
@@ -1018,6 +1019,15 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     : destination === "MESSENGER" ? "Send message"
     : destination === "INSTANT_FORM" ? "Sign up"
     : WEB_CTAS.find(c => c[0] === ctaType)?.[1] ?? "Learn more";
+
+  // Every creative in this ad set, for the preview switcher. #1 is the primary
+  // (gets Meta's live render); extras show the built-in mock.
+  const previews = [
+    { format: creativeFormat, imageUrl: imagePreview, videoUrl: videoPreview, cards: cards.map(c => ({ imageUrl: c.imagePreview, headline: c.headline, description: c.description })), primaryText, headline, description, real: realPreviews, mediaReady },
+    ...extraCreatives.map(ec => ({ format: ec.format, imageUrl: ec.imagePreview, videoUrl: ec.videoPreview, cards: [] as { imageUrl: string | null; headline: string; description: string }[], primaryText: ec.primaryText, headline: ec.headline, description: ec.description, real: null, mediaReady: ec.format === "video" ? !!ec.videoId : !!ec.imageHash })),
+  ];
+  const pIdx = Math.min(previewIdx, previews.length - 1);   // clamp if a creative was removed
+  const pv = previews[pIdx];
 
   return (
     <div className="flex gap-6 items-start">
@@ -1509,11 +1519,20 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
         ? <AudienceDefinition estimate={estimate} loading={estimateLoading} err={estimateErr}
             locations={locations} ageMin={ageMin} ageMax={ageMax} gender={gender} interests={interests} languages={languages}
             includeAuds={includeAuds} excludeAuds={excludeAuds} advantage={advantage} />
-        : <AdMockPreview placement={placement} setPlacement={setPlacement}
-            format={creativeFormat} imageUrl={imagePreview} videoUrl={videoPreview}
-            cards={cards.map(c => ({ imageUrl: c.imagePreview, headline: c.headline, description: c.description }))}
-            primaryText={primaryText} headline={headline} description={description} ctaLabel={ctaLabel}
-            realPreviews={realPreviews} previewLoading={previewLoading} previewErr={previewErr} mediaReady={mediaReady} />}
+        : <>
+            {previews.length > 1 && (
+              <div className="flex gap-1 flex-wrap">
+                {previews.map((_, i) => (
+                  <button key={i} onClick={() => setPreviewIdx(i)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${pIdx === i ? "bg-ink-950 text-white" : "bg-canvas text-slate-500 hover:text-ink-700"}`}>Creative {i + 1}</button>
+                ))}
+              </div>
+            )}
+            <AdMockPreview placement={placement} setPlacement={setPlacement}
+              format={pv.format} imageUrl={pv.imageUrl} videoUrl={pv.videoUrl}
+              cards={pv.cards}
+              primaryText={pv.primaryText} headline={pv.headline} description={pv.description} ctaLabel={ctaLabel}
+              realPreviews={pv.real} previewLoading={pIdx === 0 && previewLoading} previewErr={pIdx === 0 ? previewErr : null} mediaReady={pv.mediaReady} />
+          </>}
       <div className="bg-white rounded-card border border-line p-4 space-y-1.5">
         <p className="text-[11px] font-bold text-slate-400 uppercase">What Meta will do</p>
         <p className="text-xs text-ink-700"><b>Goal:</b> {perfGoal}</p>
