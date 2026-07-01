@@ -742,6 +742,10 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
     if (cbo) {
       campParams[budgetField] = minor(input.budget);
       campParams.bid_strategy = input.bidStrategy;
+    } else {
+      // ABO (no campaign budget): Meta now requires this to be set explicitly.
+      // false = each ad set keeps its own budget (standard ABO, no sharing).
+      campParams.is_adset_budget_sharing_enabled = "false";
     }
     const camp = await graphPost(`act_${input.accountId}/campaigns`, campParams);
     if (!camp.ok) return { ok: false, error: camp.error, stage: "campaign" };
