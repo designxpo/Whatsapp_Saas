@@ -516,14 +516,19 @@ export interface CtwaInput {
     excludedCustomAudiences: { id: string }[];// exclude (suppression)
     advantageAudience: boolean;        // let Meta expand beyond the defined audience
   };
-  creative: {
-    format?: "single" | "video" | "carousel";
-    imageHash?: string | null;          // single + video thumbnail
-    videoId?: string | null;            // video
-    cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[]; // carousel (≥2)
-    primaryText: string; headline: string; description?: string; urlTags?: string;
-  };
+  creative: CtwaCreative;
+  creatives?: CtwaCreative[];           // creative test: each becomes its own ad in the ONE ad set
   activate: boolean;
+}
+
+// One creative = one ad. Several creatives share the ad set — Meta rotates them
+// and shifts spend to the best performer (a creative A/B/C test).
+export interface CtwaCreative {
+  format?: "single" | "video" | "carousel";
+  imageHash?: string | null;          // single + video thumbnail
+  videoId?: string | null;            // video
+  cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[]; // carousel (≥2)
+  primaryText: string; headline: string; description?: string; urlTags?: string;
 }
 
 // Build the Meta targeting_spec from our targeting + placement inputs.
@@ -710,7 +715,7 @@ export async function generateAdPreviews(input: PreviewInput): Promise<{ ok: boo
   return { ok: true, previews };
 }
 
-export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolean; campaignId?: string; adId?: string; error?: string; stage?: string }> {
+export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolean; campaignId?: string; adSetId?: string; adId?: string; adIds?: string[]; error?: string; stage?: string }> {
   const status = input.activate ? "ACTIVE" : "PAUSED";
   const minor = (major: number) => String(Math.round(major * 100));
   const budgetField = input.budgetType === "lifetime" ? "lifetime_budget" : "daily_budget";
@@ -770,23 +775,32 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
   }
   const adset = await graphPost(`act_${input.accountId}/adsets`, adsetParams);
   if (!adset.ok) return { ok: false, campaignId, error: adset.error, stage: "ad set" };
+  const adSetId = adset.data?.id as string;
 
+  // One ad per creative, all sharing this ONE ad set. Multiple creatives = a
+  // creative test (Meta rotates them and shifts spend to the best performer).
   // Creative spec — single image, video, or carousel (shared with live preview).
-  const storySpec = buildCreativeStorySpec(input.pageId, input.creative, link, callToAction);
-  const creative = await graphPost(`act_${input.accountId}/adcreatives`, {
-    name: `${input.name} — creative`,
-    ...(input.creative.urlTags ? { url_tags: input.creative.urlTags } : {}),
-    object_story_spec: JSON.stringify(storySpec),
-  });
-  if (!creative.ok) return { ok: false, campaignId, error: creative.error, stage: "creative" };
+  const creatives = input.creatives?.length ? input.creatives : [input.creative];
+  const adIds: string[] = [];
+  for (let i = 0; i < creatives.length; i++) {
+    const cr = creatives[i];
+    const suffix = creatives.length > 1 ? ` ${i + 1}` : "";
+    const storySpec = buildCreativeStorySpec(input.pageId, cr, link, callToAction);
+    const creative = await graphPost(`act_${input.accountId}/adcreatives`, {
+      name: `${input.name} — creative${suffix}`,
+      ...(cr.urlTags ? { url_tags: cr.urlTags } : {}),
+      object_story_spec: JSON.stringify(storySpec),
+    });
+    if (!creative.ok) return { ok: false, campaignId, adSetId, adId: adIds[0], adIds, error: creative.error, stage: `creative${suffix}` };
+    const ad = await graphPost(`act_${input.accountId}/ads`, {
+      name: `${input.name} — ad${suffix}`, adset_id: adSetId, status,
+      creative: JSON.stringify({ creative_id: creative.data?.id as string }),
+    });
+    if (!ad.ok) return { ok: false, campaignId, adSetId, adId: adIds[0], adIds, error: ad.error, stage: `ad${suffix}` };
+    adIds.push(ad.data?.id as string);
+  }
 
-  const ad = await graphPost(`act_${input.accountId}/ads`, {
-    name: `${input.name} — ad`, adset_id: adset.data?.id as string, status,
-    creative: JSON.stringify({ creative_id: creative.data?.id as string }),
-  });
-  if (!ad.ok) return { ok: false, campaignId, error: ad.error, stage: "ad" };
-
-  return { ok: true, campaignId, adId: ad.data?.id as string };
+  return { ok: true, campaignId, adSetId, adId: adIds[0], adIds };
 }
 
 // ── CTWA attribution from our own data ────────────────────────────────────────

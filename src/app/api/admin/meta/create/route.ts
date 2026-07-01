@@ -23,6 +23,7 @@ export async function POST(req: Request) {
     placements?: "advantage" | "manual"; publisherPlatforms?: string[]; positions?: Record<string, string[]>;
     targeting?: CtwaInput["targeting"];
     creative?: CtwaInput["creative"] & { cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[] };
+    creatives?: (CtwaInput["creative"] & { cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[] })[];
     flowId?: string | null; flowScope?: "campaign" | "ad";
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -39,13 +40,20 @@ export async function POST(req: Request) {
   if (body.budgetType === "lifetime" && !body.endTime) return NextResponse.json({ error: "Lifetime budgets need an end date" }, { status: 400 });
   if (body.conversionLocation === "WEBSITE" && !body.websiteUrl?.trim()) return NextResponse.json({ error: "Add the website URL people should land on" }, { status: 400 });
   if (body.conversionLocation === "INSTANT_FORM" && !body.leadFormId) return NextResponse.json({ error: "Pick a lead form (create one in Ads Manager first if none appear)" }, { status: 400 });
-  if (!body.creative?.primaryText?.trim() || !body.creative?.headline?.trim()) return NextResponse.json({ error: "Write the ad text and headline" }, { status: 400 });
-  const fmt = body.creative?.format ?? "single";
-  if (fmt === "video" && !body.creative?.videoId) return NextResponse.json({ error: "Upload a video for a video ad" }, { status: 400 });
-  if (fmt === "carousel") {
-    const cards = body.creative?.cards ?? [];
-    if (cards.length < 2) return NextResponse.json({ error: "A carousel needs at least 2 cards" }, { status: 400 });
-    if (cards.some(c => !c.imageHash || !c.headline?.trim())) return NextResponse.json({ error: "Each carousel card needs an image and a headline" }, { status: 400 });
+  // One or more creatives — each becomes its own ad sharing the ONE ad set.
+  const creatives = Array.isArray(body.creatives) && body.creatives.length ? body.creatives : (body.creative ? [body.creative] : []);
+  if (!creatives.length) return NextResponse.json({ error: "Add at least one creative" }, { status: 400 });
+  for (let i = 0; i < creatives.length; i++) {
+    const c = creatives[i];
+    const where = creatives.length > 1 ? ` (creative ${i + 1})` : "";
+    if (!c?.primaryText?.trim() || !c?.headline?.trim()) return NextResponse.json({ error: `Write the ad text and headline${where}` }, { status: 400 });
+    const fmt = c?.format ?? "single";
+    if (fmt === "video" && !c?.videoId) return NextResponse.json({ error: `Upload a video for the video ad${where}` }, { status: 400 });
+    if (fmt === "carousel") {
+      const cards = c?.cards ?? [];
+      if (cards.length < 2) return NextResponse.json({ error: `A carousel needs at least 2 cards${where}` }, { status: 400 });
+      if (cards.some(cc => !cc.imageHash || !cc.headline?.trim())) return NextResponse.json({ error: `Each carousel card needs an image and a headline${where}` }, { status: 400 });
+    }
   }
 
   const r = await createCtwaCampaign({
@@ -90,7 +98,8 @@ export async function POST(req: Request) {
       excludedCustomAudiences: body.targeting?.excludedCustomAudiences ?? [],
       advantageAudience: body.targeting?.advantageAudience ?? false,
     },
-    creative: body.creative,
+    creative: creatives[0],
+    creatives,
     activate: body.activate === true,
   });
 
