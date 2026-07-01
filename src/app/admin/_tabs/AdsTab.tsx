@@ -1021,14 +1021,20 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const existingCbo = !!intoCampaign && intoCampaign.dailyBudget != null;   // campaign-level budget → CBO
   // What (if anything) is stopping this creative from being launch-ready. A
   // carousel's headline lives per-card, so no ad-level headline is required there.
-  const creativeIssue = (label: string, c: { format: "single" | "video" | "carousel"; primaryText: string; headline: string; videoId: string | null; cards: { imageHash: string | null; headline: string }[] }): string | null => {
+  const creativeIssue = (label: string, c: { format: "single" | "video" | "carousel"; primaryText: string; headline: string; videoId: string | null; cards: { imageHash: string | null; imagePreview: string | null; headline: string }[] }): string | null => {
     if (!c.primaryText.trim()) return `${label}: add the primary text`;
     if (c.format !== "carousel" && !c.headline.trim()) return `${label}: add a headline`;
     if (c.format === "video" && !c.videoId) return `${label}: upload a video`;
     if (c.format === "carousel") {
       if (c.cards.length < 2) return `${label}: add at least 2 cards`;
-      const bad = c.cards.findIndex(cc => !cc.imageHash || !cc.headline.trim());
-      if (bad >= 0) return `${label}: Card ${bad + 1} needs an image and a headline`;
+      for (let k = 0; k < c.cards.length; k++) {
+        const cc = c.cards[k];
+        const needs: string[] = [];
+        // A preview blob without a saved hash = the upload didn't finish/save.
+        if (!cc.imageHash) needs.push(cc.imagePreview ? "its image re-uploaded (it didn't finish saving)" : "an image");
+        if (!cc.headline.trim()) needs.push("a headline");
+        if (needs.length) return `${label}: Card ${k + 1} needs ${needs.join(" and ")}`;
+      }
     }
     return null;
   };
