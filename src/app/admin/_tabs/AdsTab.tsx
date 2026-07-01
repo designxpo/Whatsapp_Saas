@@ -702,6 +702,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const [activate, setActivate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // Campaigns created in THIS session — so a just-made campaign is instantly
+  // selectable for another ad set without waiting for Meta's list to refresh.
+  const [localCampaigns, setLocalCampaigns] = useState<{ id: string; name: string; objective: string; dailyBudget: number | null }[]>([]);
+  // Success screen after a create — offers "add another ad set to this campaign".
+  const [done, setDone] = useState<{ campaignId: string; campaignName: string; cbo: boolean; wasNew: boolean } | null>(null);
   const sym = currency === "INR" ? "₹" : currency ? currency + " " : "";
   const bidNeedsAmount = BID_STRATEGIES.find(b => b.key === bidStrategy)?.needsAmount ?? false;
   useEffect(() => { fetch("/api/admin/meta/audiences").then(r => r.json()).then(d => { setCustomAudiences(d.audiences ?? []); setPixels(d.pixels ?? []); setLeadForms(d.leadForms ?? []); }).catch(() => {}); }, []);
@@ -843,10 +848,37 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
         }),
       }).then(r => r.json());
       if (d.success) {
-        if (draftId) await fetch(`/api/admin/meta/drafts?id=${draftId}`, { method: "DELETE" }).catch(() => {});
-        onCreated();
+        if (draftId) { await fetch(`/api/admin/meta/drafts?id=${draftId}`, { method: "DELETE" }).catch(() => {}); setDraftId(null); }
+        if (d.campaignId) {
+          // What campaign did this ad set land in, and is it CBO (shared budget)?
+          const cbo = addingToExisting ? existingCbo : budgetLevel === "campaign";
+          const cName = addingToExisting ? intoCampaign!.name : name.trim();
+          const cBudget = addingToExisting ? intoCampaign!.dailyBudget : (budgetLevel === "campaign" ? Number(budget) : null);
+          setLocalCampaigns(prev => prev.some(c => c.id === d.campaignId)
+            ? prev
+            : [{ id: d.campaignId as string, name: cName, objective, dailyBudget: cBudget }, ...prev]);
+          setDone({ campaignId: d.campaignId as string, campaignName: cName, cbo, wasNew: !addingToExisting });
+        } else onCreated();
       } else setErr(d.error || "Creation failed");
     } finally { setCreating(false); }
+  }
+
+  // After a create, build another ad set under the SAME campaign — inherit its
+  // goal + budget mode, clear the ad-set-specific fields, jump back to step 1.
+  function addAnotherAdSet(campaignId: string) {
+    const c = allCampaigns.find(x => x.id === campaignId);
+    setMode("existing"); setIntoCampaignId(campaignId);
+    if (c) { setObjective(c.objective as typeof OBJECTIVES[number]["key"]); setBudgetLevel(c.dailyBudget != null ? "campaign" : "adset"); }
+    setName("");
+    setPrimaryText(""); setHeadline(""); setDescription(""); setUrlTags("");
+    setCreativeFormat("single");
+    setImageHash(null); setImageName(""); setImagePreview(null);
+    setVideoId(null); setVideoName(""); setVideoPreview(null);
+    setCards([{ imageHash: null, imageName: "", imagePreview: null, headline: "", description: "" }, { imageHash: null, imageName: "", imagePreview: null, headline: "", description: "" }]);
+    setInterests([]); setLanguages([]); setLocations([DEFAULT_LOCATION]);
+    setIncludeAuds([]); setExcludeAuds([]);
+    setRealPreviews(null); setEstimate(null); setEstimateErr(null);
+    setActivate(false); setErr(null); setDone(null); setStep(1);
   }
 
   // Enough uploaded for Meta to render a real preview?
@@ -914,8 +946,12 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, locations, interests, languages, ageMin, ageMax, gender, advantage, includeAuds, excludeAuds, placements, platforms, positions, objective, optGoal, pixelId, destination]);
 
+  // Meta's campaigns plus any created this session (so a just-made one is pickable).
+  const allCampaigns = localCampaigns.length
+    ? [...localCampaigns.filter(lc => !campaigns.some(c => c.id === lc.id)), ...campaigns]
+    : campaigns;
   // Adding an ad set to an existing campaign: inherit its objective + budget mode.
-  const intoCampaign = mode === "existing" ? (campaigns.find(c => c.id === intoCampaignId) ?? null) : null;
+  const intoCampaign = mode === "existing" ? (allCampaigns.find(c => c.id === intoCampaignId) ?? null) : null;
   const addingToExisting = !!intoCampaign;
   const existingCbo = !!intoCampaign && intoCampaign.dailyBudget != null;   // campaign-level budget → CBO
   const canNext =
@@ -947,6 +983,26 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-2xl space-y-3">
       <button onClick={onClose} className="text-xs font-bold text-brand-700 flex items-center gap-1 hover:gap-1.5 transition-all"><ArrowLeft className="w-3.5 h-3.5" /> Back to campaigns</button>
+      {done ? (
+        <div className="rounded-card border border-brand-200 bg-brand-50 p-5 space-y-4 max-w-lg">
+          <div className="flex items-center gap-2.5">
+            <CircleCheck className="w-6 h-6 text-brand-700 shrink-0" />
+            <div>
+              <h2 className="text-lg font-extrabold text-brand-dark">{done.wasNew ? "Campaign created" : "Ad set added"}</h2>
+              <p className="text-xs text-slate-500">{activate ? "It's live now." : "Created paused — preview it, then Resume from the campaign list."}</p>
+            </div>
+          </div>
+          <div className="bg-white rounded-control border border-line px-3 py-2 text-xs">
+            <p className="font-bold text-ink-900">{done.campaignName}</p>
+            <p className="text-slate-500">{done.cbo ? "Shared campaign budget (CBO) — new ad sets share it." : "Per-ad-set budget (ABO) — each ad set sets its own."}</p>
+          </div>
+          <p className="text-xs text-slate-600">Want to reach more audiences under this campaign? Add another ad set — it lands in <b>{done.campaignName}</b> and inherits its goal{done.cbo ? " and shared budget" : ""}.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => addAnotherAdSet(done.campaignId)} className="px-4 py-2 rounded-control bg-brand-700 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-4 h-4" /> Add another ad set</button>
+            <button onClick={onCreated} className="px-4 py-2 rounded-control border border-line bg-white text-xs font-bold text-ink-700 hover:bg-canvas">Done — back to campaigns</button>
+          </div>
+        </div>
+      ) : (<>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> {addingToExisting ? "New ad set" : "New ad"}</h2>
@@ -959,7 +1015,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
 
         {step === 1 && (
           <div className="space-y-3">
-            {campaigns.length > 0 && (
+            {allCampaigns.length > 0 && (
               <div className={field}>
                 <p className={lbl}>What are you creating?</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -979,11 +1035,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                 <p className={lbl}>Campaign to add the ad set to</p>
                 <select className={`${inp} w-full`} value={intoCampaignId} onChange={e => {
                   const id = e.target.value; setIntoCampaignId(id);
-                  const c = campaigns.find(x => x.id === id);
+                  const c = allCampaigns.find(x => x.id === id);
                   if (c) { setObjective(c.objective as typeof OBJECTIVES[number]["key"]); setBudgetLevel(c.dailyBudget != null ? "campaign" : "adset"); }
                 }}>
                   <option value="">Choose a campaign…</option>
-                  {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.dailyBudget != null ? " · CBO" : " · ABO"}</option>)}
+                  {allCampaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.dailyBudget != null ? " · CBO" : " · ABO"}</option>)}
                 </select>
                 <p className="text-[11px] text-slate-400">The ad set inherits this campaign&apos;s goal{existingCbo ? " and shared budget (CBO)" : " (you set this ad set's own budget next)"}.</p>
               </div>
@@ -1371,10 +1427,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                 {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />} {activate ? "Create & go live" : "Create (paused)"}
               </button>}
         </div>
+      </>)}
     </div>
 
     {/* ── Live preview pane ── */}
-    <aside className="hidden lg:block w-[380px] shrink-0 sticky top-2 space-y-3">
+    {!done && <aside className="hidden lg:block w-[380px] shrink-0 sticky top-2 space-y-3">
       {step === 3
         ? <AudienceDefinition estimate={estimate} loading={estimateLoading} err={estimateErr}
             locations={locations} ageMin={ageMin} ageMax={ageMax} gender={gender} interests={interests} languages={languages}
@@ -1392,7 +1449,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
         <p className="text-xs text-ink-700"><b>Audience:</b> {locations.map(l => l.name).join(", ") || "—"} · {ageMin}–{ageMax} · {gender}{advantage && !includeAuds.length ? " · Advantage+" : ""}</p>
         <p className="text-[11px] text-slate-400 pt-1">Preview is an approximation — real rendering varies slightly by placement and device.</p>
       </div>
-    </aside>
+    </aside>}
     </div>
   );
 }
