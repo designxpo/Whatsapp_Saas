@@ -16,7 +16,7 @@ import { listIntegrations, getIntegrationSecret, setIntegrationError, type Integ
 
 export interface LsqCreds {
   accessKey: string; secretKey: string; host: string; activityCode: number;
-  taskCategory: string; igHandleField: string; autoCreate: boolean;
+  taskCategory: string; igHandleField: string; waHandleField: string; autoCreate: boolean;
 }
 
 // Per-tenant setting keys (wa_settings). Access/secret keys live in tenant
@@ -24,7 +24,7 @@ export interface LsqCreds {
 export const LSQ_KEYS = {
   accessKey: "lsq_access_key", secretKey: "lsq_secret_key", host: "lsq_api_host",
   activityCode: "lsq_activity_code", taskCategory: "lsq_task_category",
-  igHandleField: "lsq_ig_handle_field", autoCreate: "lsq_autocreate",
+  igHandleField: "lsq_ig_handle_field", waHandleField: "lsq_wa_handle_field", autoCreate: "lsq_autocreate",
 } as const;
 
 const boolish = (v: string | null | undefined) => /^(1|true|yes|on)$/i.test(v ?? "");
@@ -54,6 +54,7 @@ function envCfg(): LsqCreds | null {
     accessKey, secretKey, host, activityCode,
     taskCategory: process.env.LSQ_TASK_CATEGORY || "2",
     igHandleField: (process.env.LSQ_IG_HANDLE_FIELD ?? "").trim(),
+    waHandleField: (process.env.LSQ_WA_HANDLE_FIELD ?? "").trim(),
     autoCreate: boolish(process.env.LSQ_AUTOCREATE_LEADS),
   };
 }
@@ -79,6 +80,7 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
           accessKey, secretKey, host, activityCode,
           taskCategory: String(cfg.taskCategory ?? "") || "2",
           igHandleField: String(cfg.igHandleField ?? "").trim(),
+          waHandleField: String(cfg.waHandleField ?? "").trim(),
           autoCreate: !!cfg.autoCreate,
         };
       }
@@ -98,6 +100,7 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
         accessKey, secretKey, host, activityCode,
         taskCategory: (await getTenantSetting<string | null>(tenantId, LSQ_KEYS.taskCategory, null)) || "2",
         igHandleField: ((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.igHandleField, null)) ?? "").trim(),
+        waHandleField: ((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.waHandleField, null)) ?? "").trim(),
         autoCreate: boolish(await getTenantSetting<string | null>(tenantId, LSQ_KEYS.autoCreate, null)),
       };
     }
@@ -167,26 +170,33 @@ export async function createOrUpdateLead(p: { phone: string; name?: string; sour
 // via Lead.Update, so the Source / Owner / ProspectStage are preserved (never
 // overwritten with "WhatsApp"). Creates a lead only when none exists and the
 // tenant's auto-create is on. Fire-and-forget; never throws.
-export async function syncLeadProfile(p: { phone: string; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+export async function syncLeadProfile(p: { phone?: string | null; handle?: string | null; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
   const c = await resolveLsq(tenantId);
   if (!c) return;
   try {
     const email = (p.email || "").trim();
     const city = (p.city || "").trim();
     const name = (p.name || "").trim();
+    const phone = (p.phone || "").trim();
+    const handle = (p.handle || "").replace(/^@+/, "").trim();
     const fields: { Attribute: string; Value: string }[] = [];
     if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.push({ Attribute: "EmailAddress", Value: email });
     if (city) fields.push({ Attribute: "mx_City", Value: city });
+    // Persist the WhatsApp @handle onto the lead so future handle-only inbound
+    // (hidden number) still resolves to this lead — the CRM dedupes by handle.
+    if (handle && c.waHandleField) fields.push({ Attribute: c.waHandleField, Value: handle });
     if (!fields.length) return;   // nothing CRM-relevant to write
 
-    const leadId = await findLeadId(p.phone, c);
+    // Resolve by phone first; fall back to the @handle when the number is unknown.
+    let leadId = phone ? await findLeadId(phone, c) : null;
+    if (!leadId && handle && c.waHandleField) leadId = await findLeadIdByHandle(handle, c, c.waHandleField);
     if (leadId) {
       const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
       });
       if (!res.ok) console.error(`[leadsquared] profile update HTTP ${res.status} (lead ${leadId}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
-    } else if (c.autoCreate) {
-      await createOrUpdateLead({ phone: p.phone, name: name || undefined, source: "WhatsApp", fields }, tenantId);
+    } else if (c.autoCreate && phone) {
+      await createOrUpdateLead({ phone, name: name || undefined, source: "WhatsApp", fields }, tenantId);
     }
   } catch (err) {
     console.error("[leadsquared] profile sync failed:", errorMessage(err));
@@ -263,8 +273,7 @@ async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
 // Looks up the LeadSquared ProspectID by Instagram handle. Requires the tenant to
 // store the handle in a lead field whose schema name is their lsq_ig_handle_field
 // (e.g. mx_Instagram). Tries the bare handle and the @-prefixed form.
-async function findLeadIdByHandle(handle: string, c: LsqCreds): Promise<string | null> {
-  const field = c.igHandleField;
+async function findLeadIdByHandle(handle: string, c: LsqCreds, field: string = c.igHandleField): Promise<string | null> {
   const h = (handle || "").replace(/^@/, "").trim();
   if (!field || !h) return null;
   for (const value of [h, `@${h}`]) {

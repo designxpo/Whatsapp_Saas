@@ -613,6 +613,7 @@ export interface Conversation {
   isComment: boolean;           // originated from an IG comment (AI reply flow), not a DM
   channelId: string | null;     // which WhatsApp number this chat lives on
   leadPhone: string | null;     // a real phone the lead shared (IG has no phone) — for CRM matching
+  handle: string | null;        // WhatsApp @username (lowercased, no @) when the number is hidden
   tenantId: string;             // owning tenant
   createdAt: string;
 }
@@ -655,6 +656,7 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     isComment: (r.is_comment as boolean) ?? false,
     channelId: (r.channel_id as string | null) ?? null,
     leadPhone: (r.lead_phone as string | null) ?? null,
+    handle: (r.handle as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
   };
@@ -735,6 +737,75 @@ export async function getConversationByPhone(phone: string, tenantId = DEFAULT_T
 export async function getConversationByExactPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
   const { data } = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", phone.trim()).maybeSingle();
   return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
+// ── WhatsApp username (@handle) identity ─────────────────────────────────────
+// A WhatsApp @handle is a non-phone identity, exactly like an Instagram IGSID: we
+// key a conversation by it when the lead's number is hidden, then merge into their
+// numbered conversation once the number is known. Stored lowercased, without the @.
+export const normHandle = (h: string) => (h || "").trim().replace(/^@+/, "").toLowerCase();
+
+// Read-only lookup by @handle (never creates). Matches the dedicated `handle`
+// column, not the phone slot.
+export async function getConversationByHandle(handle: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
+  const h = normHandle(handle);
+  if (!h) return null;
+  const { data } = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("handle", h).maybeSingle();
+  return data ? mapConversation(data as Record<string, unknown>) : null;
+}
+
+// Resolve-or-create a WhatsApp conversation keyed by @handle (used when the lead's
+// number is hidden). The phone slot holds a synthetic "wa:<handle>" identity — the
+// same shape web-chat uses ("web:<uuid>") — so it never collides with a real
+// number; the number is backfilled + merged later via setConversationLeadPhone +
+// mergeConversations once known.
+export async function getOrCreateConversationByHandle(handle: string, opts: { name?: string; channelId?: string | null } = {}, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
+  const h = normHandle(handle);
+  if (!h) return null;
+  const existing = await getConversationByHandle(h, tenantId);
+  if (existing) {
+    if (opts.channelId && !existing.channelId) await db().from("wa_conversations").update({ channel_id: opts.channelId }).eq("tenant_id", tenantId).eq("id", existing.id).then(() => {}, () => {});
+    return existing;
+  }
+  const base: Record<string, unknown> = { tenant_id: tenantId, phone: `wa:${h}`, handle: h, name: (opts.name ?? "").trim(), platform: "whatsapp" };
+  if (opts.channelId) base.channel_id = opts.channelId;
+  const ins = await db().from("wa_conversations").insert(base).select().single();
+  if (ins.error) return (await getConversationByHandle(h, tenantId)) ?? null;   // race / missing column → re-read
+  return mapConversation(ins.data as Record<string, unknown>);
+}
+
+// Attach a discovered @handle to an existing conversation (e.g. a numbered one).
+// Isolated + best-effort so a pre-migration DB (column absent) can't break callers.
+export async function setConversationHandle(id: string, handle: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const h = normHandle(handle);
+  if (!h) return;
+  await db().from("wa_conversations").update({ handle: h }).eq("tenant_id", tenantId).eq("id", id).then(() => {}, () => {});
+}
+
+// Merge a (usually handle-only) conversation INTO a canonical one — used when a
+// lead first seen by @handle is later matched to their real number. Moves the
+// message history to the target, deletes the now-empty source, then backfills
+// handle/lead_phone/name onto the target if it was missing them. Deleting the
+// source first frees its handle so copying it onto the target can't trip the
+// unique (tenant, handle) index. Same-tenant only; no-op if either is missing.
+export async function mergeConversations(fromId: string, intoId: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  if (!fromId || !intoId || fromId === intoId) return;
+  const [from, into] = await Promise.all([
+    db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("id", fromId).maybeSingle(),
+    db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("id", intoId).maybeSingle(),
+  ]);
+  if (!from.data || !into.data) return;
+  const f = from.data as Record<string, unknown>, t = into.data as Record<string, unknown>;
+  // 1) Move the message history to the canonical conversation.
+  await db().from("wa_conv_messages").update({ conversation_id: intoId }).eq("tenant_id", tenantId).eq("conversation_id", fromId).then(() => {}, () => {});
+  // 2) Delete the source (its messages are gone, so nothing cascades away).
+  await db().from("wa_conversations").delete().eq("tenant_id", tenantId).eq("id", fromId).then(() => {}, () => {});
+  // 3) Backfill fields the canonical record was missing (source now gone → no index clash).
+  const patch: Record<string, unknown> = {};
+  if (!t.handle && f.handle) patch.handle = f.handle;
+  if (!t.lead_phone && f.lead_phone) patch.lead_phone = f.lead_phone;
+  if (!t.name && f.name) patch.name = f.name;
+  if (Object.keys(patch).length) await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("id", intoId).then(() => {}, () => {});
 }
 
 // An Instagram conversation linked to a real phone the lead shared (lead_phone).

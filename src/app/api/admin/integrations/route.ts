@@ -30,7 +30,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqAutoCreate?: boolean };
+  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqWaHandleField?: string; lsqAutoCreate?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     const host = (b.lsqHost ?? "").trim().replace(/\/+$/, "");
     const activityCode = (b.lsqActivityCode ?? "").trim();
     if (!accessKey || !secretKey || !host || !activityCode) return NextResponse.json({ error: "Add your Access Key, Secret Key, API host and Activity code." }, { status: 400 });
-    config = { host, activityCode, taskCategory: (b.lsqTaskCategory ?? "").trim() || null, igHandleField: (b.lsqIgHandleField ?? "").trim() || null, autoCreate: !!b.lsqAutoCreate };
+    config = { host, activityCode, taskCategory: (b.lsqTaskCategory ?? "").trim() || null, igHandleField: (b.lsqIgHandleField ?? "").trim() || null, waHandleField: (b.lsqWaHandleField ?? "").trim() || null, autoCreate: !!b.lsqAutoCreate };
     secretInput = JSON.stringify({ accessKey, secretKey });
   } else if (CRM_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
