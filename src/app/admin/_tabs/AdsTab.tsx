@@ -468,15 +468,18 @@ type GeoResult = { name: string; context: string; lat: number; lng: number; type
 type LocationItem = { id: string; kind: "country" | "radius"; name: string; context?: string; countryCode?: string; lat?: number; lng?: number; radius?: number };
 const DEFAULT_LOCATION: LocationItem = { id: "country:IN", kind: "country", name: "India", countryCode: "IN" };
 
-// Client-only Leaflet map (needs `window`) — clean labelled tiles + true circle.
+// Client-only Leaflet map (needs `window`) — clean labelled tiles, all radius
+// areas on ONE map (colour-coded) so overlaps are visible.
 const RadiusLeafletMap = dynamic(() => import("../RadiusLeafletMap"), {
   ssr: false,
   loading: () => <div className="w-full h-full flex items-center justify-center bg-canvas"><Loader2 className="w-4 h-4 animate-spin text-slate-300" /></div>,
 });
-function RadiusMap({ lat, lng, radius }: { lat: number; lng: number; radius: number }) {
+// Distinct colours per area — matched by a dot on each area's row below the map.
+const RADIUS_COLORS = ["#2563eb", "#059669", "#db2777", "#d97706", "#7c3aed", "#0891b2", "#ca8a04", "#dc2626"];
+function RadiusMap({ points }: { points: { lat: number; lng: number; radius: number; name: string; color?: string }[] }) {
   return (
-    <div className="w-full h-52 rounded-control overflow-hidden border border-line">
-      <RadiusLeafletMap lat={lat} lng={lng} radius={radius} />
+    <div className="w-full h-72 rounded-control overflow-hidden border border-line">
+      <RadiusLeafletMap points={points} />
     </div>
   );
 }
@@ -550,17 +553,20 @@ function LocationPicker({ locations, setLocations }: { locations: LocationItem[]
         </div>
       )}
 
-      {/* radius areas — each with slider + coverage map */}
-      {radiusItems.map(l => (
+      {/* radius areas — ONE map with every circle (overlaps visible), then a
+          compact row per area (colour-matched to the map) with its own slider */}
+      {radiusItems.length > 0 && (
+        <RadiusMap points={radiusItems.map((l, i) => ({ lat: l.lat!, lng: l.lng!, radius: l.radius ?? 10, name: l.name, color: RADIUS_COLORS[i % RADIUS_COLORS.length] }))} />
+      )}
+      {radiusItems.map((l, i) => (
         <div key={l.id} className="rounded-control border border-line p-2.5 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-xs font-bold text-ink-900 flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-brand-700 shrink-0" /> {l.name}</p>
-              {l.context && <p className="text-[10px] text-slate-400 truncate">{l.context}</p>}
+              <p className="text-xs font-bold text-ink-900 flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: RADIUS_COLORS[i % RADIUS_COLORS.length] }} /> {l.name}</p>
+              {l.context && <p className="text-[10px] text-slate-400 truncate pl-4">{l.context}</p>}
             </div>
             <button onClick={() => remove(l.id)} className="text-[11px] font-bold text-red-500 hover:text-red-600 shrink-0">Remove</button>
           </div>
-          <RadiusMap lat={l.lat!} lng={l.lng!} radius={l.radius ?? 10} />
           <div className="flex items-center gap-2 text-xs">
             <span className="text-ink-700 font-semibold whitespace-nowrap">Radius</span>
             <input type="range" min={1} max={80} value={l.radius ?? 10} onChange={e => setRadius(l.id, Number(e.target.value))} className="flex-1 accent-brand-700" />
