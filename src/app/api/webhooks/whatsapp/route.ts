@@ -11,6 +11,7 @@ import {
   setContactAttributes, addContactTag, markOptedIn,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
+import { parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
 import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
 import { getOpenCart, checkoutCart } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
@@ -166,6 +167,21 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
   // Already opted out — ignore inbound entirely.
   if (optedOut) return;
+
+  // Handle Hub attribution — a tracked link/QR embeds "[ref:CODE]" in the prefilled
+  // first message. Capture which source (QR / ad / bio) started the chat, then strip
+  // the token so every downstream path (storage, flows, keywords, CRM) sees only the
+  // customer's real text. Fire-and-forget; never blocks the inbound.
+  const hhRef = parseRef(text);
+  if (hhRef) {
+    const stripped = stripRef(text);
+    if (stripped) text = stripped;
+    void resolveRef(tid, hhRef).then(src => {
+      if (!src) return;
+      void recordTouch(src.id, tid);
+      void setContactAttributes(from, { handle_source: src.label }, tid).catch(() => undefined);
+    }).catch(() => undefined);
+  }
 
   // Ensure the sender is a contact, then attach to a conversation. An inbound
   // message IS a verifiable opt-in, so mark consent (and upgrade an existing

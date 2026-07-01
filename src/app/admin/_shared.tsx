@@ -12,7 +12,7 @@ export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 // The set of dashboard tabs (sidebar keys). The shell owns the active-tab state
 // and passes `goTo` to tabs for cross-tab navigation.
-export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "webchat" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
+export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "webchat" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "handlehub" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
 
 // A deep-link "intent" carried alongside a tab switch, so Home stat cards, the
 // Sales Pipeline, and Contacts can open Live Chat already focused on a specific

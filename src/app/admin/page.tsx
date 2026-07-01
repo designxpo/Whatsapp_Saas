@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare } from "lucide-react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -24,6 +24,7 @@ const TemplatesTab = dynamic(() => import("./_tabs/TemplatesTab"), { ssr: false,
 const FlowsTab = dynamic(() => import("./_tabs/FlowsTab"), { ssr: false, loading: () => tabLoading });
 const AiHubTab = dynamic(() => import("./_tabs/AiHubTab"), { ssr: false, loading: () => tabLoading });
 const GrowthTab = dynamic(() => import("./_tabs/GrowthTab"), { ssr: false, loading: () => tabLoading });
+const HandleHubTab = dynamic(() => import("./_tabs/HandleHubTab"), { ssr: false, loading: () => tabLoading });
 const OptoutsTab = dynamic(() => import("./_tabs/OptoutsTab"), { ssr: false, loading: () => tabLoading });
 const SetupTab = dynamic(() => import("./_tabs/SetupTab"), { ssr: false, loading: () => tabLoading });
 const IntegrationsTab = dynamic(() => import("./_tabs/IntegrationsTab"), { ssr: false, loading: () => tabLoading });
@@ -60,6 +61,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "sequences", label: "Sequences", icon: <Workflow className="w-[18px] h-[18px]" /> },
       { key: "catalog", label: "Catalog", icon: <ShoppingBag className="w-[18px] h-[18px]" /> },
       { key: "growth", label: "Growth Tools", icon: <TrendingUp className="w-[18px] h-[18px]" /> },
+      { key: "handlehub", label: "Handle Hub", icon: <AtSign className="w-[18px] h-[18px]" /> },
       { key: "aihub", label: "AI Hub", icon: <Sparkles className="w-[18px] h-[18px]" /> },
       { key: "templates", label: "Templates", icon: <LayoutTemplate className="w-[18px] h-[18px]" /> },
       { key: "forms", label: "WhatsApp Forms", icon: <ClipboardList className="w-[18px] h-[18px]" /> },
@@ -77,7 +79,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
 ];
 const TAB_TITLES: Record<Tab, string> = {
   home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", webchat: "Web Chat", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
-  sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools",
+  sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Handle Hub",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
   contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status", integrations: "Integrations",
 };
@@ -250,6 +252,7 @@ export default function Admin() {
           {tab === "sequences" && <SequencesTab />}
           {tab === "catalog" && <CatalogTab />}
           {tab === "growth" && <GrowthTab />}
+          {tab === "handlehub" && <HandleHubTab />}
           {tab === "aihub" && <AiHubTab goTo={goTo} />}
           {tab === "templates" && <TemplatesTab />}
           {tab === "forms" && <FormsTab goTo={goTo} />}
