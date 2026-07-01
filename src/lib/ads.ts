@@ -518,6 +518,7 @@ export interface CtwaInput {
   };
   creative: CtwaCreative;
   creatives?: CtwaCreative[];           // creative test: each becomes its own ad in the ONE ad set
+  advantageCreative?: boolean;          // Advantage+ creative — Meta auto-adapts + AI-enhances per placement
   activate: boolean;
 }
 
@@ -786,11 +787,21 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
     const cr = creatives[i];
     const suffix = creatives.length > 1 ? ` ${i + 1}` : "";
     const storySpec = buildCreativeStorySpec(input.pageId, cr, link, callToAction);
-    const creative = await graphPost(`act_${input.accountId}/adcreatives`, {
+    const creativeParams: Record<string, string> = {
       name: `${input.name} — creative${suffix}`,
       ...(cr.urlTags ? { url_tags: cr.urlTags } : {}),
       object_story_spec: JSON.stringify(storySpec),
-    });
+    };
+    // Advantage+ creative — let Meta auto-adapt the creative to each placement/
+    // format and apply AI enhancements (brightness, text variations, templates…).
+    if (input.advantageCreative) creativeParams.degrees_of_freedom_spec = JSON.stringify({ creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" } } });
+    let creative = await graphPost(`act_${input.accountId}/adcreatives`, creativeParams);
+    // Some accounts/placements reject the enhancement spec — retry once without it
+    // rather than failing the whole ad.
+    if (!creative.ok && input.advantageCreative) {
+      delete creativeParams.degrees_of_freedom_spec;
+      creative = await graphPost(`act_${input.accountId}/adcreatives`, creativeParams);
+    }
     if (!creative.ok) return { ok: false, campaignId, adSetId, adId: adIds[0], adIds, error: creative.error, stage: `creative${suffix}` };
     const ad = await graphPost(`act_${input.accountId}/ads`, {
       name: `${input.name} — ad${suffix}`, adset_id: adSetId, status,

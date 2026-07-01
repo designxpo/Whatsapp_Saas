@@ -699,9 +699,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const [cardUploading, setCardUploading] = useState<number | null>(null);
   // Extra creatives — each launches as its own ad in the SAME ad set (a creative
   // test). Creative 1 above is the primary (full-featured, live-previewed); these
-  // are compact single-image / video variants.
-  const [extraCreatives, setExtraCreatives] = useState<{ format: "single" | "video"; imageHash: string | null; imageName: string; imagePreview: string | null; videoId: string | null; videoName: string; videoPreview: string | null; primaryText: string; headline: string; description: string; uploading: boolean }[]>([]);
+  // support the same formats: single image, video, or carousel.
+  const [extraCreatives, setExtraCreatives] = useState<{ format: "single" | "video" | "carousel"; imageHash: string | null; imageName: string; imagePreview: string | null; videoId: string | null; videoName: string; videoPreview: string | null; cards: { imageHash: string | null; imageName: string; imagePreview: string | null; headline: string; description: string }[]; cardUploading: number | null; primaryText: string; headline: string; description: string; uploading: boolean }[]>([]);
   const setExtra = (i: number, patch: Partial<typeof extraCreatives[number]>) => setExtraCreatives(cs => cs.map((c, x) => x === i ? { ...c, ...patch } : c));
+  const blankCard = () => ({ imageHash: null, imageName: "", imagePreview: null, headline: "", description: "" });
+  const newExtraCreative = () => ({ format: "single" as const, imageHash: null, imageName: "", imagePreview: null, videoId: null, videoName: "", videoPreview: null, cards: [blankCard(), blankCard()], cardUploading: null, primaryText: "", headline: "", description: "", uploading: false });
   const [placement, setPlacement] = useState<string>("fb_feed");
   const [previewIdx, setPreviewIdx] = useState(0);   // which creative the preview pane shows (0 = primary)
   const [realPreviews, setRealPreviews] = useState<{ key: string; label: string; html: string }[] | null>(null);
@@ -712,6 +714,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const [estimateErr, setEstimateErr] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [activate, setActivate] = useState(false);
+  const [advantageCreative, setAdvantageCreative] = useState(true);   // Advantage+ creative — Meta auto-enhances per placement
   const [creating, setCreating] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // Campaigns created in THIS session — so a just-made campaign is instantly
@@ -745,20 +748,26 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     S(d.includeAuds, setIncludeAuds); S(d.excludeAuds, setExcludeAuds); S(d.primaryText, setPrimaryText); S(d.headline, setHeadline);
     S(d.description, setDescription); S(d.urlTags, setUrlTags); S(d.creativeFormat, setCreativeFormat); S(d.imageHash, setImageHash);
     S(d.imageName, setImageName); S(d.videoId, setVideoId); S(d.videoName, setVideoName); S(d.flowId, setFlowId); S(d.flowScope, setFlowScope);
+    S(d.advantageCreative, setAdvantageCreative);
     const draftCards = Array.isArray(d.cards) ? d.cards as { imageHash: string | null; imageName: string; headline: string; description: string }[] : [];
     if (draftCards.length) setCards(draftCards.map(c => ({ ...c, imagePreview: null })));
-    const draftExtra = Array.isArray(d.extraCreatives) ? d.extraCreatives as { format: "single" | "video"; imageHash: string | null; imageName: string; videoId: string | null; videoName: string; primaryText: string; headline: string; description: string }[] : [];
-    if (draftExtra.length) setExtraCreatives(draftExtra.map(ec => ({ ...ec, imagePreview: null, videoPreview: null, uploading: false })));
+    type DraftExtra = { format: "single" | "video" | "carousel"; imageHash: string | null; imageName: string; videoId: string | null; videoName: string; cards?: { imageHash: string | null; imageName: string; headline: string; description: string }[]; primaryText: string; headline: string; description: string };
+    const draftExtra = Array.isArray(d.extraCreatives) ? d.extraCreatives as DraftExtra[] : [];
+    if (draftExtra.length) setExtraCreatives(draftExtra.map(ec => ({ ...ec, imagePreview: null, videoPreview: null, uploading: false, cardUploading: null, cards: (ec.cards ?? [blankCard(), blankCard()]).map(c => ({ ...c, imagePreview: null })) })));
     // The upload preview blob is gone on reopen — re-fetch Meta-hosted URLs from
     // the saved hashes so the restored image(s) show again.
     void (async () => {
-      const hashes = [d.imageHash as string | undefined, ...draftCards.map(c => c.imageHash ?? undefined), ...draftExtra.map(ec => ec.imageHash ?? undefined)].filter(Boolean) as string[];
+      const hashes = [d.imageHash as string | undefined, ...draftCards.map(c => c.imageHash ?? undefined), ...draftExtra.map(ec => ec.imageHash ?? undefined), ...draftExtra.flatMap(ec => (ec.cards ?? []).map(c => c.imageHash ?? undefined))].filter(Boolean) as string[];
       if (hashes.length) {
         const res = await fetch(`/api/admin/meta/media?hashes=${hashes.join(",")}`).then(r => r.json()).catch(() => null);
         const urls: Record<string, string> = res?.urls ?? {};
         if (d.imageHash && urls[d.imageHash as string]) setImagePreview(urls[d.imageHash as string]);
         if (draftCards.length) setCards(cs => cs.map((c, i) => { const h = draftCards[i]?.imageHash; return h && urls[h] ? { ...c, imagePreview: urls[h] } : c; }));
-        if (draftExtra.length) setExtraCreatives(cs => cs.map((c, i) => { const h = draftExtra[i]?.imageHash; return h && urls[h] ? { ...c, imagePreview: urls[h] } : c; }));
+        if (draftExtra.length) setExtraCreatives(cs => cs.map((c, i) => ({
+          ...c,
+          imagePreview: (draftExtra[i]?.imageHash && urls[draftExtra[i]!.imageHash!]) ? urls[draftExtra[i]!.imageHash!] : c.imagePreview,
+          cards: c.cards.map((cc, y) => { const h = draftExtra[i]?.cards?.[y]?.imageHash; return h && urls[h] ? { ...cc, imagePreview: urls[h] } : cc; }),
+        })));
       }
       if (d.videoId) {
         const res = await fetch(`/api/admin/meta/media?videoId=${d.videoId}`).then(r => r.json()).catch(() => null);
@@ -775,7 +784,8 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     locations, interests, languages, ageMin, ageMax, gender, advantage, placements, platforms, positions, includeAuds, excludeAuds,
     primaryText, headline, description, urlTags, creativeFormat, imageHash, imageName, videoId, videoName,
     cards: cards.map(c => ({ imageHash: c.imageHash, imageName: c.imageName, headline: c.headline, description: c.description })),
-    extraCreatives: extraCreatives.map(ec => ({ format: ec.format, imageHash: ec.imageHash, imageName: ec.imageName, videoId: ec.videoId, videoName: ec.videoName, primaryText: ec.primaryText, headline: ec.headline, description: ec.description })),
+    extraCreatives: extraCreatives.map(ec => ({ format: ec.format, imageHash: ec.imageHash, imageName: ec.imageName, videoId: ec.videoId, videoName: ec.videoName, cards: ec.cards.map(c => ({ imageHash: c.imageHash, imageName: c.imageName, headline: c.headline, description: c.description })), primaryText: ec.primaryText, headline: ec.headline, description: ec.description })),
+    advantageCreative,
     flowId, flowScope,
   });
 
@@ -793,7 +803,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     }, 1500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, name, objective, optGoal, destination, websiteUrl, pixelId, conversionEvent, leadFormId, ctaType, specialCats, budgetLevel, budgetType, budget, startDate, endDate, bidStrategy, bidAmount, locations, interests, languages, ageMin, ageMax, gender, advantage, placements, platforms, positions, includeAuds, excludeAuds, primaryText, headline, description, urlTags, creativeFormat, imageHash, imageName, videoId, videoName, cards, extraCreatives, flowId, flowScope]);
+  }, [step, name, objective, optGoal, destination, websiteUrl, pixelId, conversionEvent, leadFormId, ctaType, specialCats, budgetLevel, budgetType, budget, startDate, endDate, bidStrategy, bidAmount, locations, interests, languages, ageMin, ageMax, gender, advantage, placements, platforms, positions, includeAuds, excludeAuds, primaryText, headline, description, urlTags, creativeFormat, imageHash, imageName, videoId, videoName, cards, extraCreatives, advantageCreative, flowId, flowScope]);
 
   async function uploadImage(f: File) {
     setUploading(true); setErr(null);
@@ -840,6 +850,19 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     } finally { setExtra(i, { uploading: false }); }
   }
 
+  // Upload a carousel-card image for an extra creative (creative index + card index).
+  async function uploadExtraCardImage(ci: number, cardIdx: number, f: File) {
+    const preview = URL.createObjectURL(f);
+    setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: cardIdx, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imagePreview: preview } : cc) } : c));
+    setErr(null);
+    try {
+      const fd = new FormData(); fd.append("file", f);
+      const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
+      if (d.imageHash) setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cards: c.cards.map((cc, y) => y === cardIdx ? { ...cc, imageHash: d.imageHash, imageName: f.name } : cc) } : c));
+      else setErr(d.error || "Upload failed");
+    } finally { setExtraCreatives(cs => cs.map((c, x) => x === ci ? { ...c, cardUploading: null } : c)); }
+  }
+
   async function create() {
     setCreating(true); setErr(null);
     try {
@@ -880,9 +903,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
               format: ec.format,
               imageHash: ec.format === "single" ? ec.imageHash : null,
               videoId: ec.format === "video" ? ec.videoId : null,
+              cards: ec.format === "carousel" ? ec.cards.map(c => ({ imageHash: c.imageHash, headline: c.headline.trim(), description: c.description.trim() })) : undefined,
               primaryText: ec.primaryText.trim(), headline: ec.headline.trim(), description: ec.description.trim(), urlTags: urlTags.trim(),
             })),
           ],
+          advantageCreative,
           flowId: destination === "WHATSAPP" && flowId ? flowId : null, flowScope,
         }),
       }).then(r => r.json());
@@ -1001,7 +1026,9 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
     : step === 4 ? primaryText.trim().length > 0 && headline.trim().length > 0
       && (creativeFormat !== "video" || !!videoId)
       && (creativeFormat !== "carousel" || (cards.length >= 2 && cards.every(c => c.imageHash && c.headline.trim().length > 0)))
-      && extraCreatives.every(ec => ec.primaryText.trim().length > 0 && ec.headline.trim().length > 0 && (ec.format !== "video" || !!ec.videoId))
+      && extraCreatives.every(ec => ec.primaryText.trim().length > 0 && ec.headline.trim().length > 0
+          && (ec.format !== "video" || !!ec.videoId)
+          && (ec.format !== "carousel" || (ec.cards.length >= 2 && ec.cards.every(c => c.imageHash && c.headline.trim().length > 0))))
     : true;
   const stepTitle = ["", "Campaign name", "Goal & budget", "Audience", "Ad creative", "Review & launch"][step];
   const field = "space-y-1";
@@ -1024,7 +1051,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   // (gets Meta's live render); extras show the built-in mock.
   const previews = [
     { format: creativeFormat, imageUrl: imagePreview, videoUrl: videoPreview, cards: cards.map(c => ({ imageUrl: c.imagePreview, headline: c.headline, description: c.description })), primaryText, headline, description, real: realPreviews, mediaReady },
-    ...extraCreatives.map(ec => ({ format: ec.format, imageUrl: ec.imagePreview, videoUrl: ec.videoPreview, cards: [] as { imageUrl: string | null; headline: string; description: string }[], primaryText: ec.primaryText, headline: ec.headline, description: ec.description, real: null, mediaReady: ec.format === "video" ? !!ec.videoId : !!ec.imageHash })),
+    ...extraCreatives.map(ec => ({ format: ec.format, imageUrl: ec.imagePreview, videoUrl: ec.videoPreview, cards: ec.format === "carousel" ? ec.cards.map(c => ({ imageUrl: c.imagePreview, headline: c.headline, description: c.description })) : [] as { imageUrl: string | null; headline: string; description: string }[], primaryText: ec.primaryText, headline: ec.headline, description: ec.description, real: null, mediaReady: ec.format === "video" ? !!ec.videoId : ec.format === "carousel" ? ec.cards.filter(c => c.imageHash).length >= 2 : !!ec.imageHash })),
   ];
   const pIdx = Math.min(previewIdx, previews.length - 1);   // clamp if a creative was removed
   const pv = previews[pIdx];
@@ -1448,21 +1475,58 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
                   <button onClick={() => setExtraCreatives(cs => cs.filter((_, x) => x !== i))} className="text-[11px] font-bold text-red-500 hover:text-red-600">Remove</button>
                 </div>
                 <div className="flex gap-2">
-                  {([["single", "Image", ImageIcon], ["video", "Video", Video]] as const).map(([k, l, Ic]) => (
+                  {([["single", "Image", ImageIcon], ["video", "Video", Video], ["carousel", "Carousel", GalleryHorizontalEnd]] as const).map(([k, l, Ic]) => (
                     <button key={k} onClick={() => setExtra(i, { format: k })} className={`flex items-center gap-1 px-2.5 py-1.5 rounded-control border text-[11px] font-bold ${ec.format === k ? "border-brand-500 bg-brand-50 text-brand-700" : "border-line text-slate-500 hover:border-slate-300"}`}><Ic className="w-3.5 h-3.5" /> {l}</button>
                   ))}
                 </div>
-                <label className={`flex items-center gap-2 px-3 py-2 rounded-control border border-dashed border-slate-300 text-xs cursor-pointer hover:border-brand-500 ${ec.uploading ? "opacity-60" : ""}`}>
-                  {ec.uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
-                  {ec.format === "single" ? (ec.imageHash ? `✓ ${ec.imageName} — click to replace` : "Upload image") : (ec.videoId ? `✓ ${ec.videoName} — click to replace` : "Upload video")}
-                  <input type="file" accept={ec.format === "single" ? "image/*" : "video/*"} className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadExtraMedia(i, f, ec.format === "single" ? "image" : "video"); e.currentTarget.value = ""; }} />
-                </label>
+                {ec.format === "carousel" ? (
+                  <div className="space-y-2">
+                    {ec.cards.map((c, ci) => (
+                      <div key={ci} className="rounded-control border border-line bg-white p-2 space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-400">Card {ci + 1}</span>
+                          {ec.cards.length > 2 && <button onClick={() => setExtra(i, { cards: ec.cards.filter((_, y) => y !== ci) })} className="text-[10px] font-bold text-red-500 hover:text-red-600">Remove</button>}
+                        </div>
+                        <div className="flex gap-2">
+                          <label className={`shrink-0 w-14 h-14 rounded-control border border-dashed border-slate-300 flex items-center justify-center cursor-pointer hover:border-brand-500 overflow-hidden ${ec.cardUploading === ci ? "opacity-60" : ""}`}>
+                            {ec.cardUploading === ci ? <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                              // eslint-disable-next-line @next/next/no-img-element
+                              : c.imagePreview ? <img src={c.imagePreview} alt="" className="w-full h-full object-cover" />
+                              : <UploadCloud className="w-3.5 h-3.5 text-slate-400" />}
+                            <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadExtraCardImage(i, ci, f); e.currentTarget.value = ""; }} />
+                          </label>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <input className={`${inp} w-full`} placeholder={`Card ${ci + 1} headline`} value={c.headline} onChange={e => setExtra(i, { cards: ec.cards.map((x, y) => y === ci ? { ...x, headline: e.target.value } : x) })} />
+                            <input className={`${inp} w-full`} placeholder="Description (optional)" value={c.description} onChange={e => setExtra(i, { cards: ec.cards.map((x, y) => y === ci ? { ...x, description: e.target.value } : x) })} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {ec.cards.length < 10 && <button onClick={() => setExtra(i, { cards: [...ec.cards, blankCard()] })} className="text-[11px] font-bold text-brand-700 flex items-center gap-1"><Plus className="w-3 h-3" /> Add card</button>}
+                  </div>
+                ) : (
+                  <label className={`flex items-center gap-2 px-3 py-2 rounded-control border border-dashed border-slate-300 text-xs cursor-pointer hover:border-brand-500 ${ec.uploading ? "opacity-60" : ""}`}>
+                    {ec.uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+                    {ec.format === "single" ? (ec.imageHash ? `✓ ${ec.imageName} — click to replace` : "Upload image") : (ec.videoId ? `✓ ${ec.videoName} — click to replace` : "Upload video")}
+                    <input type="file" accept={ec.format === "single" ? "image/*" : "video/*"} className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadExtraMedia(i, f, ec.format === "single" ? "image" : "video"); e.currentTarget.value = ""; }} />
+                  </label>
+                )}
                 <textarea className={`${inp} w-full resize-none`} rows={2} placeholder="Primary text — the message above the media" value={ec.primaryText} onChange={e => setExtra(i, { primaryText: e.target.value })} />
                 <input className={`${inp} w-full`} placeholder="Headline — bold line next to the button" value={ec.headline} onChange={e => setExtra(i, { headline: e.target.value })} />
+                <input className={`${inp} w-full`} placeholder="Description (optional — small text under the headline)" value={ec.description} onChange={e => setExtra(i, { description: e.target.value })} />
               </div>
             ))}
-            <button onClick={() => setExtraCreatives(cs => [...cs, { format: "single", imageHash: null, imageName: "", imagePreview: null, videoId: null, videoName: "", videoPreview: null, primaryText: "", headline: "", description: "", uploading: false }])} className="text-[11px] font-bold text-brand-700 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add another creative</button>
+            <button onClick={() => setExtraCreatives(cs => [...cs, newExtraCreative()])} className="text-[11px] font-bold text-brand-700 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add another creative</button>
           </div>
+
+          {/* ── Advantage+ creative — Meta auto-adapts + AI-enhances per placement ── */}
+          <label className="flex items-start gap-2.5 rounded-control border border-line p-3 cursor-pointer">
+            <input type="checkbox" className="accent-brand-700 mt-0.5" checked={advantageCreative} onChange={e => setAdvantageCreative(e.target.checked)} />
+            <div>
+              <p className={lbl}>✨ Advantage+ creative <span className="font-normal text-slate-400">(recommended)</span></p>
+              <p className="text-[11px] text-slate-400">Let Meta auto-fit your creative to every placement &amp; format (Feed, Story, Reels…) and apply AI enhancements — brightness/contrast, text variations, image templates, music. You keep your originals; Meta shows whichever performs best per person.</p>
+            </div>
+          </label>
         </>}
 
         {step === 5 && <>
@@ -1472,6 +1536,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
             <p className="text-slate-500">📍 {locations.map(l => l.kind === "radius" ? `${l.name} (${l.radius ?? 10}km)` : l.name).join(", ") || "—"} · age {ageMin}–{ageMax} · {gender}{interests.length ? ` · ${interests.map(i => i.name).join(", ")}` : ""}{languages.length ? ` · ${languages.map(l => l.name).join(", ")}` : ""}{includeAuds.length ? ` · +${includeAuds.length} audience` : ""}{excludeAuds.length ? ` · −${excludeAuds.length} excluded` : ""}{advantage && !includeAuds.length ? " · Advantage+" : ""} · {placements === "manual" ? platforms.join(", ") : "auto placements"}</p>
             <p className="text-slate-500">🖼 {creativeFormat === "video" ? (videoId ? `Video · ${videoName}` : "no video") : creativeFormat === "carousel" ? `Carousel · ${cards.filter(c => c.imageHash).length}/${cards.length} cards ready` : (imageHash ? imageName : "no image")} · “{headline}”{description ? ` · ${description}` : ""}</p>
             {extraCreatives.length > 0 && <p className="text-slate-500">🧪 {extraCreatives.length + 1} creatives → {extraCreatives.length + 1} ads in one ad set (Meta rotates + optimises)</p>}
+            {advantageCreative && <p className="text-slate-500">✨ Advantage+ creative on — Meta auto-fits &amp; enhances per placement</p>}
             <p className="text-slate-500 line-clamp-2">{primaryText}</p>
           </div>
 

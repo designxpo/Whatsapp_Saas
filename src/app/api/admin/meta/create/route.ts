@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     targeting?: CtwaInput["targeting"];
     creative?: CtwaInput["creative"] & { cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[] };
     creatives?: (CtwaInput["creative"] & { cards?: { imageHash?: string | null; headline: string; description?: string; link?: string }[] })[];
+    advantageCreative?: boolean;
     flowId?: string | null; flowScope?: "campaign" | "ad";
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -100,6 +101,7 @@ export async function POST(req: Request) {
     },
     creative: creatives[0],
     creatives,
+    advantageCreative: body.advantageCreative === true,
     activate: body.activate === true,
   });
 
