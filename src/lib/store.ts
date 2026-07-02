@@ -1398,6 +1398,21 @@ export async function setConversationLeadPhone(id: string, phone: string): Promi
   await db().from("wa_conversations").update({ lead_phone: phone }).eq("id", id).then(undefined, () => undefined);
 }
 
+// Fill a conversation's display name once we learn who the person is (e.g. the AI
+// captured their name on web chat) — but ONLY over an empty name or the generic
+// "Website visitor" placeholder, so a real WhatsApp/Instagram profile name is never
+// clobbered. Keyed by the conversation's phone slot, which for web/IG/FB is the
+// opaque visitor id passed to the reply engine. Tenant-scoped.
+export async function setConversationName(phoneKey: string, name: string, tenantId: string): Promise<void> {
+  const n = (name || "").trim();
+  if (!n || !phoneKey) return;
+  const { data } = await db().from("wa_conversations").select("id, name").eq("tenant_id", tenantId).eq("phone", phoneKey).maybeSingle();
+  if (!data) return;
+  const cur = ((data.name as string) || "").trim();
+  if (cur && cur.toLowerCase() !== "website visitor") return;   // never overwrite a real name
+  await db().from("wa_conversations").update({ name: n }).eq("id", data.id as string).then(undefined, () => undefined);
+}
+
 // Atomically claims the welcome send: only the first caller gets true.
 export async function claimWelcome(id: string): Promise<boolean> {
   const { data } = await db().from("wa_conversations").update({ welcomed: true }).eq("id", id).eq("welcomed", false).select("id");

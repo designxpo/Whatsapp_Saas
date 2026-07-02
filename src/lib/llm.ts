@@ -3,7 +3,7 @@ import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiF
 import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type ChatMedia } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { downloadRemoteMedia, visionInlineMime } from "./voice";
-import { getContactByPhone, setContactAttributes, updateContactProfile } from "./store";
+import { getContactByPhone, setContactAttributes, updateContactProfile, setConversationName } from "./store";
 import { readBehavior, behaviorBlock } from "./behavior";
 import { syncLeadProfile } from "./leadsquared";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
@@ -206,6 +206,9 @@ async function rememberCustomer(phone: string, args: Record<string, unknown>, te
   if (name && (ctx.existingName ?? "").trim()) name = "";
 
   if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
+  // Show the real name in the portal instead of "Website visitor" (web/IG/FB have
+  // no contact record keyed by their opaque id, so updateContactProfile can't).
+  if (name) await setConversationName(phone, name, tenantId).catch(() => undefined);
   const attrs: Record<string, string> = {};
   if (city) attrs.city = city;
   if (interest) attrs.interest = interest;
