@@ -1,10 +1,10 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
-import { pushChatActivity, phoneFromAttributes } from "@/lib/leadsquared";
+import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
 
 const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
@@ -45,9 +45,15 @@ export async function POST(req: Request) {
 
   const tid = channel.tenantId;
   const id = webchatConvId(visitorId);
-  const conv = await getOrCreateConversation(id, (body.name ?? "").trim() || "Website visitor", channel.id, "webchat", tid);
+  let conv = await getOrCreateConversation(id, (body.name ?? "").trim() || "Website visitor", channel.id, "webchat", tid);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text.slice(0, 4000), source: "inbound", tenantId: tid });
   await touchInbound(conv.id, text.slice(0, 200));
+  // Capture a phone the visitor types (web chat is anonymous) so the chat can be
+  // matched to a CRM lead by phone — now and on later messages.
+  if (!conv.leadPhone) {
+    const shared = extractPhone(text);
+    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+  }
   after(() => syncWebToLsq(conv, text, "inbound", "lead", tid));   // mirror to LeadSquared timeline
 
   // Human has taken over (bot off) or cap reached → no AI; the agent replies from

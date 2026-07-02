@@ -2,8 +2,8 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, type Conversation } from "@/lib/store";
-import { pushChatActivity, phoneFromAttributes } from "@/lib/leadsquared";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, type Conversation } from "@/lib/store";
+import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -120,6 +120,12 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24h window
+  // Capture a phone the lead types (Messenger has no number of its own) so the
+  // chat can be matched to a CRM lead by phone — now and on later messages.
+  if (!conv.leadPhone) {
+    const shared = extractPhone(text);
+    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+  }
   if (text.trim()) after(() => syncFbToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
 
   // A media-only message is stored + shown in Live Chat; don't run the bot on
