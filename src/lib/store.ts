@@ -1207,7 +1207,7 @@ export async function matchChunksByTag(queryEmbedding: number[], k: number, tag:
 export interface Analytics {
   contacts: { active: number; optedOut: number; new14d: number };
   campaigns: { total: number; automations: number };
-  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
+  conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number; webchat: number; messenger: number };
   kb: { documents: number; ready: number };
   messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
   automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
@@ -1277,9 +1277,11 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
     for (const [k, v] of Object.entries(eq)) q = q.eq(k, v);
     const { count } = await q; return count ?? 0;
   };
-  const [botOn, igConv, flows, flowsActive, sequences, sequencesActive, activeEnrollments, replied14d, aiReplies14d, new14d] = await Promise.all([
+  const [botOn, igConv, webConv, fbConv, flows, flowsActive, sequences, sequencesActive, activeEnrollments, replied14d, aiReplies14d, new14d] = await Promise.all([
     countWhere("wa_conversations", { ...t, bot_enabled: true }),
     countWhere("wa_conversations", { ...t, platform: "instagram" }),
+    countWhere("wa_conversations", { ...t, platform: "webchat" }),
+    countWhere("wa_conversations", { ...t, platform: "messenger" }),
     countWhere("wa_flows", t),
     countWhere("wa_flows", { ...t, active: true }),
     countWhere("wa_sequences", t),
@@ -1300,7 +1302,8 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
   return {
     contacts: { active, optedOut, new14d },
     campaigns: { total: campaignsTotal, automations },
-    conversations: { total: convTotal, active: convActive, escalated: convEscalated, needsReply: convNeedsReply, botOn, whatsapp: Math.max(0, convTotal - igConv), instagram: igConv },
+    // whatsapp = everything not explicitly another platform (covers legacy rows with a null platform).
+    conversations: { total: convTotal, active: convActive, escalated: convEscalated, needsReply: convNeedsReply, botOn, whatsapp: Math.max(0, convTotal - igConv - webConv - fbConv), instagram: igConv, webchat: webConv, messenger: fbConv },
     kb: { documents: kbTotal, ready: kbReady },
     messaging: { sentToday, totals, replied14d, aiReplies14d },
     automation: { flows, flowsActive, sequences, sequencesActive, activeEnrollments },

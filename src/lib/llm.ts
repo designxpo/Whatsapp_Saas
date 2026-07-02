@@ -625,13 +625,20 @@ export interface ExecutiveBrief {
 export async function generateExecutiveBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ExecutiveBrief> {
   const ai = await resolveTenantAi(tenantId);
   const instruction =
-    `You are a sharp growth/operations advisor briefing the CEO of a business that runs customer messaging on ` +
-    `WhatsApp + Instagram (broadcasts, chatbot flows, drip sequences, an AI assistant, and a CRM). Read the ` +
+    `You are a sharp growth/operations advisor briefing the CEO of a business that runs customer messaging ` +
+    `across WhatsApp, Instagram, Facebook Messenger and a website live-chat widget (broadcasts, chatbot flows, ` +
+    `drip sequences, an AI assistant, and a CRM). Read the ` +
     `metrics below (this week vs last week + current totals) and give a holistic, decision-ready brief.\n\n` +
     `Rules:\n` +
     `- Be specific and grounded ONLY in the numbers given. Cite the actual figures/percentages.\n` +
-    `- "health": "strong" (growing + healthy rates), "steady" (flat/ok), or "at-risk" (declining volume, poor ` +
-    `delivery/read, rising opt-outs/failures/escalations, or a backlog awaiting reply).\n` +
+    `- IMPORTANT: "Messages sent" counts OUTBOUND BROADCASTS only (WhatsApp template blasts). It is NOT total ` +
+    `engagement. Two-way engagement = inbound replies, AI auto-replies, and active conversations across ALL ` +
+    `channels (WhatsApp, Instagram, Messenger, Website live-chat). Never say engagement has "stalled"/"stopped" ` +
+    `or mark the business at-risk merely because broadcasts are zero/low when replies and active conversations ` +
+    `are healthy — a business can run entirely on inbound + live chat with no broadcasts.\n` +
+    `- "health": "strong" (growing + healthy rates), "steady" (flat/ok), or "at-risk" (poor delivery/read on ` +
+    `broadcasts actually sent, rising opt-outs/failures/escalations, a backlog awaiting reply, or replies AND ` +
+    `active conversations both collapsing).\n` +
     `- "headline": one punchy sentence summarising the state of the business this week.\n` +
     `- "working": 2-4 concrete bright spots (with numbers).\n` +
     `- "lacking": 2-4 weak/declining areas needing attention (with numbers).\n` +
