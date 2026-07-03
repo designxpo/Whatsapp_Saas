@@ -23,7 +23,7 @@ import { getChannel, type Channel, type ChannelCreds } from "./channels";
 import {
   appendConvMessage, touchOutbound, setConversationStatus,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
-  addContactTag, takeArmedFlow, updateContactProfile,
+  addContactTag, takeArmedFlow, updateContactProfile, setConversationName, setConversationLeadPhone, upsertContacts,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { syncLeadProfile } from "./leadsquared";
@@ -875,6 +875,13 @@ export async function handleFlowMessage(
       if (isReal && attr) {
         await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
+        // Land identity on the conversation too: a name answer replaces the
+        // "Website visitor" placeholder; a phone answer becomes the CRM match key.
+        if (/name/i.test(attr) && !/company|business|brand/i.test(attr)) await setConversationName(phone, text.trim().slice(0, 120), tid).catch(() => undefined);
+        if (/phone|mobile|whats?app/i.test(attr)) {
+          const d = text.replace(/\D/g, "");
+          if (d.length >= 10 && d.length <= 15) await setConversationLeadPhone(convKey, d).catch(() => undefined);
+        }
         // Mirror a CRM-relevant capture (email / city) onto the LSQ lead. Without
         // this, the flow-collected email never reached the CRM. Real phone only,
         // so web-chat/IG synthetic conversation ids never create junk leads.
@@ -927,13 +934,30 @@ export async function handleFlowMessage(
           if (isReal) await claimReply(convKey).catch(() => undefined);
           return true;
         }
-        // Every field collected — mirror to the Responses view + CRM (same as a
-        // real submission), then continue the flow past the form node.
+        // Every field collected — land the identity everywhere, same as a real
+        // submission: the conversation (display name + CRM phone), a REAL
+        // contact (web/IG visitors have none — setContactAttributes no-ops for
+        // them), the Responses view, and LeadSquared.
         if (isReal) {
           await recordFormSubmitted(convKey, phone, answers, tid).catch(() => undefined);
-          if (phone.replace(/\D/g, "").length >= 10) {
-            const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
-            void syncLeadProfile({ phone, email: pick(/email/i), city: pick(/city/i), name: contact?.name ?? undefined }, tid);
+          const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
+          const nameKey = Object.keys(answers).find(k => /name/i.test(k) && !/company|business|brand/i.test(k) && String(answers[k]).trim());
+          const name = nameKey ? String(answers[nameKey]).trim() : undefined;
+          const email = pick(/email/i);
+          const city = pick(/city/i);
+          const phoneDigits = (pick(/phone|mobile|whats?app|contact/i) ?? "").replace(/\D/g, "");
+          const phoneAns = phoneDigits.length >= 10 && phoneDigits.length <= 15 ? phoneDigits : undefined;
+          // Show who they are instead of "Website visitor" (guarded: never
+          // overwrites a real WhatsApp/IG profile name).
+          if (name) await setConversationName(phone, name.slice(0, 120), tid).catch(() => undefined);
+          if (phoneAns) await setConversationLeadPhone(convKey, phoneAns).catch(() => undefined);
+          // A real phone (answered, or the WhatsApp number itself) → a real contact.
+          const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
+          if (realPhone) {
+            await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form"] }], "chat_form", tid).catch(() => undefined);
+            await updateContactProfile(realPhone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tid).catch(() => undefined);
+            await setContactAttributes(realPhone, answers, tid).catch(() => undefined);
+            void syncLeadProfile({ phone: realPhone, email, city, name }, tid);
           }
         }
         const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
