@@ -15,12 +15,14 @@ export async function GET(req: Request) {
   const digits = (new URL(req.url).searchParams.get("phone") ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
-  // Conversation summary (newest if several). Fetched first so Instagram chats
+  // Conversation summary (newest if several). Matched by the phone slot OR
+  // lead_phone, so a web-chat/IG conversation (opaque key + captured number)
+  // resolves from its captured number too. Fetched first so Instagram chats
   // — which have NO contact row (keyed by IGSID, see store.getOrCreateConversation)
   // — can still render a profile instead of a 404 that spins the drawer forever.
   const { data: convRow } = await db().from("wa_conversations")
     .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at, name, platform, lead_phone, created_at")
-    .eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    .eq("tenant_id", tid).or(`phone.eq.${digits},lead_phone.eq.${digits}`).order("created_at", { ascending: false }).limit(1).maybeSingle();
 
   let contact = await getContactByPhone(digits, tid);
   if (!contact) {

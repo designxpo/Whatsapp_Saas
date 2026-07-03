@@ -304,12 +304,16 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     return () => clearInterval(t);
   }, [load]);
   // Contact card (tags + attributes collected by flows/forms/AI functions).
+  // Web-chat/IG conversations are keyed by an opaque id, not a phone — their
+  // contact record lives under the CAPTURED number (lead_phone), so look that
+  // up first; WhatsApp chats keep using their own number.
   useEffect(() => {
-    if (!conv?.phone) return;
-    fetch(`/api/admin/contacts?search=${encodeURIComponent(conv.phone)}&limit=1`).then(r => r.json())
+    const key = conv?.leadPhone || conv?.phone;
+    if (!key) return;
+    fetch(`/api/admin/contacts?search=${encodeURIComponent(key)}&limit=1`).then(r => r.json())
       .then(d => { const c = (d.contacts ?? [])[0]; setContact(c ? { email: c.email, tags: c.tags ?? [], attributes: c.attributes ?? {} } : null); })
       .catch(() => {});
-  }, [conv?.phone]);
+  }, [conv?.phone, conv?.leadPhone]);
   // Stick to the bottom when new messages arrive (jump on first paint).
   useEffect(() => {
     if (messages.length !== prevCount.current) {
@@ -657,7 +661,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
           )}
         </div>
       </aside>
-      {showProfile && conv?.phone && <ContactProfile phone={conv.phone} onClose={() => setShowProfile(false)} onChanged={() => { load(); onChanged(); }} goTo={goTo} />}
+      {showProfile && conv?.phone && <ContactProfile phone={conv.leadPhone || conv.phone} onClose={() => setShowProfile(false)} onChanged={() => { load(); onChanged(); }} goTo={goTo} />}
     </>
   );
 }

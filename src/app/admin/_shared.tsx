@@ -71,7 +71,7 @@ export function ChannelSelect({ value, onChange, allLabel, className }: { value:
 }
 
 // ── Shared conversation type (live chat / analytics / contacts) ──────────────
-export type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram" | "messenger" | "webchat"; avatarUrl?: string | null; isComment?: boolean };
+export type Conversation = { id: string; phone: string; name?: string | null; status: "active" | "paused" | "escalated"; botEnabled: boolean; lastMessage?: string | null; lastInboundAt?: string | null; lastOutboundAt?: string | null; needsReply?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; channelId?: string | null; platform?: "whatsapp" | "instagram" | "messenger" | "webchat"; avatarUrl?: string | null; isComment?: boolean; leadPhone?: string | null };
 
 // Analytics payload — used by both the Analytics tab and the Home/Broadcast rails'
 // useAnalytics() hook, so it lives here rather than inside the analytics module.
