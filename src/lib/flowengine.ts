@@ -689,6 +689,25 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
   return sent;
 }
 
+// Squashed comparable form for typed menu picks: lowercase, "&" → "and", every
+// non-alphanumeric dropped — so "Data Science and gen ai" equals "Data Science
+// & GenAI" even though spacing/punctuation differ.
+const squash = (s: string) => (s || "").toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]/g, "");
+
+// Resolve typed text to exactly ONE of `titles` by squash-equality or
+// containment. Ambiguous (2+ hits) or too-short input returns null so the AI
+// answers instead of guessing. Exported for unit tests — pure.
+export function looseIndex(titles: string[], text: string): number | null {
+  const tq = squash(text);
+  if (tq.length < 4) return null;
+  const hits: number[] = [];
+  titles.forEach((title, i) => {
+    const oq = squash(title);
+    if (oq && (oq === tq || (oq.length >= 4 && (tq.includes(oq) || oq.includes(tq))))) hits.push(i);
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
 // Match an inbound reply against the interactive node the session is waiting on.
 // Exported for unit tests — pure.
 export function matchOption(node: FlowNode, text: string): string | null {
@@ -706,6 +725,11 @@ export function matchOption(node: FlowNode, text: string): string | null {
     const n = parseInt(t, 10);
     if (n >= 1 && n <= opts.length) return opts[n - 1].id;
   }
+  // Typed approximations — web/IG visitors TYPE the choice rather than tapping
+  // ("Data Science and gen ai" for "Data Science & GenAI"). Accept only an
+  // unambiguous squash-match; anything fuzzy-ambiguous falls through to the AI.
+  const li = looseIndex(opts.map(o => o.title), text);
+  if (li !== null) return opts[li].id;
   return null;
 }
 
@@ -880,7 +904,10 @@ export async function handleFlowMessage(
           const t = norm(text);
           const n = /^\d{1,2}$/.test(t) ? parseInt(t, 10) : 0;
           if (n >= 1 && n <= f.o.length) answer = f.o[n - 1];
-          else answer = f.o.find(o => norm(o) === t) ?? answer;
+          else {
+            const li = looseIndex(f.o, text);   // typed approximations too
+            answer = f.o.find(o => norm(o) === t) ?? (li !== null ? f.o[li] : answer);
+          }
         } else if (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid))) {
           const tries = Number(session.state?.tries ?? 0);
           if (looksConversational(text) || tries >= 2) { await endSession(convKey); return false; }

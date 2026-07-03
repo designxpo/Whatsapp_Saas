@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // Pure-helper tests (same approach as flowengine.test.ts) — db() must never run.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure tests"); } }));
 
-import { chatFieldPrompt, type ChatFormField } from "../flowengine";
+import { chatFieldPrompt, looseIndex, matchOption, type ChatFormField } from "../flowengine";
 import { fieldSlug } from "../waforms";
 
 // The chat-native waform fallback (IG/Messenger/web chat) asks the form's fields
@@ -35,5 +35,29 @@ describe("chatFieldPrompt — one question bubble per field", () => {
   });
   it("opt-ins ask for yes/no", () => {
     expect(chatFieldPrompt(f({ l: "I agree to be contacted", t: "optin" }))).toBe("I agree to be contacted (yes/no)");
+  });
+});
+
+describe("looseIndex + matchOption — typed menu picks on web/IG chat", () => {
+  // The exact production miss: the visitor TYPED an approximation of a list
+  // option and the flow fell through to the AI instead of branching.
+  const COURSES = ["Data Science & GenAI", "Data Analytics with AI", "Full Stack AI Course", "Analytics Edge", "Executive Certification"];
+  it("resolves 'Data Science and gen ai' to 'Data Science & GenAI'", () => {
+    expect(looseIndex(COURSES, "Data Science and gen ai")).toBe(0);
+  });
+  it("resolves a unique partial ('full stack')", () => {
+    expect(looseIndex(COURSES, "full stack")).toBe(2);
+  });
+  it("refuses ambiguous input ('data' hits two options)", () => {
+    expect(looseIndex(COURSES, "data")).toBeNull();
+  });
+  it("refuses too-short input", () => {
+    expect(looseIndex(COURSES, "ai")).toBeNull();
+  });
+  it("matchOption picks the branch for a typed approximation on a list node", () => {
+    const node = { id: "menu", type: "list", data: { rows: COURSES.map((t, i) => ({ id: `opt_${i}`, title: t })) } } as unknown as Parameters<typeof matchOption>[0];
+    expect(matchOption(node, "Data Science and gen ai")).toBe("opt_0");
+    expect(matchOption(node, "I want the executive certification please")).toBe("opt_4");
+    expect(matchOption(node, "data")).toBeNull();   // ambiguous → AI answers
   });
 });
