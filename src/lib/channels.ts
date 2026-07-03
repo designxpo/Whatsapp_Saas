@@ -27,6 +27,8 @@ export interface WebchatConfig {
   iconUrl?: string;               // custom launcher icon (uploaded logo); default = chat bubble
   subtitle?: string;              // header sub-line under the title, e.g. "Typically replies instantly"
   logoFit?: "cover" | "contain"; // "cover" = crop to circle (default); "contain" = show the whole logo, any shape
+  offsetSide?: number;            // px gap from the left/right edge (default 20) — dodge the site's own floating buttons
+  offsetBottom?: number;          // px gap from the bottom edge (default 20) — e.g. 100 clears a scroll-to-top button
 }
 
 export interface Channel extends ChannelCreds {
@@ -302,6 +304,10 @@ export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): Webch
   const subtitle = (c?.subtitle ?? "").trim();
   if (subtitle) out.subtitle = subtitle.slice(0, 60);
   if (c?.logoFit === "contain") out.logoFit = "contain";
+  // Launcher offsets: clamped ints so the CSS injection is always a plain number.
+  const off = (v: unknown) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(600, Math.max(0, n)) : undefined; };
+  const os = off(c?.offsetSide); if (os !== undefined) out.offsetSide = os;
+  const ob = off(c?.offsetBottom); if (ob !== undefined) out.offsetBottom = ob;
   return out;
 }
 

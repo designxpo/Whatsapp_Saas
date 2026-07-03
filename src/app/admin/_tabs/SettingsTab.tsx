@@ -818,10 +818,10 @@ export function MessengerCard() {
 }
 
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
-type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain" };
+type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain"; offsetSide?: number; offsetBottom?: number };
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
-type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain" };
-const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover" };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain"; offsetSide: string; offsetBottom: string };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", offsetSide: "", offsetBottom: "" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
@@ -861,7 +861,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit } }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -890,7 +890,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -925,6 +925,21 @@ export function WebchatCard() {
               <option value="left">Bottom-left</option>
             </select>
           </div>
+          {/* Bubble offsets — lift/shift the launcher clear of the site's own floating
+              buttons (scroll-to-top, call widget). Blank = defaults (20px / 20px). */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5">
+              <span className="shrink-0">Gap from bottom</span>
+              <input type="number" min={0} max={600} className={`${inp} flex-1 text-xs !py-1`} placeholder="20" value={form.offsetBottom} onChange={e => setForm({ ...form, offsetBottom: e.target.value })} />
+              <span className="text-ink-400">px</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5">
+              <span className="shrink-0">Gap from side</span>
+              <input type="number" min={0} max={600} className={`${inp} flex-1 text-xs !py-1`} placeholder="20" value={form.offsetSide} onChange={e => setForm({ ...form, offsetSide: e.target.value })} />
+              <span className="text-ink-400">px</span>
+            </label>
+          </div>
+          <p className="text-[11px] text-ink-400 -mt-1">If the bubble covers your site&apos;s scroll-to-top or call button, raise &quot;Gap from bottom&quot; (e.g. 100).</p>
           <input className={`${inp} w-full`} maxLength={40} placeholder="Header title, e.g. Acme Support" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
           <textarea className={`${inp} w-full resize-none`} rows={2} maxLength={300} placeholder="Welcome greeting shown when the chat opens (optional)" value={form.welcome} onChange={e => setForm({ ...form, welcome: e.target.value })} />
           {/* Chat-icon upload — upload your logo (e.g. WhatsApp) or leave blank for the default bubble */}

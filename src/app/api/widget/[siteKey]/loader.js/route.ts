@@ -27,6 +27,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
     position: wc.position === "left" ? "left" : "right",
     icon: wc.iconUrl || "",
     logoFit: wc.logoFit === "contain" ? "contain" : "cover",
+    // Launcher offsets (px) — null = the built-in defaults. Lets a site nudge the
+    // bubble clear of its own floating buttons (scroll-to-top, call widgets…).
+    offsetSide: typeof wc.offsetSide === "number" ? wc.offsetSide : null,
+    offsetBottom: typeof wc.offsetBottom === "number" ? wc.offsetBottom : null,
   });
 
   const js = "(function(){\n" +
@@ -37,6 +41,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  if (!vid) { vid = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(LS, vid); }\n" +
 "  var since = null, open = false, timer = null, seen = {}, greeted = false, busy = false, escalated = false;\n" +
 "  var BRAND = CFG.color, SIDE = CFG.position;\n" +
+"  var OB = (CFG.offsetBottom==null?20:CFG.offsetBottom), OS = (CFG.offsetSide==null?20:CFG.offsetSide);\n" +
+"  var MB = (CFG.offsetBottom==null?'12%':(OB+'px')), MS = (CFG.offsetSide==null?15:OS);\n" +   // mobile keeps its higher default unless explicitly overridden
 "  function shade(hex){ try{ var h=hex.replace('#',''); if(h.length===3){h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];} var n=parseInt(h,16); var r=Math.max(0,((n>>16)&255)-18),g=Math.max(0,((n>>8)&255)-18),b=Math.max(0,(n&255)-18); return 'rgb('+r+','+g+','+b+')'; }catch(e){ return hex; } }\n" +
 "  var DARK = shade(BRAND);\n" +
 "  var FIT = CFG.logoFit === 'contain' ? 'contain' : 'cover';\n" +
@@ -45,13 +51,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var HAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : 'rgba(255,255,255,.22)';\n" +
 "  var BAVBG = (CFG.icon && FIT === 'contain') ? 'transparent' : BRAND;\n" +
 "  var css = '' +\n" +
-"   '.twc-launch{position:fixed;bottom:20px;' + SIDE + ':20px;width:60px;height:60px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s ease;}' +\n" +
+"   '.twc-launch{position:fixed;bottom:' + OB + 'px;' + SIDE + ':' + OS + 'px;width:60px;height:60px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s ease;}' +\n" +
 "   '.twc-launch:hover{transform:scale(1.06);}' +\n" +
 "   '.twc-launch svg{width:28px;height:28px;}' +\n" +
 "   '.twc-launch img{width:34px;height:34px;border-radius:' + AVRAD + ';object-fit:' + FIT + ';}' +\n" +
 "   '.twc-launch .twc-x{display:none;font-size:26px;line-height:1;}' +\n" +
 "   '.twc-launch.open .twc-ic{display:none;} .twc-launch.open .twc-x{display:block;}' +\n" +
-"   '.twc-panel{position:fixed;bottom:92px;' + SIDE + ':20px;width:374px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 16px 56px rgba(0,0,0,.26);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;opacity:0;transform:translateY(12px);transition:opacity .18s ease,transform .18s ease;}' +\n" +
+"   '.twc-panel{position:fixed;bottom:' + (OB + 72) + 'px;' + SIDE + ':' + OS + 'px;width:374px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 120px);background:#fff;border-radius:18px;box-shadow:0 16px 56px rgba(0,0,0,.26);z-index:2147483000;display:none;flex-direction:column;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;opacity:0;transform:translateY(12px);transition:opacity .18s ease,transform .18s ease;}' +\n" +
 "   '.twc-panel.open{display:flex;opacity:1;transform:translateY(0);}' +\n" +
 "   '.twc-head{background:linear-gradient(135deg,' + BRAND + ',' + DARK + ');color:#fff;padding:14px 16px;display:flex;align-items:center;gap:11px;}' +\n" +
 "   '.twc-head .twc-av{width:38px;height:38px;border-radius:' + AVRAD + ';background:' + HAVBG + ';display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;overflow:hidden;flex:0 0 auto;}' +\n" +
@@ -84,7 +90,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-foot .twc-send{width:40px;height:40px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:0 0 auto;}' +\n" +
 "   '.twc-foot .twc-send:disabled{opacity:.5;cursor:default;} .twc-foot .twc-send svg{width:19px;height:19px;}' +\n" +
 "   '.twc-pow{text-align:center;color:#aab0b8;font-size:10.5px;padding:0 0 8px;background:#fff;}' +\n" +
-"   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:12%;' + SIDE + ':15px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} html[data-twc-trig] .twc-launch{display:none!important;} }' +\n" +
+"   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:' + MB + ';' + SIDE + ':' + MS + 'px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{bottom:0;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;max-height:100vh;border-radius:0;} html[data-twc-trig] .twc-launch{display:none!important;} }' +\n" +
 "   (LOGO ? '.twc-launch{background:transparent!important;box-shadow:none!important;width:72px;height:72px;} .twc-launch:hover{transform:none;background:transparent!important;box-shadow:none!important;} .twc-launch .twc-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;} .twc-launch .twc-ic img{width:100%;height:100%;border-radius:' + AVRAD + ';object-fit:' + FIT + ';filter:drop-shadow(0 3px 8px rgba(0,0,0,.20));} .twc-launch.open{background:' + BRAND + '!important;box-shadow:0 8px 24px rgba(0,0,0,.22)!important;} .twc-launch.open .twc-x{color:#fff;} @media (max-width:768px){.twc-launch{width:62px;height:62px;}}' : '');\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var initial = (CFG.title || 'A').trim().charAt(0).toUpperCase();\n" +
