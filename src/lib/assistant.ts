@@ -3,6 +3,7 @@ import {
   claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
 import { generateReply } from "./llm";
+import { isAiEnabled } from "./messaging-settings";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
 import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech, visionInlineMime } from "./voice";
 import type { ChannelCreds } from "./channels";
@@ -66,6 +67,8 @@ export async function respondToConversation(conversationId: string, opts: { inbo
   // steps aside. We only skip when the bot is explicitly off for this chat, or the
   // chat is paused.
   if (process.env.LLM_BOT_ENABLED === "false") return { outcome: "skipped", detail: "bot disabled" };
+  // Tenant-wide AI switch (Settings → AI auto-replies) — a human turned the AI off.
+  if (!(await isAiEnabled(conv.tenantId))) return { outcome: "skipped", detail: "AI replies switched off" };
   if (!conv.botEnabled || conv.status === "paused") return { outcome: "skipped", detail: `bot off / ${conv.status}` };
 
   // 24h customer-service window — free-form text only allowed within it.

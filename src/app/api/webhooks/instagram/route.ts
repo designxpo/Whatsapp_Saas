@@ -5,6 +5,7 @@ import { getChannelByIgId, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
+import { isAiEnabled } from "@/lib/messaging-settings";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
@@ -181,6 +182,8 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
 // message and escalates the conversation to the portal (Live Chat, needs human).
 // `commentId` set → first contact is the one-time private reply + a public reply.
 async function aiRespond(channel: Channel, conv: Conversation, userText: string, commentId?: string) {
+  // Tenant-wide AI switch (Settings → AI auto-replies) — a human turned the AI off.
+  if (!(await isAiEnabled(channel.tenantId))) return;
   const creds = credsOf(channel);
   const tid = channel.tenantId;
   const now = new Date().toISOString();

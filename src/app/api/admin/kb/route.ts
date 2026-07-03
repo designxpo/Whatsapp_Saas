@@ -2,19 +2,23 @@ export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
 import { createDocument, listDocuments, deleteDocument, setDocStatus, setDocTag, type KbSourceType } from "@/lib/store";
 import { ingestDocument, jsonToText, syncUrlDocument, reingestDocument } from "@/lib/kb";
+import { isAiEnabled } from "@/lib/messaging-settings";
 import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
-function botEnabled(): boolean { return process.env.LLM_BOT_ENABLED !== "false"; }
+// The tab's live/paused badge: env kill switch AND the Settings AI toggle.
+async function botEnabled(tenantId: string): Promise<boolean> {
+  return process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tenantId));
+}
 
 // GET — list KB documents + bot status (drives the AI Assistant tab).
 export async function GET() {
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const documents = await listDocuments(tid);
-    return NextResponse.json({ documents, botEnabled: botEnabled() });
+    return NextResponse.json({ documents, botEnabled: await botEnabled(tid) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

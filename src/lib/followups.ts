@@ -28,6 +28,7 @@ import { sendIgMessage } from "./instagram";
 import { sendFbMessage } from "./messenger";
 import { pushWaActivity } from "./leadsquared";
 import { hasActiveEnrollment } from "./sequences";
+import { isAiEnabled } from "./messaging-settings";
 import { DEFAULT_TENANT_ID } from "./tenant";
 
 // A margin under 24h so a send never RACES the window closing between this check
@@ -47,10 +48,12 @@ async function tenantCfg(tenantId: string, cache: Map<string, FollowupCfg>): Pro
   const envMax   = Math.max(1, parseInt(process.env.AI_FOLLOWUP_MAX_ATTEMPTS  ?? "", 10) || 1);
   // Per-tenant opt-out model: enabled unless the tenant turned it off.
   const enabled = await getTenantSetting<boolean>(tenantId, "followup_enabled", true).catch(() => true);
+  // Tenant-wide AI switch silences follow-ups too (they are AI-composed sends).
+  const aiOn    = await isAiEnabled(tenantId).catch(() => true);
   const delay   = await getTenantSetting<number>(tenantId, "followup_delay_minutes", envDelay).catch(() => envDelay);
   const max     = await getTenantSetting<number>(tenantId, "followup_max_attempts", envMax).catch(() => envMax);
   const cfg: FollowupCfg = {
-    enabled: enabled !== false,
+    enabled: enabled !== false && aiOn,
     delayMinutes: Math.max(5, Number(delay) || envDelay),
     maxAttempts: Math.max(1, Number(max) || envMax),
   };

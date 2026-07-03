@@ -68,6 +68,14 @@ export function buildFlowJson(title: string, fields: WaFormField[]): Record<stri
   };
 }
 
+// The attribute name a field's answer is saved under — the same slugging
+// buildFlowJson uses for Flow JSON field names, so answers collected in chat
+// (IG/Messenger/web chat, where the native form can't open) land on the SAME
+// contact attribute keys as a real WhatsApp form submission.
+export function fieldSlug(label: string, i = 0): string {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || `field_${i + 1}`;
+}
+
 // ── Reverse: Flow JSON → field spec (for the edit builder) ────────────────────
 // Walks the Flow JSON and pulls every input component back into a WaFormField,
 // in order, deduped by name — so an existing form can be re-opened in the builder.

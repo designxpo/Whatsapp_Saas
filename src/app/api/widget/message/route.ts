@@ -3,6 +3,7 @@ import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
+import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
@@ -70,6 +71,10 @@ export async function POST(req: Request) {
     const at = flowOut[flowOut.length - 1]?.at;
     return NextResponse.json({ ok: true, messages: flowOut, reply: flowOut[0]?.body, at }, { headers: cors });
   }
+
+  // Tenant-wide AI switch (Settings → AI auto-replies) — flows above still
+  // answered; with the AI off, agents reply from the Live Chat inbox.
+  if (!(await isAiEnabled(tid))) return NextResponse.json({ ok: true }, { headers: cors });
 
   const closeOut = async () => {
     const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid });

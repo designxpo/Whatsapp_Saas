@@ -3,6 +3,18 @@
 import { getTenantSetting, setTenantSetting } from "./store";
 import { DEFAULT_TENANT_ID } from "./auth";
 
+// ── AI auto-replies master switch (per tenant) ────────────────────────────────
+// ONE tenant-wide toggle that silences the AI assistant everywhere — WhatsApp,
+// Instagram, Messenger, web chat AND the AI follow-up nudges. Chatbot flows,
+// welcome/away messages and human agents keep working. Default ON. Only a human
+// flips this (the AI/system never disables itself).
+export async function isAiEnabled(tenantId: string = DEFAULT_TENANT_ID): Promise<boolean> {
+  return (await getTenantSetting<{ enabled?: boolean }>(tenantId, "ai_replies", {})).enabled !== false;
+}
+export async function setAiEnabled(enabled: boolean, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "ai_replies", { enabled: enabled === true });
+}
+
 export interface WelcomeSetting { enabled: boolean; text: string }
 export interface AwaySetting {
   enabled: boolean;

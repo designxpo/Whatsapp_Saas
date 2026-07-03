@@ -22,7 +22,7 @@ import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
 import { pushWaActivity, syncLeadProfile } from "@/lib/leadsquared";
 import { emitEvent } from "@/lib/integrations";
-import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours } from "@/lib/messaging-settings";
+import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours, isAiEnabled } from "@/lib/messaging-settings";
 import { loadMemory, saveMemory } from "@/lib/router/memory";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { recordFormSubmitted } from "@/lib/formresponses";
@@ -311,7 +311,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       } catch (e) { console.error("[webhook] keyword sequence", conv.id, e); }
     }
 
-    if (!flowHandled && !sequenceTriggered && !inSequence && process.env.LLM_BOT_ENABLED !== "false") {
+    // isAiEnabled: the tenant-wide AI switch — checked here too (not just inside
+    // respondToConversation) so we never flash "typing…" with the AI off.
+    if (!flowHandled && !sequenceTriggered && !inSequence && process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid))) {
       await sendTypingIndicator(id, channel);   // "typing…" while the AI composes
       try { await respondToConversation(conv.id, { inboundWasVoice: voiceInbound }); }
       catch (e) { console.error("[webhook] respond", conv.id, e); }

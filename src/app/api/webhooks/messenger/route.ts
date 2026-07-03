@@ -6,6 +6,7 @@ import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound
 import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
 import { fetchLeadgen } from "@/lib/ads";
 import { generateReply } from "@/lib/llm";
+import { isAiEnabled } from "@/lib/messaging-settings";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
@@ -186,6 +187,8 @@ async function syncFbToLsq(conv: Conversation, body: string, direction: "inbound
 // comment and is capped — after AI_REPLY_CAP replies (or when the model
 // escalates) it sends a hand-off message and escalates to Live Chat for a human.
 async function aiRespond(channel: Channel, conv: Conversation, userText: string, commentId?: string) {
+  // Tenant-wide AI switch (Settings → AI auto-replies) — a human turned the AI off.
+  if (!(await isAiEnabled(channel.tenantId))) return;
   const creds = credsOf(channel);
   const tid = channel.tenantId;
   const now = new Date().toISOString();

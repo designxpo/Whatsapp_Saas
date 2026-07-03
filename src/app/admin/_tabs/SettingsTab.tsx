@@ -971,6 +971,7 @@ export function WebchatCard() {
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
+  const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState(true);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
   const [saving, setSaving] = useState(false);
@@ -981,7 +982,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   const loadQr = useCallback(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQuickReplies(d.quickReplies ?? [])).catch(() => {}); }, []);
   useEffect(() => {
-    fetch("/api/admin/settings").then(r => r.json()).then(d => { setWelcome(d.welcome); setAway(d.away); }).catch(() => {});
+    fetch("/api/admin/settings").then(r => r.json()).then(d => { setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false); }).catch(() => {});
     loadQr();
   }, [loadQr]);
 
@@ -1006,6 +1007,15 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
   function toggleWelcome() { if (!welcome) return; const next = { ...welcome, enabled: !welcome.enabled }; setWelcome(next); void persistSettings({ welcome: next }); }
   function toggleAway() { if (!away) return; const next = { ...away, enabled: !away.enabled }; setAway(next); void persistSettings({ away: next }); }
+  // Tenant-wide AI switch — persists instantly; only a human ever flips this.
+  async function toggleAi() {
+    if (aiOn === null) return;
+    const next = !aiOn; setAiOn(next); setSaving(true);
+    try {
+      await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ai: { enabled: next } }) });
+      setSavedAt(Date.now());
+    } finally { setSaving(false); }
+  }
 
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
@@ -1025,6 +1035,26 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {isAdmin && <ChannelsManager />}
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
+
+      {/* AI auto-replies — the ONE master switch for the AI on every channel */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-1">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">AI auto-replies</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              One switch for the AI assistant everywhere — WhatsApp, Instagram, Facebook Messenger, website chat, and AI follow-ups.
+              Chatbot flows, welcome/away messages and human agents keep working when it&apos;s off.
+            </p>
+          </div>
+          {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+            <button onClick={toggleAi} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {aiOn ? "ON" : "OFF"}
+            </button>
+          )}
+        </div>
+        {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
+      </section>
 
       {/* Welcome message */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

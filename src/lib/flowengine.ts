@@ -16,7 +16,7 @@ import { db } from "./supabase";
 import {
   sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCtaUrl, sendCarouselTemplate, sendTemplateSingle,
 } from "./whatsapp";
-import { sendWaFormMessage } from "./waforms";
+import { sendWaFormMessage, getWaFormDef, fieldSlug } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
 import { sendFbMessage, sendFbMedia, sendFbQuickReplies } from "./messenger";
 import { getChannel, type Channel, type ChannelCreds } from "./channels";
@@ -25,7 +25,7 @@ import {
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag, takeArmedFlow, updateContactProfile,
 } from "./store";
-import { recordFormSent, markFormAbandoned } from "./formresponses";
+import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { syncLeadProfile } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
@@ -168,6 +168,9 @@ export async function endSession(convKey: string): Promise<void> {
 
 // ── Sender abstraction: real WhatsApp vs dry-run simulator ───────────────────
 export interface FlowSender {
+  // Which channel this sender talks to — lets nodes that only exist on one
+  // platform (e.g. a native WhatsApp form) degrade properly elsewhere.
+  kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "dry";
   text(body: string): Promise<{ id?: string; error?: string }>;
   buttons(body: string, buttons: { id: string; title: string }[]): Promise<{ id?: string; error?: string }>;
   list(body: string, buttonText: string, sections: { title: string; rows: { id: string; title: string; description?: string }[] }[]): Promise<{ id?: string; error?: string }>;
@@ -189,6 +192,7 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   return {
+    kind: "whatsapp",
     async text(body) { const r = await sendText(phone, body, channel); await log(body, r.id); return r; },
     async buttons(body, buttons) { const r = await sendButtons(phone, body, buttons, channel); await log(`${body}\n[buttons: ${buttons.map(b => b.title).join(" | ")}]`, r.id); return r; },
     async list(body, buttonText, sections) { const r = await sendList(phone, body, buttonText, sections, channel); await log(`${body}\n[list: ${sections.flatMap(s => s.rows.map(x => x.title)).join(" | ")}]`, r.id); return r; },
@@ -241,6 +245,7 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
     return { id: r.messageId };
   };
   return {
+    kind: "instagram",
     async text(body) { return sendIg(body); },
     async buttons(body, buttons) { return chips(body, buttons); },
     async list(body, _buttonText, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
@@ -286,6 +291,7 @@ function fbSender(conversationId: string, phone: string, channel: Channel, tenan
     return { id: r.messageId };
   };
   return {
+    kind: "messenger",
     async text(body) { return sendFb(body); },
     async buttons(body, buttons) { return chips(body, buttons); },
     async list(body, _bt, sections) { return chips(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
@@ -313,6 +319,7 @@ export interface SimOutput { kind: string; body: string; options?: string[] }
 export function drySender(out: SimOutput[]): FlowSender {
   const ok = async () => ({ id: `sim_${out.length}` });
   return {
+    kind: "dry",
     async text(body) { out.push({ kind: "text", body }); return ok(); },
     async buttons(body, buttons) { out.push({ kind: "buttons", body, options: buttons.map(b => b.title) }); return ok(); },
     async list(body, _bt, sections) { out.push({ kind: "list", body, options: sections.flatMap(s => s.rows.map(r => r.title)) }); return ok(); },
@@ -379,6 +386,7 @@ function withVars(send: FlowSender, c: ContactVars | null): FlowSender {
   if (!c) return send;
   const f = (s: string) => fillVars(s, c);
   return {
+    kind: send.kind,   // keep the channel tag — platform degradations depend on it
     text: (b) => send.text(f(b)),
     buttons: (b, btns) => send.buttons(f(b), btns),
     list: (b, bt, sec) => send.list(f(b), bt, sec),
@@ -417,6 +425,22 @@ export function looksConversational(text: string): boolean {
   if (!s) return false;
   return /^(hi|hii+|hey+|hello+|yo|hola|namaste|thanks|thank you|thx|ok|okay|cool|great|good (morning|afternoon|evening)|sup)\b/.test(s)
     || /^(how|what|whats|why|who|whom|whose|when|where|which|can|could|would|will|shall|should|do|does|did|is|are|am|may|might|tell me|explain|help|i (want|need|have|am)|please|you there|u there)\b/.test(s);
+}
+
+// ── WhatsApp-form fallback for chat-only channels ─────────────────────────────
+// A native WhatsApp form can't open on Instagram / Messenger / web chat. Instead
+// of dead-ending the flow there (the old behavior sent "body (CTA)" and then
+// waited forever for a submission that can only come from WhatsApp), the form's
+// fields are collected as a chat Q&A: one question per message, answers saved to
+// the SAME contact attributes a real form submission would write.
+export interface ChatFormField { n: string; l: string; t: string; o: string[] }
+
+// The question bubble for one field. Options render as a numbered menu the user
+// answers by number or by typing the option. Exported for unit tests — pure.
+export function chatFieldPrompt(f: ChatFormField): string {
+  if (f.o.length) return `${f.l}\n${f.o.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+  if (f.t === "optin") return `${f.l} (yes/no)`;
+  return /[?:]\s*$/.test(f.l) ? f.l : `${f.l}?`;
 }
 
 // Sends nodes starting at `node` until the flow waits for input or ends.
@@ -555,6 +579,25 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         // Native WhatsApp form — waits until the submission webhook arrives
         // (the answers are saved to contact attributes by the webhook).
         if (!str(d.formId)) { cur = nextNode(g, cur.id); continue; }
+        // IG / Messenger / web chat can't open a WhatsApp form — collect the same
+        // fields as a chat Q&A instead (one question per message; see the wf
+        // resume branch in handleFlowMessage). If the form definition can't be
+        // read, skip the node so the rest of the flow still runs.
+        if (send.kind && send.kind !== "whatsapp" && send.kind !== "dry") {
+          const def = await getWaFormDef(str(d.formId)).catch(() => null);
+          const fields: ChatFormField[] = (def?.fields ?? [])
+            .filter(f => f.label.trim())
+            .map((f, i) => ({ n: fieldSlug(f.label, i), l: f.label.trim(), t: f.type, o: (f.options ?? []).filter(o => o.trim()).slice(0, 20) }));
+          if (!fields.length) {
+            console.warn(`[flow] waform ${str(d.formId)} unreadable on ${send.kind} — skipping the form node (${def?.error ?? "no fields"})`);
+            cur = nextNode(g, cur.id); continue;
+          }
+          const intro = str(d.text) ? `${str(d.text)}\n\n` : "";
+          await send.text(intro + chatFieldPrompt(fields[0]));
+          if (isReal) await recordFormSent(convKey, phone, str(d.formId), tenantId).catch(() => undefined);
+          await saveSession(convKey, flow.id, cur.id, { ...(menuNodeId ? { menu: menuNodeId } : {}), wf: { fields, i: 0, a: {} } }, tenantId);
+          return true;
+        }
         await send.waform(str(d.text) || "Please fill this quick form:", str(d.cta) || "Open form", str(d.formId));
         if (isReal) await recordFormSent(convKey, phone, str(d.formId), tenantId).catch(() => undefined);
         await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
@@ -729,6 +772,7 @@ function webchatSender(conversationId: string, out: WebchatOut[], tenantId = DEF
     return { id: saved?.id ?? "wc" };
   };
   return {
+    kind: "webchat",
     async text(body) { return push(body); },
     async buttons(body, buttons) { return push(body, buttons); },
     async list(body, _bt, sections) { return push(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
@@ -822,6 +866,53 @@ export async function handleFlowMessage(
     }
 
     if (waiting.type === "waform") {
+      // Chat-native collection in progress (IG/Messenger/web chat — the native
+      // form can't open there, so fields are asked one message at a time).
+      const wf = session.state?.wf as { fields: ChatFormField[]; i: number; a: Record<string, string> } | undefined;
+      if (wf && Array.isArray(wf.fields) && wf.fields[wf.i]) {
+        const rewound = await rewind();
+        if (rewound !== null) return rewound;
+        const f = wf.fields[wf.i];
+        // Resolve option menus by number or typed label; validate typed fields
+        // exactly like an ask node (2 retries, conversational bail-out to the AI).
+        let answer = text.trim().slice(0, 200);
+        if (f.o.length) {
+          const t = norm(text);
+          const n = /^\d{1,2}$/.test(t) ? parseInt(t, 10) : 0;
+          if (n >= 1 && n <= f.o.length) answer = f.o[n - 1];
+          else answer = f.o.find(o => norm(o) === t) ?? answer;
+        } else if (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid))) {
+          const tries = Number(session.state?.tries ?? 0);
+          if (looksConversational(text) || tries >= 2) { await endSession(convKey); return false; }
+          await send.text("Hmm, that doesn't look right — could you share a valid answer?");
+          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
+          if (isReal) await claimReply(convKey).catch(() => undefined);
+          return true;   // still waiting on this field
+        }
+        const answers = { ...(wf.a ?? {}), [f.n]: answer };
+        if (isReal) {
+          await setContactAttributes(phone, { [f.n]: answer }, tid).catch(() => undefined);
+          if (contact) contact.attributes = { ...(contact.attributes ?? {}), [f.n]: answer };  // live for {{attr}} this run
+        }
+        if (wf.fields[wf.i + 1]) {
+          await send.text(chatFieldPrompt(wf.fields[wf.i + 1]));
+          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), wf: { ...wf, i: wf.i + 1, a: answers }, tries: 0 }, tid);
+          if (isReal) await claimReply(convKey).catch(() => undefined);
+          return true;
+        }
+        // Every field collected — mirror to the Responses view + CRM (same as a
+        // real submission), then continue the flow past the form node.
+        if (isReal) {
+          await recordFormSubmitted(convKey, phone, answers, tid).catch(() => undefined);
+          if (phone.replace(/\D/g, "").length >= 10) {
+            const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
+            void syncLeadProfile({ phone, email: pick(/email/i), city: pick(/city/i), name: contact?.name ?? undefined }, tid);
+          }
+        }
+        const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
+        if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
+        return consumed;
+      }
       // Continue only on the form submission (webhook renders it as "[form] …").
       if (text.startsWith("[form]")) {
         const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
