@@ -13,11 +13,15 @@ type CrmLead = { id: string; stage: string | null; owner: string | null; score: 
 type LeadProfile = {
   contact: { id: string; phone: string; name: string; email: string | null; tags: string[]; attributes: Record<string, string>; status: string; source: string | null; createdAt: string };
   conversation: { id: string; status: string; botEnabled: boolean; assignedTo: string | null; labels: string[]; lastInboundAt: string | null; lastOutboundAt: string | null } | null;
-  messages: { role: string; body: string; source: string; createdAt: string }[];
+  messages: { role: string; body: string; source: string; platform?: string; createdAt: string }[];
   msgCounts: { inbound: number; outbound: number };
+  journey?: { platform: string; name: string; status: string; startedAt: string; lastInboundAt: string | null; lastOutboundAt: string | null }[];
   campaigns: { name: string; status: string; sentAt: string }[];
   clicks: { url: string; clicks: number; at: string | null }[];
 };
+
+const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger", webchat: "Web chat" };
+const chanLabel = (p?: string) => CHANNEL_LABEL[p ?? ""] ?? "WhatsApp";
 
 function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; onClose: () => void; onChanged: () => void; goTo: GoTo }) {
   const [p, setP] = useState<LeadProfile | null>(null);
@@ -81,6 +85,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
   const adAttrs = c ? Object.entries(c.attributes).filter(([k]) => k.startsWith("ad_")) : [];
   const leadAttrs = c ? Object.entries(c.attributes).filter(([k]) => !k.startsWith("ad_")) : [];
   const reads = p?.campaigns.filter(x => x.status === "read").length ?? 0;
+  const journeyChannels = p?.journey ? new Set(p.journey.map(j => j.platform)).size : 0;
   const lastActive = p?.conversation?.lastInboundAt;
   const sectionTitle = "text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]";
   const logStatus = (s: string) =>
@@ -206,6 +211,30 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
             </div>
             {lastActive && <p className="text-[11px] text-slate-400 -mt-2">Last heard from: {new Date(lastActive).toLocaleString()}</p>}
 
+            {/* User journey — every channel this lead has talked on, oldest first */}
+            {(p?.journey?.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                <p className={sectionTitle}>User journey{journeyChannels > 1 ? ` — ${journeyChannels} channels` : ""}</p>
+                <div className="border border-line rounded-control divide-y divide-line">
+                  {p?.journey?.map((j, i) => (
+                    <div key={i} className="px-3 py-1.5 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-ink-900">
+                          {chanLabel(j.platform)}
+                          {i === 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[9px] font-bold align-middle">FIRST CONTACT</span>}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          since {new Date(j.startedAt).toLocaleDateString()}
+                          {j.lastInboundAt ? ` · last heard ${new Date(j.lastInboundAt).toLocaleDateString()}` : ""}
+                        </p>
+                      </div>
+                      {j.status === "escalated" && <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-600 text-[10px] font-bold shrink-0">ESCALATED</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Ad attribution */}
             {adAttrs.length > 0 && (
               <div className="bg-brand-50 border border-brand-100 rounded-control px-3 py-2.5">
@@ -266,7 +295,10 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                   <div className="border border-line rounded-control divide-y divide-line max-h-44 overflow-y-auto">
                     {p.messages.map((m, i) => (
                       <div key={i} className="px-3 py-1.5">
-                        <p className="text-[10px] font-bold text-slate-400">{m.role === "user" ? c.name || "Lead" : m.source === "agent" ? "Team" : "AI"} · {new Date(m.createdAt).toLocaleString()}</p>
+                        <p className="text-[10px] font-bold text-slate-400">
+                          {m.role === "user" ? c.name || "Lead" : m.source === "agent" ? "Team" : "AI"} · {new Date(m.createdAt).toLocaleString()}
+                          {journeyChannels > 1 && m.platform ? <span className="ml-1.5 px-1.5 rounded-full bg-canvas text-slate-500 font-semibold">{chanLabel(m.platform)}</span> : null}
+                        </p>
                         <p className="text-xs text-ink-900 line-clamp-2">{m.body}</p>
                       </div>
                     ))}

@@ -2,7 +2,7 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, upsertContacts, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, landCapturedLead, upsertContacts, type Conversation } from "@/lib/store";
 import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
 import { fetchLeadgen } from "@/lib/ads";
 import { generateReply } from "@/lib/llm";
@@ -130,7 +130,13 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // chat can be matched to a CRM lead by phone — now and on later messages.
   if (!conv.leadPhone) {
     const shared = extractPhone(text);
-    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+    if (shared) {
+      await setConversationLeadPhone(conv.id, shared).catch(() => undefined);
+      conv = { ...conv, leadPhone: shared };
+      // New number → a Contacts row tagged messenger; a returning lead → their
+      // existing contact gains the tag and this chat picks up their known name.
+      await landCapturedLead(conv.phone, shared, "messenger", channel.tenantId);
+    }
   }
   if (text.trim()) after(() => syncFbToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
 

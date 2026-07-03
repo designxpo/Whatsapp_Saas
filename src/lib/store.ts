@@ -1416,6 +1416,44 @@ export async function setConversationName(phoneKey: string, name: string, tenant
   await db().from("wa_conversations").update({ name: n }).eq("id", data.id as string).then(undefined, () => undefined);
 }
 
+// A captured phone number lands the lead in Contacts. Web chat / Instagram /
+// Messenger conversations are keyed by opaque ids, so until now a visitor who
+// shared their number existed only on the conversation (lead_phone) — never as
+// a contact. New number → a contact row tagged with the channel, visible in the
+// Contacts tab immediately. Known number (a returning lead) → merge instead of
+// duplicate: the channel tag is added to their contact, an empty contact name
+// is filled from the chat, and the conversation's placeholder name is replaced
+// with who we already know they are. Pass rawPhone=null to re-land from the
+// stored lead_phone (e.g. the name arrived after the number). Tenant-scoped.
+export async function landCapturedLead(phoneKey: string, rawPhone: string | null, channel: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  if (!phoneKey) return;
+  try {
+    const { data: conv } = await db().from("wa_conversations").select("name, lead_phone").eq("tenant_id", tenantId).eq("phone", phoneKey).maybeSingle();
+    const d = digits((rawPhone ?? (conv?.lead_phone as string | null)) || "");
+    if (d.length < 10 || d.length > 15) return;
+    const convName = ((conv?.name as string) || "").trim();
+    const chatName = convName && convName.toLowerCase() !== "website visitor" ? convName : undefined;
+    // Country-code tolerant lookup — a lead typing 83688… must merge into the
+    // stored 9183688… contact, not become a duplicate.
+    const { data: cand } = await db().from("contacts").select("id, phone, name, tags").eq("tenant_id", tenantId).like("phone", `%${d.slice(-10)}`);
+    const existing = (cand ?? [])
+      .map(c => ({ id: c.id as string, phone: digits((c.phone as string) || ""), name: ((c.name as string) || "").trim(), tags: (c.tags as string[]) ?? [] }))
+      .filter(c => samePerson(c.phone, d))
+      .sort((a, b) => b.phone.length - a.phone.length)[0];
+    if (!existing) {
+      await upsertContacts([{ phone: d, ...(chatName ? { name: chatName } : {}), tags: [channel] }], channel.replace(/-/g, "_"), tenantId);
+      return;
+    }
+    const patch: Record<string, unknown> = {};
+    if (!existing.tags.includes(channel)) patch.tags = [...existing.tags, channel];
+    if (!existing.name && chatName) patch.name = chatName;
+    if (Object.keys(patch).length) await db().from("contacts").update(patch).eq("tenant_id", tenantId).eq("id", existing.id);
+    if (existing.name) await setConversationName(phoneKey, existing.name, tenantId);   // returning lead recognized
+  } catch (err) {
+    console.error("[contacts] landCapturedLead failed:", err);   // best-effort — never breaks the message flow
+  }
+}
+
 // Atomically claims the welcome send: only the first caller gets true.
 export async function claimWelcome(id: string): Promise<boolean> {
   const { data } = await db().from("wa_conversations").update({ welcomed: true }).eq("id", id).eq("welcomed", false).select("id");

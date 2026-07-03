@@ -24,6 +24,7 @@ import {
   appendConvMessage, touchOutbound, setConversationStatus,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag, takeArmedFlow, updateContactProfile, setConversationName, setConversationLeadPhone, upsertContacts,
+  landCapturedLead,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { syncLeadProfile } from "./leadsquared";
@@ -36,6 +37,10 @@ import { safeFetch } from "./ssrf";
 // Options whose label reads like a human-handoff request — used to auto-escalate
 // when such a button is left unconnected in the builder (instead of dead-ending).
 const AGENT_OPT_RE = /\b(agent|human|representative|support|person|talk to|speak to|connect)\b/i;
+
+// The contact tag a captured lead gets for the channel it talked on.
+const channelTag = (kind?: string) =>
+  kind === "webchat" ? "web-chat" : kind === "instagram" ? "instagram" : kind === "messenger" ? "messenger" : "whatsapp";
 
 export interface FlowNode {
   id: string;
@@ -877,10 +882,18 @@ export async function handleFlowMessage(
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
         // Land identity on the conversation too: a name answer replaces the
         // "Website visitor" placeholder; a phone answer becomes the CRM match key.
-        if (/name/i.test(attr) && !/company|business|brand/i.test(attr)) await setConversationName(phone, text.trim().slice(0, 120), tid).catch(() => undefined);
+        if (/name/i.test(attr) && !/company|business|brand/i.test(attr)) {
+          await setConversationName(phone, text.trim().slice(0, 120), tid).catch(() => undefined);
+          // Re-land: if their number is already captured (or IS the WhatsApp
+          // key), the freshly-learned name fills the contact too.
+          await landCapturedLead(phone, (send.kind ?? "whatsapp") === "whatsapp" ? phone : null, channelTag(send.kind), tid);
+        }
         if (/phone|mobile|whats?app/i.test(attr)) {
           const d = text.replace(/\D/g, "");
-          if (d.length >= 10 && d.length <= 15) await setConversationLeadPhone(convKey, d).catch(() => undefined);
+          if (d.length >= 10 && d.length <= 15) {
+            await setConversationLeadPhone(convKey, d).catch(() => undefined);
+            await landCapturedLead(phone, d, channelTag(send.kind), tid);   // into Contacts / merge a returning lead
+          }
         }
         // Mirror a CRM-relevant capture (email / city) onto the LSQ lead. Without
         // this, the flow-collected email never reached the CRM. Real phone only,
@@ -954,7 +967,7 @@ export async function handleFlowMessage(
           // A real phone (answered, or the WhatsApp number itself) → a real contact.
           const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
           if (realPhone) {
-            await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form"] }], "chat_form", tid).catch(() => undefined);
+            await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form", channelTag(send.kind)] }], "chat_form", tid).catch(() => undefined);
             await updateContactProfile(realPhone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tid).catch(() => undefined);
             await setContactAttributes(realPhone, answers, tid).catch(() => undefined);
             void syncLeadProfile({ phone: realPhone, email, city, name }, tid);

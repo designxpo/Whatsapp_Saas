@@ -2,7 +2,7 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
@@ -143,7 +143,13 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // be matched to a CRM lead by phone, now and on later messages.
   if (!conv.leadPhone) {
     const shared = extractPhone(text);
-    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+    if (shared) {
+      await setConversationLeadPhone(conv.id, shared).catch(() => undefined);
+      conv = { ...conv, leadPhone: shared };
+      // New number → a Contacts row tagged instagram; a returning lead → their
+      // existing contact gains the tag and this chat picks up their known name.
+      await landCapturedLead(conv.phone, shared, "instagram", channel.tenantId);
+    }
   }
   after(() => syncIgToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
 

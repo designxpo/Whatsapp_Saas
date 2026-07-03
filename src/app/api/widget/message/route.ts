@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, landCapturedLead, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
@@ -53,7 +53,13 @@ export async function POST(req: Request) {
   // matched to a CRM lead by phone — now and on later messages.
   if (!conv.leadPhone) {
     const shared = extractPhone(text);
-    if (shared) { await setConversationLeadPhone(conv.id, shared).catch(() => undefined); conv = { ...conv, leadPhone: shared }; }
+    if (shared) {
+      await setConversationLeadPhone(conv.id, shared).catch(() => undefined);
+      conv = { ...conv, leadPhone: shared };
+      // New number → a Contacts row tagged web-chat; a returning lead → their
+      // existing contact gains the tag and this chat picks up their known name.
+      await landCapturedLead(conv.phone, shared, "web-chat", tid);
+    }
   }
   after(() => syncWebToLsq(conv, text, "inbound", "lead", tid));   // mirror to LeadSquared timeline
 

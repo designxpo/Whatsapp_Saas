@@ -15,14 +15,16 @@ export async function GET(req: Request) {
   const digits = (new URL(req.url).searchParams.get("phone") ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
 
-  // Conversation summary (newest if several). Matched by the phone slot OR
-  // lead_phone, so a web-chat/IG conversation (opaque key + captured number)
-  // resolves from its captured number too. Fetched first so Instagram chats
-  // — which have NO contact row (keyed by IGSID, see store.getOrCreateConversation)
-  // — can still render a profile instead of a 404 that spins the drawer forever.
-  const { data: convRow } = await db().from("wa_conversations")
+  // EVERY conversation this number appears on — the phone slot (WhatsApp) or the
+  // captured lead_phone (web chat / Instagram / Messenger). Fetched first so
+  // Instagram chats — which have NO contact row (keyed by IGSID, see
+  // store.getOrCreateConversation) — can still render a profile instead of a 404
+  // that spins the drawer forever. All of them together are the lead's journey:
+  // a returning lead reads as one person, not one stranger per channel.
+  const { data: convRows } = await db().from("wa_conversations")
     .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at, name, platform, lead_phone, created_at")
-    .eq("tenant_id", tid).or(`phone.eq.${digits},lead_phone.eq.${digits}`).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    .eq("tenant_id", tid).or(`phone.eq.${digits},lead_phone.eq.${digits}`).order("created_at", { ascending: false }).limit(8);
+  const convRow = (convRows ?? [])[0] ?? null;
 
   let contact = await getContactByPhone(digits, tid);
   if (!contact) {
@@ -41,17 +43,30 @@ export async function GET(req: Request) {
     };
   }
 
-  let messages: { role: string; body: string; source: string; createdAt: string }[] = [];
+  // Messages + counts merged across every conversation, each tagged with its
+  // channel so the drawer can label where a bubble happened.
+  let messages: { role: string; body: string; source: string; platform: string; createdAt: string }[] = [];
   let msgCounts = { inbound: 0, outbound: 0 };
   if (convRow) {
+    const ids = (convRows ?? []).map(r => r.id as string);
+    const platformOf = new Map((convRows ?? []).map(r => [r.id as string, ((r.platform as string) || "whatsapp")]));
     const [{ data: msgs }, inb, outb] = await Promise.all([
-      db().from("wa_conv_messages").select("role, body, source, created_at").eq("tenant_id", tid).eq("conversation_id", convRow.id).order("created_at", { ascending: false }).limit(10),
-      db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tid).eq("conversation_id", convRow.id).eq("role", "user"),
-      db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tid).eq("conversation_id", convRow.id).eq("role", "assistant"),
+      db().from("wa_conv_messages").select("conversation_id, role, body, source, created_at").eq("tenant_id", tid).in("conversation_id", ids).order("created_at", { ascending: false }).limit(12),
+      db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tid).in("conversation_id", ids).eq("role", "user"),
+      db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tid).in("conversation_id", ids).eq("role", "assistant"),
     ]);
-    messages = (msgs ?? []).reverse().map(m => ({ role: m.role as string, body: m.body as string, source: (m.source as string) ?? "", createdAt: m.created_at as string }));
+    messages = (msgs ?? []).reverse().map(m => ({ role: m.role as string, body: m.body as string, source: (m.source as string) ?? "", platform: platformOf.get(m.conversation_id as string) ?? "whatsapp", createdAt: m.created_at as string }));
     msgCounts = { inbound: inb.count ?? 0, outbound: outb.count ?? 0 };
   }
+  // The journey: one entry per channel conversation, oldest first (= first contact).
+  const journey = [...(convRows ?? [])].reverse().map(r => ({
+    platform: ((r.platform as string) || "whatsapp"),
+    name: ((r.name as string) || ""),
+    status: r.status as string,
+    startedAt: r.created_at as string,
+    lastInboundAt: (r.last_inbound_at as string | null) ?? null,
+    lastOutboundAt: (r.last_outbound_at as string | null) ?? null,
+  }));
 
   // Campaign history with delivery receipts.
   const { data: logRows } = await db().from("wa_send_log")
@@ -86,6 +101,7 @@ export async function GET(req: Request) {
     } : null,
     messages,
     msgCounts,
+    journey,
     campaigns,
     clicks,
   });
