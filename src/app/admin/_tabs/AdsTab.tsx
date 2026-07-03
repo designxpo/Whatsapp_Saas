@@ -667,6 +667,13 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const [ctaType, setCtaType] = useState("LEARN_MORE");
   const [pixels, setPixels] = useState<{ id: string; name: string }[]>([]);
   const [leadForms, setLeadForms] = useState<{ id: string; name: string; status: string }[]>([]);
+  // In-app Instant Form builder (create a lead form without leaving the portal).
+  const [showFormBuilder, setShowFormBuilder] = useState(false);
+  const [formName, setFormName] = useState("");
+  const [formPrivacyUrl, setFormPrivacyUrl] = useState("");
+  const [formFields, setFormFields] = useState<string[]>(["FULL_NAME", "EMAIL", "PHONE"]);
+  const [creatingForm, setCreatingForm] = useState(false);
+  const [formErr, setFormErr] = useState<string | null>(null);
   const [specialCats, setSpecialCats] = useState<string[]>([]);
   const [budgetLevel, setBudgetLevel] = useState<"adset" | "campaign">("adset");
   const [budgetType, setBudgetType] = useState<"daily" | "lifetime">("daily");
@@ -1080,6 +1087,26 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
   const field = "space-y-1";
   const lbl = "text-[11px] font-bold text-ink-700";
 
+  // Create a Meta Instant Form in-app, then select it — no trip to Ads Manager.
+  async function createForm() {
+    if (!formName.trim()) { setFormErr("Give the form a name"); return; }
+    if (!/^https?:\/\/\S+/i.test(formPrivacyUrl.trim())) { setFormErr("Add a valid privacy policy URL (https://…)"); return; }
+    if (!formFields.length) { setFormErr("Pick at least one field to collect"); return; }
+    setCreatingForm(true); setFormErr(null);
+    try {
+      const d = await fetch("/api/admin/meta/leadforms", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: formName.trim(), fields: formFields, privacyUrl: formPrivacyUrl.trim() }),
+      }).then(r => r.json());
+      if (d.success && d.id) {
+        setLeadForms(fs => [{ id: d.id as string, name: formName.trim(), status: "ACTIVE" }, ...fs]);
+        setLeadFormId(d.id as string);
+        setShowFormBuilder(false); setFormName(""); setFormPrivacyUrl("");
+      } else setFormErr(d.error || "Couldn't create the form — try again.");
+    } catch { setFormErr("Couldn't create the form — try again."); }
+    finally { setCreatingForm(false); }
+  }
+
   // Performance goal — selectable; valid options depend on the conversion location.
   const goalOpts = PERF_GOALS(destination, !!pixelId);
   const effectiveGoal = optGoal && goalOpts.some(o => o[0] === optGoal) ? optGoal : goalOpts[0][0];
@@ -1231,14 +1258,40 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
             </div>
           )}
           {destination === "INSTANT_FORM" && (
-            <div className="rounded-control border border-line p-3 space-y-1.5">
-              <p className={lbl}>Lead form</p>
-              {leadForms.length === 0
-                ? <p className="text-[11px] text-amber-600">No lead forms found on your Page. Create one in Ads Manager (or Page → Lead forms) and it&apos;ll appear here.</p>
+            <div className="rounded-control border border-line p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <p className={lbl}>Lead form</p>
+                <button type="button" onClick={() => { setShowFormBuilder(v => !v); setFormErr(null); }} className="text-[11px] font-semibold text-brand-700 hover:underline">
+                  {showFormBuilder ? "Cancel" : "＋ Create a new form"}
+                </button>
+              </div>
+              {!showFormBuilder && (leadForms.length === 0
+                ? <p className="text-[11px] text-amber-600">No lead forms on your Page yet — tap <b>Create a new form</b> above (or build one in Ads Manager) and it&apos;ll appear here.</p>
                 : <select className={`${inp} w-full`} value={leadFormId} onChange={e => setLeadFormId(e.target.value)}>
                     <option value="">Choose a form…</option>
                     {leadForms.map(f => <option key={f.id} value={f.id}>{f.name}{f.status && f.status !== "ACTIVE" ? ` (${f.status})` : ""}</option>)}
-                  </select>}
+                  </select>)}
+              {showFormBuilder && (
+                <div className="space-y-2 border-t border-line pt-2">
+                  <input className={`${inp} w-full`} placeholder="Form name (e.g. Data Science — Enquiry)" value={formName} onChange={e => setFormName(e.target.value)} />
+                  <div>
+                    <p className="text-[11px] text-ink-500 mb-1">Fields to collect</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {([["FULL_NAME", "Name"], ["EMAIL", "Email"], ["PHONE", "Phone"], ["CITY", "City"]] as const).map(([k, l]) => {
+                        const on = formFields.includes(k);
+                        return <button key={k} type="button" onClick={() => setFormFields(fs => on ? fs.filter(x => x !== k) : [...fs, k])}
+                          className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${on ? "bg-brand-600 text-white border-brand-600" : "border-line text-ink-600 hover:bg-canvas"}`}>{l}</button>;
+                      })}
+                    </div>
+                  </div>
+                  <input className={`${inp} w-full`} placeholder="Privacy policy URL (https://…)" value={formPrivacyUrl} onChange={e => setFormPrivacyUrl(e.target.value)} />
+                  {formErr && <p className="text-[11px] text-red-600">{formErr}</p>}
+                  <button type="button" disabled={creatingForm} onClick={createForm} className={btnPrimary}>
+                    {creatingForm ? "Creating…" : "Create form"}
+                  </button>
+                  <p className="text-[10px] text-ink-400">Leads submitted here flow into Contacts + your CRM automatically.</p>
+                </div>
+              )}
             </div>
           )}
           <div className={field}>

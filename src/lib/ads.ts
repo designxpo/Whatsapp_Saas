@@ -389,6 +389,58 @@ export async function listLeadForms(pageId: string): Promise<{ id: string; name:
   return (((r.data?.data as Record<string, unknown>[]) ?? [])).map(f => ({ id: f.id as string, name: f.name as string, status: (f.status as string) ?? "" }));
 }
 
+// A submitted Meta Instant-Form (Lead Ad) lead, fetched from a leadgen webhook id.
+export interface MetaLead {
+  leadgenId: string; formId: string | null; createdTime: string | null;
+  fullName: string; email: string; phone: string; city: string;
+  fields: Record<string, string>;   // every raw answer, incl. custom questions
+}
+
+// Retrieve one lead's answers by its leadgen_id. Uses the PAGE access token
+// (needs the `leads_retrieval` permission). Never throws — returns null on failure.
+export async function fetchLeadgen(leadgenId: string, pageToken: string): Promise<MetaLead | null> {
+  if (!leadgenId || !pageToken) return null;
+  try {
+    const r = await fetch(`${GRAPH}/${leadgenId}?fields=id,created_time,form_id,field_data&access_token=${encodeURIComponent(pageToken)}`, { cache: "no-store" });
+    const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok) { console.error(`[leadgen] fetch ${leadgenId} failed:`, ((d?.error as Record<string, unknown>)?.message) ?? `HTTP ${r.status}`); return null; }
+    const fields: Record<string, string> = {};
+    for (const f of ((d.field_data as { name?: string; values?: string[] }[]) ?? [])) {
+      const k = String(f.name ?? "").toLowerCase().trim(); if (!k) continue;
+      fields[k] = Array.isArray(f.values) ? String(f.values[0] ?? "").trim() : "";
+    }
+    const pick = (...keys: string[]) => { for (const k of keys) if (fields[k]) return fields[k]; return ""; };
+    const fullName = pick("full_name") || [pick("first_name"), pick("last_name")].filter(Boolean).join(" ");
+    return {
+      leadgenId, formId: (d.form_id as string) ?? null, createdTime: (d.created_time as string) ?? null,
+      fullName, email: pick("email"), phone: pick("phone_number", "phone", "work_phone_number"), city: pick("city"), fields,
+    };
+  } catch (err) { console.error(`[leadgen] fetch ${leadgenId} error:`, err instanceof Error ? err.message : err); return null; }
+}
+
+// Create a Meta Instant Form on the Page. `fields` are standard question types
+// (FULL_NAME, EMAIL, PHONE, CITY, …). Returns the new form id.
+export async function createLeadForm(pageId: string, spec: {
+  name: string; fields: string[]; privacyUrl: string; privacyLinkText?: string;
+  thankYouTitle?: string; thankYouBody?: string; locale?: string;
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  const questions = (spec.fields.length ? spec.fields : ["FULL_NAME", "EMAIL", "PHONE"]).map(t => ({ type: t }));
+  const params: Record<string, string> = {
+    name: spec.name.slice(0, 200),
+    questions: JSON.stringify(questions),
+    privacy_policy: JSON.stringify({ url: spec.privacyUrl, link_text: spec.privacyLinkText?.trim() || "Privacy Policy" }),
+    locale: spec.locale || "EN_US",
+    thank_you_page: JSON.stringify({
+      title: spec.thankYouTitle?.trim() || "Thanks — we'll be in touch!",
+      body: spec.thankYouBody?.trim() || "Our team will reach out to you shortly.",
+      button_type: "VIEW_WEBSITE", website_url: spec.privacyUrl, button_text: "Done",
+    }),
+  };
+  const r = await graphPost(`${pageId}/leadgen_forms`, params);
+  if (!r.ok) return { ok: false, error: r.error };
+  return { ok: true, id: (r.data?.id as string) ?? undefined };
+}
+
 // Saved/custom audiences on the account — for include/exclude (retargeting & suppression).
 export async function listCustomAudiences(accountId: string): Promise<{ id: string; name: string; count: number | null }[]> {
   const r = await graphGet(`act_${accountId}/customaudiences`, { fields: "id,name,approximate_count_lower_bound", limit: "100" });

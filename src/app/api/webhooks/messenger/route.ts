@@ -2,8 +2,9 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, type Conversation } from "@/lib/store";
-import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, upsertContacts, type Conversation } from "@/lib/store";
+import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
+import { fetchLeadgen } from "@/lib/ads";
 import { generateReply } from "@/lib/llm";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -53,11 +54,15 @@ export async function POST(req: Request) {
         try { await handleMessage(channel, ev); }
         catch (e) { console.error("[fb webhook] message", e); }
       }
-      // Page feed changes carry post comments (item:"comment") → comment-to-DM.
+      // Page changes: feed → post comments (comment-to-DM); leadgen → Instant Form leads.
       for (const change of (entry.changes as Record<string, unknown>[]) ?? []) {
-        if (change.field !== "feed") continue;
-        try { await handleComment(channel, change.value as Record<string, unknown>); }
-        catch (e) { console.error("[fb webhook] comment", e); }
+        if (change.field === "leadgen") {
+          try { await handleLeadgen(channel, change.value as Record<string, unknown>); }
+          catch (e) { console.error("[fb webhook] leadgen", e); }
+        } else if (change.field === "feed") {
+          try { await handleComment(channel, change.value as Record<string, unknown>); }
+          catch (e) { console.error("[fb webhook] comment", e); }
+        }
       }
     }
   } catch (err) {
@@ -137,6 +142,32 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const flowHandled = await handleFlowMessage(conv.id, senderId, text, { channel }).catch(() => false);
   if (flowHandled) return;
   await aiRespond(channel, conv, text);
+}
+
+// An Instant-Form (Lead Ad) submission arrived. Fetch the answers and land the
+// lead in the platform: create/enrich a Contact and mirror it to LeadSquared —
+// exactly like a lead from any other channel. Never throws; idempotent (Meta
+// redelivers leadgen events). Contacts are phone-keyed, so a phone is required.
+async function handleLeadgen(channel: Channel, value: Record<string, unknown>) {
+  const leadgenId = String(value?.leadgen_id ?? "");
+  if (!leadgenId) return;
+  if (!(await claimWebhookEvent(`leadgen:${leadgenId}`))) return;   // process once
+  const lead = await fetchLeadgen(leadgenId, credsOf(channel).token);
+  if (!lead) return;
+  if (!lead.phone) { console.warn(`[leadgen] lead ${leadgenId} (form ${lead.formId}) has no phone — not stored (contacts are phone-keyed).`); return; }
+
+  const attributes: Record<string, string> = { source: "Meta Lead Ad" };
+  if (lead.formId) attributes.meta_form_id = lead.formId;
+  if (value?.ad_id) attributes.ad_id = String(value.ad_id);
+  if (lead.city) attributes.city = lead.city;
+  await upsertContacts([{ phone: lead.phone, name: lead.fullName || undefined, email: lead.email || undefined, tags: ["meta-lead-ad"], attributes }], "meta_lead_ad", channel.tenantId).catch(() => {});
+  await createOrUpdateLead({
+    phone: lead.phone, name: lead.fullName || undefined, source: "Meta Lead Ad",
+    fields: [
+      ...(lead.email ? [{ Attribute: "EmailAddress", Value: lead.email }] : []),
+      ...(lead.city ? [{ Attribute: "mx_City", Value: lead.city }] : []),
+    ],
+  }, channel.tenantId).catch(() => {});
 }
 
 // Mirror a Messenger message onto the lead's LeadSquared timeline. FB users have
