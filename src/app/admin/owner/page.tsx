@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
+import { MetaDoctor } from "../_tabs/MetaDoctor";
 
 const inp = "border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900";
 type Features = Record<string, boolean>;
@@ -178,6 +179,9 @@ export default function OwnerPortal() {
             {planMix.map(p => <span key={p.key}>{p.name}: <b className="text-ink-800">{p.count}</b></span>)}
           </div>
         )}
+
+        {/* Platform-level Meta diagnostics — env + live Graph credential check. */}
+        <MetaDoctor />
 
         {planRequests.length > 0 && (
           <div className="bg-white rounded-card border border-amber-200 p-4 space-y-2">

@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CircleCheck, CircleDashed, Loader2, Copy, Check, ExternalLink, RefreshCw } from "lucide-react";
+import { MetaDoctor } from "../_tabs/MetaDoctor";
 
 interface SetupStep { ok: boolean; label: string; detail: string }
 interface SystemStatus { steps: Record<string, SetupStep>; completed: number; totalRequired: number; live: boolean }
@@ -58,6 +59,9 @@ export default function SetupPage() {
       </header>
 
       <div className="max-w-2xl mx-auto p-6 space-y-5">
+        {/* Meta env + embedded-signup diagnostics (owner-only; live Graph check) */}
+        <MetaDoctor />
+
         {/* Checklist */}
         <section className="bg-white border border-line rounded-2xl p-5">
           <div className="flex items-center justify-between mb-1">
