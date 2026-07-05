@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, Instagram, Loader2, MessageCircle, Plus, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
-import { launchInstagramSignup, instagramSignupReady, metaPreview } from "@/lib/embedded-signup-client";
+import { launchInstagramSignup, instagramSignupReady, instagramSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
@@ -97,7 +97,7 @@ function InstagramManager() {
   }
 
   async function connectWithMeta() {
-    if (!instagramSignupReady()) { setMsg("Preview only — one-click “Connect with Facebook” isn’t enabled yet. Finish the Meta setup (App ID + Instagram config) to turn it on. For now, use “Add manually”."); return; }
+    if (!instagramSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${instagramSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`); return; }
     setBusy(true); setMsg(null);
     try {
       const { code } = await launchInstagramSignup();

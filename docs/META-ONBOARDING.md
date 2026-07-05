@@ -224,3 +224,25 @@ NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID=
 NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID=
 NEXT_PUBLIC_META_GRAPH_VERSION=v22.0
 ```
+
+## Troubleshooting — "Connect with Facebook" does nothing / onboarding fails
+
+Run **Setup → Meta connection doctor** in the portal (platform owner only) — it
+checks every env var, live-validates the app credentials against the Graph API,
+and prints the exact webhook callback URLs. The classic pitfalls it catches:
+
+1. **Env var set but EMPTY.** `META_APP_ID=` (no value) is treated as *not
+   configured* everywhere — the button stays in Preview mode and the code
+   exchange fails. Fill real values, don't just scaffold the names.
+2. **`NEXT_PUBLIC_*` without a redeploy.** These are baked into the client
+   bundle at build time. On Vercel: add them to the project env **and redeploy**
+   — changing the env alone does nothing to the already-built site.
+3. **Verify-token name mismatch.** The WhatsApp webhook accepts
+   `META_WA_WEBHOOK_VERIFY_TOKEN` **or** `META_WEBHOOK_VERIFY_TOKEN` (fallback),
+   so one token can serve all three webhooks.
+4. **Signature secret.** Meta signs every webhook with the **App Secret**. The
+   WhatsApp route accepts `META_WA_WEBHOOK_SECRET` or falls back to
+   `META_APP_SECRET` — for a single app, setting `META_APP_SECRET` is enough.
+5. **App in Development Mode.** Embedded signup only completes for Facebook
+   users with a role on the app (admin/developer/tester). Fine for internal
+   testing; real clients need the app Live + Advanced Access (App Review).

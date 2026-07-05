@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
-import { launchWhatsAppSignup, whatsappSignupReady, metaPreview } from "@/lib/embedded-signup-client";
+import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -251,7 +251,7 @@ function ChannelsManager() {
   }
 
   async function connectWithMeta() {
-    if (!whatsappSignupReady()) { setMsg("Preview only — one-click “Connect with Facebook” isn’t enabled yet. Finish the Meta setup (App ID + Embedded Signup config) to turn it on. For now, use “Add manually”."); return; }
+    if (!whatsappSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${whatsappSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`); return; }
     setBusy(true); setMsg(null);
     try {
       const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup();

@@ -31,13 +31,17 @@ import { resolveFlowIdForAd } from "@/lib/adflow";
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const OPTIN_RE = /^\s*(start|unstop|subscribe|opt[\s-]?in)\s*$/i;
 
-// GET — Meta webhook verification handshake.
+// GET — Meta webhook verification handshake. Accepts the WA-specific verify
+// token or the shared META_WEBHOOK_VERIFY_TOKEN (one Meta app commonly serves
+// WhatsApp + Instagram + Messenger with a single token).
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && constEq(token ?? "", process.env.META_WA_WEBHOOK_VERIFY_TOKEN)) {
+  const ok = constEq(token ?? "", process.env.META_WA_WEBHOOK_VERIFY_TOKEN)
+          || constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN);
+  if (mode === "subscribe" && ok) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
@@ -322,9 +326,12 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 }
 
 // POST — inbound messages + delivery/read status updates. Verifies signature.
+// Meta signs webhooks with the APP SECRET — accept the WA-specific secret or
+// fall back to META_APP_SECRET so one app's secret covers all its webhooks.
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_WA_WEBHOOK_SECRET)) {
+  const secret = process.env.META_WA_WEBHOOK_SECRET || process.env.META_APP_SECRET;
+  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), secret)) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
 

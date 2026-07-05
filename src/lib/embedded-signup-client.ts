@@ -33,6 +33,13 @@ declare global {
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
 
+// Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
+// the client bundle at build time, so fixing them requires a redeploy).
+export const whatsappSignupMissing = (): string[] =>
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !WA_CONFIG_ID && "NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID"].filter(Boolean) as string[];
+export const instagramSignupMissing = (): string[] =>
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
+
 // Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
 // buttons even before the Meta Tech Provider app is configured, so the operator
 // can see their placement. Clicking shows a "setup pending" message rather than
@@ -66,7 +73,9 @@ export async function launchWhatsAppSignup(): Promise<{ code: string; wabaId: st
   return new Promise((resolve, reject) => {
     let session: { wabaId?: string; phoneNumberId?: string } = {};
     const onMessage = (event: MessageEvent) => {
-      if (typeof event.origin !== "string" || !/facebook\.com$/.test(new URL(event.origin).hostname)) return;
+      // Exact facebook.com or a *.facebook.com subdomain — never a lookalike
+      // like "evilfacebook.com" (the old suffix test matched those).
+      if (typeof event.origin !== "string" || !/(^|\.)facebook\.com$/.test(new URL(event.origin).hostname)) return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (data?.type === "WA_EMBEDDED_SIGNUP" && data?.data) {
