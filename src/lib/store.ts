@@ -317,14 +317,18 @@ export async function countContacts(tenantId = DEFAULT_TENANT_ID): Promise<numbe
 }
 
 // ── Opt-outs ──────────────────────────────────────────────────────────────────
+// Contact-status updates match by last-10 (same identity as the suppression
+// rows and the send-time optoutSet), so a contact imported as "8368904146"
+// flips to optedout when the webhook's "918368904146" sends STOP —
+// exact-digits matching missed it (contact stayed "active" in the UI).
 export async function addOptout(phone: string, reason?: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_optouts").upsert({ tenant_id: tenantId, phone: last10(phone), reason: reason ?? null }, { onConflict: "tenant_id,phone" });
-  await db().from("contacts").update({ status: "optedout" }).eq("tenant_id", tenantId).eq("phone", digits(phone));
+  await db().from("contacts").update({ status: "optedout" }).eq("tenant_id", tenantId).like("phone", `%${last10(phone)}`);
 }
 
 export async function removeOptout(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_optouts").delete().eq("tenant_id", tenantId).eq("phone", last10(phone));
-  await db().from("contacts").update({ status: "active" }).eq("tenant_id", tenantId).eq("phone", digits(phone));
+  await db().from("contacts").update({ status: "active" }).eq("tenant_id", tenantId).like("phone", `%${last10(phone)}`);
 }
 
 export async function listOptouts(tenantId = DEFAULT_TENANT_ID): Promise<{ phone: string; reason: string | null; createdAt: string }[]> {
