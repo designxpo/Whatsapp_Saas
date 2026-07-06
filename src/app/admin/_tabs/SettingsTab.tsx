@@ -988,7 +988,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [away, setAway] = useState<AwayS | null>(null);
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [nudgeOn, setNudgeOn] = useState<boolean | null>(null);
-  const [nudgeVars, setNudgeVars] = useState("");
+  const [nudgeVars, setNudgeVars] = useState<string[]>([]);
   const [isAdmin, setIsAdmin] = useState(true);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
   const [saving, setSaving] = useState(false);
@@ -1001,7 +1001,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   useEffect(() => {
     fetch("/api/admin/settings").then(r => r.json()).then(d => {
       setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false);
-      setNudgeOn(d.flowNudge?.enabled !== false); setNudgeVars(((d.flowNudge?.variations ?? []) as string[]).join("\n"));
+      setNudgeOn(d.flowNudge?.enabled !== false); setNudgeVars((d.flowNudge?.variations ?? []) as string[]);
     }).catch(() => {});
     loadQr();
   }, [loadQr]);
@@ -1037,14 +1037,15 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     } finally { setSaving(false); }
   }
 
-  // Off-script nudge — persists like the other toggles; the textarea has its own
-  // Save so mid-edit variations aren't half-written by a toggle click.
-  const nudgeList = () => nudgeVars.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 6);
+  // Off-script nudge — persists like the other toggles; the variation boxes have
+  // their own Save so mid-edit text isn't half-written by a toggle click. One
+  // BOX is one variation (multi-line messages are fine within a box).
+  const nudgeList = () => nudgeVars.map(s => s.trim()).filter(Boolean).slice(0, 6);
   async function persistNudge(enabled: boolean) {
     setSaving(true);
     try {
       const d = await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowNudge: { enabled, variations: nudgeList() } }) }).then(r => r.json());
-      if (d.flowNudge) { setNudgeOn(d.flowNudge.enabled !== false); setNudgeVars(((d.flowNudge.variations ?? []) as string[]).join("\n")); }
+      if (d.flowNudge) { setNudgeOn(d.flowNudge.enabled !== false); setNudgeVars((d.flowNudge.variations ?? []) as string[]); }
       setSavedAt(Date.now());
     } finally { setSaving(false); }
   }
@@ -1108,9 +1109,21 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </button>
           )}
         </div>
-        <textarea className={`${inp} w-full resize-none text-xs`} rows={4} placeholder="One variation per line, e.g.  Please tap one of the options above 👆" value={nudgeVars} onChange={e => setNudgeVars(e.target.value)} />
+        <div className="space-y-2">
+          {nudgeVars.map((v, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[11px] font-bold text-slate-400 pt-2 shrink-0 w-4 text-right">{i + 1}.</span>
+              <textarea className={`${inp} flex-1 resize-none text-xs`} rows={2} maxLength={300} placeholder="e.g.  Please tap one of the options above 👆" value={v}
+                onChange={e => setNudgeVars(a => a.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button onClick={() => setNudgeVars(a => a.filter((_, j) => j !== i))} className="p-1.5 text-ink-300 hover:text-red-500 shrink-0" aria-label="Remove variation">×</button>
+            </div>
+          ))}
+          {nudgeVars.length < 6 && (
+            <button onClick={() => setNudgeVars(a => [...a, ""])} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">+ Add variation</button>
+          )}
+        </div>
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] text-ink-400">One line = one variation (up to 6, 300 chars each). Leave empty to use the built-in defaults.</p>
+          <p className="text-[11px] text-ink-400">Each box is ONE variation (up to 6, 300 chars, multi-line fine) — the bot rotates through them in order. Remove all to use the built-in defaults.</p>
           <button onClick={() => void persistNudge(nudgeOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
         </div>
       </section>
