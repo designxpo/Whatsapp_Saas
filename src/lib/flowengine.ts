@@ -1156,7 +1156,39 @@ export async function handleFlowMessage(
 
   // 2b. No session — does this message trigger a flow? (Flows fire only on their
   // platform and number-scope; the match + start lives in triggerByKeyword.)
-  return (await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid)) ?? false;
+  const triggered = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
+  if (triggered !== null) return triggered;
+
+  // 2c. Nothing matched at all — no session, no keyword, no ad/armed flow. With
+  // the AI switched OFF this used to be dead air ("anyone there?" → nothing).
+  // Instead, open the DEFAULT flow — the active flow on this channel triggered
+  // by "menu"/"hi"/"hello"/"start" — so the person lands in the guided menu;
+  // from there the session + off-script nudges take over. Gated on the nudge
+  // toggle (one switch owns the never-go-silent behaviour) and restricted to
+  // flows that WAIT (menu/form/question): an immediately-ending flow would
+  // re-fire on every message and could ping-pong with another bot forever.
+  if (isReal) {
+    const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
+    const nudgeCfg = aiOn ? null : await getFlowNudge(tid).catch(() => null);
+    if (nudgeCfg?.enabled) {
+      const platform = opts.channel?.kind ?? "whatsapp";
+      const DEFAULT_KW = ["menu", "hi", "hello", "start"];
+      const def = (await listFlows(tid)).filter(f => f.active)
+        .filter(f => flowRunsOn(f.platform ?? "whatsapp", platform))
+        .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id)
+        .filter(f => f.graph.nodes.some(n => ["buttons", "list", "waform", "ask"].includes(n.type)))
+        .map(f => ({ f, rank: Math.min(...f.triggerKeywords.map(k => { const i = DEFAULT_KW.indexOf(norm(k)); return i === -1 ? 99 : i; }), 99) }))
+        .filter(x => x.rank < 99)
+        .sort((a, b) => a.rank - b.rank)[0]?.f;
+      if (def) {
+        await setConversationKbTag(convKey, def.primaryKbTag).catch(() => undefined);
+        const start = def.graph.nodes.find(n => n.type === "start");
+        const consumed = await runFrom(def, start ? nextNode(def.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
+        if (consumed) { await claimReply(convKey).catch(() => undefined); return true; }
+      }
+    }
+  }
+  return false;
 }
 
 // ── No-reply reminders (called from the cron) ─────────────────────────────────
