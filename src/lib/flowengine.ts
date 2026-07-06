@@ -857,6 +857,24 @@ export async function handleFlowMessage(
       return consumed;
     };
 
+    // Off-script nudge: the person typed something the waiting step (a menu OR
+    // an open WhatsApp form) can't use. When the AI isn't going to take the
+    // message — switched off, or the text isn't really a question — reply with
+    // a rotating Settings variation (max 3 per step) and KEEP the session
+    // waiting, instead of the silence an AI-off setup used to get. Returns
+    // true when a nudge was sent.
+    const nudgeBack = async (): Promise<boolean> => {
+      const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
+      if (aiOn && looksConversational(text)) return false;   // the AI answers real questions
+      const nudges = Number(session.state?.nudges ?? 0);
+      const nudge = await getFlowNudge(tid).catch(() => null);
+      if (!nudge?.enabled || !nudge.variations.length || nudges >= 3) return false;
+      await send.text(nudge.variations[nudges % nudge.variations.length]);
+      await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
+      if (isReal) await claimReply(convKey).catch(() => undefined);
+      return true;
+    };
+
     if (waiting.type === "ask") {
       // An old menu tap takes priority over treating it as the answer.
       const rewound = await rewind();
@@ -984,10 +1002,18 @@ export async function handleFlowMessage(
         if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
         return consumed;
       }
-      // Old menu tap → rewind; anything else → the user moved on without
-      // submitting: mark the form abandoned (once) + note it in chat. AI answers.
+      // Old menu tap → rewind. Off-script text while the native form is open →
+      // nudge them back to it (the "Get Started" CTA) BEFORE giving up — this
+      // was the production silence: "What course you offer??" under a form CTA
+      // marked the form abandoned and returned to an AI that was switched off.
+      // A trigger keyword still restarts its flow (the nudge keeps the session
+      // alive now). Only after the nudges are exhausted (or the AI will answer)
+      // does the old path run: mark abandoned (once) + note it, AI answers.
       const rewound = await rewind();
       if (rewound !== null) return rewound;
+      const restartedWf = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
+      if (restartedWf !== null) return restartedWf;
+      if (await nudgeBack()) return true;
       if (isReal && await markFormAbandoned(convKey, tid)) {
         await appendConvMessage({ conversationId: convKey, role: "assistant", body: "[form-abandoned]", source: "bot", tenantId: tid }).catch(() => undefined);
       }
@@ -1090,25 +1116,10 @@ export async function handleFlowMessage(
     // open session; only genuinely off-script text falls through to the AI.
     const restarted = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
     if (restarted !== null) return restarted;
-    // Genuinely off-script while a menu waits. When AI auto-replies are ON and
-    // the text reads like a real question, the AI answers it (it knows the
-    // knowledge base). Otherwise — AI switched off, or non-question rambling —
-    // the off-script nudge guides them back to the menu (Settings variations
-    // rotate, max 3 per menu, then the old fall-through resumes) so a
-    // flow-first setup never goes silent mid-flow.
-    if (waiting.type === "buttons" || waiting.type === "list") {
-      const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
-      if (!(aiOn && looksConversational(text))) {
-        const nudges = Number(session.state?.nudges ?? 0);
-        const nudge = await getFlowNudge(tid).catch(() => null);
-        if (nudge?.enabled && nudge.variations.length && nudges < 3) {
-          await send.text(nudge.variations[nudges % nudge.variations.length]);
-          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
-          if (isReal) await claimReply(convKey).catch(() => undefined);
-          return true;
-        }
-      }
-    }
+    // Genuinely off-script while a menu waits → the off-script nudge (see
+    // nudgeBack above): the AI takes real questions when it's ON; everything
+    // else — and everything when it's OFF — gets guided back to the menu.
+    if ((waiting.type === "buttons" || waiting.type === "list") && (await nudgeBack())) return true;
     return false;
   }
 
