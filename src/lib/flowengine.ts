@@ -1017,10 +1017,11 @@ export async function handleFlowMessage(
       if (isReal && await markFormAbandoned(convKey, tid)) {
         await appendConvMessage({ conversationId: convKey, role: "assistant", body: "[form-abandoned]", source: "bot", tenantId: tid }).catch(() => undefined);
       }
-      // The user moved on without submitting → fully exit the flow so the next
-      // message starts clean (otherwise the stale waform session lingered ~24h
-      // and a late "[form]…" echo or old menu tap could resume an abandoned flow).
-      await endSession(convKey).catch(() => undefined);
+      // KEEP the session parked on the form (it TTLs out on its own). Ending it
+      // here dropped a late submission on the floor: the person chatted past the
+      // form, then tapped "Get Started" and submitted — but the "[form] …" reply
+      // found no session and the flow never continued, forcing a full restart.
+      // Restarts stay possible (trigger keywords above), old menus still rewind.
       return false;
     }
 

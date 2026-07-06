@@ -8,7 +8,7 @@ import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
   updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
-  setContactAttributes, addContactTag, markOptedIn,
+  setContactAttributes, addContactTag, markOptedIn, landCapturedLead,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
@@ -20,7 +20,7 @@ import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
 import { respondToConversation } from "@/lib/assistant";
-import { pushWaActivity, syncLeadProfile } from "@/lib/leadsquared";
+import { pushWaActivity, syncLeadProfile, extractPhone } from "@/lib/leadsquared";
 import { emitEvent } from "@/lib/integrations";
 import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours, isAiEnabled } from "@/lib/messaging-settings";
 import { loadMemory, saveMemory } from "@/lib/router/memory";
@@ -263,6 +263,20 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // After the 200 ack: welcome → away notice → AI reply, in that order so the
   // greeting lands before the answer. claimReply/claimWelcome guard double-sends.
   after(async () => {
+    // Identity capture first — runs even when a human owns the chat (it's data
+    // collection, not bot behaviour). Organic WhatsApp leads land in Contacts
+    // (named from the WA profile), and a DIFFERENT number typed in chat is kept
+    // as the alternate: on the contact (alternate_phone) and on the LSQ lead's
+    // Phone field — Mobile stays their WhatsApp number.
+    try {
+      await landCapturedLead(from, from, "whatsapp", tid);
+      const altDigits = (extractPhone(text) ?? "").replace(/\D/g, "");
+      const own = from.replace(/\D/g, "");
+      if (altDigits && !(own === altDigits || own.endsWith(altDigits) || altDigits.endsWith(own))) {
+        await setContactAttributes(from, { alternate_phone: altDigits }, tid);
+        void syncLeadProfile({ phone: from, phoneAlt: altDigits }, tid);
+      }
+    } catch (e) { console.error("[webhook] identity capture", conv.id, e); }
     // A human owns the chat → the bot stays silent on every path (welcome, away,
     // flow AND ai), matching IG/Messenger/web-chat. bot_enabled is flipped off only
     // by a human (inbox reply / CRM / manual toggle); "escalated" is NOT silenced.

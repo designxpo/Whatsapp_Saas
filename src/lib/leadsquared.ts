@@ -133,14 +133,50 @@ export async function verifyLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<{
   }
 }
 
-// Creates (or updates, via LSQ's dedup) a lead from a phone + optional name.
-// Returns the ProspectID, or null on failure / when the tenant has no CRM.
+// LSQ was minting DUPLICATE leads for one number: concurrent inbound events
+// (the activity mirror + a form completion both fire via after()) each missed
+// the lookup and each called Lead.Capture — and Capture's own dedup follows
+// the org's rules (often email-only), so same-phone twins were born. Fixed at
+// this single choke point: one in-flight upsert per tenant+number (serialized),
+// find-FIRST-then-update-by-id, plus a short memory of freshly created ids
+// because LSQ's phone search indexes a new lead with a small lag.
+const leadUpsertQueue = new Map<string, Promise<string | null>>();
+const recentLeadIds = new Map<string, { id: string; at: number }>();
+const RECENT_LEAD_TTL = 10 * 60_000;
+
+// Creates the lead if the phone is genuinely new, otherwise updates the
+// EXISTING lead by id (extra fields only — Source/Owner/names a salesperson
+// curated are never overwritten). Returns the ProspectID, or null on failure /
+// when the tenant has no CRM.
 export async function createOrUpdateLead(p: { phone: string; name?: string; source?: string; fields?: { Attribute: string; Value: string }[] }, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
   const c = await resolveLsq(tenantId);
   if (!c) return null;
+  const digits = (p.phone || "").replace(/\D/g, "");
+  if (!digits) return null;
+  const key = `${tenantId}:${digits.slice(-10)}`;
+  const prev = leadUpsertQueue.get(key) ?? Promise.resolve(null);
+  const run = prev.then(() => upsertLead(p, digits, key, c), () => upsertLead(p, digits, key, c));
+  leadUpsertQueue.set(key, run);
+  try { return await run; }
+  finally { if (leadUpsertQueue.get(key) === run) leadUpsertQueue.delete(key); }
+}
+
+async function upsertLead(p: { phone: string; name?: string; source?: string; fields?: { Attribute: string; Value: string }[] }, digits: string, key: string, c: LsqCreds): Promise<string | null> {
   try {
-    const digits = (p.phone || "").replace(/\D/g, "");
-    if (!digits) return null;
+    const recent = recentLeadIds.get(key);
+    const existing = (recent && Date.now() - recent.at < RECENT_LEAD_TTL ? recent.id : null)
+      ?? await findLeadId(digits, c).catch(() => null);
+    if (existing) {
+      recentLeadIds.set(key, { id: existing, at: Date.now() });
+      const fields = p.fields ?? [];
+      if (fields.length) {
+        const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(existing)}`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
+        });
+        if (!res.ok) console.error(`[leadsquared] lead field update HTTP ${res.status} (lead ${existing}): ${(await res.text().catch(() => "")).slice(0, 300)}`);
+      }
+      return existing;
+    }
     const parts = (p.name || "").trim().split(/\s+/).filter(Boolean);
     const first = parts[0] ?? "", last = parts.slice(1).join(" ");
     const attrs = [
@@ -156,7 +192,9 @@ export async function createOrUpdateLead(p: { phone: string; name?: string; sour
     });
     if (!res.ok) return null;
     const data = (await res.json().catch(() => null)) as { Status?: string; Message?: { Id?: string } } | null;
-    return data?.Message?.Id ?? null;
+    const id = data?.Message?.Id ?? null;
+    if (id) recentLeadIds.set(key, { id, at: Date.now() });
+    return id;
   } catch (err) {
     console.error("[leadsquared] lead create failed:", errorMessage(err));
     return null;
@@ -170,7 +208,7 @@ export async function createOrUpdateLead(p: { phone: string; name?: string; sour
 // via Lead.Update, so the Source / Owner / ProspectStage are preserved (never
 // overwritten with "WhatsApp"). Creates a lead only when none exists and the
 // tenant's auto-create is on. Fire-and-forget; never throws.
-export async function syncLeadProfile(p: { phone?: string | null; handle?: string | null; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+export async function syncLeadProfile(p: { phone?: string | null; phoneAlt?: string | null; handle?: string | null; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
   const c = await resolveLsq(tenantId);
   if (!c) return;
   try {
@@ -182,6 +220,10 @@ export async function syncLeadProfile(p: { phone?: string | null; handle?: strin
     const fields: { Attribute: string; Value: string }[] = [];
     if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fields.push({ Attribute: "EmailAddress", Value: email });
     if (city) fields.push({ Attribute: "mx_City", Value: city });
+    // An ALTERNATE number the lead shared in chat lands in the standard Phone
+    // field — Mobile stays their WhatsApp number (the identity/dedup key).
+    const alt = (p.phoneAlt || "").replace(/\D/g, "");
+    if (alt.length >= 10 && alt.length <= 15) fields.push({ Attribute: "Phone", Value: `+${alt}` });
     // Persist the WhatsApp @handle onto the lead so future handle-only inbound
     // (hidden number) still resolves to this lead — the CRM dedupes by handle.
     if (handle && c.waHandleField) fields.push({ Attribute: c.waHandleField, Value: handle });
