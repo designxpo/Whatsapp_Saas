@@ -1170,7 +1170,19 @@ export async function handleFlowMessage(
   if (isReal) {
     const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
     const nudgeCfg = aiOn ? null : await getFlowNudge(tid).catch(() => null);
+    // FRESH/IDLE chats only — never hijack a conversation someone is already
+    // handling: not when it's escalated (a human owns it — "our team will get
+    // back to you" must not be followed by the bot re-opening the menu), and
+    // not when anything went out in the last hour (mid-conversation remarks
+    // aren't an invitation to restart).
+    let freshChat = false;
     if (nudgeCfg?.enabled) {
+      const { data: convRow } = await db().from("wa_conversations")
+        .select("status, last_outbound_at").eq("id", convKey).maybeSingle();
+      const lastOut = convRow?.last_outbound_at ? Date.parse(String(convRow.last_outbound_at)) : 0;
+      freshChat = convRow?.status !== "escalated" && (!lastOut || Date.now() - lastOut > 60 * 60_000);
+    }
+    if (nudgeCfg?.enabled && freshChat) {
       const platform = opts.channel?.kind ?? "whatsapp";
       const DEFAULT_KW = ["menu", "hi", "hello", "start"];
       const def = (await listFlows(tid)).filter(f => f.active)
