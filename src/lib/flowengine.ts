@@ -27,7 +27,7 @@ import {
   landCapturedLead,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
-import { isAiEnabled, getFlowNudge } from "./messaging-settings";
+import { getFlowNudge } from "./messaging-settings";
 import { syncLeadProfile } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
@@ -1090,23 +1090,20 @@ export async function handleFlowMessage(
     // open session; only genuinely off-script text falls through to the AI.
     const restarted = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
     if (restarted !== null) return restarted;
-    // Genuinely off-script while a menu waits. If the AI is on and this reads
-    // like a real question, hand it over (the AI knows the knowledge base).
-    // Otherwise send an off-script nudge back to the menu — rotating the
-    // Settings variations, max 3 per menu — instead of the silence an AI-off
-    // setup used to get (a typed "I want to know about courses" under a
-    // "Get Started" button received no reply at all).
+    // Genuinely off-script while a menu waits → the off-script nudge (Settings
+    // variations rotate, max 3 per menu). The nudge deliberately OUTRANKS the
+    // AI here: flow-first setups want people guided back to the menu, and
+    // "I want to know about courses" reads like a question when the menu IS
+    // the answer. Only after the cap does the message fall through to the AI
+    // (when enabled) — or silence, exactly the old behaviour.
     if (waiting.type === "buttons" || waiting.type === "list") {
-      const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
-      if (!(aiOn && looksConversational(text))) {
-        const nudges = Number(session.state?.nudges ?? 0);
-        const nudge = await getFlowNudge(tid).catch(() => null);
-        if (nudge?.enabled && nudge.variations.length && nudges < 3) {
-          await send.text(nudge.variations[nudges % nudge.variations.length]);
-          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
-          if (isReal) await claimReply(convKey).catch(() => undefined);
-          return true;
-        }
+      const nudges = Number(session.state?.nudges ?? 0);
+      const nudge = await getFlowNudge(tid).catch(() => null);
+      if (nudge?.enabled && nudge.variations.length && nudges < 3) {
+        await send.text(nudge.variations[nudges % nudge.variations.length]);
+        await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
+        if (isReal) await claimReply(convKey).catch(() => undefined);
+        return true;
       }
     }
     return false;

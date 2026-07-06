@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 // Pure-helper tests (same approach as flowengine.test.ts) — db() must never run.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure tests"); } }));
 
-import { chatFieldPrompt, looseIndex, matchOption, type ChatFormField } from "../flowengine";
+import { chatFieldPrompt, looseIndex, matchOption, looksConversational, type ChatFormField } from "../flowengine";
 import { fieldSlug } from "../waforms";
 
 // The chat-native waform fallback (IG/Messenger/web chat) asks the form's fields
@@ -53,6 +53,15 @@ describe("looseIndex + matchOption — typed menu picks on web/IG chat", () => {
   });
   it("refuses too-short input", () => {
     expect(looseIndex(COURSES, "ai")).toBeNull();
+  });
+  // Production regression: "I want to know about courses" typed under a
+  // "Get Started" button reads conversational (the "i want" prefix), so an
+  // AI-first gate swallowed the off-script nudge and the chat went silent.
+  // The nudge must outrank the AI on menu waits — this documents the trap.
+  it("off-script menu text can read conversational — the nudge must not defer to the AI", () => {
+    expect(looksConversational("I want to know about courses")).toBe(true);
+    expect(looksConversational("???")).toBe(true);
+    expect(looksConversational("Data Science and gen ai")).toBe(false);   // a genuine menu attempt
   });
   it("matchOption picks the branch for a typed approximation on a list node", () => {
     const node = { id: "menu", type: "list", data: { rows: COURSES.map((t, i) => ({ id: `opt_${i}`, title: t })) } } as unknown as Parameters<typeof matchOption>[0];
