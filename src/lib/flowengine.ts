@@ -1192,22 +1192,29 @@ export async function handleFlowMessage(
 }
 
 // ── No-reply reminders (called from the cron) ─────────────────────────────────
-// Waiting blocks (buttons/list/ask) can set a STAGED chain of reminders: if the
-// customer hasn't answered, nudge after the first delay, then again after each
-// later delay (each measured from the PREVIOUS nudge). Replying or moving to a
-// new node resets the chain (fresh session state). Legacy single-reminder configs
-// (reminderMinutes + reminderText) are read as a one-step chain.
+// EVERY waiting block (buttons/list/ask/form) reminds a silent lead by default:
+// once after 10 minutes, once more after a further hour — no builder config
+// needed. A node's own STAGED chain overrides the default: nudge after the
+// first delay, then again after each later delay (each measured from the
+// PREVIOUS nudge). Replying or moving to a new node resets the chain (fresh
+// session state). Legacy single-reminder configs (reminderMinutes +
+// reminderText) are read as a one-step chain.
+const DEFAULT_REMINDERS: { minutes: number; text: string }[] = [
+  { minutes: 10, text: "Just checking in 👋 Whenever you're ready, tap an option above and we'll pick up right where we left off." },
+  { minutes: 60, text: "We're still here to help! 🙂 Tap an option above to continue — or type \"menu\" to start over." },
+];
 function reminderSteps(data: Record<string, unknown> | undefined): { minutes: number; text: string }[] {
-  if (!data) return [];
-  const raw = data.reminders;
+  const raw = data?.reminders;
   if (Array.isArray(raw)) {
-    return raw
+    const chain = raw
       .map(r => ({ minutes: Math.max(0, Number((r as { minutes?: unknown })?.minutes ?? 0)), text: str((r as { text?: unknown })?.text) }))
       .filter(r => r.minutes > 0 && !!r.text.trim());
+    if (chain.length) return chain;
   }
-  const mins = Number(data.reminderMinutes ?? 0);
-  const text = str(data.reminderText);
-  return mins > 0 && text.trim() ? [{ minutes: mins, text }] : [];
+  const mins = Number(data?.reminderMinutes ?? 0);
+  const text = str(data?.reminderText);
+  if (mins > 0 && text.trim()) return [{ minutes: mins, text }];
+  return DEFAULT_REMINDERS;
 }
 
 export async function drainFlowReminders(max = 50): Promise<number> {
@@ -1262,9 +1269,18 @@ export async function drainFlowReminders(max = 50): Promise<number> {
       .select("conversation_id");
     if (!claimed.data?.length) continue;                            // another tick won / customer replied
 
-    // Reply from the same number the chat lives on.
+    // Reply on the SAME channel the chat lives on — reminders used to go
+    // through the WhatsApp sender for every platform, so Instagram/Messenger/
+    // web-chat sessions never actually received theirs.
     const channel = conv.channel_id ? (await getChannel(conv.channel_id as string)) ?? undefined : undefined;
-    const r = await realSender(convKey, conv.phone as string, channel, (conv.tenant_id as string) ?? sTid).text(step.text);
+    const cTid = (conv.tenant_id as string) ?? sTid;
+    const kind = (conv.platform as string) || "whatsapp";
+    let sender: FlowSender;
+    if (kind === "instagram") { if (!channel) continue; sender = igSender(convKey, conv.phone as string, channel, cTid); }
+    else if (kind === "messenger") { if (!channel) continue; sender = fbSender(convKey, conv.phone as string, channel, cTid); }
+    else if (kind === "webchat") sender = webchatSender(convKey, [], cTid);   // appended to the conversation; the widget polls it up
+    else sender = realSender(convKey, conv.phone as string, channel, cTid);
+    const r = await sender.text(step.text);
     if (!r.error) sent++;
   }
   return sent;
