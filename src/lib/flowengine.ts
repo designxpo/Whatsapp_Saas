@@ -27,6 +27,7 @@ import {
   landCapturedLead,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
+import { isAiEnabled, getFlowNudge } from "./messaging-settings";
 import { syncLeadProfile } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
@@ -1089,6 +1090,25 @@ export async function handleFlowMessage(
     // open session; only genuinely off-script text falls through to the AI.
     const restarted = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
     if (restarted !== null) return restarted;
+    // Genuinely off-script while a menu waits. If the AI is on and this reads
+    // like a real question, hand it over (the AI knows the knowledge base).
+    // Otherwise send an off-script nudge back to the menu — rotating the
+    // Settings variations, max 3 per menu — instead of the silence an AI-off
+    // setup used to get (a typed "I want to know about courses" under a
+    // "Get Started" button received no reply at all).
+    if (waiting.type === "buttons" || waiting.type === "list") {
+      const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
+      if (!(aiOn && looksConversational(text))) {
+        const nudges = Number(session.state?.nudges ?? 0);
+        const nudge = await getFlowNudge(tid).catch(() => null);
+        if (nudge?.enabled && nudge.variations.length && nudges < 3) {
+          await send.text(nudge.variations[nudges % nudge.variations.length]);
+          await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
+          if (isReal) await claimReply(convKey).catch(() => undefined);
+          return true;
+        }
+      }
+    }
     return false;
   }
 

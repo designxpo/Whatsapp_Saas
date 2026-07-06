@@ -15,6 +15,28 @@ export async function setAiEnabled(enabled: boolean, tenantId: string = DEFAULT_
   await setTenantSetting(tenantId, "ai_replies", { enabled: enabled === true });
 }
 
+// ── Off-script nudge (per tenant) ─────────────────────────────────────────────
+// What the bot says when a chatbot flow is waiting on a menu (buttons/list) and
+// the visitor types something that matches no option — without this, an AI-off
+// setup goes silent. Several variations rotate across repeated misses so the
+// bot doesn't sound robotic; the flow engine caps nudges at 3 per menu, then
+// falls back to the old behaviour (AI if enabled, else silence).
+export interface FlowNudgeSetting { enabled: boolean; variations: string[] }
+export const FLOW_NUDGE_DEFAULTS: string[] = [
+  "Sorry, I didn't quite catch that — please tap one of the options above 👆 and I'll take you to the right place.",
+  "I'm a guided assistant 🙂 Pick whichever option above fits best and we'll continue from there.",
+  "Let's keep it simple — just choose one of the options above 👆 and I'll guide you step by step.",
+];
+export async function getFlowNudge(tenantId: string = DEFAULT_TENANT_ID): Promise<FlowNudgeSetting> {
+  const s = await getTenantSetting<Partial<FlowNudgeSetting>>(tenantId, "flow_nudge", {});
+  const variations = (s.variations ?? []).map(v => String(v).trim()).filter(Boolean).slice(0, 6);
+  return { enabled: s.enabled !== false, variations: variations.length ? variations : FLOW_NUDGE_DEFAULTS };
+}
+export async function setFlowNudge(v: FlowNudgeSetting, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+  const variations = (v.variations ?? []).map(x => String(x).trim().slice(0, 300)).filter(Boolean).slice(0, 6);
+  await setTenantSetting(tenantId, "flow_nudge", { enabled: v.enabled === true, variations });
+}
+
 export interface WelcomeSetting { enabled: boolean; text: string }
 export interface AwaySetting {
   enabled: boolean;

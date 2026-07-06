@@ -987,6 +987,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
   const [aiOn, setAiOn] = useState<boolean | null>(null);
+  const [nudgeOn, setNudgeOn] = useState<boolean | null>(null);
+  const [nudgeVars, setNudgeVars] = useState("");
   const [isAdmin, setIsAdmin] = useState(true);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
   const [saving, setSaving] = useState(false);
@@ -997,7 +999,10 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   const loadQr = useCallback(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQuickReplies(d.quickReplies ?? [])).catch(() => {}); }, []);
   useEffect(() => {
-    fetch("/api/admin/settings").then(r => r.json()).then(d => { setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false); }).catch(() => {});
+    fetch("/api/admin/settings").then(r => r.json()).then(d => {
+      setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false);
+      setNudgeOn(d.flowNudge?.enabled !== false); setNudgeVars(((d.flowNudge?.variations ?? []) as string[]).join("\n"));
+    }).catch(() => {});
     loadQr();
   }, [loadQr]);
 
@@ -1031,6 +1036,19 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       setSavedAt(Date.now());
     } finally { setSaving(false); }
   }
+
+  // Off-script nudge — persists like the other toggles; the textarea has its own
+  // Save so mid-edit variations aren't half-written by a toggle click.
+  const nudgeList = () => nudgeVars.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 6);
+  async function persistNudge(enabled: boolean) {
+    setSaving(true);
+    try {
+      const d = await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowNudge: { enabled, variations: nudgeList() } }) }).then(r => r.json());
+      if (d.flowNudge) { setNudgeOn(d.flowNudge.enabled !== false); setNudgeVars(((d.flowNudge.variations ?? []) as string[]).join("\n")); }
+      setSavedAt(Date.now());
+    } finally { setSaving(false); }
+  }
+  function toggleNudge() { if (nudgeOn === null) return; const next = !nudgeOn; setNudgeOn(next); void persistNudge(next); }
 
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
@@ -1069,6 +1087,31 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           )}
         </div>
         {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
+      </section>
+
+      {/* Off-script nudge — what flows say when a typed reply matches no menu option */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">Off-script nudge</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              When a chatbot flow is showing buttons or a menu and the person types something else, the bot replies with
+              one of these lines to guide them back — a different variation each time, up to 3 per menu — instead of staying
+              silent. Real questions still go to the AI when AI auto-replies are ON.
+            </p>
+          </div>
+          {nudgeOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+            <button onClick={toggleNudge} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 shrink-0 ${nudgeOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {nudgeOn ? "ON" : "OFF"}
+            </button>
+          )}
+        </div>
+        <textarea className={`${inp} w-full resize-none text-xs`} rows={4} placeholder="One variation per line, e.g.  Please tap one of the options above 👆" value={nudgeVars} onChange={e => setNudgeVars(e.target.value)} />
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-ink-400">One line = one variation (up to 6, 300 chars each). Leave empty to use the built-in defaults.</p>
+          <button onClick={() => void persistNudge(nudgeOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
+        </div>
       </section>
 
       {/* Welcome message */}
