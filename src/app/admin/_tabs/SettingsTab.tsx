@@ -643,6 +643,7 @@ export function MessengerCard() {
       const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail}. Messages won't arrive until this is fixed — check the Page token's permissions (pages_messaging).`); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }

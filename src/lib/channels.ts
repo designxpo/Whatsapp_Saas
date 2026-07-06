@@ -340,6 +340,39 @@ export async function saveWebchatChannel(input: {
   return mapChannel(data as Record<string, unknown>);
 }
 
+// Meta only delivers Page webhooks (Messenger messages, feed comments) after
+// the Page is SUBSCRIBED to the app — saving a channel from the portal used to
+// skip this, so a freshly added Facebook Page stored its creds but never
+// received a single event ("added it but it didn't work"). Called on every
+// Messenger channel save; idempotent (re-subscribing is a no-op for Meta).
+export async function subscribePageToApp(pageId: string, pageToken: string): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const fields = "messages,messaging_postbacks,messaging_optins,message_deliveries,feed";
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`, { method: "POST" });
+    const data = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string } } | null;
+    if (res.ok && data?.success) return { ok: true, detail: "Page subscribed to the app's webhooks." };
+    return { ok: false, detail: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Instagram flavour of the same requirement (Instagram-login API): the IG
+// professional account itself must be subscribed to the app for DM/comment
+// webhooks to flow.
+export async function subscribeIgToApp(igUserId: string, igToken: string): Promise<{ ok: boolean; detail: string }> {
+  try {
+    const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent("messages,comments")}&access_token=${encodeURIComponent(igToken)}`, { method: "POST" });
+    const data = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string } } | null;
+    if (res.ok && data?.success) return { ok: true, detail: "Instagram account subscribed to the app's webhooks." };
+    return { ok: false, detail: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, detail: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function deleteChannel(id: string, tenantId?: string): Promise<void> {
   let q = db().from("wa_channels").delete().eq("id", id);
   if (tenantId) q = q.eq("tenant_id", tenantId);

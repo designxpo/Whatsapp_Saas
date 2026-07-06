@@ -86,6 +86,7 @@ function InstagramManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail}. DMs won't arrive until this is fixed — check the token's permissions.`); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }

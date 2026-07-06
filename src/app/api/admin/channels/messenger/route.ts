@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveMessengerChannel, getChannel } from "@/lib/channels";
+import { saveMessengerChannel, getChannel, subscribePageToApp } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -37,8 +37,11 @@ export async function POST(req: Request) {
       id: body.id, tenantId, name: body.name!, pageId: body.pageId!,
       token, agentId: body.agentId ?? null, active: body.active, isDefault: body.isDefault,
     });
-    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId})`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
+    // Subscribe the Page to the app — without this Meta never delivers a single
+    // message event, which is exactly why a portal-added Page "didn't work".
+    const webhook = await subscribePageToApp(saved.pageId ?? body.pageId!, token);
+    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0053 is applied` }, { status: 500 });
   }

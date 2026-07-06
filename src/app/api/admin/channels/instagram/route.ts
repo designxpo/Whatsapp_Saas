@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveInstagramChannel, getChannel } from "@/lib/channels";
+import { saveInstagramChannel, getChannel, subscribeIgToApp } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -37,8 +37,11 @@ export async function POST(req: Request) {
       id: body.id, tenantId, name: body.name!, igUserId: body.igUserId!, pageId: body.pageId ?? null,
       token, agentId: body.agentId ?? null, active: body.active, isDefault: body.isDefault,
     });
-    logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId})`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
+    // Subscribe the IG account to the app — without this Meta never delivers
+    // DM/comment events for a freshly added account.
+    const webhook = await subscribeIgToApp(saved.igUserId ?? body.igUserId!, token);
+    logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0021_instagram_channel.sql is applied` }, { status: 500 });
   }
