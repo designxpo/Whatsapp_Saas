@@ -1097,7 +1097,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <p className="text-xs text-slate-500 mt-0.5">
               When a chatbot flow is showing buttons or a menu and the person types something else, the bot replies with
               one of these lines to guide them back — a different variation each time, up to 3 per menu — instead of staying
-              silent. If they keep ignoring the nudges, the AI takes over (when AI auto-replies are ON).
+              silent. When AI auto-replies are ON, real questions go to the AI instead; with the AI off, every off-script
+              message gets a nudge.
             </p>
           </div>
           {nudgeOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (

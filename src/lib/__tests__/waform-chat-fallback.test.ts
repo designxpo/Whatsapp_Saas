@@ -54,11 +54,11 @@ describe("looseIndex + matchOption — typed menu picks on web/IG chat", () => {
   it("refuses too-short input", () => {
     expect(looseIndex(COURSES, "ai")).toBeNull();
   });
-  // Production regression: "I want to know about courses" typed under a
-  // "Get Started" button reads conversational (the "i want" prefix), so an
-  // AI-first gate swallowed the off-script nudge and the chat went silent.
-  // The nudge must outrank the AI on menu waits — this documents the trap.
-  it("off-script menu text can read conversational — the nudge must not defer to the AI", () => {
+  // The off-script nudge splits menu misses by looksConversational: with AI
+  // auto-replies ON a real question goes to the AI; everything else — and
+  // EVERYTHING when the AI is off — gets the nudge, never silence. These pin
+  // which side of that split common inputs land on.
+  it("looksConversational decides nudge vs AI on a menu miss", () => {
     expect(looksConversational("I want to know about courses")).toBe(true);
     expect(looksConversational("???")).toBe(true);
     expect(looksConversational("Data Science and gen ai")).toBe(false);   // a genuine menu attempt
