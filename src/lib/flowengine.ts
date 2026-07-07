@@ -866,9 +866,26 @@ export async function handleFlowMessage(
     const nudgeBack = async (): Promise<boolean> => {
       const aiOn = process.env.LLM_BOT_ENABLED !== "false" && (await isAiEnabled(tid).catch(() => true));
       if (aiOn && looksConversational(text)) return false;   // the AI answers real questions
-      const nudges = Number(session.state?.nudges ?? 0);
       const nudge = await getFlowNudge(tid).catch(() => null);
-      if (!nudge?.enabled || !nudge.variations.length || nudges >= 3) return false;
+      if (!nudge?.enabled || !nudge.variations.length) return false;
+      const nudges = Number(session.state?.nudges ?? 0);
+      if (nudges >= 3) {
+        // Three nudges with no resolution — repeating a 4th, 5th, 6th… time reads
+        // as a bot stuck in a loop (the exact complaint: the same 2-3 variations
+        // cycling forever with the person's actual question never answered).
+        // Hand off to a human instead: one final message, escalate so it surfaces
+        // in Live Chat, and end the session so the NEXT message (from either
+        // side) starts clean rather than re-entering this same dead end.
+        // Send always (matching the regular nudge below — visible in the flow
+        // builder's simulator too); only the DB side-effects need a real convo.
+        await send.text("Connecting you with our team — someone will reply here shortly. 🙌");
+        if (isReal) {
+          await setConversationStatus(convKey, "escalated").catch(() => undefined);
+          await claimReply(convKey).catch(() => undefined);
+        }
+        await endSession(convKey);
+        return true;
+      }
       await send.text(nudge.variations[nudges % nudge.variations.length]);
       await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), nudges: nudges + 1 }, tid);
       if (isReal) await claimReply(convKey).catch(() => undefined);
@@ -1006,9 +1023,10 @@ export async function handleFlowMessage(
       // nudge them back to it (the "Get Started" CTA) BEFORE giving up — this
       // was the production silence: "What course you offer??" under a form CTA
       // marked the form abandoned and returned to an AI that was switched off.
-      // A trigger keyword still restarts its flow (the nudge keeps the session
-      // alive now). Only after the nudges are exhausted (or the AI will answer)
-      // does the old path run: mark abandoned (once) + note it, AI answers.
+      // nudgeBack handles BOTH the nudge and, once exhausted, the hand-off to a
+      // human — the old mark-abandoned-and-let-the-AI-answer path below only
+      // runs when the nudge is switched off entirely, or the AI will genuinely
+      // answer a real question.
       const rewound = await rewind();
       if (rewound !== null) return rewound;
       const restartedWf = await triggerByKeyword(text, convKey, phone, send, isReal, opts, tid);
@@ -1211,9 +1229,13 @@ export async function handleFlowMessage(
 // PREVIOUS nudge). Replying or moving to a new node resets the chain (fresh
 // session state). Legacy single-reminder configs (reminderMinutes +
 // reminderText) are read as a one-step chain.
+// Wording is deliberately neutral ("reply above", not "tap an option above") —
+// this fires on EVERY waiting node type, including ask/waform steps that show
+// no buttons at all, so it must read correctly whether the person is meant to
+// tap, pick from a list, or just type an answer.
 const DEFAULT_REMINDERS: { minutes: number; text: string }[] = [
-  { minutes: 10, text: "Just checking in 👋 Whenever you're ready, tap an option above and we'll pick up right where we left off." },
-  { minutes: 60, text: "We're still here to help! 🙂 Tap an option above to continue — or type \"menu\" to start over." },
+  { minutes: 10, text: "Just checking in 👋 Whenever you're ready, reply above and we'll pick up right where we left off." },
+  { minutes: 60, text: "We're still here to help! 🙂 Reply above to continue — or type \"menu\" to start over." },
 ];
 function reminderSteps(data: Record<string, unknown> | undefined): { minutes: number; text: string }[] {
   const raw = data?.reminders;
