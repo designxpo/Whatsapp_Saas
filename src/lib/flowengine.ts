@@ -970,6 +970,31 @@ export async function handleFlowMessage(
         const rewound = await rewind();
         if (rewound !== null) return rewound;
         const f = wf.fields[wf.i];
+        // Land whatever identity we can infer from the fields answered SO FAR
+        // onto the conversation, a real contact, and LeadSquared. Shared by a
+        // genuine completion (below) AND an early exit (also below) — a name
+        // typed on field 1 must not be silently lost just because the person
+        // later bails on field 2 ("i am not providing you phone number" reads
+        // as chit-chat to looksConversational and used to end the whole
+        // session, taking the already-answered name down with it).
+        const landIdentity = async (ans: Record<string, string>): Promise<void> => {
+          const pick = (re: RegExp) => { for (const [k, v] of Object.entries(ans)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
+          const nameKey = Object.keys(ans).find(k => /name/i.test(k) && !/company|business|brand/i.test(k) && String(ans[k]).trim());
+          const name = nameKey ? String(ans[nameKey]).trim() : undefined;
+          const email = pick(/email/i);
+          const city = pick(/city/i);
+          const phoneDigits = (pick(/phone|mobile|whats?app|contact/i) ?? "").replace(/\D/g, "");
+          const phoneAns = phoneDigits.length >= 10 && phoneDigits.length <= 15 ? phoneDigits : undefined;
+          if (name) await setConversationName(phone, name.slice(0, 120), tid).catch(() => undefined);
+          if (phoneAns) await setConversationLeadPhone(convKey, phoneAns).catch(() => undefined);
+          const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
+          if (realPhone) {
+            await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form", channelTag(send.kind)] }], "chat_form", tid).catch(() => undefined);
+            await updateContactProfile(realPhone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tid).catch(() => undefined);
+            await setContactAttributes(realPhone, ans, tid).catch(() => undefined);
+            void syncLeadProfile({ phone: realPhone, email, city, name }, tid);
+          }
+        };
         // Resolve option menus by number or typed label; validate typed fields
         // exactly like an ask node (2 retries, conversational bail-out to the AI).
         let answer = text.trim().slice(0, 200);
@@ -983,7 +1008,11 @@ export async function handleFlowMessage(
           }
         } else if (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid))) {
           const tries = Number(session.state?.tries ?? 0);
-          if (looksConversational(text) || tries >= 2) { await endSession(convKey); return false; }
+          if (looksConversational(text) || tries >= 2) {
+            if (isReal) { await landIdentity(wf.a ?? {}); await markFormAbandoned(convKey, tid).catch(() => undefined); }
+            await endSession(convKey);
+            return false;
+          }
           await send.text("Hmm, that doesn't look right — could you share a valid answer?");
           await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
           if (isReal) await claimReply(convKey).catch(() => undefined);
@@ -1006,25 +1035,7 @@ export async function handleFlowMessage(
         // them), the Responses view, and LeadSquared.
         if (isReal) {
           await recordFormSubmitted(convKey, phone, answers, tid).catch(() => undefined);
-          const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
-          const nameKey = Object.keys(answers).find(k => /name/i.test(k) && !/company|business|brand/i.test(k) && String(answers[k]).trim());
-          const name = nameKey ? String(answers[nameKey]).trim() : undefined;
-          const email = pick(/email/i);
-          const city = pick(/city/i);
-          const phoneDigits = (pick(/phone|mobile|whats?app|contact/i) ?? "").replace(/\D/g, "");
-          const phoneAns = phoneDigits.length >= 10 && phoneDigits.length <= 15 ? phoneDigits : undefined;
-          // Show who they are instead of "Website visitor" (guarded: never
-          // overwrites a real WhatsApp/IG profile name).
-          if (name) await setConversationName(phone, name.slice(0, 120), tid).catch(() => undefined);
-          if (phoneAns) await setConversationLeadPhone(convKey, phoneAns).catch(() => undefined);
-          // A real phone (answered, or the WhatsApp number itself) → a real contact.
-          const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
-          if (realPhone) {
-            await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form", channelTag(send.kind)] }], "chat_form", tid).catch(() => undefined);
-            await updateContactProfile(realPhone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tid).catch(() => undefined);
-            await setContactAttributes(realPhone, answers, tid).catch(() => undefined);
-            void syncLeadProfile({ phone: realPhone, email, city, name }, tid);
-          }
+          await landIdentity(answers);
         }
         const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
         if (isReal && consumed) await claimReply(convKey).catch(() => undefined);
