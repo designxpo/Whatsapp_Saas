@@ -12,16 +12,23 @@ import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger"
 import { credsFor, getChannel } from "@/lib/channels";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
+import { supportDeskTenantId } from "@/lib/supportdesk";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
+// ?desk=support → operate on the support workspace (owner sessions only hop;
+// everyone else resolves to their own session tenant regardless of the flag).
+function deskTenant(req: Request): Promise<string | null> {
+  return new URL(req.url).searchParams.get("desk") === "support" ? supportDeskTenantId() : currentTenantId();
+}
+
 // GET — one conversation + its full message thread.
-export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const tid = await currentTenantId();
+    const tid = await deskTenant(req);
     if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const conversation = await getConversation(id, tid);
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -43,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const tid = await currentTenantId();
+  const tid = await deskTenant(req);
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const conv = await getConversation(id, tid);
   if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });

@@ -22,7 +22,9 @@ export async function GET() {
   try {
     const row = await ownRow(user.email, user.tenantId);
     return NextResponse.json({
-      user: { email: user.email, name: row?.name || user.name || user.email, title: row?.title ?? "", role: user.role },
+      // editable: the env owner has no wa_users row — the UI shows an info note
+      // instead of a save form (saving would 400 below anyway).
+      user: { email: user.email, name: row?.name || user.name || user.email, title: row?.title ?? "", role: user.role, editable: !!row },
     });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

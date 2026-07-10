@@ -24,7 +24,7 @@ type Ticket = {
   avatarUrl?: string | null; isComment?: boolean;
 };
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; mediaUrl?: string | null; mediaType?: string | null };
-type Profile = { email: string; name: string; title: string; role: "admin" | "member" };
+type Profile = { email: string; name: string; title: string; role: "admin" | "member"; editable?: boolean };
 type Bucket = "unanswered" | "open" | "closed";
 
 const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400";
@@ -95,7 +95,7 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
   const prevCount = useRef(0);
 
   const load = useCallback(() => {
-    fetch(`/api/admin/conversations/${id}`).then(r => r.json())
+    fetch(`/api/admin/conversations/${id}?desk=support`).then(r => r.json())
       .then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); })
       .catch(() => {});
   }, [id]);
@@ -118,7 +118,7 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
   async function act(payload: Record<string, unknown>): Promise<boolean> {
     setBusy(true); setError("");
     try {
-      const res = await fetch(`/api/admin/conversations/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await fetch(`/api/admin/conversations/${id}?desk=support`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error ?? `Failed (HTTP ${res.status})`); return false; }
       load(); onChanged(); return true;
@@ -263,6 +263,13 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
             <p className="text-[11px] text-ink-400 capitalize">{me.role}</p>
           </div>
         </div>
+        {me.editable === false ? (
+          <p className="text-xs text-ink-600 bg-canvas border border-line rounded-control px-3 py-2.5">
+            You&apos;re signed in as the platform owner — this account is managed in the
+            server environment and has no editable Support Desk profile. Team members
+            you add can edit their own name, title and password here.
+          </p>
+        ) : (
         <div className="space-y-2.5">
           <label className="block text-[11px] font-bold text-ink-600">Name
             <input className={`${inp} w-full mt-1`} value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
@@ -274,10 +281,13 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
             <input type="password" className={`${inp} w-full mt-1`} value={password} onChange={e => setPassword(e.target.value)} placeholder="Leave blank to keep current" autoComplete="new-password" />
           </label>
         </div>
+        )}
         {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
+        {me.editable !== false && (
         <button onClick={save} disabled={busy || !name.trim()} className="w-full py-2.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-2">
           {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Save profile
         </button>
+        )}
       </div>
     </div>
   );
@@ -292,7 +302,7 @@ function TeamSheet({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
-    fetch("/api/admin/team").then(r => r.json()).then(d => setMembers(d.users ?? [])).catch(() => setMembers([]));
+    fetch("/api/admin/team?desk=support").then(r => r.json()).then(d => setMembers(d.users ?? [])).catch(() => setMembers([]));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -300,7 +310,7 @@ function TeamSheet({ onClose }: { onClose: () => void }) {
     if (!form.email.trim() || !form.password.trim()) return;
     setBusy(true); setError("");
     try {
-      const res = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch("/api/admin/team?desk=support", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error ?? `Failed (HTTP ${res.status})`); return; }
       setForm({ email: "", name: "", role: "member", password: "" });
@@ -376,7 +386,7 @@ export default function SupportPage() {
   }, [kick]);
 
   const load = useCallback(() => {
-    fetch("/api/admin/conversations")
+    fetch("/api/admin/conversations?desk=support")
       .then(r => { if (r.status === 401) { kick(); throw new Error("unauthorized"); } return r.json(); })
       .then(d => setTickets(((d.conversations ?? []) as Ticket[]).filter(c => !c.isComment)))
       .catch(() => {});

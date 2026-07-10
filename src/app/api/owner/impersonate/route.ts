@@ -24,7 +24,9 @@ export async function POST(req: Request) {
     await ownerAudit(me.email, "impersonate", targetTenant, t.name);
   }
 
-  const token = await createSession({ email: me.email, name: body.reset ? "Owner" : "Owner (support)", role: "admin", tenantId: targetTenant });
+  // Owner sessions must carry the owner epoch — verifySession rejects any other
+  // value, so omitting it here would break impersonation once the epoch is bumped.
+  const token = await createSession({ email: me.email, name: body.reset ? "Owner" : "Owner (support)", role: "admin", tenantId: targetTenant, tokenVersion: Number(process.env.ADMIN_TOKEN_EPOCH ?? "0") || 0 });
   const res = NextResponse.json({ success: true, tenantId: targetTenant });
   res.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
   return res;
