@@ -4,14 +4,16 @@
 // the loader itself — nothing is hardcoded here beyond the site key lookup.
 
 import Script from "next/script";
-import { DEFAULT_TENANT_ID, currentTenantId } from "@/lib/auth";
+import { DEFAULT_TENANT_ID, currentTenantId, currentUser } from "@/lib/auth";
 import { getTenantSetting } from "@/lib/store";
+import { getTenant } from "@/lib/tenants";
+import { signWidgetIdentity } from "@/lib/webchat";
 
 // {siteKey, tenantId} stored on the DEFAULT tenant under "support_widget";
 // tenantId is the support workspace so its own agents don't get the widget.
 interface SupportWidgetSetting { siteKey?: string; tenantId?: string }
 
-async function supportWidgetSrc(): Promise<string | null> {
+async function supportWidget(): Promise<{ src: string; identity: string | null } | null> {
   try {
     const s = await getTenantSetting<SupportWidgetSetting>(DEFAULT_TENANT_ID, "support_widget", {});
     const siteKey = typeof s.siteKey === "string" ? s.siteKey.trim() : "";
@@ -20,18 +22,32 @@ async function supportWidgetSrc(): Promise<string | null> {
     // agents (they'd be chatting with themselves).
     const tid = await currentTenantId();
     if (!tid || tid === s.tenantId) return null;
-    return `/api/widget/${encodeURIComponent(siteKey)}/loader.js`;
+    const src = `/api/widget/${encodeURIComponent(siteKey)}/loader.js`;
+
+    // Signed identity: the desk shows "Workspace · user@email" instead of
+    // "Website visitor". The HMAC keeps external visitors from forging it.
+    let identity: string | null = null;
+    try {
+      const [tenant, user] = await Promise.all([getTenant(tid), currentUser()]);
+      const signed = user && signWidgetIdentity({ tenantId: tid, tenant: tenant?.name || "Unnamed workspace", email: user.email }, siteKey);
+      // </script> can never appear in the inline payload (breaks out of the tag).
+      if (signed) identity = JSON.stringify(signed).replace(/</g, "\\u003c");
+    } catch { /* identity is optional — the widget works without it */ }
+    return { src, identity };
   } catch {
     return null; // widget is strictly best-effort
   }
 }
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const src = await supportWidgetSrc();
+  const w = await supportWidget();
   return (
     <>
       {children}
-      {src && <Script src={src} strategy="lazyOnload" />}
+      {w?.identity && (
+        <Script id="twc-identity" strategy="lazyOnload">{`window.__twcIdentity=${w.identity};`}</Script>
+      )}
+      {w && <Script src={w.src} strategy="lazyOnload" />}
     </>
   );
 }

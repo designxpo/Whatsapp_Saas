@@ -1,12 +1,12 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, landCapturedLead, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, landCapturedLead, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
-import { corsHeaders, originAllowed, webchatConvId } from "@/lib/webchat";
+import { corsHeaders, originAllowed, webchatConvId, verifyWidgetIdentity } from "@/lib/webchat";
 
 const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
 
@@ -32,7 +32,7 @@ export async function OPTIONS(req: Request) {
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   const cors = corsHeaders(origin);
-  let body: { siteKey?: string; visitorId?: string; text?: string; name?: string };
+  let body: { siteKey?: string; visitorId?: string; text?: string; identity?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: cors }); }
 
   const siteKey = (body.siteKey ?? "").trim();
@@ -46,7 +46,20 @@ export async function POST(req: Request) {
 
   const tid = channel.tenantId;
   const id = webchatConvId(visitorId);
-  let conv = await getOrCreateConversation(id, (body.name ?? "").trim() || "Website visitor", channel.id, "webchat", tid);
+  // In-portal support chats carry a server-signed identity (workspace + user) —
+  // the ticket shows "Acme Beauty · owner@acme.com" instead of "Website visitor".
+  // Forged/unsigned payloads verify to null and change nothing; no other caller
+  // input reaches the name (a spoofed name here would read as verified to the
+  // support agent, so only the signed path may set it).
+  const identity = verifyWidgetIdentity(body.identity, siteKey);
+  const visitorName = identity ? `${identity.tenant}${identity.email ? ` · ${identity.email}` : ""}` : "Website visitor";
+  let conv = await getOrCreateConversation(id, visitorName, channel.id, "webchat", tid);
+  // Chats that predate the identity (or captured a casual name) upgrade to the
+  // verified label — force outranks a non-generic existing name on purpose.
+  if (identity && conv.name !== visitorName) {
+    const renamed = await setConversationName(conv.phone, visitorName, tid, { force: true }).catch(() => false);
+    if (renamed) conv = { ...conv, name: visitorName };
+  }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text.slice(0, 4000), source: "inbound", tenantId: tid });
   await touchInbound(conv.id, text.slice(0, 200));
   // Capture a phone the visitor types (web chat is anonymous) so the chat can be

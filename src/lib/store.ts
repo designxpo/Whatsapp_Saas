@@ -1412,14 +1412,17 @@ export async function setConversationLeadPhone(id: string, phone: string): Promi
 // "Website visitor" placeholder, so a real WhatsApp/Instagram profile name is never
 // clobbered. Keyed by the conversation's phone slot, which for web/IG/FB is the
 // opaque visitor id passed to the reply engine. Tenant-scoped.
-export async function setConversationName(phoneKey: string, name: string, tenantId: string): Promise<void> {
+export async function setConversationName(phoneKey: string, name: string, tenantId: string, opts: { force?: boolean } = {}): Promise<boolean> {
   const n = (name || "").trim();
-  if (!n || !phoneKey) return;
+  if (!n || !phoneKey) return false;
   const { data } = await db().from("wa_conversations").select("id, name").eq("tenant_id", tenantId).eq("phone", phoneKey).maybeSingle();
-  if (!data) return;
+  if (!data) return false;
   const cur = ((data.name as string) || "").trim();
-  if (cur && cur.toLowerCase() !== "website visitor") return;   // never overwrite a real name
-  await db().from("wa_conversations").update({ name: n }).eq("id", data.id as string).then(undefined, () => undefined);
+  // Never overwrite a real name — except for a server-verified identity (force),
+  // which outranks a casually captured one.
+  if (!opts.force && cur && cur.toLowerCase() !== "website visitor") return false;
+  const { error } = await db().from("wa_conversations").update({ name: n }).eq("id", data.id as string);
+  return !error;
 }
 
 // A captured phone number lands the lead in Contacts. Web chat / Instagram /
