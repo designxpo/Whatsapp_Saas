@@ -7,6 +7,7 @@ import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
 import { PlatformGlimpse } from "./_components/glimpse";
 import { Hero } from "./_components/hero";
+import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
 
 export default function HomePage() {
@@ -26,6 +27,9 @@ export default function HomePage() {
 
       {/* Business problem → one-platform solution */}
       <ProblemSolution />
+
+      {/* Industry playbooks teaser → /industries */}
+      <IndustryStrip />
 
       <ThreeSteps />
 
