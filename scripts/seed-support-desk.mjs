@@ -188,7 +188,7 @@ async function main() {
     title: "Talko AI Support",
     subtitle: "Typically replies in a few minutes",
     welcome: "Hi! \u{1F44B} Ask us anything about Talko AI — setup, pricing, channels or billing.",
-    position: "left",
+    position: "right",
     iconUrl: "https://talkoai.vercel.app/brand/talko_favicon.svg",
     logoFit: "contain",
   };
