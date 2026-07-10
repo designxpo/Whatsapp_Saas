@@ -444,18 +444,14 @@ describe("Restaurant / food delivery — Spice Route Kitchen on Talko AI", () =>
       expect(tables["wa_flow_sessions"] ?? []).toHaveLength(0);
     });
 
-    it("a first-time caller with no contact row gets the RAW {{name}} placeholder (current behavior)", async () => {
-      // BUG (low): flowengine.ts withVars() returns the sender UNWRAPPED when the
-      // contact lookup is null (`if (!c) return send;`, ~line 391) and fillVars()
-      // itself bails on a null contact (~line 375) — so a brand-new caller (or a
-      // webchat visitor with no contact row) is greeted with the literal
-      // "Hi {{name}}!" even though fillVars' contract says unknown tokens resolve
-      // to "" so a raw placeholder never leaks. Asserting current behavior.
+    it("a first-time caller with no contact row never sees a raw {{name}} placeholder", async () => {
+      // A brand-new caller (or webchat visitor) has no contacts row yet — tokens
+      // still resolve to "" per fillVars' contract instead of leaking literally.
       seedOrderFlow(); // no contacts seeded
-      expect(fillVars("Hi {{name}}!", null)).toBe("Hi {{name}}!");
+      expect(fillVars("Hi {{name}}!", null)).toBe("Hi !");
       const out: SimOutput[] = [];
       await handleFlowMessage("conv-new", "917013331111", "hi", { sender: drySender(out), tenantId: SPICE });
-      expect(out[0].body).toBe("Hi {{name}}! Welcome to Spice Route Kitchen 🍛"); // BUG: raw placeholder reaches the customer
+      expect(out[0].body).toBe("Hi ! Welcome to Spice Route Kitchen 🍛");
     });
   });
 

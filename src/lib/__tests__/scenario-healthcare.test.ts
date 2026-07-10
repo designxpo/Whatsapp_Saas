@@ -427,20 +427,16 @@ describe("Healthcare clinic (Sunrise Family Clinic)", () => {
       expect(Number.isNaN(Date.parse(c.opt_in_at))).toBe(false);
     });
 
-    it("markOptedIn matches EXACT digits only — a local-format import is missed (asymmetric with addOptout)", async () => {
-      // BUG (src/lib/store.ts:195-199): markOptedIn matches `.eq("phone",
-      // digits(phone))` while addOptout deliberately matches by last-10 LIKE
-      // (store.ts:322-327 documents that exact-digit matching "missed it").
-      // Consequence: a patient imported as "9812345678" who messages the clinic
-      // (the webhook calls markOptedIn(from="919812345678", "inbound", …)) never
-      // becomes opted_in, so a genuinely consented patient stays excluded from
-      // reminder broadcasts — while the same identity IS suppressible via STOP.
+    it("markOptedIn matches by last-10 like addOptout — consent lands for a local-format import", async () => {
+      // A patient imported as "9812345678" who messages the clinic (webhook calls
+      // markOptedIn(from="919812345678", …)) must become opted_in — the opt-in
+      // path matches by last-10 LIKE, symmetric with addOptout/isOptedOut.
       h.tables["contacts"] = [
         { id: "c-asha", tenant_id: CLINIC, phone: PATIENT_LOCAL, name: "Asha Rao", status: "active", opted_in: false },
       ];
       await markOptedIn(PATIENT, "inbound", "WhatsApp inbound message", CLINIC);
-      expect(h.tables["contacts"][0].opted_in).toBe(false);   // BUG: current behavior — consent never lands
-      // …yet the STOP path treats the two formats as the same person:
+      expect(h.tables["contacts"][0].opted_in).toBe(true);
+      // …and the STOP path treats the two formats as the same person:
       await addOptout(PATIENT, "inbound STOP", CLINIC);
       expect(h.tables["contacts"][0].status).toBe("optedout");
     });

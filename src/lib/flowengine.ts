@@ -373,7 +373,10 @@ function listSections(d: Record<string, unknown>): ListSection[] {
 // resolve to "" so a raw placeholder never leaks to the customer.
 interface ContactVars { name?: string | null; phone?: string; email?: string | null; attributes?: Record<string, string> }
 export function fillVars(text: string, c: ContactVars | null): string {
-  if (!text || !c || !text.includes("{{")) return text;
+  // A brand-new caller with no contact row still gets tokens stripped — an empty
+  // substitution beats greeting them with a literal "{{name}}".
+  if (!text || !text.includes("{{")) return text;
+  if (!c) c = {};
   return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, raw: string) => {
     const key = raw.trim().toLowerCase();
     if (key === "name" || key === "firstname" || key === "first_name") return (c.name || "").trim().split(/\s+/)[0] || "";
@@ -389,7 +392,6 @@ export function fillVars(text: string, c: ContactVars | null): string {
 // Option/row TITLES are left literal — option-matching reads them from node data,
 // so a filled title could break the tap resolution.
 function withVars(send: FlowSender, c: ContactVars | null): FlowSender {
-  if (!c) return send;
   const f = (s: string) => fillVars(s, c);
   return {
     kind: send.kind,   // keep the channel tag — platform degradations depend on it

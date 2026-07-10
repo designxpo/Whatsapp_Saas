@@ -14,7 +14,7 @@ describe("fillVars", () => {
   it("resolves unknown tokens to empty and leaves plain text untouched", () => {
     expect(fillVars("Hello {{unknown}}", c)).toBe("Hello ");
     expect(fillVars("no placeholders here", c)).toBe("no placeholders here");
-    expect(fillVars("Our {{course}}", null)).toBe("Our {{course}}");           // no contact → unchanged
+    expect(fillVars("Our {{course}}", null)).toBe("Our ");                     // no contact → tokens still stripped
   });
 });
 

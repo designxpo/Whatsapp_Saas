@@ -194,9 +194,11 @@ export async function upsertContacts(
 // website form, manual attestation). Idempotent; only ever upgrades to opted-in.
 export async function markOptedIn(phone: string, source: string, proof: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   try {
+    // Last-10 LIKE, matching addOptout/isOptedOut — an exact-digits .eq misses
+    // contacts imported without a country code when the webhook's `from` has one.
     await db().from("contacts")
       .update({ opted_in: true, opt_in_source: source, opt_in_at: new Date().toISOString(), opt_in_proof: proof })
-      .eq("tenant_id", tenantId).eq("phone", digits(phone));
+      .eq("tenant_id", tenantId).like("phone", `%${last10(phone)}`);
   } catch (e) { logError("store.markOptedIn", e, { tenantId }); }
 }
 
