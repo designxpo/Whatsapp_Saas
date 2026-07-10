@@ -376,16 +376,19 @@ export function fillVars(text: string, c: ContactVars | null): string {
   // A brand-new caller with no contact row still gets tokens stripped — an empty
   // substitution beats greeting them with a literal "{{name}}".
   if (!text || !text.includes("{{")) return text;
-  if (!c) c = {};
+  const cv = c ?? {};
+  const attrs = cv.attributes ?? {};
+  // Collected-attribute lookup, case-insensitive. Reserved tokens fall back to
+  // it when the profile column is empty — an ask node saving attribute "email"
+  // writes only to attributes, and {{email}} must still render what was asked.
+  const attr = (k: string) => { const hit = Object.keys(attrs).find(x => x.toLowerCase() === k); return hit ? String(attrs[hit] ?? "") : ""; };
   return text.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_m, raw: string) => {
     const key = raw.trim().toLowerCase();
-    if (key === "name" || key === "firstname" || key === "first_name") return (c.name || "").trim().split(/\s+/)[0] || "";
-    if (key === "fullname" || key === "full_name") return (c.name || "").trim();
-    if (key === "phone" || key === "mobile") return c.phone || "";
-    if (key === "email") return (c.email || "").trim();
-    const attrs = c.attributes ?? {};
-    const hit = Object.keys(attrs).find(k => k.toLowerCase() === key);
-    return hit ? String(attrs[hit] ?? "") : "";
+    if (key === "name" || key === "firstname" || key === "first_name") return (cv.name || attr("name")).trim().split(/\s+/)[0] || "";
+    if (key === "fullname" || key === "full_name") return (cv.name || attr("name")).trim();
+    if (key === "phone" || key === "mobile") return cv.phone || attr("phone") || attr("mobile");
+    if (key === "email") return (cv.email || attr("email")).trim();
+    return attr(key);
   });
 }
 // Wrap a sender so every customer-facing TEXT/body/caption is variable-filled.
@@ -895,13 +898,20 @@ export async function handleFlowMessage(
     };
 
     if (waiting.type === "ask") {
-      // An old menu tap takes priority over treating it as the answer.
-      const rewound = await rewind();
-      if (rewound !== null) return rewound;
-      // Validate the answer if the node requires it.
       const vtype = str(waiting.data.validate);
+      const hasRule = !!vtype && vtype !== "none";
+      const valid = !hasRule || (await validateInput(vtype, text, tid));
+      // An old menu tap takes priority over a reply this ask can't use — but a
+      // reply that passes the node's validation IS the answer. Rewinding first
+      // hijacked digit answers to a number-validated ask ("2" travellers) as a
+      // pick on the previous menu (matchOption maps any 1..N digit to an option),
+      // so the answer could never be captured.
+      if (!(hasRule && valid)) {
+        const rewound = await rewind();
+        if (rewound !== null) return rewound;
+      }
       const tries = Number((session.state as Record<string, unknown>)?.tries ?? 0);
-      if (vtype && vtype !== "none" && !(await validateInput(vtype, text, tid))) {
+      if (!valid) {
         // The reply isn't a valid answer. If the user is clearly asking/chatting
         // rather than botching the field, or they've already missed twice, stop
         // nagging — end the flow and let the AI handle the conversation (don't
@@ -918,6 +928,11 @@ export async function handleFlowMessage(
       if (isReal && attr) {
         await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
+        // Promote a captured email onto the contact profile too (the chat-form
+        // path already does) so the Contacts list shows it, not just attributes.
+        if (/email/i.test(attr) && /^\S+@\S+\.\S+$/.test(text.trim())) {
+          await updateContactProfile(phone, { email: text.trim() }, tid).catch(() => undefined);
+        }
         // Land identity on the conversation too: a name answer replaces the
         // "Website visitor" placeholder; a phone answer becomes the CRM match key.
         if (/name/i.test(attr) && !/company|business|brand/i.test(attr)) {

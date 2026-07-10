@@ -421,14 +421,11 @@ describe("Travel agency (Wanderly Trips)", () => {
       expect(h.tables["wa_flow_sessions"] ?? []).toHaveLength(0);
     });
 
-    it("BUG: a digit answer 1..N to a number-validated ask is hijacked by the old-menu rewind instead of stored", async () => {
-      // BUG (documenting CURRENT behavior): src/lib/flowengine.ts:895-898 runs
-      // the old-menu rewind BEFORE ask validation, and matchOption's numeric
-      // branch (src/lib/flowengine.ts:730-733) treats any digit ≤ the menu size
-      // as a menu pick. So on "How many travellers?" (a number-validated ask
-      // that follows a 3-option menu), replying "2" re-runs menu option 2's
-      // branch (Dubai) — the travellers count "2" can NEVER be captured, and the
-      // saveAs capture is skipped too, silently corrupting the qualification.
+    it("a digit answer 1..N to a number-validated ask is stored as the answer, never hijacked by the old-menu rewind", async () => {
+      // "How many travellers?" (number-validated) follows a 3-option menu, and
+      // matchOption maps any digit ≤ the menu size to a pick — but a reply that
+      // passes the waiting ask's validation IS the answer, so the rewind must
+      // not steal it. Replying "2" stores travellers=2 and the flow advances.
       seedTripFlow();
       const contact = liveContact();
       contact.attributes = { destination: "Bali" };
@@ -438,13 +435,10 @@ describe("Travel agency (Wanderly Trips)", () => {
       }];
 
       expect(await handleFlowMessage(CONV, TRAVELLER_PHONE, "2", { tenantId: WANDERLY })).toBe(true);
-      // "2" was consumed as the Dubai menu pick, NOT as the travellers answer…
-      expect(h.store.setContactAttributes).not.toHaveBeenCalled();
-      // …so the flow just re-asks the same question (Dubai's branch also lands
-      // on ask_pax) and the traveller is stuck in a loop.
+      expect(h.store.setContactAttributes).toHaveBeenCalledWith(TRAVELLER_PHONE, { travellers: "2" }, WANDERLY);
       expect(h.wa.sendText.mock.calls.map(c => c[1]).at(-1))
-        .toBe("Lovely, Priya — Bali it is! How many travellers should I plan for?");
-      expect(h.tables["wa_flow_sessions"][0]).toMatchObject({ current_node: "ask_pax", state: { menu: "menu" } });
+        .toBe("And which month are you planning the Bali trip for?");
+      expect(h.tables["wa_flow_sessions"][0]).toMatchObject({ current_node: "ask_month" });
     });
 
     it("fillVars personalizes from the contact and never leaks raw {{tokens}} (pure)", () => {

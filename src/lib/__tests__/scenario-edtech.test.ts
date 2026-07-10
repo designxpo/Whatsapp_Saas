@@ -350,13 +350,11 @@ describe("EdTech (course academy)", () => {
       expect(h.store.setContactAttributes).toHaveBeenCalledWith(LEAD_PHONE, { email: "priya.sharma@gmail.com" }, ACADEMY);
       expect(h.syncLeadProfile).toHaveBeenCalledWith(
         { phone: LEAD_PHONE, email: "priya.sharma@gmail.com", city: undefined, name: "Priya Sharma" }, ACADEMY);
-      // {{name}} → first name, {{course}} → the captured attribute.
-      // BUG (flowengine.ts:381 + :881): the freshly captured "email" ATTRIBUTE is
-      // shadowed by the reserved {{email}} token, which reads only the contact
-      // PROFILE email column — never written by the ask capture — so the wrap-up
-      // renders an empty string where the email should be.
+      // {{name}} → first name, {{course}} → the captured attribute, and the
+      // reserved {{email}} token falls back to the just-captured attribute
+      // (the profile email column is still empty at this point in the run).
       expect(h.wa.sendText.mock.calls.map(c => c[1]).at(-1))
-        .toBe("Thanks Priya! Your Data Science & GenAI brochure is on its way to .");
+        .toBe("Thanks Priya! Your Data Science & GenAI brochure is on its way to priya.sharma@gmail.com.");
       // The end node closed the session…
       expect(h.tables["wa_flow_sessions"] ?? []).toHaveLength(0);
       // …so the next off-script message falls through to the AI.
@@ -383,10 +381,9 @@ describe("EdTech (course academy)", () => {
         .toBe("Hi Priya, your Data Science & GenAI seat is reserved.");     // first name + case-insensitive attr
       expect(fillVars("Batch code {{batch_code}} starts soon", c))
         .toBe("Batch code  starts soon");                                    // unknown → "", never a raw token
-      // BUG (flowengine.ts:381): the reserved {{email}} token reads ONLY the
-      // profile email column; a flow-captured "email" ATTRIBUTE is shadowed and
-      // renders empty even though it sits right there in c.attributes.
-      expect(fillVars("Brochure sent to {{email}}", c)).toBe("Brochure sent to ");
+      // The reserved {{email}} token prefers the profile email column but falls
+      // back to a flow-captured "email" attribute when the column is empty.
+      expect(fillVars("Brochure sent to {{email}}", c)).toBe("Brochure sent to priya.sharma@gmail.com");
     });
 
     it("flows run only on the channel kinds they target", () => {
