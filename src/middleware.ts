@@ -53,9 +53,12 @@ export async function middleware(req: NextRequest) {
 
   const isAdminApi = pathname.startsWith("/api/admin") && pathname !== "/api/admin/login";
   const isOwnerApi = pathname.startsWith("/api/owner");
+  // Support Desk APIs are cookie-authenticated too (profile/password updates) —
+  // they need the same CSRF + auth gate as the admin APIs.
+  const isSupportApi = pathname.startsWith("/api/support");
 
   // Cookie-authenticated APIs → CSRF check, then auth gate (401 JSON).
-  if (isAdminApi || isOwnerApi) {
+  if (isAdminApi || isOwnerApi || isSupportApi) {
     if (csrfBlocked(req)) return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
     if (!ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     return NextResponse.next();
@@ -75,10 +78,13 @@ export async function middleware(req: NextRequest) {
 
   // Admin pages → must be authenticated, and must never be cached so Back/Forward
   // can't resurface the dashboard after the session ends.
-  if (pathname.startsWith("/admin")) {
+  if (pathname.startsWith("/admin") || pathname.startsWith("/support")) {
     if (!ok) {
       const url = req.nextUrl.clone();
       url.pathname = "/login";
+      // Preserve the destination so login can land the user back where they
+      // were heading (the login page only honors same-origin relative paths).
+      url.search = pathname !== "/admin" ? `?next=${encodeURIComponent(pathname)}` : "";
       return noStore(NextResponse.redirect(url));
     }
     return noStore(NextResponse.next());
@@ -86,4 +92,4 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/admin/:path*", "/login", "/api/admin/:path*", "/api/owner/:path*"] };
+export const config = { matcher: ["/admin/:path*", "/support/:path*", "/login", "/api/admin/:path*", "/api/owner/:path*", "/api/support/:path*"] };

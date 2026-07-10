@@ -1,12 +1,17 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  // Optional post-login destination (?next=/support). Same-origin relative
+  // paths only — anything else (external URLs, "//host") falls back to /admin.
+  const rawNext = useSearchParams().get("next") ?? "";
+  // /^\/(?![/\\])/ rejects "//host" AND "/\\host" (URL parsers fold \ into /).
+  const next = /^\/(?![/\\])/.test(rawNext) ? rawNext : "/admin";
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +23,7 @@ export default function LoginPage() {
     try {
       const res = await fetch("/api/admin/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user, password }) });
       if (!res.ok) { const d = await res.json().catch(() => ({})); setError(d.error || "Login failed"); return; }
-      router.push("/admin");
+      router.push(next);
       router.refresh();
     } catch { setError("Connection error"); }
     finally { setLoading(false); }
@@ -47,5 +52,14 @@ export default function LoginPage() {
         <p className="text-center text-xs text-ink-400">Don&apos;t have an account? <a href="/signup" className="font-semibold text-brand-700 hover:underline">Start free trial</a></p>
       </form>
     </main>
+  );
+}
+
+// useSearchParams (for ?next=) must sit inside a Suspense boundary in Next 15.
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

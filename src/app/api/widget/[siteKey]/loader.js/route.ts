@@ -25,7 +25,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
     subtitle: wc.subtitle || "Typically replies instantly",
     welcome: wc.welcome || "",
     position: wc.position === "left" ? "left" : "right",
-    icon: wc.iconUrl || "",
+    // Escaped defensively — it is concatenated into <img src="..."> markup.
+    icon: (wc.iconUrl || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     logoFit: wc.logoFit === "contain" ? "contain" : "cover",
     // Launcher offsets (px) — null = the built-in defaults. Lets a site nudge the
     // bubble clear of its own floating buttons (scroll-to-top, call widgets…).

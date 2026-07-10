@@ -298,9 +298,10 @@ export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): Webch
   if (welcome) out.welcome = welcome.slice(0, 300);
   if (c?.position === "left") out.position = "left";
   // Custom launcher icon: must be an https URL (it becomes an <img src> in the
-  // loader). Reject anything else so the embed can't be coerced into a bad src.
+  // loader). \S would still admit quote/angle chars that could break out of the
+  // concatenated img markup — forbid attribute-breaking characters explicitly.
   const iconUrl = (c?.iconUrl ?? "").trim();
-  if (/^https:\/\/\S+$/i.test(iconUrl) && iconUrl.length <= 600) out.iconUrl = iconUrl;
+  if (/^https:\/\/[^\s"'<>\\]+$/i.test(iconUrl) && iconUrl.length <= 600) out.iconUrl = iconUrl;
   const subtitle = (c?.subtitle ?? "").trim();
   if (subtitle) out.subtitle = subtitle.slice(0, 60);
   if (c?.logoFit === "contain") out.logoFit = "contain";
