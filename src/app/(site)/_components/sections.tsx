@@ -151,7 +151,7 @@ export function IntegrationsStrip() {
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Channels, AI, CRM, payments, e-commerce, scheduling and automation — all in one place.</p>
         <Marquee durationSec={30} gapClass="gap-x-12" className="mt-8 py-2">
-          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
+          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} wordmark={i.wordmark} />)}
         </Marquee>
         </div>
       </div>
@@ -174,7 +174,7 @@ export function IntegrationsGrid() {
             <h3 className="text-sm font-extrabold text-slate-900">{cat.title}</h3>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">{cat.blurb}</p>
             <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-5">
-              {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} />)}
+              {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} wordmark={i.wordmark} />)}
             </div>
           </div>
           </Reveal>

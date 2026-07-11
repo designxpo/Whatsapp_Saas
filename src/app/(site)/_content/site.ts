@@ -341,32 +341,46 @@ export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 // src = explicit logo URL (e.g. an official SVG in /public/brand); slug = Simple
 // Icons id; iconify = Iconify "logos" id (for brands Simple Icons dropped, e.g.
 // Slack/Teams/Pipedrive); none → the name renders as a wordmark.
-export type IntegrationBrand = { name: string; slug?: string; iconify?: string; src?: string };
+export type IntegrationBrand = { name: string; slug?: string; iconify?: string; src?: string; wordmark?: boolean };
 export type IntegrationCategory = { title: string; blurb: string; items: IntegrationBrand[] };
 
+// Every logo is self-hosted in /public/brand/logos so ad-blockers (which
+// commonly block icon CDNs) can never degrade the wall to plain text. slug /
+// iconify remain as network fallbacks only.
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   { title: "Channels", blurb: "Meet customers where they already are.", items: [
-    { name: "WhatsApp", slug: "whatsapp" }, { name: "Instagram", slug: "instagram" },
-    { name: "Messenger", slug: "messenger" }, { name: "Website web chat" },
+    { name: "WhatsApp", src: "/brand/logos/whatsapp.svg", slug: "whatsapp" },
+    { name: "Instagram", src: "/brand/logos/instagram.svg", slug: "instagram" },
+    { name: "Messenger", src: "/brand/logos/messenger.svg", slug: "messenger" },
+    { name: "Website web chat", src: "/brand/talko_favicon.svg" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
-    { name: "Gemini", slug: "googlegemini" }, { name: "OpenAI", slug: "openai" }, { name: "Anthropic", slug: "anthropic" },
+    { name: "Gemini", src: "/brand/logos/googlegemini.svg", slug: "googlegemini" },
+    { name: "OpenAI", src: "/brand/logos/openai.svg", iconify: "logos:openai-icon" },
+    { name: "Anthropic", src: "/brand/logos/anthropic.svg", slug: "anthropic" },
   ] },
   { title: "CRM", blurb: "New leads sync to whichever CRM you already use.", items: [
-    { name: "HubSpot", slug: "hubspot" }, { name: "LeadSquared" }, { name: "Pipedrive", iconify: "logos:pipedrive" },
+    { name: "HubSpot", src: "/brand/logos/hubspot.svg", slug: "hubspot" },
+    { name: "LeadSquared", src: "/brand/logos/leadsquared.png" },
+    { name: "Pipedrive", src: "/brand/logos/pipedrive.svg", iconify: "logos:pipedrive", wordmark: true },
   ] },
   { title: "Payments", blurb: "Send a pay link and get paid inside the chat.", items: [
-    { name: "Razorpay", slug: "razorpay" }, { name: "Stripe", slug: "stripe" },
+    { name: "Razorpay", src: "/brand/logos/razorpay.svg", slug: "razorpay" },
+    { name: "Stripe", src: "/brand/logos/stripe.svg", slug: "stripe" },
   ] },
   { title: "E-commerce", blurb: "Import your product catalog in one click.", items: [
-    { name: "Shopify", slug: "shopify" }, { name: "WooCommerce", slug: "woocommerce" },
+    { name: "Shopify", src: "/brand/logos/shopify.svg", slug: "shopify" },
+    { name: "WooCommerce", src: "/brand/logos/woocommerce.svg", slug: "woocommerce" },
   ] },
   { title: "Scheduling", blurb: "Customers book a meeting without leaving chat.", items: [
-    { name: "Cal.com", slug: "caldotcom" },
+    { name: "Cal.com", src: "/brand/logos/caldotcom.svg", slug: "caldotcom" },
   ] },
   { title: "Automation & alerts", blurb: "Pipe events into 5,000+ apps and your team's tools.", items: [
-    { name: "Zapier", slug: "zapier" }, { name: "Make", slug: "make" }, { name: "n8n", slug: "n8n" },
-    { name: "Slack", iconify: "logos:slack-icon" }, { name: "Microsoft Teams", iconify: "logos:microsoft-teams" },
+    { name: "Zapier", src: "/brand/logos/zapier.svg", slug: "zapier" },
+    { name: "Make", src: "/brand/logos/make.svg", slug: "make" },
+    { name: "n8n", src: "/brand/logos/n8n.svg", slug: "n8n" },
+    { name: "Slack", src: "/brand/logos/slack.svg", iconify: "logos:slack-icon" },
+    { name: "Microsoft Teams", src: "/brand/logos/msteams.svg", iconify: "logos:microsoft-teams" },
   ] },
 ];
 
