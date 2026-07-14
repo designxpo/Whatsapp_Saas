@@ -11,9 +11,15 @@ type ContactRow = { id: string; phone: string; name: string; email: string | nul
 
 // ── Advanced filters (AiSensy-style) ──
 type AttrFilter = { key: string; op: "is" | "is_not" | "contains"; value: string };
-type AdvFilters = { seenFrom: string; seenTo: string; createdFrom: string; createdTo: string; attrs: AttrFilter[] };
-const EMPTY_ADV: AdvFilters = { seenFrom: "", seenTo: "", createdFrom: "", createdTo: "", attrs: [] };
-const advActive = (a: AdvFilters) => !!(a.seenFrom || a.seenTo || a.createdFrom || a.createdTo || a.attrs.some(x => x.key.trim()));
+type AdvFilters = { seenFrom: string; seenTo: string; createdFrom: string; createdTo: string; source: string; attrs: AttrFilter[] };
+const EMPTY_ADV: AdvFilters = { seenFrom: "", seenTo: "", createdFrom: "", createdTo: "", source: "", attrs: [] };
+const advActive = (a: AdvFilters) => !!(a.seenFrom || a.seenTo || a.createdFrom || a.createdTo || a.source || a.attrs.some(x => x.key.trim()));
+// Every value the code writes to contacts.source — where the lead came from.
+const LEAD_SOURCES: [string, string][] = [
+  ["inbound", "WhatsApp inbound"], ["chat_form", "Chat form"], ["web_chat", "Web chat"],
+  ["instagram", "Instagram"], ["messenger", "Facebook"], ["meta_lead_ad", "Meta lead ad"],
+  ["import", "CSV import"], ["crm", "CRM"],
+];
 
 // ── CSV upload + auto column mapping ──
 type ImportRow = { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> };
@@ -125,6 +131,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
     if (applied.createdTo) params.set("createdTo", applied.createdTo);
     if (applied.seenFrom) params.set("seenFrom", applied.seenFrom);
     if (applied.seenTo) params.set("seenTo", applied.seenTo);
+    if (applied.source) params.set("source", applied.source);
     const attrs = applied.attrs.filter(a => a.key.trim());
     if (attrs.length) params.set("attrs", JSON.stringify(attrs));
     fetch(`/api/admin/contacts?${params}`).then(r => r.json()).then(d => { setContacts(d.contacts ?? []); setTotal(d.total ?? 0); }).catch(() => {});
@@ -249,6 +256,19 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <button className={chip} onClick={() => setAdvField({ seenFrom: isoStartOf("month"), seenTo: "" })}>This Month</button>
                 <input type="date" className={inp} value={dateVal(adv.seenFrom)} onChange={e => setAdvField({ seenFrom: e.target.value })} />
                 <input type="date" className={inp} value={dateVal(adv.seenTo)} onChange={e => setAdvField({ seenTo: endOfDay(e.target.value) })} />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-slate-500 mb-1.5 flex items-center gap-2">
+                Lead Source
+                {adv.source && <button onClick={() => setAdvField({ source: "" })} className="text-slate-300 hover:text-red-500"><X className="w-3.5 h-3.5" /></button>}
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                {LEAD_SOURCES.map(([v, label]) => (
+                  <button key={v} onClick={() => setAdvField({ source: adv.source === v ? "" : v })}
+                    className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold ${adv.source === v ? "border-brand-dark text-brand-dark bg-brand-50" : "border-line text-slate-500 hover:bg-slate-50"}`}>{label}</button>
+                ))}
               </div>
             </div>
 

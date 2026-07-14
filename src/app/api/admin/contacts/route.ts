@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const { data, total } = await listContacts({
       tag, search, offset, limit, attrs, tenantId: tid,
+      source: url.searchParams.get("source"),
       createdFrom: url.searchParams.get("createdFrom"),
       createdTo: url.searchParams.get("createdTo"),
       seenFrom: url.searchParams.get("seenFrom"),

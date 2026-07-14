@@ -206,6 +206,7 @@ export interface ContactAttrFilter { key: string; op: "is" | "is_not" | "contain
 
 export async function listContacts(opts: {
   tag?: string | null; search?: string | null; limit?: number; offset?: number;
+  source?: string | null;                               // lead source (contacts.source)
   createdFrom?: string | null; createdTo?: string | null;
   seenFrom?: string | null; seenTo?: string | null;     // last inbound message window
   attrs?: ContactAttrFilter[]; tenantId?: string;
@@ -213,6 +214,7 @@ export async function listContacts(opts: {
   const tid = opts.tenantId ?? DEFAULT_TENANT_ID;
   let q = db().from("contacts").select("*", { count: "exact" }).eq("tenant_id", tid).order("created_at", { ascending: false });
   if (opts.tag) q = q.contains("tags", [opts.tag]);
+  if (opts.source) q = q.eq("source", opts.source);
   if (opts.search) {
     // Escape LIKE wildcards and neutralize .or() grammar so a search for "%" or
     // "a,b" can't bypass the filter or inject extra conditions (filter bypass).
