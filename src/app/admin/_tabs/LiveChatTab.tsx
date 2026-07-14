@@ -5,7 +5,7 @@
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
-import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo } from "../_shared";
+import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; mediaUrl?: string | null; mediaType?: string | null };
@@ -33,6 +33,10 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
   const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger" | "webchat">("all");
+  // Narrow further to ONE number/account/Page of the selected platform — only
+  // shown when that platform has 2+ connected channels.
+  const [channelFilter, setChannelFilter] = useState<string | null>(null);
+  const channelList = useChannelList();
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
@@ -51,8 +55,8 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   // Opening a specific person clears any filter so their chat can't be hidden.
   useEffect(() => {
     if (!intent) return;
-    if (intent.openPhone) { setPendingPhone(intent.openPhone); setView("chats"); setPlatform("all"); setFilter("all"); }
-    else { if (intent.view) setView(intent.view); if (intent.platform) setPlatform(intent.platform); if (intent.filter) setFilter(intent.filter); }
+    if (intent.openPhone) { setPendingPhone(intent.openPhone); setView("chats"); setPlatform("all"); setChannelFilter(null); setFilter("all"); }
+    else { if (intent.view) setView(intent.view); if (intent.platform) { setPlatform(intent.platform); setChannelFilter(null); } if (intent.filter) setFilter(intent.filter); }
     clearIntent();
   }, [intent, clearIntent]);
 
@@ -73,8 +77,10 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const inView = convos.filter(c => view === "comments" ? !!c.isComment : !c.isComment);
   const visible = inView
     .filter(c => platform === "all" ? true : onPlatform(c, platform))
+    .filter(c => !channelFilter || c.channelId === channelFilter)
     .filter(c => filter === "all" ? true : filter === "needs_reply" ? !!c.needsReply : filter === "escalated" ? c.status === "escalated" : !c.botEnabled)
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
+  const platformChannels = platform === "all" ? [] : channelList.filter(c => (c.kind ?? "whatsapp") === platform);
   const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
   const igCount = inView.filter(c => onPlatform(c, "instagram")).length;
   const fbCount = inView.filter(c => onPlatform(c, "messenger")).length;
@@ -121,7 +127,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               ["messenger", "Facebook", fbCount],
               ["webchat", "Web chat", wcCount],
             ] as const).map(([k, label, n]) => (
-              <button key={k} onClick={() => setPlatform(k)} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
+              <button key={k} onClick={() => { setPlatform(k); setChannelFilter(null); }} className={`flex-1 min-w-[68px] px-2 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
                 {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" />}
                 {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" />}
                 {k === "messenger" && <Facebook className="w-3 h-3 text-blue-600" />}
@@ -130,6 +136,15 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               </button>
             ))}
           </div>
+          )}
+          {/* Which specific number/account/Page — appears once a platform with
+              2+ connected channels is selected ("which number is this on?"). */}
+          {platformChannels.length > 1 && (
+            <select className={`${inp} w-full !py-1.5 text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}
+              title={platform === "instagram" ? "Filter by Instagram account" : platform === "messenger" ? "Filter by Facebook Page" : platform === "webchat" ? "Filter by web-chat site" : "Filter by WhatsApp number"}>
+              <option value="">{platform === "instagram" ? "All accounts" : platform === "messenger" ? "All Pages" : platform === "webchat" ? "All sites" : "All numbers"}</option>
+              {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           )}
           <div className="flex gap-1 flex-wrap">
             {([["all", "All"], ["needs_reply", "Needs reply"], ["escalated", "Escalated"], ["bot_off", "Human"]] as const).map(([k, label]) => (
@@ -405,6 +420,9 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               {conv && <p className="font-mono text-[11px] text-ink-400 leading-tight">{conv.phone}</p>}
             </div>
             {conv && <span className={statusBadge(conv.status)}>{conv.status}</span>}
+            {/* Which number/account/Page this chat lives on — replies always
+                leave from it, so the agent should see it at a glance. */}
+            {conv?.channelId && <ChannelNameBadge channelId={conv.channelId} />}
           </div>
           {conv && (
             <div className="flex items-center gap-2 shrink-0 text-xs">

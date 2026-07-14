@@ -296,7 +296,7 @@ function SequencesTab() {
           <div className="flex-1 min-w-0 space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Sequence name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <select className={inp} value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value as SeqDraft["platform"] })}>
+            <select className={inp} value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value as SeqDraft["platform"], channelId: null })}>
               <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
             </select>
             <select className={inp} value={form.triggerKind} onChange={e => setForm({ ...form, triggerKind: e.target.value })}>
@@ -305,7 +305,7 @@ function SequencesTab() {
             <input className={inp} placeholder="Trigger value (keyword / tag / ref id)" value={form.triggerValue} onChange={e => setForm({ ...form, triggerValue: e.target.value })} />
           </div>
           <div className="flex items-center gap-3">
-            <ChannelSelect value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel="Channel: default" className={`${inp} !py-1.5 text-xs`} />
+            <ChannelSelect kind={form.platform} value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel={form.platform === "instagram" ? "Account: default" : "Number: default"} className={`${inp} !py-1.5 text-xs`} />
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
           </div>
 

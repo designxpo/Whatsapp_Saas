@@ -58,16 +58,28 @@ export function useChannelList() {
   useEffect(() => { loadChannelList().then(setChannels); }, []);
   return channels;
 }
-// Number picker — renders nothing in single-number (env) mode.
-export function ChannelSelect({ value, onChange, allLabel, className }: { value: string | null; onChange: (v: string | null) => void; allLabel?: string; className?: string }) {
-  const channels = useChannelList();
+// Channel picker — renders nothing when no channel of that kind exists (e.g.
+// single-number env mode). `kind` scopes the options so an Instagram sequence
+// lists IG accounts, not WhatsApp numbers (default stays "whatsapp" for the
+// WA-only surfaces: broadcasts, templates, forms, API rules).
+export function ChannelSelect({ value, onChange, allLabel, className, kind = "whatsapp" }: { value: string | null; onChange: (v: string | null) => void; allLabel?: string; className?: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" }) {
+  const channels = useChannelList().filter(c => (c.kind ?? "whatsapp") === kind);
   if (!channels.length) return null;
   return (
-    <select className={className ?? inp} value={value ?? ""} onChange={e => onChange(e.target.value || null)} title="WhatsApp number">
+    <select className={className ?? inp} value={value ?? ""} onChange={e => onChange(e.target.value || null)} title={kind === "instagram" ? "Instagram account" : kind === "messenger" ? "Facebook Page" : kind === "webchat" ? "Web-chat site" : "WhatsApp number"}>
       <option value="">{allLabel ?? "Default number"}</option>
       {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
     </select>
   );
+}
+
+// Small pill naming the channel a conversation lives on (Live Chat header).
+// Renders nothing while the list loads or if the channel row is gone.
+export function ChannelNameBadge({ channelId }: { channelId: string }) {
+  const channels = useChannelList();
+  const c = channels.find(x => x.id === channelId);
+  if (!c) return null;
+  return <span className="shrink-0 px-2 py-0.5 rounded-full bg-canvas border border-line text-[10px] font-bold text-ink-500" title="This chat's number/account — replies go out from it">{c.name}</span>;
 }
 
 // ── Shared conversation type (live chat / analytics / contacts) ──────────────
