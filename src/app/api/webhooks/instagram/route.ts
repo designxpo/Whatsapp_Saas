@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
-import { getChannelByIgId, type Channel } from "@/lib/channels";
+import { getChannelByIgId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
@@ -214,7 +214,9 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const history = await getConvHistory(conv.id, 20);
   // On DMs where we still have no phone for this IG lead, let the AI ask for it once.
   const askPhone = !commentId && !conv.leadPhone;
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, askPhone);
+  // Conversation pin / flow-stamped KB tag → this IG account's persona +
+  // allocated KB → tenant-global (used to hardcode a null KB scope).
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), askPhone);
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;

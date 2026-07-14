@@ -9,7 +9,7 @@ import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
-import { credsFor, getChannel } from "@/lib/channels";
+import { credsFor, getChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
 import { currentUser, currentTenantId } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
@@ -62,7 +62,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // grounded to offer (the UI then tells the agent to type their own).
     if (body.action === "suggest") {
       const history = await getConvHistory(id, 20, tid);
-      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, conv.agentId, tid, conv.primaryKbTag);
+      // Same resolution as the live bot (conversation pin → channel default →
+      // tenant-global) so the draft matches what the bot itself would have said.
+      const suggestCh = conv.channelId ? await getChannel(conv.channelId, tid) : null;
+      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, suggestCh), tid, effectiveKbTag(conv, suggestCh));
       return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
     }
     if (body.action === "reply") {

@@ -39,6 +39,7 @@ export interface Channel extends ChannelCreds {
   igUserId: string | null;    // IG professional account id (Messaging API), null for WA
   pageId: string | null;      // connected Facebook Page id (IG)
   agentId: string | null;     // default AI persona for conversations on this number
+  kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   active: boolean;
   isDefault: boolean;
   createdAt: string;
@@ -81,6 +82,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     pageId: (r.page_id as string | null) ?? null,
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
+    kbTag: (r.kb_tag as string | null) ?? null,
     active: (r.active as boolean) ?? true,
     isDefault: (r.is_default as boolean) ?? false,
     createdAt: r.created_at as string,
@@ -207,6 +209,26 @@ export async function credsFor(ref?: string | Channel | null, tenantId?: string)
   return c ?? undefined;
 }
 
+// ── Per-channel AI allocation ─────────────────────────────────────────────────
+// One resolution chain for every reply pipeline (WhatsApp, IG, Messenger, web
+// chat): the conversation's own override wins (a flow-stamped KB tag / a pinned
+// agent), then the channel's default, then the tenant's global (null → whole
+// tenant KB / the tenant's active agent). Pure so the precedence is
+// unit-testable without a database.
+export function effectiveAgentId(
+  conv: { agentId?: string | null } | null | undefined,
+  channel?: { agentId?: string | null } | null,
+): string | null {
+  return conv?.agentId ?? channel?.agentId ?? null;
+}
+
+export function effectiveKbTag(
+  conv: { primaryKbTag?: string | null } | null | undefined,
+  channel?: { kbTag?: string | null } | null,
+): string | null {
+  return conv?.primaryKbTag ?? channel?.kbTag ?? null;
+}
+
 export async function saveChannel(input: Partial<Channel> & { name: string; phoneId: string; wabaId: string; token: string; tenantId?: string }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -217,6 +239,11 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     access_token: encryptSecret(input.token.trim()),   // encrypted at rest
     app_id: input.appId?.trim() || null,
     agent_id: input.agentId || null,
+    // Only written when the caller sends it (widgetConfig precedent): callers
+    // that predate the kb_tag column (embedded-signup onboarding, older UIs)
+    // must keep saving even before the migration is applied — an unconditional
+    // write would 500 every channel save with PGRST204 until then.
+    ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
@@ -234,7 +261,7 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
 // Token is encrypted at rest and the row is scoped to the tenant.
 export async function saveInstagramChannel(input: {
   id?: string; tenantId?: string; name: string; igUserId: string; pageId?: string | null;
-  token: string; agentId?: string | null; active?: boolean; isDefault?: boolean;
+  token: string; agentId?: string | null; kbTag?: string | null; active?: boolean; isDefault?: boolean;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -245,6 +272,11 @@ export async function saveInstagramChannel(input: {
     page_id: input.pageId?.trim() || null,
     access_token: encryptSecret(input.token.trim()),
     agent_id: input.agentId || null,
+    // Only written when the caller sends it (widgetConfig precedent): callers
+    // that predate the kb_tag column (embedded-signup onboarding, older UIs)
+    // must keep saving even before the migration is applied — an unconditional
+    // write would 500 every channel save with PGRST204 until then.
+    ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
@@ -261,7 +293,7 @@ export async function saveInstagramChannel(input: {
 // Token is encrypted at rest and the row is tenant-scoped.
 export async function saveMessengerChannel(input: {
   id?: string; tenantId?: string; name: string; pageId: string;
-  token: string; agentId?: string | null; active?: boolean; isDefault?: boolean;
+  token: string; agentId?: string | null; kbTag?: string | null; active?: boolean; isDefault?: boolean;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -271,6 +303,11 @@ export async function saveMessengerChannel(input: {
     page_id: input.pageId.trim(),
     access_token: encryptSecret(input.token.trim()),
     agent_id: input.agentId || null,
+    // Only written when the caller sends it (widgetConfig precedent): callers
+    // that predate the kb_tag column (embedded-signup onboarding, older UIs)
+    // must keep saving even before the migration is applied — an unconditional
+    // write would 500 every channel save with PGRST204 until then.
+    ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
@@ -314,7 +351,7 @@ export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): Webch
 
 export async function saveWebchatChannel(input: {
   id?: string; tenantId?: string; name: string; allowedOrigins?: string[];
-  agentId?: string | null; active?: boolean; widgetConfig?: WebchatConfig;
+  agentId?: string | null; kbTag?: string | null; active?: boolean; widgetConfig?: WebchatConfig;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const origins = (input.allowedOrigins ?? []).map(o => o.trim().replace(/\/$/, "")).filter(Boolean);
@@ -328,6 +365,11 @@ export async function saveWebchatChannel(input: {
     access_token: "",
     allowed_origins: origins,
     agent_id: input.agentId || null,
+    // Only written when the caller sends it (widgetConfig precedent): callers
+    // that predate the kb_tag column (embedded-signup onboarding, older UIs)
+    // must keep saving even before the migration is applied — an unconditional
+    // write would 500 every channel save with PGRST204 until then.
+    ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
     active: input.active ?? true,
   };
   if (input.widgetConfig !== undefined) row.widget_config = sanitizeWidgetConfig(input.widgetConfig);

@@ -14,7 +14,7 @@ import { auditReply } from "./guard/audit";
 import { isAutoRouteEnabled, pickAgentForQuery } from "./aihub";
 import { embedQuery } from "./kb";
 import { setConversationAgent } from "./store";
-import { getChannel, type Channel } from "./channels";
+import { getChannel, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
 import { getDailyCap } from "./quota";
 import { hasActiveDripEnrollment } from "./sequences";
 
@@ -137,7 +137,12 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // FAQ/cache replies also speak in the right persona and the conversation
     // switches the moment the topic changes. One embedding call, reused by the
     // semantic-cache layer below.
-    let agentId = conv.agentId ?? channel?.agentId ?? null;
+    let agentId = effectiveAgentId(conv, channel);
+    // KB scope for this reply: flow-stamped conversation tag → the channel's
+    // allocated KB → the tenant's whole KB. Threaded through the router (cache
+    // suppression), RAG retrieval, and the cache write below so a channel-scoped
+    // answer can never leak into (or out of) the tenant's semantic cache.
+    const kbTag = effectiveKbTag(conv, channel);
     let queryEmbedding: number[] | null = null;
     try {
       if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
@@ -155,7 +160,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
     if (lastUserMsg && !lastHasMedia) {
-      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: conv.primaryKbTag });
+      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
         const sent = await sendReply(routed.answer);
@@ -169,7 +174,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, conv.primaryKbTag);
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbTag);
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");
@@ -210,7 +215,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
         topSim: result.topSim, sanitizerActions: result.groundingActions,
       }).catch(() => null);
       if (!verdict || verdict.shouldCache) {
-        recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: conv.primaryKbTag });
+        recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
       }
     }
     return { outcome: "sent" };

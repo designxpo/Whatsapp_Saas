@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   { const gate = await guardFeature(tenantId, "ch_webchat"); if (gate) return gate; }
-  let body: { id?: string; name?: string; allowedOrigins?: string[] | string; agentId?: string | null; active?: boolean; widgetConfig?: WebchatConfig };
+  let body: { id?: string; name?: string; allowedOrigins?: string[] | string; agentId?: string | null; kbTag?: string | null; active?: boolean; widgetConfig?: WebchatConfig };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 });
   // Accept origins as an array or a comma/newline-separated string.
@@ -29,11 +29,11 @@ export async function POST(req: Request) {
   try {
     const saved = await saveWebchatChannel({
       id: body.id, tenantId, name: body.name!, allowedOrigins: origins,
-      agentId: body.agentId ?? null, active: body.active, widgetConfig: body.widgetConfig,
+      agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, active: body.active, widgetConfig: body.widgetConfig,
     });
     logActivity(await currentUser(), "channel.save", `web chat: ${saved.name}`);
     return NextResponse.json({ success: true, channel: saved });
   } catch (err) {
-    return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0054_webchat_channel.sql is applied` }, { status: 500 });
+    return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0054_webchat_channel.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
   }
 }

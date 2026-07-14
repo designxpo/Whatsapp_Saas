@@ -140,7 +140,12 @@ vi.mock("@/lib/messenger", () => ({
   sendFbMedia: vi.fn(async () => ({ ok: true, messageId: "fb_md" })),
   sendFbQuickReplies: vi.fn(async () => ({ ok: true, messageId: "fb_q" })),
 }));
-vi.mock("@/lib/channels", () => ({ getChannel: vi.fn(async () => null) }));
+vi.mock("@/lib/channels", () => ({
+  getChannel: vi.fn(async () => null),
+  // Real (pure) precedence helpers — conversation override → channel default → global.
+  effectiveAgentId: (conv: { agentId?: string | null } | null | undefined, channel?: { agentId?: string | null } | null) => conv?.agentId ?? channel?.agentId ?? null,
+  effectiveKbTag: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) => conv?.primaryKbTag ?? channel?.kbTag ?? null,
+}));
 vi.mock("@/lib/formresponses", () => h.formresponses);
 vi.mock("@/lib/leadsquared", () => ({ syncLeadProfile: h.syncLeadProfile }));
 vi.mock("@/lib/llm", () => ({ looksLikeCity: vi.fn(async () => true) }));

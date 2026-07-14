@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Check, Instagram, Loader2, MessageCircle, Plus, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
+import { fetchKbTags } from "./SettingsTab";
 import { launchInstagramSignup, instagramSignupReady, instagramSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
 // Dedicated Instagram section (its own nav tab).
@@ -32,7 +33,7 @@ function InstagramTab() {
   );
 }
 
-const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", pageId: "", token: "", agentId: "", active: true, isDefault: false };
+const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", pageId: "", token: "", agentId: "", kbTag: "", active: true, isDefault: false };
 
 type CommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
@@ -46,6 +47,7 @@ const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, post
 function InstagramManager() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_IG | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -63,6 +65,7 @@ function InstagramManager() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   useEffect(() => { loadRules(); }, [loadRules]);
   // Load the post grid for the account the rule editor targets. `null` when the
   // editor is closed; only changes on open or account switch (not keystrokes).
@@ -82,7 +85,7 @@ function InstagramManager() {
     try {
       const res = await fetch("/api/admin/channels/instagram", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, agentId: form.agentId || null, pageId: form.pageId || null }),
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, pageId: form.pageId || null }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
@@ -161,7 +164,7 @@ function InstagramManager() {
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">ig {c.igUserId}{c.pageId ? ` · page ${c.pageId}` : ""} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -176,6 +179,11 @@ function InstagramManager() {
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this account">
               <option value="">AI persona: global default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this account answers from KB docs with this tag first, falling back to the full knowledge base. Tag docs in the AI Knowledge Base tab.">
+              <option value="">Knowledge: global (all docs)</option>
+              {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
+              {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
             </select>
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Access token — leave blank to keep the current one" : "Access token (instagram_manage_messages)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />

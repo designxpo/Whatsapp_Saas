@@ -209,12 +209,22 @@ function ActivityLog() {
 }
 
 // ── WhatsApp numbers (multi-WABA channels) ──
-const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", active: true, isDefault: false };
+const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", kbTag: "", active: true, isDefault: false };
+
+// Distinct KB topic tags for the per-channel knowledge picker — same client-side
+// derivation the flow editor uses (tags live on kb_documents, no dedicated API).
+export async function fetchKbTags(): Promise<string[]> {
+  try {
+    const d = await fetch("/api/admin/kb").then(r => r.json());
+    return [...new Set(((d.documents ?? []) as { tag?: string | null }[]).map(x => x.tag).filter((t): t is string => !!t))].sort();
+  } catch { return []; }
+}
 
 function ChannelsManager() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [envMode, setEnvMode] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -227,6 +237,7 @@ function ChannelsManager() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetchKbTags().then(setKbTags); }, []);
 
   async function save() {
     if (!form) return;
@@ -236,7 +247,7 @@ function ChannelsManager() {
     try {
       const res = await fetch("/api/admin/channels", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, agentId: form.agentId || null, appId: form.appId || null }),
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, appId: form.appId || null }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
@@ -297,7 +308,7 @@ function ChannelsManager() {
           </div>
           <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}
             className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -324,6 +335,11 @@ function ChannelsManager() {
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this number">
               <option value="">AI persona: global default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this number answers from KB docs with this tag first, falling back to the full knowledge base. Tag docs in the AI Knowledge Base tab.">
+              <option value="">Knowledge: global (all docs)</option>
+              {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
+              {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
             </select>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
@@ -591,7 +607,7 @@ function VoiceSettingsCard() {
 // via "Add an integration" → LeadSquared). Its old dedicated card lived here.
 
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
-const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", agentId: "", active: true, isDefault: false };
+const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", agentId: "", kbTag: "", active: true, isDefault: false };
 
 // Comment-to-DM rules (ManyChat-style: multiple rules, per-post targeting). No
 // follow-gate — Facebook Pages have no is_user_follow_business comment flow.
@@ -607,6 +623,7 @@ export function MessengerCard() {
   const [pages, setPages] = useState<ChannelRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   // Comment-to-DM rules
@@ -624,6 +641,7 @@ export function MessengerCard() {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadRules(); }, [loadRules]);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   // Load the post grid for the Page the rule editor is targeting (only when the
   // editor opens or the Page changes — so it won't refetch on every keystroke).
   const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
@@ -640,7 +658,7 @@ export function MessengerCard() {
     if (!form.id && !form.token.trim()) { setMsg("Page access token is required for a new Page."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail}. Messages won't arrive until this is fixed — check the Page token's permissions (pages_messaging).`); load(); }
@@ -691,7 +709,7 @@ export function MessengerCard() {
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{c.isDefault && <span className="text-[10px] font-bold text-brand-700"> · DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">page {c.pageId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -704,10 +722,17 @@ export function MessengerCard() {
             <input className={inp} placeholder="Facebook Page ID" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Page access token — leave blank to keep the current one" : "Page access token (pages_messaging)"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
-          <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this Page">
-            <option value="">AI persona: global default</option>
-            {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
-          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this Page">
+              <option value="">AI persona: global default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this Page answers from KB docs with this tag first, falling back to the full knowledge base. Tag docs in the AI Knowledge Base tab.">
+              <option value="">Knowledge: global (all docs)</option>
+              {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
+              {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
+            </select>
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
@@ -821,12 +846,14 @@ export function MessengerCard() {
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
 type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain"; offsetSide?: number; offsetBottom?: number };
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
-type WcForm = { id?: string; name: string; origins: string; active: boolean; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain"; offsetSide: string; offsetBottom: string };
-const BLANK_WC: WcForm = { name: "", origins: "", active: true, color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", offsetSide: "", offsetBottom: "" };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; agentId: string; kbTag: string; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain"; offsetSide: string; offsetBottom: string };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, agentId: "", kbTag: "", color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", offsetSide: "", offsetBottom: "" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
   const [form, setForm] = useState<WcForm | null>(null);
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
+  const [kbTags, setKbTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -853,6 +880,8 @@ export function WebchatCard() {
     setList((d.channels ?? []).filter((c: WcRow) => c.kind === "webchat"));
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
+  useEffect(() => { fetchKbTags().then(setKbTags); }, []);
 
   const snippet = (siteKey: string) => `<script src="${origin}/api/widget/${siteKey}/loader.js" async></script>`;
   function copy(text: string, key: string) { navigator.clipboard?.writeText(text); setCopied(key); setTimeout(() => setCopied(c => (c === key ? null : c)), 1500); }
@@ -862,7 +891,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, agentId: form.agentId || null, kbTag: form.kbTag || null, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -891,7 +920,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -911,6 +940,19 @@ export function WebchatCard() {
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Allowed website origins (one per line — blank = allow anywhere)</p>
             <textarea className={`${inp} w-full resize-none font-mono text-xs`} rows={3} placeholder={"https://www.yoursite.com\nhttps://shop.yoursite.com"} value={form.origins} onChange={e => setForm({ ...form, origins: e.target.value })} />
+          </div>
+
+          {/* ── AI ── */}
+          <div className="grid grid-cols-2 gap-2">
+            <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this widget">
+              <option value="">AI persona: global default</option>
+              {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
+            </select>
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this widget answers from KB docs with this tag first, falling back to the full knowledge base. Tag docs in the AI Knowledge Base tab.">
+              <option value="">Knowledge: global (all docs)</option>
+              {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
+              {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}
+            </select>
           </div>
 
           {/* ── Appearance ── */}

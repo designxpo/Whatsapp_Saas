@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   { const gate = await guardFeature(tenantId, "ch_instagram"); if (gate) return gate; }
-  let body: { id?: string; name?: string; igUserId?: string; pageId?: string; token?: string; agentId?: string | null; active?: boolean; isDefault?: boolean };
+  let body: { id?: string; name?: string; igUserId?: string; pageId?: string; token?: string; agentId?: string | null; kbTag?: string | null; active?: boolean; isDefault?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.igUserId?.trim()) {
     return NextResponse.json({ error: "name and Instagram account id are required" }, { status: 400 });
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
     const saved = await saveInstagramChannel({
       id: body.id, tenantId, name: body.name!, igUserId: body.igUserId!, pageId: body.pageId ?? null,
-      token, agentId: body.agentId ?? null, active: body.active, isDefault: body.isDefault,
+      token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, active: body.active, isDefault: body.isDefault,
     });
     // Subscribe the IG account to the app — without this Meta never delivers
     // DM/comment events for a freshly added account.
@@ -43,6 +43,6 @@ export async function POST(req: Request) {
     logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook });
   } catch (err) {
-    return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0021_instagram_channel.sql is applied` }, { status: 500 });
+    return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0021_instagram_channel.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
   }
 }

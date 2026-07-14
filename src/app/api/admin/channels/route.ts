@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId})`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
   } catch (err) {
-    return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0013_channels.sql is applied` }, { status: 500 });
+    return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0013_channels.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
   }
 }
 

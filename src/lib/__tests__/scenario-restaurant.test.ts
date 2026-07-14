@@ -183,6 +183,9 @@ vi.mock("@/lib/channels", () => ({
   credsFor: mocks.credsFor,
   getChannel: mocks.getChannel,
   isMarketingSendable: mocks.isMarketingSendable,
+  // Real (pure) precedence helpers — conversation override → channel default → global.
+  effectiveAgentId: (conv: { agentId?: string | null } | null | undefined, channel?: { agentId?: string | null } | null) => conv?.agentId ?? channel?.agentId ?? null,
+  effectiveKbTag: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) => conv?.primaryKbTag ?? channel?.kbTag ?? null,
 }));
 vi.mock("@/lib/quota", () => ({
   getDailyCapForTier: mocks.getDailyCapForTier,

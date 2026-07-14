@@ -1,6 +1,6 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
-import { getChannelBySiteKey } from "@/lib/channels";
+import { getChannelBySiteKey, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, landCapturedLead, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
@@ -108,7 +108,10 @@ export async function POST(req: Request) {
   // answering; only a human (or a genuine model escalate below) hands it off.
 
   const history = await getConvHistory(conv.id, 20);
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, channel.agentId, tid, null, false);
+  // Same resolution chain as WhatsApp: conversation pin / flow-stamped KB tag
+  // first, then this widget's own persona + allocated KB, then tenant-global
+  // (this route used to hardcode a null KB scope and skip the conversation pin).
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false);
   if (!r.reply || r.escalate) return closeOut();
 
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
