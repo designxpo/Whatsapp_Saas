@@ -438,6 +438,16 @@ export function looksConversational(text: string): boolean {
     || /^(how|what|whats|why|who|whom|whose|when|where|which|can|could|would|will|shall|should|do|does|did|is|are|am|may|might|tell me|explain|help|i (want|need|have|am)|please|you there|u there)\b/.test(s);
 }
 
+// A rough "does this read like a person's name" gate for name-attribute answers
+// (ask nodes and chat-form fields). Names are short; a long or clearly
+// conversational reply means the person is talking about something else
+// entirely (an unrelated inquiry, a refusal, small talk) — not answering
+// "what's your name?" — and must not be stored as if it were one.
+function looksLikeName(text: string): boolean {
+  const t = (text || "").trim();
+  return t.length > 0 && t.length <= 60 && !looksConversational(t);
+}
+
 // ── WhatsApp-form fallback for chat-only channels ─────────────────────────────
 // A native WhatsApp form can't open on Instagram / Messenger / web chat. Instead
 // of dead-ending the flow there (the old behavior sent "body (CTA)" and then
@@ -900,7 +910,12 @@ export async function handleFlowMessage(
     if (waiting.type === "ask") {
       const vtype = str(waiting.data.validate);
       const hasRule = !!vtype && vtype !== "none";
-      const valid = !hasRule || (await validateInput(vtype, text, tid));
+      const attr = str(waiting.data.attribute);
+      // A name answer must also LOOK like a name — a long/conversational reply
+      // ("i am not telling you", a whole paragraph) is someone talking, not a
+      // name, and must never become the conversation's display name.
+      const isNameAttr = /name/i.test(attr) && !/company|business|brand/i.test(attr);
+      const valid = (!hasRule || (await validateInput(vtype, text, tid))) && (!isNameAttr || looksLikeName(text));
       // An old menu tap takes priority over a reply this ask can't use — but a
       // reply that passes the node's validation IS the answer. Rewinding first
       // hijacked digit answers to a number-validated ask ("2" travellers) as a
@@ -924,7 +939,6 @@ export async function handleFlowMessage(
         }
         return true;   // still waiting on this ask node
       }
-      const attr = str(waiting.data.attribute);
       if (isReal && attr) {
         await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
@@ -980,12 +994,12 @@ export async function handleFlowMessage(
         const landIdentity = async (ans: Record<string, string>): Promise<void> => {
           const pick = (re: RegExp) => { for (const [k, v] of Object.entries(ans)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
           const nameKey = Object.keys(ans).find(k => /name/i.test(k) && !/company|business|brand/i.test(k) && String(ans[k]).trim());
-          const name = nameKey ? String(ans[nameKey]).trim() : undefined;
+          const name = nameKey ? String(ans[nameKey]).trim().slice(0, 120) : undefined;
           const email = pick(/email/i);
           const city = pick(/city/i);
           const phoneDigits = (pick(/phone|mobile|whats?app|contact/i) ?? "").replace(/\D/g, "");
           const phoneAns = phoneDigits.length >= 10 && phoneDigits.length <= 15 ? phoneDigits : undefined;
-          if (name) await setConversationName(phone, name.slice(0, 120), tid).catch(() => undefined);
+          if (name) await setConversationName(phone, name, tid).catch(() => undefined);
           if (phoneAns) await setConversationLeadPhone(convKey, phoneAns).catch(() => undefined);
           const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
           if (realPhone) {
@@ -1006,7 +1020,10 @@ export async function handleFlowMessage(
             const li = looseIndex(f.o, text);   // typed approximations too
             answer = f.o.find(o => norm(o) === t) ?? (li !== null ? f.o[li] : answer);
           }
-        } else if (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid))) {
+        } else if (
+          (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid)))
+          || (/name/i.test(f.n) && !/company|business|brand/i.test(f.n) && !looksLikeName(text))
+        ) {
           const tries = Number(session.state?.tries ?? 0);
           if (looksConversational(text) || tries >= 2) {
             if (isReal) { await landIdentity(wf.a ?? {}); await markFormAbandoned(convKey, tid).catch(() => undefined); }
