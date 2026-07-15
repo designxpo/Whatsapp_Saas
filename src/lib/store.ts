@@ -878,10 +878,17 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
   if (p.groundingDeferred) row.grounding_deferred = true;
   if (p.groundingStripped && p.groundingStripped.length) row.grounding_stripped = p.groundingStripped;
   let { data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single();
-  // Pre-migration safety: if optional columns aren't present yet (media 0052 /
-  // grounding 0066 / channel 0073), retry without them so the message still logs.
-  if (error && error.code === "42703") {
-    for (const k of ["media_url", "media_type", "coverage_band", "top_sim", "grounding_deferred", "grounding_stripped", "channel_id"]) delete row[k];
+  // Pre-migration safety, GRADUATED so nothing storable is lost. An unknown
+  // insert column surfaces as 42703 (Postgres) OR PGRST204 (PostgREST schema
+  // cache) — accept both. channel_id is the newest optional column (0073): drop
+  // ONLY it first, keeping media (0052) / grounding (0066) which already exist;
+  // then fall back to dropping the older optional columns too if also missing.
+  if (error && (error.code === "42703" || error.code === "PGRST204") && "channel_id" in row) {
+    delete row.channel_id;
+    ({ data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single());
+  }
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    for (const k of ["media_url", "media_type", "coverage_band", "top_sim", "grounding_deferred", "grounding_stripped"]) delete row[k];
     ({ data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single());
   }
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
