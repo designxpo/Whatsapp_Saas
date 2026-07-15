@@ -40,6 +40,52 @@ function linkify(text: string) {
   );
 }
 
+// Digits-only phone → a readable "+<digits>" form. Never fabricates a number
+// from a sentinel id (wa:<handle> / web:<uuid>) or anything with letters —
+// those aren't dialable numbers, so they're returned untouched.
+function formatPhone(raw: string): string {
+  const s = (raw || "").trim();
+  if (/[a-z:]/i.test(s)) return s;
+  const d = s.replace(/\D/g, "");
+  return d.length >= 8 && d.length <= 15 ? "+" + d : s;
+}
+// A WhatsApp @username conversation stores its phone as the sentinel "wa:<handle>"
+// (see store.ts); show it as @handle.
+function isHandle(phone: string): boolean { return (phone || "").startsWith("wa:"); }
+// Resolve the channel from the phone sentinel FIRST — a web:<uuid> is web chat
+// even if the platform column is null/mis-stored (store.ts defaults null →
+// "whatsapp") — then fall back to the platform column.
+function contactChannel(c: { phone: string; platform?: string | null }): "whatsapp" | "instagram" | "messenger" | "webchat" {
+  if ((c.phone || "").startsWith("web:")) return "webchat";
+  const p = c.platform ?? "whatsapp";
+  return p === "instagram" || p === "messenger" || p === "webchat" ? p : "whatsapp";
+}
+function channelLabel(k: string): string {
+  return k === "instagram" ? "Instagram user" : k === "messenger" ? "Messenger user" : k === "webchat" ? "Website visitor" : "WhatsApp";
+}
+// A human name for the contact — never a raw web:<uuid> / IG-scoped id / PSID.
+function contactDisplayName(c: { name?: string | null; phone: string; platform?: string | null }): string {
+  if (c.name?.trim()) return c.name.trim();
+  const k = contactChannel(c);
+  if (k === "whatsapp") return isHandle(c.phone) ? "@" + c.phone.slice(3) : formatPhone(c.phone);
+  return channelLabel(k);
+}
+// The sub-line under the name in the chat header: the number / @handle for
+// WhatsApp, a friendly channel label (plus any captured phone) otherwise — so
+// the raw session id / PSID is never shown to the agent.
+function contactSubtitle(c: { phone: string; platform?: string | null; leadPhone?: string | null }): string {
+  const k = contactChannel(c);
+  if (k === "whatsapp") return isHandle(c.phone) ? "@" + c.phone.slice(3) : formatPhone(c.phone);
+  return c.leadPhone ? `${channelLabel(k)} · ${formatPhone(c.leadPhone)}` : channelLabel(k);
+}
+// Monospace only when the subtitle is an actual number (a real phone / captured
+// lead phone) — not an @handle or a channel label.
+function subtitleIsPhone(c: { phone: string; platform?: string | null; leadPhone?: string | null }): boolean {
+  const k = contactChannel(c);
+  if (k === "whatsapp") return !isHandle(c.phone);
+  return !!c.leadPhone;
+}
+
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
@@ -170,14 +216,14 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             <button key={c.id} onClick={() => setSelected(c.id)}
               className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="relative shrink-0 mt-0.5">
-                <ConvAvatar url={c.avatarUrl} label={c.name || c.phone} size={36} />
+                <ConvAvatar url={c.avatarUrl} label={contactDisplayName(c)} size={36} />
                 <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
                   {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[13px] font-semibold text-ink-900 truncate">{c.name || c.phone}</p>
+                  <p className="text-[13px] font-semibold text-ink-900 truncate">{contactDisplayName(c)}</p>
                   <span className="text-[10px] text-ink-400 shrink-0">{timeAgo(c.lastInboundAt ?? c.lastOutboundAt ?? null)}</span>
                 </div>
                 <p className="text-[12px] text-ink-400 truncate">{c.lastMessage ?? "—"}</p>
@@ -432,10 +478,10 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
       <section className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between gap-3 bg-white">
           <div className="min-w-0 flex items-center gap-3">
-            <ConvAvatar url={conv?.avatarUrl} label={conv?.name || conv?.phone || "?"} size={36} />
+            <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
             <div className="min-w-0">
-              <p className="text-sm font-bold text-ink-900 truncate leading-tight">{conv?.name || conv?.phone || "Conversation"}</p>
-              {conv && <p className="font-mono text-[11px] text-ink-400 leading-tight">{conv.phone}</p>}
+              <p className="text-sm font-bold text-ink-900 truncate leading-tight">{conv ? contactDisplayName(conv) : "Conversation"}</p>
+              {conv && <p className={`text-[11px] text-ink-400 leading-tight truncate ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
             </div>
             {conv && <span className={statusBadge(conv.status)}>{conv.status}</span>}
             {/* Which number/account/Page this chat lives on — replies always
@@ -615,9 +661,9 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
       {/* ── Right: contact info ── */}
       <aside className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">
         <div className="p-5 flex flex-col items-center text-center border-b border-line">
-          <ConvAvatar url={conv?.avatarUrl} label={conv?.name || conv?.phone || "?"} size={64} />
-          <p className="text-[15px] font-bold text-ink-900 mt-2">{conv?.name || "Unknown"}</p>
-          <p className="font-mono text-xs text-ink-400">{conv?.phone}</p>
+          <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={64} />
+          <p className="text-[15px] font-bold text-ink-900 mt-2">{conv ? contactDisplayName(conv) : "Unknown"}</p>
+          {conv && <p className={`text-xs text-ink-400 ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
           {contact?.email && <p className="text-xs text-ink-400 mt-0.5">{contact.email}</p>}
           {conv?.phone && (
             <button onClick={() => setShowProfile(true)} className="mt-3 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5">
