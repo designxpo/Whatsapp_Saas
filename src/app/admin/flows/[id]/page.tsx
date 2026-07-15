@@ -901,7 +901,7 @@ function Editor({ flowId }: { flowId: string }) {
   async function save() {
     setSaving(true);
     try {
-      await fetch(`/api/admin/flows/${flowId}`, {
+      const res = await fetch(`/api/admin/flows/${flowId}`, {
         method: "PUT", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim() || "Untitled flow",
@@ -916,6 +916,13 @@ function Editor({ flowId }: { flowId: string }) {
           },
         }),
       });
+      // Surface a real failure (e.g. the "apply migration 0072" guard) instead of
+      // flashing "Saved ✓" over a 500 that silently dropped the change.
+      if (!res.ok) {
+        const msg = await res.json().then(d => d?.error).catch(() => null);
+        alert(msg || "Couldn't save the flow — please try again.");
+        return;
+      }
       setSavedAt(Date.now());
     } finally { setSaving(false); }
   }
@@ -963,7 +970,7 @@ function Editor({ flowId }: { flowId: string }) {
               const on = parseKinds(platform).has(c.k);
               return (
                 <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
-                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); const nextKinds = serializeKinds(set); setPlatform(nextKinds); setChannelIds(ids => ids.filter(id => { const ch = channels.find(x => x.id === id); return ch ? parseKinds(nextKinds).has(ch.kind) : false; })); }}
+                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); const nextKinds = serializeKinds(set); setPlatform(nextKinds); setChannelIds(ids => ids.filter(id => { const ch = channels.find(x => x.id === id); return ch ? parseKinds(nextKinds).has(ch.kind) : true; })); }}
                   className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
                   <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
                   <span className="hidden xl:inline">{c.label}</span>

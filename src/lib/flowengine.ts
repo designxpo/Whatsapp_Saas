@@ -150,16 +150,25 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   if (p.primaryKbTag !== undefined) patch.primary_kb_tag = p.primaryKbTag || null;
   if (p.graph !== undefined) patch.graph = p.graph;
   let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
-  // Optional columns missing (migration not applied) — save the rest, but never
+  // channel_ids is the newest optional column (0072). If it's missing, retry
+  // WITHOUT it but KEEP the legacy channel_id (which predates 0072 and still
+  // carries single-channel scope) plus platform/primary_kb_tag — so scoping a
+  // flow to one number keeps working before the migration is applied. Only a
+  // MULTI-number selection genuinely needs 0072; say so loudly.
+  if (error && "channel_ids" in patch) {
+    const triedMultiChannel = Array.isArray(patch.channel_ids) && patch.channel_ids.length > 1;
+    delete patch.channel_ids;
+    ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
+    if (!error && triedMultiChannel) throw new Error("Running a flow on multiple specific numbers needs migration 0072_flow_channels.sql applied, then save again.");
+  }
+  // Older optional columns missing (much older DB) — save the rest, but never
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
-  if (error && ("channel_id" in patch || "channel_ids" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
+  if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
     const triedPlatform = typeof patch.platform === "string" && patch.platform !== "whatsapp";
-    const triedChannelIds = Array.isArray(patch.channel_ids) && patch.channel_ids.length > 1;
-    delete patch.channel_id; delete patch.channel_ids; delete patch.platform; delete patch.primary_kb_tag;
+    delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
     if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064 + 0065_flow_platform_multi.sql), then save again.");
-    if (!error && triedChannelIds) throw new Error("Running a flow on multiple specific numbers needs migration 0072_flow_channels.sql applied, then save again.");
   }
   if (error) throw error;
 }
