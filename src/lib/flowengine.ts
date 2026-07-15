@@ -14,7 +14,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 
 import { db } from "./supabase";
 import {
-  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCtaUrl, sendCarouselTemplate, sendTemplateSingle,
+  sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCtaUrl, sendCarouselTemplate, sendTemplateSingle, fetchTemplates,
 } from "./whatsapp";
 import { sendWaFormMessage, getWaFormDef, fieldSlug } from "./waforms";
 import { sendIgMessage, sendIgQuickReplies } from "./instagram";
@@ -219,6 +219,32 @@ export interface FlowSender {
   template(templateName: string, lang: string, bodyParams: string[], headerImageUrl?: string): Promise<{ id?: string; error?: string }>;
   carouselTemplate(templateName: string, lang: string, bubbleParams: string[], cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[]): Promise<{ id?: string; error?: string }>;
   waform(body: string, cta: string, formId: string): Promise<{ id?: string; error?: string }>;
+}
+
+// Cross-WABA template fallback. An approved WhatsApp template belongs to the WABA
+// it was created on; a number on a DIFFERENT WABA can't send it and Meta rejects
+// it. Read the template's BODY copy from its home WABA (default creds), fill {{n}}
+// with the flow's params, and return it so the flow can send it as plain text
+// (flows run in-window, so free-form text delivers). null when it can't be read.
+async function templateBodyFallback(name: string, lang: string, params: string[]): Promise<string | null> {
+  try {
+    const tpls = await fetchTemplates();   // default (home-WABA) creds
+    const norm2 = (s: string) => (s || "").toLowerCase().replace(/[_-]/g, "");
+    const tpl = tpls.find(t => t.name === name && norm2(t.language) === norm2(lang)) ?? tpls.find(t => t.name === name);
+    const body = tpl?.components?.find(c => c.type === "BODY")?.text;
+    if (!body) return null;
+    return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_m, n) => params[Number(n) - 1] ?? "").trim() || null;
+  } catch { return null; }
+}
+
+// Degrade a rejected (cross-WABA) template to plain text: its body copy plus the
+// header / first-card image (public URLs — not WABA-scoped). No-op + warn if the
+// body can't be read.
+async function templateFallbackSend(send: FlowSender, name: string, lang: string, params: string[], imageUrl?: string): Promise<void> {
+  const text = await templateBodyFallback(name, lang, params);
+  if (!text) { console.warn(`[flow] template ${name} send failed cross-WABA and body unreadable — skipping node`); return; }
+  if (imageUrl) await send.media("image", imageUrl).catch(() => undefined);
+  await send.text(text);
 }
 
 function realSender(conversationId: string, phone: string, channel?: ChannelCreds, tenantId = DEFAULT_TENANT_ID): FlowSender {
@@ -555,7 +581,13 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
             await send.productCard(body, prod.imageUrl, prod.buttonText || "View", prod.buttonUrl);
           }
         } else if (str(d.catalogId) && str(d.productId)) {
-          await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+          const res = await send.product(str(d.text) || "Check this out:", str(d.catalogId), str(d.productId));
+          // Cross-WABA: a commerce catalog belongs to one WABA, so a number on a
+          // different WABA can't show the native product card. Send the node's
+          // caption as plain text so it isn't silent (for a real cross-WABA product
+          // card, use the custom-card style, or connect the catalog to this WABA).
+          if (res.error && send.kind === "whatsapp" && str(d.text)) await send.text(str(d.text));
+          else if (res.error && send.kind === "whatsapp") console.warn(`[flow] product ${str(d.productId)} send failed (${res.error}) — no caption to fall back to`);
         }
         cur = nextNode(g, cur.id); continue;
       }
@@ -573,12 +605,16 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
               bodyParams: str(c.bodyParams).split(",").map(s => s.trim()).filter(Boolean),
             }))
             .filter(c => c.mediaUrl));
+          const lang = str(d.lang) || "en_US";
+          const header = str(d.headerImageUrl).trim();
           if (cards.length >= 2) {
             const bubbleParams = str(d.bubbleParams).split(",").map(s => s.trim()).filter(Boolean);
-            await send.carouselTemplate(name, str(d.lang) || "en_US", bubbleParams, cards);
+            const res = await send.carouselTemplate(name, lang, bubbleParams, cards);
+            if (res.error && send.kind === "whatsapp") await templateFallbackSend(send, name, lang, bubbleParams, cards[0]?.mediaUrl);
           } else {
             const params = ((d.bodyParams as string[]) ?? []).map(s => (s ?? "").trim());
-            await send.template(name, str(d.lang) || "en_US", params, str(d.headerImageUrl).trim() || undefined);
+            const res = await send.template(name, lang, params, header || undefined);
+            if (res.error && send.kind === "whatsapp") await templateFallbackSend(send, name, lang, params, header || undefined);
           }
         }
         cur = nextNode(g, cur.id); continue;
@@ -589,7 +625,14 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         const ids = str(d.products).split(/[\n,]/).map(s => s.trim()).filter(Boolean);
         if (catalogId && ids.length) {
           const header = (str(d.header) || "Our products").slice(0, 60);
-          await send.productList(header, str(d.text) || "Browse and tap to view:", catalogId, [{ title: header.slice(0, 24), productRetailerIds: ids }]);
+          const res = await send.productList(header, str(d.text) || "Browse and tap to view:", catalogId, [{ title: header.slice(0, 24), productRetailerIds: ids }]);
+          // Cross-WABA: the catalog isn't on this number's WABA. Send the header +
+          // caption as plain text so the message isn't silently dropped.
+          if (res.error && send.kind === "whatsapp") {
+            const parts = [str(d.header).trim(), str(d.text).trim()].filter(Boolean);
+            if (parts.length) await send.text(parts.join("\n"));
+            else console.warn(`[flow] product list send failed (${res.error}) — nothing to fall back to`);
+          }
         }
         cur = nextNode(g, cur.id); continue;
       }
@@ -605,8 +648,10 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
           }))
           .filter(c => c.mediaUrl));
         if (name && cards.length >= 2) {
+          const lang = str(d.lang) || "en_US";
           const bubbleParams = str(d.bubbleParams).split(",").map(s => s.trim()).filter(Boolean);
-          await send.carouselTemplate(name, str(d.lang) || "en_US", bubbleParams, cards);
+          const res = await send.carouselTemplate(name, lang, bubbleParams, cards);
+          if (res.error && send.kind === "whatsapp") await templateFallbackSend(send, name, lang, bubbleParams, cards[0]?.mediaUrl);
         }
         cur = nextNode(g, cur.id); continue;
       }
