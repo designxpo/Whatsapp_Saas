@@ -652,7 +652,29 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
           await saveSession(convKey, flow.id, cur.id, { ...(menuNodeId ? { menu: menuNodeId } : {}), wf: { fields, i: 0, a: {} } }, tenantId);
           return true;
         }
-        await send.waform(str(d.text) || "Please fill this quick form:", str(d.cta) || "Open form", str(d.formId));
+        const formRes = await send.waform(str(d.text) || "Please fill this quick form:", str(d.cta) || "Open form", str(d.formId));
+        // A WhatsApp Form (Flow) is a WABA-scoped Meta asset. If this number lives
+        // on a DIFFERENT WABA than the form (e.g. numbers shared in via partner
+        // access), Meta rejects the send — so instead of dying silently and
+        // leaving the customer with nothing, fall back to collecting the same
+        // fields as a chat Q&A, exactly like IG/Messenger/web do above. The form
+        // definition is read with the default creds, so its fields are available
+        // even from a number that isn't on the form's own WABA.
+        if (formRes.error) {
+          console.warn(`[flow] waform ${str(d.formId)} native send failed on whatsapp (${formRes.error}) — falling back to chat Q&A`);
+          const def = await getWaFormDef(str(d.formId)).catch(() => null);
+          const fields: ChatFormField[] = (def?.fields ?? [])
+            .filter(f => f.label.trim())
+            .map((f, i) => ({ n: fieldSlug(f.label, i), l: f.label.trim(), t: f.type, o: (f.options ?? []).filter(o => o.trim()).slice(0, 20) }));
+          if (fields.length) {
+            const intro = str(d.text) ? `${str(d.text)}\n\n` : "";
+            await send.text(intro + chatFieldPrompt(fields[0]));
+            if (isReal) await recordFormSent(convKey, phone, str(d.formId), tenantId).catch(() => undefined);
+            await saveSession(convKey, flow.id, cur.id, { ...(menuNodeId ? { menu: menuNodeId } : {}), wf: { fields, i: 0, a: {} } }, tenantId);
+            return true;
+          }
+          cur = nextNode(g, cur.id); continue;   // couldn't read fields either → skip the node so the rest runs
+        }
         if (isReal) await recordFormSent(convKey, phone, str(d.formId), tenantId).catch(() => undefined);
         await saveSession(convKey, flow.id, cur.id, menuNodeId ? { menu: menuNodeId } : {}, tenantId);
         return true;
