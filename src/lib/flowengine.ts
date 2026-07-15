@@ -24,7 +24,7 @@ import {
   appendConvMessage, touchOutbound, setConversationStatus,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag, takeArmedFlow, updateContactProfile, setConversationName, setConversationLeadPhone, upsertContacts,
-  landCapturedLead,
+  landCapturedLead, formLinkForWaba,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { isAiEnabled, getFlowNudge } from "./messaging-settings";
@@ -267,7 +267,17 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     async productList(header, body, catalogId, sections) { const r = await sendProductList(phone, header, body, catalogId, sections, channel); await log(`${body}\n[catalog: ${sections.flatMap(s => s.productRetailerIds).length} products]`, r.id); return r; },
     async template(templateName, lang, bodyParams, headerImageUrl) { const r = await sendTemplateSingle(phone, templateName, lang, bodyParams, channel, headerImageUrl); await log(`[template: ${templateName}${bodyParams.length ? ` · ${bodyParams.join(", ")}` : ""}]`, r.id); return r; },
     async carouselTemplate(templateName, lang, bubbleParams, cards) { const r = await sendCarouselTemplate(phone, templateName, lang, bubbleParams, cards, channel); await log(`[carousel template: ${templateName} · ${cards.length} cards]`, r.id); return r; },
-    async waform(body, cta, formId) { const r = await sendWaFormMessage(phone, { formId, bodyText: body, cta }, channel); await log(`${body}\n[form: ${cta}]`, r.id); return r; },
+    async waform(body, cta, formId) {
+      // A form lives on one WABA. If this number is on another WABA, send the
+      // copy replicated there via "Publish to all numbers" (wa_form_links); with
+      // no copy (or single-number mode) the original id is used, and a rejection
+      // still falls back to chat Q&A in the node handler.
+      const targetWaba = channel?.wabaId;
+      const resolvedId = targetWaba ? ((await formLinkForWaba(formId, targetWaba, tenantId).catch(() => null)) ?? formId) : formId;
+      const r = await sendWaFormMessage(phone, { formId: resolvedId, bodyText: body, cta }, channel);
+      await log(`${body}\n[form: ${cta}]`, r.id);
+      return r;
+    },
   };
 }
 

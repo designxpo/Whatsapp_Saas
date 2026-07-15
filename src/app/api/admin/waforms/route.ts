@@ -1,7 +1,8 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, getWaFormDef, updateWaFormJson, renameWaForm, type WaFormField } from "@/lib/waforms";
-import { credsFor } from "@/lib/channels";
+import { credsFor, listChannels } from "@/lib/channels";
+import { saveFormLinks, getFormLinks } from "@/lib/store";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
 // Create: { name, title, fields: WaFormField[], publish? }
 // Publish: { id, publish: true }
 export async function POST(req: Request) {
-  let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; rename?: string; channelId?: string | null };
+  let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; publishToAll?: boolean; rename?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const channel = await credsFor(body.channelId, tid);
@@ -39,6 +40,69 @@ export async function POST(req: Request) {
     if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
     logActivity(await currentUser(), "form.rename", `${body.id} → ${body.rename}`);
     return NextResponse.json({ success: true });
+  }
+
+  // Publish an identical COPY of a form onto every OTHER connected number's WABA.
+  // A WhatsApp Form is bound to the WABA it was built on, so to send it natively
+  // from a number on another WABA we clone its fields and publish a copy there,
+  // then map source id -> copy id (wa_form_links) for the flow engine to resolve.
+  if (body.id && body.publishToAll) {
+    const def = await getWaFormDef(body.id, channel);
+    if (def.error) return NextResponse.json({ error: `Couldn't read the form to copy: ${def.error}` }, { status: 502 });
+    if (!def.fields.length) return NextResponse.json({ error: "This form has no readable fields to copy." }, { status: 400 });
+    let srcName = def.title || "Form";
+    try { srcName = (await listWaForms(channel)).find(f => f.id === body.id)?.name || srcName; } catch { /* keep title */ }
+    const srcWaba = channel?.wabaId || process.env.META_WA_WABA_ID || "";
+    const flowJson = buildFlowJson(def.title || srcName, def.fields);
+
+    // One active WhatsApp channel per distinct target WABA (skip the source WABA).
+    const targets = new Map<string, Awaited<ReturnType<typeof listChannels>>[number]>();
+    for (const c of await listChannels(tid)) {
+      if (c.kind !== "whatsapp" || !c.active || !c.wabaId || !c.token) continue;
+      if (c.wabaId === srcWaba || targets.has(c.wabaId)) continue;
+      targets.set(c.wabaId, c);
+    }
+
+    // Idempotency keys on OUR own recorded copy (wa_form_links), verified by id
+    // on the target WABA — never on a name match, since form names aren't unique
+    // across WABAs and a stranger's same-named form would be sent by mistake.
+    const priorByWaba = new Map((await getFormLinks(body.id, tid)).map(l => [l.wabaId, l.formId]));
+
+    const publishedTo: { waba: string; channel: string; formId?: string; status?: string; error?: string }[] = [];
+    const links: { wabaId: string; formId: string; name?: string; status?: string }[] = [];
+    for (const [waba, ch] of targets) {
+      try {
+        const onWaba = await listWaForms(ch).catch(() => []);
+        const priorId = priorByWaba.get(waba);
+        const priorForm = priorId ? onWaba.find(f => f.id === priorId) : undefined;
+        // A copy we already made and recorded still lives here — reuse it
+        // (publishing it first if it never got past draft).
+        if (priorForm && priorForm.status === "PUBLISHED") {
+          publishedTo.push({ waba, channel: ch.name, formId: priorForm.id, status: "PUBLISHED" });
+          links.push({ wabaId: waba, formId: priorForm.id, name: srcName, status: "PUBLISHED" });
+          continue;
+        }
+        if (priorForm && priorForm.status === "DRAFT") {
+          const pub = await publishWaForm(priorForm.id, ch);
+          const status = pub.success ? "PUBLISHED" : "DRAFT";
+          publishedTo.push({ waba, channel: ch.name, formId: priorForm.id, status, error: pub.success ? undefined : pub.error });
+          links.push({ wabaId: waba, formId: priorForm.id, name: srcName, status });
+          continue;
+        }
+        // No usable recorded copy → create + publish a fresh one.
+        const created = await createWaForm(srcName, flowJson, ch);
+        if (created.error || !created.id) { publishedTo.push({ waba, channel: ch.name, error: created.error || "create failed" }); continue; }
+        const pub = await publishWaForm(created.id, ch);
+        const status = pub.success ? "PUBLISHED" : "DRAFT";
+        publishedTo.push({ waba, channel: ch.name, formId: created.id, status, error: pub.success ? undefined : pub.error });
+        links.push({ wabaId: waba, formId: created.id, name: srcName, status });
+      } catch (err) {
+        publishedTo.push({ waba, channel: ch.name, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    if (links.length) await saveFormLinks(body.id, links, tid);
+    logActivity(await currentUser(), "form.publishAll", `${body.id} → ${links.length}/${targets.size} WABAs`);
+    return NextResponse.json({ publishedTo, count: links.length, total: targets.size });
   }
 
   // Publish-only call for an existing draft.

@@ -1544,3 +1544,40 @@ export async function retargetRecipients(campaignId: string, segment: RetargetSe
   }
   return out;
 }
+
+// ── Cross-WABA WhatsApp form replicas (0074) ──────────────────────────────────
+// A WhatsApp Form is bound to one WABA, so the "Publish to all numbers" action
+// clones + publishes a copy per WABA and records source id -> copy id here.
+export interface FormLink { wabaId: string; formId: string; name?: string | null; status?: string | null }
+
+export async function saveFormLinks(sourceFormId: string, links: FormLink[], tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  if (!sourceFormId || !links.length) return;
+  const rows = links.map(l => ({
+    tenant_id: tenantId, source_form_id: sourceFormId, waba_id: l.wabaId, form_id: l.formId,
+    name: l.name ?? null, status: l.status ?? null, updated_at: new Date().toISOString(),
+  }));
+  await db().from("wa_form_links").upsert(rows, { onConflict: "tenant_id,source_form_id,waba_id" }).then(undefined, () => undefined);
+}
+
+// The published copy of `sourceFormId` on `wabaId`, or null — the flow engine
+// uses this to send the native form from a number on another WABA. Missing table
+// (migration 0074 not applied) resolves to null, so sends fall back gracefully.
+export async function formLinkForWaba(sourceFormId: string, wabaId: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
+  if (!sourceFormId || !wabaId) return null;
+  try {
+    const { data } = await db().from("wa_form_links").select("form_id")
+      .eq("tenant_id", tenantId).eq("source_form_id", sourceFormId).eq("waba_id", wabaId).maybeSingle();
+    return (data?.form_id as string) ?? null;
+  } catch { return null; }
+}
+
+export async function getFormLinks(sourceFormId: string, tenantId = DEFAULT_TENANT_ID): Promise<FormLink[]> {
+  if (!sourceFormId) return [];
+  try {
+    const { data } = await db().from("wa_form_links").select("*").eq("tenant_id", tenantId).eq("source_form_id", sourceFormId);
+    return (data ?? []).map(r => ({
+      wabaId: r.waba_id as string, formId: r.form_id as string,
+      name: (r.name as string) ?? null, status: (r.status as string) ?? null,
+    }));
+  } catch { return []; }
+}

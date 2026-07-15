@@ -205,6 +205,24 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     } finally { setBusy(null); }
   }
 
+  // Clone + publish this form onto every OTHER connected number's WABA so a
+  // chatbot flow can send it natively from any number (not just the one it was
+  // built on). A WhatsApp form is tied to one WABA; this replicates it per WABA.
+  async function publishAll(f: WaFormRow) {
+    if (!confirm(`Publish a copy of "${f.name}" to every other connected number, so flows can send this form natively from any number?`)) return;
+    setBusy("all:" + f.id); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, publishToAll: true, channelId }) });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Publish to all failed"); return; }
+      if (!d.total) { setMsg("No other numbers connected — this is the only WABA, so the form already works everywhere it can."); return; }
+      const failed = (d.publishedTo ?? []).filter((r: { error?: string }) => r.error);
+      setMsg(`Published to ${d.count}/${d.total} other number${d.total !== 1 ? "s" : ""}.`
+        + (failed.length ? ` Failed: ${failed.map((r: { channel: string; error: string }) => `${r.channel} — ${r.error}`).join(" · ")}` : " Flows can now send this form natively from any number."));
+      load();
+    } finally { setBusy(null); }
+  }
+
   async function remove(f: WaFormRow) {
     if (!confirm(`${f.status === "PUBLISHED" ? "Deprecate" : "Delete"} form "${f.name}"?`)) return;
     await fetch("/api/admin/waforms", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, channelId }) });
@@ -331,6 +349,13 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <button onClick={() => publish(f.id)} disabled={busy === f.id}
                 className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0 disabled:opacity-60">
                 {busy === f.id ? "…" : "Publish"}
+              </button>
+            )}
+            {f.status === "PUBLISHED" && (
+              <button onClick={() => publishAll(f)} disabled={busy === "all:" + f.id}
+                title="Publish an identical copy of this form to every other connected number's WABA, so a chatbot flow can send it natively from any number"
+                className="px-3 py-1.5 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 shrink-0 disabled:opacity-60">
+                {busy === "all:" + f.id ? "…" : "Publish to all numbers"}
               </button>
             )}
             <button onClick={() => remove(f)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
