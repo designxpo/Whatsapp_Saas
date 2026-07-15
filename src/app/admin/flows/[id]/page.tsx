@@ -981,14 +981,20 @@ function Editor({ flowId }: { flowId: string }) {
           {(() => {
             const kinds = parseKinds(platform);
             const opts = channels.filter(c => kinds.has(c.kind));
-            if (opts.length === 0) return null;
-            const picked = channelIds.filter(id => opts.some(c => c.id === id));
-            const label = picked.length === 0 ? "All numbers" : picked.length === 1 ? (opts.find(c => c.id === picked[0])?.name ?? "1 selected") : `${picked.length} numbers`;
+            // Show the picker when there are channels to pick OR a scope to clear.
+            if (opts.length === 0 && channelIds.length === 0) return null;
             const kindNoun = (k: string) => k === "instagram" ? "account" : k === "messenger" ? "page" : k === "webchat" ? "site" : "number";
+            const nameOf = (id: string) => channels.find(c => c.id === id)?.name ?? "1 number";
+            // Label + state reflect the RAW scope (channelIds), never just the
+            // visible options — a pin on a hidden channel (deleted, or on a platform
+            // whose toggle is off) must read as scoped, not silently as "All numbers".
+            const scoped = channelIds.length > 0;
+            const label = !scoped ? "All numbers" : channelIds.length === 1 ? nameOf(channelIds[0]) : `${channelIds.length} numbers`;
+            const hidden = channelIds.filter(id => !opts.some(c => c.id === id));   // pins not shown as checkboxes
             return (
               <div className="relative shrink-0">
-                <button type="button" onClick={() => setShowChannelPick(v => !v)} title="Which numbers/accounts this flow runs on. Select none to run on all of them."
-                  className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 flex items-center gap-1.5 max-w-[180px]">
+                <button type="button" onClick={() => setShowChannelPick(v => !v)} title="Which numbers/accounts this flow runs on. 'All numbers' = every one of the toggled platforms."
+                  className={`border rounded-control px-2 py-1.5 text-xs bg-white flex items-center gap-1.5 max-w-[180px] ${scoped ? "border-brand-600 text-brand-700" : "border-line text-ink-900"}`}>
                   <Layers className="w-3.5 h-3.5 text-ink-400 shrink-0" />
                   <span className="truncate">{label}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
@@ -998,13 +1004,16 @@ function Editor({ flowId }: { flowId: string }) {
                     <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
                     <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto">
                       <button type="button" onClick={() => setChannelIds([])}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${picked.length === 0 ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
-                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${picked.length === 0 ? "bg-brand-600 border-brand-600" : "border-line"}`}>{picked.length === 0 && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${!scoped ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${!scoped ? "bg-brand-600 border-brand-600" : "border-line"}`}>{!scoped && <Check className="w-2.5 h-2.5 text-white" />}</span>
                         All numbers &amp; accounts
                       </button>
+                      {hidden.length > 0 && (
+                        <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug">⚠ Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
+                      )}
                       <div className="h-px bg-line my-1" />
                       {opts.map(c => {
-                        const chosen = picked.includes(c.id);
+                        const chosen = channelIds.includes(c.id);
                         return (
                           <button key={c.id} type="button" onClick={() => setChannelIds(s => chosen ? s.filter(x => x !== c.id) : [...s.filter(id => opts.some(o => o.id === id)), c.id])}
                             className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${chosen ? "bg-brand-50 text-brand-700" : "text-ink-600 hover:bg-canvas"}`}>
