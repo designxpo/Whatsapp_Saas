@@ -75,9 +75,19 @@ export function flowRunsOn(target: string, kind: string): boolean {
 export interface Flow {
   id: string; name: string; active: boolean; triggerKeywords: string[];
   platform: FlowPlatform;       // which channel kind(s) this flow runs on
-  channelId: string | null;     // scope to one number/account (null = every one of that platform)
+  channelId: string | null;     // legacy single-channel scope (kept in sync with channelIds; null = unscoped)
+  channelIds: string[];         // scope to these specific numbers/accounts (empty = every channel of that platform)
   primaryKbTag: string | null;  // AI in this flow answers from KB docs with this tag first
   graph: FlowGraph; createdAt: string; updatedAt: string;
+}
+
+// A flow runs on a given channel when it's unscoped (no channelIds → every
+// channel of its platform) or that channel is in its set. No channel context
+// (the simulator passes none) always matches so test runs aren't excluded.
+export function flowAllowsChannel(flow: Pick<Flow, "channelIds" | "channelId">, channel?: { id: string } | null): boolean {
+  if (!channel) return true;
+  const ids = flow.channelIds.length ? flow.channelIds : (flow.channelId ? [flow.channelId] : []);
+  return ids.length === 0 || ids.includes(channel.id);
 }
 
 const SESSION_TTL_MS = 24 * 3600 * 1000;
@@ -91,6 +101,7 @@ function mapFlow(r: Record<string, unknown>): Flow {
     triggerKeywords: (r.trigger_keywords as string[]) ?? [],
     platform: (r.platform as Flow["platform"]) ?? "whatsapp",
     channelId: (r.channel_id as string | null) ?? null,
+    channelIds: (r.channel_ids as string[] | null) ?? ((r.channel_id as string | null) ? [r.channel_id as string] : []),
     primaryKbTag: (r.primary_kb_tag as string | null) ?? null,
     graph: (r.graph as FlowGraph) ?? { nodes: [], edges: [] },
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
@@ -121,24 +132,34 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
   return mapFlow(data as Record<string, unknown>);
 }
 
-export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: FlowPlatform; channelId: string | null; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: FlowPlatform; channelId: string | null; channelIds: string[]; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;
   if (p.triggerKeywords !== undefined) patch.trigger_keywords = p.triggerKeywords.map(k => norm(k)).filter(Boolean);
   if (p.platform !== undefined) patch.platform = p.platform;
-  if (p.channelId !== undefined) patch.channel_id = p.channelId;
+  // channelIds is the source of truth; keep the legacy single channel_id in sync
+  // (one selection → that id, otherwise null) so any old reader still behaves.
+  if (p.channelIds !== undefined) {
+    patch.channel_ids = p.channelIds.length ? p.channelIds : null;
+    patch.channel_id = p.channelIds.length === 1 ? p.channelIds[0] : null;
+  } else if (p.channelId !== undefined) {
+    patch.channel_id = p.channelId;
+    patch.channel_ids = p.channelId ? [p.channelId] : null;
+  }
   if (p.primaryKbTag !== undefined) patch.primary_kb_tag = p.primaryKbTag || null;
   if (p.graph !== undefined) patch.graph = p.graph;
   let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
   // Optional columns missing (migration not applied) — save the rest, but never
   // let an Instagram flow silently persist as WhatsApp-only: without the column
   // it would read back as "whatsapp" and never trigger on IG. Fail loudly.
-  if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
+  if (error && ("channel_id" in patch || "channel_ids" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
     const triedPlatform = typeof patch.platform === "string" && patch.platform !== "whatsapp";
-    delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
+    const triedChannelIds = Array.isArray(patch.channel_ids) && patch.channel_ids.length > 1;
+    delete patch.channel_id; delete patch.channel_ids; delete patch.platform; delete patch.primary_kb_tag;
     ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
     if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064 + 0065_flow_platform_multi.sql), then save again.");
+    if (!error && triedChannelIds) throw new Error("Running a flow on multiple specific numbers needs migration 0072_flow_channels.sql applied, then save again.");
   }
   if (error) throw error;
 }
@@ -783,7 +804,7 @@ async function triggerByKeyword(
     const platform = opts.channel?.kind ?? "whatsapp";
     flows = (await listFlows(tid)).filter(f => f.active)
       .filter(f => flowRunsOn(f.platform ?? "whatsapp", platform))
-      .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id);
+      .filter(f => flowAllowsChannel(f, opts.channel));
   }
   const t = norm(text);
   for (const flow of flows) {
@@ -1192,7 +1213,7 @@ export async function handleFlowMessage(
   // and takes precedence over keywords (the first message is rarely a keyword).
   if (opts.adFlowId && !opts.onlyFlowId) {
     const flow = await getFlow(opts.adFlowId, tid);
-    if (flow && (flow.active || opts.allowInactive) && (!flow.channelId || !opts.channel || flow.channelId === opts.channel.id)) {
+    if (flow && (flow.active || opts.allowInactive) && flowAllowsChannel(flow, opts.channel)) {
       if (isReal) await setConversationKbTag(convKey, flow.primaryKbTag).catch(() => undefined);
       const start = flow.graph.nodes.find(n => n.type === "start");
       const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
@@ -1208,7 +1229,7 @@ export async function handleFlowMessage(
     const armedId = await takeArmedFlow(phone, tid).catch(() => null);
     if (armedId) {
       const flow = await getFlow(armedId, tid);
-      if (flow && flow.active && (!flow.channelId || !opts.channel || flow.channelId === opts.channel.id)) {
+      if (flow && flow.active && flowAllowsChannel(flow, opts.channel)) {
         await setConversationKbTag(convKey, flow.primaryKbTag).catch(() => undefined);
         const start = flow.graph.nodes.find(n => n.type === "start");
         const consumed = await runFrom(flow, start ? nextNode(flow.graph, start.id) : undefined, convKey, phone, send, isReal, undefined, tid);
@@ -1250,7 +1271,7 @@ export async function handleFlowMessage(
       const DEFAULT_KW = ["menu", "hi", "hello", "start"];
       const def = (await listFlows(tid)).filter(f => f.active)
         .filter(f => flowRunsOn(f.platform ?? "whatsapp", platform))
-        .filter(f => !f.channelId || !opts.channel || f.channelId === opts.channel.id)
+        .filter(f => flowAllowsChannel(f, opts.channel))
         .filter(f => f.graph.nodes.some(n => ["buttons", "list", "waform", "ask"].includes(n.type)))
         .map(f => ({ f, rank: Math.min(...f.triggerKeywords.map(k => { const i = DEFAULT_KW.indexOf(norm(k)); return i === -1 ? 99 : i; }), 99) }))
         .filter(x => x.rank < 99)

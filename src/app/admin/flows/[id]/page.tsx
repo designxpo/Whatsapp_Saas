@@ -18,7 +18,7 @@ import {
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
   AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd, LayoutTemplate,
-  UploadCloud, CalendarClock,
+  UploadCloud, CalendarClock, Check,
 } from "lucide-react";
 
 type NodeData = Record<string, unknown>;
@@ -824,7 +824,8 @@ function Editor({ flowId }: { flowId: string }) {
   const [keywords, setKeywords] = useState("");
   const [active, setActive] = useState(false);
   const [platform, setPlatform] = useState<string>("whatsapp");   // a channel kind or comma-set, e.g. "whatsapp,messenger"
-  const [channelId, setChannelId] = useState<string | null>(null);
+  const [channelIds, setChannelIds] = useState<string[]>([]);      // specific numbers/accounts (empty = every channel of the platform)
+  const [showChannelPick, setShowChannelPick] = useState(false);
   const [primaryKbTag, setPrimaryKbTag] = useState("");
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [channels, setChannels] = useState<{ id: string; name: string; kind: string }[]>([]);
@@ -854,7 +855,7 @@ function Editor({ flowId }: { flowId: string }) {
       if (!d.flow) return;
       setName(d.flow.name); setActive(d.flow.active); setKeywords((d.flow.triggerKeywords ?? []).join(", "));
       setPlatform((d.flow.platform || "whatsapp").trim() || "whatsapp");
-      setChannelId(d.flow.channelId ?? null);
+      setChannelIds(d.flow.channelIds ?? (d.flow.channelId ? [d.flow.channelId] : []));
       setPrimaryKbTag(d.flow.primaryKbTag ?? "");
       setNodes((d.flow.graph.nodes ?? []).map((n: { id: string; type: string; position: { x: number; y: number }; data: NodeData }) => ({ ...n, data: n.data ?? {} })));
       setEdges((d.flow.graph.edges ?? []).map((e: Edge) => ({ ...e, animated: true, type: "deletable" })));
@@ -906,7 +907,7 @@ function Editor({ flowId }: { flowId: string }) {
           name: name.trim() || "Untitled flow",
           active,
           platform,
-          channelId,
+          channelIds,
           primaryKbTag: primaryKbTag || null,
           triggerKeywords: keywords.split(",").map(k => k.trim()).filter(Boolean),
           graph: {
@@ -962,7 +963,7 @@ function Editor({ flowId }: { flowId: string }) {
               const on = parseKinds(platform).has(c.k);
               return (
                 <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
-                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); setPlatform(serializeKinds(set)); setChannelId(null); }}
+                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); const nextKinds = serializeKinds(set); setPlatform(nextKinds); setChannelIds(ids => ids.filter(id => { const ch = channels.find(x => x.id === id); return ch ? parseKinds(nextKinds).has(ch.kind) : false; })); }}
                   className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
                   <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
                   <span className="hidden xl:inline">{c.label}</span>
@@ -970,12 +971,48 @@ function Editor({ flowId }: { flowId: string }) {
               );
             })}
           </div>
-          {(() => { const k = parseKinds(platform); const only = k.size === 1 ? [...k][0] : null; const matches = only ? channels.filter(c => c.kind === only) : []; return only && matches.length > 0 ? (
-            <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 shrink-0 max-w-[180px]" value={channelId ?? ""} onChange={e => setChannelId(e.target.value || null)} title={`Which ${only === "instagram" ? "account" : only === "messenger" ? "page" : only === "webchat" ? "site" : "number"} this flow runs on`}>
-              <option value="">All {only === "instagram" ? "accounts" : only === "messenger" ? "pages" : only === "webchat" ? "sites" : "numbers"}</option>
-              {matches.map(c => <option key={c.id} value={c.id}>{c.name} only</option>)}
-            </select>
-          ) : null; })()}
+          {(() => {
+            const kinds = parseKinds(platform);
+            const opts = channels.filter(c => kinds.has(c.kind));
+            if (opts.length === 0) return null;
+            const picked = channelIds.filter(id => opts.some(c => c.id === id));
+            const label = picked.length === 0 ? "All numbers" : picked.length === 1 ? (opts.find(c => c.id === picked[0])?.name ?? "1 selected") : `${picked.length} numbers`;
+            const kindNoun = (k: string) => k === "instagram" ? "account" : k === "messenger" ? "page" : k === "webchat" ? "site" : "number";
+            return (
+              <div className="relative shrink-0">
+                <button type="button" onClick={() => setShowChannelPick(v => !v)} title="Which numbers/accounts this flow runs on. Select none to run on all of them."
+                  className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 flex items-center gap-1.5 max-w-[180px]">
+                  <Layers className="w-3.5 h-3.5 text-ink-400 shrink-0" />
+                  <span className="truncate">{label}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
+                </button>
+                {showChannelPick && (
+                  <>
+                    <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
+                    <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto">
+                      <button type="button" onClick={() => setChannelIds([])}
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${picked.length === 0 ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
+                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${picked.length === 0 ? "bg-brand-600 border-brand-600" : "border-line"}`}>{picked.length === 0 && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                        All numbers &amp; accounts
+                      </button>
+                      <div className="h-px bg-line my-1" />
+                      {opts.map(c => {
+                        const chosen = picked.includes(c.id);
+                        return (
+                          <button key={c.id} type="button" onClick={() => setChannelIds(s => chosen ? s.filter(x => x !== c.id) : [...s.filter(id => opts.some(o => o.id === id)), c.id])}
+                            className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${chosen ? "bg-brand-50 text-brand-700" : "text-ink-600 hover:bg-canvas"}`}>
+                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${chosen ? "bg-brand-600 border-brand-600" : "border-line"}`}>{chosen && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                            <span className="truncate">{c.name}</span>
+                            <span className="ml-auto text-[10px] text-ink-400 shrink-0">{kindNoun(c.kind)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
           <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
             <option value="">🧠 Default knowledge</option>
             {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
