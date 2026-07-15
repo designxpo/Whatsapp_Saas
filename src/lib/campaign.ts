@@ -4,7 +4,7 @@ import {
   type Campaign,
 } from "./store";
 import { sendCampaign, getCreds } from "./whatsapp";
-import { credsFor, getChannel, isMarketingSendable, type Channel } from "./channels";
+import { credsFor, explicitDefaultChannel, getChannel, isMarketingSendable, type Channel } from "./channels";
 import { getDailyCapForTier } from "./quota";
 
 const CHUNK = Math.max(1, parseInt(process.env.WA_SEND_CHUNK ?? "80", 10));
@@ -74,7 +74,7 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
         variables: campaign.variables,
         recipients: chunk.map(c => ({ phone: c.phone, fullName: c.fullName })),
         headerImageUrl: campaign.headerImageUrl,
-        channel: await credsFor(campaign.channelId),
+        channel: (await credsFor(campaign.channelId, campaign.tenantId)) ?? (await explicitDefaultChannel(campaign.tenantId)),
         tenantId: campaign.tenantId,
       });
       // Mark each claimed row by its ACTUAL outcome. sendCampaign returns one
@@ -118,7 +118,7 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
 export interface StartResult { enqueued: number; sentNow: number; queuedRemaining: number; status: Campaign["status"]; message: string }
 
 export async function startSend(campaign: Campaign, recipients: { phone: string; fullName: string }[]): Promise<StartResult> {
-  const { token, phoneId } = getCreds(await credsFor(campaign.channelId));
+  const { token, phoneId } = getCreds((await credsFor(campaign.channelId, campaign.tenantId)) ?? (await explicitDefaultChannel(campaign.tenantId)));
   if (!token || !phoneId) return { enqueued: 0, sentNow: 0, queuedRemaining: 0, status: campaign.status, message: "WhatsApp credentials not configured." };
 
   const enqueued = await enqueue(campaign.id, recipients, campaign.tenantId);
@@ -170,7 +170,7 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
         variables: campaign.variables,
         recipients: group.map(d => ({ phone: d.phone, fullName: d.recipientName })),
         headerImageUrl: campaign.headerImageUrl,
-        channel: await credsFor(campaign.channelId),
+        channel: (await credsFor(campaign.channelId, campaign.tenantId)) ?? (await explicitDefaultChannel(campaign.tenantId)),
         tenantId: campaign.tenantId,
       });
       // Mark each scheduled send by its real outcome (in send order). Items past

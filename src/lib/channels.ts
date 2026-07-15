@@ -199,6 +199,21 @@ export async function getDefaultChannel(tenantId?: string): Promise<Channel | nu
   return all.find(c => c.isDefault) ?? all[0] ?? null;
 }
 
+// The WhatsApp number an UNPINNED BROADCAST should leave from: the channel an
+// admin explicitly marked "default for sends" WITHIN this tenant. No explicit
+// default → undefined, so env credentials are used. Deliberately does NOT fall
+// back to "the first channel", and REQUIRES a tenantId — a tenant-less lookup
+// would scan every tenant and could return another tenant's default number.
+//
+// IMPORTANT: only broadcast/campaign paths use this. A conversation reply keys on
+// conv.channelId, where null means "reply from the number the customer messaged",
+// NOT "use the default". So credsFor() stays pure (null → env); the default
+// fallback lives at the broadcast call site.
+export async function explicitDefaultChannel(tenantId: string): Promise<Channel | undefined> {
+  return (await listChannels(tenantId)).find(c =>
+    c.isDefault && c.active && (c.kind ?? "whatsapp") === "whatsapp" && !!c.token && !!c.phoneId) ?? undefined;
+}
+
 // Resolve a channel reference (id | Channel | null/undefined) to creds-or-undefined.
 // `undefined` tells the senders to use env credentials. When ref is a client-
 // supplied id, pass tenantId so a foreign channel resolves to undefined rather
