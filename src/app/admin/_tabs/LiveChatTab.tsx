@@ -27,6 +27,19 @@ function startsNewDay(messages: { createdAt: string }[], i: number): boolean {
   return new Date(messages[i - 1].createdAt).toDateString() !== new Date(messages[i].createdAt).toDateString();
 }
 
+// Turn bare URLs in a plain-text message into clickable links, and let long ones
+// wrap instead of overflowing the bubble. Everything else renders verbatim.
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+function linkify(text: string) {
+  const parts = text.split(URL_RE);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part)
+      ? <a key={i} href={part} target="_blank" rel="noreferrer" className="underline decoration-1 underline-offset-2 break-all hover:opacity-80">{part}</a>
+      : <Fragment key={i}>{part}</Fragment>,
+  );
+}
+
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
@@ -442,7 +455,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-canvas/60">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1.5 bg-canvas/60">
           {messages.map((m, i) => {
             // WhatsApp-style centered day divider whenever the calendar day changes.
             const dateDivider = startsNewDay(messages, i)
@@ -466,11 +479,18 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             // Show the caption/transcript only when it's real text (not the
             // "[image message]" placeholder kept for messages with no caption).
             const hasCaption = isMedia && !!body.trim() && !/^\[.*\]$/.test(body.trim());
+            // Group consecutive messages from the same side (same day, not a
+            // centered marker): the timestamp shows only on the last of the run,
+            // so a burst of bot bubbles reads as one turn, WhatsApp-style.
+            const nextM = messages[i + 1];
+            const contNext = !!nextM && nextM.role === m.role
+              && nextM.body !== "[form-abandoned]" && m.body !== "[form-abandoned]"
+              && !startsNewDay(messages, i + 1);
             return (
               <Fragment key={m.id}>
               {dateDivider}
               <div className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
-                <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                <div className={`max-w-[78%] sm:max-w-[68%] min-w-[2.75rem] px-3.5 py-2 text-sm shadow-sm rounded-2xl ${m.role === "user" ? "rounded-bl-md" : "rounded-br-md"} ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
                   {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
                     <div className="space-y-1.5">
@@ -481,7 +501,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                         <audio controls preload="none" src={m.mediaUrl!} className="h-10 w-[240px] max-w-full" />
                       </>}
                       {isFile && <a href={m.mediaUrl!} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-brand-700 underline text-[13px] font-semibold"><FileText className="w-4 h-4" /> Download file</a>}
-                      {hasCaption && <p className={`whitespace-pre-wrap break-words text-[13px] ${isAudio ? "text-ink-500 italic" : ""}`}>{isAudio ? `“${body}”` : body}</p>}
+                      {hasCaption && <p className={`whitespace-pre-wrap break-words text-[13px] ${isAudio ? "text-ink-500 italic" : ""}`}>{isAudio ? `“${body}”` : linkify(body)}</p>}
                     </div>
                   ) : submitted ? (
                     <div>
@@ -497,16 +517,18 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                     </div>
                   ) : sentMatch ? (
                     <div>
-                      <p className="whitespace-pre-wrap break-words">{sentMatch[1]}</p>
+                      <p className="whitespace-pre-wrap break-words">{linkify(sentMatch[1])}</p>
                       <p className="mt-1 text-[11px] font-bold text-brand-700">📋 Form sent · {sentMatch[2]}</p>
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap break-words">{body}</p>
+                    <p className="whitespace-pre-wrap break-words">{linkify(body)}</p>
                   )}
-                  <p className={`text-[10px] mt-1 ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
-                    {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    {multiChannelThread && m.channelId && channelName(m.channelId) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· via {channelName(m.channelId)}</span>}
-                  </p>
+                  {!contNext && (
+                    <p className={`text-[10px] mt-1 text-right ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
+                      {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {multiChannelThread && m.channelId && channelName(m.channelId) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· via {channelName(m.channelId)}</span>}
+                    </p>
+                  )}
                 </div>
               </div>
               </Fragment>

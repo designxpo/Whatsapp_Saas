@@ -952,120 +952,123 @@ function Editor({ flowId }: { flowId: string }) {
 
   return (
     <div className="h-screen flex flex-col bg-canvas">
-      {/* Top bar */}
-      <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 z-20">
-        {/* Left — back + flow name (never shrinks) */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
-          <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
-          <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-line focus:outline-none w-36 lg:w-44 bg-transparent" value={name} onChange={e => setName(e.target.value)} />
-        </div>
-
-        {/* Middle — flow config; scrolls horizontally when the bar is tight so the
-            actions on the right always stay visible and never wrap/clip. */}
-        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto py-1">
-          <input className="border border-line rounded-control px-3 py-1.5 text-xs w-56 shrink-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Trigger keywords, comma-separated (e.g. hi, hello, menu)" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
-          <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
-            {FLOW_CHANNELS.map(c => {
-              const on = parseKinds(platform).has(c.k);
-              return (
-                <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
-                  onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); const nextKinds = serializeKinds(set); setPlatform(nextKinds); setChannelIds(ids => ids.filter(id => { const ch = channels.find(x => x.id === id); return ch ? parseKinds(nextKinds).has(ch.kind) : true; })); }}
-                  className={`flex items-center gap-1.5 border rounded-control px-2 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
-                  <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
-                  <span className="hidden xl:inline">{c.label}</span>
-                </button>
-              );
-            })}
-          </div>
-          {(() => {
-            const kinds = parseKinds(platform);
-            const opts = channels.filter(c => kinds.has(c.kind));
-            // Show the picker when there are channels to pick OR a scope to clear.
-            if (opts.length === 0 && channelIds.length === 0) return null;
-            const kindNoun = (k: string) => k === "instagram" ? "account" : k === "messenger" ? "page" : k === "webchat" ? "site" : "number";
-            const nameOf = (id: string) => channels.find(c => c.id === id)?.name ?? "1 number";
-            // Label + state reflect the RAW scope (channelIds), never just the
-            // visible options — a pin on a hidden channel (deleted, or on a platform
-            // whose toggle is off) must read as scoped, not silently as "All numbers".
-            const scoped = channelIds.length > 0;
-            const label = !scoped ? "All numbers" : channelIds.length === 1 ? nameOf(channelIds[0]) : `${channelIds.length} numbers`;
-            const hidden = channelIds.filter(id => !opts.some(c => c.id === id));   // pins not shown as checkboxes
-            return (
-              <div className="relative shrink-0">
-                <button type="button" onClick={() => setShowChannelPick(v => !v)} title="Which numbers/accounts this flow runs on. 'All numbers' = every one of the toggled platforms."
-                  className={`border rounded-control px-2 py-1.5 text-xs bg-white flex items-center gap-1.5 max-w-[180px] ${scoped ? "border-brand-600 text-brand-700" : "border-line text-ink-900"}`}>
-                  <Layers className="w-3.5 h-3.5 text-ink-400 shrink-0" />
-                  <span className="truncate">{label}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
-                </button>
-                {showChannelPick && (
-                  <>
-                    <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
-                    <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto">
-                      <button type="button" onClick={() => setChannelIds([])}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${!scoped ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
-                        <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${!scoped ? "bg-brand-600 border-brand-600" : "border-line"}`}>{!scoped && <Check className="w-2.5 h-2.5 text-white" />}</span>
-                        All numbers &amp; accounts
-                      </button>
-                      {hidden.length > 0 && (
-                        <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug">⚠ Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
-                      )}
-                      <div className="h-px bg-line my-1" />
-                      {opts.map(c => {
-                        const chosen = channelIds.includes(c.id);
-                        return (
-                          <button key={c.id} type="button" onClick={() => setChannelIds(s => chosen ? s.filter(x => x !== c.id) : [...s.filter(id => opts.some(o => o.id === id)), c.id])}
-                            className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${chosen ? "bg-brand-50 text-brand-700" : "text-ink-600 hover:bg-canvas"}`}>
-                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${chosen ? "bg-brand-600 border-brand-600" : "border-line"}`}>{chosen && <Check className="w-2.5 h-2.5 text-white" />}</span>
-                            <span className="truncate">{c.name}</span>
-                            <span className="ml-auto text-[10px] text-ink-400 shrink-0">{kindNoun(c.kind)}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          })()}
-          <select className="border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
-            <option value="">🧠 Default knowledge</option>
-            {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
-            {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
-          </select>
-        </div>
-
-        {/* Right — actions; pinned, never shrink or wrap */}
-        <div className="flex items-center gap-2 shrink-0">
-          {issues.length > 0 && (
-            <div className="relative">
-              <button onClick={() => setShowIssues(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold whitespace-nowrap">
-                <AlertTriangle className="w-3.5 h-3.5" /> {issues.length} issue{issues.length > 1 ? "s" : ""}
-              </button>
-              {showIssues && (
-                <div className="absolute right-0 top-9 w-80 bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-bold text-ink-400 uppercase">Fix before going live</p>
-                    <button onClick={() => setShowIssues(false)} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
-                  </div>
-                  {issues.map((s, i) => <p key={i} className="text-xs text-ink-600">• {s.msg}</p>)}
+      {/* Top bar — flow identity + status & actions */}
+      <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 z-30">
+        <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
+        <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
+        <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-brand-600 focus:outline-none flex-1 min-w-[8rem] max-w-[24rem] bg-transparent" placeholder="Untitled flow" value={name} onChange={e => setName(e.target.value)} />
+        <div className="flex-1" />
+        {issues.length > 0 && (
+          <div className="relative">
+            <button onClick={() => setShowIssues(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold whitespace-nowrap">
+              <AlertTriangle className="w-3.5 h-3.5" /> {issues.length} issue{issues.length > 1 ? "s" : ""}
+            </button>
+            {showIssues && (
+              <div className="absolute right-0 top-9 w-80 bg-white rounded-control border border-line shadow-float p-3 space-y-1.5 z-30">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold text-ink-400 uppercase">Fix before going live</p>
+                  <button onClick={() => setShowIssues(false)} className="text-ink-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
                 </div>
+                {issues.map((s, i) => <p key={i} className="text-xs text-ink-600">• {s.msg}</p>)}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="h-6 w-px bg-line mx-0.5 hidden sm:block" />
+        <button onClick={() => setActive(a => !a)} title="When ON, this flow can trigger for real conversations on the chosen channels." className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{active ? "● Active" : "○ Inactive"}</button>
+        <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
+        <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          {Date.now() - savedAt < 2500 ? "Saved ✓" : "Save"}
+        </button>
+      </header>
+
+      {/* Config strip — how it triggers · where it runs · what it knows */}
+      <div className="px-4 h-11 shrink-0 bg-white border-b border-line flex items-center gap-2.5 z-20">
+        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Triggers</span>
+        <input className="border border-line rounded-control px-2.5 py-1 text-xs w-[220px] shrink-0 bg-white text-ink-900 placeholder:text-ink-400" placeholder="Keywords: hi, hello, menu" title="A message matching any of these starts the flow. To trigger from a template's quick-reply button, add the button's exact label here." value={keywords} onChange={e => setKeywords(e.target.value)} />
+        <div className="relative shrink-0">
+          <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-semibold whitespace-nowrap"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
+          {showAdTriggers && <AdTriggersPanel flowId={flowId} onClose={() => setShowAdTriggers(false)} />}
+        </div>
+
+        <div className="h-5 w-px bg-line shrink-0" />
+
+        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Channels</span>
+        <div className="flex items-center gap-1 shrink-0" title="Tick the channels this flow should run on">
+          {FLOW_CHANNELS.map(c => {
+            const on = parseKinds(platform).has(c.k);
+            return (
+              <button key={c.k} type="button" aria-pressed={on} title={(on ? "Running on " : "Tap to run on ") + c.label}
+                onClick={() => { const set = parseKinds(platform); if (on) set.delete(c.k); else set.add(c.k); const nextKinds = serializeKinds(set); setPlatform(nextKinds); setChannelIds(ids => ids.filter(id => { const ch = channels.find(x => x.id === id); return ch ? parseKinds(nextKinds).has(ch.kind) : true; })); }}
+                className={`flex items-center gap-1.5 border rounded-control px-2 py-1 text-xs font-medium whitespace-nowrap transition-colors ${on ? "border-brand-600 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-400 hover:text-ink-700"}`}>
+                <span className={on ? "" : "grayscale opacity-60"}>{c.icon}</span>
+                <span className="hidden xl:inline">{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {(() => {
+          const kinds = parseKinds(platform);
+          const opts = channels.filter(c => kinds.has(c.kind));
+          // Show the picker when there are channels to pick OR a scope to clear.
+          if (opts.length === 0 && channelIds.length === 0) return null;
+          const kindNoun = (k: string) => k === "instagram" ? "account" : k === "messenger" ? "page" : k === "webchat" ? "site" : "number";
+          const nameOf = (id: string) => channels.find(c => c.id === id)?.name ?? "1 number";
+          // Label + state reflect the RAW scope (channelIds), never just the
+          // visible options — a pin on a hidden channel (deleted, or on a platform
+          // whose toggle is off) must read as scoped, not silently as "All numbers".
+          const scoped = channelIds.length > 0;
+          const label = !scoped ? "All numbers" : channelIds.length === 1 ? nameOf(channelIds[0]) : `${channelIds.length} numbers`;
+          const hidden = channelIds.filter(id => !opts.some(c => c.id === id));   // pins not shown as checkboxes
+          return (
+            <div className="relative shrink-0">
+              <button type="button" onClick={() => setShowChannelPick(v => !v)} title="Which numbers/accounts this flow runs on. 'All numbers' = every one of the toggled platforms."
+                className={`border rounded-control px-2 py-1 text-xs bg-white flex items-center gap-1.5 max-w-[180px] ${scoped ? "border-brand-600 text-brand-700" : "border-line text-ink-900"}`}>
+                <Layers className="w-3.5 h-3.5 text-ink-400 shrink-0" />
+                <span className="truncate">{label}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-ink-400 shrink-0" />
+              </button>
+              {showChannelPick && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
+                  <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto">
+                    <button type="button" onClick={() => setChannelIds([])}
+                      className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${!scoped ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${!scoped ? "bg-brand-600 border-brand-600" : "border-line"}`}>{!scoped && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                      All numbers &amp; accounts
+                    </button>
+                    {hidden.length > 0 && (
+                      <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug">⚠ Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
+                    )}
+                    <div className="h-px bg-line my-1" />
+                    {opts.map(c => {
+                      const chosen = channelIds.includes(c.id);
+                      return (
+                        <button key={c.id} type="button" onClick={() => setChannelIds(s => chosen ? s.filter(x => x !== c.id) : [...s.filter(id => opts.some(o => o.id === id)), c.id])}
+                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${chosen ? "bg-brand-50 text-brand-700" : "text-ink-600 hover:bg-canvas"}`}>
+                          <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${chosen ? "bg-brand-600 border-brand-600" : "border-line"}`}>{chosen && <Check className="w-2.5 h-2.5 text-white" />}</span>
+                          <span className="truncate">{c.name}</span>
+                          <span className="ml-auto text-[10px] text-ink-400 shrink-0">{kindNoun(c.kind)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
-          )}
-          <div className="relative">
-            <button onClick={() => setShowAdTriggers(v => !v)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-line text-ink-600 hover:bg-canvas text-xs font-bold whitespace-nowrap"><Flag className="w-3.5 h-3.5" /> Ad triggers</button>
-            {showAdTriggers && <AdTriggersPanel flowId={flowId} onClose={() => setShowAdTriggers(false)} />}
-          </div>
-          <button onClick={() => setActive(a => !a)} className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap ${active ? "bg-brand-100 text-brand-700" : "bg-canvas text-ink-400"}`}>{active ? "● Active" : "○ Inactive"}</button>
-          <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
-          <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {Date.now() - savedAt < 2500 ? "Saved ✓" : "Save"}
-          </button>
-        </div>
-      </header>
+          );
+        })()}
+
+        <div className="h-5 w-px bg-line shrink-0" />
+
+        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Knowledge</span>
+        <select className="border border-line rounded-control px-2 py-1 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
+          <option value="">🧠 Default knowledge</option>
+          {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
+          {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
+        </select>
+      </div>
 
       <div className="flex-1 flex min-h-0">
         {/* Toolbox */}
