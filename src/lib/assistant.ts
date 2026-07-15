@@ -113,7 +113,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
       const handoff = "I've flagged this for our team — someone will follow up with you here. In the meantime, I'm happy to keep helping with any questions! 🙌";
       const sent = await sendText(conv.phone, handoff, channel);
       if (sent.id) {
-        await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });
+        await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot", tenantId: conv.tenantId, channelId: conv.channelId ?? null });
         await touchOutbound(conversationId, handoff);
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: handoff, via: "bot", tenantId: conv.tenantId });
       }
@@ -165,7 +165,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
       if (routed.answer) {
         const sent = await sendReply(routed.answer);
         if (sent.error) { await reflagReply(conversationId); return { outcome: "failed", detail: sent.error }; }
-        await appendConvMessage({ conversationId, role: "assistant", body: routed.answer, metaId: sent.id, source: "bot" });
+        await appendConvMessage({ conversationId, role: "assistant", body: routed.answer, metaId: sent.id, source: "bot", tenantId: conv.tenantId, channelId: conv.channelId ?? null });
         await touchOutbound(conversationId, routed.answer);
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: routed.answer, via: "bot", tenantId: conv.tenantId });
         return { outcome: "sent", detail: `router:${routed.source}` };
@@ -185,7 +185,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
       const handoff = result.reply ?? "Thanks for reaching out — I've flagged this for our team to follow up. Meanwhile, I'm happy to keep helping — what would you like to know?";
       const sent = await sendText(conv.phone, handoff, channel);
       if (sent.id) {
-        await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot" });
+        await appendConvMessage({ conversationId, role: "assistant", body: handoff, metaId: sent.id, source: "bot", tenantId: conv.tenantId, channelId: conv.channelId ?? null });
         await touchOutbound(conversationId, handoff);
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: handoff, via: "bot", tenantId: conv.tenantId });
       }
@@ -197,7 +197,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // Persist the reply WITH its grounding telemetry (coverage band + what the
     // firewall stripped/deferred) so KB gaps are visible after the fact.
     const saved = await appendConvMessage({
-      conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot", tenantId: conv.tenantId,
+      conversationId, role: "assistant", body: result.reply, metaId: sent.id, source: "bot", tenantId: conv.tenantId, channelId: conv.channelId ?? null,
       coverageBand: result.coverageBand, topSim: result.topSim,
       groundingDeferred: result.groundingActions?.some(a => a.disposition === "defer"),
       groundingStripped: result.groundingActions,

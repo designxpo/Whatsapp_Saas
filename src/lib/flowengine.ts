@@ -222,9 +222,12 @@ export interface FlowSender {
 }
 
 function realSender(conversationId: string, phone: string, channel?: ChannelCreds, tenantId = DEFAULT_TENANT_ID): FlowSender {
+  // Full Channel rows carry an id (per-message channel log, 0073); bare env
+  // creds don't — the log column just stays null then.
+  const channelId = (channel as { id?: string } | undefined)?.id ?? null;
   const log = async (body: string, metaId?: string) => {
     if (!metaId) return;
-    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId, channelId }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   return {
@@ -260,7 +263,7 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
   const creds = { igUserId: channel.igUserId ?? "", token: channel.token };
   const log = async (body: string, metaId?: string) => {
     if (!metaId) return;
-    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId, channelId: channel.id }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   const sendIg = async (body: string): Promise<{ id?: string; error?: string }> => {
@@ -307,7 +310,7 @@ function fbSender(conversationId: string, phone: string, channel: Channel, tenan
   const now = () => new Date().toISOString();
   const log = async (body: string, metaId?: string) => {
     if (!metaId) return;
-    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId }).catch(() => undefined);
+    await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId, channelId: channel.id }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
   };
   const sendFb = async (body: string): Promise<{ id?: string; error?: string }> => {

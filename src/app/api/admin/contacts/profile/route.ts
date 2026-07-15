@@ -38,6 +38,7 @@ export async function GET(req: Request) {
       tags: [],
       attributes: convRow.lead_phone ? { lead_phone: convRow.lead_phone as string } : {},
       status: "active",
+      channelId: null,
       source: (convRow.platform as string) ?? null,
       createdAt: (convRow.created_at as string) ?? new Date().toISOString(),
     };

@@ -18,6 +18,7 @@ export interface Contact {
   attributes: Record<string, string>;
   status: "active" | "optedout";
   source: string | null;
+  channelId: string | null;    // first-touch channel (number/account) that produced the lead
   createdAt: string;
 }
 
@@ -92,6 +93,7 @@ function mapContact(r: Record<string, unknown>): Contact {
     attributes: (r.attributes as Record<string, string>) ?? {},
     status: r.status as Contact["status"],
     source: (r.source as string | null) ?? null,
+    channelId: (r.channel_id as string | null) ?? null,
     createdAt: r.created_at as string,
   };
 }
@@ -107,14 +109,18 @@ export async function upsertContacts(
   source = "import",
   tenantId = DEFAULT_TENANT_ID,
   optIn?: { consented: boolean; proof?: string },
+  channelId?: string | null,
 ): Promise<{ inserted: number; skipped: number }> {
   const consented = optIn?.consented ?? false;
   const nowIso = new Date().toISOString();
+  // channelId = first-touch attribution: stamped on NEW contacts only (updates
+  // never touch it), recording which number/account produced the lead.
   const clean = rows
     .map(r => ({
       tenant_id: tenantId, phone: digits(r.phone), name: (r.name ?? "").trim(),
       email: r.email?.trim() || null, tags: r.tags ?? [], attributes: r.attributes ?? {},
       status: "active", source,
+      ...(channelId ? { channel_id: channelId } : {}),
       opted_in: consented,
       opt_in_source: source,
       opt_in_at: consented ? nowIso : null,
@@ -175,7 +181,11 @@ export async function upsertContacts(
       await db().from("contacts").delete().eq("tenant_id", tenantId).in("id", dupIdsToDelete).then(undefined, () => undefined);
     }
     if (toInsert.length) {
-      const { data, error } = await db().from("contacts").upsert(toInsert, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+      let { data, error } = await db().from("contacts").upsert(toInsert, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+      // Pre-migration safety (0073): contacts.channel_id missing → retry without it.
+      if (error && channelId && (error.code === "42703" || error.code === "PGRST204")) {
+        ({ data, error } = await db().from("contacts").upsert(toInsert.map(({ channel_id: _c, ...rest }) => rest), { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id"));
+      }
       if (error) throw error;
       inserted = data?.length ?? 0;
     }
@@ -184,7 +194,10 @@ export async function upsertContacts(
     // Dedup failed (e.g. an oversized lookup) — fall back to a plain upsert so
     // the import still lands; the unique (tenant_id, phone) constraint dedups.
     logError("contacts.dedup", err, { tenantId });
-    const { data, error } = await db().from("contacts").upsert(batch, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+    let { data, error } = await db().from("contacts").upsert(batch, { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id");
+    if (error && channelId && (error.code === "42703" || error.code === "PGRST204")) {
+      ({ data, error } = await db().from("contacts").upsert(batch.map(({ channel_id: _c, ...rest }) => rest), { onConflict: "tenant_id,phone", ignoreDuplicates: true }).select("id"));
+    }
     if (error) throw error;
     return { inserted: data?.length ?? 0, skipped: rows.length - (data?.length ?? 0) };
   }
@@ -632,6 +645,7 @@ export interface ConvMessage {
   body: string;
   source: "inbound" | "bot" | "agent";
   createdAt: string;
+  channelId?: string | null;   // which number/account it arrived on / went out from
   mediaUrl?: string | null;    // e.g. an inbound voice note, playable in Live Chat
   mediaType?: string | null;   // its MIME type, e.g. "audio/ogg"
 }
@@ -702,8 +716,8 @@ export async function escalateConversation(conversationId: string): Promise<void
   await db().from("wa_conversations").update({ status: "escalated", needs_reply: true }).eq("id", conversationId).then(() => {}, () => {});
 }
 
-// Find-or-create by phone. Keeps the latest name if provided; stamps the
-// channel (receiving number) on create or when it was unknown.
+// Find-or-create by phone. Keeps the latest name if provided; channel_id
+// follows the number/account the customer LAST wrote to.
 export async function getOrCreateConversation(phone: string, name?: string, channelId?: string | null, platform: ConvPlatform = "whatsapp", tenantId = DEFAULT_TENANT_ID): Promise<Conversation> {
   // Only WhatsApp identifiers are phone numbers; IG/Messenger/webchat use opaque
   // ids (IGSID / PSID / web:<uuid>), so digit-normalize WhatsApp alone.
@@ -713,7 +727,10 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     const row = existing.data as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     if (name && name.trim() && !row.name) patch.name = name.trim();
-    if (channelId && !row.channel_id) patch.channel_id = channelId;
+    // Follow the customer: channel_id tracks the number/account they LAST wrote
+    // to, so manual replies, templates and the Live Chat badge use the number
+    // the customer is actually talking to (they can message any of our numbers).
+    if (channelId && row.channel_id !== channelId) patch.channel_id = channelId;
     if (Object.keys(patch).length) {
       const { error } = await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("phone", p);
       if (!error) Object.assign(row, patch);
@@ -845,11 +862,14 @@ export async function listConversations(opts: { status?: ConvStatus | null; limi
 // Returns the persisted row's id + created_at so callers (e.g. the web-chat
 // widget) can seed their client-side dedup state and avoid double-rendering a
 // reply that also arrives via polling. null when the insert was swallowed (dup).
-export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; mediaUrl?: string | null; mediaType?: string | null; coverageBand?: string | null; topSim?: number | null; groundingDeferred?: boolean; groundingStripped?: unknown[] }): Promise<{ id: string; createdAt: string } | null> {
+export async function appendConvMessage(p: { conversationId: string; role: "user" | "assistant"; body: string; metaId?: string | null; source: "inbound" | "bot" | "agent"; tenantId?: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; coverageBand?: string | null; topSim?: number | null; groundingDeferred?: boolean; groundingStripped?: unknown[] }): Promise<{ id: string; createdAt: string } | null> {
   const row: Record<string, unknown> = {
     tenant_id: p.tenantId ?? DEFAULT_TENANT_ID, conversation_id: p.conversationId, role: p.role, body: p.body,
     meta_message_id: p.metaId ?? null, source: p.source,
   };
+  // Which number/account this message arrived on / went out from (0073) — the
+  // per-message channel log for multi-number setups.
+  if (p.channelId) row.channel_id = p.channelId;
   if (p.mediaUrl) { row.media_url = p.mediaUrl; row.media_type = p.mediaType ?? null; }
   // Grounding telemetry (0066) — how well the KB covered this reply + what the
   // firewall did. Optional so callers without it (inbound, flows) are unaffected.
@@ -859,9 +879,9 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
   if (p.groundingStripped && p.groundingStripped.length) row.grounding_stripped = p.groundingStripped;
   let { data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single();
   // Pre-migration safety: if optional columns aren't present yet (media 0052 /
-  // grounding 0066), retry without them so the message still logs.
+  // grounding 0066 / channel 0073), retry without them so the message still logs.
   if (error && error.code === "42703") {
-    for (const k of ["media_url", "media_type", "coverage_band", "top_sim", "grounding_deferred", "grounding_stripped"]) delete row[k];
+    for (const k of ["media_url", "media_type", "coverage_band", "top_sim", "grounding_deferred", "grounding_stripped", "channel_id"]) delete row[k];
     ({ data, error } = await db().from("wa_conv_messages").insert(row).select("id, created_at").single());
   }
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
@@ -937,13 +957,16 @@ export async function getConvHistory(conversationId: string, limit = 20, tenantI
     const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
   };
-  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type");
-  // Pre-migration safety: fall back to the columns that always exist (0052).
+  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type, channel_id");
+  // Pre-migration safety: drop the newest optional column (channel 0073), then
+  // fall back to the columns that always exist (0052).
+  if (error && (error as { code?: string }).code === "42703") ({ data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type"));
   if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at"));
   const rows = data.reverse();
   return rows.map(r => ({
     id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string,
     source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string,
+    channelId: (r.channel_id as string | null) ?? null,
     mediaUrl: (r.media_url as string | null) ?? null, mediaType: (r.media_type as string | null) ?? null,
   }));
 }

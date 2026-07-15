@@ -60,7 +60,7 @@ export async function POST(req: Request) {
     const renamed = await setConversationName(conv.phone, visitorName, tid, { force: true }).catch(() => false);
     if (renamed) conv = { ...conv, name: visitorName };
   }
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text.slice(0, 4000), source: "inbound", tenantId: tid });
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text.slice(0, 4000), source: "inbound", tenantId: tid, channelId: channel.id });
   await touchInbound(conv.id, text.slice(0, 200));
   // Capture a phone the visitor types (web chat is anonymous) so the chat can be
   // matched to a CRM lead by phone — now and on later messages.
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
   if (!(await isAiEnabled(tid))) return NextResponse.json({ ok: true }, { headers: cors });
 
   const closeOut = async () => {
-    const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid });
+    const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid, channelId: channel.id });
     await touchOutbound(conv.id, CLOSING_MSG);
     await escalateConversation(conv.id);
     return NextResponse.json({ ok: true, reply: CLOSING_MSG, messages: [{ id: saved?.id, at: saved?.createdAt, body: CLOSING_MSG, from: "bot" }], escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
@@ -114,7 +114,7 @@ export async function POST(req: Request) {
   const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false);
   if (!r.reply || r.escalate) return closeOut();
 
-  const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid });
+  const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
   after(() => syncWebToLsq(conv, aiReply, "outbound", "bot", tid));   // AI reply → LeadSquared

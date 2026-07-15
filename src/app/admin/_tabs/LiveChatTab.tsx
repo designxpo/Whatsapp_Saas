@@ -8,7 +8,7 @@ import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTempla
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
-type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; mediaUrl?: string | null; mediaType?: string | null };
+type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null };
 
 // WhatsApp-style day-divider label: Today / Yesterday / weekday (last week) /
 // "12 June 2026" for anything older.
@@ -286,6 +286,11 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [conv, setConv] = useState<Conversation | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
+  // Per-message channel log: when the customer has talked to MORE THAN ONE of
+  // our numbers/accounts, label each message with the number it went through.
+  const threadChannels = useChannelList();
+  const channelName = (cid?: string | null) => threadChannels.find(c => c.id === cid)?.name ?? null;
+  const multiChannelThread = new Set(messages.map(m => m.channelId).filter(Boolean)).size > 1;
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [showButtons, setShowButtons] = useState(false);
@@ -500,6 +505,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                   )}
                   <p className={`text-[10px] mt-1 ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
                     {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {multiChannelThread && m.channelId && channelName(m.channelId) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· via {channelName(m.channelId)}</span>}
                   </p>
                 </div>
               </div>

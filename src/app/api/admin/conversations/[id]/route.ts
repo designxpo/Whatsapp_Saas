@@ -119,7 +119,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         messageId = sent.id;
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
       }
-      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
       // A human has stepped in → pause the bot for this chat so it doesn't reply
       // over the agent. (Escalated chats now keep the bot on until this happens.)
@@ -171,7 +171,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         messageId = sent.id;
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
       }
-      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, mediaUrl: url, mediaType });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null, mediaUrl: url, mediaType });
       await touchOutbound(id, caption || `[${kind} sent]`);
       logActivity(await currentUser(), "inbox.media", `${kind} to ${conv.phone}`);
       return NextResponse.json({ success: true, messageId });
@@ -192,7 +192,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // else fall back to the template name.
       const logged = (body.preview ?? "").trim() || `[template: ${templateName}]`;
       void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
-      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
       return NextResponse.json({ success: true, messageId: sent.id });

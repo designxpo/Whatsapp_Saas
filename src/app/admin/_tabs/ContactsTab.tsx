@@ -4,10 +4,10 @@
 // drawer. Extracted from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback } from "react";
 import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { inp, type Tab } from "../_shared";
+import { inp, type Tab, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
-type ContactRow = { id: string; phone: string; name: string; email: string | null; tags: string[]; status: string; source: string | null; createdAt: string };
+type ContactRow = { id: string; phone: string; name: string; email: string | null; tags: string[]; status: string; source: string | null; channelId?: string | null; createdAt: string };
 
 // ── Advanced filters (AiSensy-style) ──
 type AttrFilter = { key: string; op: "is" | "is_not" | "contains"; value: string };
@@ -101,6 +101,9 @@ function mapCsvRows(cells: string[][]): { rows: ImportRow[]; mapping: string[] }
 function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [profilePhone, setProfilePhone] = useState<string | null>(null);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
+  // "Via" column: which number/account produced the lead (first touch, 0073).
+  const contactChannels = useChannelList();
+  const contactChannelName = (cid?: string | null) => contactChannels.find(ch => ch.id === cid)?.name ?? null;
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState("");
   const [tagFilter, setTagFilter] = useState("");
@@ -403,6 +406,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <th className="px-3 py-2.5 font-semibold">Mobile Number</th>
               <th className="px-3 py-2.5 font-semibold">Tags</th>
               <th className="px-3 py-2.5 font-semibold">Source</th>
+              <th className="px-3 py-2.5 font-semibold" title="Which number/account this lead first came in on">Via</th>
               <th className="px-3 py-2.5 font-semibold">Status</th>
               <th className="px-3 py-2.5 font-semibold">Added</th>
             </tr>
@@ -420,13 +424,14 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-xs text-slate-500 uppercase">{c.source ?? "—"}</td>
+                <td className="px-3 py-2.5 text-xs text-slate-500">{contactChannelName(c.channelId) ?? "—"}</td>
                 <td className="px-3 py-2.5">
                   <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.status === "active" ? "bg-brand-green/15 text-brand-dark" : "bg-red-100 text-red-600"}`}>{c.status === "active" ? "Active" : "Opted out"}</span>
                 </td>
                 <td className="px-3 py-2.5 text-xs text-slate-400">{new Date(c.createdAt).toLocaleDateString()}</td>
               </tr>
             ))}
-            {visible.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400 text-sm">{contacts.length === 0 ? "No contacts yet — Add Contact or Import a list." : "Nothing matches this filter."}</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">{contacts.length === 0 ? "No contacts yet — Add Contact or Import a list." : "Nothing matches this filter."}</td></tr>}
           </tbody>
         </table>
         {profilePhone && <ContactProfile phone={profilePhone} onClose={() => setProfilePhone(null)} onChanged={load} goTo={goTo} />}

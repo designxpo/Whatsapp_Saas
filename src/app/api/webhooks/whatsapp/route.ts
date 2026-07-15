@@ -190,7 +190,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Ensure the sender is a contact, then attach to a conversation. An inbound
   // message IS a verifiable opt-in, so mark consent (and upgrade an existing
   // imported-but-unconsented contact via markOptedIn).
-  const upserted = await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }).catch(() => undefined);
+  const upserted = await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }, channel?.id ?? null).catch(() => undefined);
   await markOptedIn(from, "inbound", "WhatsApp inbound message", tid).catch(() => undefined);
   // Brand-new contact → a new lead. Fire once (inserted>0) so CRM connectors
   // sync each lead exactly once instead of on every message.
@@ -219,7 +219,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, mediaUrl, mediaType });
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.
@@ -237,7 +237,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
           ? `✅ Order placed! Complete your payment here to confirm your order:\n${order.paymentUrl}`
           : "✅ Order placed! Thanks — we've got your details and will confirm shortly.";
         const r = await sendText(from, msg, channel);
-        if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot", tenantId: tid }).catch(() => undefined);
+        if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: msg, metaId: r.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null }).catch(() => undefined);
       }
     } catch (e) { console.error("[webhook] checkout", e); }
   }
@@ -290,7 +290,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       // First-ever message from this contact → one-time greeting.
       if (welcome.enabled && !conv.welcomed && !inSequence && await claimWelcome(conv.id)) {
         const sent = await sendText(from, welcome.text, channel);
-        if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: welcome.text, metaId: sent.id, source: "bot" });
+        if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: welcome.text, metaId: sent.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null });
       }
 
       // Outside working hours → away notice, at most once per 12h per conversation.
@@ -300,7 +300,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
         if (Date.now() - lastAway > 12 * 3600 * 1000) {
           const sent = await sendText(from, away.text, channel);
           if (sent.id) {
-            await appendConvMessage({ conversationId: conv.id, role: "assistant", body: away.text, metaId: sent.id, source: "bot" });
+            await appendConvMessage({ conversationId: conv.id, role: "assistant", body: away.text, metaId: sent.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null });
             await saveMemory(conv.id, { ...mem, lastAwayAt: new Date().toISOString() });
           }
         }

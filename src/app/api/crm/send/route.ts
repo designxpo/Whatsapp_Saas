@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
     const agentTag = (body.agent ?? "").trim();
     const threadBody = agentTag ? `${logged}\n— ${agentTag}` : logged;
-    await appendConvMessage({ conversationId: conv.id, role: "assistant", body: threadBody, metaId: sent.id, source: "agent" });
+    await appendConvMessage({ conversationId: conv.id, role: "assistant", body: threadBody, metaId: sent.id, source: "agent", channelId: conv.channelId ?? null });
     await touchOutbound(conv.id, logged);
 
     // A human is talking to this lead now — pause the AI bot unless told otherwise.

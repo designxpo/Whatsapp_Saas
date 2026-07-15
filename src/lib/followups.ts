@@ -163,7 +163,7 @@ export async function drainAiFollowups(max = 50): Promise<number> {
       if (!res.ok) { await release(); continue; }   // window slammed shut / API error → retry later
 
       await appendConvMessage({
-        conversationId: id, role: "assistant", body: nudge.text, metaId: res.metaId, source: "bot", tenantId,
+        conversationId: id, role: "assistant", body: nudge.text, metaId: res.metaId, source: "bot", tenantId, channelId: channel?.id ?? null,
         groundingDeferred: nudge.groundingActions.some(a => a.disposition === "defer"),
         groundingStripped: nudge.groundingActions,
       }).catch(() => undefined);

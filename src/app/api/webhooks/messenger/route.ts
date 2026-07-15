@@ -124,7 +124,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     if (prof.name && !conv.name) conv = await getOrCreateConversation(senderId, prof.name, channel.id, "messenger", channel.tenantId);
     if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, mediaUrl, mediaType });
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, channelId: channel.id, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24h window
   // Capture a phone the lead types (Messenger has no number of its own) so the
   // chat can be matched to a CRM lead by phone — now and on later messages.
@@ -218,7 +218,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
 
   if (!(await deliver(r.reply))) return;
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
-  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid });
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
   if (!commentId) after(() => syncFbToLsq(conv, aiReply, "outbound", "bot", tid));   // DM AI replies → LeadSquared
@@ -255,7 +255,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     await setConversationComment(conv.id, true);
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
-    await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid });
+    await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
     await aiRespond(channel, conv, text, commentId);
     return;
   }
