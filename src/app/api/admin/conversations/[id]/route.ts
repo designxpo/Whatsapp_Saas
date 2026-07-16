@@ -9,9 +9,10 @@ import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
-import { credsFor, getChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
-import { pushWaActivity, pushIgActivity, phoneFromAttributes } from "@/lib/leadsquared";
-import { currentUser, currentTenantId } from "@/lib/auth";
+import { credsFor, getChannel, explicitDefaultChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
+import { pushWaActivity, pushIgActivity, phoneFromAttributes, getLeadIdByPhone, updateLeadStage } from "@/lib/leadsquared";
+import { getCannedTemplates, resolveCannedParams } from "@/lib/canned";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -47,7 +48,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string; cannedId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
@@ -196,6 +197,51 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
       return NextResponse.json({ success: true, messageId: sent.id });
+    }
+    // One-click canned template (RNR, post-call follow-up…): resolves {tokens}
+    // from the agent + contact, sends the approved template (24h-window safe),
+    // logs to LSQ, and optionally moves the lead's stage. Config: Settings.
+    if (body.action === "canned" && body.cannedId) {
+      if (conv.platform !== "whatsapp") return NextResponse.json({ error: "Canned templates are WhatsApp-only." }, { status: 400 });
+      const canned = (await getCannedTemplates(tid)).find(c => c.id === body.cannedId);
+      if (!canned) return NextResponse.json({ error: "Canned template not found" }, { status: 404 });
+      const user = await currentUser();
+      const contact = await getContactByPhone(conv.phone, tid).catch(() => null);
+      // Built-ins go LAST so a contact attribute literally named "name"/"counselor"
+      // can't shadow the documented tokens.
+      const tokens = { ...(contact?.attributes ?? {}), counselor: user?.name || "", name: contact?.name || conv.name || "" };
+      const params = resolveCannedParams(canned.params, tokens);
+      // Meta rejects empty body params — fail with a message the counselor can act
+      // on instead of a cryptic Graph error.
+      const emptyAt = params.findIndex(p => !p);
+      if (emptyAt >= 0) {
+        return NextResponse.json({ error: `"${canned.label}" can't send: {{${emptyAt + 1}}} is empty (configured as "${canned.params[emptyAt]}"). Fill that contact attribute or edit the canned template in Settings.` }, { status: 400 });
+      }
+      // Never fall through to the platform env number: a stale/null channel on a
+      // tenant conversation resolves to the tenant's default channel or errors.
+      let channel = await credsFor(conv.channelId, tid);
+      if (!channel && tid !== DEFAULT_TENANT_ID) {
+        channel = await credsFor(await explicitDefaultChannel(tid), tid);
+        if (!channel) return NextResponse.json({ error: "No WhatsApp number available to send from — connect one in Settings." }, { status: 400 });
+      }
+      const sent = await sendTemplateSingle(conv.phone, canned.templateName, canned.language, params, channel, canned.headerImageUrl);
+      if (sent.error) {
+        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: `⚠ "${canned.label}" template not sent: ${sent.error}`, via: "agent", tenantId: tid });
+        return NextResponse.json({ error: sent.error }, { status: 502 });
+      }
+      const logged = `[${canned.label}]`;
+      await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
+      await touchOutbound(id, logged);
+      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: `Sent "${canned.label}"`, via: "agent", tenantId: tid });
+      // Stage change is best-effort but never silent: the response + audit log
+      // say whether the CRM actually moved.
+      let stageSet = false;
+      if (canned.stage) {
+        const leadId = await getLeadIdByPhone(conv.phone, tid).catch(() => null);
+        if (leadId) stageSet = await updateLeadStage(leadId, canned.stage, tid).catch(() => false);
+      }
+      logActivity(user, "inbox.canned", `${canned.label} to ${conv.phone}${canned.stage ? ` · stage→${canned.stage}${stageSet ? "" : " (CRM update FAILED)"}` : ""}`);
+      return NextResponse.json({ success: true, messageId: sent.id, ...(canned.stage ? { stageUpdated: stageSet } : {}) });
     }
     if (body.action === "status" && body.status) {
       await setConversationStatus(id, body.status);

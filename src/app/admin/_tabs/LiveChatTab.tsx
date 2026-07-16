@@ -359,6 +359,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [labelInput, setLabelInput] = useState("");
   const [team, setTeam] = useState<{ name: string; email: string; title: string }[]>([]);
   const [aiPrompts, setAiPrompts] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  const [canned, setCanned] = useState<{ id: string; label: string; stage?: string }[]>([]);
   const [showAssist, setShowAssist] = useState(false);
   const [assisting, setAssisting] = useState(false);
   const [drafting, setDrafting] = useState(false);
@@ -403,6 +404,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   useEffect(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQuickReplies(d.quickReplies ?? [])).catch(() => {}); }, []);
   useEffect(() => { fetch("/api/admin/team/members").then(r => r.json()).then(d => setTeam(d.members ?? [])).catch(() => {}); }, []);
   useEffect(() => { fetch("/api/admin/ai/prompts").then(r => r.json()).then(d => setAiPrompts((d.prompts ?? []).filter((p: { active: boolean }) => p.active))).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/canned").then(r => r.json()).then(d => setCanned(d.canned ?? [])).catch(() => {}); }, []);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAiAgents(d.agents ?? [])).catch(() => {}); }, []);
 
   async function applyAssist(promptId: string) {
@@ -618,6 +620,19 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             <div className="grid grid-cols-3 gap-2">
               {btns.map((b, i) => (
                 <input key={i} className={`${inp} text-xs`} maxLength={20} placeholder={`Button ${i + 1}`} value={b} onChange={e => setBtns(prev => prev.map((v, j) => (j === i ? e.target.value : v)))} />
+              ))}
+            </div>
+          )}
+          {/* One-click canned templates (RNR, post-call follow-up…). WhatsApp only —
+              they deliver even outside the 24h window and log to the CRM timeline. */}
+          {conv?.platform === "whatsapp" && canned.length > 0 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {canned.map(c => (
+                <button key={c.id} disabled={busy} onClick={() => act({ action: "canned", cannedId: c.id })}
+                  title={`Send the "${c.label}" template from this number${c.stage ? ` and set the CRM stage to ${c.stage}` : ""}`}
+                  className="px-2.5 py-1 rounded-full border border-brand-700 text-brand-700 text-[11px] font-bold hover:bg-brand-50 disabled:opacity-60">
+                  {c.label}{c.stage ? ` · ${c.stage}` : ""}
+                </button>
               ))}
             </div>
           )}

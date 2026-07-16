@@ -541,6 +541,145 @@ function ApiKeysCard() {
 }
 
 
+// ── Canned templates — one-click counselor sends from Live Chat (RNR, post-call
+// follow-up…). Each maps an approved template + body-param presets + an optional
+// LeadSquared stage change. Config: /api/admin/canned (wa_settings, per-tenant). ──
+type CannedRow = { id: string; label: string; templateName: string; language: string; params: string[]; headerImageUrl?: string; stage?: string };
+type CannedTpl = { name: string; status: string; language: string; components: { type: string; format?: string; text?: string }[] };
+
+function CannedTemplatesCard() {
+  const [list, setList] = useState<CannedRow[] | null>(null);
+  const [tpls, setTpls] = useState<CannedTpl[]>([]);
+  const [browse, setBrowse] = useState("");     // which number's WABA the picker lists
+  const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [form, setForm] = useState<CannedRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/canned").then(r => r.json()).then(d => setList(d.canned ?? [])).catch(() => setList([]));
+    fetch("/api/admin/channels").then(r => r.json())
+      .then(d => setChannels((d.channels ?? []).filter((c: ChannelRow) => (c.kind ?? "whatsapp") === "whatsapp")))
+      .catch(() => {});
+  }, []);
+  // Templates are WABA-scoped — list the picked number's WABA, not always the
+  // default's, so multi-WABA setups configure against the right template list.
+  useEffect(() => {
+    fetch(`/api/admin/templates${browse ? `?channelId=${browse}` : ""}`).then(r => r.json())
+      .then(d => setTpls(((d.templates ?? []) as CannedTpl[]).filter(t => t.status === "APPROVED")))
+      .catch(() => setTpls([]));
+  }, [browse]);
+
+  const tpl = (name: string) => tpls.find(t => t.name === name);
+  const bodyOf = (name: string) => tpl(name)?.components?.find(c => c.type === "BODY")?.text ?? "";
+  // Highest {{n}} in the body = number of params the send must carry.
+  const varCount = (name: string) => (bodyOf(name).match(/\{\{(\d+)\}\}/g) ?? []).reduce((n, x) => Math.max(n, parseInt(x.replace(/\D/g, ""), 10) || 0), 0);
+  const hasImageHeader = (name: string) => tpl(name)?.components?.some(c => c.type === "HEADER" && c.format === "IMAGE") ?? false;
+  // Sends only carry body {{n}} params (+ optional image header) — templates
+  // with named {{vars}} or variables in a text header / buttons can't be canned.
+  const unsupported = (name: string): string | null => {
+    if (!name || !tpl(name)) return null;
+    if (/\{\{\s*[A-Za-z_]/.test(bodyOf(name))) return "This template uses named {{variables}} — only numbered {{1}}, {{2}}… are supported.";
+    const hv = tpl(name)?.components?.some(c => (c.type === "HEADER" && c.format === "TEXT" && /\{\{/.test(c.text ?? "")) || (c.type === "BUTTONS" && /\{\{/.test(JSON.stringify(c))));
+    return hv ? "This template has a variable in its header or buttons — canned sends can't fill those." : null;
+  };
+  const slug = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  async function save(next: CannedRow[]) {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/canned", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ canned: next }) }).then(r => r.json()).catch(() => null);
+      if (!d || d.error) setMsg(d?.error ?? "Save failed");
+      else { setList(d.canned ?? next); setForm(null); }
+    } finally { setBusy(false); }
+  }
+
+  function submitForm() {
+    if (!form || !list) return;
+    const id = form.id || slug(form.label) || slug(form.templateName);
+    if (!id || !form.templateName) { setMsg("Pick a template and give the button a label."); return; }
+    const bad = unsupported(form.templateName);
+    if (bad) { setMsg(bad); return; }
+    if (!form.id && list.some(c => c.id === id)) { setMsg(`"${id}" already exists — use a different label.`); return; }
+    const row: CannedRow = { ...form, id, label: form.label.trim() || form.templateName, stage: form.stage?.trim() || undefined, headerImageUrl: form.headerImageUrl?.trim() || undefined };
+    save(form.id ? list.map(c => (c.id === form.id ? row : c)) : [...list, row]);
+  }
+
+  function pickTemplate(name: string) {
+    if (!form) return;
+    const n = varCount(name);
+    setForm({ ...form, templateName: name, language: tpl(name)?.language ?? "en_US", params: Array.from({ length: n }, (_, i) => form.params[i] ?? ""), headerImageUrl: hasImageHeader(name) ? form.headerImageUrl : undefined });
+  }
+
+  if (list === null) return null;
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p>
+          <p className="text-xs text-slate-500 mt-0.5">Buttons above the Live Chat composer — one tap sends an approved template (works outside the 24h window) and can move the lead&apos;s CRM stage. E.g. RNR, post-call follow-up.</p>
+        </div>
+        <button onClick={() => { setForm({ id: "", label: "", templateName: "", language: "en_US", params: [], stage: "" }); setMsg(null); }}
+          className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 shrink-0"><Plus className="w-3.5 h-3.5" /> Add</button>
+      </div>
+
+      {list.map(c => (
+        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.label}{c.stage && <span className="ml-2 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 text-[10px] font-bold align-middle">→ {c.stage}</span>}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">{c.templateName} · {c.language}{c.params.length ? ` · ${c.params.join(" · ")}` : ""}</p>
+          </div>
+          <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => { if (confirm(`Delete the "${c.label}" canned template? Counselors lose the button immediately.`)) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “RNR” and “Post-call follow-up” to give counselors one-click sends.</p>}
+
+      {form && (
+        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+          {channels.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Browse templates on</span>
+              <select className={`${inp} !py-1.5 text-xs`} value={browse} onChange={e => setBrowse(e.target.value)} title="Templates are WABA-scoped — pick the number whose WABA to list. The send always uses the conversation's own number.">
+                <option value="">Workspace default number</option>
+                {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Button label, e.g. RNR" value={form.label} onChange={e => setForm({ ...form, label: e.target.value })} />
+            <select className={inp} value={form.templateName} onChange={e => pickTemplate(e.target.value)}>
+              <option value="">Pick an approved template…</option>
+              {!tpls.some(t => t.name === form.templateName) && form.templateName && <option value={form.templateName}>{form.templateName} (not on this WABA)</option>}
+              {tpls.map(t => <option key={t.name} value={t.name}>{t.name} ({t.language})</option>)}
+            </select>
+          </div>
+          {form.templateName && unsupported(form.templateName) && (
+            <p className="text-[11px] text-red-600 bg-red-50 rounded-control px-2.5 py-1.5">{unsupported(form.templateName)}</p>
+          )}
+          {form.templateName && bodyOf(form.templateName) && (
+            <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-2.5 py-1.5 whitespace-pre-wrap">{bodyOf(form.templateName)}</p>
+          )}
+          {form.params.map((p, i) => (
+            <input key={i} className={`${inp} w-full font-mono`} placeholder={`{{${i + 1}}} — literal text or {counselor} / {name} / {course}…`} value={p}
+              onChange={e => setForm({ ...form, params: form.params.map((x, j) => (j === i ? e.target.value : x)) })} />
+          ))}
+          {form.templateName && hasImageHeader(form.templateName) && (
+            <input className={`${inp} w-full`} placeholder="Header image URL (https://…)" value={form.headerImageUrl ?? ""} onChange={e => setForm({ ...form, headerImageUrl: e.target.value })} />
+          )}
+          <input className={`${inp} w-full`} placeholder="CRM (LeadSquared) stage to set on send (optional, e.g. RNR)" value={form.stage ?? ""} onChange={e => setForm({ ...form, stage: e.target.value })} />
+          <p className="text-[10px] text-ink-400">Tokens fill per send: <code className="font-mono">{"{counselor}"}</code> = logged-in agent, <code className="font-mono">{"{name}"}</code> = contact name, <code className="font-mono">{"{<attribute>}"}</code> = contact attribute. A send with an empty value is blocked with a clear error. The send always leaves from the conversation&apos;s own number — the template must be approved on that number&apos;s WABA.</p>
+          <div className="flex gap-2">
+            <button onClick={submitForm} disabled={busy || !form.templateName} className="px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : form.id ? "Save changes" : "Add canned template"}</button>
+            <button onClick={() => { setForm(null); setMsg(null); }} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Cancel</button>
+          </div>
+        </div>
+      )}
+      {msg && <p className="text-xs text-red-500">{msg}</p>}
+    </section>
+  );
+}
+
 // ── OTP service — login codes over WhatsApp (per-tenant) ─────────────────────
 type OtpRouteRow = { area: string; channelId: string };
 type OtpState = {
@@ -1460,6 +1599,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <button onClick={save} disabled={saving || !welcome || !away} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-60">
         {saving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : savedAt && Date.now() - savedAt < 3000 ? "Saved ✓" : "Save messages"}
       </button>
+
+      {isAdmin && <CannedTemplatesCard />}
 
       {/* Quick replies */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
