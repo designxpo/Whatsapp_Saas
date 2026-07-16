@@ -1,18 +1,40 @@
 import { NextResponse } from "next/server";
 import { fetchTemplates, createTemplate, deleteTemplate, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
-import { credsFor } from "@/lib/channels";
+import { credsFor, explicitDefaultChannel, type ChannelCreds } from "@/lib/channels";
 import { setTemplateMeta, siteUrl, type TrackedUrl } from "@/lib/links";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
+// Resolve which WABA this request may act on — LOUDLY. A channelId that doesn't
+// resolve within the tenant is a 404 (never a fall-through to the platform env
+// WABA: reading it leaks platform template metadata, and POST/DELETE would
+// create/delete templates on the platform's own WABA). No channelId = the
+// tenant's default channel; only the platform workspace (default tenant) may
+// run on env creds with no channels connected.
+async function tenantChannel(tid: string, channelId: string | null | undefined): Promise<{ channel?: ChannelCreds; error?: string; status?: number }> {
+  if (channelId) {
+    const channel = await credsFor(channelId, tid);
+    if (!channel) return { error: "Number not found in this workspace", status: 404 };
+    return { channel };
+  }
+  const def = await explicitDefaultChannel(tid);
+  if (def) {
+    const channel = await credsFor(def, tid);
+    if (channel) return { channel };
+  }
+  if (tid !== DEFAULT_TENANT_ID) return { error: "No WhatsApp number connected", status: 400 };
+  return {};  // platform workspace: env single-number mode
+}
+
 // GET ?channelId=… — templates live on the WABA, so each channel can differ.
 export async function GET(req: Request) {
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const channel = await credsFor(new URL(req.url).searchParams.get("channelId"), tid);
-    return NextResponse.json({ templates: await fetchTemplates(channel) });
+    const r = await tenantChannel(tid, new URL(req.url).searchParams.get("channelId"));
+    if (r.error) return NextResponse.json({ templates: [], notice: r.error });   // graceful — the UI still renders
+    return NextResponse.json({ templates: await fetchTemplates(r.channel) });
   } catch (err) {
     // Degrade gracefully — missing/invalid Meta creds shouldn't 500 the UI.
     // Return an empty list plus a notice so the Broadcast tab still renders.
@@ -32,7 +54,9 @@ export async function POST(req: Request) {
   if (!body.name?.trim() || !body.bodyText?.trim()) return NextResponse.json({ error: "name and bodyText are required" }, { status: 400 });
 
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const channel = await credsFor(body.channelId, tid);
+  const resolved = await tenantChannel(tid, body.channelId);
+  if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
+  const channel = resolved.channel;
   const name = body.name.trim().toLowerCase();
   let buttons: TemplateButton[] | undefined = body.buttons;
 
@@ -87,7 +111,9 @@ export async function DELETE(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const r = await deleteTemplate(body.name.trim(), await credsFor(body.channelId, tid));
+  const resolved = await tenantChannel(tid, body.channelId);
+  if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
+  const r = await deleteTemplate(body.name.trim(), resolved.channel);
   if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), "template.delete", body.name.trim());
   return NextResponse.json({ success: true });
