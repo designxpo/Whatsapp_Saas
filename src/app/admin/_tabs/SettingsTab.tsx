@@ -541,6 +541,244 @@ function ApiKeysCard() {
 }
 
 
+// ── OTP service — login codes over WhatsApp (per-tenant) ─────────────────────
+type OtpRouteRow = { area: string; channelId: string };
+type OtpState = {
+  secretSet: boolean; tableReady: boolean; defaultChannelId: string; template: string; sendsToday: number;
+  routes: OtpRouteRow[]; templateStatus: Record<string, string | null>; templateErrors: Record<string, string>; createError?: string;
+};
+
+// Ready-to-paste website integration. Auth is the workspace API key
+// (Authorization: Bearer ak_live_…) held server-side in env OTP_API_KEY — the
+// tenant is resolved from the key, so codes are isolated to this workspace.
+function buildOtpSnippet(kind: "nextjs" | "node" | "curl", origin: string, areas: string[]): string {
+  const sampleArea = areas[0];
+  if (kind === "curl") {
+    return [
+      `# Server-side only. Put your workspace API key (Settings → API access) in $OTP_API_KEY.`,
+      `# Send a code${sampleArea ? ` from the "${sampleArea}" number` : ""}:`,
+      `curl -sS -X POST "${origin}/api/otp/send" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -H "Authorization: Bearer $OTP_API_KEY" \\`,
+      `  -d '{"phone":"91XXXXXXXXXX"${sampleArea ? `,"area":"${sampleArea}"` : ""}}'`,
+      ``,
+      `# Verify the code the user typed:`,
+      `curl -sS -X POST "${origin}/api/otp/verify" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -H "Authorization: Bearer $OTP_API_KEY" \\`,
+      `  -d '{"phone":"91XXXXXXXXXX","code":"1234"}'`,
+    ].join("\n");
+  }
+  if (kind === "node") {
+    return [
+      `// Server-side helpers. Requires env OTP_API_KEY = your workspace API key (ak_live_…).`,
+      `const OTP = "${origin}";`,
+      `const H = { "Content-Type": "application/json", Authorization: \`Bearer \${process.env.OTP_API_KEY}\` };`,
+      ``,
+      `export async function sendOtp(phone, area) {`,
+      `  const r = await fetch(OTP + "/api/otp/send", { method: "POST", headers: H,`,
+      `    body: JSON.stringify({ phone, ...(area ? { area } : {}) }) });`,
+      `  return r.json();   // { success } or { error, retryAfterSeconds? }`,
+      `}`,
+      ``,
+      `export async function verifyOtp(phone, code) {`,
+      `  const r = await fetch(OTP + "/api/otp/verify", { method: "POST", headers: H,`,
+      `    body: JSON.stringify({ phone, code }) });`,
+      `  return r.json();   // { valid: boolean, reason? }`,
+      `}`,
+    ].join("\n");
+  }
+  // nextjs — proxy routes on the consuming site so the key never reaches the browser.
+  return [
+    `// On your website, set env:  OTP_API_KEY=<your workspace API key, ak_live_…>`,
+    `// (create one in Settings → API access). Never expose it to the browser.`,
+    ``,
+    `// ── app/api/otp/send/route.ts ──`,
+    `export async function POST(req: Request) {`,
+    `  const { phone, area } = await req.json();`,
+    `  const r = await fetch("${origin}/api/otp/send", {`,
+    `    method: "POST",`,
+    `    headers: { "Content-Type": "application/json", Authorization: \`Bearer \${process.env.OTP_API_KEY}\` },`,
+    `    body: JSON.stringify({ phone, ...(area ? { area } : {}) }),`,
+    `  });`,
+    `  return Response.json(await r.json(), { status: r.status });`,
+    `}`,
+    ``,
+    `// ── app/api/otp/verify/route.ts ──`,
+    `export async function POST(req: Request) {`,
+    `  const { phone, code } = await req.json();`,
+    `  const r = await fetch("${origin}/api/otp/verify", {`,
+    `    method: "POST",`,
+    `    headers: { "Content-Type": "application/json", Authorization: \`Bearer \${process.env.OTP_API_KEY}\` },`,
+    `    body: JSON.stringify({ phone, code }),`,
+    `  });`,
+    `  return Response.json(await r.json(), { status: r.status });`,
+    `}`,
+    ``,
+    `// Browser calls YOUR proxy routes (no key in the client):`,
+    `// await fetch("/api/otp/send",   { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ phone${sampleArea ? `, area: "${sampleArea}"` : ""} }) });`,
+    `// const { valid } = await (await fetch("/api/otp/verify", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ phone, code }) })).json();`,
+  ].join("\n");
+}
+
+// One send-call example per number (the default, no area, + each configured area).
+function buildNumberCall(kind: "nextjs" | "node" | "curl", origin: string, area: string): string {
+  if (kind === "curl") {
+    return `curl -sS -X POST "${origin}/api/otp/send" -H "Content-Type: application/json" -H "Authorization: Bearer $OTP_API_KEY" -d '{"phone":"91XXXXXXXXXX"${area ? `,"area":"${area}"` : ""}}'`;
+  }
+  if (kind === "node") return `await sendOtp(phone${area ? `, "${area}"` : ""});`;
+  return `await fetch("/api/otp/send", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone${area ? `, area: "${area}"` : ""} }) });`;
+}
+
+function OtpServiceCard() {
+  const [st, setSt] = useState<OtpState | null>(null);
+  const [routes, setRoutes] = useState<OtpRouteRow[]>([]);
+  const [channels, setChannels] = useState<ChannelRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [snippetKind, setSnippetKind] = useState<"nextjs" | "node" | "curl">("nextjs");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const apply = (d: OtpState | null) => { if (d) { setSt(d); setRoutes(d.routes ?? []); } };
+  const load = useCallback(async () => {
+    const d = await fetch("/api/admin/otp").then(r => r.json()).catch(() => null);
+    if (d && !d.error) apply(d);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/admin/channels").then(r => r.json())
+      .then(d => setChannels((d.channels ?? []).filter((c: ChannelRow) => (c.kind ?? "whatsapp") === "whatsapp")))
+      .catch(() => {});
+  }, []);
+
+  async function post(patch: Record<string, unknown>, key: string) {
+    setBusy(key);
+    try {
+      const d = await fetch("/api/admin/otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) }).then(r => r.json()).catch(() => null);
+      if (d && !d.error) apply(d);
+    } finally { setBusy(null); }
+  }
+
+  if (!st) return null;
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://<your-workspace>";
+  const chanName = (cid: string) => cid ? (channels.find(c => c.id === cid)?.name ?? "number") : "Workspace default";
+  const routesDirty = JSON.stringify(routes) !== JSON.stringify(st.routes);
+  const areaClash = routes.some((r, i) => r.area.trim() && routes.findIndex(x => x.area.trim().toLowerCase() === r.area.trim().toLowerCase()) !== i);
+
+  // One status pill per number in use (default + each area's number).
+  const tstat = (cid: string) => {
+    const s = st.templateStatus?.[cid] ?? null;
+    const tone = s === "APPROVED" ? "bg-brand-100 text-brand-700" : s ? "bg-amber-100 text-amber-700" : "bg-canvas text-ink-400";
+    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${tone}`}>template: {s ?? "not created"}</span>;
+  };
+  const templateBtn = (cid: string) => st.templateStatus?.[cid] === "APPROVED" ? null : (
+    <button onClick={() => post({ createTemplate: true, channelId: cid || "" }, "tpl:" + cid)} disabled={!!busy || !st.secretSet}
+      title={`Creates the "${st.template}" authentication template on ${chanName(cid)}'s WABA`}
+      className="px-2.5 py-1 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 shrink-0 disabled:opacity-60">
+      {busy === "tpl:" + cid ? "…" : st.templateStatus?.[cid] ? "Re-check" : "Create template"}
+    </button>
+  );
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">OTP service</p>
+          <p className="text-xs text-slate-500 mt-0.5">Your website calls this workspace to send login codes on WhatsApp and verify them, authenticating with a workspace API key. Route different areas to different numbers. Codes are stored only as hashes.</p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.secretSet ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>{st.secretSet ? "secret set" : "OTP_HASH_SECRET missing"}</span>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.tableReady ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>{st.tableReady ? "store ready" : "apply migration 0076"}</span>
+          <span className="text-[11px] text-ink-400 self-center">{st.sendsToday} sent today</span>
+        </div>
+      </div>
+
+      {/* Default number — used when a send has no area. */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide w-14 shrink-0">Default</span>
+        <select className={`${inp} !py-1.5 text-xs`} value={st.defaultChannelId || ""} onChange={e => post({ defaultChannelId: e.target.value || null }, "default")} disabled={busy === "default"}>
+          <option value="">Workspace default number</option>
+          {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        {tstat(st.defaultChannelId)}
+        {templateBtn(st.defaultChannelId)}
+      </div>
+
+      {/* Area → number routes. */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">Areas — route by <code className="font-mono">area</code> in the send call</p>
+        {routes.map((r, i) => (
+          <div key={i} className="flex items-center gap-2 flex-wrap">
+            <input className={`${inp} !py-1.5 text-xs w-40`} placeholder="area key, e.g. delhi" value={r.area}
+              onChange={e => setRoutes(rs => rs.map((x, j) => j === i ? { ...x, area: e.target.value } : x))} />
+            <select className={`${inp} !py-1.5 text-xs`} value={r.channelId}
+              onChange={e => setRoutes(rs => rs.map((x, j) => j === i ? { ...x, channelId: e.target.value } : x))}>
+              <option value="">Pick a number…</option>
+              {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            {r.channelId && !routesDirty && tstat(r.channelId)}
+            {r.channelId && !routesDirty && templateBtn(r.channelId)}
+            <button onClick={() => setRoutes(rs => rs.filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setRoutes(rs => [...rs, { area: "", channelId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add area</button>
+          {routesDirty && (
+            <button onClick={() => post({ routes: routes.filter(r => r.area.trim() && r.channelId) }, "routes")} disabled={!!busy || areaClash}
+              className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">
+              {busy === "routes" ? "…" : "Save areas"}
+            </button>
+          )}
+          {areaClash && <span className="text-[11px] text-red-500">Duplicate area key.</span>}
+        </div>
+      </div>
+
+      {st.createError && <p className="text-xs text-red-500">{st.createError}</p>}
+
+      {/* Website snippet — create a workspace API key (Settings → API access), then copy this in. */}
+      {(() => {
+        const areas = (st.routes ?? []).map(r => r.area);
+        const snippet = buildOtpSnippet(snippetKind, origin, areas);
+        const copy = async (text: string, key: string) => { try { await navigator.clipboard.writeText(text); setCopiedKey(key); setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1500); } catch { /* clipboard blocked */ } };
+        const numberRows = [
+          { key: "default", label: `${chanName(st.defaultChannelId)} · default`, area: "" },
+          ...st.routes.map(r => ({ key: r.area, label: `${r.area} → ${chanName(r.channelId)}`, area: r.area })),
+        ];
+        return (
+          <div className="bg-canvas rounded-control px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-[10px] font-bold text-ink-400 uppercase">Website snippet — create a workspace API key (Settings → API access), set it as <code className="font-mono">OTP_API_KEY</code> on the site, then paste this</p>
+              <div className="flex items-center gap-1 shrink-0">
+                {(["nextjs", "node", "curl"] as const).map(k => (
+                  <button key={k} onClick={() => setSnippetKind(k)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${snippetKind === k ? "bg-brand-700 text-white" : "bg-white border border-line text-ink-500 hover:bg-canvas"}`}>
+                    {k === "nextjs" ? "Next.js" : k === "node" ? "Node" : "cURL"}
+                  </button>
+                ))}
+                <button onClick={() => copy(snippet, "main")} className="px-2.5 py-0.5 rounded text-[10px] font-bold bg-white border border-brand-700 text-brand-700 hover:bg-brand-50">{copiedKey === "main" ? "Copied ✓" : "Copy"}</button>
+              </div>
+            </div>
+            <pre className="text-[11px] font-mono text-ink-700 bg-white border border-line rounded p-2.5 overflow-auto whitespace-pre leading-relaxed max-h-80">{snippet}</pre>
+
+            <p className="text-[10px] font-bold text-ink-400 uppercase pt-1">Send call per number</p>
+            {numberRows.map(row => {
+              const call = buildNumberCall(snippetKind, origin, row.area);
+              return (
+                <div key={row.key} className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-ink-700 w-44 shrink-0 truncate" title={row.label}>{row.label}</span>
+                  <code className="text-[11px] font-mono text-ink-600 bg-white border border-line rounded px-2 py-1 flex-1 min-w-0 truncate" title={call}>{call}</code>
+                  <button onClick={() => copy(call, "num:" + row.key)} className="px-2 py-1 rounded text-[10px] font-bold bg-white border border-line text-ink-600 hover:bg-canvas shrink-0">{copiedKey === "num:" + row.key ? "✓" : "Copy"}</button>
+                </div>
+              );
+            })}
+
+            <p className="text-[11px] text-ink-400">Server-side only — never put the API key in browser code. Limits: 45s cooldown · 10/phone/day · 5 guesses · 10-min expiry (per phone, across all numbers).</p>
+          </div>
+        );
+      })()}
+    </section>
+  );
+}
+
 // Voice replies — inbound voice notes are transcribed; optionally reply in voice.
 function VoiceSettingsCard() {
   type VoiceState = { mode: "off" | "mirror" | "always"; keySet: boolean; providerIsOpenai: boolean };
@@ -1267,6 +1505,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {isAdmin && <VoiceSettingsCard />}
       {isAdmin && <ApiKeysCard />}
+      {isAdmin && <OtpServiceCard />}
     </div>
     <SettingsRail goTo={goTo} />
     </div>

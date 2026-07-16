@@ -725,3 +725,64 @@ export async function fetchTemplates(channel?: ChannelCreds): Promise<WaTemplate
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return (data.data ?? []) as WaTemplate[];
 }
+
+// Send a Meta AUTHENTICATION template carrying an OTP. The code fills the body
+// variable AND the COPY_CODE button's URL param (button sub_type "url", index
+// "0") — Meta requires both for the one-tap copy button to work.
+export async function sendAuthTemplate(phone: string, templateName: string, languageCode: string, code: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
+  try {
+    const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: (phone || "").replace(/\D/g, ""),
+        type: "template",
+        template: {
+          name: templateName,
+          language: { code: languageCode },
+          components: [
+            { type: "body", parameters: [{ type: "text", text: code }] },
+            { type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: code }] },
+          ],
+        },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
+    return { error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+// Create the AUTHENTICATION-category OTP template on a WABA (one-time setup per
+// number). Body carries the security recommendation, footer the 10-minute
+// expiry, and a single OTP COPY_CODE button. "already exists" surfaces as an
+// error the caller can ignore.
+export async function createAuthTemplate(name: string, language: string, channel?: ChannelCreds): Promise<{ id?: string; status?: string; error?: string }> {
+  const { token, wabaId } = getCreds(channel);
+  if (!token || !wabaId) return { error: "Missing META_WA_ACCESS_TOKEN / META_WA_WABA_ID" };
+  if (!/^[a-z0-9_]{1,512}$/.test(name)) return { error: "Template name must be lowercase letters, digits, underscores" };
+  try {
+    const res = await fetch(`${GRAPH}/${wabaId}/message_templates`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name, language, category: "AUTHENTICATION",
+        components: [
+          { type: "BODY", add_security_recommendation: true },
+          { type: "FOOTER", code_expiration_minutes: 10 },
+          { type: "BUTTONS", buttons: [{ type: "OTP", otp_type: "COPY_CODE" }] },
+        ],
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) return { id: data.id as string, status: (data.status as string) ?? "PENDING" };
+    return { error: data?.error?.error_user_msg || data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
