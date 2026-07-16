@@ -40,6 +40,7 @@ export interface Channel extends ChannelCreds {
   pageId: string | null;      // connected Facebook Page id (IG)
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
+  mode: "full" | "manual";    // "manual" = counselor line: no AI/flow/welcome/sequence/follow-up
   active: boolean;
   isDefault: boolean;
   createdAt: string;
@@ -83,6 +84,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
     kbTag: (r.kb_tag as string | null) ?? null,
+    mode: (r.mode as string) === "manual" ? "manual" : "full",
     active: (r.active as boolean) ?? true,
     isDefault: (r.is_default as boolean) ?? false,
     createdAt: r.created_at as string,
@@ -259,6 +261,7 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     // must keep saving even before the migration is applied — an unconditional
     // write would 500 every channel save with PGRST204 until then.
     ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
+    ...(input.mode !== undefined ? { mode: input.mode } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };

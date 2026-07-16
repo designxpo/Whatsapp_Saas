@@ -95,6 +95,10 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Replies must go out from the same number; null = env single-number mode.
   const phoneNumberId = ((value.metadata as Record<string, unknown>)?.phone_number_id as string) ?? "";
   const channel: Channel | undefined = (await getChannelByPhoneNumberId(phoneNumberId)) ?? undefined;
+  // Counselor 1:1 line: store + log the inbound as normal, but never run any
+  // bot automation (welcome/away, flow, keyword/inactivity sequence, AI reply,
+  // follow-up). It sends only what a human/template pushes from the portal.
+  const manual = channel?.mode === "manual";
   // Inbound belongs to the receiving channel's tenant (never a magic default).
   const tid = channel?.tenantId ?? DEFAULT_TENANT_ID;
 
@@ -129,6 +133,12 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       mediaUrl = await uploadAudio(media.data, media.mimeType);
       mediaType = mediaUrl ? media.mimeType : null;
       console.log(JSON.stringify({ tag: "voice_transcribed", from, chars: transcript.length, stored: !!mediaUrl }));
+    } else if (manual) {
+      // Counselor line: never auto-send. Keep a placeholder + the clip (if we
+      // got it) so the voice note still lands in Live Chat / the CRM, then let
+      // it fall through to storage — the after() block won't run any automation.
+      text = "🎤 Voice note";
+      if (media) { mediaUrl = await uploadAudio(media.data, media.mimeType); mediaType = mediaUrl ? media.mimeType : null; }
     } else {
       await sendText(from, "Sorry, I couldn't quite catch that voice note — could you type your question?", channel);
       return;
@@ -228,8 +238,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   // In-chat checkout: a checkout-flow submission (carries a delivery address)
-  // for a contact with an open cart → create the order and confirm.
-  if (answers && Object.keys(answers).some(k => k.includes("address")) && await getOpenCart(from, tid)) {
+  // for a contact with an open cart → create the order and confirm. Never on a
+  // manual (counselor) line — that's an automated send.
+  if (!manual && answers && Object.keys(answers).some(k => k.includes("address")) && await getOpenCart(from, tid)) {
     try {
       const order = await checkoutCart({ phone: from }, tid);
       if (order) {
@@ -250,7 +261,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Growth opt-in: if this message matches a growth tool's prefilled keyword,
   // apply its action (tag + sequence enrollment) and count the conversion.
-  try {
+  // Skipped on manual lines — enrolling a counselor lead into a drip is exactly
+  // the automation those lines must never trigger.
+  if (!manual) try {
     const tool = await growthToolForOptIn(text, tid);
     if (tool) {
       if (tool.tag) await addContactTag(from, tool.tag, tid);
@@ -277,6 +290,10 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
         void syncLeadProfile({ phone: from, phoneAlt: altDigits }, tid);
       }
     } catch (e) { console.error("[webhook] identity capture", conv.id, e); }
+    // Counselor 1:1 line: no automation past this point — the inbound is stored,
+    // shown in Live Chat, logged to the CRM, and identity-captured above, but no
+    // welcome/away, flow, sequence, AI, or follow-up ever fires.
+    if (manual) return;
     // A human owns the chat → the bot stays silent on every path (welcome, away,
     // flow AND ai), matching IG/Messenger/web-chat. bot_enabled is flipped off only
     // by a human (inbox reply / CRM / manual toggle); "escalated" is NOT silenced.

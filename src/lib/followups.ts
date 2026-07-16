@@ -141,6 +141,9 @@ export async function drainAiFollowups(max = 50): Promise<number> {
 
     try {
       const channel: Channel | undefined = r.channel_id ? (await getChannel(r.channel_id as string, tenantId)) ?? undefined : undefined;
+      // Counselor 1:1 line: never nudge — release the claim so the counter is
+      // restored and this conversation is simply left alone.
+      if (channel?.mode === "manual") { await release(); continue; }
       const history = await getConvHistory(id, 16, tenantId);
       const nudge = await composeFollowup(history, { tenantId, agentName: channel?.name ?? null });
       // Nothing safe to say (no AI key / busy, or every claim stripped) — release so a
