@@ -182,6 +182,7 @@ vi.mock("@/lib/supabase", () => {
 vi.mock("@/lib/channels", () => ({
   credsFor: mocks.credsFor,
   getChannel: mocks.getChannel,
+  explicitDefaultChannel: vi.fn(async () => undefined),   // broadcast-path fallback — no default channel in tests
   isMarketingSendable: mocks.isMarketingSendable,
   // Real (pure) precedence helpers — conversation override → channel default → global.
   effectiveAgentId: (conv: { agentId?: string | null } | null | undefined, channel?: { agentId?: string | null } | null) => conv?.agentId ?? channel?.agentId ?? null,
