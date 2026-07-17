@@ -1231,10 +1231,10 @@ export function MessengerCard() {
 }
 
 // ── Website web-chat widget (embed a live chat bubble on any site) ────────────
-type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain"; offsetSide?: number; offsetBottom?: number };
+type WcCfg = { color?: string; title?: string; welcome?: string; position?: "right" | "left"; iconUrl?: string; logoFit?: "cover" | "contain"; badgeColor?: string; logoScale?: number; offsetSide?: number; offsetBottom?: number };
 type WcRow = ChannelRow & { siteKey?: string | null; allowedOrigins?: string[]; widgetConfig?: WcCfg };
-type WcForm = { id?: string; name: string; origins: string; active: boolean; agentId: string; kbTag: string; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain"; offsetSide: string; offsetBottom: string };
-const BLANK_WC: WcForm = { name: "", origins: "", active: true, agentId: "", kbTag: "", color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", offsetSide: "", offsetBottom: "" };
+type WcForm = { id?: string; name: string; origins: string; active: boolean; agentId: string; kbTag: string; color: string; title: string; welcome: string; position: "right" | "left"; iconUrl: string; logoFit: "cover" | "contain"; badgeColor: string; logoScale: number; offsetSide: string; offsetBottom: string };
+const BLANK_WC: WcForm = { name: "", origins: "", active: true, agentId: "", kbTag: "", color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", badgeColor: "#ffffff", logoScale: 100, offsetSide: "", offsetBottom: "" };
 
 export function WebchatCard() {
   const [list, setList] = useState<WcRow[]>([]);
@@ -1278,7 +1278,7 @@ export function WebchatCard() {
     if (!form.name.trim()) { setMsg("Give this widget a name."); return; }
     setBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, agentId: form.agentId || null, kbTag: form.kbTag || null, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
+      const res = await fetch("/api/admin/channels/webchat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: form.id, name: form.name, allowedOrigins: form.origins, active: form.active, agentId: form.agentId || null, kbTag: form.kbTag || null, widgetConfig: { color: form.color, title: form.title, welcome: form.welcome, position: form.position, iconUrl: form.iconUrl, logoFit: form.logoFit, badgeColor: form.badgeColor, logoScale: form.logoScale, ...(form.offsetSide.trim() !== "" ? { offsetSide: Number(form.offsetSide) } : {}), ...(form.offsetBottom.trim() !== "" ? { offsetBottom: Number(form.offsetBottom) } : {}) } }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
     } finally { setBusy(false); }
@@ -1307,7 +1307,7 @@ export function WebchatCard() {
               <p className="text-sm font-semibold text-ink-900 truncate">{c.name}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 truncate">{(c.allowedOrigins && c.allowedOrigins.length) ? c.allowedOrigins.join(", ") : "any origin (lock this down by adding your domains)"}</p>
             </div>
-            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => { const w = c.widgetConfig ?? {}; setForm({ id: c.id, name: c.name, origins: (c.allowedOrigins ?? []).join("\n"), active: c.active, agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", color: w.color || "#0783fd", title: w.title || "Chat with us", welcome: w.welcome || "", position: w.position === "left" ? "left" : "right", iconUrl: w.iconUrl || "", logoFit: w.logoFit === "contain" ? "contain" : "cover", badgeColor: w.badgeColor || "#ffffff", logoScale: typeof w.logoScale === "number" ? w.logoScale : 100, offsetSide: w.offsetSide != null ? String(w.offsetSide) : "", offsetBottom: w.offsetBottom != null ? String(w.offsetBottom) : "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {c.siteKey && (
@@ -1388,16 +1388,66 @@ export function WebchatCard() {
               Fit whole logo (don&apos;t crop) — for any logo shape
             </label>
           )}
-          {/* Live preview of the launcher bubble + header */}
-          <div className="flex items-center gap-3 bg-canvas border border-line rounded-control px-3 py-2.5">
-            <span className={`shrink-0 w-9 h-9 ${form.iconUrl && form.logoFit === "contain" ? "rounded-lg" : "rounded-full"} flex items-center justify-center text-white overflow-hidden`} style={{ background: form.iconUrl && form.logoFit === "contain" ? "transparent" : (/^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd") }}>
-              {form.iconUrl ? <img src={form.iconUrl} alt="" className={`w-full h-full ${form.logoFit === "contain" ? "object-contain" : "object-cover"}`} /> : <MessageSquare className="w-4 h-4" />}
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-ink-900 truncate">{form.title || "Chat with us"}</p>
-              <p className="text-[11px] text-ink-400 truncate">{form.welcome || "No welcome message"} · {form.position === "left" ? "bottom-left" : "bottom-right"}</p>
+          {form.iconUrl && form.logoFit === "contain" && (
+            <div className="grid grid-cols-2 gap-2">
+              <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="How much of the circular button the logo fills">
+                <span className="shrink-0">Logo size</span>
+                <input type="range" min={30} max={100} step={5} className="flex-1 accent-brand-700" value={form.logoScale} onChange={e => setForm({ ...form, logoScale: Number(e.target.value) })} />
+                <span className="text-ink-400 w-10 text-right">{form.logoScale}%</span>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="Colour of the circular block behind the logo">
+                <span className="shrink-0">Circle colour</span>
+                <input type="color" className="w-7 h-7 rounded cursor-pointer bg-transparent border-0 p-0" value={/^#[0-9a-fA-F]{6}$/.test(form.badgeColor) ? form.badgeColor : "#ffffff"} onChange={e => setForm({ ...form, badgeColor: e.target.value })} />
+                <input className={`${inp} flex-1 font-mono text-xs`} maxLength={7} value={form.badgeColor} onChange={e => setForm({ ...form, badgeColor: e.target.value })} />
+              </label>
             </div>
-          </div>
+          )}
+          {/* Live preview — the launcher and the chat panel as the site renders them */}
+          {(() => {
+            const brand = /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd";
+            const badge = /^#[0-9a-fA-F]{3,6}$/.test(form.badgeColor) ? form.badgeColor : "#ffffff";
+            const scale = Math.min(100, Math.max(30, form.logoScale || 100));
+            const contain = !!form.iconUrl && form.logoFit === "contain";
+            const avatar = (cls: string, pct: number) => (
+              <span className={`shrink-0 ${cls} rounded-full flex items-center justify-center text-white overflow-hidden`} style={{ background: form.iconUrl ? (contain ? badge : "transparent") : "rgba(255,255,255,.25)", boxShadow: "0 0 0 1px rgba(15,23,42,.08)" }}>
+                {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${pct}%`, height: `${pct}%`, objectFit: "contain" } : { width: "100%", height: "100%", objectFit: "cover" }} /> : <MessageSquare className="w-3.5 h-3.5" />}
+              </span>
+            );
+            return (
+              <div className="rounded-control border border-line bg-slate-200/70 p-4">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-3">Live preview</p>
+                <div className={`flex items-end gap-4 ${form.position === "left" ? "flex-row-reverse justify-end" : "justify-end"}`}>
+                  <div className="w-[270px] rounded-2xl overflow-hidden shadow-xl bg-white border border-black/5">
+                    <div className="px-3.5 py-3 flex items-center gap-2.5 text-white" style={{ background: brand }}>
+                      {avatar("w-9 h-9", 84)}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13px] font-bold truncate">{form.title || "Chat with us"}</p>
+                        <p className="text-[10.5px] opacity-85 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" /> Typically replies instantly</p>
+                      </div>
+                      <span className="opacity-85 text-lg leading-none">&times;</span>
+                    </div>
+                    <div className="bg-[#f5f6f8] px-3 py-3 space-y-2">
+                      <div className="flex items-end gap-1.5">
+                        {avatar("w-6 h-6", 84)}
+                        <div className="bg-white text-ink-900 text-[12px] leading-snug rounded-2xl rounded-bl-[4px] px-3 py-2 shadow-sm max-w-[75%]">{form.welcome || "Hi! How can we help you today?"}</div>
+                      </div>
+                      <div className="flex justify-end">
+                        <div className="text-white text-[12px] leading-snug rounded-2xl rounded-br-[4px] px-3 py-2 shadow-sm max-w-[75%]" style={{ background: brand }}>Hi! I&apos;d like to know more.</div>
+                      </div>
+                    </div>
+                    <div className="px-3 py-2 bg-white border-t border-line flex items-center gap-2">
+                      <span className="flex-1 text-[11px] text-ink-400 bg-canvas border border-line rounded-full px-3 py-1.5">Type a message...</span>
+                      <span className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-white text-[10px]" style={{ background: brand }}>&#10148;</span>
+                    </div>
+                  </div>
+                  <span className="shrink-0 w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden" style={{ background: form.iconUrl ? (contain ? badge : "transparent") : brand, boxShadow: "0 6px 20px rgba(15,23,42,.18), 0 0 0 1px rgba(15,23,42,.06)" }}>
+                    {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${scale}%`, height: `${scale}%`, objectFit: "contain" } : { width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : <MessageSquare className="w-6 h-6 text-white" />}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-2 text-right">{form.position === "left" ? "bottom-left" : "bottom-right"} · gap {form.offsetBottom || "20"}px &uarr; {form.offsetSide || "20"}px &rarr;</p>
+              </div>
+            );
+          })()}
 
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>

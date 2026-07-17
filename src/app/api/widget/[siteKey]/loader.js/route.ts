@@ -28,6 +28,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
     // Escaped defensively — it is concatenated into <img src="..."> markup.
     icon: (wc.iconUrl || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;"),
     logoFit: wc.logoFit === "contain" ? "contain" : "cover",
+    badge: wc.badgeColor || "",                            // sanitized hex (or empty = white)
+    logoScale: typeof wc.logoScale === "number" ? wc.logoScale : 100,
     // Launcher offsets (px) — null = the built-in defaults. Lets a site nudge the
     // bubble clear of its own floating buttons (scroll-to-top, call widgets…).
     offsetSide: typeof wc.offsetSide === "number" ? wc.offsetSide : null,
@@ -48,9 +50,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var DARK = shade(BRAND);\n" +
 "  var FIT = CFG.logoFit === 'contain' ? 'contain' : 'cover';\n" +
 "  var AVRAD = FIT === 'contain' ? '8px' : '50%';\n" +
+"  var BADGE = CFG.badge || '#fff';\n" +
+"  var LSC = Math.min(100, Math.max(30, CFG.logoScale || 100)) + '%';\n" +
 "  var LOGO = !!CFG.icon;\n" +                                                            // custom logo uploaded -> launcher is the bare logo, no brand circle                                  // square-ish box for a full logo, circle for a cropped one
-"  var HAVBG = (CFG.icon && FIT === 'contain') ? '#fff' : 'rgba(255,255,255,.22)';\n" +
-"  var BAVBG = (CFG.icon && FIT === 'contain') ? '#fff' : BRAND;\n" +
+"  var HAVBG = (CFG.icon && FIT === 'contain') ? BADGE : 'rgba(255,255,255,.22)';\n" +
+"  var BAVBG = (CFG.icon && FIT === 'contain') ? BADGE : BRAND;\n" +
 "  var IMGSZ = (CFG.icon && FIT === 'contain') ? 'width:84%;height:84%;object-fit:contain;' : 'width:100%;height:100%;object-fit:' + FIT + ';';\n" +
 "  var css = '' +\n" +
 "   '.twc-launch{position:fixed;bottom:' + OB + 'px;' + SIDE + ':' + OS + 'px;width:60px;height:60px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s ease,box-shadow .15s ease;animation:twcin .25s ease;}' +\n" +
@@ -100,7 +104,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-foot .twc-send:disabled{opacity:.5;cursor:default;} .twc-foot .twc-send svg{width:19px;height:19px;}' +\n" +
 "   '.twc-pow{text-align:center;color:#aab0b8;font-size:10.5px;padding:0 0 8px;background:#fff;}' +\n" +
 "   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:' + MB + ';' + SIDE + ':' + MS + 'px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{top:0;bottom:auto;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;transform:none;transition:opacity .18s ease;} .twc-head{padding-top:calc(14px + env(safe-area-inset-top,0px));} .twc-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));} .twc-foot input{font-size:16px;} .twc-close{padding:6px 10px;} html[data-twc-trig] .twc-launch{display:none!important;} }' +\n" +
-"   (LOGO ? '.twc-launch{background:#fff!important;box-shadow:0 6px 20px rgba(15,23,42,.18),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch:hover{box-shadow:0 10px 26px rgba(15,23,42,.24),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch .twc-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;} .twc-launch .twc-ic img{' + (FIT === 'contain' ? 'width:100%;height:100%;object-fit:contain;border-radius:0;' : 'width:100%;height:100%;object-fit:cover;border-radius:50%;') + '} .twc-launch.open{background:' + BRAND + '!important;} .twc-launch.open .twc-x{color:#fff;font-size:24px;}' : '');\n" +
+"   (LOGO ? '.twc-launch{background:' + BADGE + '!important;box-shadow:0 6px 20px rgba(15,23,42,.18),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch:hover{box-shadow:0 10px 26px rgba(15,23,42,.24),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch .twc-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;} .twc-launch .twc-ic img{' + (FIT === 'contain' ? 'width:' + LSC + ';height:' + LSC + ';object-fit:contain;border-radius:0;' : 'width:100%;height:100%;object-fit:cover;border-radius:50%;') + '} .twc-launch.open{background:' + BRAND + '!important;} .twc-launch.open .twc-x{color:#fff;font-size:24px;}' : '');\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var initial = (CFG.title || 'A').trim().charAt(0).toUpperCase();\n" +
 "  var SEND_SVG = '<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"22\" y1=\"2\" x2=\"11\" y2=\"13\"></line><polygon points=\"22 2 15 22 11 13 2 9 22 2\"></polygon></svg>';\n" +

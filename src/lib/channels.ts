@@ -27,6 +27,8 @@ export interface WebchatConfig {
   iconUrl?: string;               // custom launcher icon (uploaded logo); default = chat bubble
   subtitle?: string;              // header sub-line under the title, e.g. "Typically replies instantly"
   logoFit?: "cover" | "contain"; // "cover" = crop to circle (default); "contain" = show the whole logo, any shape
+  badgeColor?: string;            // launcher circle colour behind a contain-fit logo (default white)
+  logoScale?: number;             // % of the launcher the logo fills (30-100; contain fit only)
   offsetSide?: number;            // px gap from the left/right edge (default 20) — dodge the site's own floating buttons
   offsetBottom?: number;          // px gap from the bottom edge (default 20) — e.g. 100 clears a scroll-to-top button
 }
@@ -374,6 +376,12 @@ export function sanitizeWidgetConfig(c: WebchatConfig | null | undefined): Webch
   const subtitle = (c?.subtitle ?? "").trim();
   if (subtitle) out.subtitle = subtitle.slice(0, 60);
   if (c?.logoFit === "contain") out.logoFit = "contain";
+  // Launcher badge colour: strict hex only — it is injected into widget CSS.
+  const badge = (c?.badgeColor ?? "").trim();
+  if (/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(badge)) out.badgeColor = badge;
+  // Logo size inside the circular launcher, % clamped so it stays a number.
+  const ls = Math.round(Number(c?.logoScale));
+  if (Number.isFinite(ls)) out.logoScale = Math.min(100, Math.max(30, ls));
   // Launcher offsets: clamped ints so the CSS injection is always a plain number.
   const off = (v: unknown) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(600, Math.max(0, n)) : undefined; };
   const os = off(c?.offsetSide); if (os !== undefined) out.offsetSide = os;
