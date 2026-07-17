@@ -173,7 +173,7 @@ function InstagramManager() {
       {form && (
         <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
           <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Label, e.g. @analytixlabs" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <input className={inp} placeholder="Label, e.g. @yourbrand" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Instagram account id (IG professional id)" value={form.igUserId} onChange={e => setForm({ ...form, igUserId: e.target.value.trim() })} />
             <input className={inp} placeholder="Facebook Page id (optional)" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this account">

@@ -65,7 +65,7 @@ function HandleHubTab() {
             </label>
             <label className="block">
               <span className="text-[11px] text-slate-500">@handle <span className="text-slate-400">(display; used once WhatsApp usernames are live)</span></span>
-              <input className={`${inp} w-full mt-1`} placeholder="analytixlabs" value={config.handle} onChange={e => setConfig({ ...config, handle: e.target.value })} />
+              <input className={`${inp} w-full mt-1`} placeholder="yourbrand" value={config.handle} onChange={e => setConfig({ ...config, handle: e.target.value })} />
             </label>
           </div>
           <label className="block">

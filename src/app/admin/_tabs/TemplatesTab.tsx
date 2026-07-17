@@ -410,7 +410,7 @@ function TemplatesTab() {
               <div className="space-y-1">
                 <p className="text-[11px] font-bold text-slate-600">Footer <span className="font-normal text-slate-400">(optional)</span></p>
                 <p className="text-[11px] text-slate-500">A small grey line under the message — usually a sign-off or an opt-out note.</p>
-                <input className={`${inp} w-full`} placeholder="e.g. Team AnalytixLabs · Reply STOP to opt out" maxLength={60} value={footerText} onChange={e => setFooterText(e.target.value)} />
+                <input className={`${inp} w-full`} placeholder="e.g. Team YourBrand · Reply STOP to opt out" maxLength={60} value={footerText} onChange={e => setFooterText(e.target.value)} />
               </div>
             )}
           </div>

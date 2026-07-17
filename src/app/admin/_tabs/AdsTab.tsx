@@ -169,7 +169,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p>Your browser extension (uBlock Origin, AdBlock, Brave Shields, Privacy Badger, etc.) is blocking the request because the address contains advertising-related words. This is a browser issue, not a problem with the platform — every other tab works.</p>
           <p className="font-semibold">To fix it, do one of these:</p>
           <ul className="list-disc pl-5 space-y-1">
-            <li>Click your ad-blocker icon → <b>pause / disable on waba.analytixlabs.co.in</b>, then reload.</li>
+            <li>Click your ad-blocker icon → <b>pause / disable on {window.location.hostname}</b>, then reload.</li>
             <li>Or open this page in an <b>Incognito window</b> with extensions off.</li>
           </ul>
           <button onClick={() => { setBlocked(false); load(); }} className="mt-1 px-4 py-2 rounded-control bg-amber-600 text-white text-xs font-bold">I&apos;ve disabled it — retry</button>
