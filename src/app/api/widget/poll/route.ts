@@ -33,6 +33,6 @@ export async function GET(req: Request) {
   // the visitor's own messages); strip internal markers.
   const messages = rows
     .filter(m => m.role === "assistant")
-    .map(m => ({ id: m.id, body: m.body, at: m.createdAt, from: m.source === "agent" ? "agent" : "bot", mediaUrl: m.mediaUrl ?? null }));
+    .map(m => ({ id: m.id, body: m.body, at: m.createdAt, from: m.source === "agent" ? "agent" : "bot", mediaUrl: m.mediaUrl ?? null, mediaType: m.mediaType ?? null }));
   return NextResponse.json({ messages, status: conv.status }, { headers: cors });
 }

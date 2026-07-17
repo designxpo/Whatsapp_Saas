@@ -76,7 +76,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-row.b .twc-msg{background:#fff;color:#15181c;border-radius:16px 16px 16px 4px;}' +\n" +
 "   '.twc-row.u .twc-msg{background:' + BRAND + ';color:#fff;border-radius:16px 16px 4px 16px;}' +\n" +
 "   '.twc-msg img{max-width:100%;border-radius:10px;display:block;}' +\n" +
-"   '.twc-msg a{color:inherit;text-decoration:underline;}' +\n" +
+"   '.twc-msg a{color:inherit;text-decoration:underline;font-weight:600;word-break:break-all;}' +\n" +
+"   '.twc-msg video{max-width:100%;border-radius:10px;display:block;}' +\n" +
+"   '.twc-msg audio{max-width:100%;display:block;}' +\n" +
+"   '.twc-file{display:flex;align-items:center;gap:8px;margin-top:7px;padding:9px 12px;border:1.5px solid ' + BRAND + ';border-radius:12px;color:' + BRAND + '!important;background:#fff;text-decoration:none!important;font-weight:700;font-size:13px;line-height:1.2;}' +\n" +
+"   '.twc-file svg{width:18px;height:18px;flex:0 0 auto;}' +\n" +
+"   '.twc-row.u .twc-file{border-color:rgba(255,255,255,.75);color:#fff!important;background:transparent;}' +\n" +
 "   '.twc-chips{display:flex;flex-wrap:wrap;gap:7px;margin:7px 0 2px 34px;}' +\n" +
 "   '.twc-chip{background:#fff;border:1.5px solid ' + BRAND + ';color:' + BRAND + ';border-radius:18px;padding:7px 13px;font-size:13px;font-weight:600;cursor:pointer;transition:background .12s,color .12s;}' +\n" +
 "   '.twc-chip:hover{background:' + BRAND + ';color:#fff;}' +\n" +
@@ -112,11 +117,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var input = panel.querySelector('.twc-foot input');\n" +
 "  var sendBtn = panel.querySelector('.twc-send');\n" +
 "  function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }\n" +
-"  function linkify(s){ return esc(s).replace(/(https?:\\/\\/[^\\s]+)/g, function(u){ return '<a href=\"' + u + '\" target=\"_blank\" rel=\"noopener\">' + u + '</a>'; }); }\n" +
+"  // WhatsApp markup -> HTML on already-escaped text: *bold* _italic_ ~strike~.\n" +
+"  function wamd(s){ return s.replace(/\\*(\\S(?:[^*\\n]*\\S)?)\\*/g,'<b>$1</b>').replace(/(^|[^\\w])_(\\S(?:[^_\\n]*\\S)?)_(?![\\w])/g,'$1<i>$2</i>').replace(/~(\\S(?:[^~\\n]*\\S)?)~/g,'<s>$1</s>'); }\n" +
+"  function linkLabel(u){ try{ var x=new URL(u); var h=x.hostname.replace(/^www\\./,''); var p=x.pathname==='/'?'':x.pathname; var f=h+p; return f.length>34? f.slice(0,32)+'\\u2026' : f; }catch(e){ return u.length>36? u.slice(0,34)+'\\u2026' : u; } }\n" +
+"  // Escape, then alternate text/URL segments: URLs render as short labeled\n" +
+"  // links (the raw address is noise), text segments get the markup treatment.\n" +
+"  function fmt(s){ var e=esc(s); var parts=e.split(/(https?:\\/\\/[^\\s<]+)/g); var h=''; for(var i=0;i<parts.length;i++){ h+=(i%2===1)?('<a href=\"'+parts[i]+'\" target=\"_blank\" rel=\"noopener noreferrer\">'+linkLabel(parts[i])+' \\u2197</a>'):wamd(parts[i]); } return h; }\n" +
+"  var FILE_SVG='<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"></path><polyline points=\"14 2 14 8 20 8\"></polyline></svg>';\n" +
+"  // File-looking URLs (brochure PDFs, Drive shares) also get a tappable card\n" +
+"  // under the text so the share is unmissable.\n" +
+"  function fileCards(raw){ var m=(raw||'').match(/https?:\\/\\/[^\\s]+/g)||[]; var h=''; var n=0; for(var i=0;i<m.length&&n<3;i++){ var u=m[i]; if(/\\.(pdf|docx?|xlsx?|pptx?|zip)([?#]|$)/i.test(u)||/drive\\.google\\.com\\/(file|uc)/i.test(u)){ h+='<a class=\"twc-file\" href=\"'+esc(u)+'\" target=\"_blank\" rel=\"noopener noreferrer\">'+FILE_SVG+'<span>Open file</span></a>'; n++; } } return h; }\n" +
 "  function clearChips(){ var c=body.querySelectorAll('.twc-chips'); for(var i=0;i<c.length;i++){ c[i].parentNode.removeChild(c[i]); } }\n" +
 "  function addRow(role, html){ var row=document.createElement('div'); row.className='twc-row '+(role==='u'?'u':'b'); var inner=''; if(role!=='u'){ inner='<div class=\"twc-bav\">' + avInner + '</div>'; } inner+='<div class=\"twc-msg\">'+html+'</div>'; row.innerHTML=inner; body.appendChild(row); body.scrollTop=body.scrollHeight; return row; }\n" +
-"  function addUser(text){ addRow('u', linkify(text)); }\n" +
-"  function addBot(m){ var html=''; if(m.mediaUrl){ html+='<img alt=\"\" src=\"'+esc(m.mediaUrl)+'\">'; } if(m.body){ if(html){html+='<br>';} html+=linkify(m.body); } if(!html){ return; } addRow('b', html); if(m.options && m.options.length){ var wrap=document.createElement('div'); wrap.className='twc-chips'; m.options.forEach(function(o){ var ch=document.createElement('button'); ch.className='twc-chip'; ch.textContent=o; ch.addEventListener('click', function(){ clearChips(); send(o); }); wrap.appendChild(ch); }); body.appendChild(wrap); body.scrollTop=body.scrollHeight; } }\n" +
+"  function addUser(text){ addRow('u', fmt(text)); }\n" +
+"  function addBot(m){ var html=''; if(m.mediaUrl){ var mt=String(m.mediaType||'').toLowerCase(); var mu=esc(m.mediaUrl); if(mt.indexOf('video')===0||/\\.(mp4|webm)([?#]|$)/i.test(m.mediaUrl)){ html+='<video controls src=\"'+mu+'\"></video>'; } else if(mt.indexOf('audio')===0){ html+='<audio controls src=\"'+mu+'\"></audio>'; } else if(mt.indexOf('document')===0||/\\.(pdf|docx?|xlsx?|pptx?|zip)([?#]|$)/i.test(m.mediaUrl)){ html+='<a class=\"twc-file\" href=\"'+mu+'\" target=\"_blank\" rel=\"noopener noreferrer\">'+FILE_SVG+'<span>Open file</span></a>'; } else { html+='<img alt=\"\" src=\"'+mu+'\">'; } } if(m.body){ if(html){html+='<br>';} html+=fmt(m.body)+fileCards(m.body); } if(!html){ return; } addRow('b', html); if(m.options && m.options.length){ var wrap=document.createElement('div'); wrap.className='twc-chips'; m.options.forEach(function(o){ var ch=document.createElement('button'); ch.className='twc-chip'; ch.textContent=o; ch.addEventListener('click', function(){ clearChips(); send(o); }); wrap.appendChild(ch); }); body.appendChild(wrap); body.scrollTop=body.scrollHeight; } }\n" +
 "  function sysBanner(text){ var d=document.createElement('div'); d.className='twc-sys'; d.textContent=text; body.appendChild(d); body.scrollTop=body.scrollHeight; }\n" +
 "  function render(arr){ (arr||[]).forEach(function(m){ if(m.id && seen[m.id]) return; if(m.id) seen[m.id]=1; if(m.at) since=m.at; addBot(m); }); }\n" +
 "  var typingEl=null;\n" +

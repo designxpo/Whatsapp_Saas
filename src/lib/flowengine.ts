@@ -928,18 +928,18 @@ async function triggerByKeyword(
 // reply chips (from a flow's buttons/list) or an inline image/video. The flow runs
 // synchronously inside the POST, so the route collects these and returns them
 // inline; they're also persisted so a reload / the poll still shows the text.
-export interface WebchatOut { id?: string; at?: string; body: string; options?: string[]; mediaUrl?: string; from: "bot" }
+export interface WebchatOut { id?: string; at?: string; body: string; options?: string[]; mediaUrl?: string; mediaType?: string; from: "bot" }
 
 // Web-chat sender — mirrors igSender, but instead of a platform API it appends bot
 // messages to the conversation AND pushes them into `out` for the route to return
 // inline. Menu options become quick-reply chips; the persisted body also lists them
 // as text so the inbox / a reloaded widget still shows the choices.
 function webchatSender(conversationId: string, out: WebchatOut[], tenantId = DEFAULT_TENANT_ID): FlowSender {
-  const push = async (cleanBody: string, options?: { id: string; title: string }[], mediaUrl?: string): Promise<{ id?: string; error?: string }> => {
+  const push = async (cleanBody: string, options?: { id: string; title: string }[], mediaUrl?: string, mediaType?: string): Promise<{ id?: string; error?: string }> => {
     const persist = options && options.length ? cleanBody + "\n" + options.map(o => "• " + o.title).join("\n") : cleanBody;
-    const saved = await appendConvMessage({ conversationId, role: "assistant", body: (persist || mediaUrl || "").slice(0, 4000), source: "bot", tenantId }).catch(() => null);
+    const saved = await appendConvMessage({ conversationId, role: "assistant", body: (persist || mediaUrl || "").slice(0, 4000), source: "bot", tenantId, mediaUrl: mediaUrl ?? null, mediaType: mediaType ?? null }).catch(() => null);
     await touchOutbound(conversationId, (persist || mediaUrl || "").slice(0, 200)).catch(() => undefined);
-    out.push({ id: saved?.id, at: saved?.createdAt, body: cleanBody, options: options?.map(o => o.title), mediaUrl, from: "bot" });
+    out.push({ id: saved?.id, at: saved?.createdAt, body: cleanBody, options: options?.map(o => o.title), mediaUrl, mediaType, from: "bot" });
     return { id: saved?.id ?? "wc" };
   };
   return {
@@ -947,7 +947,9 @@ function webchatSender(conversationId: string, out: WebchatOut[], tenantId = DEF
     async text(body) { return push(body); },
     async buttons(body, buttons) { return push(body, buttons); },
     async list(body, _bt, sections) { return push(body, sections.flatMap(s => s.rows.map(r => ({ id: r.id, title: r.title })))); },
-    async media(kind, url, caption) { return kind === "document" ? push(caption ? caption + "\n" + url : url) : push(caption ?? "", undefined, url); },
+    // All kinds carry mediaUrl/mediaType through — the widget renders images
+    // inline, video/audio players, and documents as a tappable file card.
+    async media(kind, url, caption) { return push(caption ?? "", undefined, url, kind); },
     async product(body) { return push(body); },
     async productCard(body, _img, buttonText, buttonUrl) { return push(body + "\n" + buttonText + ": " + buttonUrl); },
     async productList(header, body) { return push([header, body].filter(s => s && s.trim()).join("\n") || "Have a look:"); },
