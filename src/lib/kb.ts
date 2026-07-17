@@ -120,8 +120,8 @@ const TARGET = 1000;     // chars per chunk
 const OVERLAP = 150;     // chars carried into the next chunk for context continuity
 
 // A chunk plus the nearest section heading above it, so the caller can prepend a
-// "[Document › Section]" context line — what stops a fees/schedule chunk from
-// being applied to the wrong course.
+// "[Document › Section]" context line — what stops a price/schedule chunk from
+// being applied to the wrong product/service.
 export interface KbChunk { content: string; heading: string | null }
 
 // Is this paragraph a SECTION HEADING (a label for what follows), not body text?
@@ -196,7 +196,7 @@ export function chunkText(text: string): KbChunk[] {
 
 // Prepend a compact context header to every chunk so BOTH the embedding and the
 // model know which document/section the text came from. This is the core of the
-// "brand-centric" fix — each chunk now self-identifies its course/section.
+// "brand-centric" fix — each chunk now self-identifies its document/section.
 export function headeredChunks(title: string, chunks: KbChunk[]): string[] {
   const t = (title || "").trim().slice(0, 120);
   return chunks.map(c => {
@@ -389,8 +389,8 @@ export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_I
     return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);
   }
 
-  // A course/flow tag is set → answer EXCLUSIVELY from that course's docs so
-  // another course's fees/duration/details can never bleed in. Only when the
+  // A flow-set KB tag is set → answer EXCLUSIVELY from that tag's docs so
+  // another item's price/duration/details can never bleed in. Only when the
   // tagged docs genuinely don't cover the question (neither retriever finds
   // anything) do we fall back to the general KB.
   const PRIMARY_FLOOR = 0.5;

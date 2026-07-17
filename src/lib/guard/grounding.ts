@@ -34,8 +34,8 @@ export interface GroundingAction {
 export interface GroundingResult { text: string; actions: GroundingAction[] }
 
 // Default-ON: the classes whose disposition is clean (email rewrite / own-line URL
-// strip) or whose fail-safe deferral protects the highest-value ed-tech specifics
-// (fees, duration, percentages, phone). Default-OFF: DATE and STANDALONE_NUMBER —
+// strip) or whose fail-safe deferral protects the highest-value specifics for ANY
+// business (price, duration, percentages, phone). Default-OFF: DATE and NUMBER —
 // the most false-positive-prone ("today", "Monday", "top 3 reasons", "2 batches").
 // Flip with GROUNDING_FIREWALL_STRICT=true or a per-class `enabled` override.
 const STRICT = process.env.GROUNDING_FIREWALL_STRICT === "true";
@@ -127,9 +127,9 @@ function questionNoun(hint?: string): string | null {
   const h = (hint ?? "").toLowerCase();
   if (!h) return null;
   if (/\b(fee|fees|cost|costs|price|pricing|charge|charges|emi|tuition|payment|how much)\b/.test(h)) return "exact fees";
-  if (/\b(duration|how long|months?|weeks?|years?|hours?|timeline|time it takes|schedule|timing|timings)\b/.test(h)) return "exact duration and schedule";
-  if (/\b(date|dates|start date|starting|begins?|commence|next batch|batch date)\b/.test(h)) return "exact dates";
-  if (/\b(discount|scholarship|placement rate|percentage|percent)\b/.test(h)) return "exact figures";
+  if (/\b(duration|how long|months?|weeks?|years?|hours?|timeline|time it takes|schedule|timing|timings|availability|delivery time)\b/.test(h)) return "exact duration and schedule";
+  if (/\b(date|dates|start date|starting|begins?|commence|next batch|batch date|delivery date|appointment date|check-?in)\b/.test(h)) return "exact dates";
+  if (/\b(discount|scholarship|placement rate|percentage|percent|cashback|interest rate)\b/.test(h)) return "exact figures";
   if (/\b(call|phone|mobile|number|contact|whatsapp|email|reach)\b/.test(h)) return "contact details";
   return null;
 }

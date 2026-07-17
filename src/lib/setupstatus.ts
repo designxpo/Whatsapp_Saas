@@ -179,7 +179,7 @@ export async function getSetupChecklist(tenantId: string): Promise<SetupChecklis
     const docs = await listDocuments(tenantId).catch(() => []);
     const ready = docs.filter(d => d.status === "ready").length;
     steps.push(!docs.length
-      ? { key: "kb", title: "Knowledge base", status: "warn", optional: true, detail: "No documents added — the AI has nothing to answer from.", hint: "Upload your brochure, FAQ, or website so replies are grounded in your business.", fixTab: "assistant" }
+      ? { key: "kb", title: "Knowledge base", status: "warn", optional: true, detail: "No documents added — the AI has nothing to answer from.", hint: "Upload your brochure, price list, FAQ, or website so replies are grounded in your business.", fixTab: "assistant" }
       : { key: "kb", title: "Knowledge base", status: ready ? "ok" : "warn", optional: true, detail: `${ready}/${docs.length} document${docs.length === 1 ? "" : "s"} ready.`, hint: ready ? undefined : "Some documents are still processing or failed — open the Knowledge Base tab.", fixTab: "assistant" });
   }
 

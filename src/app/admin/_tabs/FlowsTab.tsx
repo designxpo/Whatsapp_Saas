@@ -80,7 +80,7 @@ function FlowsTab() {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">New flow</p>
         <div className="flex gap-2">
-          <input className={inp + " flex-1"} placeholder="Flow name (e.g. Course enquiry menu)" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); }} />
+          <input className={inp + " flex-1"} placeholder="Flow name (e.g. Enquiry menu)" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === "Enter") create(); }} />
           <button onClick={create} disabled={creating || !name.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
             {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : "Create & open builder"}
           </button>
@@ -103,7 +103,7 @@ function FlowsTab() {
             <button onClick={() => remove(f.id)} className="p-1.5 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
-        {flows.length === 0 && <p className="text-center text-slate-400 text-sm py-8">No flows yet — create one above. Example: trigger &quot;hi&quot; → welcome buttons → course info / talk to an agent.</p>}
+        {flows.length === 0 && <p className="text-center text-slate-400 text-sm py-8">No flows yet — create one above. Example: trigger &quot;hi&quot; → welcome buttons → product info / talk to an agent.</p>}
       </div>
     </div>
     <FlowsRail flows={flows} />

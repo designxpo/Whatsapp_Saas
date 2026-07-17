@@ -1533,11 +1533,11 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
           )}
           <div className={field}>
             <p className={lbl}>Primary text — the message above the image</p>
-            <textarea className={`${inp} w-full resize-none`} rows={3} placeholder={"e.g. Confused which Data Science course fits your career? Chat with our counsellor on WhatsApp — free guidance, instant replies."} value={primaryText} onChange={e => setPrimaryText(e.target.value)} />
+            <textarea className={`${inp} w-full resize-none`} rows={3} placeholder={"e.g. Not sure which plan fits your budget? Chat with us on WhatsApp — free guidance, instant replies."} value={primaryText} onChange={e => setPrimaryText(e.target.value)} />
           </div>
           <div className={field}>
             <p className={lbl}>Headline — bold line next to the button</p>
-            <input className={`${inp} w-full`} placeholder="e.g. Talk to a course counsellor" value={headline} onChange={e => setHeadline(e.target.value)} />
+            <input className={`${inp} w-full`} placeholder="e.g. Talk to us on WhatsApp" value={headline} onChange={e => setHeadline(e.target.value)} />
           </div>
           <p className="text-[11px] text-slate-400">
             {destination === "WHATSAPP" ? <>Button is <b>“Send WhatsApp message”</b> → opens a chat with your number; the lead lands in Live Chat stamped with this ad.</>

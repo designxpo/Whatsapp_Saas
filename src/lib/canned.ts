@@ -1,4 +1,4 @@
-// Canned templates — one-click, pre-approved WhatsApp templates a counselor
+// Canned templates — one-click, pre-approved WhatsApp templates a team member
 // fires from the chat (e.g. RNR, post-call follow-up). Each maps an approved
 // template + body-variable presets + an optional LeadSquared lead-stage change.
 // Config lives in wa_settings (tenant-scoped, no migration); it's a small
@@ -11,7 +11,7 @@ export interface Canned {
   label: string;              // button text, e.g. "RNR" / "Post-call follow-up"
   templateName: string;       // approved template name on the sending number's WABA
   language: string;           // e.g. "en_US"
-  params: string[];           // body {{1}},{{2}}… — tokens {counselor} {name} {<attr>} or literal text
+  params: string[];           // body {{1}},{{2}}… — tokens {agent} {name} {<attr>} or literal text ({counselor} also works, kept for templates saved before the rename)
   headerImageUrl?: string;    // optional header image (not WABA-scoped)
   stage?: string;             // optional LSQ lead stage to set on send (e.g. "RNR")
 }
@@ -44,8 +44,9 @@ export async function setCannedTemplates(tenantId: string, list: Canned[]): Prom
 }
 
 // Fill {token} placeholders in each body param. Tokens are case-insensitive:
-// {counselor} = the logged-in agent's name, {name} = the contact's name, and
-// {<anything>} = that contact attribute (e.g. {course}); unknown → "".
+// {agent} = the logged-in team member's name (alias: {counselor}), {name} = the
+// contact's name, and {<anything>} = that contact attribute (e.g. {city});
+// unknown → "".
 // Resolved values are sanitized for Meta, which rejects template params with
 // newlines/tabs or runs of spaces (contact attributes are raw typed answers).
 export function resolveCannedParams(params: string[], tokens: Record<string, string>): string[] {

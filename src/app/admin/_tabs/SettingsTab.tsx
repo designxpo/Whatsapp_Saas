@@ -128,7 +128,7 @@ function TeamManager() {
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="email@company.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!form.id} />
             <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <input className={inp} placeholder="Role / persona — e.g. Sales Counsellor, Support Lead" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+            <input className={inp} placeholder="Role / title — e.g. Sales Executive, Support Lead" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
             <select className={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value as "admin" | "member" })}>
               <option value="member">Member — inbox, broadcasts, flows, templates</option>
               <option value="admin">Admin — everything incl. numbers & team</option>
@@ -352,7 +352,7 @@ function ChannelsManager() {
             </select>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.isDefault} onChange={e => setForm({ ...form, isDefault: e.target.checked })} /> default for sends</label>
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
-            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer" title="Counselor 1:1 line — no AI, chatbot flow, welcome/away, sequence, or follow-up ever runs on this number. Only manual and template sends go out; the inbound is still logged to Live Chat and the CRM."><input type="checkbox" className="accent-brand-700" checked={form.mode === "manual"} onChange={e => setForm({ ...form, mode: e.target.checked ? "manual" : "full" })} /> manual (counselor line)</label>
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer" title="Personal 1:1 line — no AI, chatbot flow, welcome/away, sequence, or follow-up ever runs on this number. Only manual and template sends go out; the inbound is still logged to Live Chat and the CRM."><input type="checkbox" className="accent-brand-700" checked={form.mode === "manual"} onChange={e => setForm({ ...form, mode: e.target.checked ? "manual" : "full" })} /> manual (personal line)</label>
             <div className="flex-1" />
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save number"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
@@ -550,7 +550,7 @@ function ApiKeysCard() {
 }
 
 
-// ── Canned templates — one-click counselor sends from Live Chat (RNR, post-call
+// ── Canned templates — one-click sends from Live Chat for the team (RNR, post-call
 // follow-up…). Each maps an approved template + body-param presets + an optional
 // LeadSquared stage change. Config: /api/admin/canned (wa_settings, per-tenant). ──
 type CannedRow = { id: string; label: string; templateName: string; language: string; params: string[]; headerImageUrl?: string; stage?: string };
@@ -639,10 +639,10 @@ function CannedTemplatesCard() {
             <p className="text-[11px] text-ink-400 font-mono truncate">{c.templateName} · {c.language}{c.params.length ? ` · ${c.params.join(" · ")}` : ""}</p>
           </div>
           <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => { if (confirm(`Delete the "${c.label}" canned template? Counselors lose the button immediately.`)) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
+          <button onClick={() => { if (confirm(`Delete the "${c.label}" canned template? Your team loses the button immediately.`)) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “RNR” and “Post-call follow-up” to give counselors one-click sends.</p>}
+      {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “RNR” and “Post-call follow-up” to give your team one-click sends.</p>}
 
       {form && (
         <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
@@ -670,14 +670,14 @@ function CannedTemplatesCard() {
             <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-2.5 py-1.5 whitespace-pre-wrap">{bodyOf(form.templateName)}</p>
           )}
           {form.params.map((p, i) => (
-            <input key={i} className={`${inp} w-full font-mono`} placeholder={`{{${i + 1}}} — literal text or {counselor} / {name} / {course}…`} value={p}
+            <input key={i} className={`${inp} w-full font-mono`} placeholder={`{{${i + 1}}} — literal text or {agent} / {name} / {<attribute>}…`} value={p}
               onChange={e => setForm({ ...form, params: form.params.map((x, j) => (j === i ? e.target.value : x)) })} />
           ))}
           {form.templateName && hasImageHeader(form.templateName) && (
             <input className={`${inp} w-full`} placeholder="Header image URL (https://…)" value={form.headerImageUrl ?? ""} onChange={e => setForm({ ...form, headerImageUrl: e.target.value })} />
           )}
           <input className={`${inp} w-full`} placeholder="CRM (LeadSquared) stage to set on send (optional, e.g. RNR)" value={form.stage ?? ""} onChange={e => setForm({ ...form, stage: e.target.value })} />
-          <p className="text-[10px] text-ink-400">Tokens fill per send: <code className="font-mono">{"{counselor}"}</code> = logged-in agent, <code className="font-mono">{"{name}"}</code> = contact name, <code className="font-mono">{"{<attribute>}"}</code> = contact attribute. A send with an empty value is blocked with a clear error. The send always leaves from the conversation&apos;s own number — the template must be approved on that number&apos;s WABA.</p>
+          <p className="text-[10px] text-ink-400">Tokens fill per send: <code className="font-mono">{"{agent}"}</code> = logged-in team member, <code className="font-mono">{"{name}"}</code> = contact name, <code className="font-mono">{"{<attribute>}"}</code> = contact attribute. A send with an empty value is blocked with a clear error. The send always leaves from the conversation&apos;s own number — the template must be approved on that number&apos;s WABA.</p>
           <div className="flex gap-2">
             <button onClick={submitForm} disabled={busy || !form.templateName} className="px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : form.id ? "Save changes" : "Add canned template"}</button>
             <button onClick={() => { setForm(null); setMsg(null); }} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Cancel</button>

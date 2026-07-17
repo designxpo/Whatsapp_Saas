@@ -1,8 +1,8 @@
 // ── Async grounding auditor (anti-hallucination L4) ──────────────────────────
 // Runs AFTER the reply is already sent, so it adds ZERO latency to the customer.
 // It catches what the deterministic firewall cannot: semantic / paraphrased
-// fabrication that has no token signature ("best placements in India", "a job is
-// guaranteed") and dropped parts of a multi-part question. A cheap one-shot LLM
+// fabrication that has no token signature ("free lifetime updates", "guaranteed
+// same-day delivery") and dropped parts of a multi-part question. A cheap one-shot LLM
 // call (on the TENANT's own AI key) judges whether every brand claim in the reply
 // is entailed by the retrieved context. On a confident negative it FLAGS the chat
 // for a human (never disables the bot) and stops that answer from warming the
@@ -44,7 +44,7 @@ export interface AuditVerdict { grounded: boolean; shouldCache: boolean }
 const SYSTEM = [
   "You are a strict grounding auditor for a business's customer-support bot.",
   "Given the retrieved CONTEXT, the customer's QUESTION, and the bot's REPLY, judge:",
-  "1) Is every BRAND-SPECIFIC claim in the REPLY (fees, dates, durations, course names, syllabus, placements, salary/% figures, guarantees, policies, contact details) supported by the CONTEXT? Greetings, general/educational knowledge, and offers to connect the customer with the team are ALWAYS grounded — they need no context.",
+  "1) Is every BRAND-SPECIFIC claim in the REPLY (prices, dates, durations, product/service names, specifications, guarantees, policies, contact details) supported by the CONTEXT? Greetings, general knowledge, and offers to connect the customer with the team are ALWAYS grounded — they need no context.",
   "2) Did the REPLY address every part of a multi-part QUESTION?",
   "A claim with NO support in the CONTEXT is ungrounded. When unsure, lean towards grounded=true (avoid false alarms).",
   'Respond with JSON ONLY, no prose, no code fence: {"grounded": boolean, "unsupportedClaims": string[], "droppedSubquestions": string[], "confidence": number between 0 and 1}',

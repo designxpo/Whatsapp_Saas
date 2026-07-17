@@ -308,7 +308,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 // ── LSQ → portal inbound webhook (Phase 4: lead-arrived / owner-assigned) ─────
 // Shows the URL + secret to paste into LeadSquared Automations (Lead Created /
 // Owner Changed / Stage Changed → Webhook action). The portal then keeps the
-// contact in sync and auto-assigns the lead's conversation to the counselor
+// contact in sync and auto-assigns the lead's conversation to the team member
 // whose email matches the LSQ owner.
 function LsqInboundCard() {
   const [cfg, setCfg] = useState<{ url: string; secret: string; header: string } | null>(null);

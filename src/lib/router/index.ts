@@ -16,12 +16,12 @@ import { loadMemory, saveMemory, resolveFollowUp, type ConvMemory } from "./memo
 import { logRouterEvent } from "./metrics";
 
 // A canned answer that withholds the specifics and redirects to a human
-// ("contact our admissions team", "speak to a counsellor", "we'll get back to
-// you"). When one of these is about to be served BUT the knowledge base actually
-// has the answer, we defer to the KB instead — the KB is the source of truth and
-// a handoff is the last resort, never the default. (If the KB has nothing, the
+// ("contact our sales team", "speak to an advisor", "we'll get back to you").
+// When one of these is about to be served BUT the knowledge base actually has
+// the answer, we defer to the KB instead — the KB is the source of truth and a
+// handoff is the last resort, never the default. (If the KB has nothing, the
 // deflection still stands, which keeps us honest when the KB is empty.)
-const DEFLECTION_RE = /\b(?:counsell?or|admissions?\s+(?:team|advisor|counsell?or|department)|(?:speak|talk|connect|chat|get\s+in\s+touch)\s+(?:to|with)\s+(?:an?\s+|our\s+|the\s+)?(?:counsell?or|advisor|team|expert|admissions|representative|executive|agent|someone)|(?:will|to)\s+reach\s+out|reach\s+out\s+to\s+you|get\s+back\s+to\s+you|contact\s+(?:our\s+team|admissions|us)|book\s+a\s+(?:free\s+)?(?:career\s+)?consultation)\b/i;
+const DEFLECTION_RE = /\b(?:counsell?or|admissions?\s+(?:team|advisor|counsell?or|department)|(?:speak|talk|connect|chat|get\s+in\s+touch)\s+(?:to|with)\s+(?:an?\s+|our\s+|the\s+)?(?:counsell?or|advisor|team|expert|admissions|representative|executive|agent|someone)|(?:will|to)\s+reach\s+out|reach\s+out\s+to\s+you|get\s+back\s+to\s+you|contact\s+(?:our\s+team|admissions|sales|support|us)|book\s+a\s+(?:free\s+)?(?:career\s+)?consultation)\b/i;
 export function looksLikeDeflection(answer: string): boolean {
   return DEFLECTION_RE.test(answer || "");
 }
@@ -80,11 +80,12 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   }
   logRouterEvent({ event: "FAQ_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
-  // Course-scoped chats skip the shared answer cache entirely — a cached answer
-  // is course-blind and could replay another course's specifics to a lead who
-  // picked a different course. Go straight to the course-scoped RAG path.
+  // Tag-scoped chats (e.g. a specific course/property/package) skip the shared
+  // answer cache entirely — a cached answer is tag-blind and could replay
+  // another item's specifics to a lead who picked a different one. Go straight
+  // to the tag-scoped RAG path.
   if (p.primaryKbTag) {
-    logRouterEvent({ event: "CACHE_MISS", phone: p.phone, question: p.message, ref: "course-scoped:skip", latencyMs: Date.now() - t0 });
+    logRouterEvent({ event: "CACHE_MISS", phone: p.phone, question: p.message, ref: "tag-scoped:skip", latencyMs: Date.now() - t0 });
     return { ...miss, queryEmbedding: p.queryEmbedding ?? null };
   }
 
@@ -123,8 +124,8 @@ export function recordRagAnswer(p: { phone: string; question: string; answer: st
   // cached. `contactName` lets cacheStore refuse a name-personalised answer.
   const a = p.answer.trim();
   if (a === FALLBACK_REPLY || a === SOFT_FALLBACK || a === CLARIFY_REPLY) return;
-  // A course-scoped answer is specific to that course — never write it to the
-  // shared cache, or a different course's lead could be served it.
+  // A tag-scoped answer is specific to that item — never write it to the
+  // shared cache, or a different lead could be served the wrong specifics.
   if (p.primaryKbTag) return;
   void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID, p.contactName);
 }

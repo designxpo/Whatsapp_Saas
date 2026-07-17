@@ -7,7 +7,7 @@ export type RouterEvent =
   | "FAQ_MATCH" | "FAQ_MISS"
   | "CACHE_HIT" | "CACHE_MISS"
   | "MEMORY_HIT" | "MEMORY_MISS"
-  // A canned FAQ/cache answer was a deflection ("contact our counsellor") but the
+  // A canned FAQ/cache answer was a deflection ("contact our team") but the
   // KB actually covers the question, so we deferred to RAG instead of deflecting.
   | "FAQ_DEFLECT_OVERRIDE" | "CACHE_DEFLECT_OVERRIDE"
   | "RAG_USED";

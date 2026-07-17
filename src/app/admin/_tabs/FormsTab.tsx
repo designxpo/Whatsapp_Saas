@@ -273,7 +273,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   <select className={`${inp} w-32 shrink-0`} value={f.type} onChange={e => setField(i, { type: e.target.value as UiFormFieldType })}>
                     {FORM_FIELD_TYPES.map(t => <option key={t.v} value={t.v}>{t.label}</option>)}
                   </select>
-                  <input className={`${inp} flex-1`} maxLength={f.type === "optin" ? 120 : 30} placeholder={f.type === "optin" ? "Opt-in text, e.g. Send me updates on WhatsApp" : "Field label, e.g. Which course?"} value={f.label} onChange={e => setField(i, { label: e.target.value })} />
+                  <input className={`${inp} flex-1`} maxLength={f.type === "optin" ? 120 : 30} placeholder={f.type === "optin" ? "Opt-in text, e.g. Send me updates on WhatsApp" : "Field label, e.g. What are you looking for?"} value={f.label} onChange={e => setField(i, { label: e.target.value })} />
                   {isChoice(f.type) && <input className={`${inp} flex-1`} placeholder="Options, comma-separated" value={f.options} onChange={e => setField(i, { options: e.target.value })} />}
                   <label className="flex items-center gap-1 text-[11px] text-ink-400 shrink-0 cursor-pointer">
                     <input type="checkbox" className="accent-brand-700" checked={f.required} onChange={e => setField(i, { required: e.target.checked })} /> req

@@ -455,7 +455,7 @@ function ApiBroadcasting() {
   // Dry-run tester
   const [tEvent, setTEvent] = useState("");
   const [tPhone, setTPhone] = useState("");
-  const [tData, setTData] = useState("{\n  \"course\": \"Data Science\"\n}");
+  const [tData, setTData] = useState("{\n  \"product\": \"Starter Plan\"\n}");
   const [tBusy, setTBusy] = useState(false);
   const [tResults, setTResults] = useState<{ rule: string; outcome: string; detail?: string; sendAfter?: string; variables?: string[] }[] | null>(null);
   const [tErr, setTErr] = useState<string | null>(null);
@@ -517,7 +517,7 @@ function ApiBroadcasting() {
   const curl = `curl -X POST ${origin}/api/events \\
   -H "Authorization: Bearer $BROADCAST_API_KEY" \\
   -H "Content-Type: application/json" \\
-  -d '{"event":"demo_booked","phone":"919876543210","name":"Asha","data":{"course":"Data Science","slot":"7 PM"}}'`;
+  -d '{"event":"demo_booked","phone":"919876543210","name":"Asha","data":{"product":"Starter Plan","slot":"7 PM"}}'`;
 
   const hourOpts = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
 
@@ -562,7 +562,7 @@ function ApiBroadcasting() {
                 <select className={`${inp} w-40`} value={c.source} onChange={e => setCond(i, { source: e.target.value as UiCond["source"] })}>
                   {COND_SOURCES.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
                 </select>
-                <input className={`${inp} w-40`} placeholder={c.source === "payload" ? "field, e.g. course" : c.source === "contact_tag" ? "tag name" : c.source === "contact_field" ? "name | email | source" : "attribute key"} value={c.key} onChange={e => setCond(i, { key: e.target.value })} />
+                <input className={`${inp} w-40`} placeholder={c.source === "payload" ? "field, e.g. product" : c.source === "contact_tag" ? "tag name" : c.source === "contact_field" ? "name | email | source" : "attribute key"} value={c.key} onChange={e => setCond(i, { key: e.target.value })} />
                 <select className={`${inp} w-28`} value={c.op} onChange={e => setCond(i, { op: e.target.value as UiCond["op"] })}>
                   {COND_OPS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
                 </select>
@@ -588,7 +588,7 @@ function ApiBroadcasting() {
 
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Template variables <span className="font-normal normal-case">— one per line, in {"{{1}}, {{2}}"} order</span></p>
-            <textarea className={`${inp} w-full font-mono`} rows={3} placeholder={"{{contact.name}}\n{{payload.course}}\n{{payload.slot}}"} value={varsText} onChange={e => setVarsText(e.target.value)} />
+            <textarea className={`${inp} w-full font-mono`} rows={3} placeholder={"{{contact.name}}\n{{payload.product}}\n{{payload.slot}}"} value={varsText} onChange={e => setVarsText(e.target.value)} />
             <p className="text-[11px] text-slate-400 mt-1">Tokens: <code className="bg-slate-100 px-1 rounded">{"{{payload.x}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{contact.name}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{contact.attr.key}}"}</code> — or plain literal text.</p>
           </div>
 
@@ -670,7 +670,7 @@ function ApiBroadcasting() {
           <input className={inp} placeholder="event, e.g. demo_booked" value={tEvent} onChange={e => setTEvent(e.target.value)} />
           <input className={inp} placeholder="phone, e.g. 919876543210" value={tPhone} onChange={e => setTPhone(e.target.value)} />
         </div>
-        <textarea className={`${inp} w-full font-mono`} rows={3} placeholder='{"course": "Data Science"}' value={tData} onChange={e => setTData(e.target.value)} />
+        <textarea className={`${inp} w-full font-mono`} rows={3} placeholder='{"product": "Starter Plan"}' value={tData} onChange={e => setTData(e.target.value)} />
         <button onClick={dryRun} disabled={tBusy} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
           {tBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FlaskConical className="w-4 h-4" />} Dry run
         </button>

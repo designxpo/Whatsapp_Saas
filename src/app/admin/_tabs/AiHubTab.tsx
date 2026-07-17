@@ -22,14 +22,14 @@ function AiHubRail({ goTo, agents, fns, prompts, autoRoute, tone }: { goTo: (t: 
           <li>A customer asks something on WhatsApp.</li>
           <li><b>Auto-routing</b> picks the best agent for that topic.</li>
           <li>The agent answers using your <b>AI Knowledge Base</b>.</li>
-          <li>Mid-chat, <b>lead capture</b> quietly saves details — name, course, city…</li>
+          <li>Mid-chat, <b>lead capture</b> quietly saves details — name, what they're interested in, city…</li>
         </ol>
         <button onClick={() => goTo("assistant")} className="text-[11px] font-bold text-brand-700 flex items-center gap-1">Open AI Knowledge Base <ArrowRight className="w-3 h-3" /></button>
       </RailCard>
       <RailCard title="Starter setup">
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
-          <li>Two agents: <b>Sales</b> (courses, fees, admission) and <b>Support</b> (existing students).</li>
-          <li>One <b>capture_lead</b> function saving name, course interest, and city.</li>
+          <li>Two agents: <b>Sales</b> (pricing, offers, how to buy) and <b>Support</b> (existing customers).</li>
+          <li>One <b>capture_lead</b> function saving name, what they're interested in, and city.</li>
           <li>Writing tools: Friendly tone, Translate to Hindi, Shorten.</li>
         </ul>
       </RailCard>
@@ -179,7 +179,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {sub === "agents" && <>
       <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-[13px] text-brand-900">
-        An <b>agent</b> is a personality + job for the AI — e.g. <i>Maya, the admissions counsellor</i>. Create one per role; with auto-routing on, the best-matching agent answers each customer automatically.
+        An <b>agent</b> is a personality + job for the AI — e.g. <i>Maya, the sales assistant</i>. Create one per role; with auto-routing on, the best-matching agent answers each customer automatically.
       </div>
 
       <section className="bg-white rounded-card border border-line p-5">
@@ -223,7 +223,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             <p className="text-[11px] font-bold text-ink-700">1 · Who is this agent?</p>
             <input className={`${inp} w-full`} placeholder="Name — e.g. Maya" value={agent.name} onChange={e => setAgent({ ...agent, name: e.target.value })} />
             <div className="flex gap-2">
-              <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Their job in one line — e.g. Admissions counsellor who helps visitors pick the right data-science course" value={agent.description} onChange={e => setAgent({ ...agent, description: e.target.value })} />
+              <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Their job in one line — e.g. Sales assistant who helps visitors pick the right product for their budget" value={agent.description} onChange={e => setAgent({ ...agent, description: e.target.value })} />
               <button onClick={generatePersona} disabled={busy === "gen" || !agent.description.trim()} className="self-end px-3 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold disabled:opacity-50 shrink-0">
                 {busy === "gen" ? <Loader2 className="w-4 h-4 animate-spin" /> : "✨ Generate"}
               </button>
@@ -231,7 +231,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
           <div className="space-y-1.5">
             <p className="text-[11px] font-bold text-ink-700">2 · When should this agent take over? <span className="font-normal text-slate-400">(used by auto-routing)</span></p>
-            <input className={`${inp} w-full`} placeholder="Topic keywords — e.g. courses, fees, admission, syllabus, demo class" value={agent.routingKeywords ?? ""} onChange={e => setAgent({ ...agent, routingKeywords: e.target.value })} />
+            <input className={`${inp} w-full`} placeholder="Topic keywords — e.g. pricing, availability, booking, offers" value={agent.routingKeywords ?? ""} onChange={e => setAgent({ ...agent, routingKeywords: e.target.value })} />
           </div>
           <div className="space-y-1.5">
             <p className="text-[11px] font-bold text-ink-700">3 · Personality &amp; instructions <span className="font-normal text-slate-400">(✨ Generate fills this — edit freely)</span></p>
@@ -257,7 +257,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {sub === "functions" && <>
       <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-[13px] text-brand-900">
-        Lead capture teaches the AI to <b>save details during a normal chat</b> — no form needed. Example: <b>capture_lead</b> stores name, course interest, and city as contact attributes the moment the customer mentions them.
+        Lead capture teaches the AI to <b>save details during a normal chat</b> — no form needed. Example: <b>capture_lead</b> stores name, what they're interested in, and city as contact attributes the moment the customer mentions them.
       </div>
 
       {/* Functions */}

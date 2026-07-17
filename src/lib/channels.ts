@@ -42,7 +42,7 @@ export interface Channel extends ChannelCreds {
   pageId: string | null;      // connected Facebook Page id (IG)
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
-  mode: "full" | "manual";    // "manual" = counselor line: no AI/flow/welcome/sequence/follow-up
+  mode: "full" | "manual";    // "manual" = personal line: no AI/flow/welcome/sequence/follow-up
   coex: boolean;              // coexistence: number is ALSO active on the WhatsApp Business phone app
   active: boolean;
   isDefault: boolean;

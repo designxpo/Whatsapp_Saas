@@ -535,7 +535,7 @@ export function looksLikeName(text: string): boolean {
   if (/\d{3,}/.test(t)) return false;            // digit runs are phones/ids
   // Inquiry vocabulary is a message, not a name — "Want to know about courses"
   // was stored as a lead's name (web-chat, 2026-07-17).
-  return !/\b(want|know|about|courses?|info|information|details?|price|fees?|interested|enquiry|inquiry|query|admission|programs?|classes|demo|brochure|callback|help)\b/i.test(t);
+  return !/\b(want|know|about|courses?|info|information|details?|price|pricing|fees?|interested|enquiry|inquiry|query|admission|programs?|products?|services?|packages?|plans?|properties?|listings?|menu|classes|appointment|booking|demo|brochure|callback|help)\b/i.test(t);
 }
 
 // ── WhatsApp-form fallback for chat-only channels ─────────────────────────────

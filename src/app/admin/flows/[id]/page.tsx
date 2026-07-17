@@ -240,7 +240,7 @@ function ButtonsNode({ id, type, selected, data }: NodeProps) {
             onChange={e => set({ buttons: buttons.map((x, j) => j === i ? { ...x, title: e.target.value } : x) })} />
         </OptionRow>
       ))}
-      <input className={inp} placeholder="Save selection to attribute (optional, e.g. course)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
+      <input className={inp} placeholder="Save selection to attribute (optional, e.g. interest)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
       <ReminderFields data={data} set={set} />
     </Shell>
   );
@@ -262,7 +262,7 @@ function ListNode({ id, type, selected, data }: NodeProps) {
         <button className="nodrag text-[10px] font-bold text-brand-700 hover:underline" onClick={() => rows.length < 10 && set({ rows: [...rows, { id: `row${rows.length + 1}`, title: "" }] })}>+ add option</button>
         {rows.length > 1 && <button className="nodrag text-[10px] font-bold text-ink-400 hover:text-red-500" onClick={() => set({ rows: rows.slice(0, -1) })}>− remove last</button>}
       </div>
-      <input className={inp} placeholder="Save selection to attribute (optional, e.g. course)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
+      <input className={inp} placeholder="Save selection to attribute (optional, e.g. interest)" value={str(data.saveAs)} onChange={e => set({ saveAs: e.target.value })} />
       <ReminderFields data={data} set={set} />
     </Shell>
   );

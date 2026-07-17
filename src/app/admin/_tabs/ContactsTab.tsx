@@ -294,7 +294,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="space-y-2">
                 {adv.attrs.map((a, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <input className={`${inp} w-44`} placeholder="attribute, e.g. course" value={a.key} onChange={e => setAttr(i, { key: e.target.value })} />
+                    <input className={`${inp} w-44`} placeholder="attribute, e.g. interest" value={a.key} onChange={e => setAttr(i, { key: e.target.value })} />
                     <select className={`${inp} w-28`} value={a.op} onChange={e => setAttr(i, { op: e.target.value as AttrFilter["op"] })}>
                       <option value="is">is</option>
                       <option value="is_not">is not</option>

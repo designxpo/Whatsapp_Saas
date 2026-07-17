@@ -56,7 +56,7 @@ function KnowledgeRail({ goTo }: { goTo: GoTo }) {
       </RailCard>
       <RailCard title="Make answers better">
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
-          <li>Add course/brochure <b>URLs</b> to the knowledge base — the AI turns them into tappable buttons.</li>
+          <li>Add product/brochure <b>URLs</b> to the knowledge base — the AI turns them into tappable buttons.</li>
           <li>Short FAQ-style docs answer fastest; the router serves them without calling the AI.</li>
           <li>Tune personas, functions, and auto-routing in <b>AI Hub</b>.</li>
           <li>Watch real replies land in <b>Live Chat</b> — toggle the bot off per chat to take over.</li>

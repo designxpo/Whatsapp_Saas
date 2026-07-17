@@ -34,6 +34,12 @@ function linkButtonLabel(url: string): string {
   const u = url.toLowerCase();
   if (u.includes("brochure") || u.endsWith(".pdf")) return "View brochure";
   if (u.includes("course") || u.includes("program")) return "View courses";
+  if (u.includes("menu")) return "View menu";
+  if (u.includes("property") || u.includes("listing") || u.includes("project")) return "View listing";
+  if (u.includes("package") || u.includes("itinerary") || u.includes("tour")) return "View packages";
+  if (u.includes("product") || u.includes("shop") || u.includes("catalog") || u.includes("store")) return "Shop now";
+  if (u.includes("pricing") || u.includes("plans")) return "View pricing";
+  if (u.includes("book") || u.includes("appointment") || u.includes("schedule")) return "Book now";
   if (u.includes("contact") || u.includes("wa.me")) return "Contact us";
   if (u.includes("apply") || u.includes("enroll") || u.includes("register")) return "Apply now";
   return "View details";

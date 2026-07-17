@@ -207,11 +207,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (!canned) return NextResponse.json({ error: "Canned template not found" }, { status: 404 });
       const user = await currentUser();
       const contact = await getContactByPhone(conv.phone, tid).catch(() => null);
-      // Built-ins go LAST so a contact attribute literally named "name"/"counselor"
-      // can't shadow the documented tokens.
-      const tokens = { ...(contact?.attributes ?? {}), counselor: user?.name || "", name: contact?.name || conv.name || "" };
+      // Built-ins go LAST so a contact attribute literally named "name"/"agent"/
+      // "counselor" can't shadow the documented tokens. `agent` is the current
+      // token name; `counselor` is kept as an alias so templates saved before the
+      // rename (this was originally an ed-tech-only product) keep resolving.
+      const tokens = { ...(contact?.attributes ?? {}), agent: user?.name || "", counselor: user?.name || "", name: contact?.name || conv.name || "" };
       const params = resolveCannedParams(canned.params, tokens);
-      // Meta rejects empty body params — fail with a message the counselor can act
+      // Meta rejects empty body params — fail with a message the sender can act
       // on instead of a cryptic Graph error.
       const emptyAt = params.findIndex(p => !p);
       if (emptyAt >= 0) {
