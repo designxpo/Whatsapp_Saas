@@ -1393,7 +1393,7 @@ export async function handleFlowMessage(
 // no buttons at all, so it must read correctly whether the person is meant to
 // tap, pick from a list, or just type an answer.
 const DEFAULT_REMINDERS: { minutes: number; text: string }[] = [
-  { minutes: 10, text: "Just checking in 👋 Whenever you're ready, reply above and we'll pick up right where we left off." },
+  { minutes: 10, text: "🔎 Still Have Questions?\nWhenever you're ready, reply to this message and we'll be happy to assist you." },
   { minutes: 60, text: "We're still here to help! 🙂 Reply above to continue — or type \"menu\" to start over." },
 ];
 function reminderSteps(data: Record<string, unknown> | undefined): { minutes: number; text: string }[] {
