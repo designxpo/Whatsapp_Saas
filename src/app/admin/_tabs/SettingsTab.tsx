@@ -1410,6 +1410,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [aiOn, setAiOn] = useState<boolean | null>(null);
   const [nudgeOn, setNudgeOn] = useState<boolean | null>(null);
   const [nudgeVars, setNudgeVars] = useState<string[]>([]);
+  const [remOn, setRemOn] = useState<boolean | null>(null);
+  const [remSteps, setRemSteps] = useState<{ minutes: number; text: string }[]>([]);
   const [isAdmin, setIsAdmin] = useState(true);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
   const [saving, setSaving] = useState(false);
@@ -1423,6 +1425,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     fetch("/api/admin/settings").then(r => r.json()).then(d => {
       setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false);
       setNudgeOn(d.flowNudge?.enabled !== false); setNudgeVars((d.flowNudge?.variations ?? []) as string[]);
+      setRemOn(d.flowReminders?.enabled !== false); setRemSteps((d.flowReminders?.steps ?? []) as { minutes: number; text: string }[]);
     }).catch(() => {});
     loadQr();
   }, [loadQr]);
@@ -1471,6 +1474,19 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     } finally { setSaving(false); }
   }
   function toggleNudge() { if (nudgeOn === null) return; const next = !nudgeOn; setNudgeOn(next); void persistNudge(next); }
+
+  // Flow no-reply nudges (default chain) — same persist pattern as the
+  // off-script nudge: the toggle saves instantly, the rows have their own Save.
+  const remList = () => remSteps.map(x => ({ minutes: Math.max(1, Math.round(Number(x.minutes) || 0)), text: x.text.trim() })).filter(x => x.text).slice(0, 5);
+  async function persistReminders(enabled: boolean) {
+    setSaving(true);
+    try {
+      const d = await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ flowReminders: { enabled, steps: remList() } }) }).then(r => r.json());
+      if (d.flowReminders) { setRemOn(d.flowReminders.enabled !== false); setRemSteps((d.flowReminders.steps ?? []) as { minutes: number; text: string }[]); }
+      setSavedAt(Date.now());
+    } finally { setSaving(false); }
+  }
+  function toggleReminders() { if (remOn === null) return; const next = !remOn; setRemOn(next); void persistReminders(next); }
 
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
@@ -1546,6 +1562,48 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] text-ink-400">Each box is ONE variation (up to 6, 300 chars, multi-line fine) — the bot rotates through them in order. Remove all to use the built-in defaults.</p>
           <button onClick={() => void persistNudge(nudgeOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
+        </div>
+      </section>
+
+      {/* Flow no-reply nudges — the default reminder chain for waiting flow steps */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">Flow no-reply nudges (default chain)</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              When a chatbot flow is waiting for an answer and the person goes quiet, these messages nudge them —
+              the first after its delay, each next one measured from the previous nudge. Replying stops the chain.
+              A flow step with its own reminders configured in the flow editor overrides this chain.
+            </p>
+          </div>
+          {remOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+            <button onClick={toggleReminders} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 shrink-0 ${remOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {remOn ? "ON" : "OFF"}
+            </button>
+          )}
+        </div>
+        <div className="space-y-2">
+          {remSteps.map((s, i) => (
+            <div key={i} className="flex items-start gap-2">
+              <span className="text-[11px] font-bold text-slate-400 pt-2 shrink-0 w-4 text-right">{i + 1}.</span>
+              <div className="flex items-center gap-1 pt-1 shrink-0" title={i === 0 ? "Minutes after the person goes quiet" : "Minutes after the previous nudge"}>
+                <input type="number" min={1} max={4320} className={`${inp} w-20 text-xs`} value={s.minutes}
+                  onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, minutes: parseInt(e.target.value) || 0 } : x)))} />
+                <span className="text-[10px] text-ink-400">min</span>
+              </div>
+              <textarea className={`${inp} flex-1 resize-none text-xs`} rows={2} maxLength={500} placeholder="Nudge message…" value={s.text}
+                onChange={e => setRemSteps(a => a.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))} />
+              <button onClick={() => setRemSteps(a => a.filter((_, j) => j !== i))} className="p-1.5 text-ink-300 hover:text-red-500 shrink-0" aria-label="Remove nudge">×</button>
+            </div>
+          ))}
+          {remSteps.length < 5 && (
+            <button onClick={() => setRemSteps(a => [...a, { minutes: a.length ? 60 : 10, text: "" }])} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">+ Add nudge</button>
+          )}
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] text-ink-400">Up to 5 steps, 500 chars each (multi-line fine). Remove all to use the built-in defaults; turn OFF to send no default nudges at all. Nudges only deliver inside WhatsApp&apos;s 24h window.</p>
+          <button onClick={() => void persistReminders(remOn !== false)} disabled={saving} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{saving ? "Saving…" : "Save nudges"}</button>
         </div>
       </section>
 

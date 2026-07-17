@@ -27,7 +27,7 @@ import {
   landCapturedLead, formLinkForWaba,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
-import { isAiEnabled, getFlowNudge } from "./messaging-settings";
+import { isAiEnabled, getFlowNudge, getFlowReminders } from "./messaging-settings";
 import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
@@ -1388,15 +1388,11 @@ export async function handleFlowMessage(
 // PREVIOUS nudge). Replying or moving to a new node resets the chain (fresh
 // session state). Legacy single-reminder configs (reminderMinutes +
 // reminderText) are read as a one-step chain.
-// Wording is deliberately neutral ("reply above", not "tap an option above") —
-// this fires on EVERY waiting node type, including ask/waform steps that show
-// no buttons at all, so it must read correctly whether the person is meant to
-// tap, pick from a list, or just type an answer.
-const DEFAULT_REMINDERS: { minutes: number; text: string }[] = [
-  { minutes: 10, text: "🔎 Still Have Questions?\nWhenever you're ready, reply to this message and we'll be happy to assist you." },
-  { minutes: 60, text: "We're still here to help! 🙂 Reply above to continue — or type \"menu\" to start over." },
-];
-function reminderSteps(data: Record<string, unknown> | undefined): { minutes: number; text: string }[] {
+// The DEFAULT chain is admin-editable per tenant (Settings → Flow no-reply
+// nudges, stored in wa_settings via getFlowReminders) — the drain resolves it
+// per session tenant and passes it in as `fallback`; disabled there means no
+// default nudges at all.
+function reminderSteps(data: Record<string, unknown> | undefined, fallback: { minutes: number; text: string }[]): { minutes: number; text: string }[] {
   const raw = data?.reminders;
   if (Array.isArray(raw)) {
     const chain = raw
@@ -1407,13 +1403,16 @@ function reminderSteps(data: Record<string, unknown> | undefined): { minutes: nu
   const mins = Number(data?.reminderMinutes ?? 0);
   const text = str(data?.reminderText);
   if (mins > 0 && text.trim()) return [{ minutes: mins, text }];
-  return DEFAULT_REMINDERS;
+  return fallback;
 }
 
 export async function drainFlowReminders(max = 50): Promise<number> {
   const { data } = await db().from("wa_flow_sessions").select("*").limit(500);
   let sent = 0;
   const flowCache = new Map<string, Flow | null>();
+  // Per-tenant admin-editable default chain (Settings) — disabled = no default
+  // nudges for that tenant; node-level custom chains still fire either way.
+  const remindersByTenant = new Map<string, { minutes: number; text: string }[]>();
   for (const s of data ?? []) {
     if (sent >= max) break;
     const convKey = s.conversation_id as string;
@@ -1421,11 +1420,16 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     const state = ((s.state as Record<string, unknown>) ?? {});
 
     const sTid = (s.tenant_id as string) ?? DEFAULT_TENANT_ID;
+    if (!remindersByTenant.has(sTid)) {
+      const d = await getFlowReminders(sTid).catch(() => null);
+      remindersByTenant.set(sTid, d && d.enabled ? d.steps : []);
+    }
+    const fallback = remindersByTenant.get(sTid) ?? [];
     if (!flowCache.has(s.flow_id as string)) flowCache.set(s.flow_id as string, await getFlow(s.flow_id as string, sTid));
     const flow = flowCache.get(s.flow_id as string);
     if (!flow?.active) continue;
     const node = nodeById(flow.graph, s.current_node as string);
-    const reminders = reminderSteps(node?.data as Record<string, unknown> | undefined);
+    const reminders = reminderSteps(node?.data as Record<string, unknown> | undefined, fallback);
     if (!node || !reminders.length) continue;
 
     // Which nudge is next? Legacy boolean `reminded` counts as one already sent.

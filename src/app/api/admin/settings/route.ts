@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getWelcomeSetting, getAwaySetting, setWelcomeSetting, setAwaySetting, isAiEnabled, setAiEnabled, getFlowNudge, setFlowNudge, type WelcomeSetting, type AwaySetting, type FlowNudgeSetting } from "@/lib/messaging-settings";
+import { getWelcomeSetting, getAwaySetting, setWelcomeSetting, setAwaySetting, isAiEnabled, setAiEnabled, getFlowNudge, setFlowNudge, getFlowReminders, setFlowReminders, type WelcomeSetting, type AwaySetting, type FlowNudgeSetting, type FlowRemindersSetting } from "@/lib/messaging-settings";
 import { currentUser, currentTenantId } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -12,8 +12,8 @@ export async function GET() {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const [welcome, away, aiEnabled, flowNudge] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid)]);
-    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge });
+    const [welcome, away, aiEnabled, flowNudge, flowReminders] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid)]);
+    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -23,7 +23,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: { ai?: { enabled?: boolean }; welcome?: Partial<WelcomeSetting>; away?: Partial<AwaySetting>; flowNudge?: Partial<FlowNudgeSetting> };
+  let body: { ai?: { enabled?: boolean }; welcome?: Partial<WelcomeSetting>; away?: Partial<AwaySetting>; flowNudge?: Partial<FlowNudgeSetting>; flowReminders?: Partial<FlowRemindersSetting> };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
     // Tenant-wide AI switch — a deliberate human action (logged below), never automated.
@@ -46,9 +46,16 @@ export async function POST(req: Request) {
         variations: Array.isArray(body.flowNudge.variations) ? body.flowNudge.variations : current.variations,
       }, tid);
     }
-    logActivity(await currentUser(), "settings.save", [body.ai && `AI replies ${body.ai.enabled ? "ON" : "OFF"}`, body.welcome && "welcome", body.away && "away", body.flowNudge && "flow nudge"].filter(Boolean).join(" + "));
-    const [welcome, away, aiEnabled, flowNudge] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid)]);
-    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge });
+    if (body.flowReminders) {
+      const current = await getFlowReminders(tid);
+      await setFlowReminders({
+        enabled: typeof body.flowReminders.enabled === "boolean" ? body.flowReminders.enabled : current.enabled,
+        steps: Array.isArray(body.flowReminders.steps) ? body.flowReminders.steps : current.steps,
+      }, tid);
+    }
+    logActivity(await currentUser(), "settings.save", [body.ai && `AI replies ${body.ai.enabled ? "ON" : "OFF"}`, body.welcome && "welcome", body.away && "away", body.flowNudge && "flow nudge", body.flowReminders && "flow reminders"].filter(Boolean).join(" + "));
+    const [welcome, away, aiEnabled, flowNudge, flowReminders] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid)]);
+    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

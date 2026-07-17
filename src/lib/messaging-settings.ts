@@ -62,6 +62,33 @@ export const AWAY_DEFAULT: AwaySetting = {
 // All settings are per-tenant: the webhook passes the receiving channel's tenant
 // and the settings API passes the signed-in tenant. Defaulting to the platform
 // owner only happens for genuinely tenantless callers.
+// ── Flow no-reply nudges (default chain) ──────────────────────────────────────
+// What a chatbot flow sends when the person goes quiet on a WAITING step and
+// the node has no custom reminder chain of its own. Each step's delay counts
+// from the PREVIOUS nudge; replying resets the chain. Editable in Settings;
+// empty list falls back to the built-ins; disabled = no default nudges at all
+// (node-level chains still fire). Wording stays neutral ("reply to this
+// message", not "tap an option") — it shows on every waiting node type.
+export interface FlowReminderStep { minutes: number; text: string }
+export interface FlowRemindersSetting { enabled: boolean; steps: FlowReminderStep[] }
+export const FLOW_REMINDER_DEFAULTS: FlowReminderStep[] = [
+  { minutes: 10, text: "🔎 Still Have Questions?\nWhenever you're ready, reply to this message and we'll be happy to assist you." },
+  { minutes: 60, text: "We're still here to help! 🙂 Reply above to continue — or type \"menu\" to start over." },
+];
+const cleanReminderSteps = (steps: unknown): FlowReminderStep[] =>
+  (Array.isArray(steps) ? steps : [])
+    .map(r => ({ minutes: Math.max(1, Math.round(Number((r as { minutes?: unknown })?.minutes ?? 0))) || 0, text: String((r as { text?: unknown })?.text ?? "").trim().slice(0, 500) }))
+    .filter(r => r.minutes > 0 && !!r.text)
+    .slice(0, 5);
+export async function getFlowReminders(tenantId: string = DEFAULT_TENANT_ID): Promise<FlowRemindersSetting> {
+  const s = await getTenantSetting<Partial<FlowRemindersSetting>>(tenantId, "flow_default_reminders", {});
+  const steps = cleanReminderSteps(s.steps);
+  return { enabled: s.enabled !== false, steps: steps.length ? steps : FLOW_REMINDER_DEFAULTS };
+}
+export async function setFlowReminders(v: FlowRemindersSetting, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, "flow_default_reminders", { enabled: v.enabled === true, steps: cleanReminderSteps(v.steps) });
+}
+
 export async function getWelcomeSetting(tenantId: string = DEFAULT_TENANT_ID): Promise<WelcomeSetting> {
   return { ...WELCOME_DEFAULT, ...(await getTenantSetting<Partial<WelcomeSetting>>(tenantId, "welcome", {})) };
 }
