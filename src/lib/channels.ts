@@ -423,6 +423,20 @@ export async function saveWebchatChannel(input: {
   return mapChannel(data as Record<string, unknown>);
 }
 
+// Upgrade a pasted credential to the PAGE's own token. Admins routinely paste
+// their user / Business-Manager system-user token — Meta answers page endpoints
+// with (#210) "A page access token is required". When the supplied token has
+// access to the Page, GET /{pageId}?fields=access_token returns the Page token;
+// otherwise null and the caller keeps what it was given.
+export async function derivePageToken(pageId: string, token: string): Promise<string | null> {
+  try {
+    const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(pageId)}?fields=access_token&access_token=${encodeURIComponent(token)}`);
+    const data = (await res.json().catch(() => null)) as { access_token?: string } | null;
+    return res.ok && data?.access_token ? data.access_token : null;
+  } catch { return null; }
+}
+
 // Meta only delivers Page webhooks (Messenger messages, feed comments) after
 // the Page is SUBSCRIBED to the app — saving a channel from the portal used to
 // skip this, so a freshly added Facebook Page stored its creds but never

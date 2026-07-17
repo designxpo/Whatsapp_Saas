@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveMessengerChannel, getChannel, subscribePageToApp } from "@/lib/channels";
+import { saveMessengerChannel, getChannel, subscribePageToApp, derivePageToken } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -33,6 +33,11 @@ export async function POST(req: Request) {
       token = existing.token;
     }
     if (!token) return NextResponse.json({ error: "Page access token is required" }, { status: 400 });
+    // Upgrade a pasted user / system-user token to the PAGE's own token — page
+    // endpoints reject anything else with (#210). No-op when a real Page token
+    // was pasted; also self-heals channels saved with the wrong token earlier.
+    const pageToken = await derivePageToken(body.pageId!, token);
+    if (pageToken) token = pageToken;
     const saved = await saveMessengerChannel({
       id: body.id, tenantId, name: body.name!, pageId: body.pageId!,
       token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, active: body.active, isDefault: body.isDefault,
