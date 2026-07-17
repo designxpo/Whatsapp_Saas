@@ -1390,9 +1390,9 @@ export function WebchatCard() {
           )}
           {form.iconUrl && form.logoFit === "contain" && (
             <div className="grid grid-cols-2 gap-2">
-              <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="How much of the circular button the logo fills">
+              <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="How much of the circular button the logo fills. Above 100% zooms INTO the logo — use this when the logo file has its own built-in padding or bubble.">
                 <span className="shrink-0">Logo size</span>
-                <input type="range" min={30} max={100} step={5} className="flex-1 accent-brand-700" value={form.logoScale} onChange={e => setForm({ ...form, logoScale: Number(e.target.value) })} />
+                <input type="range" min={30} max={200} step={5} className="flex-1 accent-brand-700" value={form.logoScale} onChange={e => setForm({ ...form, logoScale: Number(e.target.value) })} />
                 <span className="text-ink-400 w-10 text-right">{form.logoScale}%</span>
               </label>
               <label className="flex items-center gap-2 text-xs text-ink-600 border border-line rounded-control px-2.5 py-1.5" title="Colour of the circular block behind the logo">
@@ -1406,7 +1406,7 @@ export function WebchatCard() {
           {(() => {
             const brand = /^#[0-9a-fA-F]{3,6}$/.test(form.color) ? form.color : "#0783fd";
             const badge = /^#[0-9a-fA-F]{3,6}$/.test(form.badgeColor) ? form.badgeColor : "#ffffff";
-            const scale = Math.min(100, Math.max(30, form.logoScale || 100));
+            const scale = Math.min(200, Math.max(30, form.logoScale || 100));
             const contain = !!form.iconUrl && form.logoFit === "contain";
             const avatar = (cls: string, pct: number) => (
               <span className={`shrink-0 ${cls} rounded-full flex items-center justify-center text-white overflow-hidden`} style={{ background: form.iconUrl ? (contain ? badge : "transparent") : "rgba(255,255,255,.25)", boxShadow: "0 0 0 1px rgba(15,23,42,.08)" }}>
