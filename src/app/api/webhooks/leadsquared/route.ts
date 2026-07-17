@@ -2,8 +2,12 @@ export const maxDuration = 30;
 import { NextResponse } from "next/server";
 import { constEq } from "@/lib/apiauth";
 import { parseLsqWebhook } from "@/lib/lsqwebhook";
-import { upsertContacts, setContactAttributes, getContactByPhoneLoose, getConversationByPhone, assignConversation, getTenantSecret } from "@/lib/store";
+import { upsertContacts, setContactAttributes, getContactByPhoneLoose, getConversationByPhone, assignConversation, getTenantSecret, optoutSet } from "@/lib/store";
+import { getStageDrips, stageTransition } from "@/lib/stagedrips";
+import { enroll, stopEnrollment } from "@/lib/sequences";
 import { listUsers } from "@/lib/team";
+
+const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +52,12 @@ export async function POST(req: Request) {
   ).catch(() => undefined);
 
   // LSQ often stores 10-digit numbers while WhatsApp is always country-coded
-  // (919…) — resolve the CANONICAL stored phone (suffix-aware) so the attribute
-  // stamp and conversation lookup below hit the real contact, not a miss.
-  const canonical = (await getContactByPhoneLoose(ev.phone, tid).catch(() => null))?.phone ?? ev.phone;
+  // (919…) — resolve the CANONICAL stored contact (suffix-aware) so the
+  // attribute stamp and conversation lookup below hit, not miss. Its CURRENT
+  // lsq_stage (pre-stamp) is the "previous stage" for the drip transition.
+  const existing = await getContactByPhoneLoose(ev.phone, tid).catch(() => null);
+  const canonical = existing?.phone ?? ev.phone;
+  const prevStage = existing?.attributes?.lsq_stage;
 
   // 2) Stamp the LSQ picture (incoming wins — stage/owner changes must stick).
   const attrs: Record<string, string> = {};
@@ -59,6 +66,23 @@ export async function POST(req: Request) {
   if (ev.ownerEmail || ev.ownerName) attrs.lsq_owner = ev.ownerName ?? ev.ownerEmail!;
   if (ev.source) attrs.lsq_source = ev.source;
   if (Object.keys(attrs).length) await setContactAttributes(canonical, attrs, tid).catch(() => undefined);
+
+  // 2b) Stage drips (Phase 6): a stage TRANSITION starts the new stage's
+  // nurture sequence and stops the other stage-managed ones. Idempotent
+  // (replayed webhooks carry the same stage → no-op); opt-outs never enroll.
+  let drip: { enrolled: string | null; stopped: number } | undefined;
+  if (ev.stage && ev.stage !== prevStage) {
+    const t = stageTransition(prevStage, ev.stage, await getStageDrips(tid));
+    if (t.enroll || t.stop.length) {
+      for (const sid of t.stop) await stopEnrollment(sid, canonical).catch(() => undefined);
+      let enrolled: string | null = null;
+      if (t.enroll) {
+        const optedOut = (await optoutSet(tid).catch(() => new Set<string>())).has(last10(canonical));
+        if (!optedOut) { await enroll(t.enroll, { phone: canonical }, tid).catch(() => undefined); enrolled = t.enroll; }
+      }
+      drip = { enrolled, stopped: t.stop.length };
+    }
+  }
 
   // 3) Owner → counselor assignment. assigned_to stores the team member's NAME
   //    (that's what the inbox filters/labels use), matched by email.
@@ -79,8 +103,8 @@ export async function POST(req: Request) {
     }
   }
 
-  console.log(JSON.stringify({ tag: "lsq_webhook", tenant: tid, event: ev.event, phone: `…${ev.phone.slice(-4)}`, stage: ev.stage ?? undefined, assigned: assigned || undefined, note: assignNote }));
-  return NextResponse.json({ handled: true, event: ev.event, phone: `…${ev.phone.slice(-4)}`, attributes: Object.keys(attrs), assigned, ...(assignNote ? { note: assignNote } : {}) });
+  console.log(JSON.stringify({ tag: "lsq_webhook", tenant: tid, event: ev.event, phone: `…${ev.phone.slice(-4)}`, stage: ev.stage ?? undefined, assigned: assigned || undefined, drip, note: assignNote }));
+  return NextResponse.json({ handled: true, event: ev.event, phone: `…${ev.phone.slice(-4)}`, attributes: Object.keys(attrs), assigned, ...(drip ? { drip } : {}), ...(assignNote ? { note: assignNote } : {}) });
 }
 
 // LSQ's "Test" button sometimes probes with GET — confirm reachability without

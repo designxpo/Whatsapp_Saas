@@ -55,6 +55,59 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
   );
 }
 
+// Auto-drip by LeadSquared stage (Phase 6): when a lead's LSQ stage changes
+// (delivered by the LSQ→portal webhook), the mapped sequence starts and other
+// stage-managed sequences stop. Config in wa_settings via /api/admin/stage-drips.
+function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
+  const [drips, setDrips] = useState<{ stage: string; sequenceId: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => { fetch("/api/admin/stage-drips").then(r => r.json()).then(d => setDrips(d.drips ?? [])).catch(() => setDrips([])); }, []);
+
+  async function save() {
+    if (!drips) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/stage-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.stage.trim() && x.sequenceId) }) }).then(r => r.json());
+      if (d.error) setMsg(d.error);
+      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
+    } finally { setBusy(false); }
+  }
+
+  if (drips === null) return null;
+  const clash = drips.some((d, i) => d.stage.trim() && drips.findIndex(x => x.stage.trim().toLowerCase() === d.stage.trim().toLowerCase()) !== i);
+  const waSeqs = seqs.filter(s => s.platform === "whatsapp");
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by LeadSquared stage</p>
+        <p className="text-[11px] text-ink-400">When a lead&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s sequence — and stop the other stage-managed ones (the lead moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out leads are never enrolled.</p>
+      </div>
+      {drips.map((d, i) => (
+        <div key={i} className="flex items-center gap-2 flex-wrap">
+          <input className={`${inp} !py-1.5 text-xs w-44`} placeholder="LSQ stage, e.g. RNR" value={d.stage}
+            onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, stage: e.target.value } : x)))} />
+          <span className="text-[11px] text-ink-400">→</span>
+          <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
+            onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
+            <option value="">Pick a sequence…</option>
+            {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
+          </select>
+          <button onClick={() => setDrips(a => (a ?? []).filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setDrips(a => [...(a ?? []), { stage: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add stage rule</button>
+        <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
+        {clash && <span className="text-[11px] text-red-500">Duplicate stage.</span>}
+        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+      </div>
+      <p className="text-[11px] text-ink-400">Cold leads are usually outside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+    </div>
+  );
+}
+
 // Run a drip from LeadSquared: pull leads matching an advanced (multi-condition)
 // search and enroll them into a sequence. Preview before enrolling.
 const LSQ_OPS: [string, string][] = [["eq", "equals"], ["contains", "contains"], ["gt", "after / greater"], ["lt", "before / less"]];
@@ -288,6 +341,7 @@ function SequencesTab() {
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
 
       <SeqMonitorPanel seqs={seqs} />
+      <StageDripsPanel seqs={seqs} />
       <LsqDripPanel seqs={seqs} />
 
       {form && (
