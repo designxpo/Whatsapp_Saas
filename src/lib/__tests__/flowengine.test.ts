@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 // importing the module never tries to construct a client.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure routing tests"); } }));
 
-import { nextNode, matchOption, optionLabel, looksConversational, validateInput, type FlowGraph, type FlowNode } from "@/lib/flowengine";
+import { nextNode, matchOption, optionLabel, looksConversational, validateInput, retryHint, type FlowGraph, type FlowNode } from "@/lib/flowengine";
 
 // Node factory — `position` is required by the builder type but irrelevant here.
 const n = (id: string, type: string, data: Record<string, unknown> = {}): FlowNode => ({ id, type, position: { x: 0, y: 0 }, data });
@@ -116,5 +116,10 @@ describe("validateInput — phone must be landable, not merely plausible", () =>
   it("email stays strict alongside", async () => {
     expect(await validateInput("email", "tanvvitest82828@mail.com")).toBe(true);
     expect(await validateInput("email", "not-an-email")).toBe(false);
+  });
+  it("re-ask hint says what a valid answer looks like", () => {
+    expect(retryHint("phone")).toMatch(/country code/);
+    expect(retryHint("email")).toMatch(/email address/);
+    expect(retryHint("number")).toMatch(/valid answer/);
   });
 });

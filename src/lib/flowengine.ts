@@ -484,6 +484,14 @@ function withVars(send: FlowSender, c: ContactVars | null): FlowSender {
   };
 }
 
+// Default re-ask copy per validated type — a vague "doesn't look right" makes
+// visitors repeat the same mistake; say what "valid" means.
+export function retryHint(vtype: string): string {
+  if (vtype === "phone") return "That doesn't look like a complete mobile number — please share your full number, with country code if you're outside India.";
+  if (vtype === "email") return "That doesn't look like an email address — could you re-check it? (e.g. name@example.com)";
+  return "Hmm, that doesn't look right — could you share a valid answer?";
+}
+
 // Validates an `ask` answer against the node's chosen rule. "city" uses a cheap
 // AI check (best-effort, tenant's provider). Everything else is deterministic.
 export async function validateInput(type: string, text: string, tenantId?: string): Promise<boolean> {
@@ -1051,7 +1059,7 @@ export async function handleFlowMessage(
         // store the junk value, don't loop on "that's not a valid email").
         if (looksConversational(text) || tries >= 2) { await endSession(convKey); return false; }
         if (isReal) {
-          await send.text(str(waiting.data.retryText) || "Hmm, that doesn't look right — could you share a valid answer?");
+          await send.text(str(waiting.data.retryText) || retryHint(vtype));
           await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
           await claimReply(convKey).catch(() => undefined);
         }
@@ -1148,7 +1156,7 @@ export async function handleFlowMessage(
             await endSession(convKey);
             return false;
           }
-          await send.text("Hmm, that doesn't look right — could you share a valid answer?");
+          await send.text(retryHint(f.t));
           await saveSession(convKey, flow.id, waiting.id, { ...(session.state ?? {}), tries: tries + 1 }, tid);
           if (isReal) await claimReply(convKey).catch(() => undefined);
           return true;   // still waiting on this field
