@@ -41,6 +41,7 @@ export interface Channel extends ChannelCreds {
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   mode: "full" | "manual";    // "manual" = counselor line: no AI/flow/welcome/sequence/follow-up
+  coex: boolean;              // coexistence: number is ALSO active on the WhatsApp Business phone app
   active: boolean;
   isDefault: boolean;
   createdAt: string;
@@ -85,6 +86,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     agentId: (r.agent_id as string | null) ?? null,
     kbTag: (r.kb_tag as string | null) ?? null,
     mode: (r.mode as string) === "manual" ? "manual" : "full",
+    coex: (r.coex as boolean) ?? false,
     active: (r.active as boolean) ?? true,
     isDefault: (r.is_default as boolean) ?? false,
     createdAt: r.created_at as string,
@@ -141,6 +143,17 @@ export async function listChannels(tenantId?: string): Promise<Channel[]> {
     if (error) throw error;
     return (data ?? []).map(mapChannel);
   } catch { return []; }     // table missing → env single-number mode
+}
+
+// The tenant's WhatsApp channel rows, THROWING on query failure — unlike
+// listChannels' catch→[]. Callers making consequential decisions ("is this the
+// tenant's FIRST number → make it default", "does this phone id already exist
+// → update in place, don't duplicate") must fail closed rather than trust an
+// empty answer produced by a transient outage.
+export async function listWhatsappChannelsStrict(tenantId: string): Promise<Channel[]> {
+  const { data, error } = await db().from("wa_channels").select("*").eq("tenant_id", tenantId);
+  if (error) throw error;
+  return (data ?? []).map(mapChannel).filter(c => c.kind === "whatsapp");
 }
 
 // When tenantId is supplied the lookup is tenant-scoped. ALWAYS pass it from any
@@ -262,6 +275,7 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     // write would 500 every channel save with PGRST204 until then.
     ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
     ...(input.mode !== undefined ? { mode: input.mode } : {}),
+    ...(input.coex !== undefined ? { coex: input.coex } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };

@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud } from "lucide-react";
+import { Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
@@ -261,18 +261,20 @@ function ChannelsManager() {
     load();
   }
 
-  async function connectWithMeta() {
+  // variant "new" = fresh number; "coex" = keep using the WhatsApp Business
+  // phone app on the number (QR-scan flow) and ADD the API/portal on top.
+  async function connectWithMeta(variant: "new" | "coex" = "new") {
     if (!whatsappSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${whatsappSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`); return; }
     setBusy(true); setMsg(null);
     try {
-      const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup();
+      const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup(variant);
       const res = await fetch("/api/admin/onboarding/whatsapp", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, wabaId, phoneNumberId }),
+        body: JSON.stringify({ code, wabaId, phoneNumberId, coex: variant === "coex" }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Connection failed");
-      else { setForm(null); load(); }
+      else { setForm(null); if (d.notice) setMsg(d.notice); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }
   }
@@ -287,8 +289,13 @@ function ChannelsManager() {
         <div className="flex items-center gap-2 shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
             <div className="flex items-center gap-1.5">
-              <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              <button onClick={() => connectWithMeta("new")} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
                 {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Phone className="w-3.5 h-3.5" />} Connect with Facebook
+              </button>
+              <button onClick={() => connectWithMeta("coex")} disabled={busy}
+                title="Coexistence: bring a number that's on the WhatsApp Business phone app. You'll scan a QR code from the app; the app and its chats keep working, and the number ALSO becomes usable here (AI, broadcasts, Live Chat)."
+                className="px-3 py-1.5 rounded-control border border-[#0783fd] text-[#0783fd] hover:bg-sky-50 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                <Smartphone className="w-3.5 h-3.5" /> Connect existing app number
               </button>
               {!whatsappSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
             </div>
@@ -297,13 +304,15 @@ function ChannelsManager() {
         </div>
       </div>
 
+      {msg && !form && <p className="text-xs text-red-500">{msg}</p>}
+
       {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
 
       {channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp").map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
           </div>
           <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}

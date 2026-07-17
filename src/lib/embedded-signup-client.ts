@@ -66,16 +66,37 @@ function loadSdk(): Promise<void> {
   return sdkPromise;
 }
 
+// Signup flavours:
+//  • "new"  — register a fresh (or API-only) number inside the popup (default).
+//  • "coex" — coexistence: connect a number that STAYS on the WhatsApp Business
+//    phone app. The popup shows a QR code the user scans from the app; chats and
+//    the app keep working, and the number additionally becomes usable via Cloud
+//    API. Meta only supports this direction (app → API), never API → app.
+export type WaSignupVariant = "new" | "coex";
+
+// extras passed to FB.login — pure so the variant mapping is unit-testable.
+export function signupExtras(variant: WaSignupVariant): { setup: Record<string, never>; featureType: string; sessionInfoVersion: string } {
+  return {
+    setup: {},
+    featureType: variant === "coex" ? "whatsapp_business_app_onboarding" : "",
+    sessionInfoVersion: "3",
+  };
+}
+
 // WhatsApp Embedded Signup → { code, wabaId, phoneNumberId }.
-export async function launchWhatsAppSignup(): Promise<{ code: string; wabaId: string; phoneNumberId: string }> {
+export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Promise<{ code: string; wabaId: string; phoneNumberId: string }> {
   await loadSdk();
   if (!WA_CONFIG_ID) throw new Error("WhatsApp Embedded Signup is not configured yet");
   return new Promise((resolve, reject) => {
     let session: { wabaId?: string; phoneNumberId?: string } = {};
     const onMessage = (event: MessageEvent) => {
-      // Exact facebook.com or a *.facebook.com subdomain — never a lookalike
-      // like "evilfacebook.com" (the old suffix test matched those).
-      if (typeof event.origin !== "string" || !/(^|\.)facebook\.com$/.test(new URL(event.origin).hostname)) return;
+      // https + exact facebook.com or a *.facebook.com subdomain — never a
+      // lookalike like "evilfacebook.com", and never a throw: opaque origins
+      // ("null" from sandboxed iframes) would crash a bare new URL().
+      if (typeof event.origin !== "string") return;
+      let origin: URL;
+      try { origin = new URL(event.origin); } catch { return; }
+      if (origin.protocol !== "https:" || !/(^|\.)facebook\.com$/.test(origin.hostname)) return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (data?.type === "WA_EMBEDDED_SIGNUP" && data?.data) {
@@ -96,7 +117,7 @@ export async function launchWhatsAppSignup(): Promise<{ code: string; wabaId: st
       config_id: WA_CONFIG_ID,
       response_type: "code",
       override_default_response_type: true,
-      extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+      extras: signupExtras(variant),
     });
   });
 }

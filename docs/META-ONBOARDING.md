@@ -123,6 +123,12 @@ These produce the `config_id`s the front-end popup uses.
    - In **WhatsApp → Embedded Signup** (or Facebook Login for Business →
      *Configurations* with the WhatsApp permissions), create a configuration.
    - Copy its **Configuration ID** → `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID`.
+   - For **coexistence** (the portal's "Connect existing app number" button —
+     tenants keep using the WhatsApp Business phone app AND get the API): the
+     same config works; the portal passes
+     `featureType: "whatsapp_business_app_onboarding"` at launch time. If the
+     configuration UI shows a coexistence / "WhatsApp Business app onboarding"
+     option, enable it. See the **Coexistence** section below for eligibility.
 2. **Instagram/Login config**
    - In **Facebook Login for Business → Configurations**, create a configuration that
      requests the Instagram + Pages permissions from Step 4.
@@ -194,6 +200,33 @@ callback works without it) and ensure `META_APP_SECRET` is set (Step 6).
    - [ ] **Setup & status** marks the channel **Ready** (live Meta verification passes).
    - [ ] Sending a test message to the number/account shows up in **Live Chat** and the
          AI replies (requires the AI key step done too).
+
+---
+
+## Coexistence — "Connect existing app number" (keep the phone app)
+
+The second connect button in Settings → WhatsApp numbers runs Embedded Signup's
+**coexistence** flavour: instead of registering a fresh number, the popup shows a
+**QR code the tenant scans from their WhatsApp Business phone app**. The number
+then works in BOTH places — the app keeps its chats and stays usable, and the
+number additionally becomes sendable via Cloud API (AI, broadcasts, Live Chat).
+
+What the portal does differently for a coexistence connect:
+- Skips the Cloud API `/register` call (the QR flow registers the number; calling
+  `/register` on a coexistence number fails).
+- Saves the channel with `coex = true` (shown as an **APP+API** badge) — needs
+  migration `0078_coex.sql`.
+- Replies the tenant's team sends **from the phone app** reach the portal via the
+  `smb_message_echoes` webhook field (subscribe it in Step 3's field list — NOT
+  the similarly-named `message_echoes`) and pause the bot for that conversation.
+
+Eligibility (Meta-side, verify current docs — these move):
+- The number must be on the **WhatsApp Business app** (not consumer WhatsApp),
+  updated to a recent version, in a supported country (India ✓).
+- Direction is **app → API only**. A number already registered pure-API cannot
+  add the phone app afterward.
+- On connect, Meta disables the app's own greeting/away automations — the
+  platform's bot/flows take over.
 
 ---
 
