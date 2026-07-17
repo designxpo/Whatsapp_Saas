@@ -28,7 +28,7 @@ import {
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { isAiEnabled, getFlowNudge } from "./messaging-settings";
-import { syncLeadProfile } from "./leadsquared";
+import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
 import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
@@ -255,6 +255,10 @@ function realSender(conversationId: string, phone: string, channel?: ChannelCred
     if (!metaId) return;
     await appendConvMessage({ conversationId, role: "assistant", body, metaId, source: "bot", tenantId, channelId }).catch(() => undefined);
     await touchOutbound(conversationId, body).catch(() => undefined);
+    // Every flow message lands on the LSQ timeline too (queue-backed) — flows
+    // were the biggest CRM blind spot: the whole scripted conversation was
+    // invisible to counselors inside LeadSquared.
+    void pushWaActivity({ phone, direction: "outbound", body, via: "bot", tenantId });
   };
   return {
     kind: "whatsapp",

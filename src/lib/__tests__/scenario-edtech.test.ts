@@ -147,7 +147,7 @@ vi.mock("@/lib/channels", () => ({
   effectiveKbTag: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) => conv?.primaryKbTag ?? channel?.kbTag ?? null,
 }));
 vi.mock("@/lib/formresponses", () => h.formresponses);
-vi.mock("@/lib/leadsquared", () => ({ syncLeadProfile: h.syncLeadProfile }));
+vi.mock("@/lib/leadsquared", () => ({ syncLeadProfile: h.syncLeadProfile, pushWaActivity: vi.fn(async () => undefined) }));
 vi.mock("@/lib/llm", () => ({ looksLikeCity: vi.fn(async () => true) }));
 vi.mock("@/lib/commerce", () => ({ getProduct: vi.fn(async () => null) }));
 vi.mock("@/lib/integrations", () => ({

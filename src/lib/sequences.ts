@@ -13,6 +13,7 @@ import { getChannel } from "./channels";
 import { sendText, sendTemplateSingle, sendMedia } from "./whatsapp";
 import { sendIgMessage, within24hWindow } from "./instagram";
 import { getConversationByPhone } from "./store";
+import { pushWaActivity } from "./leadsquared";
 
 
 export type SequenceTriggerKind =
@@ -258,6 +259,17 @@ export async function drainSequences(max = 100, tenantId?: string): Promise<numb
       if (!claimed.data?.length) continue;   // another tick already claimed this step
 
       const res = await executeStep(seq, enr, step);
+
+      // Successful WhatsApp drip steps land on the LSQ timeline (queue-backed)
+      // so counselors see nurture touches in the CRM. IG enrollments are
+      // handle-keyed — no phone to attach to — and stay chat-log-only.
+      if (res.ok && (enr.platform as string) !== "instagram") {
+        const a = step.action;
+        const summary = a?.type === "template" && a.templateName ? `template "${a.templateName}"`
+          : a?.type === "media" ? `media ${a.caption ?? a.url ?? ""}`.trim()
+          : (a?.text ?? "").slice(0, 300) || "step";
+        void pushWaActivity({ phone: enr.phone as string, direction: "outbound", body: `Sequence "${seq.name}" — ${summary}`, via: "bot", tenantId: (enr.tenant_id as string) ?? undefined });
+      }
 
       const nextStep = steps[idx + 1];
       const patch: Record<string, unknown> = { updated_at: new Date().toISOString(), last_error: res.ok ? null : (res.error ?? "send failed") };

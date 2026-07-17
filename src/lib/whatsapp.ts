@@ -1,5 +1,6 @@
 import { insertLog, optoutSet } from "./store";
 import { getTrackedUrls, mintLinks } from "./links";
+import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -157,6 +158,19 @@ export async function sendCampaign(params: {
   }
 
   await insertLog(log, params.tenantId).catch(() => undefined);
+  // Campaign sends land on each lead's LSQ timeline via the queue ONLY (the
+  // cron paces the replays) — pushing inline here would hammer LSQ's rate
+  // limits during a blast. Skipped entirely when this tenant has no LSQ.
+  try {
+    if (sentCount > 0 && await lsqConfigured(params.tenantId)) {
+      await enqueueCrmSyncBatch(
+        log.filter(l => l.status === "sent").map(l => ({
+          kind: "wa" as const,
+          payload: { phone: l.phone, direction: "outbound" as const, body: `Broadcast: template "${params.templateName}"`, via: "campaign" as const, tenantId: params.tenantId },
+        })),
+      );
+    }
+  } catch { /* CRM queueing must never fail a send */ }
   return { sentCount, failedCount, skippedCount, errors, results };
 }
 

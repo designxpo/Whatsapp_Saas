@@ -10,6 +10,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //   Activity code           — event code of a Custom Activity (e.g. "WhatsApp Message")
 
 import { errorMessage } from "./errors";
+import { db } from "./supabase";
 import { getTenantSetting, getTenantSecret } from "./store";
 import { listIntegrations, getIntegrationSecret, setIntegrationError, type Integration } from "./integrations";
 
@@ -249,7 +250,9 @@ export async function syncLeadProfile(p: { phone?: string | null; phoneAlt?: str
 export async function ensureLead(phone: string, name?: string, source?: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
   const c = await resolveLsq(tenantId);
   if (!c) return null;
-  const existing = await findLeadId(phone, c);
+  // Null-safe: a failed lookup (findLeadId now throws on total rejection) reads
+  // as "not found" for panel actions.
+  const existing = await findLeadId(phone, c).catch(() => null);
   if (existing) return existing;
   return createOrUpdateLead({ phone, name, source }, tenantId);
 }
@@ -257,7 +260,7 @@ export async function ensureLead(phone: string, name?: string, source?: string, 
 // Public phone→ProspectID lookup (for panel actions that must NOT create).
 export async function getLeadIdByPhone(phone: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
   const c = await resolveLsq(tenantId);
-  return c ? findLeadId(phone, c) : null;
+  return c ? findLeadId(phone, c).catch(() => null) : null;
 }
 
 // Moves a lead to a new ProspectStage. Returns true on success.
@@ -302,13 +305,19 @@ async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
   // WITHOUT a country code (common for Indian numbers) still matches the WhatsApp
   // sender id (e.g. 91XXXXXXXXXX vs a lead saved as XXXXXXXXXX).
   const last10 = digits.length > 10 ? digits.slice(-10) : "";
+  let okResponses = 0;
   for (const candidate of [`+${digits}`, digits, ...(last10 ? [`+${last10}`, last10] : [])]) {
     const url = `${c.host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&phone=${encodeURIComponent(candidate)}`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });   // a hung LSQ socket must not stall webhooks/cron
     if (!res.ok) continue;
+    okResponses++;
     const leads = (await res.json().catch(() => [])) as { ProspectID?: string }[];
     if (Array.isArray(leads) && leads[0]?.ProspectID) return leads[0].ProspectID;
   }
+  // Every candidate was rejected (401 bad key / wrong host / 429) — that's a
+  // LOOKUP FAILURE, not "no lead". Throw so activity pushes retry via the queue
+  // instead of silently dropping. A genuine no-match returns null above.
+  if (okResponses === 0) throw new Error("lead lookup rejected for all phone forms (check LSQ keys/host or rate limit)");
   return null;
 }
 
@@ -318,6 +327,7 @@ async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
 async function findLeadIdByHandle(handle: string, c: LsqCreds, field: string = c.igHandleField): Promise<string | null> {
   const h = (handle || "").replace(/^@/, "").trim();
   if (!field || !h) return null;
+  let okResponses = 0;
   for (const value of [h, `@${h}`]) {
     try {
       const url = `${c.host}/v2/LeadManagement.svc/Leads.Get?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`;
@@ -325,12 +335,17 @@ async function findLeadIdByHandle(handle: string, c: LsqCreds, field: string = c
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ Parameter: { LookupName: field, LookupValue: value }, Paging: { PageIndex: 1, PageSize: 1 } }),
+        signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) continue;
+      okResponses++;
       const data = (await res.json().catch(() => null)) as { ProspectID?: string }[] | null;
       if (Array.isArray(data) && data[0]?.ProspectID) return data[0].ProspectID;
     } catch { /* try next candidate */ }
   }
+  // Both forms rejected/unreachable = lookup FAILURE (throw → queue retry), not
+  // "no lead" — mirrors findLeadId.
+  if (okResponses === 0) throw new Error("handle lookup rejected for all forms (check LSQ keys/host or rate limit)");
   return null;
 }
 
@@ -469,50 +484,17 @@ export async function fetchLeadDetails(phone: string, tenantId: string = DEFAULT
   }
 }
 
-// Fire-and-forget: records one WhatsApp message on the lead's timeline.
-// Never throws — CRM sync must not break message delivery.
-export async function pushWaActivity(p: {
+// ── Push plumbing: try-now, queue on retriable failure ────────────────────────
+
+export interface WaActivityInput {
   phone: string;
   direction: "inbound" | "outbound";
   body: string;
-  via?: "lead" | "bot" | "agent" | "crm";
+  via?: "lead" | "bot" | "agent" | "crm" | "campaign";
   tenantId?: string;
-}): Promise<void> {
-  const c = await resolveLsq(p.tenantId ?? DEFAULT_TENANT_ID);
-  if (!c) return;
-  try {
-    let leadId = await findLeadId(p.phone, c);
-    if (!leadId && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" }, p.tenantId ?? DEFAULT_TENANT_ID);
-    if (!leadId) return;
-
-    const arrow = p.direction === "inbound" ? "⬅️ Lead" : "➡️ " + (p.via === "bot" ? "AI Assistant" : p.via === "crm" ? "Sales (CRM)" : "Agent");
-    const note = `${arrow}: ${p.body}`.slice(0, 1800);
-
-    const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
-    });
-    // Don't let a rejected push vanish — a wrong activity code / expired key / bad
-    // region host would otherwise fail silently and look like "nothing synced".
-    // Record it so the tenant SEES it in Settings (parity with the hub's status).
-    if (!res.ok) {
-      const detail = `HTTP ${res.status} (activity event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 200)}`;
-      console.error(`[leadsquared] activity push ${detail} (lead ${leadId})`);
-      await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, detail);
-    }
-  } catch (err) {
-    console.error("[leadsquared] activity push failed:", errorMessage(err));
-    await noteLsqFailure(p.tenantId ?? DEFAULT_TENANT_ID, errorMessage(err));
-  }
 }
 
-// Generic CRM timeline push for the no-native-phone channels (Instagram /
-// Messenger / Web chat). The lead is resolved by a known phone first (shared in
-// chat / captured by a flow), then by handle (Instagram, needs the tenant's
-// lsq_ig_handle_field). The note is labelled with the channel. Never throws, and
-// records the failure on the integration so it's visible in Settings.
-export async function pushChatActivity(p: {
+export interface ChatActivityInput {
   phone?: string | null;
   handle?: string | null;
   direction: "inbound" | "outbound";
@@ -520,35 +502,99 @@ export async function pushChatActivity(p: {
   via?: "lead" | "bot" | "agent";
   channel: string;                 // "Instagram" | "Messenger" | "Web chat"
   tenantId?: string;
-}): Promise<void> {
+}
+
+// `skipped` marks "this tenant's LSQ credentials did not resolve" — which is
+// EITHER "tenant has no CRM" (common, benign) or a transient resolve failure
+// (integrations-table blip, broken secret decrypt). The two are indistinguishable
+// here, so the try-now path treats it as a no-op while the DRAIN treats it as
+// retriable: queued rows only exist because creds once resolved, so deleting
+// them on a resolve failure would silently destroy the backlog.
+type PushResult = { ok: true; skipped?: true } | { ok: false; retriable: boolean; error: string };
+
+// Statuses worth retrying: auth (fixable keys), timeout, rate limit, LSQ down.
+// 400/404 are permanent (bad payload / deleted lead) — retrying can't help.
+const RETRIABLE_HTTP = new Set([401, 403, 408, 429, 500, 502, 503, 504]);
+
+async function postActivity(c: LsqCreds, leadId: string, note: string): Promise<PushResult> {
+  try {
+    const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (res.ok) return { ok: true };
+    const detail = (await res.text().catch(() => "")).slice(0, 200);
+    return { ok: false, retriable: RETRIABLE_HTTP.has(res.status), error: `HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${detail}` };
+  } catch (err) {
+    return { ok: false, retriable: true, error: errorMessage(err) };   // network — always retriable
+  }
+}
+
+// One attempt at a WhatsApp timeline push for the payload's tenant. A tenant
+// with LSQ unconfigured/disconnected is a clean no-op (queued rows just drain).
+async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const c = await resolveLsq(tid);
-  if (!c) return;
+  if (!c) return { ok: true, skipped: true };
+  try {
+    let leadId = await findLeadId(p.phone, c);
+    if (!leadId && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" }, tid);
+    if (!leadId) return { ok: true }; // phone not in CRM — nothing to attach to
+
+    const arrow = p.direction === "inbound" ? "⬅️ Lead"
+      : "➡️ " + (p.via === "bot" ? "AI Assistant" : p.via === "crm" ? "Sales (CRM)" : p.via === "campaign" ? "Campaign" : "Agent");
+    return await postActivity(c, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
+  } catch (err) {
+    return { ok: false, retriable: true, error: errorMessage(err) };
+  }
+}
+
+// Fire-and-forget for callers: records one WhatsApp message on the lead's
+// timeline. Never throws — CRM sync must not break message delivery. A
+// retriably-failed push parks in wa_crm_sync (0077) and the cron replays it;
+// the failure is also stamped on the tenant's integration so Settings shows it.
+export async function pushWaActivity(p: WaActivityInput): Promise<void> {
+  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  const r = await tryWaActivity(p);   // resolves creds once; skipped = no CRM for this tenant
+  if (r.ok) return;
+  console.error(`[leadsquared] activity push failed (${r.retriable ? "queued for retry" : "permanent, dropped"}): ${r.error}`);
+  await noteLsqFailure(tid, r.error);
+  if (r.retriable) await enqueueCrmSync("wa", { ...p, tenantId: tid }, r.error);
+}
+
+// Generic CRM timeline push for the no-native-phone channels (Instagram /
+// Messenger / Web chat). The lead is resolved by a known phone first (shared in
+// chat / captured by a flow), then by handle (Instagram, needs the tenant's
+// lsq_ig_handle_field). The note is labelled with the channel. Never throws, and
+// records the failure on the integration so it's visible in Settings.
+async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
+  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  const c = await resolveLsq(tid);
+  if (!c) return { ok: true, skipped: true };
   try {
     let leadId: string | null = null;
     if (p.phone) leadId = await findLeadId(p.phone, c);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle, c);
     if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.channel }, tid);
-    if (!leadId) return;
+    if (!leadId) return { ok: true }; // can't match this contact to a CRM lead — skip
 
     const who = p.via === "bot" ? "AI Assistant" : p.via === "agent" ? "Agent" : "Sales";
     const arrow = p.direction === "inbound" ? `⬅️ Lead (${p.channel})` : `➡️ ${who} (${p.channel})`;
-    const note = `${arrow}: ${p.body}`.slice(0, 1800);
-
-    const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
-    });
-    if (!res.ok) {
-      const detail = `HTTP ${res.status} (activity event ${c.activityCode}): ${(await res.text().catch(() => "")).slice(0, 200)}`;
-      console.error(`[leadsquared] ${p.channel} activity push ${detail} (lead ${leadId})`);
-      await noteLsqFailure(tid, detail);
-    }
+    return await postActivity(c, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
   } catch (err) {
-    console.error(`[leadsquared] ${p.channel} activity push failed:`, errorMessage(err));
-    await noteLsqFailure(tid, errorMessage(err));
+    return { ok: false, retriable: true, error: errorMessage(err) };
   }
+}
+
+export async function pushChatActivity(p: ChatActivityInput): Promise<void> {
+  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  const r = await tryChatActivity(p);   // resolves creds once; skipped = no CRM for this tenant
+  if (r.ok) return;
+  console.error(`[leadsquared] ${p.channel} activity push failed (${r.retriable ? "queued for retry" : "permanent, dropped"}): ${r.error}`);
+  await noteLsqFailure(tid, r.error);
+  if (r.retriable) await enqueueCrmSync("chat", { ...p, tenantId: tid }, r.error);
 }
 
 // Instagram convenience wrapper — kept for existing callers.
@@ -562,4 +608,125 @@ export async function pushIgActivity(p: {
   tenantId?: string;
 }): Promise<void> {
   return pushChatActivity({ phone: p.phone, handle: p.handle, direction: p.direction, body: p.body, via: p.via, channel: "Instagram", tenantId: p.tenantId });
+}
+
+// ── CRM sync queue (wa_crm_sync, 0077) ────────────────────────────────────────
+// Failed-retriable pushes park here; drainCrmSync (per-minute cron) replays with
+// exponential backoff, deletes on success, dead-letters after the cap. Campaign
+// blasts enqueue directly so thousands of sends never stampede LSQ's rate limits
+// — the drain paces them. Rows carry tenant_id and the payload carries tenantId,
+// so a replay resolves that tenant's own LSQ credentials.
+
+const CRM_SYNC_MAX_ATTEMPTS = 8;
+const CRM_SYNC_BACKOFF_MIN = [1, 5, 15, 60, 180, 360, 720, 1440];   // minutes by attempt #
+
+// Queue one push for the drain. Swallows DB errors (a missing table must never
+// break message handling) but says why, loudly.
+export async function enqueueCrmSync(kind: "wa" | "chat", payload: WaActivityInput | ChatActivityInput, error?: string): Promise<void> {
+  try {
+    const { error: dbErr } = await db().from("wa_crm_sync").insert({
+      tenant_id: payload.tenantId ?? DEFAULT_TENANT_ID, kind, payload,
+      last_error: error?.slice(0, 500) ?? null,
+      next_attempt_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    if (dbErr) throw dbErr;
+  } catch (err) {
+    console.error(`[leadsquared] could not queue CRM sync (migration 0077 applied?): ${errorMessage(err)}`);
+  }
+}
+
+// Batch enqueue (campaign sends) — one insert per 500 rows, due immediately.
+// Callers should skip entirely when the tenant has no LSQ (see sendCampaign).
+export async function enqueueCrmSyncBatch(rows: { kind: "wa" | "chat"; payload: WaActivityInput | ChatActivityInput }[]): Promise<void> {
+  if (!rows.length) return;
+  try {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error: dbErr } = await db().from("wa_crm_sync").insert(
+        rows.slice(i, i + 500).map(r => ({ tenant_id: r.payload.tenantId ?? DEFAULT_TENANT_ID, kind: r.kind, payload: r.payload })),
+      );
+      if (dbErr) throw dbErr;
+    }
+  } catch (err) {
+    console.error(`[leadsquared] could not batch-queue CRM sync (migration 0077 applied?): ${errorMessage(err)}`);
+  }
+}
+
+// Replay due queue rows across ALL tenants (each payload resolves its own
+// tenant's creds; a tenant that disconnected LSQ drains as a clean no-op).
+// Paced (default 100/tick); soft-claims each row (CAS on next_attempt_at, like
+// sequences) so overlapping cron ticks don't double-post. Prunes dead rows
+// older than 14 days.
+export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ replayed: number; deferred: number; dead: number }> {
+  let replayed = 0, deferred = 0, dead = 0;
+  try {
+    const { data, error } = await db().from("wa_crm_sync")
+      .select("*").eq("status", "pending").lte("next_attempt_at", new Date().toISOString())
+      .order("next_attempt_at").limit(limit);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as { id: string; kind: string; payload: unknown; attempts: number; next_attempt_at: string }[]) {
+      if (deadlineAt && Date.now() > deadlineAt) break;
+      // Soft claim — only the tick that still sees the exact next_attempt_at wins.
+      const lease = new Date(Date.now() + 5 * 60_000).toISOString();
+      const claimed = await db().from("wa_crm_sync")
+        .update({ next_attempt_at: lease })
+        .eq("id", row.id).eq("status", "pending").eq("next_attempt_at", row.next_attempt_at)
+        .select("id");
+      if (!claimed.data?.length) continue;
+
+      const raw = row.kind === "chat"
+        ? await tryChatActivity(row.payload as ChatActivityInput)
+        : await tryWaActivity(row.payload as WaActivityInput);
+
+      // A queued row only exists because this tenant's creds once resolved — a
+      // resolve failure at replay time must NOT delete it (it's either a
+      // transient infra blip or a deliberate disconnect; retry, then dead-letter).
+      const r: PushResult = raw.ok && raw.skipped
+        ? { ok: false, retriable: true, error: "LSQ credentials did not resolve (disconnected or transient) — will retry" }
+        : raw;
+
+      if (r.ok) {
+        const del = await db().from("wa_crm_sync").delete().eq("id", row.id);
+        // A failed delete leaves the row leased → it replays in ~5 min → a
+        // duplicate timeline note. Can't do better without idempotency keys on
+        // LSQ's side; log it so duplicates are explainable.
+        if (del.error) console.error(`[leadsquared] CRM sync replayed but delete failed (row ${row.id} will duplicate): ${del.error.message}`);
+        replayed++;
+        continue;
+      }
+      const attempts = (row.attempts ?? 0) + 1;
+      if (attempts >= CRM_SYNC_MAX_ATTEMPTS || !r.retriable) {
+        await db().from("wa_crm_sync").update({ status: "dead", attempts, last_error: r.error.slice(0, 500) }).eq("id", row.id);
+        console.error(`[leadsquared] CRM sync dead-lettered after ${attempts} attempt(s): ${r.error}`);
+        dead++;
+      } else {
+        const mins = CRM_SYNC_BACKOFF_MIN[Math.min(attempts, CRM_SYNC_BACKOFF_MIN.length - 1)];
+        await db().from("wa_crm_sync").update({
+          attempts, last_error: r.error.slice(0, 500),
+          next_attempt_at: new Date(Date.now() + mins * 60_000).toISOString(),
+        }).eq("id", row.id);
+        deferred++;
+      }
+    }
+
+    // Housekeeping: dead rows are kept 14 days for inspection, then pruned.
+    await db().from("wa_crm_sync").delete().eq("status", "dead")
+      .lt("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString());
+  } catch (err) {
+    console.error("[leadsquared] drainCrmSync failed:", errorMessage(err));
+  }
+  return { replayed, deferred, dead };
+}
+
+// Queue health: how much is waiting / dead (optionally for one tenant).
+export async function crmSyncStats(tenantId?: string): Promise<{ pending: number; dead: number }> {
+  try {
+    const base = () => {
+      let q = db().from("wa_crm_sync").select("id", { count: "exact", head: true });
+      if (tenantId) q = q.eq("tenant_id", tenantId);
+      return q;
+    };
+    const [p, d] = await Promise.all([base().eq("status", "pending"), base().eq("status", "dead")]);
+    return { pending: p.count ?? 0, dead: d.count ?? 0 };
+  } catch { return { pending: 0, dead: 0 }; }
 }

@@ -8,6 +8,7 @@ import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
 import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
 import { drainAiFollowups } from "@/lib/followups";
+import { drainCrmSync, crmSyncStats } from "@/lib/leadsquared";
 import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
@@ -126,9 +127,21 @@ export async function POST(req: Request) {
     }
 
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
+    // CRM sync queue — replay LeadSquared pushes that failed retriably (outage,
+    // rate limit, expired key) and pace campaign-blast timeline records. All
+    // tenants; each row resolves its own tenant's credentials.
+    let crmSync = { replayed: 0, deferred: 0, dead: 0, pending: 0, deadTotal: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try {
+        const r = await drainCrmSync(100, startedAt + DEADLINE);
+        const stats = await crmSyncStats();   // backlog visibility — dead rows must not be invisible
+        crmSync = { ...r, pending: stats.pending, deadTotal: stats.dead };
+      } catch (e) { console.error("[cron] crmsync", e); }
+    }
+
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, kbSync });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, kbSync, crmSync });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

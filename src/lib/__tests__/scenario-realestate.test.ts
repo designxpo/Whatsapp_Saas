@@ -64,6 +64,7 @@ const h = vi.hoisted(() => {
     getLeadIdByPhone: vi.fn(),
     updateLeadStage: vi.fn(),
     lsqConfigured: vi.fn(),
+    pushWaActivity: vi.fn(async () => undefined),   // flow sender logs each message to the CRM timeline
   };
   const looksLikeCity = vi.fn();
   const formresponses = { recordFormSent: vi.fn(), recordFormSubmitted: vi.fn(), markFormAbandoned: vi.fn() };

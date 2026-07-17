@@ -176,7 +176,7 @@ vi.mock("@/lib/formresponses", () => ({
   recordFormSubmitted: vi.fn(async () => undefined),
   markFormAbandoned: vi.fn(async () => false),
 }));
-vi.mock("@/lib/leadsquared", () => ({ syncLeadProfile: vi.fn(async () => undefined) }));
+vi.mock("@/lib/leadsquared", () => ({ syncLeadProfile: vi.fn(async () => undefined), pushWaActivity: vi.fn(async () => undefined) }));
 vi.mock("@/lib/llm", () => ({ looksLikeCity: vi.fn(async () => true) }));
 vi.mock("@/lib/commerce", () => ({ getProduct: vi.fn(async () => null) }));
 vi.mock("@/lib/integrations", () => ({
