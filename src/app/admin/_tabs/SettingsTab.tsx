@@ -1441,7 +1441,7 @@ export function WebchatCard() {
                     </div>
                   </div>
                   <span className="shrink-0 w-[60px] h-[60px] rounded-full flex items-center justify-center overflow-hidden" style={{ background: form.iconUrl ? (contain ? badge : "transparent") : brand, boxShadow: "0 6px 20px rgba(15,23,42,.18), 0 0 0 1px rgba(15,23,42,.06)" }}>
-                    {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${scale}%`, height: `${scale}%`, objectFit: "contain" } : { width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : <MessageSquare className="w-6 h-6 text-white" />}
+                    {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${scale}%`, height: `${scale}%`, objectFit: "contain", flexShrink: 0, maxWidth: "none", maxHeight: "none" } : { width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }} /> : <MessageSquare className="w-6 h-6 text-white" />}
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-400 mt-2 text-right">{form.position === "left" ? "bottom-left" : "bottom-right"} · gap {form.offsetBottom || "20"}px &uarr; {form.offsetSide || "20"}px &rarr;</p>
