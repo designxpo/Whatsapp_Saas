@@ -1015,6 +1015,15 @@ export async function messageLogged(metaId: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
+// True when this meta message id was sent by US via the campaign path — those
+// live in wa_send_log, not wa_conv_messages. Used by the coexistence echo
+// handler as defense-in-depth: our own sends must never be re-logged as agent
+// messages (which would also pause the bot).
+export async function sendLogged(metaId: string): Promise<boolean> {
+  const { count } = await db().from("wa_send_log").select("*", { count: "exact", head: true }).eq("meta_message_id", metaId);
+  return (count ?? 0) > 0;
+}
+
 // Atomically claim a webhook event by a unique key. Returns true only for the
 // FIRST caller to see this key; concurrent/duplicate deliveries get false and
 // must skip all side effects (AI reply, sends, orders, enrollment). Degrades to

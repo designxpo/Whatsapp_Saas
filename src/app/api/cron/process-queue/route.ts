@@ -1,7 +1,7 @@
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { cronOk } from "@/lib/apiauth";
-import { getDueScheduledCampaigns, campaignsWithPending, conversationsAwaitingReply, reflagReply, pruneEphemeral } from "@/lib/store";
+import { getDueScheduledCampaigns, campaignsWithPending, conversationsAwaitingReply, reflagReply, pruneEphemeral, setSetting } from "@/lib/store";
 import { fireScheduledCampaign, drainQueue, drainAutoSends } from "@/lib/campaign";
 import { drainRuleSends } from "@/lib/apirules";
 import { drainFlowReminders } from "@/lib/flowengine";
@@ -13,20 +13,21 @@ import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
 
-// Vercel Cron invokes paths with a GET and an "Authorization: Bearer <CRON_SECRET>"
-// header (set automatically from the CRON_SECRET env var) — which cronOk already
-// accepts. So GET just delegates to the same work POST does, letting Vercel Cron
-// (vercel.json, every minute) drive tight flow reminders reliably, while the
-// GitHub Actions */5 pinger stays as a backup. All work is idempotent.
+// SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
+// GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
+// it with GET or POST and a Bearer CRON_SECRET header, which cronOk accepts.
+// GET just delegates to POST. All work is idempotent.
 export async function GET(req: Request) {
   return POST(req);
 }
 
-// POST /api/cron/process-queue — run on a schedule (every minute via Vercel Cron).
+// POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
 // 1) fire due scheduled campaigns, 2) drain pending queues, 3) drain auto-sends.
 export async function POST(req: Request) {
   if (!cronOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const startedAt = Date.now();
+  // Liveness heartbeat — owner health flags "cron stalled" when this goes stale.
+  void setSetting("cron_last_tick", new Date().toISOString()).catch(() => undefined);
   const DEADLINE = 45_000;
 
   try {
@@ -126,7 +127,6 @@ export async function POST(req: Request) {
       try { kbSync = await refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }); } catch (e) { console.error("[cron] kbsync", e); }
     }
 
-    // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     // CRM sync queue — replay LeadSquared pushes that failed retriably (outage,
     // rate limit, expired key) and pace campaign-blast timeline records. All
     // tenants; each row resolves its own tenant's credentials.
@@ -139,6 +139,7 @@ export async function POST(req: Request) {
       } catch (e) { console.error("[cron] crmsync", e); }
     }
 
+    // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
     return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, kbSync, crmSync });

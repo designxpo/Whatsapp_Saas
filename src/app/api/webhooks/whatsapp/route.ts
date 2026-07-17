@@ -6,8 +6,8 @@ export const maxDuration = 180;
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
-  updateLogByMessageId, messageLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
-  getOrCreateConversation, appendConvMessage, touchInbound, claimWelcome,
+  updateLogByMessageId, messageLogged, sendLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
+  getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, claimWelcome, setBotEnabled, setSetting,
   setContactAttributes, addContactTag, markOptedIn, landCapturedLead,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
@@ -83,6 +83,42 @@ function messageText(m: Record<string, unknown>): string {
   return `[${type} message]`;
 }
 
+// Coexistence (WhatsApp Business App on the same number): messages a counselor
+// sends from the PHONE APP arrive as webhook echoes (field smb_message_echoes)
+// — our own Cloud API sends never echo, they only produce statuses. Log the
+// echo into the conversation as an agent message and PAUSE the bot: a human is
+// mid-conversation and the AI must not talk over them (same takeover rule as
+// CRM sends). LSQ timeline gets it too, so counselor phone replies are visible
+// in the CRM like every other message.
+async function handleEcho(value: Record<string, unknown>, e: Record<string, unknown>) {
+  const id = (e.id as string) || "";
+  const to = ((e.to as string) || "").replace(/\D/g, "");
+  if (!id || !to) return;
+  // Our own sends must NEVER be treated as echoes (they'd re-log as agent
+  // messages and pause the bot): conversation-path sends live in
+  // wa_conv_messages, campaign-path sends in wa_send_log — check both.
+  if (await messageLogged(id)) return;
+  if (await sendLogged(id)) return;
+  if (!(await claimWebhookEvent(`waecho:${id}`))) return;    // retry/concurrent dedup
+  const phoneNumberId = ((value.metadata as Record<string, unknown>)?.phone_number_id as string) ?? "";
+  const channel = (await getChannelByPhoneNumberId(phoneNumberId)) ?? undefined;
+  // Shared-WABA guard — same as inbound: never handle numbers we don't own.
+  if (!channel && phoneNumberId && phoneNumberId !== process.env.META_WA_PHONE_NUMBER_ID) return;
+  const tid = channel?.tenantId ?? DEFAULT_TENANT_ID;
+
+  const body = messageText(e).trim() || `[${(e.type as string) ?? "message"}]`;
+  const conv = await getOrCreateConversation(to, "", channel?.id ?? null, "whatsapp", tid);
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body, metaId: id, source: "agent", tenantId: tid, channelId: channel?.id ?? null });
+  await touchOutbound(conv.id, body);
+  if (conv.botEnabled) await setBotEnabled(conv.id, false);  // human takeover from the phone app
+  void pushWaActivity({ phone: to, direction: "outbound", body, via: "agent", tenantId: tid });
+  console.log(JSON.stringify({ tag: "wa_echo", tenant: tid, phone: `…${to.slice(-4)}`, channel: channel?.name ?? "primary" }));
+}
+
+// Liveness heartbeat: stamp "an inbound reached us" at most every 2 minutes so
+// health surfaces can show webhook freshness without a write per message.
+let lastInboundBeat = 0;
+
 // Handles one inbound message: dedup, opt-out, persist, trigger AI reply.
 async function handleInbound(value: Record<string, unknown>, m: Record<string, unknown>) {
   const id = m.id as string;
@@ -108,6 +144,12 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   if (!channel && phoneNumberId && phoneNumberId !== process.env.META_WA_PHONE_NUMBER_ID) {
     console.log(JSON.stringify({ tag: "webhook_skip_foreign_number", phoneNumberId }));
     return;
+  }
+  // Liveness heartbeat — AFTER the foreign-number guard, so traffic to numbers
+  // we don't own can't keep the "inbound webhooks" freshness light green.
+  if (Date.now() - lastInboundBeat > 120_000) {
+    lastInboundBeat = Date.now();
+    void setSetting("webhook_last_inbound", new Date().toISOString()).catch(() => undefined);
   }
 
   let text = messageText(m).trim();
@@ -411,6 +453,19 @@ export async function POST(req: Request) {
         for (const m of (value.messages as Record<string, unknown>[]) ?? []) {
           try { await handleInbound(value, m); }
           catch (e) { console.error("[webhook] inbound", e); }
+        }
+
+        // Coexistence echoes — counselor replies sent from the WhatsApp
+        // Business App on this number. STRICTLY gated on the smb_message_echoes
+        // subscription field: Meta's plain message_echoes field also echoes
+        // Cloud API sends, which would re-log every broadcast as an agent
+        // message and pause the bot fleet-wide. (Inside the smb field the
+        // array itself is named message_echoes.)
+        if ((change.field as string) === "smb_message_echoes") {
+          for (const e of ((value.message_echoes ?? value.smb_message_echoes) as Record<string, unknown>[]) ?? []) {
+            try { await handleEcho(value, e); }
+            catch (err) { console.error("[webhook] echo", err); }
+          }
         }
       }
     }
