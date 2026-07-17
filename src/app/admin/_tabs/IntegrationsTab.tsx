@@ -205,6 +205,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         ))}
       </div>}
 
+      {/* LSQ → portal inbound webhook: only meaningful once LSQ is connected */}
+      {!!items?.some(i => i.kind === "leadsquared") && <LsqInboundCard />}
+
       {/* Add an integration — browse the logo catalog, then set up the chosen one */}
       {adding ? (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -302,5 +305,53 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   );
 }
 
+// ── LSQ → portal inbound webhook (Phase 4: lead-arrived / owner-assigned) ─────
+// Shows the URL + secret to paste into LeadSquared Automations (Lead Created /
+// Owner Changed / Stage Changed → Webhook action). The portal then keeps the
+// contact in sync and auto-assigns the lead's conversation to the counselor
+// whose email matches the LSQ owner.
+function LsqInboundCard() {
+  const [cfg, setCfg] = useState<{ url: string; secret: string; header: string } | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { fetch("/api/admin/lsq-webhook").then(r => r.json()).then(d => { if (d.url) setCfg(d); }).catch(() => {}); }, []);
+
+  const copy = async (text: string, key: string) => {
+    try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(k => (k === key ? null : k)), 1500); } catch { /* blocked */ }
+  };
+  async function rotate() {
+    if (!confirm("Rotate the inbound secret? Every LSQ automation using the old one starts failing (401) until updated.")) return;
+    setBusy(true);
+    try {
+      const d = await fetch("/api/admin/lsq-webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rotate: true }) }).then(r => r.json());
+      if (d.url) setCfg(d);
+    } finally { setBusy(false); }
+  }
+
+  if (!cfg) return null;
+  const samplePayload = `{"event":"owner_changed","Phone":"@{Lead:Phone,}","FirstName":"@{Lead:FirstName,}","EmailAddress":"@{Lead:EmailAddress,}","OwnerEmail":"@{Lead:OwnerIdEmailAddress,}","OwnerName":"@{Lead:OwnerIdName,}","ProspectStage":"@{Lead:ProspectStage,}","ProspectID":"@{Lead:ProspectID,}","Source":"@{Lead:Source,}"}`;
+  return (
+    <section className="bg-white rounded-card border border-line p-4 space-y-2.5">
+      <div>
+        <p className="text-xs font-bold text-slate-400 uppercase">LeadSquared → portal (inbound webhook)</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">In LSQ, create Automations (Lead Created / Owner Changed / Stage Changed) with a <b>Webhook</b> action posting to this URL. The portal syncs the contact (stage, owner, source as attributes) and auto-assigns the lead&apos;s chat to the team member whose email matches the LSQ owner.</p>
+      </div>
+      {[{ k: "url", label: "POST URL", v: cfg.url }, { k: "secret", label: `Secret (header ${cfg.header} or ?secret=)`, v: cfg.secret }, { k: "body", label: "Webhook body (mail-merge JSON — change event per automation)", v: samplePayload }].map(row => (
+        <div key={row.k} className="space-y-1">
+          <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">{row.label}</p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={row.v}>{row.v}</code>
+            <button onClick={() => copy(row.v, row.k)} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied === row.k ? "✓" : <Copy className="w-3.5 h-3.5" />}</button>
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[11px] text-ink-400">Set <code className="font-mono">event</code> to <code className="font-mono">lead_created</code> / <code className="font-mono">owner_changed</code> / <code className="font-mono">stage_changed</code> per automation. Owner emails must match your team members&apos; login emails.</p>
+        <button onClick={rotate} disabled={busy} className="px-2.5 py-1 rounded-control border border-line text-[10px] font-bold text-ink-500 hover:bg-canvas shrink-0 disabled:opacity-60">{busy ? "…" : "Rotate secret"}</button>
+      </div>
+    </section>
+  );
+}
 
 export default IntegrationsTab;

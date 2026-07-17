@@ -328,6 +328,18 @@ export async function getContactByPhone(phone: string, tenantId = DEFAULT_TENANT
   return data ? mapContact(data as Record<string, unknown>) : null;
 }
 
+// Loose phone lookup: matches country-code variants of the SAME person (a lead
+// stored as WhatsApp's 919876543210 found from an LSQ webhook's 9876543210 and
+// vice versa). Exact match wins; else the suffix-related candidate with the
+// longest (country-coded) number. Input is digits-only ≥10 (else null).
+export async function getContactByPhoneLoose(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Contact | null> {
+  const p = digits(phone);
+  if (p.length < 10) return null;
+  const { data } = await db().from("contacts").select("*").eq("tenant_id", tenantId).like("phone", `%${p.slice(-10)}`).limit(20);
+  const rows = ((data ?? []) as Record<string, unknown>[]).map(mapContact).filter(c => samePerson(c.phone, p));
+  return rows.find(c => c.phone === p) ?? rows.sort((a, b) => b.phone.length - a.phone.length)[0] ?? null;
+}
+
 export async function countContacts(tenantId = DEFAULT_TENANT_ID): Promise<number> {
   const { count } = await db().from("contacts").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "active");
   return count ?? 0;
