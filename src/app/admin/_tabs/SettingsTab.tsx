@@ -281,12 +281,12 @@ function ChannelsManager() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="min-w-[240px]">
           <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect multiple numbers/WABAs — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
             <div className="flex items-center gap-1.5">
               <button onClick={() => connectWithMeta("new")} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
