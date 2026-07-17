@@ -528,9 +528,14 @@ export function looksConversational(text: string): boolean {
 // conversational reply means the person is talking about something else
 // entirely (an unrelated inquiry, a refusal, small talk) — not answering
 // "what's your name?" — and must not be stored as if it were one.
-function looksLikeName(text: string): boolean {
+export function looksLikeName(text: string): boolean {
   const t = (text || "").trim();
-  return t.length > 0 && t.length <= 60 && !looksConversational(t);
+  if (!t || t.length > 60 || looksConversational(t)) return false;
+  if (t.split(/\s+/).length > 5) return false;   // names are short
+  if (/\d{3,}/.test(t)) return false;            // digit runs are phones/ids
+  // Inquiry vocabulary is a message, not a name — "Want to know about courses"
+  // was stored as a lead's name (web-chat, 2026-07-17).
+  return !/\b(want|know|about|courses?|info|information|details?|price|fees?|interested|enquiry|inquiry|query|admission|programs?|classes|demo|brochure|callback|help)\b/i.test(t);
 }
 
 // ── WhatsApp-form fallback for chat-only channels ─────────────────────────────

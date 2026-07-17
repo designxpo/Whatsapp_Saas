@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 // importing the module never tries to construct a client.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure routing tests"); } }));
 
-import { nextNode, matchOption, optionLabel, looksConversational, validateInput, retryHint, type FlowGraph, type FlowNode } from "@/lib/flowengine";
+import { nextNode, matchOption, optionLabel, looksConversational, looksLikeName, validateInput, retryHint, type FlowGraph, type FlowNode } from "@/lib/flowengine";
 
 // Node factory — `position` is required by the builder type but irrelevant here.
 const n = (id: string, type: string, data: Record<string, unknown> = {}): FlowNode => ({ id, type, position: { x: 0, y: 0 }, data });
@@ -121,5 +121,19 @@ describe("validateInput — phone must be landable, not merely plausible", () =>
     expect(retryHint("phone")).toMatch(/country code/);
     expect(retryHint("email")).toMatch(/email address/);
     expect(retryHint("number")).toMatch(/valid answer/);
+  });
+});
+
+describe("looksLikeName — inquiries are not names", () => {
+  it("rejects inquiry sentences, conversational openers, digit runs", () => {
+    expect(looksLikeName("Want to know about courses")).toBe(false);  // stored as a lead name once
+    expect(looksLikeName("tell me about courses")).toBe(false);
+    expect(looksLikeName("9876543210")).toBe(false);
+    expect(looksLikeName("need fee details")).toBe(false);
+  });
+  it("accepts real names", () => {
+    expect(looksLikeName("Priyesh")).toBe(true);
+    expect(looksLikeName("Priyesh Mishra")).toBe(true);
+    expect(looksLikeName("A P J Abdul Kalam")).toBe(true);
   });
 });

@@ -91,16 +91,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, messages: flowOut, reply: flowOut[0]?.body, at }, { headers: cors });
   }
 
-  // Tenant-wide AI switch (Settings → AI auto-replies) — flows above still
-  // answered; with the AI off, agents reply from the Live Chat inbox.
-  if (!(await isAiEnabled(tid))) return NextResponse.json({ ok: true }, { headers: cors });
-
   const closeOut = async () => {
     const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: CLOSING_MSG, source: "bot", tenantId: tid, channelId: channel.id });
     await touchOutbound(conv.id, CLOSING_MSG);
     await escalateConversation(conv.id);
     return NextResponse.json({ ok: true, reply: CLOSING_MSG, messages: [{ id: saved?.id, at: saved?.createdAt, body: CLOSING_MSG, from: "bot" }], escalated: true, id: saved?.id, at: saved?.createdAt }, { headers: cors });
   };
+  // Tenant-wide AI switch (Settings → AI auto-replies): flows above still answered,
+  // but with the AI off the visitor must never get DEAD AIR — a web-chat form
+  // that bails out to "the AI" would otherwise end in silence (seen live,
+  // 2026-07-17). Hand off to the team ONCE (closing line + escalated banner);
+  // later messages stay quiet (agents reply from Live Chat; the widget polls).
+  if (!(await isAiEnabled(tid))) {
+    return conv.status === "escalated" ? NextResponse.json({ ok: true }, { headers: cors }) : closeOut();
+  }
   // No reply cap on web-chat DMs: like the IG/Messenger DM paths (which only cap
   // public comment loops), a website chat is a real support/sales thread that
   // legitimately runs many turns — capping it muted the bot to a canned line
