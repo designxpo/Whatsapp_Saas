@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 // importing the module never tries to construct a client.
 vi.mock("@/lib/supabase", () => ({ db: () => { throw new Error("db() should not be called in pure routing tests"); } }));
 
-import { nextNode, matchOption, optionLabel, looksConversational, type FlowGraph, type FlowNode } from "@/lib/flowengine";
+import { nextNode, matchOption, optionLabel, looksConversational, validateInput, type FlowGraph, type FlowNode } from "@/lib/flowengine";
 
 // Node factory — `position` is required by the builder type but irrelevant here.
 const n = (id: string, type: string, data: Record<string, unknown> = {}): FlowNode => ({ id, type, position: { x: 0, y: 0 }, data });
@@ -96,5 +96,25 @@ describe("optionLabel (option id → human label)", () => {
   });
   it("returns empty string for an unknown id", () => {
     expect(optionLabel(buttonsNode, "missing")).toBe("");
+  });
+});
+
+describe("validateInput — phone must be landable, not merely plausible", () => {
+  // The ask-time gate has to match the CRM-landing gate (10–15 digits): an
+  // accepted-but-unlandable number thanks the visitor and silently drops the
+  // lead (the 8-digit web-chat tester case, 2026-07-17).
+  it("rejects short numbers so the bot re-asks instead of dropping the lead", async () => {
+    expect(await validateInput("phone", "72827916")).toBe(false);          // 8 digits — the reported bug
+    expect(await validateInput("phone", "+91 728-279")).toBe(false);       // 9 digits with formatting
+    expect(await validateInput("phone", "12345678901234567")).toBe(false); // 17 digits — beyond E.164
+  });
+  it("accepts real 10-15 digit numbers, with or without formatting", async () => {
+    expect(await validateInput("phone", "8368872108")).toBe(true);
+    expect(await validateInput("phone", "+91 83688 72108")).toBe(true);
+    expect(await validateInput("phone", "918368872108")).toBe(true);
+  });
+  it("email stays strict alongside", async () => {
+    expect(await validateInput("email", "tanvvitest82828@mail.com")).toBe(true);
+    expect(await validateInput("email", "not-an-email")).toBe(false);
   });
 });

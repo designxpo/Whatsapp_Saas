@@ -491,7 +491,11 @@ export async function validateInput(type: string, text: string, tenantId?: strin
   if (!t) return false;
   switch (type) {
     case "email": return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
-    case "phone": return t.replace(/\D/g, "").length >= 7;
+    // 10–15 digits — MUST match the CRM-landing gates (landIdentity /
+    // landCapturedLead / setConversationLeadPhone all require 10..15). A looser
+    // check here accepted 8-digit numbers, thanked the visitor, then silently
+    // dropped the lead: no contact, no LSQ push (web-chat tester, 2026-07-17).
+    case "phone": { const d = t.replace(/\D/g, "").length; return d >= 10 && d <= 15; }
     case "number": return /^[\d\s,.\-+]+$/.test(t) && /\d/.test(t);
     case "city": return await looksLikeCity(t, tenantId);
     default: return true;
