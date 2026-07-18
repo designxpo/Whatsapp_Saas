@@ -9,6 +9,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // (action.type = 'template'); session text/media only land inside the window.
 
 import { db } from "./supabase";
+import { tdb } from "./tenantdb";
 import { getChannel } from "./channels";
 import { sendText, sendTemplateSingle, sendMedia } from "./whatsapp";
 import { sendIgMessage, within24hWindow } from "./instagram";
@@ -45,11 +46,13 @@ function mapSeq(r: Record<string, unknown>): Sequence {
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 export async function listSequences(tenantId = DEFAULT_TENANT_ID): Promise<Sequence[]> {
-  const { data } = await db().from("wa_sequences").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
-  return (data ?? []).map(r => mapSeq(r as Record<string, unknown>));
+  const { data } = await tdb(tenantId).from("wa_sequences").select("*").order("created_at", { ascending: false });
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(r => mapSeq(r));
 }
 
 // tenantId optional: cron resolves by id (carries tenant on the row); admin scopes.
+// Stays on raw db() — tdb() can't express the conditional tenant filter and would
+// throw on the cron path where tenantId is undefined.
 export async function getSequence(id: string, tenantId?: string): Promise<Sequence | null> {
   let q = db().from("wa_sequences").select("*").eq("id", id);
   if (tenantId) q = q.eq("tenant_id", tenantId);
@@ -58,8 +61,8 @@ export async function getSequence(id: string, tenantId?: string): Promise<Sequen
 }
 
 export async function createSequence(p: { name: string; channelId?: string | null; platform?: "whatsapp" | "instagram"; triggerKind?: SequenceTriggerKind; triggerValue?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<Sequence> {
-  const { data, error } = await db().from("wa_sequences").insert({
-    tenant_id: tenantId, name: p.name.trim(), channel_id: p.channelId ?? null, platform: p.platform ?? "whatsapp",
+  const { data, error } = await tdb(tenantId).from("wa_sequences").insert({
+    name: p.name.trim(), channel_id: p.channelId ?? null, platform: p.platform ?? "whatsapp",
     trigger_kind: p.triggerKind ?? "manual", trigger_value: p.triggerValue ?? null,
   }).select().single();
   if (error) throw error;
@@ -74,21 +77,21 @@ export async function updateSequence(id: string, p: Partial<{ name: string; chan
   if (p.triggerKind !== undefined) row.trigger_kind = p.triggerKind;
   if (p.triggerValue !== undefined) row.trigger_value = p.triggerValue;
   if (p.active !== undefined) row.active = p.active;
-  if (Object.keys(row).length) { const { error } = await db().from("wa_sequences").update(row).eq("tenant_id", tenantId).eq("id", id); if (error) throw error; }
+  if (Object.keys(row).length) { const { error } = await tdb(tenantId).from("wa_sequences").update(row).eq("id", id); if (error) throw error; }
 }
 
 export async function deleteSequence(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  await db().from("wa_sequences").delete().eq("tenant_id", tenantId).eq("id", id);   // steps + enrollments cascade
+  await tdb(tenantId).from("wa_sequences").delete().eq("id", id);   // steps + enrollments cascade
 }
 
 export async function setSequenceSteps(sequenceId: string, steps: { delayMinutes: number; action: SequenceStepAction }[], tenantId = DEFAULT_TENANT_ID): Promise<void> {
   // Delete is tenant-scoped as well as sequence-scoped: the caller already
   // validated sequenceId belongs to tenantId, but scoping the delete too means a
   // mismatched pair can never clear another tenant's steps.
-  await db().from("wa_sequence_steps").delete().eq("tenant_id", tenantId).eq("sequence_id", sequenceId);
+  await tdb(tenantId).from("wa_sequence_steps").delete().eq("sequence_id", sequenceId);
   if (!steps.length) return;
-  const rows = steps.map((s, i) => ({ tenant_id: tenantId, sequence_id: sequenceId, step_index: i, delay_minutes: Math.max(0, Math.round(s.delayMinutes)), action: s.action }));
-  const { error } = await db().from("wa_sequence_steps").insert(rows);
+  const rows = steps.map((s, i) => ({ sequence_id: sequenceId, step_index: i, delay_minutes: Math.max(0, Math.round(s.delayMinutes)), action: s.action }));
+  const { error } = await tdb(tenantId).from("wa_sequence_steps").insert(rows);
   if (error) throw error;
 }
 
@@ -107,10 +110,10 @@ export async function getSequenceSteps(sequenceId: string, tenantId?: string): P
 
 // Resolve the active sequence bound to an event (keyword/story_reply/etc).
 export async function getSequenceByTrigger(kind: SequenceTriggerKind, value?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<Sequence | null> {
-  let q = db().from("wa_sequences").select("*").eq("tenant_id", tenantId).eq("trigger_kind", kind).eq("active", true);
+  let q = tdb(tenantId).from("wa_sequences").select("*").eq("trigger_kind", kind).eq("active", true);
   if (value) q = q.eq("trigger_value", value);
   const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
-  return data ? mapSeq(data as Record<string, unknown>) : null;
+  return data ? mapSeq(data as unknown as Record<string, unknown>) : null;
 }
 
 // Match an active keyword-triggered sequence to inbound text (case-insensitive,
@@ -119,11 +122,12 @@ export async function getSequenceByTrigger(kind: SequenceTriggerKind, value?: st
 export async function matchKeywordSequence(platform: "whatsapp" | "instagram", text: string, tenantId = DEFAULT_TENANT_ID): Promise<Sequence | null> {
   const v = (text ?? "").trim().toLowerCase();
   if (!v) return null;
-  const { data } = await db().from("wa_sequences").select("*")
-    .eq("tenant_id", tenantId).eq("trigger_kind", "keyword").eq("active", true).eq("platform", platform)
+  const { data } = await tdb(tenantId).from("wa_sequences").select("*")
+    .eq("trigger_kind", "keyword").eq("active", true).eq("platform", platform)
     .order("created_at", { ascending: false });
-  const row = (data ?? []).find(r => ((r.trigger_value as string) ?? "").trim().toLowerCase() === v);
-  return row ? mapSeq(row as Record<string, unknown>) : null;
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+  const row = rows.find(r => ((r.trigger_value as string) ?? "").trim().toLowerCase() === v);
+  return row ? mapSeq(row) : null;
 }
 
 // ── Enrollment ──────────────────────────────────────────────────────────────
@@ -132,8 +136,8 @@ export async function enroll(sequenceId: string, p: { phone: string; platform?: 
   if (!steps.length) return;
   const firstDelayMs = Math.max(0, steps[0].delayMinutes) * 60_000;
   const nextRun = new Date(Date.now() + firstDelayMs).toISOString();
-  await db().from("wa_sequence_enrollments").upsert({
-    tenant_id: tenantId, sequence_id: sequenceId, phone: p.phone, platform: p.platform ?? "whatsapp",
+  await tdb(tenantId).from("wa_sequence_enrollments").upsert({
+    sequence_id: sequenceId, phone: p.phone, platform: p.platform ?? "whatsapp",
     conversation_id: p.conversationId ?? null, current_step: 0, status: "active",
     next_run_at: nextRun, updated_at: new Date().toISOString(),
   }, { onConflict: "sequence_id,phone" });
@@ -149,7 +153,7 @@ export async function stopEnrollment(sequenceId: string, phone: string): Promise
 // they don't collide (the drip drives until it completes/stops, then AI resumes).
 export async function hasActiveEnrollment(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   if (!phone) return false;
-  const { data } = await db().from("wa_sequence_enrollments").select("id").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "active").limit(1);
+  const { data } = await tdb(tenantId).from("wa_sequence_enrollments").select("id").eq("phone", phone).eq("status", "active").limit(1);
   return (data?.length ?? 0) > 0;
 }
 
@@ -159,9 +163,10 @@ export async function hasActiveEnrollment(phone: string, tenantId = DEFAULT_TENA
 // (keyword/cart/etc.) should own the thread and suppress the AI.
 export async function hasActiveDripEnrollment(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
   if (!phone) return false;
-  const { data } = await db().from("wa_sequence_enrollments").select("sequence_id").eq("tenant_id", tenantId).eq("phone", phone).eq("status", "active");
-  const ids = [...new Set((data ?? []).map(r => (r as Record<string, unknown>).sequence_id as string))];
+  const { data } = await tdb(tenantId).from("wa_sequence_enrollments").select("sequence_id").eq("phone", phone).eq("status", "active");
+  const ids = [...new Set(((data ?? []) as unknown as Record<string, unknown>[]).map(r => r.sequence_id as string))];
   if (!ids.length) return false;
+  // by-id lookup within ids already scoped to this tenant above; stays raw db().
   const { data: seqs } = await db().from("wa_sequences").select("id").in("id", ids).neq("trigger_kind", "inactivity");
   return (seqs?.length ?? 0) > 0;
 }
@@ -174,13 +179,13 @@ export interface EnrollmentRow {
   updatedAt: string | null; createdAt: string | null;
 }
 export async function listRecentEnrollments(limit = 100, tenantId = DEFAULT_TENANT_ID): Promise<EnrollmentRow[]> {
-  const { data } = await db().from("wa_sequence_enrollments").select("*").eq("tenant_id", tenantId).order("updated_at", { ascending: false }).limit(limit);
-  const rows = (data ?? []) as Record<string, unknown>[];
+  const { data } = await tdb(tenantId).from("wa_sequence_enrollments").select("*").order("updated_at", { ascending: false }).limit(limit);
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
   const ids = [...new Set(rows.map(r => r.sequence_id as string))];
   const names = new Map<string, string>();
   if (ids.length) {
-    const { data: sd } = await db().from("wa_sequences").select("id,name").eq("tenant_id", tenantId).in("id", ids);
-    for (const s of (sd ?? []) as Record<string, unknown>[]) names.set(s.id as string, s.name as string);
+    const { data: sd } = await tdb(tenantId).from("wa_sequences").select("id,name").in("id", ids);
+    for (const s of (sd ?? []) as unknown as Record<string, unknown>[]) names.set(s.id as string, s.name as string);
   }
   return rows.map(r => ({
     id: r.id as string, sequenceId: r.sequence_id as string, sequenceName: names.get(r.sequence_id as string) ?? "—",

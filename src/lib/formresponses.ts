@@ -1,8 +1,9 @@
 // WhatsApp form lifecycle tracking — sent → submitted / abandoned (multi-tenant).
-// db() uses the service role, so EVERY read filters tenant_id and EVERY write
-// stamps it — app-layer scoping is the real guard.
+// Every read/write goes through tdb(tenantId), which auto-scopes reads and stamps
+// writes with tenant_id — app-layer scoping is the real guard (the service-role
+// client bypasses RLS).
 
-import { db } from "./supabase";
+import { tdb } from "./tenantdb";
 
 export type FormStatus = "sent" | "submitted" | "abandoned";
 export interface FormResponse {
@@ -32,29 +33,29 @@ function mapResp(r: Record<string, unknown>): FormResponse {
 }
 
 export async function recordFormSent(conversationId: string, phone: string, formId: string | null, tenantId: string): Promise<void> {
-  await db().from("wa_form_responses").update({ status: "abandoned" }).eq("tenant_id", tenantId).eq("conversation_id", conversationId).eq("status", "sent").then(() => {}, () => {});
-  await db().from("wa_form_responses").insert({ tenant_id: tenantId, conversation_id: conversationId, phone, form_id: formId || null }).then(() => {}, () => {});
+  await tdb(tenantId).from("wa_form_responses").update({ status: "abandoned" }).eq("conversation_id", conversationId).eq("status", "sent").then(() => {}, () => {});
+  await tdb(tenantId).from("wa_form_responses").insert({ conversation_id: conversationId, phone, form_id: formId || null }).then(() => {}, () => {});
 }
 
 export async function recordFormSubmitted(conversationId: string, phone: string, data: Record<string, string>, tenantId: string): Promise<void> {
   const now = new Date().toISOString();
-  const { data: rows } = await db().from("wa_form_responses").select("id")
-    .eq("tenant_id", tenantId).eq("conversation_id", conversationId).eq("status", "sent").order("sent_at", { ascending: false }).limit(1);
+  const { data: rows } = await tdb(tenantId).from("wa_form_responses").select("id")
+    .eq("conversation_id", conversationId).eq("status", "sent").order("sent_at", { ascending: false }).limit(1);
   if (rows && rows.length) {
-    await db().from("wa_form_responses").update({ status: "submitted", data, submitted_at: now }).eq("id", (rows[0] as Record<string, unknown>).id as string).then(() => {}, () => {});
+    await tdb(tenantId).from("wa_form_responses").update({ status: "submitted", data, submitted_at: now }).eq("id", (rows[0] as unknown as Record<string, unknown>).id as string).then(() => {}, () => {});
   } else {
-    await db().from("wa_form_responses").insert({ tenant_id: tenantId, conversation_id: conversationId, phone, status: "submitted", data, submitted_at: now }).then(() => {}, () => {});
+    await tdb(tenantId).from("wa_form_responses").insert({ conversation_id: conversationId, phone, status: "submitted", data, submitted_at: now }).then(() => {}, () => {});
   }
 }
 
 export async function markFormAbandoned(conversationId: string, tenantId: string): Promise<boolean> {
-  const { data: rows } = await db().from("wa_form_responses").select("id").eq("tenant_id", tenantId).eq("conversation_id", conversationId).eq("status", "sent").limit(1);
+  const { data: rows } = await tdb(tenantId).from("wa_form_responses").select("id").eq("conversation_id", conversationId).eq("status", "sent").limit(1);
   if (!rows || !rows.length) return false;
-  await db().from("wa_form_responses").update({ status: "abandoned" }).eq("tenant_id", tenantId).eq("conversation_id", conversationId).eq("status", "sent").then(() => {}, () => {});
+  await tdb(tenantId).from("wa_form_responses").update({ status: "abandoned" }).eq("conversation_id", conversationId).eq("status", "sent").then(() => {}, () => {});
   return true;
 }
 
 export async function listFormResponses(tenantId: string, limit = 100): Promise<FormResponse[]> {
-  const { data } = await db().from("wa_form_responses").select("*").eq("tenant_id", tenantId).order("sent_at", { ascending: false }).limit(Math.min(500, limit));
-  return (data ?? []).map(r => mapResp(r as Record<string, unknown>));
+  const { data } = await tdb(tenantId).from("wa_form_responses").select("*").order("sent_at", { ascending: false }).limit(Math.min(500, limit));
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(r => mapResp(r));
 }

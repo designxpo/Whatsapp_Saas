@@ -13,6 +13,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //             hours | tag | webhook | product | agent | handoff | end
 
 import { db } from "./supabase";
+import { tdb } from "./tenantdb";
 import {
   sendText, sendButtons, sendList, sendMedia, sendProduct, sendProductList, sendCtaUrl, sendCarouselTemplate, sendTemplateSingle, fetchTemplates,
 } from "./whatsapp";
@@ -109,8 +110,8 @@ function mapFlow(r: Record<string, unknown>): Flow {
 }
 
 export async function listFlows(tenantId = DEFAULT_TENANT_ID): Promise<Flow[]> {
-  const { data } = await db().from("wa_flows").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
-  return (data ?? []).map(r => mapFlow(r as Record<string, unknown>));
+  const { data } = await tdb(tenantId).from("wa_flows").select("*").order("created_at", { ascending: false });
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map(r => mapFlow(r));
 }
 
 // tenantId optional: bot path resolves a flow by id under the channel's tenant;
@@ -127,7 +128,7 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
     nodes: [{ id: "start", type: "start", position: { x: 60, y: 200 }, data: {} }],
     edges: [],
   };
-  const { data, error } = await db().from("wa_flows").insert({ tenant_id: tenantId, name, graph: starter }).select().single();
+  const { data, error } = await tdb(tenantId).from("wa_flows").insert({ name, graph: starter }).select().single();
   if (error) throw error;
   return mapFlow(data as Record<string, unknown>);
 }
@@ -149,7 +150,7 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   }
   if (p.primaryKbTag !== undefined) patch.primary_kb_tag = p.primaryKbTag || null;
   if (p.graph !== undefined) patch.graph = p.graph;
-  let { error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id);
+  let { error } = await tdb(tenantId).from("wa_flows").update(patch).eq("id", id);
   // channel_ids is the newest optional column (0072). If it's missing, retry
   // WITHOUT it but KEEP the legacy channel_id (which predates 0072 and still
   // carries single-channel scope) plus platform/primary_kb_tag — so scoping a
@@ -158,7 +159,7 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   if (error && "channel_ids" in patch) {
     const triedMultiChannel = Array.isArray(patch.channel_ids) && patch.channel_ids.length > 1;
     delete patch.channel_ids;
-    ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
+    ({ error } = await tdb(tenantId).from("wa_flows").update(patch).eq("id", id));
     if (!error && triedMultiChannel) throw new Error("Running a flow on multiple specific numbers needs migration 0072_flow_channels.sql applied, then save again.");
   }
   // Older optional columns missing (much older DB) — save the rest, but never
@@ -167,14 +168,14 @@ export async function updateFlow(id: string, p: Partial<{ name: string; active: 
   if (error && ("channel_id" in patch || "platform" in patch || "primary_kb_tag" in patch)) {
     const triedPlatform = typeof patch.platform === "string" && patch.platform !== "whatsapp";
     delete patch.channel_id; delete patch.platform; delete patch.primary_kb_tag;
-    ({ error } = await db().from("wa_flows").update(patch).eq("tenant_id", tenantId).eq("id", id));
+    ({ error } = await tdb(tenantId).from("wa_flows").update(patch).eq("id", id));
     if (!error && triedPlatform) throw new Error("This flow's platform setting needs the wa_flows.platform migrations applied (0023 + 0046 + 0062 + 0064 + 0065_flow_platform_multi.sql), then save again.");
   }
   if (error) throw error;
 }
 
 export async function deleteFlow(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  const { error } = await db().from("wa_flows").delete().eq("tenant_id", tenantId).eq("id", id);
+  const { error } = await tdb(tenantId).from("wa_flows").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -198,8 +199,8 @@ async function getSession(convKey: string, tenantId?: string): Promise<Session |
 }
 
 async function saveSession(convKey: string, flowId: string, nodeId: string, state: Record<string, unknown>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  await db().from("wa_flow_sessions").upsert(
-    { tenant_id: tenantId, conversation_id: convKey, flow_id: flowId, current_node: nodeId, state, updated_at: new Date().toISOString() },
+  await tdb(tenantId).from("wa_flow_sessions").upsert(
+    { conversation_id: convKey, flow_id: flowId, current_node: nodeId, state, updated_at: new Date().toISOString() },
     { onConflict: "conversation_id" },
   );
 }
