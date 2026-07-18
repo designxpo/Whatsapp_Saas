@@ -21,7 +21,11 @@ export async function POST(req: Request) {
     const plan = await getPlan(body.planKey.trim());
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
     if (!plan.stripePriceId) return NextResponse.json({ error: `"${plan.name}" isn't purchasable yet — no Stripe price configured.` }, { status: 400 });
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    // Stripe returns the user to `${baseUrl}/admin/billing`, a PORTAL path — so
+    // this must be the app host, NOT the marketing NEXT_PUBLIC_SITE_URL (which
+    // would 404 under the host split). Prefer NEXT_PUBLIC_APP_URL; fall back to
+    // the request origin (already the app host, since this API is called there).
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
     const url = await createCheckoutSession(tenant, plan, baseUrl);
     await ownerAudit((await currentUser())?.email ?? "tenant", "billing.checkout", tid, plan.key);
     return NextResponse.json({ url });

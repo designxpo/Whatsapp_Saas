@@ -15,7 +15,10 @@ export async function POST(req: Request) {
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     if (!tenant.stripeCustomerId) return NextResponse.json({ error: "No subscription yet — choose a plan first." }, { status: 400 });
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
+    // Stripe returns to `${baseUrl}/admin/billing`, a PORTAL path — use the app
+    // host (NEXT_PUBLIC_APP_URL), not the marketing NEXT_PUBLIC_SITE_URL which
+    // would 404 under the host split. Falls back to the request origin.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
     const url = await createBillingPortalSession(tenant, `${baseUrl}/admin/billing`);
     return NextResponse.json({ url });
   } catch (err) {

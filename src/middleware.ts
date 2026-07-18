@@ -3,6 +3,35 @@ import { jwtVerify } from "jose";
 
 const COOKIE = "wa_admin_session";
 
+// ── Host split: marketing site vs app portal on one deployment ───────────────
+// Both hosts point at this single Vercel project. Set these to the bare
+// hostnames (no scheme) to turn the split on:
+//   NEXT_PUBLIC_APP_HOST=app.example.com     ← signup / login / portal live here
+//   NEXT_PUBLIC_MARKETING_HOST=example.com   ← the public marketing site lives here
+// When either is unset, or the request host is neither (localhost, *.vercel.app
+// preview URLs), the split is a NO-OP and every route is served on the one host.
+const APP_HOST = process.env.NEXT_PUBLIC_APP_HOST;
+const MARKETING_HOST = process.env.NEXT_PUBLIC_MARKETING_HOST;
+
+// Portal PAGE paths — served ONLY on the app host.
+function isPortalPage(pathname: string): boolean {
+  return pathname === "/login"
+    || pathname === "/signup"
+    || pathname.startsWith("/admin")
+    || pathname.startsWith("/support")
+    || pathname.startsWith("/crm");
+}
+
+// Machine/public paths that must resolve on BOTH hosts, never host-blocked:
+// all APIs (Meta webhooks, the embeddable web-chat widget, the bearer-token
+// public API, cron) and the public short-links printed on QR codes / campaign
+// messages (/g, /r). Their own auth/CSRF gates below still apply.
+function isSharedPath(pathname: string): boolean {
+  return pathname.startsWith("/api")
+    || pathname.startsWith("/g/")
+    || pathname.startsWith("/r/");
+}
+
 async function valid(token: string | undefined): Promise<boolean> {
   if (!token) return false;
   // Mirror auth.ts: HS256 needs a ≥32-byte key. A missing/short secret can't be
@@ -51,6 +80,29 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(COOKIE)?.value;
   const ok = await valid(token);
 
+  // ── Host split (runs before auth). Only when both hosts are configured AND the
+  // request is actually on one of them — otherwise a no-op so localhost/preview
+  // keep serving everything on a single host. Shared machine/public paths are
+  // exempt so webhooks, the widget and QR/campaign short-links work on both. ──
+  const host = req.headers.get("host") ?? req.nextUrl.host;
+  const splitOn = !!APP_HOST && !!MARKETING_HOST
+    && (host === APP_HOST || host === MARKETING_HOST || host === `www.${MARKETING_HOST}`);
+  if (splitOn && !isSharedPath(pathname)) {
+    if (host === APP_HOST) {
+      // App host front door → into the portal (dashboard if signed in, else login).
+      if (pathname === "/") {
+        const url = req.nextUrl.clone();
+        url.pathname = ok ? "/admin" : "/login";
+        return noStore(NextResponse.redirect(url));
+      }
+      // Marketing pages don't exist on the app host.
+      if (!isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
+    } else {
+      // Marketing host: portal pages live on the app host, so 404 here.
+      if (isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
+    }
+  }
+
   const isAdminApi = pathname.startsWith("/api/admin") && pathname !== "/api/admin/login";
   const isOwnerApi = pathname.startsWith("/api/owner");
   // Support Desk APIs are cookie-authenticated too (profile/password updates) —
@@ -92,4 +144,8 @@ export async function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ["/admin/:path*", "/support/:path*", "/login", "/api/admin/:path*", "/api/owner/:path*", "/api/support/:path*"] };
+// Run on every request EXCEPT Next internals and static files (anything with a
+// file extension). The host split needs to see marketing pages, /signup and the
+// app-host root; the auth/CSRF gate still only ACTS on the portal + cookie-API
+// paths and falls through to next() for everything else.
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"] };
