@@ -98,7 +98,15 @@ export async function middleware(req: NextRequest) {
       // Marketing pages don't exist on the app host.
       if (!isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
     } else {
-      // Marketing host: portal pages live on the app host, so 404 here.
+      // Marketing host. /login and /signup are the PUBLIC entry points the
+      // marketing CTAs (header, footer, hero, pricing) link to — redirect those
+      // to the app host so the conversion flow works, instead of 404ing it.
+      // Query strings (e.g. ?plan=growth, ?next=) are preserved.
+      if (pathname === "/login" || pathname === "/signup") {
+        const url = new URL(`https://${APP_HOST}${pathname}${req.nextUrl.search}`);
+        return NextResponse.redirect(url);
+      }
+      // Deeper portal pages don't exist on the marketing host.
       if (isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
     }
   }
