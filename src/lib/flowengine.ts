@@ -181,8 +181,14 @@ export async function deleteFlow(id: string, tenantId = DEFAULT_TENANT_ID): Prom
 // ── Sessions ──────────────────────────────────────────────────────────────────
 interface Session { conversationId: string; flowId: string; currentNode: string; state: Record<string, unknown> }
 
-async function getSession(convKey: string): Promise<Session | null> {
-  const { data } = await db().from("wa_flow_sessions").select("*").eq("conversation_id", convKey).maybeSingle();
+// tenantId optional but preferred: scopes the read to the caller's tenant as
+// defense-in-depth. conversation_id is a globally-unique PK and the flow is
+// re-validated against the tenant by the caller, so this can't leak either way —
+// but scoping here keeps a stray cross-tenant convKey from ever loading a row.
+async function getSession(convKey: string, tenantId?: string): Promise<Session | null> {
+  let q = db().from("wa_flow_sessions").select("*").eq("conversation_id", convKey);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.maybeSingle();
   if (!data) return null;
   if (Date.now() - new Date(data.updated_at as string).getTime() > SESSION_TTL_MS) {
     await endSession(convKey);
@@ -985,7 +991,7 @@ export async function handleFlowMessage(
   const send = withVars(baseSend, contact);
 
   // 1. Continue an in-progress session.
-  const session = await getSession(convKey);
+  const session = await getSession(convKey, tid);
   if (session) {
     const flow = await getFlow(session.flowId, tid);
     if (!flow) { await endSession(convKey); return false; }

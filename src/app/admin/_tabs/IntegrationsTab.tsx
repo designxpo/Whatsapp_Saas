@@ -159,8 +159,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {newSecret && (
         <div className="bg-amber-50 border border-amber-200 rounded-card p-4 space-y-1.5">
-          <p className="text-xs font-bold text-amber-800">Signing secret — copy it now, it won't be shown again.</p>
-          <p className="text-[11px] text-amber-700">Use it to verify the <span className="font-mono">X-Alabs-Signature</span> header (HMAC-SHA256 of the body). Slack/Teams don't need it.</p>
+          <p className="text-xs font-bold text-amber-800">Signing secret — copy it now, it won’t be shown again.</p>
+          <p className="text-[11px] text-amber-700">Use it to verify the <span className="font-mono">X-Alabs-Signature</span> header (HMAC-SHA256 of the body). Slack/Teams don’t need it.</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 text-xs bg-white border border-amber-200 rounded px-2 py-1.5 break-all">{newSecret}</code>
             <button onClick={() => { navigator.clipboard?.writeText(newSecret); }} className="px-2 py-1.5 rounded-control border border-amber-300 text-xs font-bold text-amber-800 hover:bg-amber-100 shrink-0"><Copy className="w-3.5 h-3.5" /></button>
@@ -246,7 +246,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   <input type="checkbox" className="accent-brand-700" checked={form.lsqAutoCreate} onChange={e => setForm({ ...form, lsqAutoCreate: e.target.checked })} />
                   Auto-create a lead for new inbound contacts (off = only sync to existing leads)
                 </label>
-                <p className="text-[11px] text-slate-500">Every chat syncs to the lead's timeline; stage &amp; owner show in Live Chat. Pipeline stages and CRM drips also use this connection.</p>
+                <p className="text-[11px] text-slate-500">Every chat syncs to the lead’s timeline; stage &amp; owner show in Live Chat. Pipeline stages and CRM drips also use this connection.</p>
               </>}
             </div>
           ) : (

@@ -52,7 +52,7 @@ export default function SignupPage() {
           <input className={inp} placeholder="Work email" type="email" value={f.ownerEmail} onChange={e => set("ownerEmail", e.target.value)} />
           <input className={inp} placeholder="Phone (WhatsApp)" value={f.ownerPhone} onChange={e => set("ownerPhone", e.target.value)} />
           <input className={`${inp} col-span-2`} type="password" placeholder="Create a password (8+ characters)" value={f.password} onChange={e => set("password", e.target.value)} />
-          <label className="text-xs text-ink-400 col-span-2 -mb-2">Tell us a bit about how you'll use it:</label>
+          <label className="text-xs text-ink-400 col-span-2 -mb-2">Tell us a bit about how you’ll use it:</label>
           <select className={inp} value={f.industry} onChange={e => set("industry", e.target.value)}>{INDUSTRIES.map(o => <option key={o}>{o}</option>)}</select>
           <select className={inp} value={f.teamSize} onChange={e => set("teamSize", e.target.value)}>{TEAM_SIZES.map(o => <option key={o}>{o}</option>)}</select>
           <select className={inp} value={f.useCase} onChange={e => set("useCase", e.target.value)}>{GOALS.map(o => <option key={o}>{o}</option>)}</select>

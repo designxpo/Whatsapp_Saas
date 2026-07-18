@@ -293,7 +293,7 @@ function InstagramManager() {
               </label>
               {ruleForm.requireFollow && <>
                 <textarea className={`${inp} w-full`} rows={2} placeholder="Follow prompt, e.g. Almost there! Follow us, then tap “I've followed” to unlock your guide 🎁" value={ruleForm.followPrompt} onChange={e => setRuleForm({ ...ruleForm, followPrompt: e.target.value })} />
-                <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I've followed ✅” button. On tap we re-check the follow, then send the link. Verified blocking needs Meta App Review (<code className="font-mono">is_user_follow_business</code>); until then we trust the tap.</p>
+                <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I’ve followed ✅” button. On tap we re-check the follow, then send the link. Verified blocking needs Meta App Review (<code className="font-mono">is_user_follow_business</code>); until then we trust the tap.</p>
               </>}
             </div>
 

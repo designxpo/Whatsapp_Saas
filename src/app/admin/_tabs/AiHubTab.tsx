@@ -22,14 +22,14 @@ function AiHubRail({ goTo, agents, fns, prompts, autoRoute, tone }: { goTo: (t: 
           <li>A customer asks something on WhatsApp.</li>
           <li><b>Auto-routing</b> picks the best agent for that topic.</li>
           <li>The agent answers using your <b>AI Knowledge Base</b>.</li>
-          <li>Mid-chat, <b>lead capture</b> quietly saves details — name, what they're interested in, city…</li>
+          <li>Mid-chat, <b>lead capture</b> quietly saves details — name, what they’re interested in, city…</li>
         </ol>
         <button onClick={() => goTo("assistant")} className="text-[11px] font-bold text-brand-700 flex items-center gap-1">Open AI Knowledge Base <ArrowRight className="w-3 h-3" /></button>
       </RailCard>
       <RailCard title="Starter setup">
         <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
           <li>Two agents: <b>Sales</b> (pricing, offers, how to buy) and <b>Support</b> (existing customers).</li>
-          <li>One <b>capture_lead</b> function saving name, what they're interested in, and city.</li>
+          <li>One <b>capture_lead</b> function saving name, what they’re interested in, and city.</li>
           <li>Writing tools: Friendly tone, Translate to Hindi, Shorten.</li>
         </ul>
       </RailCard>
@@ -257,7 +257,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {sub === "functions" && <>
       <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-[13px] text-brand-900">
-        Lead capture teaches the AI to <b>save details during a normal chat</b> — no form needed. Example: <b>capture_lead</b> stores name, what they're interested in, and city as contact attributes the moment the customer mentions them.
+        Lead capture teaches the AI to <b>save details during a normal chat</b> — no form needed. Example: <b>capture_lead</b> stores name, what they’re interested in, and city as contact attributes the moment the customer mentions them.
       </div>
 
       {/* Functions */}

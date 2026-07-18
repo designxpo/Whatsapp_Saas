@@ -14,7 +14,7 @@ export async function GET() {
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const seqs = await listSequences(tid);
-    const withSteps = await Promise.all(seqs.map(async s => ({ ...s, steps: await getSequenceSteps(s.id) })));
+    const withSteps = await Promise.all(seqs.map(async s => ({ ...s, steps: await getSequenceSteps(s.id, tid) })));
     return NextResponse.json({ sequences: withSteps });
   } catch (err) {
     return NextResponse.json({ sequences: [], error: errorMessage(err) });

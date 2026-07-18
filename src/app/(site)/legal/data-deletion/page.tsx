@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CheckCircle2, Clock } from "lucide-react";
 import { Container, Glow, SectionTitle } from "../../_components/ui";
 import { getDeletionStatus } from "@/lib/metadeletion";
@@ -77,7 +78,7 @@ export default async function DataDeletionPage({ searchParams }: { searchParams:
                 <li className="flex gap-2.5"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0783fd]" /><span>Remove the Talko AI app from your Facebook or Instagram account settings — Meta will notify us and we will delete the associated data.</span></li>
                 <li className="flex gap-2.5"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0783fd]" /><span>Email us at <a href={`mailto:${LEGAL_META.privacyEmail}`} className="font-semibold text-[#0783fd] hover:underline">{LEGAL_META.privacyEmail}</a> with your request.</span></li>
               </ul>
-              <p className="mt-4">When a request is received you&apos;ll get a confirmation code; visit this page with that code to see its status. For more, see our <a href="/legal/privacy" className="font-semibold text-[#0783fd] hover:underline">Privacy Policy</a>.</p>
+              <p className="mt-4">When a request is received you&apos;ll get a confirmation code; visit this page with that code to see its status. For more, see our <Link href="/legal/privacy" className="font-semibold text-[#0783fd] hover:underline">Privacy Policy</Link>.</p>
             </div>
           )}
 

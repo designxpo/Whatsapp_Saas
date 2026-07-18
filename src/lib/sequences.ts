@@ -82,15 +82,23 @@ export async function deleteSequence(id: string, tenantId = DEFAULT_TENANT_ID): 
 }
 
 export async function setSequenceSteps(sequenceId: string, steps: { delayMinutes: number; action: SequenceStepAction }[], tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  await db().from("wa_sequence_steps").delete().eq("sequence_id", sequenceId);
+  // Delete is tenant-scoped as well as sequence-scoped: the caller already
+  // validated sequenceId belongs to tenantId, but scoping the delete too means a
+  // mismatched pair can never clear another tenant's steps.
+  await db().from("wa_sequence_steps").delete().eq("tenant_id", tenantId).eq("sequence_id", sequenceId);
   if (!steps.length) return;
   const rows = steps.map((s, i) => ({ tenant_id: tenantId, sequence_id: sequenceId, step_index: i, delay_minutes: Math.max(0, Math.round(s.delayMinutes)), action: s.action }));
   const { error } = await db().from("wa_sequence_steps").insert(rows);
   if (error) throw error;
 }
 
-export async function getSequenceSteps(sequenceId: string): Promise<SequenceStep[]> {
-  const { data } = await db().from("wa_sequence_steps").select("*").eq("sequence_id", sequenceId).order("step_index");
+// tenantId optional but preferred: scopes the read as defense-in-depth. The
+// sequenceId always comes from a tenant-scoped lookup, so this can't leak — but
+// scoping keeps a foreign sequenceId from ever reading another tenant's steps.
+export async function getSequenceSteps(sequenceId: string, tenantId?: string): Promise<SequenceStep[]> {
+  let q = db().from("wa_sequence_steps").select("*").eq("sequence_id", sequenceId);
+  if (tenantId) q = q.eq("tenant_id", tenantId);
+  const { data } = await q.order("step_index");
   return (data ?? []).map(r => ({
     id: r.id as string, stepIndex: r.step_index as number, delayMinutes: (r.delay_minutes as number) ?? 0,
     action: (r.action as SequenceStepAction) ?? { type: "text" },
@@ -120,7 +128,7 @@ export async function matchKeywordSequence(platform: "whatsapp" | "instagram", t
 
 // ── Enrollment ──────────────────────────────────────────────────────────────
 export async function enroll(sequenceId: string, p: { phone: string; platform?: "whatsapp" | "instagram"; conversationId?: string | null }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  const steps = await getSequenceSteps(sequenceId);
+  const steps = await getSequenceSteps(sequenceId, tenantId);
   if (!steps.length) return;
   const firstDelayMs = Math.max(0, steps[0].delayMinutes) * 60_000;
   const nextRun = new Date(Date.now() + firstDelayMs).toISOString();
