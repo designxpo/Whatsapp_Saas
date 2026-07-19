@@ -16,8 +16,8 @@ export const LEGAL_META = {
   company: "Talko AI",
   // Replace with your registered legal entity (e.g. "Talko AI Technologies Pvt. Ltd.").
   legalEntity: "Talko AI",
-  contactEmail: "support@talko.ai",
-  privacyEmail: "privacy@talko.ai",
+  contactEmail: "info@thetalko.in",
+  privacyEmail: "info@thetalko.in",
   // Replace with your place of business / registered office.
   jurisdiction: "Bengaluru, Karnataka, India",
   governingLaw: "India",
