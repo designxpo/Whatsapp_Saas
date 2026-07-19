@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listChannels, getChannel, saveChannel, deleteChannel, type Channel } from "@/lib/channels";
+import { subscribeWaba } from "@/lib/embeddedsignup";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -45,8 +46,14 @@ export async function POST(req: Request) {
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
     const saved = await saveChannel({ ...body, name: body.name!, phoneId: body.phoneId!, wabaId: body.wabaId!, token, tenantId: tid });
-    logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId})`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
+    // Subscribe the WABA to our app — WITHOUT this Meta never delivers inbound
+    // messages, which is exactly why a manually-added number "connected but
+    // received nothing". The Embedded Signup path already does this; manual-add
+    // used to skip it (unlike the Messenger/Instagram save routes). Idempotent,
+    // and non-fatal: the number still saves so a bad token can be fixed + re-saved.
+    const webhook = await subscribeWaba(saved.wabaId ?? body.wabaId!, token);
+    logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId}) — WABA webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.error}`}`);
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook: { ok: webhook.ok, detail: webhook.ok ? "WABA subscribed to the app's webhooks." : (webhook.error ?? "unknown error") } });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0013_channels.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
   }

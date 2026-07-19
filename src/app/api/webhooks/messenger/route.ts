@@ -204,7 +204,16 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
     if (!r.ok) console.warn("[fb webhook] ai reply blocked:", r.blockedBy, r.error);
     return r.ok;
   };
-  const closeOut = async () => { await deliver(CLOSING_MSG); await escalateConversation(conv.id); };
+  const closeOut = async () => {
+    // Persist the handoff so Live Chat shows what the customer actually received
+    // — the WhatsApp path does this; the Messenger path used to send it silently,
+    // so the reply landed on the customer's phone but never in the portal thread.
+    if (await deliver(CLOSING_MSG)) {
+      await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${CLOSING_MSG}` : CLOSING_MSG, source: "bot", tenantId: tid, channelId: channel.id });
+      await touchOutbound(conv.id, CLOSING_MSG);
+    }
+    await escalateConversation(conv.id);
+  };
 
   // The cap applies to comment-triggered AI only; direct DMs stay uncapped.
   if (commentId && conv.aiReplyCount >= AI_REPLY_CAP) { await closeOut(); return; }
@@ -263,12 +272,23 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // Idempotency: claim the comment so a webhook redelivery can't double-DM.
   if (!(await claimComment(commentId, rule.id, tid))) return;
 
+  // Record the comment in the portal's Comments tab. Previously a rule-matched
+  // comment sent its DM silently and never appeared in the portal (only AI-handled
+  // comments were stored), so the team couldn't see which comments fired a rule.
+  const conv = await getOrCreateConversation(fromId, fromName, channel.id, "messenger", tid);
+  await setConversationComment(conv.id, true);
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+
   const creds = credsOf(channel);
   const buttons: FbButton[] = rule.buttonUrl
     ? [{ type: "web_url", url: rule.buttonUrl, title: (rule.buttonLabel || "Open link").slice(0, 20) }]
     : [];
   const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons);
   if (!sent.ok) { console.warn("[fb webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+
+  // Mirror the automated DM into the portal thread so the team sees what was sent.
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${rule.dmMessage}`, source: "bot", tenantId: tid, channelId: channel.id });
+  await touchOutbound(conv.id, rule.dmMessage);
 
   await bumpRuleMatch(rule.id, rule.matchCount, tid);
   if (rule.publicReply) {

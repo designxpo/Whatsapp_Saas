@@ -515,7 +515,10 @@ export async function getBusinessProfile(channel?: ChannelCreds): Promise<{ prof
       address: (p.address as string) ?? "",
       description: (p.description as string) ?? "",
       email: (p.email as string) ?? "",
-      vertical: (p.vertical as string) ?? "",
+      // Meta returns the sentinel "UNDEFINED" (and legacy "NOT_A_BIZ") when no
+      // industry is set; its write API rejects both, so normalize to "" ("not
+      // set") — otherwise the form round-trips the sentinel back and the save 400s.
+      vertical: ((p.vertical as string) === "UNDEFINED" || (p.vertical as string) === "NOT_A_BIZ") ? "" : ((p.vertical as string) ?? ""),
       websites: (p.websites as string[]) ?? [],
       profilePictureUrl: (p.profile_picture_url as string) ?? "",
     } };
@@ -537,7 +540,10 @@ export async function updateBusinessProfile(fields: BusinessProfile, channel?: C
   if (v(fields.address)) body.address = v(fields.address)!.slice(0, 256);
   if (v(fields.description)) body.description = v(fields.description)!.slice(0, 512);
   if (v(fields.email)) body.email = v(fields.email)!.slice(0, 128);
-  if (v(fields.vertical)) body.vertical = fields.vertical;
+  // Meta returns "UNDEFINED"/"NOT_A_BIZ" on read when no industry is set, but its
+  // WRITE API rejects both with (#100) — treat them (and empty) as "leave unchanged".
+  const vert = v(fields.vertical);
+  if (vert && vert !== "UNDEFINED" && vert !== "NOT_A_BIZ") body.vertical = vert;
   const sites = (fields.websites ?? []).map(w => w.trim()).filter(Boolean).slice(0, 2);
   if (sites.length) body.websites = sites;
   if (Object.keys(body).length === 1) return { success: true };   // nothing to update

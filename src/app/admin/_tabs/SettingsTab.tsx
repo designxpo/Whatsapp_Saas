@@ -251,6 +251,14 @@ function ChannelsManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
+      else if (d.webhook && d.webhook.ok === false) {
+        // Saved, but Meta refused the WABA webhook subscription — inbound messages
+        // won't arrive until it succeeds. Switch the form to edit mode (so a re-save
+        // fixes the SAME number, never a duplicate) and surface the reason.
+        setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail} — inbound messages won't arrive until this is fixed. Make sure the token has whatsapp_business_management, then re-save.`);
+        setForm(f => (f ? { ...f, id: d.channel?.id ?? f.id, token: "" } : f));
+        load();
+      }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
