@@ -13,13 +13,12 @@ export const LEGAL_VERSION = "2026-06-22";
 export const LEGAL_EFFECTIVE = "22 June 2026";
 
 export const LEGAL_META = {
+  // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
   company: "Talko AI",
-  // Replace with your registered legal entity (e.g. "Talko AI Technologies Pvt. Ltd.").
-  legalEntity: "Talko AI",
+  legalEntity: "PM TECHNOLOGIES",
   contactEmail: "info@thetalko.in",
   privacyEmail: "info@thetalko.in",
-  // Replace with your place of business / registered office.
-  jurisdiction: "Bengaluru, Karnataka, India",
+  jurisdiction: "New Delhi, India",
   governingLaw: "India",
 };
 
