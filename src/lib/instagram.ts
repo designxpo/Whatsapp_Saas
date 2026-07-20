@@ -18,7 +18,11 @@
 // Requires the IG professional account id + an access token with
 // instagram_manage_messages (obtained via Embedded Signup).
 
-const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+// Instagram API with Instagram Login talks to graph.instagram.com (NOT
+// graph.facebook.com). Sending/reading via graph.facebook.com fails with
+// "(#3) Application does not have the capability" for Instagram-login apps.
+// Host is env-overridable for a legacy Facebook-login setup.
+const GRAPH = `https://${process.env.META_IG_GRAPH_HOST || "graph.instagram.com"}/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
 const MAX_PER_HOUR = 200;                  // conservative per-account pacing
 

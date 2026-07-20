@@ -36,7 +36,13 @@ export async function GET(req: Request) {
 // app secret (same Tech Provider app as WhatsApp).
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
+  // Instagram webhooks (Instagram-login API) are signed with the INSTAGRAM app
+  // secret, which differs from the Facebook app secret. Verify against it first,
+  // then fall back to META_APP_SECRET for a legacy Facebook-login setup. Without
+  // this, every real IG event fails signature → 401 and never reaches the portal.
+  const sig = req.headers.get("x-hub-signature-256");
+  const igSecret = process.env.META_INSTAGRAM_APP_SECRET;
+  if (!((igSecret && verifyMetaSignature(raw, sig, igSecret)) || verifyMetaSignature(raw, sig, process.env.META_APP_SECRET))) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
 
