@@ -540,7 +540,13 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
   if (!c) return { ok: true, skipped: true };
   try {
     let leadId = await findLeadId(p.phone, c);
-    if (!leadId && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" }, tid);
+    if (!leadId && p.direction === "inbound" && c.autoCreate) {
+      leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" }, tid);
+      // A create that answered null is a FAILURE (Lead.Capture rejected, keys
+      // broken), not "phone not in CRM" — treating it as ok silently drops
+      // brand-new leads. Park it; the queue replay re-runs the whole attempt.
+      if (!leadId) return { ok: false, retriable: true, error: "lead auto-create returned null (Lead.Capture rejected / LSQ keys?)" };
+    }
     if (!leadId) return { ok: true }; // phone not in CRM — nothing to attach to
 
     const arrow = p.direction === "inbound" ? "⬅️ Lead"
@@ -577,7 +583,11 @@ async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
     let leadId: string | null = null;
     if (p.phone) leadId = await findLeadId(p.phone, c);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle, c);
-    if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.channel }, tid);
+    if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) {
+      leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.channel }, tid);
+      // Same rule: a null create is a retriable failure, not "no lead".
+      if (!leadId) return { ok: false, retriable: true, error: "lead auto-create returned null (Lead.Capture rejected / LSQ keys?)" };
+    }
     if (!leadId) return { ok: true }; // can't match this contact to a CRM lead — skip
 
     const who = p.via === "bot" ? "AI Assistant" : p.via === "agent" ? "Agent" : "Sales";
@@ -719,7 +729,7 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
 }
 
 // Queue health: how much is waiting / dead (optionally for one tenant).
-export async function crmSyncStats(tenantId?: string): Promise<{ pending: number; dead: number }> {
+export async function crmSyncStats(tenantId?: string): Promise<{ pending: number; dead: number; broken?: string }> {
   try {
     const base = () => {
       let q = db().from("wa_crm_sync").select("id", { count: "exact", head: true });
@@ -728,5 +738,5 @@ export async function crmSyncStats(tenantId?: string): Promise<{ pending: number
     };
     const [p, d] = await Promise.all([base().eq("status", "pending"), base().eq("status", "dead")]);
     return { pending: p.count ?? 0, dead: d.count ?? 0 };
-  } catch { return { pending: 0, dead: 0 }; }
+  } catch (err) { return { pending: 0, dead: 0, broken: errorMessage(err) }; }
 }
