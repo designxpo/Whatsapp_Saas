@@ -281,14 +281,36 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (!(await claimComment(commentId, rule.id, tid))) return;
 
   const creds = credsOf(channel);
+
+  // Record the comment in the portal's Comments tab. Previously a rule-matched
+  // comment sent its DM silently and never appeared in the portal (only the
+  // no-rule/AI path above stored comments) — mirror that storage here so the
+  // team sees which comments fired a rule.
+  const handle = fromUsername ? `@${fromUsername}` : "";
+  let conv = await getOrCreateConversation(fromId, handle, channel.id, "instagram", tid);
+  if (!conv.name || !conv.avatarUrl) {
+    const prof = await getIgProfile(creds, fromId);
+    const display = handle || (prof.username ? `@${prof.username}` : prof.name);
+    if (display && display !== conv.name) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
+    if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
+  }
+  await setConversationComment(conv.id, true);
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+
+  const followGate = rule.requireFollow && (await getFollowStatus(creds, fromId)) !== true;
+  const dmBody = followGate ? followPromptText(rule) : rule.dmMessage;
   let sent;
-  if (rule.requireFollow && (await getFollowStatus(creds, fromId)) !== true) {
+  if (followGate) {
     sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule));
     if (sent.ok) await setFollowGate(fromId, rule.id, channel.id, tid);
   } else {
     sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule));
   }
   if (!sent.ok) { console.warn("[ig webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+
+  // Mirror the automated DM into the portal thread so the team sees what was sent.
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${dmBody}`, source: "bot", tenantId: tid, channelId: channel.id });
+  await touchOutbound(conv.id, dmBody);
 
   await bumpRuleMatch(rule.id, rule.matchCount, tid);
   if (rule.publicReply) {
