@@ -8,7 +8,7 @@ import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
   updateLogByMessageId, messageLogged, sendLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
   getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, claimWelcome, setBotEnabled, setSetting,
-  setContactAttributes, addContactTag, markOptedIn, landCapturedLead,
+  setContactAttributes, addContactTag, markOptedIn, landCapturedLead, hasNewerInbound,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
@@ -271,7 +271,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
-  await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
+  const savedInbound = await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.
@@ -340,20 +340,52 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     // flow AND ai), matching IG/Messenger/web-chat. bot_enabled is flipped off only
     // by a human (inbox reply / CRM / manual toggle); "escalated" is NOT silenced.
     if (!conv.botEnabled || conv.status === "paused") return;
+    // Burst coalescing: a visitor firing several messages a second apart ("Hi"
+    // then "I want to know about courses") would otherwise race one bot turn per
+    // message — two flow greetings, or a greeting stacked on an escalation,
+    // landing together as if the bot answered itself with no reply from the user.
+    // When a NEWER inbound has already been recorded for this conversation, let
+    // that later turn own the reply and drop this one. The newest message has
+    // nothing newer, so exactly one turn proceeds; the awaiting-reply cron is the
+    // backstop if that last turn ever dies mid-flight.
+    if (savedInbound && await hasNewerInbound(conv.id, savedInbound.createdAt).catch(() => false)) return;
+
     // If a drip is already driving this contact, stay quiet — no welcome, no AI —
     // so the sequence owns the thread (until it completes) and nothing collides.
     const inSequence = await hasActiveEnrollment(from, tid).catch(() => false);
+
+    // Chatbot flows take precedence: an ad-bound flow (CTWA lead from a campaign
+    // with a flow attached), then keyword triggers and in-progress sessions.
+    // Runs BEFORE the welcome greeting: a flow's own start node IS the greeting,
+    // so sending the generic welcome too stacks two "Welcome to …" messages —
+    // exactly the duplicate greeting users reported. Off-script messages fall
+    // through to the AI (smarter than a dead-end).
+    let adFlowId: string | undefined;
+    if (referral?.source_id) {
+      adFlowId = (await resolveFlowIdForAd(String(referral.source_id), tid).catch(() => null)) ?? undefined;
+    }
+    let flowHandled = false;
+    try { flowHandled = await handleFlowMessage(conv.id, from, text, { channel, adFlowId }); }
+    catch (e) { console.error("[webhook] flow", conv.id, e); }
+
     try {
       const [welcome, away] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid)]);
 
-      // First-ever message from this contact → one-time greeting.
-      if (welcome.enabled && !conv.welcomed && !inSequence && await claimWelcome(conv.id)) {
-        const sent = await sendText(from, welcome.text, channel);
-        if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: welcome.text, metaId: sent.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null });
+      // First-ever message from this contact → one-time greeting. Claim it (marks
+      // the conversation welcomed) even when a flow just answered, so it can never
+      // resurface mid-chat later; only SEND it when NO flow handled the message.
+      if (welcome.enabled && !conv.welcomed && !inSequence) {
+        const claimed = await claimWelcome(conv.id);
+        if (claimed && !flowHandled) {
+          const sent = await sendText(from, welcome.text, channel);
+          if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: welcome.text, metaId: sent.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null });
+        }
       }
 
       // Outside working hours → away notice, at most once per 12h per conversation.
-      if (away.enabled && isOutsideWorkingHours(away)) {
+      // Skipped when a flow is actively handling the chat — an "we're closed" line
+      // interleaved with the flow's own replies just reads as contradictory noise.
+      if (!flowHandled && away.enabled && isOutsideWorkingHours(away)) {
         const mem = await loadMemory(conv.id).catch(() => ({} as Awaited<ReturnType<typeof loadMemory>>));
         const lastAway = mem.lastAwayAt ? Date.parse(mem.lastAwayAt) : 0;
         if (Date.now() - lastAway > 12 * 3600 * 1000) {
@@ -365,17 +397,6 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
         }
       }
     } catch (e) { console.error("[webhook] welcome/away", conv.id, e); }
-
-    // Chatbot flows take precedence: an ad-bound flow (CTWA lead from a campaign
-    // with a flow attached), then keyword triggers and in-progress sessions.
-    // Off-script messages fall through to the AI (smarter than a dead-end).
-    let adFlowId: string | undefined;
-    if (referral?.source_id) {
-      adFlowId = (await resolveFlowIdForAd(String(referral.source_id), tid).catch(() => null)) ?? undefined;
-    }
-    let flowHandled = false;
-    try { flowHandled = await handleFlowMessage(conv.id, from, text, { channel, adFlowId }); }
-    catch (e) { console.error("[webhook] flow", conv.id, e); }
 
     // Keyword-triggered sequence: the exact trigger word opts the contact into a
     // timed follow-up. Like flows, it takes precedence over the generic AI reply

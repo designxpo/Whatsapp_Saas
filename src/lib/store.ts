@@ -1092,6 +1092,19 @@ export async function reflagReply(id: string): Promise<void> {
   await db().from("wa_conversations").update({ needs_reply: true }).eq("id", id);
 }
 
+// True when a newer inbound (customer) message than `afterISO` already exists for
+// this conversation. Lets the webhook coalesce a rapid burst — "Hi" then "I want
+// to know about courses" a second later — into a single bot turn driven by the
+// last message, instead of racing one reply per message. The newest inbound has
+// nothing newer, so exactly one turn ever proceeds. (conversation_id is globally
+// unique, so no tenant filter is needed — same as claimReply keying on id.)
+export async function hasNewerInbound(conversationId: string, afterISO: string): Promise<boolean> {
+  const { data } = await db().from("wa_conv_messages")
+    .select("id").eq("conversation_id", conversationId).eq("source", "inbound")
+    .gt("created_at", afterISO).limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
 // Conversations with an unanswered inbound (cron fallback for dropped reply jobs).
 export async function conversationsNeedingReply(limit = 20): Promise<Conversation[]> {
   const { data } = await db().from("wa_conversations").select("*")
