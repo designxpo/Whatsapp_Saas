@@ -1,42 +1,33 @@
 # Brand assets
 
-Drop your Talko AI brand files here with the **exact names below** and the app
-picks them up automatically — no code change needed. Anything in `public/` is
-served from the site root, so `public/brand/talko_favicon.svg` → `/brand/talko_favicon.svg`.
+Talko AI brand files live here. Anything in `public/` is served from the site
+root, so `public/brand/talko-logo.png` → `/brand/talko-logo.png`.
 After replacing a file, redeploy (or restart `npm run dev`) so it's served.
 
-The app uses **two** files today:
+The horizontal lockup and square mark are shipped as **small rasters** (not the
+original multi-MB embedded-raster SVGs, which downloaded on every route). The
+favicons are generated from `talkopng.png` / `icon-512.png` — see the icon set
+wired in `src/app/layout.tsx`.
 
-## 1. `talkoai.svg` — horizontal logo lockup (icon + "Talko AI")
+## 1. `talko-logo.png` — horizontal logo lockup (icon + "Talko AI")
 
-Shown in the app sidebar, the login & signup screens, and the marketing
-site's nav and footer. It's rendered **by height** (the app sets ~30–44px tall)
-and the **width scales automatically** to the artwork's aspect ratio.
+Shown in the app sidebar, the login & signup screens, the support desk header,
+and the marketing site's nav and footer, via `src/components/BrandLogo.tsx`.
+Rendered **by height** (the app sets ~28–44px tall) with the width derived from
+a fixed aspect ratio. **540 × 138** (ratio ~3.9 : 1, ~22KB) — crisp to 44px tall
+even at 3× DPR.
 
-| Spec | Recommendation |
-|------|----------------|
-| Shape | **Horizontal lockup** — icon on the left, "Talko AI" wordmark on the right |
-| Aspect ratio | **~3.5 : 1 to 4 : 1** (width : height). e.g. viewBox `0 0 360 96` or `0 0 400 100` |
-| Padding | **Trim tight to the artwork** — keep ≤ ~6% transparent margin. *Extra padding is the #1 reason a logo looks small.* |
-| Background | Transparent |
-| Format | SVG (vector, scales crisply). If only PNG: export at **≥ 800 × 200**, transparent, and tell us to switch the reference. |
-| Legibility | Must read well at **~32–40px tall** — keep the wordmark bold and the icon simple. |
+> To replace: export a tight ~3.5–4 : 1 horizontal lockup, transparent
+> background, at **≥ 540px wide** PNG (or supply an SVG and ask us to swap the
+> reference + `LOGO_RATIO` in `BrandLogo.tsx`). Trim to ≤ ~6% margin — extra
+> padding is the #1 reason a logo renders small.
 
-> The current file is a 2 : 1 lockup with heavy internal padding, which is why
-> it renders small. A tighter ~3.5–4 : 1 lockup at the same height will look
-> noticeably bigger and more balanced beside the nav text.
+## 2. Square app mark (icon only, no text)
 
-## 2. `talko_favicon.svg` — square app mark (icon only, no text)
-
-The browser-tab icon (and the Apple touch-icon fallback).
-
-| Spec | Recommendation |
-|------|----------------|
-| Shape | **Square mark only** — just the icon, no wordmark |
-| Aspect ratio | **1 : 1**. e.g. viewBox `0 0 512 512` |
-| Padding | The mark should **fill ~85–95%** of the square. *If the tab icon looks tiny, the mark has too much padding — trim it.* |
-| Background | Transparent (or a solid brand colour if you want a filled badge) |
-| Format | SVG |
+The channels-wall "web chat" logo reuses `favicon-96.png` (96 × 96, ~14KB); the
+browser-tab / Apple-touch icons use the `favicon-32/48/96/180.png` set. All are
+the same blue chat-bubble mark. To replace, drop a new square source and
+regenerate the sizes.
 
 ## Optional (better cross-browser / iOS) — ask us to wire these
 

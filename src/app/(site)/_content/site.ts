@@ -353,7 +353,7 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
     { name: "WhatsApp", src: "/brand/logos/whatsapp.svg", slug: "whatsapp" },
     { name: "Instagram", src: "/brand/logos/instagram.svg", slug: "instagram" },
     { name: "Messenger", src: "/brand/logos/messenger.svg", slug: "messenger" },
-    { name: "Website web chat", src: "/brand/talko_favicon.svg" },
+    { name: "Website web chat", src: "/brand/favicon-96.png" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
     { name: "Gemini", src: "/brand/logos/googlegemini.svg", slug: "googlegemini" },

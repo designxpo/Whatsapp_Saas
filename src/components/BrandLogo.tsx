@@ -7,9 +7,11 @@ import { useState } from "react";
 // intrinsic width of an SVG-in-a-flex-item differently (Chrome ~1.6× larger).
 const LOGO_RATIO = 432 / 110;
 
-// Talko AI logo: the full horizontal lockup from public/brand/talkoai.svg, sized
-// by height with the width derived from LOGO_RATIO (explicit, not auto — see
-// above). Falls back to the supplied default if the file is missing/fails to load.
+// Talko AI logo: the full horizontal lockup from public/brand/talko-logo.png
+// (a 540px-wide raster of the original 638KB embedded-raster SVG — 22KB, crisp
+// to 44px tall at 3× DPR), sized by height with the width derived from LOGO_RATIO
+// (explicit, not auto — see above). Falls back to the supplied default if the
+// file is missing/fails to load.
 //
 // suffix renders an extra "AI" text after the image — only needed if the artwork
 // itself omits "AI". The current asset is a complete "Talko AI" lockup, so it
@@ -24,7 +26,7 @@ export function BrandLogo({
     <span className="inline-flex items-center" style={{ gap: Math.round(height * 0.14) }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/brand/talkoai.svg"
+        src="/brand/talko-logo.png"
         alt="Talko AI"
         width={width}
         height={height}
