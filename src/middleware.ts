@@ -111,7 +111,9 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  const isAdminApi = pathname.startsWith("/api/admin") && pathname !== "/api/admin/login";
+  // /api/admin/login AND /api/admin/login/verify-otp are both pre-auth steps of
+  // the same unauthenticated login handshake — neither has a real session yet.
+  const isAdminApi = pathname.startsWith("/api/admin") && !pathname.startsWith("/api/admin/login");
   const isOwnerApi = pathname.startsWith("/api/owner");
   // Support Desk APIs are cookie-authenticated too (profile/password updates) —
   // they need the same CSRF + auth gate as the admin APIs.
