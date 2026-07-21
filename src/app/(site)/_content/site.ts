@@ -135,6 +135,7 @@ export const FAQS: Faq[] = [
 
 export type Post = {
   slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
+  dateModified?: string;   // freshness signal; falls back to `date` when unset
   body: string[];
 };
 export const POSTS: Post[] = [

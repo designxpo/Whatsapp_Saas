@@ -35,7 +35,8 @@ export const metadata: Metadata = {
     siteName: "Talko AI",
     title: "Talko AI — AI conversations for WhatsApp, Instagram & Messenger",
     description: "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, chatbot flows and catalog checkout — one inbox, every conversation.",
-    url: SITE_URL,
+    // No static `url` here — it would force every page's og:url to the homepage.
+    // Per-page canonical (alternates.canonical "./") carries the correct URL.
   },
   twitter: {
     card: "summary_large_image",

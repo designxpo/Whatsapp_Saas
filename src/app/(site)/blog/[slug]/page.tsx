@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Container, Glow } from "../../_components/ui";
 import { CtaBand } from "../../_components/sections";
 import { JsonLd } from "../../_components/json-ld";
+import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { POSTS } from "../../_content/site";
 import { SITE_URL } from "@/lib/siteurl";
 
@@ -29,13 +30,16 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   // enables article rich results. `date` is a human string ("June 12, 2026");
   // Date.parse handles it, and we emit an ISO date when parseable.
   const parsed = Date.parse(post.date);
+  const parsedMod = Date.parse(post.dateModified ?? post.date);
   const blogSchema = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: post.title,
     description: post.excerpt,
     ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
+    ...(Number.isFinite(parsedMod) ? { dateModified: new Date(parsedMod).toISOString() } : {}),
     articleSection: post.category,
+    image: `${SITE_URL}/brand/talkopng.png`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
     author: { "@type": "Organization", name: "Talko AI" },
@@ -48,7 +52,12 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-200px] -translate-x-1/2" />
         <Container className="relative pt-16 pb-4">
-          <Link href="/blog" className="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All articles</Link>
+          <Breadcrumbs items={[
+            { name: "Home", href: "/" },
+            { name: "Blog", href: "/blog" },
+            { name: post.title, href: `/blog/${post.slug}` },
+          ]} />
+          <Link href="/blog" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All articles</Link>
           <div className="mx-auto mt-8 max-w-3xl text-center">
             <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
               <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{post.category}</span>

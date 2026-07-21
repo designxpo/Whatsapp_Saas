@@ -237,9 +237,11 @@ export function ProblemSolution() {
 
 // Comparison table — Talko AI vs the global leaders. First column highlighted.
 function CompareCell({ value }: { value: boolean | string }) {
-  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" /></span>;
-  if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" /></span>;
-  return <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Minus className="h-3 w-3 shrink-0 text-slate-300" />{value}</span>;
+  // sr-only "Yes"/"No" so the differentiator cells carry extractable text for
+  // screen readers AND AI answer engines (icon-only cells scrape as blank).
+  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Yes</span></span>;
+  if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" aria-hidden="true" /><span className="sr-only">No</span></span>;
+  return <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Minus className="h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" />{value}</span>;
 }
 export function ComparisonTable() {
   // Derive the "all-in-one score" per column = how many capabilities are fully
@@ -260,16 +262,16 @@ export function ComparisonTable() {
           <table aria-label="Talko AI capability comparison with global alternatives" className="w-full min-w-[860px] table-fixed border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200">
-                <th className="w-[24%] px-4 py-3.5 text-[13px] font-bold text-slate-900">Capability</th>
+                <th scope="col" className="w-[24%] px-4 py-3.5 text-[13px] font-bold text-slate-900">Capability</th>
                 {COMPARE_COLS.map((col, i) => (
-                  <th key={col} className={`px-2 py-3.5 text-center text-[12px] font-bold leading-tight ${i === 0 ? `rounded-t-xl ${GRADIENTS.brand} text-white` : "text-slate-500"}`}>{col}</th>
+                  <th scope="col" key={col} className={`px-2 py-3.5 text-center text-[12px] font-bold leading-tight ${i === 0 ? `rounded-t-xl ${GRADIENTS.brand} text-white` : "text-slate-500"}`}>{col}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {COMPARE_ROWS.map((row, ri) => (
                 <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
-                  <td className="px-4 py-3 text-[12.5px] font-medium leading-snug text-slate-700">{row.feature}</td>
+                  <th scope="row" className="px-4 py-3 text-left text-[12.5px] font-medium leading-snug text-slate-700">{row.feature}</th>
                   {row.values.map((v, ci) => (
                     <td key={ci} className={`px-2 py-3 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>
                   ))}

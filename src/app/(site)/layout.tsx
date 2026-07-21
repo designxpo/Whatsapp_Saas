@@ -5,10 +5,10 @@ import { JsonLd } from "./_components/json-ld";
 import { SITE_URL } from "@/lib/siteurl";
 
 export const metadata: Metadata = {
-  // No brand suffix here — the root template ("%s — Talko AI") appends it,
-  // so this renders "AI Conversations for WhatsApp & Instagram — Talko AI"
-  // (~54 chars) instead of the old double-branded title.
-  title: "AI Conversations for WhatsApp & Instagram",
+  // No brand suffix here — the root template ("%s — Talko AI") DOES reach this
+  // layout title (it renders "… — Talko AI", single brand). It does NOT reach
+  // deeper page.tsx titles, which bake the brand in themselves.
+  title: "WhatsApp & Instagram Automation with AI Chatbots",
   description:
     "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, chatbot flows and catalog checkout. One inbox for every conversation. Free 14-day trial.",
 };
@@ -28,7 +28,8 @@ const orgSchema = {
   "@id": ORG_ID,
   name: "Talko AI",
   url: SITE_URL,
-  logo: `${SITE_URL}/brand/talkoai.svg`,
+  // Raster PNG — Google's logo guidelines don't reliably consume SVG.
+  logo: `${SITE_URL}/brand/talkopng.png`,
   description:
     "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger and website chat conversations with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
   parentOrganization: { "@type": "Organization", name: "PM Technologies" },

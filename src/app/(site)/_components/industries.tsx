@@ -127,6 +127,72 @@ export function IndustrySections() {
   );
 }
 
+// ── Single-industry detail (the /industries/[slug] page body) ────────────────
+// Same content as one IndustrySections block, but the headline is the page's
+// H1 (one per page) and there's no alternating flip.
+export function IndustryDetail({ ind, index = 0 }: { ind: Industry; index?: number }) {
+  return (
+    <Container className="py-12 sm:py-14">
+      <div className="grid items-center gap-10 lg:grid-cols-2">
+        <Reveal>
+          <div className="flex items-center gap-3">
+            <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[index % ICON_GRADIENTS.length]}`}>
+              <Ico name={ind.icon} />
+            </span>
+            <span className="text-sm font-bold uppercase tracking-wide text-[#0783fd]">{ind.name}</span>
+          </div>
+          <h1 className="mt-4 text-balance text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+            {ind.headline}
+          </h1>
+          <p className="mt-3 text-slate-600">{ind.story}</p>
+          <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+            {ind.features.map(f => (
+              <li key={f.title} className="rounded-xl border border-slate-200/80 bg-white p-3.5">
+                <div className="flex items-center gap-2 text-[13px] font-bold text-slate-900">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                    <Check className="h-3 w-3" />
+                  </span>
+                  {f.title}
+                </div>
+                <p className="mt-1 text-[12.5px] leading-snug text-slate-500">{f.body}</p>
+              </li>
+            ))}
+          </ul>
+        </Reveal>
+        <Reveal delay={120}>
+          <PhoneChat ind={ind} />
+        </Reveal>
+      </div>
+    </Container>
+  );
+}
+
+// Compact "other industries" cross-link grid for the detail page (internal
+// linking to sibling /industries/<slug> pages).
+export function OtherIndustries({ currentSlug }: { currentSlug: string }) {
+  const others = INDUSTRIES.filter(i => i.slug !== currentSlug);
+  return (
+    <Container className="py-12">
+      <SectionTitle eyebrow="More playbooks" title="Talko AI for other industries" />
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {others.map((ind, i) => (
+          <Link key={ind.slug} href={`/industries/${ind.slug}`}
+            className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.3)]">
+            <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
+              <Ico name={ind.icon} className="h-5 w-5" />
+            </span>
+            <div className="mt-3 text-[15px] font-bold text-slate-900">{ind.navLabel}</div>
+            <p className="mt-1 flex-1 text-[13px] leading-snug text-slate-500">{ind.teaser}</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#0783fd]">
+              See the playbook <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </span>
+          </Link>
+        ))}
+      </div>
+    </Container>
+  );
+}
+
 // ── Homepage teaser grid ──────────────────────────────────────────────────────
 export function IndustryStrip() {
   return (
@@ -140,7 +206,7 @@ export function IndustryStrip() {
         {INDUSTRIES.map((ind, i) => (
           <Reveal key={ind.slug} delay={i * 60}>
             <Link
-              href={`/industries#${ind.slug}`}
+              href={`/industries/${ind.slug}`}
               className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.3)]"
             >
               <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>

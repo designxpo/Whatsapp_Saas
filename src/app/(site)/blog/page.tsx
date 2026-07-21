@@ -6,8 +6,12 @@ import { CtaBand } from "../_components/sections";
 import { POSTS } from "../_content/site";
 
 export const metadata: Metadata = {
-  title: "Blog — Talko AI",
+  title: "WhatsApp & Instagram Automation Blog — Talko AI",
   description: "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger and website chat.",
+  openGraph: {
+    title: "WhatsApp & Instagram Automation Blog — Talko AI",
+    description: "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger and website chat.",
+  },
 };
 
 export default function BlogPage() {

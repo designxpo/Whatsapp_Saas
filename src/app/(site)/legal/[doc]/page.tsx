@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Container, Glow } from "../../_components/ui";
 import { CtaBand } from "../../_components/sections";
+import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { LEGAL_DOCS, LEGAL_NAV, LEGAL_EFFECTIVE, getLegalDoc } from "../../_content/legal";
 
 // Anchor id for a section heading (e.g. "1. Agreement to these terms" → "agreement-to-these-terms").
@@ -31,7 +32,12 @@ export default async function LegalDocPage({ params }: { params: Promise<{ doc: 
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-200px] -translate-x-1/2" />
         <Container className="relative pt-16 pb-4">
-          <Link href="/legal" className="inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All policies</Link>
+          <Breadcrumbs items={[
+            { name: "Home", href: "/" },
+            { name: "Legal", href: "/legal" },
+            { name: d.title, href: `/legal/${d.slug}` },
+          ]} />
+          <Link href="/legal" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All policies</Link>
           <div className="mx-auto mt-8 max-w-3xl text-center">
             <h1 className="text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{d.title}</h1>
             <p className="mt-3 text-balance text-slate-500">{d.summary}</p>

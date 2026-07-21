@@ -5,8 +5,12 @@ import { AgentCanvas } from "../_components/canvas";
 import { FlowShowcase } from "../_components/flowshowcase";
 
 export const metadata: Metadata = {
-  title: "Features — Talko AI",
+  title: "WhatsApp & Instagram Automation Features — Talko AI",
   description: "AI replies, broadcasts, chatbot flows, drip sequences, catalog checkout, Instagram & Messenger automation, a website web-chat widget and a unified inbox — everything in one platform.",
+  openGraph: {
+    title: "WhatsApp & Instagram Automation Features — Talko AI",
+    description: "AI replies, broadcasts, chatbot flows, catalog checkout and a unified inbox for WhatsApp, Instagram, Messenger and web chat — one platform.",
+  },
 };
 
 export default function FeaturesPage() {

@@ -8,9 +8,14 @@ import { TIERS, CREATOR_TIERS, type Tier } from "../_content/site";
 import { SITE_URL } from "@/lib/siteurl";
 
 export const metadata: Metadata = {
-  // Root template appends " — Talko AI"; keep this short and un-branded.
-  title: "Pricing",
-  description: "Simple, transparent pricing from ₹999/mo. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+  // NOTE: the root title template does NOT reach page.tsx segments under
+  // (site)/ (only the (site) layout's own title) — so bake the brand in here.
+  title: "WhatsApp Automation Pricing — Plans from ₹999/mo — Talko AI",
+  description: "Simple, transparent WhatsApp & Instagram automation pricing from ₹999/mo. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+  openGraph: {
+    title: "Talko AI Pricing — WhatsApp & Instagram automation from ₹999/mo",
+    description: "Transparent plans for WhatsApp, Instagram, Messenger & web-chat automation. 14-day free trial, bring your own AI key, cancel anytime.",
+  },
 };
 
 // SoftwareApplication + priced Offers so AI engines can answer "how much does
