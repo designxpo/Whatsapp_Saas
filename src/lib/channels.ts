@@ -42,6 +42,7 @@ export interface Channel extends ChannelCreds {
   pageId: string | null;      // connected Facebook Page id (IG)
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
+  crmSource: string | null;   // CRM lead Source for NEW leads that arrive on this number (null = "WhatsApp"); e.g. "ppc-whatsapp" so per-number campaigns are attributable
   mode: "full" | "manual";    // "manual" = personal line: no AI/flow/welcome/sequence/follow-up
   coex: boolean;              // coexistence: number is ALSO active on the WhatsApp Business phone app
   active: boolean;
@@ -87,6 +88,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
     kbTag: (r.kb_tag as string | null) ?? null,
+    crmSource: (r.crm_source as string | null) ?? null,
     mode: (r.mode as string) === "manual" ? "manual" : "full",
     coex: (r.coex as boolean) ?? false,
     active: (r.active as boolean) ?? true,
@@ -276,6 +278,7 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     // must keep saving even before the migration is applied — an unconditional
     // write would 500 every channel save with PGRST204 until then.
     ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
+    ...(input.crmSource !== undefined ? { crm_source: input.crmSource?.trim() || null } : {}),
     ...(input.mode !== undefined ? { mode: input.mode } : {}),
     ...(input.coex !== undefined ? { coex: input.coex } : {}),
     active: input.active ?? true,
@@ -283,10 +286,19 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
   };
   // Only one default at a time, per tenant.
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
-  const q = input.id
-    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
-    : db().from("wa_channels").insert(row).select().single();
-  const { data, error } = await q;
+  const runSave = (r: Record<string, unknown>) => input.id
+    ? db().from("wa_channels").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(r).select().single();
+  let { data, error } = await runSave(row);
+  // Pre-migration safety: crm_source (0079) is the newest optional column and,
+  // unlike kb_tag/coex, the channel editor sends it on EVERY save — so before
+  // the migration is applied an unconditional write would 500 every save with
+  // 42703/PGRST204. Drop just that key and retry so channels stay editable; the
+  // source simply isn't persisted until the column exists.
+  if (error && (error.code === "42703" || error.code === "PGRST204") && "crm_source" in row) {
+    delete row.crm_source;
+    ({ data, error } = await runSave(row));
+  }
   if (error) throw error;
   return mapChannel(data as Record<string, unknown>);
 }

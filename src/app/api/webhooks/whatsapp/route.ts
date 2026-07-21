@@ -300,7 +300,11 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
-  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid, source: adSource }));
+  // Lead SOURCE for a new CRM lead: a tracked-link [ref:CODE] source wins (most
+  // specific — one campaign link), else the receiving NUMBER's own source (so
+  // leads are attributable to the number/campaign they came in on), else default.
+  const leadSource = adSource || channel?.crmSource || undefined;
+  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid, source: leadSource }));
   // Fan the inbound message out to any connected integrations (Zapier/Sheets/
   // Slack…). Deferred so it never delays the reply; no-op when none configured.
   after(() => emitEvent(tid, "message.inbound", { phone: from, name: profileName, text, channel: "whatsapp", conversationId: conv.id }));

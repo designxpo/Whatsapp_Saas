@@ -209,7 +209,7 @@ function ActivityLog() {
 }
 
 // ── WhatsApp numbers (multi-WABA channels) ──
-const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", kbTag: "", mode: "full" as "full" | "manual", active: true, isDefault: false };
+const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", kbTag: "", crmSource: "", mode: "full" as "full" | "manual", active: true, isDefault: false };
 
 // Distinct KB topic tags for the per-channel knowledge picker — same client-side
 // derivation the flow editor uses (tags live on kb_documents, no dedicated API).
@@ -247,7 +247,7 @@ function ChannelsManager() {
     try {
       const res = await fetch("/api/admin/channels", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, appId: form.appId || null }),
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, crmSource: form.crmSource?.trim() || null, appId: form.appId || null }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
@@ -321,11 +321,11 @@ function ChannelsManager() {
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+            <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
           </div>
           <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}
             className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -348,6 +348,10 @@ function ChannelsManager() {
             <input className={inp} placeholder="Meta App ID (for template media)" value={form.appId} onChange={e => setForm({ ...form, appId: e.target.value.trim() })} />
           </div>
           <input className={`${inp} w-full font-mono`} placeholder={form.id ? "Access token — leave blank to keep the current one" : "System-user access token"} value={form.token} onChange={e => setForm({ ...form, token: e.target.value.trim() })} />
+          <div>
+            <input className={`${inp} w-full`} placeholder="CRM lead source for this number (e.g. ppc-whatsapp) — optional" value={form.crmSource} onChange={e => setForm({ ...form, crmSource: e.target.value })} title="New CRM leads that first message THIS number are created with this Source, so you can tell which number/campaign a lead came from. Leave blank for the generic 'WhatsApp'. A tracked-link [ref:] source, if present, takes precedence." />
+            <p className="text-[11px] text-ink-400 mt-1">New leads that arrive on this number land in your CRM under this <b>Source</b> — so a lead from your PPC number vs another is instantly distinguishable. Blank = <span className="font-mono">WhatsApp</span>.</p>
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this number">
               <option value="">AI persona: global default</option>
