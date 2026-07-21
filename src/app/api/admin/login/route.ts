@@ -55,7 +55,15 @@ export async function POST(req: Request) {
 
   if (!trusted) {
     const sent = await sendEmailOtp(user.email, "login");
-    if (!sent.ok) return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+    // A cooldown rejection means a code was already sent moments ago and is
+    // presumably still sitting in the inbox — proceed to the OTP step instead
+    // of blocking the user on the credentials screen (e.g. a quick double
+    // submit, or a retry right after the earlier attempt already sent one).
+    // Any OTHER failure (Resend down, daily cap) has no usable code, so it
+    // still blocks here.
+    if (!sent.ok && sent.retryAfterSeconds === undefined) {
+      return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+    }
 
     logActivity(user, "auth.login_otp_sent", "new device — code emailed");
     const pending = await createPendingToken({ email: user.email, name: user.name, role: user.role, tenantId: user.tenantId, tokenVersion: user.tokenVersion }, PENDING_LOGIN_PURPOSE, "10m");

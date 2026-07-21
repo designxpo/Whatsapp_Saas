@@ -47,7 +47,12 @@ export async function POST(req: Request) {
   if (existing.data) return NextResponse.json({ error: "An account with this email already exists — try logging in." }, { status: 400 });
 
   const sent = await sendEmailOtp(ownerEmail, "signup");
-  if (!sent.ok) return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+  // A cooldown rejection means a code was already sent moments ago (e.g. a
+  // resubmit right after an earlier attempt) — proceed with the code already
+  // in the inbox instead of blocking. Any OTHER failure has no usable code.
+  if (!sent.ok && sent.retryAfterSeconds === undefined) {
+    return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+  }
 
   try {
     const pending = await createPendingToken({
