@@ -333,6 +333,124 @@ export const COMPARE_ROWS: CompareRow[] = [
 export const COMPARE_NOTE =
   "Based on publicly available information as of June 2026. Each tool is excellent in its core lane — Talko AI's advantage is covering every channel in one platform on your own AI key. Capabilities change; check each provider for current details.";
 
+// ── /vs comparison landing pages ─────────────────────────────────────────────
+// One SEO page per competitor ("Talko AI vs WATI", "WATI alternative"), targeting
+// high-intent bottom-funnel search. `name` MUST match a COMPARE_COLS entry exactly
+// — the focused two-column table is derived from COMPARE_ROWS by that column index,
+// so the claims stay in sync with the honest, hedged capability matrix above.
+// Positioning is deliberately fair ("X is excellent at Y") — the only edge we
+// assert is all-channels-in-one + bring-your-own-AI-key, which the matrix backs up.
+export type CompetitorFaq = { q: string; a: string };
+export type Competitor = {
+  slug: string;        // url segment: /vs/<slug>
+  name: string;        // MUST equal a COMPARE_COLS label (column lookup)
+  lane: string;        // their core strength, stated fairly
+  category: string;    // short chip label
+  headline: string;    // the page <h1>
+  summary: string;     // intro paragraph — fair to them, clear on our edge
+  whySwitch: { title: string; body: string }[];
+  faqs: CompetitorFaq[];
+};
+
+export const COMPETITORS: Competitor[] = [
+  {
+    slug: "wati", name: "WATI", category: "WhatsApp API inbox",
+    lane: "a popular WhatsApp Business API shared inbox built for team collaboration",
+    headline: "Talko AI vs WATI: the all-channel, own-AI-key alternative",
+    summary: "WATI is a well-liked WhatsApp Business API inbox, strong on team collaboration and broadcast. But it lives on WhatsApp alone, and its AI is a paid add-on billed per message. Talko AI runs WhatsApp, Instagram, Messenger and website chat from one inbox — with AI replies grounded on your own knowledge base, on your own AI key, so there's no per-message markup.",
+    whySwitch: [
+      { title: "Every channel, one inbox", body: "WhatsApp, Instagram, Messenger and web chat land in a single inbox — not WhatsApp in isolation." },
+      { title: "Your AI key, your margins", body: "Bring your own Gemini, OpenAI or Anthropic key. AI replies aren't marked up per message the way an add-on is." },
+      { title: "Predictable pricing", body: "Plans that don't stack per-conversation fees as your volume grows." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good WATI alternative?", a: "Yes. Talko AI covers the same WhatsApp Business API use cases — shared inbox, broadcasts, no-code flows — and adds Instagram, Messenger and website chat, plus AI replies grounded on your own knowledge base and billed to your own AI key." },
+      { q: "Can I switch from WATI to Talko AI?", a: "Yes. You keep your WhatsApp Business number — connect it to Talko AI, rebuild your flows in the no-code builder, and add Instagram, Messenger and web chat alongside it." },
+      { q: "How does Talko AI pricing compare to WATI?", a: "Talko AI plans start at ₹999/mo with predictable pricing, and you bring your own AI key so AI replies aren't marked up per message. See the pricing page for current plans." },
+    ],
+  },
+  {
+    slug: "aisensy", name: "AiSensy", category: "WhatsApp marketing",
+    lane: "a WhatsApp broadcast and marketing platform popular with Indian businesses",
+    headline: "Talko AI vs AiSensy: broadcasts plus every channel and your own AI",
+    summary: "AiSensy is a solid WhatsApp broadcast and marketing tool. But it's WhatsApp-only, its AI is an add-on, and billing is per-conversation. Talko AI keeps the broadcasts — with a full sent → delivered → read → clicked → replied funnel — and adds Instagram, Messenger and web chat, plus AI grounded on your knowledge base running on your own key.",
+    whySwitch: [
+      { title: "Broadcasts with a real funnel", body: "Every send tracked step by step, with click attribution built in — across more than just WhatsApp." },
+      { title: "Own your AI costs", body: "Bring your own AI key instead of paying an AI add-on on top of per-conversation fees." },
+      { title: "One platform, every channel", body: "Run Instagram, Messenger and website chat from the same inbox, not a separate tool." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good AiSensy alternative?", a: "Yes. Talko AI does WhatsApp broadcasts with full delivery tracking and adds Instagram, Messenger and web chat, plus knowledge-base-grounded AI on your own key." },
+      { q: "Can I move my WhatsApp broadcasts from AiSensy to Talko AI?", a: "Yes. Connect your WhatsApp Business number, upload your approved templates, and send broadcasts by tag or segment with per-day audience charts and click tracking." },
+      { q: "How does Talko AI pricing compare to AiSensy?", a: "Talko AI starts at ₹999/mo with predictable pricing and bring-your-own-AI-key billing, so AI usage isn't marked up. Check the pricing page for current plans." },
+    ],
+  },
+  {
+    slug: "interakt", name: "Interakt", category: "WhatsApp commerce",
+    lane: "a WhatsApp commerce platform with catalog and order features",
+    headline: "Talko AI vs Interakt: sell in chat on every channel, on your own AI",
+    summary: "Interakt is a capable WhatsApp commerce tool with catalog and order flows. But it stays on WhatsApp, and its AI and chatbot depth are limited. Talko AI brings product cards, in-chat checkout and abandoned-cart recovery to WhatsApp, Instagram, Messenger and web chat — with AI replies grounded on your knowledge base and billed to your own key.",
+    whySwitch: [
+      { title: "Sell across every channel", body: "Catalog and in-chat checkout on Instagram and Messenger too, not WhatsApp alone." },
+      { title: "AI that quotes your own docs", body: "Replies grounded on your knowledge base — prices, policies, catalog — not a bolt-on." },
+      { title: "Bring your own AI key", body: "Predictable AI costs billed to your own key, no per-message markup." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good Interakt alternative?", a: "Yes. Talko AI supports WhatsApp catalog and in-chat checkout like Interakt, and extends it to Instagram, Messenger and web chat with knowledge-base-grounded AI on your own key." },
+      { q: "Can I switch from Interakt to Talko AI?", a: "Yes. Keep your WhatsApp Business number, import your catalog, and rebuild your commerce flows with the no-code builder — then turn on the same experience across your other channels." },
+      { q: "How does Talko AI pricing compare to Interakt?", a: "Talko AI plans start at ₹999/mo with predictable pricing and your own AI key, so AI replies aren't marked up per message. See the pricing page for details." },
+    ],
+  },
+  {
+    slug: "respond-io", name: "Respond.io", category: "Omnichannel inbox",
+    lane: "a strong omnichannel inbox for routing conversations across channels",
+    headline: "Talko AI vs Respond.io: omnichannel, with your own AI and in-chat sales",
+    summary: "Respond.io is a strong omnichannel inbox with solid routing. But its AI is an add-on with no bring-your-own-key option, it has no native catalog or in-chat checkout, and pricing is per-seat plus AI. Talko AI covers the same channels, grounds its AI on your knowledge base with your own key, and lets you sell right inside the conversation.",
+    whySwitch: [
+      { title: "Your AI key, no add-on", body: "Bring your own Gemini, OpenAI or Anthropic key instead of paying a separate AI add-on per seat." },
+      { title: "Sell inside the chat", body: "Native catalog, in-chat checkout and cart recovery — not just an inbox." },
+      { title: "Pricing that doesn't scale by seat", body: "Predictable plans rather than per-seat plus AI stacking up as the team grows." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good Respond.io alternative?", a: "Yes. Talko AI is omnichannel across WhatsApp, Instagram, Messenger and web chat, and adds knowledge-base-grounded AI on your own key plus native catalog and in-chat checkout." },
+      { q: "Can I switch from Respond.io to Talko AI?", a: "Yes. Connect your WhatsApp number and social channels, rebuild your routing and flows in the no-code builder, and bring your team into one inbox." },
+      { q: "How does Talko AI pricing compare to Respond.io?", a: "Talko AI starts at ₹999/mo with predictable pricing and bring-your-own-AI-key billing, rather than per-seat plus a separate AI charge. See the pricing page for current plans." },
+    ],
+  },
+  {
+    slug: "manychat", name: "ManyChat", category: "IG & Messenger bots",
+    lane: "a well-known Instagram and Messenger automation tool",
+    headline: "Talko AI vs ManyChat: add WhatsApp, web chat and your own AI",
+    summary: "ManyChat is great at Instagram and Messenger flow automation. But it has no website chat, its AI is basic, and pricing is per-contact. Talko AI keeps the Instagram and Messenger automation and adds WhatsApp and website chat in the same inbox — with AI replies grounded on your knowledge base and billed to your own AI key.",
+    whySwitch: [
+      { title: "WhatsApp and web chat too", body: "Not just Instagram and Messenger — WhatsApp and a website widget in the same inbox." },
+      { title: "AI grounded on your business", body: "Replies quote your own docs, prices and policies, on your own AI key — beyond basic keyword bots." },
+      { title: "No per-contact pricing", body: "Predictable plans instead of costs that climb with every contact added." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good ManyChat alternative?", a: "Yes. Talko AI does Instagram and Messenger automation like ManyChat and adds WhatsApp and website chat, plus knowledge-base-grounded AI on your own key." },
+      { q: "Can I switch from ManyChat to Talko AI?", a: "Yes. Connect your Instagram and Messenger accounts, rebuild your flows in the no-code builder, and add WhatsApp and a website widget alongside them." },
+      { q: "How does Talko AI pricing compare to ManyChat?", a: "Talko AI plans start at ₹999/mo with predictable pricing — not per-contact — and you bring your own AI key. See the pricing page for current plans." },
+    ],
+  },
+  {
+    slug: "tidio", name: "Tidio", category: "Website live chat",
+    lane: "a web-first live chat and chatbot tool",
+    headline: "Talko AI vs Tidio: website chat plus WhatsApp, Instagram and Messenger",
+    summary: "Tidio is a strong website live-chat and chatbot tool. But it's web-first, its AI is billed on top, there's no bring-your-own-key option, and catalog is Shopify-only. Talko AI keeps the website widget and adds deep WhatsApp, Instagram and Messenger — with AI grounded on your knowledge base, on your own AI key, and catalog across every channel.",
+    whySwitch: [
+      { title: "Beyond the website", body: "Deep WhatsApp, Instagram and Messenger support, not a web-first tool with messaging bolted on." },
+      { title: "Your own AI key", body: "Bring your own Gemini, OpenAI or Anthropic key instead of paying for AI on top per seat." },
+      { title: "Catalog on every channel", body: "Product cards and in-chat checkout everywhere — not limited to a single store integration." },
+    ],
+    faqs: [
+      { q: "Is Talko AI a good Tidio alternative?", a: "Yes. Talko AI includes a website chat widget like Tidio and adds full WhatsApp, Instagram and Messenger, plus knowledge-base-grounded AI on your own key." },
+      { q: "Can I switch from Tidio to Talko AI?", a: "Yes. Add the Talko AI website widget, connect your WhatsApp number and social channels, and rebuild your bots in the no-code flow builder." },
+      { q: "How does Talko AI pricing compare to Tidio?", a: "Talko AI starts at ₹999/mo with predictable pricing and bring-your-own-AI-key billing, rather than per-seat plus a separate AI charge. See the pricing page for details." },
+    ],
+  },
+];
+
 export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
 
 // Integrations we provide, grouped by category for the logo wall.

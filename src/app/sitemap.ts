@@ -1,16 +1,20 @@
 import type { MetadataRoute } from "next";
-import { POSTS } from "./(site)/_content/site";
+import { POSTS, COMPETITORS } from "./(site)/_content/site";
 import { INDUSTRIES } from "./(site)/_content/industries";
 import { LEGAL_DOCS } from "./(site)/_content/legal";
 import { SITE_URL } from "@/lib/siteurl";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
-  const routes = ["", "/features", "/industries", "/pricing", "/about", "/blog"].map(path => ({
+  const routes = ["", "/features", "/industries", "/pricing", "/about", "/blog", "/vs"].map(path => ({
     url: `${SITE_URL}${path}`,
     lastModified: now,
     changeFrequency: "weekly" as const,
     priority: path === "" ? 1 : 0.7,
+  }));
+  // Per-competitor comparison pages ("Talko AI vs X" / "X alternative").
+  const comparisons = COMPETITORS.map(c => ({
+    url: `${SITE_URL}/vs/${c.slug}`, lastModified: now, changeFrequency: "monthly" as const, priority: 0.6,
   }));
   // Login/signup: indexable but low value.
   const authRoutes = ["/login", "/signup"].map(path => ({
@@ -32,5 +36,5 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const legal = ["/legal", ...LEGAL_DOCS.map(d => `/legal/${d.slug}`)].map(path => ({
     url: `${SITE_URL}${path}`, lastModified: now, changeFrequency: "yearly" as const, priority: 0.3,
   }));
-  return [...routes, ...industries, ...authRoutes, ...posts, ...legal];
+  return [...routes, ...industries, ...comparisons, ...authRoutes, ...posts, ...legal];
 }

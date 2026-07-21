@@ -1,9 +1,10 @@
 // Composable marketing sections — light TimBot-style theme. Server-safe.
 
+import Link from "next/link";
 import {
   Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
   Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
-  Rocket, TrendingUp, MessagesSquare, Globe, type LucideIcon,
+  Rocket, TrendingUp, MessagesSquare, Globe, ArrowRight, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
 import { Parallax, Reveal } from "./motion";
@@ -291,6 +292,11 @@ export function ComparisonTable() {
           </table>
         </div>
         <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-500">{COMPARE_NOTE}</p>
+        <div className="mt-6 text-center">
+          <Link href="/vs" className="inline-flex items-center gap-1.5 text-sm font-bold text-[#0783fd] hover:underline">
+            See detailed comparisons <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
       </Reveal>
     </section>
   );
