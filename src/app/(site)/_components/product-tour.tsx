@@ -5,6 +5,7 @@
 // all screenshots stay mounted (opacity toggle) so switching is instant.
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Parallax } from "./motion";
 import {
   MessageSquare, Workflow, Megaphone, BarChart3, LayoutGrid, Sparkles, Plug, ShoppingBag,
@@ -112,9 +113,11 @@ export function ProductTour() {
             </div>
             <div className="relative aspect-[1600/910] w-full bg-white">
               {SCREENS.map((s, i) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={s.key} src={s.src} alt={s.title} width={1600} height={910} loading={i === 0 ? "eager" : "lazy"}
-                  className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-300 ${s.key === active.key ? "opacity-100" : "pointer-events-none opacity-0"}`} />
+                // next/image → auto AVIF/WebP + responsive widths; first screen is
+                // the LCP candidate so it gets priority (preload, no lazy).
+                <Image key={s.key} src={s.src} alt={s.title} fill priority={i === 0}
+                  sizes="(min-width: 1024px) 700px, 100vw"
+                  className={`object-contain transition-opacity duration-300 ${s.key === active.key ? "opacity-100" : "pointer-events-none opacity-0"}`} />
               ))}
             </div>
           </div>

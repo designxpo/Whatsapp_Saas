@@ -4,6 +4,7 @@
 // stage, with subtle scroll parallax. Layers (backdrop, frame, pill, blobs) move
 // at different rates for depth. Parallax is fully disabled under reduced-motion.
 import { useRef } from "react";
+import Image from "next/image";
 import { Bot, Check, Sparkles } from "lucide-react";
 import { Container, SectionTitle, TONES } from "./ui";
 import { useParallax } from "./motion";
@@ -51,9 +52,8 @@ export function WhyChoose() {
                   <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
                   <span className="mx-auto max-w-[60%] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] font-medium text-slate-400">app.talko.ai / live-chat</span>
                 </div>
-                <div className="aspect-[1600/910] w-full bg-white">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/tour/inbox.png" alt="Talko AI unified inbox answering a customer from the knowledge base" width={1600} height={910} loading="lazy" className="h-full w-full object-contain" />
+                <div className="relative aspect-[1600/910] w-full bg-white">
+                  <Image src="/tour/inbox.png" alt="Talko AI unified inbox answering a customer from the knowledge base" fill sizes="(min-width: 1024px) 560px, 100vw" className="object-contain" />
                 </div>
               </div>
             </div>

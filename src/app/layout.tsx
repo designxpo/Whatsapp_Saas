@@ -24,11 +24,11 @@ export const metadata: Metadata = {
   verification: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION
     ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
     : undefined,
-  // Brand assets live in public/brand/.
+  // Small raster favicons (was a 2.72MB SVG fetched on every route as all three).
   icons: {
-    icon: [{ url: "/brand/talko_favicon.svg", type: "image/svg+xml" }],
-    shortcut: "/brand/talko_favicon.svg",
-    apple: "/brand/talko_favicon.svg",
+    icon: [{ url: "/brand/favicon-32.png", type: "image/png", sizes: "32x32" }],
+    shortcut: "/brand/favicon-32.png",
+    apple: { url: "/brand/favicon-180.png", sizes: "180x180" },
   },
   openGraph: {
     type: "website",
@@ -49,6 +49,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable}>
       <head>
+        {/* Warm up the icon CDNs used above the fold (brand marks / hero chips)
+            so their TLS/connection setup isn't on the critical path. */}
+        <link rel="preconnect" href="https://cdn.simpleicons.org" crossOrigin="anonymous" />
+        <link rel="preconnect" href="https://api.iconify.design" crossOrigin="anonymous" />
         {/* No-JS safety net: scroll-reveal bakes a hidden state into SSR markup
             (opacity:0). If JS never runs, force every [data-reveal] element
             visible so no content is lost. (Reduced-motion has its own rule.) */}
