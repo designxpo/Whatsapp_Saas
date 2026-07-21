@@ -30,6 +30,28 @@ export const LSQ_KEYS = {
 
 const boolish = (v: string | null | undefined) => /^(1|true|yes|on)$/i.test(v ?? "");
 
+// LeadSquared's Phone/Mobile fields are India-default: LSQ prepends the account
+// country code (+91) to whatever we send, WITHOUT noticing a 91 already present —
+// so sending "+919999730196" was stored as "+91-919999730196" (duplicate 91, so
+// counselors had to hand-edit the number before dialling). Send the 10-digit
+// NATIONAL number for Indian numbers so LSQ's own prefix yields "+91-9999730196".
+// Foreign numbers keep E.164 (best effort; the account is India-centric).
+function lsqPhone(phone: string): string {
+  const d = (phone || "").replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) return d.slice(2);
+  if (d.length === 11 && d.startsWith("0")) return d.slice(1);
+  if (d.length === 10) return d;
+  return d ? `+${d}` : "";
+}
+
+// Scrub a lead Source before it reaches LSQ. Zero-width characters (U+200B–200D,
+// word-joiner U+2060, BOM) sneak in when a value is pasted from a doc/sheet — a
+// channel source arrived as "⁠PPC-Whatsapp", which no dashboard filter for
+// "ppc-whatsapp" would ever match. Strip them (and trim) at the write point.
+function cleanSource(s: string | undefined): string {
+  return (s ?? "").replace(/[​-‍⁠﻿]/g, "").trim();
+}
+
 // LeadSquared is a connection in the Integrations hub — find this tenant's active
 // one (its creds + visible status live on it).
 async function findLsqIntegration(tenantId: string): Promise<Integration | null> {
@@ -180,12 +202,13 @@ async function upsertLead(p: { phone: string; name?: string; source?: string; fi
     }
     const parts = (p.name || "").trim().split(/\s+/).filter(Boolean);
     const first = parts[0] ?? "", last = parts.slice(1).join(" ");
+    const local = lsqPhone(digits);
     const attrs = [
-      { Attribute: "Phone", Value: `+${digits}` },
-      { Attribute: "Mobile", Value: `+${digits}` },
+      { Attribute: "Phone", Value: local },
+      { Attribute: "Mobile", Value: local },
       ...(first ? [{ Attribute: "FirstName", Value: first }] : []),
       ...(last ? [{ Attribute: "LastName", Value: last }] : []),
-      { Attribute: "Source", Value: p.source || "WhatsApp" },
+      { Attribute: "Source", Value: cleanSource(p.source) || "WhatsApp" },
       ...(p.fields ?? []),
     ];
     const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Capture?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
@@ -223,17 +246,32 @@ export async function syncLeadProfile(p: { phone?: string | null; phoneAlt?: str
     if (city) fields.push({ Attribute: "mx_City", Value: city });
     // An ALTERNATE number the lead shared in chat lands in the standard Phone
     // field — Mobile stays their WhatsApp number (the identity/dedup key).
+    // National form (see lsqPhone) so LSQ's +91 prefix doesn't duplicate.
     const alt = (p.phoneAlt || "").replace(/\D/g, "");
-    if (alt.length >= 10 && alt.length <= 15) fields.push({ Attribute: "Phone", Value: `+${alt}` });
+    if (alt.length >= 10 && alt.length <= 15) fields.push({ Attribute: "Phone", Value: lsqPhone(alt) });
     // Persist the WhatsApp @handle onto the lead so future handle-only inbound
     // (hidden number) still resolves to this lead — the CRM dedupes by handle.
     if (handle && c.waHandleField) fields.push({ Attribute: c.waHandleField, Value: handle });
-    if (!fields.length) return;   // nothing CRM-relevant to write
+    if (!fields.length && !name) return;   // nothing CRM-relevant to write (no fields, no name to backfill)
 
-    // Resolve by phone first; fall back to the @handle when the number is unknown.
-    let leadId = phone ? await findLeadId(phone, c) : null;
+    // Resolve by phone first (full record — we need the current name); fall back
+    // to the @handle when the number is unknown.
+    const lead = phone ? await retrieveLead(phone, c) : null;
+    let leadId = (lead?.ProspectID as string | undefined) ?? null;
     if (!leadId && handle && c.waHandleField) leadId = await findLeadIdByHandle(handle, c, c.waHandleField);
+    // BACKFILL the name onto an existing lead ONLY when it has none yet — a
+    // flow/profile-captured name used to be dropped here, leaving the CRM
+    // showing "No Name". Never overwrite a name PPC/a salesperson curated.
+    if (name && lead) {
+      const named = String(lead.FirstName ?? "").trim() || String(lead.LastName ?? "").trim();
+      if (!named) {
+        const parts = name.split(/\s+/).filter(Boolean);
+        if (parts[0]) fields.push({ Attribute: "FirstName", Value: parts[0] });
+        if (parts.length > 1) fields.push({ Attribute: "LastName", Value: parts.slice(1).join(" ") });
+      }
+    }
     if (leadId) {
+      if (!fields.length) return;   // lead already complete — nothing to write
       const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields),
       });
@@ -296,14 +334,13 @@ export async function createLeadTask(leadId: string, p: { name: string; notes?: 
   }
 }
 
-// Looks up the LeadSquared ProspectID for a phone number. Tries +<digits> first
-// (LSQ usually stores E.164), then bare digits.
-async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
+// Looks up the full LeadSquared lead for a phone number (first match). Tries
+// +<digits> first (LSQ usually stores E.164), then bare digits, plus the last-10
+// form so a lead saved WITHOUT a country code (common for Indian numbers) still
+// matches the WhatsApp sender id (e.g. 91XXXXXXXXXX vs a lead saved as XXXXXXXXXX).
+async function retrieveLead(phone: string, c: LsqCreds): Promise<Record<string, unknown> | null> {
   const digits = (phone || "").replace(/\D/g, "");
   if (!digits) return null;
-  // Try E.164 (+<cc><num>) and bare digits, plus the last-10 form so a lead stored
-  // WITHOUT a country code (common for Indian numbers) still matches the WhatsApp
-  // sender id (e.g. 91XXXXXXXXXX vs a lead saved as XXXXXXXXXX).
   const last10 = digits.length > 10 ? digits.slice(-10) : "";
   let okResponses = 0;
   for (const candidate of [`+${digits}`, digits, ...(last10 ? [`+${last10}`, last10] : [])]) {
@@ -311,14 +348,19 @@ async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });   // a hung LSQ socket must not stall webhooks/cron
     if (!res.ok) continue;
     okResponses++;
-    const leads = (await res.json().catch(() => [])) as { ProspectID?: string }[];
-    if (Array.isArray(leads) && leads[0]?.ProspectID) return leads[0].ProspectID;
+    const leads = (await res.json().catch(() => [])) as Record<string, unknown>[];
+    if (Array.isArray(leads) && leads[0]?.ProspectID) return leads[0];
   }
   // Every candidate was rejected (401 bad key / wrong host / 429) — that's a
   // LOOKUP FAILURE, not "no lead". Throw so activity pushes retry via the queue
   // instead of silently dropping. A genuine no-match returns null above.
   if (okResponses === 0) throw new Error("lead lookup rejected for all phone forms (check LSQ keys/host or rate limit)");
   return null;
+}
+
+// ProspectID only — the common case. Shares retrieveLead's candidate/throw logic.
+async function findLeadId(phone: string, c: LsqCreds): Promise<string | null> {
+  return ((await retrieveLead(phone, c))?.ProspectID as string | undefined) ?? null;
 }
 
 // Looks up the LeadSquared ProspectID by Instagram handle. Requires the tenant to
@@ -498,6 +540,10 @@ export interface WaActivityInput {
   // source (e.g. "ppc-whatsapp") instead of the generic "WhatsApp". Organic
   // chats leave this unset. Existing leads keep their original source untouched.
   source?: string;
+  // Name for an auto-created lead (first inbound only) — the WhatsApp profile
+  // name, so a brand-new lead isn't created as "No Name". Existing leads keep
+  // their name; a later flow-captured name backfills via syncLeadProfile.
+  name?: string;
 }
 
 export interface ChatActivityInput {
@@ -548,7 +594,7 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
   try {
     let leadId = await findLeadId(p.phone, c);
     if (!leadId && p.direction === "inbound" && c.autoCreate) {
-      leadId = await createOrUpdateLead({ phone: p.phone, source: p.source || "WhatsApp" }, tid);
+      leadId = await createOrUpdateLead({ phone: p.phone, source: p.source || "WhatsApp", name: p.name }, tid);
       // A create that answered null is a FAILURE (Lead.Capture rejected, keys
       // broken), not "phone not in CRM" — treating it as ok silently drops
       // brand-new leads. Park it; the queue replay re-runs the whole attempt.

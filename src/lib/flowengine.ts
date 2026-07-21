@@ -1094,6 +1094,10 @@ export async function handleFlowMessage(
           // Re-land: if their number is already captured (or IS the WhatsApp
           // key), the freshly-learned name fills the contact too.
           await landCapturedLead(phone, (send.kind ?? "whatsapp") === "whatsapp" ? phone : null, channelTag(send.kind), tid);
+          // Push the captured name onto the CRM lead (real phone only) — it used
+          // to stay in our contact and never reach LeadSquared, so leads showed
+          // "No Name". Backfill-only (never overwrites a curated name).
+          if (phone.replace(/\D/g, "").length >= 10) void syncLeadProfile({ phone, name: text.trim().slice(0, 120) }, tid);
         }
         if (/phone|mobile|whats?app/i.test(attr)) {
           const d = text.replace(/\D/g, "");

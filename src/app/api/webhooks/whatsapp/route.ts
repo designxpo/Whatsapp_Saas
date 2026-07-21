@@ -304,7 +304,9 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // specific — one campaign link), else the receiving NUMBER's own source (so
   // leads are attributable to the number/campaign they came in on), else default.
   const leadSource = adSource || channel?.crmSource || undefined;
-  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid, source: leadSource }));
+  // profileName seeds a brand-new lead's name so it isn't created as "No Name"
+  // (existing leads keep theirs; a flow-captured name backfills later).
+  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid, source: leadSource, name: profileName || undefined }));
   // Fan the inbound message out to any connected integrations (Zapier/Sheets/
   // Slack…). Deferred so it never delays the reply; no-op when none configured.
   after(() => emitEvent(tid, "message.inbound", { phone: from, name: profileName, text, channel: "whatsapp", conversationId: conv.id }));
