@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { SITE_URL } from "@/lib/siteurl";
 import "./globals.css";
 
@@ -25,9 +27,15 @@ export const metadata: Metadata = {
     ? { google: process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION }
     : undefined,
   // Small raster favicons (was a 2.72MB SVG fetched on every route as all three).
+  // 48px & 96px are multiples of 48 so Google can use one as the search-result
+  // favicon; 32px is the crisp browser-tab size; 180px is the apple-touch icon.
   icons: {
-    icon: [{ url: "/brand/favicon-32.png", type: "image/png", sizes: "32x32" }],
-    shortcut: "/brand/favicon-32.png",
+    icon: [
+      { url: "/brand/favicon-32.png", type: "image/png", sizes: "32x32" },
+      { url: "/brand/favicon-48.png", type: "image/png", sizes: "48x48" },
+      { url: "/brand/favicon-96.png", type: "image/png", sizes: "96x96" },
+    ],
+    shortcut: "/brand/favicon-96.png",
     apple: { url: "/brand/favicon-180.png", sizes: "180x180" },
   },
   openGraph: {
@@ -60,7 +68,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <style>{`[data-reveal]{opacity:1!important;transform:none!important}`}</style>
         </noscript>
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        {/* Privacy-friendly product analytics + Core Web Vitals monitoring
+            (no-op until enabled in the Vercel project dashboard). */}
+        <Analytics />
+        <SpeedInsights />
+      </body>
     </html>
   );
 }
