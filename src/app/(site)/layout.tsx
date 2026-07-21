@@ -1,16 +1,54 @@
 import type { Metadata } from "next";
 import { SiteNav, SiteFooter } from "./_components/chrome";
 import { SiteBackground } from "./_components/site-background";
+import { JsonLd } from "./_components/json-ld";
+import { SITE_URL } from "@/lib/siteurl";
 
 export const metadata: Metadata = {
-  title: "Talko AI — AI conversations for WhatsApp, Instagram & Messenger",
+  // No brand suffix here — the root template ("%s — Talko AI") appends it,
+  // so this renders "AI Conversations for WhatsApp & Instagram — Talko AI"
+  // (~54 chars) instead of the old double-branded title.
+  title: "AI Conversations for WhatsApp & Instagram",
   description:
-    "Automate WhatsApp, Instagram, Facebook Messenger and a website web-chat widget with AI replies, broadcasts, chatbot flows, drip sequences and catalog checkout. One inbox for every conversation. Start a free 14-day trial.",
+    "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, chatbot flows and catalog checkout. One inbox for every conversation. Free 14-day trial.",
+};
+
+// Site-wide entity graph. `sameAs` is the primary lever for the "Talko AI"
+// brand-name collision (thetalko.com, gettalko.com, talka.ai) — it tells
+// search/AI engines which external profiles ARE this entity. Add each profile
+// URL here as it goes live (G2, Capterra, Product Hunt, LinkedIn, Crunchbase).
+const ORG_ID = `${SITE_URL}/#organization`;
+const ORG_SAME_AS: string[] = [
+  // e.g. "https://www.g2.com/products/talko-ai", "https://www.linkedin.com/company/talko-ai",
+];
+
+const orgSchema = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": ORG_ID,
+  name: "Talko AI",
+  url: SITE_URL,
+  logo: `${SITE_URL}/brand/talkoai.svg`,
+  description:
+    "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger and website chat conversations with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
+  parentOrganization: { "@type": "Organization", name: "PM Technologies" },
+  ...(ORG_SAME_AS.length ? { sameAs: ORG_SAME_AS } : {}),
+};
+
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": `${SITE_URL}/#website`,
+  url: SITE_URL,
+  name: "Talko AI",
+  publisher: { "@id": ORG_ID },
 };
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <JsonLd data={orgSchema} />
+      <JsonLd data={websiteSchema} />
       {/* Living gradient backdrop behind the whole site (drifts on scroll). */}
       <SiteBackground />
       <div className="relative min-h-screen overflow-x-hidden text-slate-600 antialiased">

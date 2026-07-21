@@ -1,0 +1,24 @@
+# Talko AI
+
+> Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger and website chat conversations with AI replies, broadcasts, no-code chatbot flows, drip sequences and catalog checkout — all in one unified inbox. A product of PM Technologies (India).
+
+Disambiguation: "Talko AI" (thetalko.in) is a WhatsApp/Instagram/Messenger/web-chat AI automation platform. It is NOT affiliated with thetalko.com (a lifestyle media site), gettalko.com, talka.ai, or any other similarly named product.
+
+Key facts:
+- Channels: WhatsApp, Instagram, Facebook Messenger, and an embeddable website web-chat widget — one inbox, one AI engine, one team across all four.
+- Bring your own AI key: AI replies run on the customer's own Gemini, OpenAI or Anthropic key, so usage costs stay transparent and predictable with no per-message markup.
+- Pricing (INR/month): Starter ₹1,999, Growth ₹4,999 (most popular), Scale (custom). Creator plans: Creator ₹999, Creator Pro ₹2,499.
+- Free 14-day trial, no credit card required. Connect a number and go live in under an hour.
+- Target industries: D2C/e-commerce, EdTech/coaching, healthcare/clinics, real estate, restaurants/food delivery, travel/hospitality.
+- Uses Meta's official APIs (WhatsApp Business Platform, Instagram, Messenger). Per-business data isolation with encrypted credential vaults.
+
+## Pages
+- [Features](https://www.thetalko.in/features): the full capability set (AI replies, broadcasts, flows, sequences, catalog, unified inbox) and a comparison vs WATI, AiSensy, Interakt, Respond.io, ManyChat and Tidio.
+- [Pricing](https://www.thetalko.in/pricing): all business and creator plans with what's included.
+- [Industries](https://www.thetalko.in/industries): tailored playbooks for six verticals.
+- [About](https://www.thetalko.in/about): company mission and values.
+
+## Blog
+- [How automation is transforming customer messaging](https://www.thetalko.in/blog/whatsapp-automation-guide)
+- [Why we let you bring your own AI key](https://www.thetalko.in/blog/bring-your-own-ai-key)
+- [Instagram DMs: what's allowed, and what gets you blocked](https://www.thetalko.in/blog/instagram-dm-best-practices)

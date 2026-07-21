@@ -9,10 +9,26 @@ import { PlatformGlimpse } from "./_components/glimpse";
 import { Hero } from "./_components/hero";
 import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
+import { JsonLd } from "./_components/json-ld";
+import { FAQS } from "./_content/site";
+
+// FAQPage schema — the single structured-data type most correlated with AI
+// answer-engine citation, since it's already the Q&A an engine wants to quote.
+// Built from the same FAQS the on-page FAQ renders, so they never drift.
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQS.map(f => ({
+    "@type": "Question",
+    name: f.q,
+    acceptedAnswer: { "@type": "Answer", text: f.a },
+  })),
+};
 
 export default function HomePage() {
   return (
     <>
+      <JsonLd data={faqSchema} />
       {/* Hero — orbit panel */}
       <Hero />
 

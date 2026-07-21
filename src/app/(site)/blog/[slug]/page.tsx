@@ -4,7 +4,9 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Container, Glow } from "../../_components/ui";
 import { CtaBand } from "../../_components/sections";
+import { JsonLd } from "../../_components/json-ld";
 import { POSTS } from "../../_content/site";
+import { SITE_URL } from "@/lib/siteurl";
 
 export function generateStaticParams() {
   return POSTS.map(p => ({ slug: p.slug }));
@@ -23,8 +25,26 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
   if (!post) notFound();
   const more = POSTS.filter(p => p.slug !== slug).slice(0, 2);
 
+  // BlogPosting schema — lets AI engines attribute and cite the article, and
+  // enables article rich results. `date` is a human string ("June 12, 2026");
+  // Date.parse handles it, and we emit an ISO date when parseable.
+  const parsed = Date.parse(post.date);
+  const blogSchema = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
+    articleSection: post.category,
+    url: `${SITE_URL}/blog/${post.slug}`,
+    mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
+    author: { "@type": "Organization", name: "Talko AI" },
+    publisher: { "@id": `${SITE_URL}/#organization` },
+  };
+
   return (
     <>
+      <JsonLd data={blogSchema} />
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-200px] -translate-x-1/2" />
         <Container className="relative pt-16 pb-4">

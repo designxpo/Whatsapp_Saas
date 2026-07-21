@@ -3,16 +3,51 @@ import { Container, Glow, SectionTitle } from "../_components/ui";
 import { Testimonials, CtaBand } from "../_components/sections";
 import { PricingTiers } from "../_components/pricing";
 import { Faq } from "../_components/chrome";
-import { CREATOR_TIERS } from "../_content/site";
+import { JsonLd } from "../_components/json-ld";
+import { TIERS, CREATOR_TIERS, type Tier } from "../_content/site";
+import { SITE_URL } from "@/lib/siteurl";
 
 export const metadata: Metadata = {
-  title: "Pricing — Talko AI",
-  description: "Simple, transparent pricing. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+  // Root template appends " — Talko AI"; keep this short and un-branded.
+  title: "Pricing",
+  description: "Simple, transparent pricing from ₹999/mo. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+};
+
+// SoftwareApplication + priced Offers so AI engines can answer "how much does
+// Talko AI cost" with a real table, and Google can show pricing rich results.
+// Paid tiers only (Scale is custom/quote → no fixed price to publish).
+const paidOffers = [...TIERS, ...CREATOR_TIERS]
+  .filter((t): t is Tier & { priceMonthly: number } => typeof t.priceMonthly === "number")
+  .map(t => ({
+    "@type": "Offer",
+    name: `${t.name} plan`,
+    price: t.priceMonthly,
+    priceCurrency: "INR",
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price: t.priceMonthly,
+      priceCurrency: "INR",
+      unitText: "MONTH",
+    },
+    url: `${SITE_URL}/pricing`,
+  }));
+
+const pricingSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Talko AI",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: SITE_URL,
+  description:
+    "AI conversation automation for WhatsApp, Instagram, Facebook Messenger and website chat — one inbox with AI replies, broadcasts, chatbot flows and catalog checkout.",
+  offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: 999, highPrice: 4999, offerCount: paidOffers.length, offers: paidOffers },
 };
 
 export default function PricingPage() {
   return (
     <>
+      <JsonLd data={pricingSchema} />
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-20 pb-4">

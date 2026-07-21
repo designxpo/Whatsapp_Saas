@@ -1,11 +1,10 @@
 import type { MetadataRoute } from "next";
 import { POSTS } from "./(site)/_content/site";
 import { LEGAL_DOCS } from "./(site)/_content/legal";
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://whatsapp-saas-navy.vercel.app";
+import { SITE_URL } from "@/lib/siteurl";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const routes = ["", "/features", "/pricing", "/about", "/blog", "/login", "/signup"].map(path => ({
+  const routes = ["", "/features", "/industries", "/pricing", "/about", "/blog", "/login", "/signup"].map(path => ({
     url: `${SITE_URL}${path}`,
     changeFrequency: "weekly" as const,
     priority: path === "" ? 1 : 0.7,
