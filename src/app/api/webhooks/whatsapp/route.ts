@@ -227,16 +227,20 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Handle Hub attribution — a tracked link/QR embeds "[ref:CODE]" in the prefilled
   // first message. Capture which source (QR / ad / bio) started the chat, then strip
   // the token so every downstream path (storage, flows, keywords, CRM) sees only the
-  // customer's real text. Fire-and-forget; never blocks the inbound.
+  // customer's real text. Resolved BEFORE the CRM push so a paid-ad chat's new lead
+  // lands under that source's label (e.g. "ppc-whatsapp") instead of "WhatsApp";
+  // the resolve is a single indexed read and only runs when a ref is present.
+  let adSource: string | undefined;   // Handle Hub source label → LSQ lead Source (new leads only)
   const hhRef = parseRef(text);
   if (hhRef) {
     const stripped = stripRef(text);
     if (stripped) text = stripped;
-    void resolveRef(tid, hhRef).then(src => {
-      if (!src) return;
+    const src = await resolveRef(tid, hhRef).catch(() => null);
+    if (src) {
+      adSource = src.label;
       void recordTouch(src.id, tid);
       void setContactAttributes(from, { handle_source: src.label }, tid).catch(() => undefined);
-    }).catch(() => undefined);
+    }
   }
 
   // Ensure the sender is a contact, then attach to a conversation. An inbound
@@ -296,7 +300,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   }
 
   // Mirror the lead's reply onto their LeadSquared timeline (no-op when LSQ unset).
-  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid }));
+  after(() => pushWaActivity({ phone: from, direction: "inbound", body: text, via: "lead", tenantId: tid, source: adSource }));
   // Fan the inbound message out to any connected integrations (Zapier/Sheets/
   // Slack…). Deferred so it never delays the reply; no-op when none configured.
   after(() => emitEvent(tid, "message.inbound", { phone: from, name: profileName, text, channel: "whatsapp", conversationId: conv.id }));

@@ -492,6 +492,12 @@ export interface WaActivityInput {
   body: string;
   via?: "lead" | "bot" | "agent" | "crm" | "campaign";
   tenantId?: string;
+  // Lead SOURCE for an auto-created lead (first inbound only). Set from the
+  // click-to-chat tracked link's [ref:CODE] → Handle Hub source label, so a
+  // WhatsApp chat opened from a paid ad lands in the CRM under that campaign's
+  // source (e.g. "ppc-whatsapp") instead of the generic "WhatsApp". Organic
+  // chats leave this unset. Existing leads keep their original source untouched.
+  source?: string;
 }
 
 export interface ChatActivityInput {
@@ -502,6 +508,7 @@ export interface ChatActivityInput {
   via?: "lead" | "bot" | "agent";
   channel: string;                 // "Instagram" | "Messenger" | "Web chat"
   tenantId?: string;
+  source?: string;                 // ad-origin source for an auto-created lead (defaults to channel)
 }
 
 // `skipped` marks "this tenant's LSQ credentials did not resolve" — which is
@@ -541,7 +548,7 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
   try {
     let leadId = await findLeadId(p.phone, c);
     if (!leadId && p.direction === "inbound" && c.autoCreate) {
-      leadId = await createOrUpdateLead({ phone: p.phone, source: "WhatsApp" }, tid);
+      leadId = await createOrUpdateLead({ phone: p.phone, source: p.source || "WhatsApp" }, tid);
       // A create that answered null is a FAILURE (Lead.Capture rejected, keys
       // broken), not "phone not in CRM" — treating it as ok silently drops
       // brand-new leads. Park it; the queue replay re-runs the whole attempt.
@@ -584,7 +591,7 @@ async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
     if (p.phone) leadId = await findLeadId(p.phone, c);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle, c);
     if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) {
-      leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.channel }, tid);
+      leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.source || p.channel }, tid);
       // Same rule: a null create is a retriable failure, not "no lead".
       if (!leadId) return { ok: false, retriable: true, error: "lead auto-create returned null (Lead.Capture rejected / LSQ keys?)" };
     }

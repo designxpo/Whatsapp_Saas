@@ -90,6 +90,7 @@ function HandleHubTab() {
             </select>
             <button onClick={addSource} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold shrink-0">Add</button>
           </div>
+          <p className="text-[11px] text-slate-400">The name becomes the <b>CRM lead Source</b> for new leads from this link — for paid WhatsApp ads, name it exactly as your dashboard filters on (e.g. <span className="font-mono">ppc-whatsapp</span>).</p>
         </div>
 
         {/* Sources */}
@@ -128,6 +129,7 @@ function HandleHubTab() {
           <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
             <li>Each source gets a unique <b>click-to-chat link + QR</b> pointing at your WhatsApp.</li>
             <li>The link carries a hidden code in the prefilled message. When the customer sends it, we tag their contact with the <b>source</b> and count the touch.</li>
+            <li>New leads from a source are created in your <b>CRM under that source&apos;s name</b> — so name a paid-ad source exactly as your report expects (e.g. <span className="font-mono">ppc-whatsapp</span>). Organic chats stay <span className="font-mono">WhatsApp</span>.</li>
             <li>Put each QR/link where it belongs — bio, ads, packaging, email footer — and see which one actually drives chats.</li>
           </ul>
         </RailCard>
