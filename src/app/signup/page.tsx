@@ -19,6 +19,12 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string) => setF(s => ({ ...s, [k]: v }));
 
+  // Email verification: a second step appears once the form is valid — the
+  // tenant/account are only created after the code is confirmed.
+  const [step, setStep] = useState<"form" | "otp">("form");
+  const [otpCode, setOtpCode] = useState("");
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!accept) { setError("Please accept the Terms of Service and Privacy Policy to continue."); return; }
@@ -27,10 +33,65 @@ export default function SignupPage() {
       const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, acceptTerms: true }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Signup failed"); return; }
+      setStep("otp");
+    } catch { setError("Connection error"); }
+    finally { setLoading(false); }
+  }
+
+  async function verifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true); setError(null);
+    try {
+      const res = await fetch("/api/signup/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: otpCode }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || "Invalid code"); return; }
       router.push("/admin?welcome=1");
       router.refresh();
     } catch { setError("Connection error"); }
     finally { setLoading(false); }
+  }
+
+  async function resend() {
+    setError(null); setResendMsg(null);
+    try {
+      const res = await fetch("/api/signup/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resend: true }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(d.error || "Could not resend code"); return; }
+      setResendMsg("A new code has been sent.");
+    } catch { setError("Connection error"); }
+  }
+
+  if (step === "otp") {
+    return (
+      <main className="min-h-screen flex items-center justify-center px-4 py-10 bg-canvas">
+        <form onSubmit={verifyOtp} className="w-full max-w-sm bg-white rounded-card border border-line p-7 space-y-5">
+          <div className="flex flex-col items-center text-center gap-3">
+            <BrandLogo height={40} className="max-w-[200px]" fallback={
+              <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center"><MessageSquare className="w-6 h-6 text-white" /></div>
+            } />
+            <div>
+              <h1 className="text-lg font-bold text-ink-900">Verify your email</h1>
+              <p className="text-sm text-ink-400">We emailed a 4-digit code to {f.ownerEmail} — enter it to finish creating your account.</p>
+            </div>
+          </div>
+          <input
+            className={`${inp} text-center text-2xl font-bold tracking-[0.5em] placeholder:tracking-normal placeholder:text-base`}
+            placeholder="0000" inputMode="numeric" maxLength={4} value={otpCode}
+            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 4))} autoFocus
+          />
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          {resendMsg && <p className="text-sm text-emerald-600">{resendMsg}</p>}
+          <button disabled={loading || otpCode.length !== 4} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Verify &amp; create account
+          </button>
+          <p className="text-center text-xs text-ink-400">
+            Didn&apos;t get it? <button type="button" onClick={resend} className="font-semibold text-brand-700 hover:underline">Resend code</button>
+            {" · "}
+            <button type="button" onClick={() => { setStep("form"); setOtpCode(""); setError(null); setResendMsg(null); }} className="font-semibold text-brand-700 hover:underline">Back</button>
+          </p>
+        </form>
+      </main>
+    );
   }
 
   return (

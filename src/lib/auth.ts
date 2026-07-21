@@ -48,6 +48,40 @@ export async function createSession(user: SessionUser): Promise<string> {
     .sign(secret());
 }
 
+// Cookie names + JWT `purpose` claims for the two pending (email-OTP) flows.
+// Defined here (not in the route files) because a Next.js route.ts file may
+// only export HTTP method handlers + a few reserved config names — any other
+// export fails the framework's route-type check.
+export const PENDING_LOGIN_COOKIE = "wa_pending_login";
+export const PENDING_LOGIN_PURPOSE = "login_otp_pending";
+export const PENDING_SIGNUP_COOKIE = "wa_pending_signup";
+export const PENDING_SIGNUP_PURPOSE = "signup_otp_pending";
+
+// Short-lived tokens for two-step auth flows (email-OTP challenges on login
+// and signup). Same secret/algorithm as a real session, but a distinct
+// `purpose` claim and a short expiry — verifyPendingToken only accepts a
+// token whose purpose matches, so a pending token can never be replayed as a
+// real session (verifySession never reads the `purpose` claim, and these are
+// never stored in SESSION_COOKIE).
+export async function createPendingToken(payload: Record<string, unknown>, purpose: string, ttl = "10m"): Promise<string> {
+  return new SignJWT({ ...payload, purpose })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(ttl)
+    .sign(secret());
+}
+
+export async function verifyPendingToken<T = Record<string, unknown>>(token: string | undefined, purpose: string): Promise<T | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret());
+    if (payload.purpose !== purpose) return null;
+    return payload as T;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifySession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   try {

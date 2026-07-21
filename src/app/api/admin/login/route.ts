@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
-import { checkCredentials, createSession, SESSION_COOKIE, DEFAULT_TENANT_ID, type SessionUser } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { checkCredentials, createSession, createPendingToken, SESSION_COOKIE, DEFAULT_TENANT_ID, PENDING_LOGIN_COOKIE, PENDING_LOGIN_PURPOSE, type SessionUser } from "@/lib/auth";
 import { verifyTeamLogin, logActivity } from "@/lib/team";
 import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from "@/lib/loginthrottle";
+import { isTrustedDevice, DEVICE_COOKIE } from "@/lib/devices";
+import { sendEmailOtp } from "@/lib/emailotp";
+
+// Accounts that skip the new-device email OTP entirely — e.g. a platform
+// reviewer test login (Meta App Review, etc.) that must work from an unknown
+// browser with no human present to relay an emailed code. Comma-separated,
+// case-insensitive. Empty/unset = no exemptions (every account gets 2FA).
+function isOtpExempt(email: string): boolean {
+  const list = (process.env.LOGIN_OTP_EXEMPT_EMAILS ?? "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+  return list.includes(email.toLowerCase());
+}
 
 export async function POST(req: Request) {
   let body: { user?: string; password?: string };
@@ -9,7 +21,8 @@ export async function POST(req: Request) {
   const login = (body.user ?? "").trim();
   const password = body.password ?? "";
 
-  // Brute-force throttle (per IP + username).
+  // Brute-force throttle (per IP + username) — unchanged; the OTP step below
+  // is additive 2FA, not a replacement for this gate.
   const key = loginKey(req, login);
   const gate = await loginThrottle(key);
   if (!gate.allowed) {
@@ -32,6 +45,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
   await clearLoginFailures(key);
+
+  // Credentials are correct. If this browser has already completed an OTP
+  // challenge for this email, sign in immediately as before. Otherwise this is
+  // an unrecognized device — challenge with an emailed code before issuing a
+  // real session.
+  const deviceToken = (await cookies()).get(DEVICE_COOKIE)?.value;
+  const trusted = isOtpExempt(user.email) || (await isTrustedDevice(user.email, deviceToken));
+
+  if (!trusted) {
+    const sent = await sendEmailOtp(user.email, "login");
+    if (!sent.ok) return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+
+    logActivity(user, "auth.login_otp_sent", "new device — code emailed");
+    const pending = await createPendingToken({ email: user.email, name: user.name, role: user.role, tenantId: user.tenantId, tokenVersion: user.tokenVersion }, PENDING_LOGIN_PURPOSE, "10m");
+    const res = NextResponse.json({ pending: true, email: user.email });
+    res.cookies.set(PENDING_LOGIN_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600 });
+    return res;
+  }
 
   logActivity(user, "auth.login", "signed in");
   const token = await createSession(user);

@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
-import { createTenantFromSignup } from "@/lib/tenants";
-import { createSession, SESSION_COOKIE } from "@/lib/auth";
+import { db } from "@/lib/supabase";
+import { createPendingToken, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
 import { getFlag } from "@/lib/flags";
 import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
+import { sendEmailOtp } from "@/lib/emailotp";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-// POST — public self-serve signup. Creates a trialing tenant + its first admin
-// user, then signs them in. Captures who's using the platform.
+// POST — public self-serve signup, step 1. Validates the form and emails a
+// verification code; the tenant + admin account are NOT created yet (see
+// /api/signup/verify-otp) — this keeps a stray/typo'd email from ever landing
+// a real account, and proves the signer owns the inbox before we trust it.
 export async function POST(req: Request) {
   // Platform-wide signup kill switch (owner control plane).
   if (!(await getFlag("signups_enabled", true))) {
@@ -30,7 +33,7 @@ export async function POST(req: Request) {
 
   const company = body.company?.trim();
   const ownerName = body.ownerName?.trim();
-  const ownerEmail = body.ownerEmail?.trim();
+  const ownerEmail = body.ownerEmail?.trim().toLowerCase();
   const password = body.password ?? "";
   if (!company || !ownerName || !ownerEmail) return NextResponse.json({ error: "Company, your name and work email are required" }, { status: 400 });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ownerEmail)) return NextResponse.json({ error: "Enter a valid work email" }, { status: 400 });
@@ -38,16 +41,23 @@ export async function POST(req: Request) {
   // Legal consent is mandatory — the account cannot be created without it.
   if (body.acceptTerms !== true) return NextResponse.json({ error: "You must accept the Terms of Service and Privacy Policy to continue." }, { status: 400 });
 
+  // Fail fast on an email that can never complete signup — no point sending a
+  // code (or burning the daily send cap) for an account that already exists.
+  const existing = await db().from("wa_users").select("id").eq("email", ownerEmail).maybeSingle();
+  if (existing.data) return NextResponse.json({ error: "An account with this email already exists — try logging in." }, { status: 400 });
+
+  const sent = await sendEmailOtp(ownerEmail, "signup");
+  if (!sent.ok) return NextResponse.json({ error: sent.error || "Could not send verification code" }, { status: 502 });
+
   try {
-    const { tenantId, email } = await createTenantFromSignup({
+    const pending = await createPendingToken({
       company, ownerName, ownerEmail, password,
       ownerPhone: body.ownerPhone?.trim(), industry: body.industry?.trim(),
       teamSize: body.teamSize?.trim(), useCase: body.useCase?.trim(), expectedVolume: body.expectedVolume?.trim(),
       termsVersion: LEGAL_VERSION,
-    });
-    const token = await createSession({ email, name: ownerName, role: "admin", tenantId });
-    const res = NextResponse.json({ success: true });
-    res.cookies.set(SESSION_COOKIE, token, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 24 * 7 });
+    }, PENDING_SIGNUP_PURPOSE, "15m");
+    const res = NextResponse.json({ pending: true, email: ownerEmail });
+    res.cookies.set(PENDING_SIGNUP_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 900 });
     return res;
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
