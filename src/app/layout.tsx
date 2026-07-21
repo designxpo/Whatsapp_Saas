@@ -41,15 +41,18 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Talko AI",
-    title: "Talko AI — AI conversations for WhatsApp, Instagram & Messenger",
-    description: "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, chatbot flows and catalog checkout — one inbox, every conversation.",
-    // No static `url` here — it would force every page's og:url to the homepage.
-    // Per-page canonical (alternates.canonical "./") carries the correct URL.
+    // Deliberately NO title/description here. Next OVERWRITES (never deep-merges)
+    // the openGraph field per segment, and auto-infers og:title/og:description
+    // from each page's top-level `title`/`description` ONLY when they're absent
+    // here. Hardcoding them would pin every page's og:title to the homepage's.
+    // The og:image is supplied by (site)/opengraph-image.tsx and inherited.
+    // No static `url` either — it would force every page's og:url to the homepage;
+    // per-page canonical (alternates.canonical "./") carries the correct URL.
   },
   twitter: {
+    // Same reasoning as openGraph above — let twitter:title/description auto-infer
+    // per page from the page title/description; twitter:image falls back to og:image.
     card: "summary_large_image",
-    title: "Talko AI — AI conversations for WhatsApp, Instagram & Messenger",
-    description: "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, flows and sequences — one inbox for every conversation.",
   },
 };
 

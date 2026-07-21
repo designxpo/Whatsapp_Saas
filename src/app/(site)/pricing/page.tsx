@@ -12,10 +12,9 @@ export const metadata: Metadata = {
   // (site)/ (only the (site) layout's own title) — so bake the brand in here.
   title: "WhatsApp Automation Pricing — Plans from ₹999/mo — Talko AI",
   description: "Simple, transparent WhatsApp & Instagram automation pricing from ₹999/mo. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
-  openGraph: {
-    title: "Talko AI Pricing — WhatsApp & Instagram automation from ₹999/mo",
-    description: "Transparent plans for WhatsApp, Instagram, Messenger & web-chat automation. 14-day free trial, bring your own AI key, cancel anytime.",
-  },
+  // No `openGraph` object: Next overwrites (never merges) it per segment, so
+  // setting one would wipe the shared og:image from (site)/opengraph-image.tsx.
+  // Omitting it lets og:title/og:description auto-infer from the fields above.
 };
 
 // SoftwareApplication + priced Offers so AI engines can answer "how much does

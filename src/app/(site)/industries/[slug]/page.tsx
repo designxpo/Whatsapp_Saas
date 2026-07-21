@@ -16,11 +16,9 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   if (!ind) return { title: "Industry — Talko AI" };
   const title = `${ind.name} WhatsApp Automation — Talko AI`;
   const description = `${ind.headline} — ${ind.story.slice(0, 120)}`.slice(0, 158);
-  return {
-    title,
-    description,
-    openGraph: { title, description },
-  };
+  // No `openGraph` object: it would overwrite (not merge) the shared og:image
+  // from (site)/opengraph-image.tsx. og:title/og:description auto-infer below.
+  return { title, description };
 }
 
 export default async function IndustryPage({ params }: { params: Promise<{ slug: string }> }) {
