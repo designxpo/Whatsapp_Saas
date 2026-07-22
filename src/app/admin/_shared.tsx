@@ -27,7 +27,7 @@ export type GoTo = (t: Tab, intent?: ChatIntent) => void;
 
 // ── Shared style tokens ──────────────────────────────────────────────────────
 export const inp = "border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900 placeholder:text-ink-400";
-export const btnPrimary = "px-4 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white text-[13px] font-semibold flex items-center gap-2 transition-colors disabled:opacity-60";
+export const btnPrimary = "px-4 py-2 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white text-[13px] font-semibold flex items-center gap-2 transition active:scale-[0.97] disabled:opacity-60";
 export const railLoading = <Loader2 className="w-4 h-4 animate-spin text-slate-300" />;
 
 // Status pill classes (kb docs, conversations, templates) — shared by the

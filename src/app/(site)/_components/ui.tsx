@@ -63,7 +63,7 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
 export function Button({
   href, children, variant = "primary", className = "",
 }: { href: string; children: React.ReactNode; variant?: "primary" | "ghost"; className?: string }) {
-  const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition-colors";
+  const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition active:scale-[0.97]";
   const styles = variant === "primary"
     ? `${GRADIENTS.brand} ${GRADIENTS.brandHover} text-white shadow-[0_10px_28px_-10px_rgba(106,92,255,0.65)]`
     : "border border-[#0783fd]/30 bg-white text-[#0783fd] hover:bg-[#0783fd]/5";

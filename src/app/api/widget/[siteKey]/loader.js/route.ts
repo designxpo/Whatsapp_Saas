@@ -60,6 +60,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var css = '' +\n" +
 "   '.twc-launch{position:fixed;bottom:' + OB + 'px;' + SIDE + ':' + OS + 'px;width:60px;height:60px;border-radius:50%;background:' + BRAND + ';color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.22);z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .15s ease,box-shadow .15s ease;animation:twcin .25s ease;}' +\n" +
 "   '.twc-launch:hover{transform:translateY(-2px) scale(1.05);}' +\n" +
+"   '.twc-launch:active{transform:scale(.94);}' +\n" +                                     // press-in acknowledgement (Apple: respond on pointer-down)
 "   '@keyframes twcin{from{opacity:0;transform:scale(.6);}to{opacity:1;transform:scale(1);}}' +\n" +
 "   '.twc-launch svg{width:28px;height:28px;}' +\n" +
 "   '.twc-launch img{width:34px;height:34px;border-radius:' + AVRAD + ';object-fit:' + FIT + ';}' +\n" +
@@ -105,6 +106,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "   '.twc-foot .twc-send:disabled{opacity:.5;cursor:default;} .twc-foot .twc-send svg{width:19px;height:19px;}' +\n" +
 "   '.twc-pow{text-align:center;color:#aab0b8;font-size:10.5px;padding:0 0 8px;background:#fff;}' +\n" +
 "   '@media (max-width:768px){ .twc-launch{width:52px;height:52px;bottom:' + MB + ';' + SIDE + ':' + MS + 'px;} .twc-launch svg{width:24px;height:24px;} .twc-panel{top:0;bottom:auto;' + SIDE + ':0;left:0;right:0;width:100vw;max-width:100vw;height:100vh;height:100dvh;max-height:none;border-radius:0;transform:none;transition:opacity .18s ease;} .twc-head{padding-top:calc(14px + env(safe-area-inset-top,0px));} .twc-foot{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));} .twc-foot input{font-size:16px;} .twc-close{padding:6px 10px;} html[data-twc-trig] .twc-launch{display:none!important;} }' +\n" +
+"   '@media (prefers-reduced-motion: reduce){.twc-launch{animation:none!important;} .twc-launch:hover,.twc-launch:active{transform:none!important;} .twc-typing span{animation:none!important;} .twc-panel{transition-duration:.01ms!important;}}' +\n" +
 "   (LOGO ? '.twc-launch{overflow:hidden;background:' + BADGE + '!important;box-shadow:0 6px 20px rgba(15,23,42,.18),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch:hover{box-shadow:0 10px 26px rgba(15,23,42,.24),0 0 0 1px rgba(15,23,42,.06)!important;} .twc-launch .twc-ic{width:100%;height:100%;display:flex;align-items:center;justify-content:center;} .twc-launch .twc-ic img{' + (FIT === 'contain' ? 'width:' + LSC + ';height:' + LSC + ';max-width:none;max-height:none;flex:none;object-fit:contain;border-radius:0;' : 'width:100%;height:100%;max-width:none;max-height:none;flex:none;object-fit:cover;border-radius:50%;') + '} .twc-launch.open{background:' + BRAND + '!important;} .twc-launch.open .twc-x{color:#fff;font-size:24px;}' : '');\n" +
 "  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);\n" +
 "  var initial = (CFG.title || 'A').trim().charAt(0).toUpperCase();\n" +

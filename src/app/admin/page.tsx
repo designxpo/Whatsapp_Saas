@@ -228,7 +228,7 @@ export default function Admin() {
           </div>
         )}
         {/* Topbar */}
-        <header className="h-16 shrink-0 bg-white border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
+        <header className="h-16 shrink-0 bg-white/80 backdrop-blur-xl border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
           <p className="text-[13px] text-ink-400">
             Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{TAB_TITLES[tab]}</span>
           </p>

@@ -94,8 +94,8 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
 
   return (
     <>
-      <div className="fixed inset-0 bg-ink-950/20 z-40" onClick={onClose} />
-      <aside className="fixed inset-y-0 right-0 w-[460px] max-w-full bg-white border-l border-line shadow-2xl z-50 overflow-y-auto">
+      <div className="fixed inset-0 bg-ink-950/20 backdrop-blur-[2px] z-40 u-fade-in" onClick={onClose} />
+      <aside className="fixed inset-y-0 right-0 w-[460px] max-w-full bg-white border-l border-line shadow-2xl z-50 overflow-y-auto u-slide-in-right">
         {!c ? (notFound ? (
           <div className="p-8 text-center space-y-3">
             <p className="text-sm text-slate-500">No profile found for this contact yet.</p>

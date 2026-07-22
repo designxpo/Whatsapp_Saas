@@ -92,6 +92,7 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef(0);
 
   const load = useCallback(() => {
@@ -105,13 +106,17 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
     const t = setInterval(() => { if (!document.hidden) load(); }, 5_000);
     return () => clearInterval(t);
   }, [load]);
-  // Stick to the bottom when new messages arrive (jump on first paint).
+  // Stick to the bottom when new messages arrive — but only if the reader is
+  // already near the bottom (or it's the first paint). Landing messages must
+  // never yank someone away from history they've scrolled up to read.
   useEffect(() => {
     const n = messages?.length ?? 0;
-    if (n !== prevCount.current) {
-      bottomRef.current?.scrollIntoView({ behavior: prevCount.current === 0 ? "auto" : "smooth" });
-      prevCount.current = n;
-    }
+    if (n === prevCount.current) return;
+    const first = prevCount.current === 0;
+    const el = scrollRef.current;
+    const nearBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
+    if (first || nearBottom) bottomRef.current?.scrollIntoView({ behavior: first ? "auto" : "smooth" });
+    prevCount.current = n;
   }, [messages?.length]);
 
   // All ticket actions ride the existing conversation API (reply/labels/assign).
@@ -179,7 +184,7 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
       </div>
 
       {/* Thread: oldest → newest; agent/AI replies right-aligned in brand color */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-canvas/60">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-2 bg-canvas/60">
         {messages.map((m, i) => {
           const divider = startsNewDay(messages, i)
             ? <div className="flex justify-center my-2"><span className="text-[11px] font-semibold text-ink-500 bg-white border border-line rounded-full px-3 py-1 shadow-sm">{dayLabel(m.createdAt)}</span></div>
@@ -250,8 +255,8 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-950/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white rounded-card border border-line p-5 space-y-4" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-950/40 p-4 u-fade-in" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white rounded-card border border-line p-5 space-y-4 u-scale-in" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <p className="text-sm font-bold text-ink-900">My profile</p>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
@@ -320,8 +325,8 @@ function TeamSheet({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40" onClick={onClose}>
-      <div className="w-full max-w-sm h-full bg-white border-l border-line flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40 u-fade-in" onClick={onClose}>
+      <div className="w-full max-w-sm h-full bg-white border-l border-line flex flex-col u-slide-in-right" onClick={e => e.stopPropagation()}>
         <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between">
           <p className="text-sm font-bold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4" /> Team</p>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>

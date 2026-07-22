@@ -24,11 +24,12 @@ body {
 /* KPI numbers / headings: tabular Inter. */
 h1, h2, h3, .tnum { font-variant-numeric: tabular-nums; }
 
-/* Theme-wide Facebook-blue focus ring on form controls. */
+/* Brand-blue focus ring on form controls (matches --green-700 = #0783fd, not
+   the stray #1877F2 Facebook blue that used to leak into rings/glows). */
 input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: none;
   border-color: var(--green-700);
-  box-shadow: 0 0 0 3px rgba(24, 119, 242, .15);
+  box-shadow: 0 0 0 3px rgba(7, 131, 253, .22);
 }
 
 /* Visible keyboard focus for links, buttons and custom switches (WCAG 2.4.7). */
@@ -37,6 +38,32 @@ a:focus-visible, button:focus-visible, [role="switch"]:focus-visible {
   outline-offset: 2px;
   border-radius: var(--r-control);
 }
+
+/* ── Apple "Response": acknowledge every press instantly ─────────────────────
+   No control had a pointer-down state — feedback only arrived on hover/release.
+   A subtle press-in gives immediate, physical acknowledgement on the press
+   itself. Discrete buttons feel tactile; large rows read as a gentle press.
+   Opt out with .no-press (drag handles, canvas nodes, list rows that shouldn't
+   shrink). Anchors styled as buttons get it via .press or an explicit variant. */
+button:not([disabled]):not(.no-press):active,
+[role="switch"]:not(.no-press):active,
+.press:active { transform: scale(.97); }
+
+@layer base {
+  /* Ease the press-in for controls that don't already declare a transition;
+     buttons with a Tailwind transition-* utility keep theirs (utilities win). */
+  button, [role="switch"], .press { transition: transform .12s ease-out; }
+}
+
+/* ── Overlay entrance — modals, drawers, popovers materialize, not pop ────────
+   Apple: surfaces should arrive as real objects (scale/slide + fade), and enter
+   along a path anchored to intent. Reduced-motion collapses these to instant. */
+@keyframes u-scale-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes u-slide-in-right { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes u-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.u-scale-in { animation: u-scale-in .22s cubic-bezier(.22, .61, .36, 1) both; }
+.u-slide-in-right { animation: u-slide-in-right .28s cubic-bezier(.22, .61, .36, 1) both; }
+.u-fade-in { animation: u-fade-in .18s ease-out both; }
 
 /* ── Marketing-site motion (subtle, decorative) ───────────────────────────── */
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
@@ -71,7 +98,17 @@ a:focus-visible, button:focus-visible, [role="switch"]:focus-visible {
 .animate-flowin { animation: flowin .45s ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
+  /* Apple: reduced motion ≠ no feedback. Collapse decorative loops and long
+     transitions to near-instant (state still changes, just without travel)… */
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* …but keep genuine loaders spinning — they convey status, not vestibular
+     motion, and a frozen spinner reads as "hung". */
+  .animate-spin { animation-duration: .8s !important; animation-iteration-count: infinite !important; }
   /* Reveal-on-scroll must never leave content hidden when motion is reduced. */
   [data-reveal] { opacity: 1 !important; transform: none !important; }
 }
