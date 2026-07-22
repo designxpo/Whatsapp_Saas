@@ -108,9 +108,42 @@ export interface AdCampaign {
   ctr: number;
   cpc: number;
   conversations: number;         // Meta's "messaging conversations started"
+  results: number;               // the campaign's PRIMARY result (leads/registrations/…), matching Ads Manager's "Results"
+  resultLabel: string;           // what `results` counts — "Leads" | "Registrations" | "Chats" | "Landing views" | …
 }
 
 export type DatePreset = "today" | "last_7d" | "last_30d";
+
+// Meta reports EVERY action a campaign drove in one flat `actions` array, but the
+// portal used to surface only "messaging_conversation_started" — so a lead-form
+// campaign that generated hundreds of leads showed "0 chats" and looked frozen.
+// Map the campaign/ad-set intent (objective or optimization goal) to the ONE
+// action Meta counts as the result, mirroring Ads Manager's "Results" column.
+// `hint` is the objective ("OUTCOME_LEADS"/"LEADS") or ad-set optimization goal
+// ("LEAD_GENERATION"/"LANDING_PAGE_VIEWS"/…); "" falls back to a generic pick.
+type ActionRow = { action_type: string; value: string };
+export function pickResult(hint: string, actions: ActionRow[]): { count: number; label: string } {
+  const exact = (t: string): number | null => { const a = actions.find(x => x.action_type === t); return a ? Number(a.value) || 0 : null; };
+  const incl = (sub: string): number | null => { const a = actions.find(x => x.action_type.includes(sub)); return a ? Number(a.value) || 0 : null; };
+  const reg = () => exact("complete_registration") ?? incl("complete_registration");
+  const lead = () => exact("onsite_web_lead") ?? exact("lead") ?? incl("fb_pixel_lead") ?? incl("onsite_lead");
+  const msg = () => incl("messaging_conversation_started");
+  const lpv = () => exact("landing_page_view") ?? incl("landing_page_view");
+  const lc = () => exact("link_click") ?? incl("link_click");
+  const purch = () => exact("purchase") ?? incl("fb_pixel_purchase") ?? incl("omni_purchase");
+  const h = (hint || "").toUpperCase();
+
+  if (h.includes("LEAD")) { const r = reg(); if (r != null) return { count: r, label: "Registrations" }; return { count: lead() ?? 0, label: "Leads" }; }
+  if (h.includes("SALE") || h.includes("CONVERSION") || h.includes("PURCHASE")) { const p = purch(); if (p != null) return { count: p, label: "Purchases" }; }
+  if (h.includes("MESSAG") || h.includes("CONVERSATION") || h.includes("REPL") || h.includes("ENGAGEMENT")) { const m = msg(); if (m != null) return { count: m, label: "Chats" }; }
+  if (h.includes("TRAFFIC") || h.includes("LINK") || h.includes("LANDING") || h.includes("PAGE_VIEW") || h.includes("VISIT")) { const v = lpv(); if (v != null) return { count: v, label: "Landing views" }; return { count: lc() ?? 0, label: "Link clicks" }; }
+  // Generic / unknown intent (e.g. an ad row with no objective): surface the most
+  // meaningful conversion present, richest-first.
+  for (const [fn, label] of [[purch, "Purchases"], [reg, "Registrations"], [lead, "Leads"], [msg, "Chats"], [lpv, "Landing views"], [lc, "Link clicks"]] as [() => number | null, string][]) {
+    const v = fn(); if (v != null) return { count: v, label };
+  }
+  return { count: 0, label: "Results" };
+}
 
 // Meta's last_7d/last_30d PRESETS end at YESTERDAY — they EXCLUDE today. That's
 // why a campaign's "today" spend/impressions could exceed its "7 days" totals:
@@ -156,6 +189,7 @@ export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?
     const ins = ((c.insights as Record<string, unknown>)?.data as Record<string, unknown>[])?.[0] ?? {};
     const actions = (ins.actions as { action_type: string; value: string }[]) ?? [];
     const convs = actions.find(a => a.action_type.includes("messaging_conversation_started"))?.value ?? "0";
+    const result = pickResult((c.objective as string) ?? "", actions);
     return {
       id: c.id as string,
       name: c.name as string,
@@ -169,6 +203,8 @@ export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?
       ctr: Number(ins.ctr ?? 0),
       cpc: Number(ins.cpc ?? 0),
       conversations: Number(convs),
+      results: result.count,
+      resultLabel: result.label,
     };
   });
   return { ok: true, campaigns };
@@ -192,19 +228,20 @@ export async function duplicateCampaign(campaignId: string): Promise<{ ok: boole
 }
 
 // ── Drill-down: ad sets and ads inside a campaign ─────────────────────────────
-function insightsOf(row: Record<string, unknown>) {
+function insightsOf(row: Record<string, unknown>, resultHint = "") {
   const ins = ((row.insights as Record<string, unknown>)?.data as Record<string, unknown>[])?.[0] ?? {};
   const actions = (ins.actions as { action_type: string; value: string }[]) ?? [];
   const convs = actions.find(a => a.action_type.includes("messaging_conversation_started"))?.value ?? "0";
+  const result = pickResult(resultHint, actions);
   return {
     spend: Number(ins.spend ?? 0), impressions: Number(ins.impressions ?? 0),
     clicks: Number(ins.clicks ?? 0), ctr: Number(ins.ctr ?? 0), cpc: Number(ins.cpc ?? 0),
-    conversations: Number(convs),
+    conversations: Number(convs), results: result.count, resultLabel: result.label,
   };
 }
 
-export interface AdSetRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
-export interface AdRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }
+export interface AdSetRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }
+export interface AdRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }
 
 export async function listAdSets(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
   const r = await graphGet(`${campaignId}/adsets`, {
@@ -219,7 +256,7 @@ export async function listAdSets(campaignId: string, preset: DatePreset, tz?: st
       delivery: deliveryOf(a.effective_status as string, learnStatus(a)),
       dailyBudget: a.daily_budget ? Number(a.daily_budget) / 100 : null,
       optimizationGoal: ((a.optimization_goal as string) ?? "").replace(/_/g, " ").toLowerCase(),
-      ...insightsOf(a),
+      ...insightsOf(a, (a.optimization_goal as string) ?? ""),
     })),
   };
 }
@@ -261,6 +298,8 @@ export interface NodeInsights {
   clicks: number; uniqueClicks: number; linkClicks: number; ctr: number; cpc: number; cpm: number; cpp: number;
   // messaging
   conversations: number; costPerConversation: number | null;
+  // the node's PRIMARY result (matching Ads Manager), derived from its intent
+  results: number; resultLabel: string;
   // full action + cost breakdowns (everything Meta reports)
   actions: { type: string; value: number }[];
   costPerAction: { type: string; value: number }[];
@@ -281,6 +320,8 @@ export async function getNodeInsights(nodeId: string, level: NodeInsights["level
   const costs = ((ins.cost_per_action_type as { action_type: string; value: string }[]) ?? []).map(a => ({ type: a.action_type, value: num(a.value) }));
   const conv = actions.find(a => a.type.includes("messaging_conversation_started"))?.value ?? 0;
   const costConv = costs.find(a => a.type.includes("messaging_conversation_started"))?.value ?? null;
+  const resultHint = level === "campaign" ? ((d.objective as string) ?? "") : level === "adset" ? ((d.optimization_goal as string) ?? "") : "";
+  const result = pickResult(resultHint, (ins.actions as { action_type: string; value: string }[]) ?? []);
   return {
     ok: true,
     node: {
@@ -298,6 +339,7 @@ export async function getNodeInsights(nodeId: string, level: NodeInsights["level
       clicks: num(ins.clicks), uniqueClicks: num(ins.unique_clicks), linkClicks: num(ins.inline_link_clicks),
       ctr: num(ins.ctr), cpc: num(ins.cpc), cpm: num(ins.cpm), cpp: num(ins.cpp),
       conversations: conv, costPerConversation: costConv,
+      results: result.count, resultLabel: result.label,
       actions, costPerAction: costs,
     },
   };

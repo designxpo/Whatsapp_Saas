@@ -15,15 +15,15 @@ type AdsData = {
   pageId: string;
   account: { name: string; currency: string; status: number } | null;
   error: string | null;
-  campaigns: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
+  campaigns: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }[];
   attribution: { adId: string; headline: string; contacts: number; leads: number }[];
   portalCampaignIds?: string[];
 };
 type Delivery = { label: string; phase: "active" | "learning" | "limited" | "off" | "review" | "error" | "other" };
 type AdDraftSummary = { id: string; name: string; updatedAt: string };
 type AdsDrill = {
-  adsets: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
-  ads: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number }[];
+  adsets: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }[];
+  ads: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }[];
 };
 
 // Meta's "Delivery" column → pill colours. Learning = amber (still optimising),
@@ -110,6 +110,11 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
     { spend: 0, impressions: 0, clicks: 0, conversations: 0 },
   );
   const leadsTotal = (data?.attribution ?? []).reduce((n, a) => n + a.leads, 0);
+  // Headline "Results" — sum only CONVERSION outcomes (leads/registrations/
+  // purchases/chats), never traffic (landing views/clicks), so the number means
+  // "outcomes the ads produced" rather than an inflated mixed rollup.
+  const CONVERSION_RESULTS = ["Leads", "Registrations", "Purchases", "Chats"];
+  const resultsTotal = (data?.campaigns ?? []).reduce((n, c) => n + (CONVERSION_RESULTS.includes(c.resultLabel) ? c.results : 0), 0);
 
   const campaignCard = (c: AdsData["campaigns"][number]) => (
     <div key={c.id} className="bg-white rounded-card border border-line p-4 space-y-2.5">
@@ -130,7 +135,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <button onClick={() => setDetail({ level: "campaign", id: c.id, name: c.name })} className="w-full grid grid-cols-4 gap-2 text-center">
         {[
           ["Spend", money(c.spend)], ["CPC", c.cpc ? money(c.cpc) : "—"],
-          ["CTR", c.ctr ? `${Number(c.ctr).toFixed(2)}%` : "—"], ["Chats", c.conversations.toLocaleString()],
+          ["CTR", c.ctr ? `${Number(c.ctr).toFixed(2)}%` : "—"], [c.resultLabel || "Results", (c.results ?? 0).toLocaleString()],
         ].map(([l, v]) => (
           <div key={l} className="bg-canvas rounded-control py-1.5 hover:bg-brand-50">
             <p className="text-sm font-bold text-ink-900">{v}</p>
@@ -278,7 +283,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           { label: "Spend", value: money(totals.spend) },
           { label: "Impressions", value: totals.impressions.toLocaleString() },
           { label: "Clicks", value: totals.clicks.toLocaleString() },
-          { label: "WhatsApp chats started", value: totals.conversations.toLocaleString() },
+          { label: "Results (leads/regs/chats)", value: resultsTotal.toLocaleString() },
         ].map(c => (
           <div key={c.label} className="bg-white border border-line rounded-card p-4">
             <p className="text-xl font-extrabold text-ink-900 truncate">{c.value}</p>
@@ -1953,9 +1958,10 @@ type NodeFull = {
   spend: number; impressions: number; reach: number; frequency: number;
   clicks: number; uniqueClicks: number; linkClicks: number; ctr: number; cpc: number; cpm: number; cpp: number;
   conversations: number; costPerConversation: number | null;
+  results: number; resultLabel: string;
   actions: { type: string; value: number }[]; costPerAction: { type: string; value: number }[];
 };
-type ChildRow = { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl?: string | null; dailyBudget?: number | null; optimizationGoal?: string; spend: number; clicks: number; ctr: number; conversations: number };
+type ChildRow = { id: string; name: string; effectiveStatus: string; delivery?: Delivery; thumbnailUrl?: string | null; dailyBudget?: number | null; optimizationGoal?: string; spend: number; clicks: number; ctr: number; conversations: number; results: number; resultLabel: string };
 
 const ACTION_LABELS_META: Record<string, string> = {
   link_click: "Link clicks", landing_page_view: "Landing page views", post_engagement: "Post engagement",
@@ -2015,13 +2021,14 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
     { label: "CTR", value: full.ctr ? `${full.ctr.toFixed(2)}%` : "—", hint: "click-through rate" },
     { label: "CPC", value: full.cpc ? money(full.cpc) : "—", hint: "per click" },
     { label: "CPM", value: full.cpm ? money(full.cpm) : "—", hint: "per 1,000 impressions" },
+    { label: full.resultLabel || "Results", value: full.results.toLocaleString(), hint: "the campaign's optimized result" },
+    { label: `Cost / ${(full.resultLabel || "result").replace(/s$/i, "").toLowerCase()}`, value: full.results ? money(full.spend / full.results) : "—" },
     { label: "WhatsApp chats", value: full.conversations.toLocaleString() },
-    { label: "Cost / chat", value: full.costPerConversation != null ? money(full.costPerConversation) : (full.conversations ? money(full.spend / full.conversations) : "—") },
   ] : [];
 
   const childCard = (c: ChildRow, kind: "adset" | "ad") => {
-    const cpr = c.conversations > 0 ? { l: "per chat", v: money(c.spend / c.conversations) } : c.clicks > 0 ? { l: "per click", v: money(c.spend / c.clicks) } : { l: "results", v: "—" };
-    const wasteful = c.effectiveStatus === "ACTIVE" && c.spend > 100 && c.conversations === 0 && c.clicks === 0;
+    const cpr = c.results > 0 ? { l: `per ${(c.resultLabel || "result").replace(/s$/i, "").toLowerCase()}`, v: money(c.spend / c.results) } : c.clicks > 0 ? { l: "per click", v: money(c.spend / c.clicks) } : { l: "results", v: "—" };
+    const wasteful = c.effectiveStatus === "ACTIVE" && c.spend > 100 && c.results === 0 && c.clicks === 0;
     return (
       <div key={c.id} className={`rounded-card border p-3 text-left transition-colors ${wasteful ? "border-amber-200 bg-amber-50/40" : "border-line bg-white hover:border-brand-400"}`}>
         <button onClick={() => onOpen(kind, c.id, c.name)} className="w-full text-left">
@@ -2038,7 +2045,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${deliveryPill(c.delivery).cls}`}>{deliveryPill(c.delivery).label}</span>
           </div>
           <div className="grid grid-cols-4 gap-1 text-center">
-            {[["spend", money(c.spend)], ["clicks", c.clicks.toLocaleString()], ["chats", c.conversations.toLocaleString()], [cpr.l, cpr.v]].map(([l, v]) => (
+            {[["spend", money(c.spend)], ["clicks", c.clicks.toLocaleString()], [(c.resultLabel || "results").toLowerCase(), (c.results ?? 0).toLocaleString()], [cpr.l, cpr.v]].map(([l, v]) => (
               <div key={l} className="bg-canvas rounded-control py-1">
                 <p className="text-xs font-bold text-ink-900">{v}</p>
                 <p className="text-[9px] text-slate-400 font-semibold uppercase">{l}</p>
