@@ -13,6 +13,7 @@ import {
   Loader2, Send, LogOut, Users, X, CheckCircle2, RotateCcw, UserCheck,
   MessageSquare, MessageCircle, Instagram, Facebook, Inbox, FileText, Plus,
 } from "lucide-react";
+import { SegmentedControl } from "@/components/SegmentedControl";
 
 // ── Types (mirror the admin conversation API payloads) ───────────────────────
 type Ticket = {
@@ -454,13 +455,17 @@ export default function SupportPage() {
         {/* ── Left: ticket list ── */}
         <aside className="w-80 shrink-0 border-r border-line flex flex-col min-h-0">
           <div className="p-3 border-b border-line">
-            <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
-              {([["unanswered", "Unanswered"], ["open", "Open"], ["closed", "Closed"]] as const).map(([k, label]) => (
-                <button key={k} onClick={() => setTab(k)} className={`flex-1 px-1 py-1.5 rounded-[7px] text-[11px] font-bold flex items-center justify-center gap-1 transition-colors ${tab === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
-                  {label} <span className="opacity-60">{counts[k]}</span>
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              ariaLabel="Ticket status"
+              size="sm"
+              value={tab}
+              onChange={(v) => setTab(v)}
+              options={[
+                { value: "unanswered", label: "Unanswered", count: counts.unanswered },
+                { value: "open", label: "Open", count: counts.open },
+                { value: "closed", label: "Closed", count: counts.closed },
+              ]}
+            />
           </div>
           <div className="flex-1 overflow-y-auto">
             {tickets === null && (

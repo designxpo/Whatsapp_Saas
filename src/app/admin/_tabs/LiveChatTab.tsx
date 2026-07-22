@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
+import { SegmentedControl } from "@/components/SegmentedControl";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null };
 
@@ -162,14 +163,15 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
           <p className="text-[15px] font-bold text-ink-900">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-400">({visible.length})</span></p>
           {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
               their own section so they don't clutter real DM conversations. */}
-          <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
-            {([["chats", "Chats", chatsCount], ["comments", "Comments", commentsCount]] as const).map(([k, label, n]) => (
-              <button key={k} onClick={() => { setView(k); setSelected(null); setPlatform("all"); }} className={`flex-1 px-2 py-1.5 rounded-[7px] text-[12px] font-bold flex items-center justify-center gap-1.5 transition-colors ${view === k ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}>
-                {k === "chats" ? <MessageSquare className="w-3 h-3" /> : <MessageCircle className="w-3 h-3 text-ink-500" />}
-                {label} <span className="opacity-60">{n}</span>
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Conversation type"
+            value={view}
+            onChange={(v) => { setView(v); setSelected(null); setPlatform("all"); }}
+            options={[
+              { value: "chats", label: "Chats", count: chatsCount, icon: <MessageSquare className="w-3 h-3" /> },
+              { value: "comments", label: "Comments", count: commentsCount, icon: <MessageCircle className="w-3 h-3 text-ink-500" /> },
+            ]}
+          />
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-sm bg-canvas text-ink-900 placeholder:text-ink-400" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
