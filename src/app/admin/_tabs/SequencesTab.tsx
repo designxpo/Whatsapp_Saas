@@ -58,6 +58,62 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
 // Auto-drip by LeadSquared stage (Phase 6): when a lead's LSQ stage changes
 // (delivered by the LSQ→portal webhook), the mapped sequence starts and other
 // stage-managed sequences stop. Config in wa_settings via /api/admin/stage-drips.
+// Landing-page form → WhatsApp flow. A cold web-form lead can't be sent free-form
+// messages, so this sends an approved TEMPLATE on the LeadSquared event and ARMS
+// the question flow for the reply. Per-tenant config via /api/admin/lead-welcome.
+type LeadWelcomeCfg = { enabled: boolean; templateName: string; languageCode: string; nameParam: boolean; flowId: string; trigger: string; sourceContains: string };
+function LeadWelcomePanel() {
+  const [cfg, setCfg] = useState<LeadWelcomeCfg | null>(null);
+  const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { fetch("/api/admin/lead-welcome").then(r => r.json()).then(d => setCfg(d.config ?? null)).catch(() => setCfg(null)); }, []);
+  useEffect(() => { fetch("/api/admin/flows").then(r => r.json()).then(d => setFlows((d.flows ?? []).filter((f: { platform?: string }) => !f.platform || f.platform === "whatsapp" || f.platform === "all"))).catch(() => {}); }, []);
+
+  async function save() {
+    if (!cfg) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/lead-welcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) }).then(r => r.json());
+      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved ✓"); }
+    } finally { setBusy(false); }
+  }
+  if (!cfg) return null;
+  const set = (p: Partial<LeadWelcomeCfg>) => setCfg(c => c ? { ...c, ...p } : c);
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p>
+          <p className="text-[11px] text-ink-400">When a form lead arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply. Cold web leads can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</p>
+        </div>
+        <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => set({ enabled: e.target.checked })} /> On</label>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input className={`${inp} !py-1.5 text-xs`} placeholder="Approved template name" value={cfg.templateName} onChange={e => set({ templateName: e.target.value })} />
+        <input className={`${inp} !py-1.5 text-xs`} placeholder="Template language (e.g. en / en_US)" value={cfg.languageCode} onChange={e => set({ languageCode: e.target.value })} />
+        <select className={`${inp} !py-1.5 text-xs`} value={cfg.flowId} onChange={e => set({ flowId: e.target.value })}>
+          <option value="">Pick the question flow…</option>
+          {flows.map(f => <option key={f.id} value={f.id}>{f.name}{f.active ? "" : " (inactive)"}</option>)}
+        </select>
+        <select className={`${inp} !py-1.5 text-xs`} value={cfg.trigger === "created" ? "created" : "stage"} onChange={e => set({ trigger: e.target.value === "created" ? "created" : "" })}>
+          <option value="created">Fire on: new lead created</option>
+          <option value="stage">Fire on: lead enters a stage</option>
+        </select>
+        {cfg.trigger !== "created" && <input className={`${inp} !py-1.5 text-xs`} placeholder="LSQ stage name (exact)" value={cfg.trigger} onChange={e => set({ trigger: e.target.value })} />}
+        <input className={`${inp} !py-1.5 text-xs`} placeholder="Only if Source contains… (optional)" value={cfg.sourceContains} onChange={e => set({ sourceContains: e.target.value })} />
+      </div>
+      <div className="flex items-center gap-3 flex-wrap">
+        <label className="flex items-center gap-1.5 text-[11px] text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={cfg.nameParam} onChange={e => set({ nameParam: e.target.checked })} /> template uses {"{{1}}"} = lead&apos;s first name</label>
+        <div className="flex-1" />
+        <button onClick={save} disabled={busy} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save"}</button>
+        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+      </div>
+      <p className="text-[11px] text-ink-400">Point your signup form&apos;s LeadSquared automation at the LSQ→portal webhook (Integrations → LeadSquared). Each lead is welcomed once per 30 days; opted-out numbers are skipped.</p>
+    </div>
+  );
+}
+
 function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   const [drips, setDrips] = useState<{ stage: string; sequenceId: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -341,6 +397,7 @@ function SequencesTab() {
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
 
       <SeqMonitorPanel seqs={seqs} />
+      <LeadWelcomePanel />
       <StageDripsPanel seqs={seqs} />
       <LsqDripPanel seqs={seqs} />
 

@@ -1,0 +1,43 @@
+import { describe, it, expect } from "vitest";
+import { shouldWelcome, type LeadWelcome } from "../leadwelcome";
+
+const CFG: LeadWelcome = { enabled: true, templateName: "signup_welcome", languageCode: "en", nameParam: true, flowId: "flow1", trigger: "created", sourceContains: "" };
+const fresh = { alreadyWelcomed: false, optedOut: false };
+
+describe("shouldWelcome", () => {
+  it("fires on lead_created when fully configured + fresh", () => {
+    expect(shouldWelcome(CFG, { event: "lead_created", stage: null, source: "landing-page" }, undefined, fresh)).toBe(true);
+  });
+
+  it("stays dormant unless enabled AND a template AND a flow are set", () => {
+    expect(shouldWelcome({ ...CFG, enabled: false }, { event: "lead_created", stage: null, source: null }, undefined, fresh)).toBe(false);
+    expect(shouldWelcome({ ...CFG, templateName: "" }, { event: "lead_created", stage: null, source: null }, undefined, fresh)).toBe(false);
+    expect(shouldWelcome({ ...CFG, flowId: "" }, { event: "lead_created", stage: null, source: null }, undefined, fresh)).toBe(false);
+  });
+
+  it("never re-blasts an already-welcomed or opted-out lead", () => {
+    expect(shouldWelcome(CFG, { event: "lead_created", stage: null, source: null }, undefined, { alreadyWelcomed: true, optedOut: false })).toBe(false);
+    expect(shouldWelcome(CFG, { event: "lead_created", stage: null, source: null }, undefined, { alreadyWelcomed: false, optedOut: true })).toBe(false);
+  });
+
+  it("respects the optional Source scope (case-insensitive contains)", () => {
+    const scoped = { ...CFG, sourceContains: "PPC" };
+    expect(shouldWelcome(scoped, { event: "lead_created", stage: null, source: "ppc-landing" }, undefined, fresh)).toBe(true);
+    expect(shouldWelcome(scoped, { event: "lead_created", stage: null, source: "organic" }, undefined, fresh)).toBe(false);
+    expect(shouldWelcome(scoped, { event: "lead_created", stage: null, source: null }, undefined, fresh)).toBe(false);
+  });
+
+  it("created-trigger ignores stage_changed events", () => {
+    expect(shouldWelcome(CFG, { event: "stage_changed", stage: "RNR", source: null }, "New", fresh)).toBe(false);
+  });
+
+  it("stage-trigger fires only on ENTERING the configured stage (a transition)", () => {
+    const staged = { ...CFG, trigger: "Signup Form" };
+    // entering the stage → fire
+    expect(shouldWelcome(staged, { event: "stage_changed", stage: "Signup Form", source: null }, "New", fresh)).toBe(true);
+    // same stage replayed (no transition) → no-op
+    expect(shouldWelcome(staged, { event: "stage_changed", stage: "Signup Form", source: null }, "signup form", fresh)).toBe(false);
+    // a different stage → no fire
+    expect(shouldWelcome(staged, { event: "stage_changed", stage: "RNR", source: null }, "New", fresh)).toBe(false);
+  });
+});

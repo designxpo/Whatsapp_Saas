@@ -2,9 +2,12 @@ export const maxDuration = 30;
 import { NextResponse } from "next/server";
 import { constEq } from "@/lib/apiauth";
 import { parseLsqWebhook } from "@/lib/lsqwebhook";
-import { upsertContacts, setContactAttributes, getContactByPhoneLoose, getConversationByPhone, assignConversation, getTenantSecret, optoutSet } from "@/lib/store";
+import { upsertContacts, setContactAttributes, getContactByPhoneLoose, getConversationByPhone, assignConversation, getTenantSecret, optoutSet, armFlow } from "@/lib/store";
 import { getStageDrips, stageTransition } from "@/lib/stagedrips";
+import { getLeadWelcome, shouldWelcome } from "@/lib/leadwelcome";
 import { enroll, stopEnrollment } from "@/lib/sequences";
+import { sendTemplateSingle } from "@/lib/whatsapp";
+import { getDefaultChannel } from "@/lib/channels";
 import { listUsers } from "@/lib/team";
 
 const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
@@ -84,6 +87,31 @@ export async function POST(req: Request) {
     }
   }
 
+  // 2c) Lead-welcome automation (landing-page form → WhatsApp flow). The
+  // compliant cold-lead opener: send the approved template NOW and ARM the
+  // question flow, so the lead's first reply runs the interactive Q&A inside the
+  // 24h window (a sequence alone can't arm a flow). Idempotent — a `wa_welcome_at`
+  // stamp stops a re-submitted form from re-blasting within 30 days; opt-outs
+  // never fire. Dormant until enabled + a template and flow are chosen.
+  let welcomed = false;
+  try {
+    const cfg = await getLeadWelcome(tid);
+    const stampedAt = existing?.attributes?.wa_welcome_at;
+    const alreadyWelcomed = !!stampedAt && (Date.now() - Date.parse(stampedAt) < 30 * 86_400_000);
+    const optedOut = (await optoutSet(tid).catch(() => new Set<string>())).has(last10(canonical));
+    if (shouldWelcome(cfg, ev, prevStage, { alreadyWelcomed, optedOut })) {
+      const first = (ev.name ?? "").trim().split(/\s+/)[0] || "there";
+      const channel = (await getDefaultChannel(tid).catch(() => null)) ?? undefined;
+      const sent = await sendTemplateSingle(canonical, cfg.templateName, cfg.languageCode, cfg.nameParam ? [first] : [], channel);
+      if (sent.error) console.error("[lsq_webhook] lead-welcome template failed:", sent.error);
+      else {
+        await armFlow([canonical], cfg.flowId, null, tid).catch(() => undefined);
+        await setContactAttributes(canonical, { wa_welcome_at: new Date().toISOString() }, tid).catch(() => undefined);
+        welcomed = true;
+      }
+    }
+  } catch (e) { console.error("[lsq_webhook] lead-welcome", e); }
+
   // 3) Owner → counselor assignment. assigned_to stores the team member's NAME
   //    (that's what the inbox filters/labels use), matched by email.
   let assigned: string | false = false;
@@ -103,8 +131,8 @@ export async function POST(req: Request) {
     }
   }
 
-  console.log(JSON.stringify({ tag: "lsq_webhook", tenant: tid, event: ev.event, phone: `…${ev.phone.slice(-4)}`, stage: ev.stage ?? undefined, assigned: assigned || undefined, drip, note: assignNote }));
-  return NextResponse.json({ handled: true, event: ev.event, phone: `…${ev.phone.slice(-4)}`, attributes: Object.keys(attrs), assigned, ...(drip ? { drip } : {}), ...(assignNote ? { note: assignNote } : {}) });
+  console.log(JSON.stringify({ tag: "lsq_webhook", tenant: tid, event: ev.event, phone: `…${ev.phone.slice(-4)}`, stage: ev.stage ?? undefined, assigned: assigned || undefined, drip, welcomed: welcomed || undefined, note: assignNote }));
+  return NextResponse.json({ handled: true, event: ev.event, phone: `…${ev.phone.slice(-4)}`, attributes: Object.keys(attrs), assigned, ...(drip ? { drip } : {}), ...(welcomed ? { welcomed } : {}), ...(assignNote ? { note: assignNote } : {}) });
 }
 
 // LSQ's "Test" button sometimes probes with GET — confirm reachability without
