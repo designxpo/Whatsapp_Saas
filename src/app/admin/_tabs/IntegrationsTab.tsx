@@ -330,12 +330,12 @@ function LsqInboundCard() {
   }
 
   if (!cfg) return null;
-  const samplePayload = `{"event":"owner_changed","Phone":"@{Lead:Phone,}","FirstName":"@{Lead:FirstName,}","EmailAddress":"@{Lead:EmailAddress,}","OwnerEmail":"@{Lead:OwnerIdEmailAddress,}","OwnerName":"@{Lead:OwnerIdName,}","ProspectStage":"@{Lead:ProspectStage,}","ProspectID":"@{Lead:ProspectID,}","Source":"@{Lead:Source,}"}`;
+  const samplePayload = `{"event":"lead_created","Phone":"@{Lead:Phone,}","Mobile":"@{Lead:Mobile,}","FirstName":"@{Lead:FirstName,}","LastName":"@{Lead:LastName,}","EmailAddress":"@{Lead:EmailAddress,}","OwnerEmail":"@{Lead:OwnerIdEmailAddress,}","OwnerName":"@{Lead:OwnerIdName,}","ProspectStage":"@{Lead:ProspectStage,}","ProspectID":"@{Lead:ProspectID,}","Source":"@{Lead:Source,}"}`;
   return (
     <section className="bg-white rounded-card border border-line p-4 space-y-2.5">
       <div>
         <p className="text-xs font-bold text-slate-400 uppercase">LeadSquared → portal (inbound webhook)</p>
-        <p className="text-[11px] text-slate-500 mt-0.5">In LSQ, create Automations (Lead Created / Owner Changed / Stage Changed) with a <b>Webhook</b> action posting to this URL. The portal syncs the contact (stage, owner, source as attributes) and auto-assigns the lead&apos;s chat to the team member whose email matches the LSQ owner.</p>
+        <p className="text-[11px] text-slate-500 mt-0.5">In LSQ, create Automations (Lead Created / Owner Changed / Stage Changed) with a <b>Webhook</b> action posting to this URL. The portal syncs the contact (stage, owner, source as attributes), auto-assigns the chat to the matching team member, and — if you&apos;ve turned on <b>Sequences → Landing-page form → WhatsApp flow</b> — sends the welcome template + starts your flow on a form lead (10-digit numbers are auto country-coded).</p>
       </div>
       {[{ k: "url", label: "POST URL", v: cfg.url }, { k: "secret", label: `Secret (header ${cfg.header} or ?secret=)`, v: cfg.secret }, { k: "body", label: "Webhook body (mail-merge JSON — change event per automation)", v: samplePayload }].map(row => (
         <div key={row.k} className="space-y-1">
