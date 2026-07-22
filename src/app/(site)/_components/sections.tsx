@@ -7,7 +7,7 @@ import {
   Rocket, TrendingUp, MessagesSquare, Globe, ArrowRight, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
-import { Parallax, Reveal } from "./motion";
+import { Parallax, Reveal, CountUp } from "./motion";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
@@ -126,7 +126,7 @@ export function StatsBand() {
                 <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : STAT_TINT[(i - 1) % STAT_TINT.length]}`}><Icon className="h-4 w-4" /></span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hero ? "bg-white/15 text-white" : "bg-[#DDEFE4] text-[#2f9e6e]"}`}>{m.trend}</span>
               </div>
-              <div className={`mt-4 text-4xl font-extrabold tracking-tight ${hero ? "text-white" : "text-slate-900"}`}>{s.value}</div>
+              <div className={`mt-4 text-4xl font-extrabold tracking-tight ${hero ? "text-white" : "text-slate-900"}`}><CountUp value={s.value} /></div>
               <div className={`mt-1 text-sm ${hero ? "text-white/80" : "text-slate-500"}`}>{s.label}</div>
               <div className="mt-3 opacity-80"><Spark pts={m.spark} light={hero} /></div>
             </div>

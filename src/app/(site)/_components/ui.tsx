@@ -65,7 +65,7 @@ export function Button({
 }: { href: string; children: React.ReactNode; variant?: "primary" | "ghost"; className?: string }) {
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition active:scale-[0.97]";
   const styles = variant === "primary"
-    ? `${GRADIENTS.brand} ${GRADIENTS.brandHover} text-white shadow-[0_10px_28px_-10px_rgba(106,92,255,0.65)]`
+    ? `${GRADIENTS.brand} ${GRADIENTS.brandHover} text-white shadow-[0_10px_28px_-10px_rgba(106,92,255,0.65)] sheen`
     : "border border-[#0783fd]/30 bg-white text-[#0783fd] hover:bg-[#0783fd]/5";
   if (href.startsWith("http")) return <a href={href} className={`${base} ${styles} ${className}`}>{children}</a>;
   return <Link href={href} className={`${base} ${styles} ${className}`}>{children}</Link>;
@@ -90,7 +90,7 @@ export function SectionTitle({
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(7,131,253,0.25)] ${className}`}>
+    <div className={`rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_16px_36px_-14px_rgba(7,131,253,0.28)] ${className}`}>
       {children}
     </div>
   );

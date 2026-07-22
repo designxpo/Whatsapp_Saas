@@ -55,6 +55,17 @@ button:not([disabled]):not(.no-press):active,
   button, [role="switch"], .press { transition: transform .12s ease-out; }
 }
 
+/* Premium hover sheen for primary CTAs — a soft light sweep across the button.
+   Clipped to the button's rounded shape; the sweep transition is collapsed to
+   instant under prefers-reduced-motion by the global rule above. */
+.sheen { position: relative; overflow: hidden; }
+.sheen::after {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: linear-gradient(100deg, transparent 22%, rgba(255, 255, 255, .35) 48%, transparent 74%);
+  transform: translateX(-130%); transition: transform .6s ease;
+}
+.sheen:hover::after { transform: translateX(130%); }
+
 /* ── Overlay entrance — modals, drawers, popovers materialize, not pop ────────
    Apple: surfaces should arrive as real objects (scale/slide + fade), and enter
    along a path anchored to intent. Reduced-motion collapses these to instant. */

@@ -99,11 +99,52 @@ export function Reveal({
       ref={ref}
       data-reveal
       style={{ transitionDelay: `${delay}ms` }}
-      className={`transition-all duration-700 ease-out ${shown ? "translate-y-0 opacity-100" : "translate-y-5 opacity-0"} ${className}`}
+      className={`transition-all duration-500 ease-out ${shown ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"} ${className}`}
     >
       {children}
     </Comp>
   );
+}
+
+// Rolls a numeric value up from 0 the first time it scrolls into view — draws
+// the eye to key metrics. Parses the leading number so suffixed values animate
+// ("98%" → 0→98 + "%", "60s" → 0→60 + "s"); non-numeric values like "24/7"
+// render static. SSR/no-JS/reduced-motion show the final value with no motion
+// (the count-up only ever replaces the final value briefly on the client).
+export function CountUp({
+  value, durationMs = 1200, className = "",
+}: { value: string; durationMs?: number; className?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const parts = /^(\D*)(\d+)(\D*)$/.exec(value.trim());
+  const target = parts ? parseInt(parts[2], 10) : 0;
+  const [n, setN] = useState(target);   // final value by default → correct for SSR + crawlers
+  const started = useRef(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    // Recomputed here (not a dep) — the regex result is a fresh object each render.
+    const numeric = /^(\D*)(\d+)(\D*)$/.test(value.trim());
+    if (!numeric || !el || started.current) return;   // non-numeric (e.g. "24/7") → static
+    const reduced = typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || typeof IntersectionObserver === "undefined") return;   // leave at final value
+    const io = new IntersectionObserver(entries => entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      started.current = true;
+      io.disconnect();
+      const start = performance.now();
+      const tick = (t: number) => {
+        const p = Math.min(1, (t - start) / durationMs);
+        setN(Math.round((1 - Math.pow(1 - p, 3)) * target));   // easeOutCubic
+        if (p < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);       // first frame sets ≈0, then counts up
+    }), { threshold: 0.4 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [value, target, durationMs]);
+
+  if (!parts) return <span className={className}>{value}</span>;
+  return <span ref={ref} className={className}>{parts[1]}{n}{parts[3]}</span>;
 }
 
 // Subscribe to the shared dispatcher's frame counter. SiteBackground (and any
