@@ -26,7 +26,7 @@ export function BrandLogo({
     <span className="inline-flex items-center" style={{ gap: Math.round(height * 0.14) }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src="/brand/talko-logo.png"
+        src="/brand/talko-logo.png?v=2"
         alt="Talko AI"
         width={width}
         height={height}

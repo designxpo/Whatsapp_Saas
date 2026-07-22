@@ -422,7 +422,7 @@ export default function SupportPage() {
       {/* ── Slim header ── */}
       <header className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between bg-white">
         <div className="flex items-center gap-3 min-w-0">
-          <img src="/brand/talko-logo.png" alt="Talko AI" className="h-7 w-auto" />
+          <img src="/brand/talko-logo.png?v=2" alt="Talko AI" className="h-7 w-auto" />
           <span className="h-5 w-px bg-line" />
           <p className="text-sm font-bold text-ink-900">Support Desk</p>
         </div>
