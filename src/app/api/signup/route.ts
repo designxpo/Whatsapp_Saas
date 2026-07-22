@@ -4,6 +4,7 @@ import { createPendingToken, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } fro
 import { getFlag } from "@/lib/flags";
 import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
 import { sendEmailOtp } from "@/lib/emailotp";
+import { encryptSecret } from "@/lib/crypto";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
 
@@ -56,7 +57,10 @@ export async function POST(req: Request) {
 
   try {
     const pending = await createPendingToken({
-      company, ownerName, ownerEmail, password,
+      // The pending token is a SIGNED (not encrypted) JWT that rides in a cookie,
+      // so its payload is publicly decodable. Never carry the raw password there —
+      // encrypt it at rest; verify-otp decrypts just before account creation.
+      company, ownerName, ownerEmail, password: encryptSecret(password),
       ownerPhone: body.ownerPhone?.trim(), industry: body.industry?.trim(),
       teamSize: body.teamSize?.trim(), useCase: body.useCase?.trim(), expectedVolume: body.expectedVolume?.trim(),
       termsVersion: LEGAL_VERSION,
@@ -65,6 +69,8 @@ export async function POST(req: Request) {
     res.cookies.set(PENDING_SIGNUP_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 900 });
     return res;
   } catch (err) {
-    return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
+    // Unauthenticated endpoint — log detail server-side, return a generic message.
+    console.error(JSON.stringify({ at: "signup", error: errorMessage(err) }));
+    return NextResponse.json({ error: "Could not start signup — please try again." }, { status: 400 });
   }
 }

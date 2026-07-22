@@ -20,10 +20,14 @@ const IMAGE_HOSTS = [
 const SECURITY_HEADERS = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
   { key: "X-Frame-Options", value: "DENY" },
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  // frame-ancestors (clickjacking) + object-src/base-uri lockdown. A full
+  // script-src nonce policy is deferred (Next's inline runtime needs per-request
+  // nonces); these directives harden without touching script execution.
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; object-src 'none'; base-uri 'self'" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
 ];
 
 const nextConfig: NextConfig = {

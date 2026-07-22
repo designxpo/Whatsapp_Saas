@@ -1,6 +1,6 @@
 export const maxDuration = 30;
 import { NextResponse } from "next/server";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, DEFAULT_TENANT_ID, requireRoleAdmin } from "@/lib/auth";
 import { getTenantAiStatus, saveTenantAi, clearTenantAi } from "@/lib/ai/keys";
 import { validateKey, DEFAULT_CHAT_MODEL, type AiProvider } from "@/lib/ai/chat";
 import { errorMessage } from "@/lib/errors";
@@ -22,6 +22,7 @@ export async function GET() {
 // POST — validate the key with a live test call, then store it encrypted.
 // Body: { provider, apiKey, model? }
 export async function POST(req: Request) {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: { provider?: string; apiKey?: string; model?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const provider = body.provider as AiProvider;
@@ -48,6 +49,7 @@ export async function POST(req: Request) {
 
 // DELETE — remove the tenant's key (AI chat turns off for them).
 export async function DELETE() {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     await clearTenantAi(tid);

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getWelcomeSetting, getAwaySetting, setWelcomeSetting, setAwaySetting, isAiEnabled, setAiEnabled, getFlowNudge, setFlowNudge, getFlowReminders, setFlowReminders, type WelcomeSetting, type AwaySetting, type FlowNudgeSetting, type FlowRemindersSetting } from "@/lib/messaging-settings";
-import { currentUser, currentTenantId } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -27,7 +27,11 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
     // Tenant-wide AI switch — a deliberate human action (logged below), never automated.
-    if (body.ai && typeof body.ai.enabled === "boolean") await setAiEnabled(body.ai.enabled, tid);
+    if (body.ai && typeof body.ai.enabled === "boolean") {
+      // The tenant-wide AI kill switch is an admin-only control.
+      if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Only admins can toggle the AI switch" }, { status: 403 });
+      await setAiEnabled(body.ai.enabled, tid);
+    }
     if (body.welcome) {
       const current = await getWelcomeSetting(tid);
       await setWelcomeSetting(tid, { ...current, ...body.welcome, text: (body.welcome.text ?? current.text).slice(0, 1024) });

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { uploadPublic } from "@/lib/supabase";
+import { errorMessage } from "@/lib/errors";
 
 export async function POST(req: Request) {
   if (!(await requireAdmin())) return new NextResponse("Unauthorized", { status: 401 });
@@ -11,6 +12,6 @@ export async function POST(req: Request) {
     const url = await uploadPublic(file as File);
     return NextResponse.json({ url });
   } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
   }
 }

@@ -1,5 +1,13 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
+// Defense-in-depth: this service-role client bypasses RLS and must never run in
+// the browser. Hard runtime guard — throws loudly if the module is ever imported
+// into client code. (Preferred upgrade: `import "server-only"` for a build-time
+// error, once the `server-only` package is added.)
+if (typeof window !== "undefined") {
+  throw new Error("supabase.ts service-role client must never be imported into client code");
+}
+
 let cached: SupabaseClient | null = null;
 
 // Server-only service-role client (bypasses RLS). Never import into client code.
@@ -23,12 +31,34 @@ export async function ensureBucket() {
   bucketEnsured = true;
 }
 
+// Admin file upload → public bucket. HARDENED: server-side type allowlist + size
+// cap, a server-generated random key (never the client filename), and a validated
+// Content-Type. SVG and HTML are refused on purpose — served from a public bucket
+// origin they would execute as stored XSS on a trusted first-party domain.
+const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;   // 25MB
+const UPLOAD_ALLOWED: Record<string, string> = {
+  "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif",
+  "application/pdf": "pdf",
+  "application/msword": "doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+  "application/vnd.ms-excel": "xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+  "text/csv": "csv", "text/plain": "txt",
+  "video/mp4": "mp4", "video/webm": "webm",
+  "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/wav": "wav",
+};
 export async function uploadPublic(file: File): Promise<string> {
+  const mime = (file.type || "").split(";")[0].trim().toLowerCase();
+  const ext = UPLOAD_ALLOWED[mime];
+  if (!ext) throw new Error(`Unsupported file type${mime ? ` (${mime})` : ""}. Allowed: PNG/JPG/WebP/GIF, PDF, Office docs, MP4/WebM, common audio.`);
+  if (file.size > UPLOAD_MAX_BYTES) throw new Error(`File too large — max ${UPLOAD_MAX_BYTES / (1024 * 1024)}MB.`);
   const supabase = db();
   await ensureBucket();
-  const filename = `${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+  // Random server-generated key — the client filename is never used in the path
+  // (path-segment injection / overwrite safety).
+  const filename = `upload/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const { error } = await supabase.storage.from(BUCKET).upload(filename, file, {
-    contentType: file.type || undefined,
+    contentType: mime,   // validated against the allowlist above
     upsert: false,
   });
   if (error) throw error;

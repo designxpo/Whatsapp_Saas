@@ -4,6 +4,7 @@ import { createTenantFromSignup } from "@/lib/tenants";
 import { createSession, verifyPendingToken, SESSION_COOKIE, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
 import { sendEmailOtp, verifyEmailOtp } from "@/lib/emailotp";
 import { trustDevice, newDeviceToken, DEVICE_COOKIE, DEVICE_COOKIE_MAX_AGE } from "@/lib/devices";
+import { readSecret } from "@/lib/crypto";
 import { errorMessage } from "@/lib/errors";
 
 interface PendingSignup {
@@ -35,7 +36,10 @@ export async function POST(req: Request) {
   if (!verified.ok) return NextResponse.json({ error: verified.error || "Incorrect code" }, { status: 400 });
 
   try {
-    const { tenantId, email } = await createTenantFromSignup(pending);
+    // Decrypt the password the signup step encrypted into the pending token.
+    // readSecret() also passes through any plaintext value (in-flight cookies
+    // minted just before this change deployed), so the cutover is seamless.
+    const { tenantId, email } = await createTenantFromSignup({ ...pending, password: readSecret(pending.password) ?? "" });
 
     // The signer just proved they own this inbox — trust this device so they
     // aren't immediately hit with a login-OTP challenge right after signing up.
@@ -49,6 +53,8 @@ export async function POST(req: Request) {
     res.cookies.delete(PENDING_SIGNUP_COOKIE);
     return res;
   } catch (err) {
-    return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
+    // Unauthenticated endpoint — log detail server-side, return a generic message.
+    console.error(JSON.stringify({ at: "signup/verify-otp", error: errorMessage(err) }));
+    return NextResponse.json({ error: "Could not complete signup — please try again." }, { status: 400 });
   }
 }
