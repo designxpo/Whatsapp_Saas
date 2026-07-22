@@ -42,6 +42,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var LS = 'alabs_wc_visitor_' + CFG.siteKey;\n" +
 "  var vid = localStorage.getItem(LS);\n" +
 "  if (!vid) { vid = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(LS, vid); }\n" +
+"  function build(){\n" +
 "  var since = null, open = false, timer = null, seen = {}, greeted = false, busy = false, escalated = false;\n" +
 "  var BRAND = CFG.color, SIDE = CFG.position;\n" +
 "  var OB = (CFG.offsetBottom==null?20:CFG.offsetBottom), OS = (CFG.offsetSide==null?20:CFG.offsetSide);\n" +
@@ -163,6 +164,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  function twcTrig(){ if (document.querySelector('[data-alabs-chat]')) document.documentElement.setAttribute('data-twc-trig','1'); }\n" +
 "  twcTrig(); if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', twcTrig); }\n" +
 "  document.addEventListener('click', function(e){ var el = e.target; var t = (el && el.closest) ? el.closest('[data-alabs-chat]') : null; if (t) { e.preventDefault(); toggle(true); } });\n" +
+"  }\n" +
+"  // If a custom launcher icon is configured but fails to load (moved/deleted URL,\n" +
+"  // blocked host), fall back to the default chat bubble instead of a broken-image\n" +
+"  // box. Probe the icon first; on error clear it, so the whole widget renders with\n" +
+"  // the built-in bubble + initial everywhere. The real <img> reuses the cached probe.\n" +
+"  if (CFG.icon) { var __pr = new Image(); __pr.onload = build; __pr.onerror = function(){ CFG.icon = ''; build(); }; __pr.src = CFG.icon; } else { build(); }\n" +
 "})();\n";
 
   return new NextResponse(js, {
