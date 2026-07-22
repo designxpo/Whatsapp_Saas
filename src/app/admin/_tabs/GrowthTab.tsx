@@ -76,8 +76,8 @@ function GrowthTab() {
       {!tools.length && !form && <p className="text-xs text-ink-400">No growth tools yet.</p>}
 
       {form && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onClick={() => setForm(null)}>
-        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-2xl space-y-2">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4 u-fade-in" onClick={() => setForm(null)}>
+        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-2xl space-y-2 u-scale-in">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <select className={inp} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value })}>{GROWTH_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>

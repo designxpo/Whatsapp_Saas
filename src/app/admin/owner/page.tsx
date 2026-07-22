@@ -400,8 +400,8 @@ export default function OwnerPortal() {
 
       {/* Tenant editor — centered modal so it's always visible (no scrolling). */}
       {draft && (
-        <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-start justify-center p-4 overflow-y-auto" onClick={closeEditor}>
-          <div className="bg-white rounded-card border border-line w-full max-w-2xl my-8 max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-start justify-center p-4 overflow-y-auto u-fade-in" onClick={closeEditor}>
+          <div className="bg-white rounded-card border border-line w-full max-w-2xl my-8 max-h-[88vh] overflow-y-auto u-scale-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between gap-3 p-4 border-b border-line sticky top-0 bg-white z-10">
               <div className="min-w-0">
                 <p className="text-sm font-extrabold text-ink-900 truncate">{draft.company || draft.name}</p>

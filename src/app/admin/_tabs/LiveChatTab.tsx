@@ -651,7 +651,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               {showTools && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowTools(false)} />
-                  <div className="absolute bottom-full right-0 mb-2 w-52 bg-white border border-line rounded-card shadow-lg p-1 z-20">
+                  <div className="absolute bottom-full right-0 mb-2 w-52 bg-white border border-line rounded-card shadow-lg p-1 z-20 u-scale-in origin-bottom-right">
                     {[
                       { icon: <Zap className="w-4 h-4" />, label: "Quick replies", on: () => setShowQuick(s => !s) },
                       { icon: <Bot className="w-4 h-4" />, label: "Draft from knowledge base", on: draftReply },

@@ -1032,7 +1032,7 @@ function Editor({ flowId }: { flowId: string }) {
               {showChannelPick && (
                 <>
                   <div className="fixed inset-0 z-20" onClick={() => setShowChannelPick(false)} />
-                  <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto">
+                  <div className="absolute left-0 top-9 w-64 bg-white rounded-control border border-line shadow-float p-1.5 z-30 max-h-80 overflow-y-auto u-scale-in origin-top-left">
                     <button type="button" onClick={() => setChannelIds([])}
                       className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${!scoped ? "bg-brand-50 text-brand-700 font-semibold" : "text-ink-600 hover:bg-canvas"}`}>
                       <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 ${!scoped ? "bg-brand-600 border-brand-600" : "border-line"}`}>{!scoped && <Check className="w-2.5 h-2.5 text-white" />}</span>

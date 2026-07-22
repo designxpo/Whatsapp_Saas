@@ -82,8 +82,8 @@ function CatalogTab() {
       {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
 
       {form && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4" onClick={() => setForm(null)}>
-        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-3xl flex flex-col xl:flex-row gap-5">
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4 u-fade-in" onClick={() => setForm(null)}>
+        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-3xl flex flex-col xl:flex-row gap-5 u-scale-in">
           <div className="flex-1 space-y-2 min-w-0">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />

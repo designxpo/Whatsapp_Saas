@@ -333,8 +333,8 @@ function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => v
   const finish = async () => { await fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {}); onDone(); };
   const next = () => { const s = TOUR_STEPS[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= TOUR_STEPS.length) finish(); else setI(i + 1); };
   return (
-    <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4">
+    <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 u-fade-in">
+      <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4 u-scale-in">
         <div className="flex gap-1.5">{TOUR_STEPS.map((_, j) => <div key={j} className={`h-1.5 flex-1 rounded-full ${j <= i ? "bg-brand-700" : "bg-line"}`} />)}</div>
         <div>
           <h3 className="text-lg font-extrabold text-ink-900">{step.title}</h3>
