@@ -6,12 +6,26 @@ import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
-import { Loader2, Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign } from "lucide-react";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
 // dashboard is client-rendered and tabs mount only after the user opens them.
-const tabLoading = <div className="p-10 text-center text-sm text-ink-400"><Loader2 className="inline w-4 h-4 animate-spin mr-2" />Loading…</div>;
+// A skeleton — not a bare spinner — so a loading tab reads as structure
+// arriving, not a blank flash (Apple: show the common path first). Under
+// reduced-motion the pulse is neutralized to a static block by globals.css.
+const tabLoading = (
+  <div className="p-6 space-y-4">
+    <div className="h-7 w-52 rounded-control bg-slate-100 animate-pulse" />
+    <div className="grid gap-4 sm:grid-cols-3">
+      {[0, 1, 2].map(i => <div key={i} className="h-24 rounded-card bg-slate-100 animate-pulse" />)}
+    </div>
+    <div className="h-72 rounded-card bg-slate-100 animate-pulse" />
+  </div>
+);
+
+// next/dynamic requires an inline import + object-literal options (SWC static
+// analysis), so these stay inline. ssr:false — tabs mount only once opened.
 const AdsTab = dynamic(() => import("./_tabs/AdsTab"), { ssr: false, loading: () => tabLoading });
 const AnalyticsTab = dynamic(() => import("./_tabs/AnalyticsTab"), { ssr: false, loading: () => tabLoading });
 const CampaignsTab = dynamic(() => import("./_tabs/CampaignsTab"), { ssr: false, loading: () => tabLoading });
@@ -35,6 +49,37 @@ const LiveChatTab = dynamic(() => import("./_tabs/LiveChatTab"), { ssr: false, l
 const ContactsTab = dynamic(() => import("./_tabs/ContactsTab"), { ssr: false, loading: () => tabLoading });
 const PipelineTab = dynamic(() => import("./_tabs/PipelineTab"), { ssr: false, loading: () => tabLoading });
 const SettingsTab = dynamic(() => import("./_tabs/SettingsTab"), { ssr: false, loading: () => tabLoading });
+
+// Warm a tab's chunk on nav hover/focus so it's in memory by click time (the
+// same import() → same webpack chunk as the dynamic() above, just eager). This
+// is what removes the chunk-load flash; the skeleton only shows if a user clicks
+// faster than the download.
+const PRELOAD: Partial<Record<Tab, () => Promise<unknown>>> = {
+  livechat: () => import("./_tabs/LiveChatTab"),
+  broadcast: () => import("./_tabs/BroadcastTab"),
+  contacts: () => import("./_tabs/ContactsTab"),
+  pipeline: () => import("./_tabs/PipelineTab"),
+  campaigns: () => import("./_tabs/CampaignsTab"),
+  analytics: () => import("./_tabs/AnalyticsTab"),
+  ads: () => import("./_tabs/AdsTab"),
+  instagram: () => import("./_tabs/InstagramTab"),
+  facebook: () => import("./_tabs/FacebookTab"),
+  webchat: () => import("./_tabs/WebchatTab"),
+  assistant: () => import("./_tabs/AssistantTab"),
+  flows: () => import("./_tabs/FlowsTab"),
+  sequences: () => import("./_tabs/SequencesTab"),
+  catalog: () => import("./_tabs/CatalogTab"),
+  growth: () => import("./_tabs/GrowthTab"),
+  handlehub: () => import("./_tabs/HandleHubTab"),
+  aihub: () => import("./_tabs/AiHubTab"),
+  templates: () => import("./_tabs/TemplatesTab"),
+  forms: () => import("./_tabs/FormsTab"),
+  optouts: () => import("./_tabs/OptoutsTab"),
+  setup: () => import("./_tabs/SetupTab"),
+  integrations: () => import("./_tabs/IntegrationsTab"),
+  settings: () => import("./_tabs/SettingsTab"),
+};
+const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
   {
@@ -164,6 +209,7 @@ export default function Admin() {
                   const active = tab === n.key;
                   return (
                     <button key={n.key} onClick={() => goTo(n.key)}
+                      onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
                       className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
                       {n.icon}{n.label}
                     </button>
