@@ -4,7 +4,7 @@ import { constEq } from "@/lib/apiauth";
 import { parseLsqWebhook } from "@/lib/lsqwebhook";
 import { upsertContacts, setContactAttributes, getContactByPhoneLoose, getConversationByPhone, assignConversation, getTenantSecret, optoutSet, armFlow } from "@/lib/store";
 import { getStageDrips, stageTransition } from "@/lib/stagedrips";
-import { getLeadWelcome, shouldWelcome } from "@/lib/leadwelcome";
+import { getLeadWelcome, shouldWelcome, toWaNumber } from "@/lib/leadwelcome";
 import { enroll, stopEnrollment } from "@/lib/sequences";
 import { sendTemplateSingle } from "@/lib/whatsapp";
 import { getDefaultChannel } from "@/lib/channels";
@@ -102,10 +102,11 @@ export async function POST(req: Request) {
     if (shouldWelcome(cfg, ev, prevStage, { alreadyWelcomed, optedOut })) {
       const first = (ev.name ?? "").trim().split(/\s+/)[0] || "there";
       const channel = (await getDefaultChannel(tid).catch(() => null)) ?? undefined;
-      const sent = await sendTemplateSingle(canonical, cfg.templateName, cfg.languageCode, cfg.nameParam ? [first] : [], channel);
+      const waPhone = toWaNumber(canonical);   // LSQ 10-digit → 91… so WhatsApp can deliver
+      const sent = await sendTemplateSingle(waPhone, cfg.templateName, cfg.languageCode, cfg.nameParam ? [first] : [], channel);
       if (sent.error) console.error("[lsq_webhook] lead-welcome template failed:", sent.error);
       else {
-        await armFlow([canonical], cfg.flowId, null, tid).catch(() => undefined);
+        await armFlow([waPhone], cfg.flowId, null, tid).catch(() => undefined);
         await setContactAttributes(canonical, { wa_welcome_at: new Date().toISOString() }, tid).catch(() => undefined);
         welcomed = true;
       }

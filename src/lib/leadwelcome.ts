@@ -23,6 +23,19 @@ const KEY = "lead_welcome";
 const DEFAULT: LeadWelcome = { enabled: false, templateName: "", languageCode: "en", nameParam: false, flowId: "", trigger: "created", sourceContains: "" };
 const norm = (s?: string | null) => (s ?? "").trim().toLowerCase();
 
+// LeadSquared stores Indian numbers 10-digit (no country code), but WhatsApp
+// needs the full international number to DELIVER a template — so a raw LSQ phone
+// would silently fail to send. Prepend the default country code (91) to a bare
+// national number; leave already-coded numbers untouched. A foreign number that
+// already carries its own code passes through.
+export function toWaNumber(phone: string, defaultCc = "91"): string {
+  let d = (phone || "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);   // strip a trunk 0
+  if (d.length === 10) d = defaultCc + d;                      // bare national → add the country code
+  return d;
+}
+
 export async function getLeadWelcome(tenantId: string = DEFAULT_TENANT_ID): Promise<LeadWelcome> {
   const raw = await getTenantSetting<Partial<LeadWelcome>>(tenantId, KEY, {});
   return { ...DEFAULT, ...(raw && typeof raw === "object" ? raw : {}) };

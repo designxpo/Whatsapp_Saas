@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { shouldWelcome, type LeadWelcome } from "../leadwelcome";
+import { shouldWelcome, toWaNumber, type LeadWelcome } from "../leadwelcome";
+
+describe("toWaNumber", () => {
+  it("prepends 91 to a bare 10-digit Indian number so WhatsApp can deliver", () => {
+    expect(toWaNumber("9999730196")).toBe("919999730196");
+  });
+  it("leaves an already-country-coded number untouched", () => {
+    expect(toWaNumber("919999730196")).toBe("919999730196");
+  });
+  it("strips a trunk 0 then adds the country code", () => {
+    expect(toWaNumber("09999730196")).toBe("919999730196");
+  });
+  it("passes a foreign number (its own code) through", () => {
+    expect(toWaNumber("4917612345678")).toBe("4917612345678");
+  });
+  it("normalizes formatting (+, spaces, dashes)", () => {
+    expect(toWaNumber("+91 99997-30196")).toBe("919999730196");
+    expect(toWaNumber("")).toBe("");
+  });
+});
 
 const CFG: LeadWelcome = { enabled: true, templateName: "signup_welcome", languageCode: "en", nameParam: true, flowId: "flow1", trigger: "created", sourceContains: "" };
 const fresh = { alreadyWelcomed: false, optedOut: false };
