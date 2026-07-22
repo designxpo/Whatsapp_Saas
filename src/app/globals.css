@@ -85,7 +85,7 @@ button:not([disabled]):not(.no-press):active,
 .animate-draw { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: drawline 1.6s ease-out forwards; }
 
 /* Soft pulsing glow for active nodes. */
-@keyframes pulsesoft { 0%, 100% { box-shadow: 0 0 0 0 rgba(24,119,242,0.45); } 50% { box-shadow: 0 0 0 8px rgba(24,119,242,0); } }
+@keyframes pulsesoft { 0%, 100% { box-shadow: 0 0 0 0 rgba(7,131,253,0.45); } 50% { box-shadow: 0 0 0 8px rgba(7,131,253,0); } }
 .animate-pulsesoft { animation: pulsesoft 2.4s ease-in-out infinite; }
 
 /* Infinite auto-scroll marquee. The track renders its children TWICE, so a
@@ -111,4 +111,20 @@ button:not([disabled]):not(.no-press):active,
   .animate-spin { animation-duration: .8s !important; animation-iteration-count: infinite !important; }
   /* Reveal-on-scroll must never leave content hidden when motion is reduced. */
   [data-reveal] { opacity: 1 !important; transform: none !important; }
+}
+
+/* Apple §14 — the other two "reduce" signals for the translucent materials
+   (nav, portal top bar, drawer scrim). Blur is the costly, most disorienting
+   part, so drop it and force the known glass chrome fully opaque. */
+@media (prefers-reduced-transparency: reduce) {
+  [class*="backdrop-blur"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  [class*="bg-white/8"], [class*="bg-white/9"] { background-color: #fff !important; }
+}
+
+/* prefers-contrast: more — near-solid surfaces, defined edges, thicker focus. */
+@media (prefers-contrast: more) {
+  :root { --border: #6b7280; }
+  [class*="backdrop-blur"] { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  [class*="bg-white/8"], [class*="bg-white/9"] { background-color: #fff !important; }
+  a:focus-visible, button:focus-visible, [role="switch"]:focus-visible { outline-width: 3px !important; }
 }

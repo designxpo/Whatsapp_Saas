@@ -42,7 +42,7 @@ function Node({ node, dots = "x", className = "w-48" }: { node: CanvasNode; dots
   const showOut = dots === "out" || dots === "io";
   return (
     <div
-      className={`relative flex shrink-0 items-center rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(24,119,242,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}
+      className={`relative flex shrink-0 items-center rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}
       style={{ minHeight: NODE_H }}
     >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
@@ -97,7 +97,7 @@ export function AgentCanvas() {
       />
       <Reveal className="relative mt-12">
         {/* Dotted canvas backdrop, like the builder. */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[28px] [background-image:radial-gradient(rgba(24,119,242,0.13)_1px,transparent_1px)] [background-size:20px_20px] [mask-image:radial-gradient(circle_at_center,black,transparent_85%)]" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 rounded-[28px] [background-image:radial-gradient(rgba(7,131,253,0.13)_1px,transparent_1px)] [background-size:20px_20px] [mask-image:radial-gradient(circle_at_center,black,transparent_85%)]" />
         <div className="relative overflow-x-auto rounded-[28px] border border-slate-200/70 bg-white/40 px-5 py-9 backdrop-blur-sm">
           <div className="mx-auto flex w-max items-start gap-0">
             {/* Trigger */}

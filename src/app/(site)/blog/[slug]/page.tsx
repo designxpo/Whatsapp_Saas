@@ -80,7 +80,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">Keep reading</h2>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {more.map(p => (
-                <Link key={p.slug} href={`/blog/${p.slug}`} className="rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-[0_10px_24px_-12px_rgba(24,119,242,0.3)]">
+                <Link key={p.slug} href={`/blog/${p.slug}`} className="rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-[0_10px_24px_-12px_rgba(7,131,253,0.3)]">
                   <div className="text-xs font-bold text-[#0783fd]">{p.category}</div>
                   <div className="mt-2 text-sm font-bold leading-snug text-slate-900">{p.title}</div>
                 </Link>

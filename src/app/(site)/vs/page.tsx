@@ -45,7 +45,7 @@ export default function VsIndexPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {COMPETITORS.map(c => (
               <Link key={c.slug} href={`/vs/${c.slug}`}
-                className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.25)]">
+                className="group flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(7,131,253,0.25)]">
                 <span>
                   <span className="block text-base font-extrabold text-slate-900">Talko AI vs {c.name}</span>
                   <span className="block text-xs text-slate-500">{c.category}</span>

@@ -47,7 +47,7 @@ export function Container({ children, className = "" }: { children: React.ReactN
 export function Glow({ className = "" }: { className?: string }) {
   return (
     <div aria-hidden className={`pointer-events-none absolute ${className}`}>
-      <div className="h-[420px] w-[420px] max-w-[80vw] rounded-full bg-[radial-gradient(circle,rgba(24,119,242,0.18),transparent_70%)] blur-2xl" />
+      <div className="h-[420px] w-[420px] max-w-[80vw] rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.18),transparent_70%)] blur-2xl" />
     </div>
   );
 }
@@ -90,7 +90,7 @@ export function SectionTitle({
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.25)] ${className}`}>
+    <div className={`rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(7,131,253,0.25)] ${className}`}>
       {children}
     </div>
   );

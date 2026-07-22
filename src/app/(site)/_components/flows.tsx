@@ -15,7 +15,7 @@ function Ico({ name }: { name: string }) { const I = FLOW_ICONS[name] ?? Bot; re
 
 function NodeCard({ icon, title, body, accent = false, className = "" }: { icon: string; title: string; body: string; accent?: boolean; className?: string }) {
   return (
-    <div className={`rounded-2xl border bg-white p-4 shadow-[0_10px_30px_-14px_rgba(24,119,242,0.35)] ${accent ? "border-[#0783fd]/40 ring-1 ring-[#0783fd]/15" : "border-slate-200"} ${className}`}>
+    <div className={`rounded-2xl border bg-white p-4 shadow-[0_10px_30px_-14px_rgba(7,131,253,0.35)] ${accent ? "border-[#0783fd]/40 ring-1 ring-[#0783fd]/15" : "border-slate-200"} ${className}`}>
       <div className="flex items-center gap-3">
         <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${accent ? "bg-[#0783fd] text-white animate-pulsesoft" : "bg-[#0783fd]/10 text-[#0783fd]"}`}><Ico name={icon} /></span>
         <div>
@@ -35,7 +35,7 @@ export function ChatFlowDiagram() {
         subtitle="Every incoming message is understood by AI and routed to the right outcome — answer, capture, or escalate — with no manual triage." />
       <Reveal className="relative mx-auto mt-12 max-w-3xl">
         {/* dotted backdrop */}
-        <div aria-hidden className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(24,119,242,0.12)_1px,transparent_1px)] [background-size:18px_18px] [mask-image:radial-gradient(circle_at_center,black,transparent_75%)]" />
+        <div aria-hidden className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(7,131,253,0.12)_1px,transparent_1px)] [background-size:18px_18px] [mask-image:radial-gradient(circle_at_center,black,transparent_75%)]" />
         <div className="relative flex flex-col items-center">
           <NodeCard icon={CHAT_FLOW.trigger.icon} title={CHAT_FLOW.trigger.title} body={CHAT_FLOW.trigger.body} className="w-full max-w-xs animate-floaty-slow" />
           <Connector />
@@ -88,7 +88,7 @@ export function SequenceFlowDiagram() {
             <span aria-hidden className="absolute top-7 hidden h-0.5 rounded bg-gradient-to-r from-[#0783fd]/20 via-[#0783fd]/50 to-[#0783fd]/20 md:block" style={{ left: "12.5%", right: "12.5%" }} />
             {steps.map((s, i) => (
               <Reveal key={s.n} delay={i * 140} className="relative flex flex-col items-center text-center">
-                <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0783fd] text-white shadow-[0_12px_26px_-8px_rgba(24,119,242,0.8)] ring-[6px] ring-slate-50">
+                <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0783fd] text-white shadow-[0_12px_26px_-8px_rgba(7,131,253,0.8)] ring-[6px] ring-slate-50">
                   <Ico name={s.icon} />
                 </span>
                 <span className="mt-4 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/15">{s.meta}</span>

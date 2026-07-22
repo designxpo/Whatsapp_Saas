@@ -59,7 +59,7 @@ function Bubble({ b }: { b: ChatBubble }) {
 
 function PhoneChat({ ind }: { ind: Industry }) {
   return (
-    <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(24,119,242,0.35)]">
+    <div className="mx-auto w-full max-w-[340px] overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(7,131,253,0.35)]">
       {/* Header */}
       <div className={`${GRADIENTS.brand} flex items-center gap-2.5 px-4 py-3 text-white`}>
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20">
@@ -177,7 +177,7 @@ export function OtherIndustries({ currentSlug }: { currentSlug: string }) {
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {others.map((ind, i) => (
           <Link key={ind.slug} href={`/industries/${ind.slug}`}
-            className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.3)]">
+            className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(7,131,253,0.3)]">
             <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
               <Ico name={ind.icon} className="h-5 w-5" />
             </span>
@@ -207,7 +207,7 @@ export function IndustryStrip() {
           <Reveal key={ind.slug} delay={i * 60}>
             <Link
               href={`/industries/${ind.slug}`}
-              className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(24,119,242,0.3)]"
+              className="group flex h-full flex-col rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_10px_30px_-12px_rgba(7,131,253,0.3)]"
             >
               <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
                 <Ico name={ind.icon} className="h-5 w-5" />

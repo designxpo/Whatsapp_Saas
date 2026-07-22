@@ -45,7 +45,7 @@ function Card({ n, accent = false, w = NODE_W, h = NODE_H, dot }: { n: FlowNodeD
   const showOut = dot === "out" || dot === "io";
   return (
     <div
-      className={`relative flex shrink-0 items-center gap-2.5 rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(24,119,242,0.45)] ${accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"}`}
+      className={`relative flex shrink-0 items-center gap-2.5 rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"}`}
       style={{ width: w, minHeight: h }}
     >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
@@ -169,7 +169,7 @@ export function FlowShowcase() {
 
         {/* Right: the selected flow on a dotted canvas, centred to fill the space */}
         <div className="relative flex min-h-[440px] items-center overflow-hidden rounded-[28px] border border-slate-200/70 bg-white/50">
-          <div aria-hidden className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(24,119,242,0.12)_1px,transparent_1px)] [background-size:20px_20px] [mask-image:radial-gradient(circle_at_center,black,transparent_92%)]" />
+          <div aria-hidden className="pointer-events-none absolute inset-0 [background-image:radial-gradient(rgba(7,131,253,0.12)_1px,transparent_1px)] [background-size:20px_20px] [mask-image:radial-gradient(circle_at_center,black,transparent_92%)]" />
           <div className="relative w-full overflow-x-auto px-6 py-8">
             <div key={active} className="animate-flowin mx-auto w-max">
               <Flow uc={uc} />
