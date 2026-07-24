@@ -52,6 +52,20 @@ function cleanSource(s: string | undefined): string {
   return (s ?? "").replace(/[​-‍⁠﻿]/g, "").trim();
 }
 
+// A phone we should never try to create a CRM lead for. Web-chat/IG visitors
+// type junk ("0000000000", a 5-digit test), LeadSquared rejects it as an invalid
+// number, and the push then RETRIES TO DEAD and reddens the health card forever.
+// Treat an implausible number as "no real lead" (a clean no-op), not a retriable
+// failure. Deliberately lenient — only blocks the obviously bogus.
+export function plausiblePhone(phone: string | null | undefined): boolean {
+  const d = (phone ?? "").replace(/\D/g, "");
+  if (d.length < 10 || d.length > 15) return false;
+  const nat = d.length > 10 ? d.slice(-10) : d;
+  if (/^(\d)\1{9}$/.test(nat)) return false;   // all one digit — 0000000000, 1111111111…
+  if (nat.startsWith("0")) return false;        // a real national mobile never leads with 0
+  return true;
+}
+
 // LeadSquared is a connection in the Integrations hub — find this tenant's active
 // one (its creds + visible status live on it).
 async function findLsqIntegration(tenantId: string): Promise<Integration | null> {
@@ -594,6 +608,7 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
   try {
     let leadId = await findLeadId(p.phone, c);
     if (!leadId && p.direction === "inbound" && c.autoCreate) {
+      if (!plausiblePhone(p.phone)) return { ok: true };   // fake/typo number → not a real lead; don't queue it to death
       leadId = await createOrUpdateLead({ phone: p.phone, source: p.source || "WhatsApp", name: p.name }, tid);
       // A create that answered null is a FAILURE (Lead.Capture rejected, keys
       // broken), not "phone not in CRM" — treating it as ok silently drops
@@ -637,6 +652,7 @@ async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
     if (p.phone) leadId = await findLeadId(p.phone, c);
     if (!leadId && p.handle) leadId = await findLeadIdByHandle(p.handle, c);
     if (!leadId && p.phone && p.direction === "inbound" && c.autoCreate) {
+      if (!plausiblePhone(p.phone)) return { ok: true };   // fake/typo number → not a real lead; don't queue it to death
       leadId = await createOrUpdateLead({ phone: p.phone, name: p.handle ?? undefined, source: p.source || p.channel }, tid);
       // Same rule: a null create is a retriable failure, not "no lead".
       if (!leadId) return { ok: false, retriable: true, error: "lead auto-create returned null (Lead.Capture rejected / LSQ keys?)" };
