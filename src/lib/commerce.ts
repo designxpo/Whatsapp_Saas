@@ -11,6 +11,8 @@ import { credsFor } from "./channels";
 
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
+export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled" | "refunded";
+export interface Order { id: string; phone: string; items: CartItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; createdAt: string }
 export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null }
 
 function mapProduct(r: Record<string, unknown>): Product {
@@ -214,6 +216,79 @@ export async function markOrderPaid(m: {
   } catch (e) { console.error("[order paid] confirmation send failed", e); }
 
   return { ok: true, orderId };
+}
+
+// ── Order admin (portal) ──────────────────────────────────────────────────────
+function mapOrder(r: Record<string, unknown>): Order {
+  return {
+    id: r.id as string,
+    phone: (r.phone as string) ?? "",
+    items: (r.items as CartItem[]) ?? [],
+    totalCents: (r.total_cents as number) ?? 0,
+    currency: (r.currency as string) ?? "INR",
+    status: (r.status as OrderStatus) ?? "pending",
+    paymentRef: (r.payment_ref as string | null) ?? null,
+    provider: (r.provider as string | null) ?? null,
+    paidAt: (r.paid_at as string | null) ?? null,
+    createdAt: r.created_at as string,
+  };
+}
+
+// Orders for the portal's order admin, newest first. Optional status filter and
+// phone search (substring). Capped for the list view.
+export async function listOrders(
+  tenantId = DEFAULT_TENANT_ID,
+  opts: { status?: OrderStatus; search?: string; limit?: number } = {},
+): Promise<Order[]> {
+  let q = db().from("wa_orders").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(opts.limit ?? 200);
+  if (opts.status) q = q.eq("status", opts.status);
+  if (opts.search?.trim()) q = q.ilike("phone", `%${opts.search.trim()}%`);
+  const { data } = await q;
+  return (data ?? []).map(r => mapOrder(r as Record<string, unknown>));
+}
+
+// Status rollup + revenue for the order admin header. Revenue counts money that
+// actually landed (paid + fulfilled), net of refunds.
+export async function getOrderStats(tenantId = DEFAULT_TENANT_ID): Promise<{ counts: Record<OrderStatus, number>; total: number; revenueCents: number }> {
+  const { data } = await db().from("wa_orders").select("status, total_cents").eq("tenant_id", tenantId);
+  const counts: Record<OrderStatus, number> = { pending: 0, paid: 0, fulfilled: 0, cancelled: 0, refunded: 0 };
+  let revenueCents = 0;
+  for (const r of (data ?? []) as { status: OrderStatus; total_cents: number }[]) {
+    const s = (r.status as OrderStatus) ?? "pending";
+    if (counts[s] !== undefined) counts[s]++;
+    if (s === "paid" || s === "fulfilled") revenueCents += r.total_cents ?? 0;
+  }
+  return { counts, total: (data ?? []).length, revenueCents };
+}
+
+// Allowed manual status transitions from the order admin. Terminal states
+// (cancelled/refunded) can't be moved out of; a refund is only meaningful once
+// money landed. Marking 'paid' here is manual reconciliation (COD / offline) —
+// it does NOT re-run the pay-webhook side effects (no duplicate confirmation).
+const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  pending:   ["paid", "cancelled"],
+  paid:      ["fulfilled", "refunded", "cancelled"],
+  fulfilled: ["refunded", "cancelled"],
+  cancelled: [],
+  refunded:  [],
+};
+
+export async function updateOrderStatus(orderId: string, next: OrderStatus, tenantId = DEFAULT_TENANT_ID): Promise<{ ok: boolean; error?: string; order?: Order }> {
+  const { data: row } = await db().from("wa_orders").select("*").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
+  if (!row) return { ok: false, error: "Order not found." };
+  const current = ((row as Record<string, unknown>).status as OrderStatus) ?? "pending";
+  if (current === next) return { ok: true, order: mapOrder(row as Record<string, unknown>) };
+  if (!ORDER_TRANSITIONS[current]?.includes(next)) return { ok: false, error: `Can't move an order from ${current} to ${next}.` };
+
+  const patch: Record<string, unknown> = { status: next };
+  if (next === "paid" && !(row as Record<string, unknown>).paid_at) { patch.paid_at = new Date().toISOString(); patch.provider = ((row as Record<string, unknown>).provider as string) ?? "manual"; }
+  const { data: updated, error } = await db().from("wa_orders").update(patch).eq("tenant_id", tenantId).eq("id", orderId).select("*").maybeSingle();
+  if (error || !updated) return { ok: false, error: error?.message ?? "Update failed." };
+  // Keep the cart in sync when the order is voided.
+  if ((next === "cancelled" || next === "refunded") && (row as Record<string, unknown>).cart_id) {
+    await db().from("wa_carts").update({ status: "abandoned" }).eq("id", (row as Record<string, unknown>).cart_id as string).then(() => {}, () => {});
+  }
+  return { ok: true, order: mapOrder(updated as Record<string, unknown>) };
 }
 
 // ── Cart recovery (cron) ──────────────────────────────────────────────────────

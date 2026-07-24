@@ -2,8 +2,9 @@
 
 // Catalog (commerce) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon } from "lucide-react";
+import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2 } from "lucide-react";
 import { inp, ImageUpload, ImgFallback } from "../_shared";
+import { SegmentedControl } from "@/components/SegmentedControl";
 
 // ── Catalog (commerce) ────────────────────────────────────────────────────────
 type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null };
@@ -14,6 +15,7 @@ const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", descripti
 // ImgFallback now lives in ./_shared.
 
 function CatalogTab() {
+  const [view, setView] = useState<"products" | "orders">("products");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,16 +57,29 @@ function CatalogTab() {
 
   return (
     <div className="max-w-5xl space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
           <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        {view === "products" && <div className="flex items-center gap-2 shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>
           <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
-        </div>
+        </div>}
       </div>
+
+      <SegmentedControl
+        className="max-w-xs"
+        ariaLabel="Catalog view"
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "products", label: "Products", icon: <ShoppingBag className="w-3.5 h-3.5" /> },
+          { value: "orders", label: "Orders", icon: <Receipt className="w-3.5 h-3.5" /> },
+        ]}
+      />
+
+      {view === "orders" ? <OrdersView /> : <>
       {checkoutId && <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">Published a multi-screen checkout flow — id <code className="font-mono">{checkoutId}</code>. Use it in a flow&apos;s “WhatsApp form” node; on submit, the order is created from the contact&apos;s open cart.</p>}
       {!form && msg && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">⚠ {msg}{/credential|token|WABA|not configured/i.test(msg) ? " — checkout flows need a connected WhatsApp number with WhatsApp Flows access." : ""}</p>}
 
@@ -134,9 +149,155 @@ function CatalogTab() {
         </div>
         </div>
       )}
+      </>}
     </div>
   );
 }
 
+
+// ── Orders (in-chat checkout) ─────────────────────────────────────────────────
+type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled" | "refunded";
+type OrderItem = { productId: string; name: string; qty: number; priceCents: number };
+type Order = { id: string; phone: string; items: OrderItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; createdAt: string };
+type Stats = { counts: Record<OrderStatus, number>; total: number; revenueCents: number };
+
+const STATUS_STYLE: Record<OrderStatus, string> = {
+  pending: "bg-amber-100 text-amber-700",
+  paid: "bg-emerald-100 text-emerald-700",
+  fulfilled: "bg-brand-50 text-brand-700",
+  cancelled: "bg-slate-100 text-slate-500",
+  refunded: "bg-rose-100 text-rose-600",
+};
+const STATUS_LABEL: Record<OrderStatus, string> = { pending: "Pending", paid: "Paid", fulfilled: "Fulfilled", cancelled: "Cancelled", refunded: "Refunded" };
+// Manual transitions offered per current status (mirrors the server guard).
+const NEXT_ACTIONS: Record<OrderStatus, { to: OrderStatus; label: string; primary?: boolean }[]> = {
+  pending:   [{ to: "paid", label: "Mark paid", primary: true }, { to: "cancelled", label: "Cancel" }],
+  paid:      [{ to: "fulfilled", label: "Mark fulfilled", primary: true }, { to: "refunded", label: "Refund" }, { to: "cancelled", label: "Cancel" }],
+  fulfilled: [{ to: "refunded", label: "Refund" }, { to: "cancelled", label: "Cancel" }],
+  cancelled: [],
+  refunded:  [],
+};
+const money = (cents: number, ccy: string) => `${ccy} ${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const FILTERS: { value: "" | OrderStatus; label: string }[] = [
+  { value: "", label: "All" }, { value: "pending", label: "Pending" }, { value: "paid", label: "Paid" },
+  { value: "fulfilled", label: "Fulfilled" }, { value: "cancelled", label: "Cancelled" }, { value: "refunded", label: "Refunded" },
+];
+
+function OrdersView() {
+  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [filter, setFilter] = useState<"" | OrderStatus>("");
+  const [search, setSearch] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    const qs = new URLSearchParams();
+    if (filter) qs.set("status", filter);
+    if (search.trim()) qs.set("q", search.trim());
+    fetch(`/api/admin/orders?${qs}`).then(r => r.json()).then(d => { setOrders(d.orders ?? []); setStats(d.stats ?? null); }).catch(() => setOrders([]));
+  }, [filter, search]);
+  useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t); }, [load, search]);
+
+  async function move(o: Order, to: OrderStatus) {
+    setBusy(o.id); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: o.id, status: to }) }).then(r => r.json());
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else { setMsg({ ok: true, text: `Order #${o.id.slice(0, 8)} → ${STATUS_LABEL[to]}.` }); load(); }
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setBusy(null); }
+  }
+
+  const stat = (label: string, value: string, tone = "text-ink-900") => (
+    <div className="bg-white rounded-card border border-line px-3.5 py-2.5">
+      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.06em]">{label}</p>
+      <p className={`text-lg font-extrabold ${tone}`}>{value}</p>
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {stat("Revenue (paid)", money(stats.revenueCents, orders?.[0]?.currency ?? "INR"), "text-emerald-700")}
+          {stat("Orders", String(stats.total))}
+          {stat("Awaiting payment", String(stats.counts.pending), stats.counts.pending ? "text-amber-600" : "text-ink-900")}
+          {stat("To fulfil", String(stats.counts.paid), stats.counts.paid ? "text-brand-700" : "text-ink-900")}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 justify-between">
+        <div className="flex flex-wrap gap-1">
+          {FILTERS.map(f => (
+            <button key={f.value || "all"} onClick={() => setFilter(f.value)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${filter === f.value ? "bg-brand-700 text-white" : "bg-canvas text-ink-500 hover:text-ink-800"}`}>
+              {f.label}{stats && f.value && stats.counts[f.value] ? ` ${stats.counts[f.value]}` : ""}
+            </button>
+          ))}
+        </div>
+        <div className="relative">
+          <Search className="w-3.5 h-3.5 text-ink-300 absolute left-2.5 top-1/2 -translate-y-1/2" />
+          <input className={`${inp} pl-8 w-48`} placeholder="Search by phone" value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+      </div>
+
+      {msg && <p className={`text-[12px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+
+      {orders === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
+      {orders?.length === 0 && <p className="text-xs text-ink-400 py-6 text-center">No orders {filter ? `with status “${STATUS_LABEL[filter as OrderStatus]}”` : "yet"}. They appear here the moment a customer checks out in chat.</p>}
+
+      <div className="space-y-2">
+        {orders?.map(o => {
+          const open = expanded === o.id;
+          const itemCount = o.items.reduce((s, i) => s + (i.qty || 1), 0);
+          return (
+            <div key={o.id} className="bg-white rounded-card border border-line overflow-hidden">
+              <button onClick={() => setExpanded(open ? null : o.id)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-canvas/60 transition-colors">
+                <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Receipt className="w-4 h-4" /></div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink-900 truncate">{o.phone || "Unknown"} · <span className="font-mono text-[11px] text-ink-400">#{o.id.slice(0, 8)}</span></p>
+                  <p className="text-[11px] text-ink-400">{itemCount} item{itemCount === 1 ? "" : "s"} · {new Date(o.createdAt).toLocaleString()}{o.provider ? ` · ${o.provider}` : ""}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-sm font-bold text-ink-900">{money(o.totalCents, o.currency)}</p>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${STATUS_STYLE[o.status]}`}>{STATUS_LABEL[o.status]}</span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-ink-300 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+              </button>
+              {open && (
+                <div className="border-t border-line px-3 py-2.5 space-y-2.5 bg-canvas/40">
+                  <div className="space-y-1">
+                    {o.items.map((it, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-[12px]">
+                        <span className="text-ink-700 truncate">{it.qty} × {it.name}</span>
+                        <span className="text-ink-500 font-medium tabular-nums">{money(it.priceCents * it.qty, o.currency)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between text-[12px] font-bold text-ink-900 pt-1 border-t border-line/70">
+                      <span>Total</span><span className="tabular-nums">{money(o.totalCents, o.currency)}</span>
+                    </div>
+                  </div>
+                  {(o.paymentRef || o.paidAt) && <p className="text-[10px] text-ink-400">{o.paidAt ? `Paid ${new Date(o.paidAt).toLocaleString()}` : "Not paid yet"}{o.paymentRef ? ` · ref ${o.paymentRef}` : ""}</p>}
+                  {NEXT_ACTIONS[o.status].length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {NEXT_ACTIONS[o.status].map(a => (
+                        <button key={a.to} onClick={() => move(o, a.to)} disabled={busy === o.id}
+                          className={`px-2.5 py-1 rounded-control text-[11px] font-bold disabled:opacity-60 ${a.primary ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-600 hover:bg-white"}`}>
+                          {busy === o.id ? "…" : a.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : <p className="text-[10px] text-ink-400">This order is closed — no further actions.</p>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-400">Refund marks the order as refunded here for your records — issue the actual refund in your Razorpay/Stripe dashboard. “Mark paid” is for offline/COD reconciliation and doesn&apos;t re-send the customer a confirmation.</p>
+    </div>
+  );
+}
 
 export default CatalogTab;
