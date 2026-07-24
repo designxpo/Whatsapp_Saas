@@ -6,6 +6,7 @@ import { downloadRemoteMedia, visionInlineMime } from "./voice";
 import { getContactByPhone, setContactAttributes, updateContactProfile, setConversationName } from "./store";
 import { readBehavior, behaviorBlock } from "./behavior";
 import { syncLeadProfile } from "./leadsquared";
+import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
@@ -91,7 +92,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none"): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none", hasCommerce = false): string {
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
     "You are a helpful WhatsApp assistant for a business.",
     "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
@@ -156,6 +157,10 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   parts.push([
     "--- Product / service consistency ---",
     "If the customer has chosen or named a specific product/service/option (it may be in their remembered profile above or earlier in this chat), answer ONLY about THAT one. NEVER quote a different option's price, duration, dates, or details. If you are not sure which one they mean, ask them to confirm before giving specifics — do not guess.",
+  ].join("\n"));
+  if (hasCommerce) parts.push([
+    "--- Selling & checkout ---",
+    "This business sells products right here in chat. When the customer wants to buy or asks what's available, call list_products to show the items and prices. As they choose, call add_to_cart for each item (confirm the quantity), and use view_cart to recap on request. When they confirm they're ready to pay, call checkout and send them the payment link EXACTLY as it is returned — never invent, shorten, or alter a link, and never state a price the tools didn't give you. Their order is confirmed automatically once they pay. If checkout says online payment isn't set up, don't send a link — say the team will follow up to arrange payment.",
   ].join("\n"));
   parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
   return parts.join("\n\n");
@@ -229,6 +234,80 @@ function knownProfile(contact: { name?: string | null; email?: string | null; at
   return lines.join("\n");
 }
 
+// ── Built-in commerce (cart → checkout) tools ──────────────────────────────
+// Cross-channel conversational cart for Instagram & Messenger — WhatsApp keeps
+// its native catalog cart (the whatsapp webhook's `order` handler). Enabled only
+// when the caller passes a commerce context AND the tenant has products. Keyed by
+// the contact id (`phone` — an IGSID/PSID on IG/Messenger), same key the cart,
+// checkout, pay-link reconciliation, and recovery all use. Prices ALWAYS come
+// from OUR catalog, never from anything the model or customer supplies.
+export type CommercePlatform = "whatsapp" | "instagram" | "messenger" | "webchat";
+export interface CommerceCtx { platform: CommercePlatform; conversationId?: string | null }
+
+const CART_FNS = { list: "list_products", add: "add_to_cart", view: "view_cart", checkout: "checkout" } as const;
+const COMMERCE_FN_NAMES = new Set<string>(Object.values(CART_FNS));
+const COMMERCE_TOOLS: ChatTool[] = [
+  { name: CART_FNS.list, description: "List the items available to buy from this business, with prices. Call this when the customer wants to shop, asks what's available, or before adding anything to the cart.", params: [], required: [] },
+  { name: CART_FNS.add, description: "Add an item to the customer's cart. Use the item's name or SKU exactly as shown by list_products. Call once per distinct item.", params: [
+    { name: "product", description: "The product name or SKU the customer wants to buy" },
+    { name: "quantity", description: "How many (a whole number; defaults to 1)" },
+  ], required: ["product"] },
+  { name: CART_FNS.view, description: "Show what's currently in the customer's cart and the running total.", params: [], required: [] },
+  { name: CART_FNS.checkout, description: "Place the order for everything in the cart and get a secure payment link. Call this ONLY after the customer confirms they want to check out / pay. Put the returned link in your reply EXACTLY as given — never invent one.", params: [], required: [] },
+];
+
+const money2 = (cents: number, ccy: string) => `${ccy} ${(cents / 100).toFixed(2)}`;
+
+// Execute one commerce tool. Returns a plain-language status for the model, plus
+// (on checkout) the pay-link URL so the caller can whitelist it past the
+// grounding firewall. Never throws — a failure becomes a graceful status.
+async function executeCommerceTool(
+  name: string, args: Record<string, unknown>, phone: string, tenantId: string, ctx: CommerceCtx,
+): Promise<{ status: string; payUrl?: string }> {
+  try {
+    if (name === CART_FNS.list) {
+      const products = (await listProducts(tenantId)).filter(p => p.available);
+      if (!products.length) return { status: "No products are available right now." };
+      return { status: "Available items:\n" + products.map(p => `• ${p.name} — ${money2(p.priceCents, p.currency)}${p.retailerId ? ` (SKU ${p.retailerId})` : ""}`).join("\n") };
+    }
+    if (name === CART_FNS.add) {
+      const query = String(args.product ?? "").trim();
+      if (!query) return { status: "Ask the customer which item they'd like." };
+      const qty = Math.max(1, Math.min(99, Math.round(Number(args.quantity) || 1)));
+      const product = await findProductByQuery(query, tenantId);
+      if (!product) {
+        const names = (await listProducts(tenantId)).filter(p => p.available).map(p => p.name).slice(0, 20);
+        return { status: `No item matches "${query}". Available: ${names.join(", ") || "none"}. Ask the customer to pick one.` };
+      }
+      const cart = await getOpenCart(phone, tenantId);
+      const items = cart?.items ? [...cart.items] : [];
+      const existing = items.find(i => i.productId === product.id);
+      if (existing) existing.qty += qty; else items.push({ productId: product.id, name: product.name, qty, priceCents: product.priceCents });
+      await upsertCart({ phone, platform: ctx.platform, conversationId: ctx.conversationId ?? null, items }, tenantId);
+      const total = items.reduce((s, i) => s + i.priceCents * i.qty, 0);
+      return { status: `Added ${qty}× ${product.name}. Cart now: ${items.map(i => `${i.qty}× ${i.name}`).join(", ")}. Total ${money2(total, product.currency)}.` };
+    }
+    if (name === CART_FNS.view) {
+      const cart = await getOpenCart(phone, tenantId);
+      if (!cart?.items?.length) return { status: "The cart is empty." };
+      const total = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
+      return { status: "Cart:\n" + cart.items.map(i => `• ${i.qty}× ${i.name} — ${money2(i.priceCents * i.qty, "INR")}`).join("\n") + `\nTotal ${money2(total, "INR")}.` };
+    }
+    if (name === CART_FNS.checkout) {
+      const cart = await getOpenCart(phone, tenantId);
+      if (!cart?.items?.length) return { status: "The cart is empty — add items before checking out." };
+      const res = await checkoutCart({ phone }, tenantId);
+      if (!res) return { status: "The cart is empty — add items before checking out." };
+      if (res.paymentUrl) return { status: `Order placed (total ${money2(res.totalCents, "INR")}). Payment link: ${res.paymentUrl} — send this exact link to the customer. Their order confirms automatically once they pay.`, payUrl: res.paymentUrl };
+      return { status: `Order #${res.orderId.slice(0, 8)} placed for ${money2(res.totalCents, "INR")}. Online payment isn't set up — tell the customer our team will reach out to arrange payment and confirm the order.` };
+    }
+  } catch (err) {
+    console.error("[llm] commerce tool failed:", name, err);
+    return { status: "Something went wrong with the cart — apologise briefly and offer to connect the customer with the team." };
+  }
+  return { status: "unknown function" };
+}
+
 export interface ReplyResult {
   reply: string | null;     // null when escalating
   escalate: boolean;
@@ -270,7 +349,7 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
 // Generates a grounded reply from conversation history. `history` must end with
 // the user's latest message. `phone` enables function-calling attribute capture.
 // `agentId` pins a specific agent (conversation routing); null → active agent.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -292,10 +371,17 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
+  // Cross-channel cart: enable the built-in commerce tools only when the caller
+  // opts in (IG/Messenger) AND we have a contact key + at least one available
+  // product. WhatsApp uses its native catalog cart, so it doesn't opt in.
+  const commerceOn = !!commerce && !!phone;
+  const products = commerceOn ? await listProducts(tenantId).catch(() => []) : [];
+  const hasCommerce = commerceOn && products.some(p => p.available);
+
   // Configured AI functions + a built-in "remember" tool so the model can
-  // persist the customer's name/details. `functions` stays the configured list
-  // (the no-context guard below keys off it, not the built-in tool).
-  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL];
+  // persist the customer's name/details, plus the commerce tools when enabled.
+  // `functions` stays the configured list (the no-context guard keys off it).
+  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : [])];
 
   // Retrieve business context for the latest question. k=8 gives the model enough
   // material to synthesise an answer that spans several documents (fees in one,
@@ -327,7 +413,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   const context = relevant.map((c, i) => `[${i + 1}${c.similarity < 0.55 ? " · weak" : ""}] ${c.content}`).join("\n\n");
   // Zero-cost behaviour read → adapts tone + next step (educate / convert / de-escalate).
   const behavior = behaviorBlock(readBehavior(history));
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage, hasCommerce);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
@@ -381,6 +467,9 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   try {
     let escalateViaFn = false;
     const executed: string[] = [];
+    // Pay-link URLs minted by the checkout tool this turn — whitelisted past the
+    // grounding firewall (which otherwise strips any link not in the RAG context).
+    const payLinks: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       // Ample token headroom so a heavy thinking pass (which counts against the
@@ -401,6 +490,13 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
             results.push({ id: c.id, name: c.name, status: "saved" });
             continue;
           }
+          if (hasCommerce && commerce && phone && COMMERCE_FN_NAMES.has(c.name)) {
+            const r = await executeCommerceTool(c.name, c.args, phone, tenantId, commerce);
+            if (r.payUrl) payLinks.push(r.payUrl);
+            executed.push(c.name);
+            results.push({ id: c.id, name: c.name, status: r.status });
+            continue;
+          }
           const fn = functions.find(f => f.name === c.name);
           const result = fn
             ? await executeAiFunction(fn, c.args, phone, tenantId)
@@ -416,7 +512,10 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
       // Single outbound chokepoint: strip any persona label + enforce that every
       // high-risk specific (contact, price, %, duration…) traces to the retrieved
       // context or the approved contact config — else rewrite/strip/defer it.
-      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
+      // A freshly minted pay link is legitimately not in the RAG context — add it
+      // to the allow-set so the firewall keeps it (its domain becomes grounded).
+      const guardContext = payLinks.length ? `${context}\nPayment links: ${payLinks.join(" ")}` : context;
+      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context: guardContext, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
       const text = guarded.text;
       if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));
       // Only an explicit escalate token hands off to a human. An empty model

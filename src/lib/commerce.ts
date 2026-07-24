@@ -7,7 +7,9 @@ import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
 import { sendText } from "./whatsapp";
-import { credsFor } from "./channels";
+import { credsFor, getChannel } from "./channels";
+import { sendFbMessage } from "./messenger";
+import { sendIgMessage } from "./instagram";
 
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
@@ -59,6 +61,23 @@ export async function saveProduct(p: Partial<Product> & { name: string }, tenant
   return mapProduct(data as Record<string, unknown>);
 }
 
+// Resolve a free-text product reference (from an AI cart tool) to a catalog
+// product. Tries SKU, then exact name, then prefix/substring — availability only.
+// Returns null when nothing sensible matches (the caller then lists options).
+export async function findProductByQuery(query: string, tenantId = DEFAULT_TENANT_ID): Promise<Product | null> {
+  const q = query.trim().toLowerCase();
+  if (!q) return null;
+  const products = (await listProducts(tenantId)).filter(p => p.available);
+  if (!products.length) return null;
+  const name = (p: Product) => p.name.trim().toLowerCase();
+  return products.find(p => (p.retailerId ?? "").toLowerCase() === q)
+    ?? products.find(p => name(p) === q)
+    ?? products.find(p => name(p).startsWith(q))
+    ?? products.find(p => name(p).includes(q))
+    ?? products.find(p => q.includes(name(p)))
+    ?? null;
+}
+
 export async function getProduct(id: string, tenantId = DEFAULT_TENANT_ID): Promise<Product | null> {
   const { data } = await db().from("wa_products").select("*").eq("tenant_id", tenantId).eq("id", id).maybeSingle();
   return data ? mapProduct(data as Record<string, unknown>) : null;
@@ -101,7 +120,11 @@ export async function getOpenCart(phone: string, tenantId = DEFAULT_TENANT_ID): 
 }
 
 // Create/replace the open cart for a contact (resets the abandonment clock).
-export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "instagram"; conversationId?: string | null; items: CartItem[] }, tenantId = DEFAULT_TENANT_ID): Promise<string> {
+// platform is free-text on the row (defaults 'whatsapp'); Instagram/Messenger
+// carts are keyed by the contact's opaque channel id (IGSID/PSID), same as their
+// conversation.phone. Cart recovery only enrols whatsapp/instagram carts (see
+// drainAbandonedCarts) — a messenger/webchat cart simply isn't auto-recovered.
+export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "instagram" | "messenger" | "webchat"; conversationId?: string | null; items: CartItem[] }, tenantId = DEFAULT_TENANT_ID): Promise<string> {
   const existing = await getOpenCart(p.phone, tenantId);
   const now = new Date().toISOString();
   if (existing) {
@@ -196,22 +219,34 @@ export async function markOrderPaid(m: {
   // Notify the brand + fan out to connected integrations (Slack/Sheets/Zapier).
   void emitEvent(tenantId, "order.paid", { orderId, phone: order.phone, totalCents, provider: m.provider, paymentId: m.providerPaymentId });
 
-  // Best-effort customer confirmation on the SAME WhatsApp number the cart came
-  // in on. May fail outside WhatsApp's 24h window — an approved template is the
-  // robust follow-up (see COMMERCE-CHECKOUT-FLOW.md #8); the paid status + event
-  // above are what actually matter and always run.
+  // Best-effort customer confirmation on the SAME channel the cart came in on —
+  // WhatsApp, Instagram DM, or Messenger. May fail outside the platform's 24h
+  // window (an approved template is the robust WhatsApp follow-up — see
+  // COMMERCE-CHECKOUT-FLOW.md #8); the paid status + event above are what
+  // actually matter and always run.
   try {
-    let creds;
     if (order.cart_id) {
       const { data: cart } = await db().from("wa_carts").select("conversation_id").eq("id", order.cart_id as string).maybeSingle();
       const convId = cart?.conversation_id as string | null | undefined;
       if (convId) {
-        const { data: conv } = await db().from("wa_conversations").select("channel_id").eq("id", convId).maybeSingle();
-        creds = await credsFor((conv?.channel_id as string | null) ?? undefined, tenantId);
+        const { data: conv } = await db().from("wa_conversations").select("channel_id, platform, last_inbound_at").eq("id", convId).maybeSingle();
+        const msg = `✅ Payment received — your order #${orderId.slice(0, 8)} is confirmed! We'll follow up with the details shortly.`;
+        const platform = (conv?.platform as string | null) ?? "whatsapp";
+        const channelId = (conv?.channel_id as string | null) ?? undefined;
+        const lastInboundAt = (conv?.last_inbound_at as string | null) ?? null;
+        const phone = order.phone as string;
+        if (platform === "messenger" || platform === "instagram") {
+          const channel = channelId ? await getChannel(channelId, tenantId) : null;
+          if (channel?.token) {
+            if (platform === "messenger" && channel.pageId) await sendFbMessage({ pageId: channel.pageId, token: channel.token }, phone, msg, { lastInboundAt });
+            else if (platform === "instagram" && channel.igUserId) await sendIgMessage({ igUserId: channel.igUserId, token: channel.token }, phone, msg, { lastInboundAt });
+          }
+        } else if (platform === "whatsapp") {
+          const creds = await credsFor(channelId, tenantId);
+          if (creds) await sendText(phone, msg, creds);
+        }
+        // webchat is pull-based (no push channel) — the paid status + event carry it.
       }
-    }
-    if (creds) {
-      await sendText(order.phone as string, `✅ Payment received — your order #${orderId.slice(0, 8)} is confirmed! We'll follow up with the details shortly.`, creds);
     }
   } catch (e) { console.error("[order paid] confirmation send failed", e); }
 

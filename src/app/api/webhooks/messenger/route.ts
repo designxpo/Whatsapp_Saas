@@ -222,7 +222,9 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const history = await getConvHistory(conv.id, 20);
   // Conversation pin / flow-stamped KB tag → this Page's persona + allocated KB
   // → tenant-global (used to hardcode a null KB scope and skip the pin).
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false);
+  // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
+  // built-in commerce tools; public comment replies never sell.
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id });
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
