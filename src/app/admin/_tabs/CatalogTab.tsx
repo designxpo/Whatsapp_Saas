@@ -2,7 +2,7 @@
 
 // Catalog (commerce) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2, MessageSquareText } from "lucide-react";
 import { inp, ImageUpload, ImgFallback } from "../_shared";
 import { SegmentedControl } from "@/components/SegmentedControl";
 
@@ -183,6 +183,68 @@ const FILTERS: { value: "" | OrderStatus; label: string }[] = [
   { value: "fulfilled", label: "Fulfilled" }, { value: "cancelled", label: "Cancelled" }, { value: "refunded", label: "Refunded" },
 ];
 
+// Order-confirmation WhatsApp template setup. A UTILITY template is the only way
+// to message a customer once the 24h window closes, so this is what lets a paid
+// order be confirmed hours after checkout. One-click create → Meta approval →
+// markOrderPaid uses it automatically. WhatsApp only (IG/Messenger confirmations
+// are best-effort in-window text).
+function ConfirmTemplateCard() {
+  const [state, setState] = useState<string | null>(null);
+  const [reason, setReason] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/order-confirmation-template").then(r => r.json())
+      .then(d => { setState(d.state ?? "none"); setReason(d.reason ?? null); setNotice(d.notice ?? null); })
+      .catch(() => setState("none"));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function create() {
+    setBusy(true); setNotice(null);
+    try {
+      const d = await fetch("/api/admin/order-confirmation-template", { method: "POST" }).then(r => r.json());
+      if (d.error) setNotice(d.error);
+      else { setState(d.status ?? "PENDING"); setNotice(d.note ?? null); }
+    } catch { setNotice("Connection error."); }
+    finally { setBusy(false); }
+  }
+
+  if (state === null) return null;   // still loading — don't flash
+  const approved = state === "APPROVED";
+  const pending = state === "PENDING" || state === "IN_APPEAL" || state === "PAUSED";
+  const rejected = state === "REJECTED" || state === "DISABLED";
+  const tone = approved ? "border-emerald-200 bg-emerald-50" : rejected ? "border-red-200 bg-red-50" : pending ? "border-amber-200 bg-amber-50" : "border-line bg-white";
+
+  return (
+    <section className={`rounded-card border p-3.5 space-y-2 ${tone}`}>
+      <div className="flex items-start gap-3">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${approved ? "bg-emerald-100 text-emerald-700" : "bg-brand-50 text-brand-700"}`}><MessageSquareText className="w-4 h-4" /></div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold text-ink-900">WhatsApp order confirmation</p>
+          {approved ? (
+            <p className="text-[12px] text-emerald-800">✓ Live — paid orders auto-send a WhatsApp confirmation, even after the 24-hour window closes.</p>
+          ) : pending ? (
+            <p className="text-[12px] text-amber-800">Submitted to Meta — awaiting approval (usually minutes to a few hours). Until then, paid orders send a plain message inside the 24-hour window.</p>
+          ) : rejected ? (
+            <p className="text-[12px] text-red-700">Meta rejected the template{reason ? `: ${reason}` : ""}. Fix and resubmit below.</p>
+          ) : (
+            <p className="text-[12px] text-slate-600">Auto-confirm paid orders on WhatsApp even after the 24-hour window. Create the template once — Meta approves it, then it sends automatically. (Instagram &amp; Messenger confirm in-window; no template needed there.)</p>
+          )}
+          {notice && <p className="text-[11px] text-slate-500 mt-1">{notice}</p>}
+        </div>
+        {!approved && !pending && (
+          <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">
+            {busy ? "Submitting…" : rejected ? "Resubmit" : "Set up"}
+          </button>
+        )}
+      </div>
+      {(approved || pending) && <p className="text-[10px] text-ink-400">Manage or preview this template anytime in <b>Templates</b> (name <span className="font-mono">order_confirmation</span>).</p>}
+    </section>
+  );
+}
+
 function OrdersView() {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -219,6 +281,7 @@ function OrdersView() {
 
   return (
     <div className="space-y-4">
+      <ConfirmTemplateCard />
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {stat("Revenue (paid)", money(stats.revenueCents, orders?.[0]?.currency ?? "INR"), "text-emerald-700")}

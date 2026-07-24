@@ -6,13 +6,23 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
-import { sendText } from "./whatsapp";
+import { sendText, sendTemplateSingle } from "./whatsapp";
 import { credsFor, getChannel } from "./channels";
 import { sendFbMessage } from "./messenger";
 import { sendIgMessage } from "./instagram";
 
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
+
+// The canonical order-confirmation WhatsApp template. A UTILITY template is the
+// ONLY way to message a customer outside the 24h window, so a paid order can be
+// confirmed even if payment lands hours later. Body: {{1}} = order id (short),
+// {{2}} = amount paid. Created one-click from the portal (Catalog → Orders) and
+// sent by markOrderPaid; a free-form text confirmation is the in-window fallback.
+export const ORDER_CONFIRM_TEMPLATE = "order_confirmation";
+export const ORDER_CONFIRM_LANG = "en_US";
+export const ORDER_CONFIRM_BODY = "✅ Your order *#{{1}}* is confirmed! We've received your payment of {{2}}. Thank you for shopping with us — we'll be in touch with the details shortly.";
+export const ORDER_CONFIRM_EXAMPLES = ["A1B2C3D4", "INR 499.00"];
 export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled" | "refunded";
 export interface Order { id: string; phone: string; items: CartItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; createdAt: string }
 export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null }
@@ -243,7 +253,15 @@ export async function markOrderPaid(m: {
           }
         } else if (platform === "whatsapp") {
           const creds = await credsFor(channelId, tenantId);
-          if (creds) await sendText(phone, msg, creds);
+          if (creds) {
+            // Try the approved UTILITY template first — it delivers even when the
+            // 24h window has closed (payment often lands later). If the tenant
+            // hasn't created/approved it yet, fall back to a free-form text send
+            // (only valid inside the window; a no-op otherwise).
+            const amount = `${(order.currency as string) ?? "INR"} ${(totalCents / 100).toFixed(2)}`;
+            const t = await sendTemplateSingle(phone, ORDER_CONFIRM_TEMPLATE, ORDER_CONFIRM_LANG, [orderId.slice(0, 8), amount], creds);
+            if (t.error) await sendText(phone, msg, creds);
+          }
         }
         // webchat is pull-based (no push channel) — the paid status + event carry it.
       }
