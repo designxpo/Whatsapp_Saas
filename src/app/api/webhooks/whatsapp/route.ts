@@ -13,7 +13,7 @@ import {
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
 import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
-import { getOpenCart, checkoutCart } from "@/lib/commerce";
+import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -70,6 +70,10 @@ function messageText(m: Record<string, unknown>): string {
   const type = m.type as string;
   if (type === "text") return ((m.text as Record<string, unknown>)?.body as string) ?? "";
   if (type === "button") return ((m.button as Record<string, unknown>)?.text as string) ?? "";
+  if (type === "order") {
+    const n = ((m.order as Record<string, unknown>)?.product_items as unknown[] | undefined)?.length ?? 0;
+    return `[cart] ${n} item${n === 1 ? "" : "s"}`;
+  }
   if (type === "interactive") {
     const it = m.interactive as Record<string, unknown>;
     const answers = formAnswers(m);
@@ -281,6 +285,40 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // Form submission → record it (sent→submitted) for the Responses view + chat.
   if (answers && Object.keys(answers).length) {
     await recordFormSubmitted(conv.id, from, answers, tid).catch(() => undefined);
+  }
+
+  // Native WhatsApp catalog cart: the customer built a cart from the catalog and
+  // sent it (Meta `order` message). Re-price EVERY line against OUR catalog by
+  // retailer id (never trust Meta's item_price), create the order, and send a
+  // pay link. Immediate checkout matches the "cart → pay link" journey.
+  if (!manual && m.type === "order") {
+    try {
+      const lines = ((m.order as Record<string, unknown>)?.product_items as Record<string, unknown>[] | undefined) ?? [];
+      if (lines.length) {
+        const catalog = await listProducts(tid);
+        const byRetailer = new Map(catalog.map(p => [p.retailerId ?? "", p]));
+        const items: CartItem[] = [];
+        for (const li of lines) {
+          const prod = byRetailer.get(String(li.product_retailer_id ?? ""));
+          if (prod && prod.available) {
+            items.push({ productId: prod.id, name: prod.name, qty: Math.max(1, Math.round(Number(li.quantity ?? 1))), priceCents: prod.priceCents });
+          }
+        }
+        const send = async (body: string) => {
+          const r = await sendText(from, body, channel);
+          if (r.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body, metaId: r.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null }).catch(() => undefined);
+        };
+        if (items.length) {
+          await upsertCart({ phone: from, platform: "whatsapp", conversationId: conv.id, items }, tid);
+          const placed = await checkoutCart({ phone: from }, tid);
+          await send(placed?.paymentUrl
+            ? `🛒 Your order is ready! Complete payment here to confirm your order:\n${placed.paymentUrl}`
+            : "🛒 Got your order! We'll confirm the details with you shortly.");
+        } else {
+          await send("Sorry — we couldn't match those items to our current catalog. Please try again, or send us a message and we'll help.");
+        }
+      }
+    } catch (e) { console.error("[webhook] catalog order", e); }
   }
 
   // In-chat checkout: a checkout-flow submission (carries a delivery address)
