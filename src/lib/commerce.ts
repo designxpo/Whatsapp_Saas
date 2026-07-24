@@ -6,6 +6,8 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
+import { sendText } from "./whatsapp";
+import { credsFor } from "./channels";
 
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
@@ -139,6 +141,72 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string }, te
     }
   }
   return { orderId, totalCents: total, paymentUrl };
+}
+
+// ── Payment confirmation ──────────────────────────────────────────────────────
+// Called by a SIGNATURE-VERIFIED payment webhook (Razorpay / Stripe) when a
+// hosted pay link is paid. Reconciles by `payment_ref` (the provider's link id,
+// which checkoutCart stored) — the tenant is DERIVED from the matched row, never
+// trusted from the webhook payload. Exactly-once: the pending→paid transition is
+// a guarded UPDATE, so a duplicate/late webhook updates 0 rows and fires no
+// side-effects again.
+export async function markOrderPaid(m: {
+  paymentRef?: string;         // provider hosted-link id (matches wa_orders.payment_ref)
+  orderId?: string;            // or an explicit order id
+  providerPaymentId?: string;  // the actual gateway payment id (for the event payload)
+  amountPaidCents?: number;    // guard against short payments
+  provider?: "razorpay" | "stripe";
+}): Promise<{ ok: boolean; orderId?: string; alreadyPaid?: boolean }> {
+  const sel = db().from("wa_orders").select("id, tenant_id, phone, cart_id, total_cents, currency, status");
+  const { data: order } = m.orderId
+    ? await sel.eq("id", m.orderId).maybeSingle()
+    : m.paymentRef
+      ? await sel.eq("payment_ref", m.paymentRef).maybeSingle()
+      : { data: null };
+  if (!order) { console.warn("[order paid] no order matched", m.paymentRef ?? m.orderId ?? "(none)"); return { ok: false }; }
+
+  const tenantId = order.tenant_id as string;
+  const orderId = order.id as string;
+  const totalCents = (order.total_cents as number) ?? 0;
+  if (order.status === "paid" || order.status === "fulfilled") return { ok: true, orderId, alreadyPaid: true };
+
+  // Never confirm on a short payment — leave it pending for reconciliation.
+  if (typeof m.amountPaidCents === "number" && m.amountPaidCents < totalCents) {
+    console.warn(`[order paid] short payment for ${orderId}: ${m.amountPaidCents} < ${totalCents}`);
+    return { ok: false, orderId };
+  }
+
+  // Guarded transition — the WHERE status='pending' makes this exactly-once.
+  const { data: updated } = await db().from("wa_orders")
+    .update({ status: "paid", paid_at: new Date().toISOString(), provider: m.provider ?? null })
+    .eq("id", orderId).eq("status", "pending").select("id").maybeSingle();
+  if (!updated) return { ok: true, orderId, alreadyPaid: true };   // lost the race → already handled
+
+  if (order.cart_id) await db().from("wa_carts").update({ status: "ordered" }).eq("id", order.cart_id as string).then(() => {}, () => {});
+
+  // Notify the brand + fan out to connected integrations (Slack/Sheets/Zapier).
+  void emitEvent(tenantId, "order.paid", { orderId, phone: order.phone, totalCents, provider: m.provider, paymentId: m.providerPaymentId });
+
+  // Best-effort customer confirmation on the SAME WhatsApp number the cart came
+  // in on. May fail outside WhatsApp's 24h window — an approved template is the
+  // robust follow-up (see COMMERCE-CHECKOUT-FLOW.md #8); the paid status + event
+  // above are what actually matter and always run.
+  try {
+    let creds;
+    if (order.cart_id) {
+      const { data: cart } = await db().from("wa_carts").select("conversation_id").eq("id", order.cart_id as string).maybeSingle();
+      const convId = cart?.conversation_id as string | null | undefined;
+      if (convId) {
+        const { data: conv } = await db().from("wa_conversations").select("channel_id").eq("id", convId).maybeSingle();
+        creds = await credsFor((conv?.channel_id as string | null) ?? undefined, tenantId);
+      }
+    }
+    if (creds) {
+      await sendText(order.phone as string, `✅ Payment received — your order #${orderId.slice(0, 8)} is confirmed! We'll follow up with the details shortly.`, creds);
+    }
+  } catch (e) { console.error("[order paid] confirmation send failed", e); }
+
+  return { ok: true, orderId };
 }
 
 // ── Cart recovery (cron) ──────────────────────────────────────────────────────

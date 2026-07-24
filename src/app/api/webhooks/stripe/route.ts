@@ -4,6 +4,7 @@ import type Stripe from "stripe";
 import { verifyWebhook } from "@/lib/stripe";
 import { applySubscription, setStripeIds, getTenantByStripeCustomer, type PaymentStatus, type TenantStatus } from "@/lib/tenants";
 import { getPlanByStripePrice } from "@/lib/plans";
+import { markOrderPaid } from "@/lib/commerce";
 
 export const dynamic = "force-dynamic";
 
@@ -69,6 +70,21 @@ export async function POST(req: Request) {
     switch (event.type) {
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
+        // In-chat ORDER pay link (mode=payment) → confirm the order. Subscription
+        // checkouts (mode=subscription) fall through to the billing logic below.
+        if (s.mode === "payment") {
+          if (s.payment_status === "paid") {
+            const linkId = typeof s.payment_link === "string" ? s.payment_link : s.payment_link?.id;
+            const paymentIntentId = typeof s.payment_intent === "string" ? s.payment_intent : s.payment_intent?.id;
+            if (linkId) await markOrderPaid({
+              paymentRef: linkId,                                    // == wa_orders.payment_ref (checkoutCart stored the pay-link id)
+              providerPaymentId: paymentIntentId ?? linkId,
+              amountPaidCents: typeof s.amount_total === "number" ? s.amount_total : undefined,
+              provider: "stripe",
+            });
+          }
+          break;
+        }
         const tenantId = s.metadata?.tenant_id;
         const customerId = typeof s.customer === "string" ? s.customer : s.customer?.id;
         const subscriptionId = typeof s.subscription === "string" ? s.subscription : s.subscription?.id;

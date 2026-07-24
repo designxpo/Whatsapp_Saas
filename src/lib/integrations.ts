@@ -29,6 +29,7 @@ export const INTEGRATION_EVENTS = [
   "conversation.escalated",
   "order.created",
   "contact.optout",
+  "order.paid",
 ] as const;
 export type IntegrationEvent = (typeof INTEGRATION_EVENTS)[number];
 
@@ -38,6 +39,7 @@ export const EVENT_LABELS: Record<IntegrationEvent, string> = {
   "conversation.escalated": "Chat handed to a human",
   "order.created": "Order placed",
   "contact.optout": "Contact opted out",
+  "order.paid": "Order paid",
 };
 
 export function isIntegrationEvent(s: string): s is IntegrationEvent {
@@ -143,6 +145,8 @@ export function humanText(event: IntegrationEvent, data: Record<string, unknown>
       return `🛒 New order ${data.orderId ?? ""} from ${who}.`;
     case "contact.optout":
       return `🚫 ${who} opted out${data.reason ? ` (${String(data.reason)})` : ""}.`;
+    case "order.paid":
+      return `💰 Payment received — order ${data.orderId ?? ""} from ${who} is confirmed.`;
   }
 }
 
