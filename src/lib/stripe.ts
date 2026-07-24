@@ -62,9 +62,21 @@ export async function createBillingPortalSession(tenant: Tenant, returnUrl: stri
   return session.url;
 }
 
-// Verify + parse a webhook payload against STRIPE_WEBHOOK_SECRET.
+// Verify + parse a webhook payload against STRIPE_WEBHOOK_SECRET (platform
+// billing account).
 export function verifyWebhook(rawBody: string, signature: string): Stripe.Event {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET not configured");
   return stripe().webhooks.constructEvent(rawBody, signature, secret);
+}
+
+// Verify + parse a webhook payload against an EXPLICIT signing secret — used for
+// per-tenant order webhooks, where each tenant's own Stripe account has its own
+// `whsec_…`. constructEvent is pure crypto (no API call), so it works even when
+// the platform never set STRIPE_SECRET_KEY; a bare client is fine for verifying.
+let verifyOnlyClient: Stripe | null = null;
+export function verifyWebhookWith(rawBody: string, signature: string, secret: string): Stripe.Event {
+  if (!secret) throw new Error("stripe webhook secret missing");
+  if (!verifyOnlyClient) verifyOnlyClient = process.env.STRIPE_SECRET_KEY ? stripe() : new Stripe("sk_signature_verification_only");
+  return verifyOnlyClient.webhooks.constructEvent(rawBody, signature, secret);
 }

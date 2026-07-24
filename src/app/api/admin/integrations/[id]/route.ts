@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import {
   getIntegration, updateIntegration, deleteIntegration, isIntegrationEvent,
-  WEBHOOK_KINDS, type IntegrationEvent,
+  WEBHOOK_KINDS, PAYMENT_KINDS, type IntegrationEvent,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
 
@@ -14,7 +14,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params;
-  let b: { name?: string; url?: string; token?: string; events?: string[]; active?: boolean };
+  let b: { name?: string; url?: string; token?: string; webhookSecret?: string; events?: string[]; active?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   try {
@@ -25,6 +25,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (b.name !== undefined) patch.name = b.name;
     if (b.active !== undefined) patch.active = b.active;
     if (b.token?.trim()) patch.secret = b.token.trim();   // rotate a CRM API token
+    // Payment kinds: set/rotate the provider's inbound webhook signing secret.
+    if (b.webhookSecret !== undefined) {
+      if (!PAYMENT_KINDS.includes(existing.kind)) return NextResponse.json({ error: "Webhook secret only applies to payment providers." }, { status: 400 });
+      if (b.webhookSecret.trim()) patch.webhookSecret = b.webhookSecret.trim();
+    }
     if (b.events !== undefined) {
       const events = b.events.filter(isIntegrationEvent) as IntegrationEvent[];
       if (!events.length) return NextResponse.json({ error: "Pick at least one event to send." }, { status: 400 });

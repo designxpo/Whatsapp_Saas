@@ -10,7 +10,7 @@ type Integration = {
   id: string; kind: string; name: string; active: boolean;
   config: { url?: string; format?: string }; events: string[];
   status: "connected" | "error" | "unverified"; statusDetail: string | null;
-  hasSecret: boolean; lastEventAt: string | null; createdAt: string;
+  hasSecret: boolean; hasWebhookSecret: boolean; lastEventAt: string | null; createdAt: string;
 };
 const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "contact.created", label: "New contact / lead" },
@@ -201,6 +201,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
             {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
+            {PAYMENT_KINDS.includes(i.kind) && <PaymentWebhookCard integration={i} onSaved={load} />}
           </section>
         ))}
       </div>}
@@ -301,6 +302,64 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Payment webhook (per-tenant) — confirm orders the moment a pay link is paid ─
+// Every tenant uses their OWN Razorpay/Stripe account, so each needs their own
+// webhook pointing at their own URL and verified with their own secret. This
+// card shows that URL and lets them paste the signing secret (stored encrypted,
+// never echoed back). Without it, orders stay "pending" until reconciled.
+function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integration; onSaved: () => void }) {
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const isStripe = i.kind === "stripe";
+  // The portal origin == the app origin, so the endpoint the provider must call.
+  const url = typeof window !== "undefined" ? `${window.location.origin}/api/webhooks/${i.kind}/${i.id}` : "";
+
+  const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ } };
+  async function save() {
+    if (!secret.trim()) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch(`/api/admin/integrations/${i.id}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhookSecret: secret.trim() }),
+      }).then(r => r.json());
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else { setMsg({ ok: true, text: "Saved — orders now confirm automatically on payment." }); setSecret(""); onSaved(); }
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mt-1 pt-3 border-t border-line/70 space-y-2">
+      <div className="flex items-center gap-2">
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.06em]">Payment webhook (auto-confirm orders)</p>
+        {i.hasWebhookSecret
+          ? <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Secret set</span>
+          : <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Not set — orders stay pending</span>}
+      </div>
+      <p className="text-[11px] text-slate-500">
+        {isStripe
+          ? <>In Stripe → <b>Developers → Webhooks → Add endpoint</b>, paste the URL below, select the event <span className="font-mono">checkout.session.completed</span>, then copy the endpoint&apos;s <b>Signing secret</b> (<span className="font-mono">whsec_…</span>) and paste it here.</>
+          : <>In Razorpay → <b>Settings → Webhooks → Add New Webhook</b>, paste the URL below, tick the event <span className="font-mono">payment_link.paid</span>, set a <b>Secret</b> of your choosing, then paste that same secret here.</>}
+      </p>
+      <div className="space-y-1">
+        <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">Endpoint URL</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={url}>{url}</code>
+          <button onClick={copy} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied ? "✓" : <Copy className="w-3.5 h-3.5" />}</button>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <input className={`${inp} flex-1`} type="password" placeholder={isStripe ? "Signing secret (whsec_…)" : "Webhook secret"} value={secret} onChange={e => setSecret(e.target.value)} />
+        <button onClick={save} disabled={busy || !secret.trim()} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{busy ? "Saving…" : i.hasWebhookSecret ? "Rotate" : "Save"}</button>
+      </div>
+      {msg && <p className={`text-[11px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
     </div>
   );
 }

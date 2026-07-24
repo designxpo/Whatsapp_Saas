@@ -156,6 +156,7 @@ export async function markOrderPaid(m: {
   providerPaymentId?: string;  // the actual gateway payment id (for the event payload)
   amountPaidCents?: number;    // guard against short payments
   provider?: "razorpay" | "stripe";
+  expectTenantId?: string;     // per-tenant webhook: order must belong to the URL's tenant
 }): Promise<{ ok: boolean; orderId?: string; alreadyPaid?: boolean }> {
   const sel = db().from("wa_orders").select("id, tenant_id, phone, cart_id, total_cents, currency, status");
   const { data: order } = m.orderId
@@ -166,6 +167,12 @@ export async function markOrderPaid(m: {
   if (!order) { console.warn("[order paid] no order matched", m.paymentRef ?? m.orderId ?? "(none)"); return { ok: false }; }
 
   const tenantId = order.tenant_id as string;
+  // Defense in depth: a per-tenant webhook (signature verified with tenant X's
+  // secret) may only confirm tenant X's orders — never another tenant's.
+  if (m.expectTenantId && tenantId !== m.expectTenantId) {
+    console.warn(`[order paid] tenant mismatch: order ${order.id} is ${tenantId}, webhook is ${m.expectTenantId}`);
+    return { ok: false };
+  }
   const orderId = order.id as string;
   const totalCents = (order.total_cents as number) ?? 0;
   if (order.status === "paid" || order.status === "fulfilled") return { ok: true, orderId, alreadyPaid: true };

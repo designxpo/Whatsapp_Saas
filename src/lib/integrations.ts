@@ -15,6 +15,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 
 import { createHmac, randomBytes, randomUUID } from "crypto";
 import { tdb } from "./tenantdb";
+import { db } from "./supabase";
 import { encryptSecret, readSecret } from "./crypto";
 import { safeFetch } from "./ssrf";
 import { errorMessage } from "./errors";
@@ -110,6 +111,7 @@ export interface Integration {
   status: "connected" | "error" | "unverified";
   statusDetail: string | null;
   hasSecret: boolean;
+  hasWebhookSecret: boolean;   // payment kinds: is a per-tenant webhook secret set?
   lastEventAt: string | null;
   createdAt: string;
 }
@@ -305,6 +307,7 @@ function mapRow(r: Record<string, unknown>): Integration {
     status: (r.status as Integration["status"]) ?? "unverified",
     statusDetail: (r.status_detail as string | null) ?? null,
     hasSecret: !!(r.secret as string | null),
+    hasWebhookSecret: !!(r.webhook_secret as string | null),
     lastEventAt: (r.last_event_at as string | null) ?? null,
     createdAt: r.created_at as string,
   };
@@ -343,7 +346,8 @@ export interface IntegrationInput {
   name: string;
   config: Record<string, unknown>;
   events: IntegrationEvent[];
-  secret?: string;   // optional explicit secret; webhooks auto-generate one
+  secret?: string;          // optional explicit secret; webhooks auto-generate one
+  webhookSecret?: string;   // payment kinds: the provider's inbound webhook signing secret
   active?: boolean;
 }
 
@@ -362,6 +366,7 @@ export async function createIntegration(
     config: input.config ?? {},
     events: input.events,
     secret: secret ? encryptSecret(secret) : null,
+    webhook_secret: input.webhookSecret?.trim() ? encryptSecret(input.webhookSecret.trim()) : null,
     status: "unverified",
   }).select("*").single();
   if (error) throw error;
@@ -370,7 +375,7 @@ export async function createIntegration(
 
 export async function updateIntegration(
   id: string,
-  patch: Partial<{ name: string; config: Record<string, unknown>; events: IntegrationEvent[]; active: boolean; secret: string }>,
+  patch: Partial<{ name: string; config: Record<string, unknown>; events: IntegrationEvent[]; active: boolean; secret: string; webhookSecret: string }>,
   tenantId: string = DEFAULT_TENANT_ID,
 ): Promise<void> {
   const values: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -379,6 +384,7 @@ export async function updateIntegration(
   if (patch.events !== undefined) values.events = patch.events;
   if (patch.active !== undefined) values.active = patch.active;
   if (patch.secret?.trim()) values.secret = encryptSecret(patch.secret.trim());
+  if (patch.webhookSecret?.trim()) values.webhook_secret = encryptSecret(patch.webhookSecret.trim());
   const { error } = await tdb(tenantId).from("wa_integrations").update(values).eq("id", id);
   if (error) throw error;
 }
@@ -768,6 +774,34 @@ export async function createPaymentLink(tenantId: string, p: PaymentLinkParams):
     console.error("[integrations] payment link failed:", errorMessage(err));
     return null;
   }
+}
+
+// Resolve an inbound payment webhook by the integration id carried in its URL
+// (/api/webhooks/{provider}/[integration]). This is the ONE deliberately
+// UN-tenant-scoped read in this module: the webhook is unauthenticated, so it
+// can't know its tenant up front — the integration id (an unguessable UUID)
+// self-identifies which tenant's connection, and thus which webhook secret, to
+// verify the signature against. Returns null when the id doesn't resolve to a
+// payment integration or no webhook secret has been set yet. The decrypted
+// secret never leaves the server.
+export async function resolvePaymentWebhook(
+  integrationId: string,
+): Promise<{ tenantId: string; kind: IntegrationKind; keyId: string | null; webhookSecret: string } | null> {
+  if (!integrationId) return null;
+  const { data } = await db().from("wa_integrations")
+    .select("tenant_id, kind, config, webhook_secret, active")
+    .eq("id", integrationId).maybeSingle();
+  if (!data) return null;
+  const row = data as { tenant_id: string; kind: IntegrationKind; config: Record<string, unknown> | null; webhook_secret: string | null; active: boolean };
+  if (!row.active || !PAYMENT_KINDS.includes(row.kind)) return null;
+  const webhookSecret = readSecret(row.webhook_secret ?? null);
+  if (!webhookSecret) return null;
+  return {
+    tenantId: row.tenant_id,
+    kind: row.kind,
+    keyId: (row.config?.keyId as string | undefined)?.trim() || null,
+    webhookSecret,
+  };
 }
 
 // ── Public: verify + emit ─────────────────────────────────────────────────────
