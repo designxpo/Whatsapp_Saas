@@ -100,7 +100,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
   const days = clampInt(brief.days, 1, 365, 7);
   const budgetTotal = Math.max(1, Math.round(brief.budgetTotal));
   const dailyBudget = Math.max(1, Math.round(budgetTotal / days));
-  const variants = clampInt(brief.variants, 1, 4, 1);
+  const variants = clampInt(brief.variants, 1, 10, 1);
   const countries = brief.countries.length ? brief.countries : ["IN"];
 
   // Light business grounding — the active agent's product info sharpens the copy.
@@ -155,7 +155,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
       provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
       system: "You are a senior performance-marketing strategist. You output ONLY valid JSON — no markdown fences, no preamble.",
       turns: [{ role: "user", text: instruction }],
-      maxTokens: 1600,
+      maxTokens: Math.min(4000, 700 + variants * 450),   // scale headroom with ad-set count
     });
     const raw = (res.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
     const p = JSON.parse(raw) as Record<string, unknown>;

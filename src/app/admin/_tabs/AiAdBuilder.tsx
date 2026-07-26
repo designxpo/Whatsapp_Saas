@@ -30,6 +30,7 @@ const COUNTRIES: { code: string; name: string }[] = [
   { code: "SG", name: "Singapore" }, { code: "SA", name: "Saudi Arabia" },
 ];
 const genderLabel = (g: number[]) => (g.length === 0 ? "All" : g.includes(1) ? "Men" : "Women");
+const MAX_ADSETS = 10;   // per-brief ceiling — keeps AI copy distinct and the publish loop sane
 
 // Downscale big images client-side before upload (serverless body caps + Meta
 // only needs ~1080px). Small images / non-images pass through untouched.
@@ -222,11 +223,13 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           {Number(budget) > 0 && Number(days) > 0 && <p className="text-[11px] text-slate-500 -mt-2">≈ {money(Math.round(Number(budget) / Number(days)))} / day{variants > 1 ? ` · shared across ${variants} ad sets` : ""}</p>}
           <div>
             <label className="text-xs font-bold text-ink-500 uppercase tracking-wide flex items-center gap-1.5"><Users className="w-3.5 h-3.5" /> Audiences to test (ad sets)</label>
-            <div className="flex gap-1.5 mt-1.5">
-              {[1, 2, 3, 4].map(n => (
-                <button key={n} onClick={() => setVariants(n)} className={`w-10 py-1.5 rounded-control text-xs font-bold border transition ${variants === n ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-500 border-line hover:border-brand-300"}`}>{n}</button>
-              ))}
-              <span className="text-[11px] text-slate-500 self-center ml-1">{variants === 1 ? "One audience." : `The AI builds ${variants} ad sets with different audiences under one campaign; Meta shifts budget to the winner.`}</span>
+            <div className="flex items-center gap-2 mt-1.5">
+              <div className="flex items-center rounded-control border border-line bg-white overflow-hidden">
+                <button onClick={() => setVariants(v => Math.max(1, v - 1))} disabled={variants <= 1} className="w-9 py-1.5 text-lg font-bold text-ink-500 hover:bg-canvas disabled:opacity-40">−</button>
+                <span className="w-10 text-center text-sm font-extrabold text-ink-900 tabular-nums">{variants}</span>
+                <button onClick={() => setVariants(v => Math.min(MAX_ADSETS, v + 1))} disabled={variants >= MAX_ADSETS} className="w-9 py-1.5 text-lg font-bold text-ink-500 hover:bg-canvas disabled:opacity-40">+</button>
+              </div>
+              <span className="text-[11px] text-slate-500">{variants === 1 ? `One audience (up to ${MAX_ADSETS}).` : `${variants} ad sets, each a different audience under one campaign; Meta shifts budget to the winner.`}</span>
             </div>
           </div>
           <div>
