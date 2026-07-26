@@ -7,8 +7,8 @@
 // /api/admin/meta/create engine the manual builder uses: the first call creates
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
-import { useState } from "react";
-import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
@@ -76,6 +76,8 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   const [msg, setMsg] = useState<string | null>(null);
   const [liveId, setLiveId] = useState<string | null>(null);
   const [doneWarn, setDoneWarn] = useState<string | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [chatMsgs, chatBusy]);
 
   const toggleCountry = (code: string) => setCountries(cs => (cs.includes(code) ? cs.filter(c => c !== code) : [...cs, code]));
 
@@ -115,8 +117,8 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
     finally { setBusy(false); }
   }
 
-  async function sendChat() {
-    const text = chatInput.trim();
+  async function sendChat(override?: string) {
+    const text = (override ?? chatInput).trim();
     if (!text || chatBusy) return;
     const next = [...chatMsgs, { role: "user" as const, content: text }];
     setChatMsgs(next); setChatInput(""); setChatBusy(true); setMsg(null);
@@ -128,11 +130,20 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       if (d.error) setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error}` }]);
       else {
         if (d.reply) setChatMsgs(m => [...m, { role: "assistant", content: d.reply }]);
-        if (d.plan) { setPlan(d.plan); setReach({}); setPreviews([]); setStep("review"); void loadReview(d.plan); }
+        // A drafted plan populates the LIVE PREVIEW panel (left) — we stay in chat
+        // so the client can keep refining ("make it punchier", "women only") and
+        // watch the ad update. Publishing happens on the review screen.
+        if (d.plan) { setPlan(d.plan); setReach({}); setPreviews([]); }
       }
     } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Connection error — try again." }]); }
     finally { setChatBusy(false); }
   }
+
+  const EXAMPLE_PROMPTS = [
+    "Promote my Diwali candle sale on WhatsApp — ₹5,000 for a week",
+    "Get more website visitors for my new online course",
+    "Test 2 audiences for my dental clinic, ₹8,000 over 10 days",
+  ];
 
   // Live Meta previews (from ad set 1's copy — image + format are shared) plus a
   // per-ad-set audience estimate. All best-effort.
@@ -205,7 +216,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   );
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className={`${step === "brief" && mode === "chat" ? "max-w-6xl" : "max-w-3xl"} mx-auto space-y-5`}>
       <div className="flex items-center gap-2">
         <button onClick={step === "review" ? () => setStep("brief") : onClose} className="text-[13px] font-bold text-brand-700 hover:underline flex items-center gap-1"><ArrowLeft className="w-4 h-4" /> {step === "review" ? "Edit brief" : "Cancel"}</button>
         <div className="flex-1" />
@@ -293,18 +304,63 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       )}
 
       {step === "brief" && mode === "chat" && (
-        <div className="space-y-3">
-          <div className="rounded-card border border-line bg-white h-[360px] overflow-y-auto p-3 flex flex-col gap-2">
-            {chatMsgs.map((m, i) => (
-              <div key={i} className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug whitespace-pre-wrap ${m.role === "user" ? "self-end bg-brand-700 text-white" : "self-start bg-canvas text-ink-800"}`}>{m.content}</div>
-            ))}
-            {chatBusy && <div className="self-start bg-canvas text-ink-400 rounded-2xl px-3 py-2 text-[13px] flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> thinking…</div>}
+        <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
+          {/* LEFT — live ad preview, fills in as the AI drafts */}
+          <div className="lg:sticky lg:top-4 space-y-3">
+            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Live preview</p>
+            <AdPreview plan={plan} goalFallback={goal} imagePreview={imagePreview} />
+            {plan ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Budget", value: money(plan.dailyBudget) + "/day" },
+                    { label: "Runs", value: `${plan.days} days` },
+                    { label: "Ad sets", value: `${plan.adSets.length}` },
+                    { label: "Audience", value: `${genderLabel(plan.adSets[0].genders)} ${plan.adSets[0].ageMin}–${plan.adSets[0].ageMax}` },
+                  ].map(s => (
+                    <div key={s.label} className="bg-white rounded-card border border-line px-2.5 py-1.5">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{s.label}</p>
+                      <p className="text-[12px] font-extrabold text-ink-900 truncate">{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <label className={`w-full cursor-pointer px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas flex items-center justify-center gap-1.5 ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />} {imageHash ? "Change image" : "Add an image"}
+                  <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); }} />
+                </label>
+                <button onClick={() => { setStep("review"); if (plan) void loadReview(plan); }} className={`${btnPrimary} w-full justify-center`}>Review &amp; publish <ArrowRight className="w-4 h-4" /></button>
+                <p className="text-[10px] text-slate-400 text-center">Keep chatting to refine — the preview updates live.</p>
+              </>
+            ) : (
+              <p className="text-[11px] text-slate-400 leading-relaxed">Your ad preview will appear here as we chat — the creative, budget, audience and ad sets, all before anything goes live.</p>
+            )}
           </div>
-          <div className="flex gap-2">
-            <input className={`${inp} flex-1`} placeholder="Tell me what you want to advertise…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }} />
-            <button onClick={sendChat} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
+
+          {/* RIGHT — the conversation */}
+          <div className="space-y-3">
+            <div className="rounded-card border border-line bg-white h-[440px] overflow-y-auto p-4 flex flex-col gap-2.5">
+              {chatMsgs.map((m, i) => (
+                <div key={i} className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug whitespace-pre-wrap ${m.role === "user" ? "self-end bg-brand-700 text-white rounded-br-md" : "self-start bg-canvas text-ink-800 rounded-bl-md"}`}>{m.content}</div>
+              ))}
+              {chatBusy && <div className="self-start bg-canvas text-ink-400 rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> thinking…</div>}
+              {/* Starter prompts, shown before the first message */}
+              {chatMsgs.length <= 1 && !chatBusy && (
+                <div className="mt-auto grid sm:grid-cols-1 gap-2 pt-3">
+                  {EXAMPLE_PROMPTS.map(p => (
+                    <button key={p} onClick={() => sendChat(p)} className="text-left text-[12px] text-ink-600 bg-canvas hover:bg-brand-50 hover:text-brand-800 border border-line rounded-control px-3 py-2 transition-colors flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5 text-brand-500 shrink-0" /> {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="flex gap-2">
+              <input className={`${inp} flex-1`} placeholder="Tell me what you want to advertise…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }} />
+              <button onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
+            </div>
+            {!hasPage && <p className="text-[11px] text-amber-600">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
           </div>
-          {!hasPage && <p className="text-[11px] text-amber-600">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
         </div>
       )}
 
@@ -390,6 +446,37 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// A Facebook/Instagram-feed-style mock of the ad being built. Renders ad set 1's
+// copy (the shared image + format), with graceful placeholders before the AI has
+// drafted anything so the panel never looks broken.
+function AdPreview({ plan, goalFallback, imagePreview }: { plan: AdPlan | null; goalFallback: Goal; imagePreview: string | null }) {
+  const dest: Goal = plan?.conversionLocation ?? goalFallback;
+  const cta = dest === "WEBSITE" ? "Learn More" : "Send Message";
+  const set = plan?.adSets[0];
+  const primary = set?.primaryText || "Your ad text will appear here as you chat with the assistant.";
+  const headline = set?.headline || "Your headline";
+  const description = set?.description || (dest === "WEBSITE" ? "yourwebsite.com" : dest === "MESSENGER" ? "Message us on Messenger" : "Chat with us on WhatsApp");
+  return (
+    <div className="rounded-card border border-line bg-white overflow-hidden shadow-sm">
+      <div className="flex items-center gap-2 p-2.5">
+        <div className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[11px] font-extrabold">A</div>
+        <div className="leading-tight"><p className="text-[12px] font-bold text-ink-900">Your business</p><p className="text-[10px] text-slate-400">Sponsored</p></div>
+      </div>
+      <p className={`px-2.5 pb-2 text-[12px] whitespace-pre-wrap line-clamp-4 ${set ? "text-ink-800" : "text-slate-400 italic"}`}>{primary}</p>
+      {imagePreview
+        ? <img src={imagePreview} alt="" className="w-full aspect-square object-cover" />
+        : <div className="w-full aspect-square bg-canvas flex items-center justify-center text-slate-300"><ImageIcon className="w-8 h-8" /></div>}
+      <div className="flex items-center justify-between gap-2 p-2.5 bg-canvas/60 border-t border-line">
+        <div className="min-w-0">
+          <p className="text-[10px] text-slate-400 truncate">{description}</p>
+          <p className="text-[12px] font-bold text-ink-900 truncate">{headline}</p>
+        </div>
+        <span className="shrink-0 px-3 py-1.5 rounded-md bg-slate-200 text-ink-800 text-[11px] font-bold">{cta}</span>
+      </div>
     </div>
   );
 }
