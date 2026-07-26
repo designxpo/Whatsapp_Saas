@@ -8,7 +8,7 @@
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
 import { useState } from "react";
-import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
@@ -49,6 +49,13 @@ async function prepImage(f: File): Promise<File> {
 
 export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: { currency: string; hasPage: boolean; onClose: () => void; onCreated: () => void }) {
   const [step, setStep] = useState<"brief" | "review" | "done">("brief");
+  const [mode, setMode] = useState<"form" | "chat">("form");
+  // Chat mode
+  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; content: string }[]>([
+    { role: "assistant", content: "Hi! Tell me what you'd like to advertise and your budget — e.g. “Promote my Diwali candle sale, ₹5000 for a week, to drive WhatsApp chats.” I'll draft the whole campaign for you to approve." },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
   // Brief
   const [goal, setGoal] = useState<Goal>("WHATSAPP");
   const [product, setProduct] = useState("");
@@ -106,6 +113,25 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       void loadReview(d.plan);
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
+  }
+
+  async function sendChat() {
+    const text = chatInput.trim();
+    if (!text || chatBusy) return;
+    const next = [...chatMsgs, { role: "user" as const, content: text }];
+    setChatMsgs(next); setChatInput(""); setChatBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/meta/ads-chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: next, currency }),
+      }).then(r => r.json());
+      if (d.error) setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error}` }]);
+      else {
+        if (d.reply) setChatMsgs(m => [...m, { role: "assistant", content: d.reply }]);
+        if (d.plan) { setPlan(d.plan); setReach({}); setPreviews([]); setStep("review"); void loadReview(d.plan); }
+      }
+    } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Connection error — try again." }]); }
+    finally { setChatBusy(false); }
   }
 
   // Live Meta previews (from ad set 1's copy — image + format are shared) plus a
@@ -193,6 +219,13 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       {msg && <div className="bg-red-50 border border-red-200 rounded-card px-4 py-3 text-sm text-red-700">{msg}</div>}
 
       {step === "brief" && (
+        <div className="flex gap-1 p-0.5 bg-canvas rounded-control max-w-xs">
+          <button onClick={() => setMode("form")} className={`flex-1 flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 text-[12px] font-bold transition-colors ${mode === "form" ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}><FormInput className="w-3.5 h-3.5" /> Guided form</button>
+          <button onClick={() => setMode("chat")} className={`flex-1 flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 text-[12px] font-bold transition-colors ${mode === "chat" ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}><MessageSquareText className="w-3.5 h-3.5" /> Chat to build</button>
+        </div>
+      )}
+
+      {step === "brief" && mode === "form" && (
         <div className="space-y-4">
           <div>
             <label className="text-xs font-bold text-ink-500 uppercase tracking-wide">What&apos;s the goal?</label>
@@ -256,6 +289,22 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             <input className={`${inp} w-full mt-1.5`} placeholder="e.g. women 25–40 interested in home décor" value={audienceNote} onChange={e => setAudienceNote(e.target.value)} />
           </div>
           <button onClick={generate} disabled={busy || !hasPage} className={btnPrimary}>{busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Drafting…</> : <><Sparkles className="w-4 h-4" /> Generate campaign</>}</button>
+        </div>
+      )}
+
+      {step === "brief" && mode === "chat" && (
+        <div className="space-y-3">
+          <div className="rounded-card border border-line bg-white h-[360px] overflow-y-auto p-3 flex flex-col gap-2">
+            {chatMsgs.map((m, i) => (
+              <div key={i} className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] leading-snug whitespace-pre-wrap ${m.role === "user" ? "self-end bg-brand-700 text-white" : "self-start bg-canvas text-ink-800"}`}>{m.content}</div>
+            ))}
+            {chatBusy && <div className="self-start bg-canvas text-ink-400 rounded-2xl px-3 py-2 text-[13px] flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> thinking…</div>}
+          </div>
+          <div className="flex gap-2">
+            <input className={`${inp} flex-1`} placeholder="Tell me what you want to advertise…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }} />
+            <button onClick={sendChat} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
+          </div>
+          {!hasPage && <p className="text-[11px] text-amber-600">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
         </div>
       )}
 
