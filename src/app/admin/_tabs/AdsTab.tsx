@@ -6,8 +6,9 @@
 
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
-import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd } from "lucide-react";
+import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd, Sparkles } from "lucide-react";
 import { type Tab, inp, btnPrimary, railLoading, RailCard, StatRow } from "../_shared";
+import AiAdBuilder from "./AiAdBuilder";
 
 type AdsData = {
   connected: boolean;
@@ -49,6 +50,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [budgetEdit, setBudgetEdit] = useState<{ id: string; value: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState(true);
   const [building, setBuilding] = useState(false);
+  const [aiBuilding, setAiBuilding] = useState(false);
   const [resumeDraft, setResumeDraft] = useState<{ id: string; data: Record<string, unknown> } | null>(null);
   const [drafts, setDrafts] = useState<AdDraftSummary[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
@@ -245,6 +247,13 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
       onCreated={() => { setBuilding(false); setData(null); load(); loadDrafts(); }} />;
   }
 
+  // ── AI campaign builder (budget + brief → AI drafts → approve → live) ──
+  if (aiBuilding) {
+    return <AiAdBuilder currency={cur} hasPage={!!data?.pageId}
+      onClose={() => setAiBuilding(false)}
+      onCreated={() => { setData(null); load(); }} />;
+  }
+
   // ── Connected dashboard ──
   return (
     <div className="flex gap-6 items-start">
@@ -259,6 +268,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <button key={k} onClick={() => { setPreset(k); setData(null); }} className={`px-3 py-1.5 rounded-full text-xs font-bold ${preset === k ? "bg-ink-950 text-white" : "bg-white border border-line text-slate-500 hover:bg-slate-50"}`}>{label}</button>
           ))}
           <button onClick={() => { setData(null); load(); }} className="p-2 rounded-control border border-line text-ink-600 hover:bg-canvas"><RefreshCw className="w-3.5 h-3.5" /></button>
+          {isAdmin && <button onClick={() => setAiBuilding(true)} className="px-4 py-2 rounded-control border border-brand-300 bg-brand-50 text-brand-700 text-[13px] font-semibold flex items-center gap-1.5 hover:bg-brand-100 transition active:scale-[0.97]"><Sparkles className="w-4 h-4" /> AI campaign</button>}
           {isAdmin && <button onClick={newAd} className={btnPrimary}><Plus className="w-4 h-4" /> Create ad</button>}
         </div>
       </div>
