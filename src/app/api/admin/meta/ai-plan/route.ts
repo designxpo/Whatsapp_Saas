@@ -14,7 +14,7 @@ const GOALS: AdGoal[] = ["WHATSAPP", "MESSENGER", "WEBSITE"];
 // route launches it on approval.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  let b: { goal?: string; websiteUrl?: string; product?: string; budgetTotal?: number; days?: number; currency?: string; countries?: string[]; audienceNote?: string; businessName?: string; variants?: number };
+  let b: { goal?: string; websiteUrl?: string; product?: string; budgetTotal?: number; days?: number; currency?: string; countries?: string[]; audienceNote?: string; businessName?: string; variants?: number; creativeFormat?: string };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const goal = (GOALS.includes(b.goal as AdGoal) ? b.goal : "WHATSAPP") as AdGoal;
@@ -36,6 +36,7 @@ export async function POST(req: Request) {
       audienceNote: b.audienceNote?.trim() || undefined,
       businessName: b.businessName?.trim() || undefined,
       variants: Number(b.variants) || 1,
+      creativeFormat: b.creativeFormat as "single" | "carousel" | "video" | undefined,
     }, tid);
     return NextResponse.json({ success: true, plan });
   } catch (err) {

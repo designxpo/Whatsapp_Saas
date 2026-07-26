@@ -23,7 +23,11 @@ export interface AdBrief {
   audienceNote?: string;      // optional free-text targeting hint
   businessName?: string;
   variants?: number;          // how many ad sets (distinct audiences) to test, 1-4
+  creativeFormat?: CreativeFormat;   // desired creative type (from the doc/chat); default single
+  brief?: string;             // a longer prepared brief (e.g. read from an uploaded document)
 }
+
+export type CreativeFormat = "single" | "carousel" | "video";
 
 // One ad set = one audience segment + its own tailored ad copy. Several ad sets
 // live under ONE campaign; the campaign's CBO budget is shared across them and
@@ -50,6 +54,8 @@ export interface AdPlan {
   currency: string;
   countries: string[];
   adSets: AdSetPlan[];              // one or more audiences, each with its own copy
+  creativeFormat: CreativeFormat;   // single image / carousel / video (reel)
+  cards: { headline: string; description: string }[];   // carousel card copy (images uploaded on review); [] otherwise
   rationale: string;                // one-paragraph "why this plan"
   tips: string[];                   // 2-4 short pointers for the client
 }
@@ -102,6 +108,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
   const dailyBudget = Math.max(1, Math.round(budgetTotal / days));
   const variants = clampInt(brief.variants, 1, 10, 1);
   const countries = brief.countries.length ? brief.countries : ["IN"];
+  const creativeFormat: CreativeFormat = (["single", "carousel", "video"] as const).includes(brief.creativeFormat as CreativeFormat) ? brief.creativeFormat as CreativeFormat : "single";
 
   // Light business grounding — the active agent's product info sharpens the copy.
   const agent = await resolveAgent(null, tenantId).catch(() => null);
@@ -114,14 +121,22 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     ? `Design ${variants} DISTINCT ad sets, each aimed at a DIFFERENT audience segment (e.g. different age bands, genders, or buyer mindsets) with copy TAILORED to that segment — this is an audience A/B test under one campaign.`
     : `Design ONE ad set with a sensible audience and copy.`;
 
+  const carouselAsk = creativeFormat === "carousel"
+    ? `The creative is a CAROUSEL — also return "cards": 3 cards, each { "headline" (≤ 32 chars), "description" (≤ 20 chars) }, one per product/benefit. The client will add a card image to each.`
+    : creativeFormat === "video"
+    ? `The creative is a VIDEO/REEL — the client uploads the video; write copy that suits a short video ad.`
+    : `The creative is a SINGLE IMAGE.`;
+
   const instruction = [
     `Write high-converting Meta (Facebook/Instagram) ads for this business. The goal is to ${destLabel}.`,
     businessBits,
     `What they're advertising: ${brief.product}`,
+    brief.brief ? `The client's prepared brief (use it as the source of truth for structure, offer, audience, and tone):\n"""\n${brief.brief.slice(0, 6000)}\n"""` : "",
     `Total budget: ${brief.currency} ${budgetTotal} over ${days} day(s) (shared across all ad sets). Target countries: ${countries.join(", ")}.`,
     brief.audienceNote ? `Audience hint from the client: ${brief.audienceNote}` : "",
     "",
     setsAsk,
+    carouselAsk,
     "Rules for every ad set:",
     "- Ground the copy in what they're advertising. Do NOT invent prices, discounts, guarantees, or claims the brief doesn't support.",
     "- primaryText: the main ad text, punchy and benefit-led, ≤ 125 characters, may use 1 emoji.",
@@ -130,7 +145,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     "- ageMin/ageMax: 18–65. genders: one of \"all\" | \"men\" | \"women\".",
     "- When testing multiple ad sets, make the segments genuinely different (don't repeat the same audience/copy).",
     "campaignName: short and internal (e.g. \"Diwali Sale — WhatsApp\"). rationale: ONE short paragraph in plain language. tips: 2–4 short concrete pointers.",
-    `Return ONLY JSON: {"campaignName","rationale","tips":[],"adSets":[{"audienceLabel","ageMin","ageMax","genders","primaryText","headline","description"}]} with exactly ${variants} ad set(s).`,
+    `Return ONLY JSON: {"campaignName","rationale","tips":[],"adSets":[{"audienceLabel","ageMin","ageMax","genders","primaryText","headline","description"}]${creativeFormat === "carousel" ? ',"cards":[{"headline","description"}]' : ""}} with exactly ${variants} ad set(s).`,
   ].filter(Boolean).join("\n");
 
   const baseCopy = { primaryText: `${brief.product}`.slice(0, 125) || "Message us to learn more!", headline: "Learn more" };
@@ -142,7 +157,9 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
       audienceLabel: variants > 1 ? `Audience ${i + 1}` : "Everyone",
       ageMin: 18, ageMax: 65, genders: [], primaryText: baseCopy.primaryText, headline: baseCopy.headline, description: "",
     })),
-    rationale: `Runs a ${brief.goal === "WEBSITE" ? "traffic" : "conversation"} campaign at ${brief.currency} ${dailyBudget}/day for ${days} day(s) across ${variants} ad set(s), targeting ${countries[0]}.`,
+    creativeFormat,
+    cards: creativeFormat === "carousel" ? [{ headline: "Card 1", description: "" }, { headline: "Card 2", description: "" }, { headline: "Card 3", description: "" }] : [],
+    rationale: `Runs a ${brief.goal === "WEBSITE" ? "traffic" : "conversation"} ${creativeFormat} campaign at ${brief.currency} ${dailyBudget}/day for ${days} day(s) across ${variants} ad set(s), targeting ${countries[0]}.`,
     tips: ["Reply to new chats fast — speed wins deals.", "Add a clear offer or reason to message now."],
   });
 
@@ -163,11 +180,16 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     const rawSets = Array.isArray(p.adSets) && p.adSets.length ? p.adSets.slice(0, variants) : [];
     let adSets = rawSets.map((s, i) => toAdSet(s, baseCopy, i));
     while (adSets.length < variants) adSets = [...adSets, f.adSets[adSets.length]];   // pad if the model returned too few
+    const rawCards = creativeFormat === "carousel" && Array.isArray(p.cards) ? p.cards : [];
+    const cards = rawCards.length >= 2
+      ? rawCards.slice(0, 10).map((c, i) => ({ headline: str((c as Record<string, unknown>)?.headline, 32) || `Card ${i + 1}`, description: str((c as Record<string, unknown>)?.description, 20) }))
+      : f.cards;
     return {
       campaignName: str(p.campaignName, 120) || f.campaignName,
       objective: goal.objective, conversionLocation: goal.conversionLocation, optimizationGoal: goal.optimizationGoal, ctaType: goal.ctaType,
       dailyBudget, days, budgetTotal, currency: brief.currency, countries,
       adSets,
+      creativeFormat, cards,
       rationale: str(p.rationale, 600) || f.rationale,
       tips: Array.isArray(p.tips) ? p.tips.map(t => String(t).trim()).filter(Boolean).slice(0, 4) : f.tips,
     };

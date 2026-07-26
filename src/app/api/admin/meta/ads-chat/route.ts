@@ -20,10 +20,12 @@ const DRAFT_TOOL: ChatTool = {
   params: [
     { name: "goal", description: "Where the ad sends people: WHATSAPP (WhatsApp chats), MESSENGER (Facebook Messenger chats), or WEBSITE (a landing page)." },
     { name: "product", description: "What they're advertising / the offer, in one sentence." },
+    { name: "brief", description: "If the user pasted or uploaded a fuller brief, put its full relevant text here so the copywriter can use every detail (offer, tone, audience, structure)." },
     { name: "budgetTotal", description: "Total budget as a plain number in major units, e.g. 5000." },
     { name: "days", description: "How many days to run, as a plain number." },
     { name: "countries", description: "Comma-separated ISO country codes to target, e.g. IN,US. Default IN." },
     { name: "variants", description: "How many ad sets / audiences to test, 1-10. Default 1." },
+    { name: "creativeFormat", description: "The ad creative type: single (one image), carousel (multiple cards), or video (video/reel). Default single. If the user's brief or message specifies one, use it." },
     { name: "websiteUrl", description: "For the WEBSITE goal only: the landing page URL." },
     { name: "audienceNote", description: "Optional free-text audience hint from the user." },
   ],
@@ -53,6 +55,10 @@ function toGoal(v: unknown): AdGoal {
   const s = String(v ?? "").toUpperCase();
   return s === "MESSENGER" || s === "WEBSITE" ? s : "WHATSAPP";
 }
+function toFormat(v: unknown): "single" | "carousel" | "video" {
+  const s = String(v ?? "").toLowerCase();
+  return s === "carousel" || s === "video" ? s : "single";
+}
 
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
@@ -81,11 +87,13 @@ export async function POST(req: Request) {
       const plan = await planAdCampaign({
         goal,
         product: String(a.product ?? "").trim() || "our offer",
+        brief: a.brief ? String(a.brief).trim().slice(0, 8000) : undefined,
         budgetTotal: Number(String(a.budgetTotal ?? "").replace(/[^0-9.]/g, "")) || 0,
         days: Number(String(a.days ?? "").replace(/[^0-9]/g, "")) || 7,
         currency,
         countries: toIso(String(a.countries ?? "IN")),
         variants: Number(String(a.variants ?? "1").replace(/[^0-9]/g, "")) || 1,
+        creativeFormat: toFormat(a.creativeFormat),
         websiteUrl: a.websiteUrl ? String(a.websiteUrl).trim() : undefined,
         audienceNote: a.audienceNote ? String(a.audienceNote).trim() : undefined,
       }, tid);

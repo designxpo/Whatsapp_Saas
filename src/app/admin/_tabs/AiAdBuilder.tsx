@@ -8,7 +8,7 @@
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
@@ -16,7 +16,8 @@ interface AdSetPlan { audienceLabel: string; ageMin: number; ageMax: number; gen
 interface AdPlan {
   campaignName: string; objective: string; conversionLocation: Goal; optimizationGoal?: string; ctaType?: string;
   dailyBudget: number; days: number; budgetTotal: number; currency: string; countries: string[];
-  adSets: AdSetPlan[]; rationale: string; tips: string[];
+  adSets: AdSetPlan[]; creativeFormat: "single" | "carousel" | "video"; cards: { headline: string; description: string }[];
+  rationale: string; tips: string[];
 }
 
 const GOALS: { value: Goal; label: string; blurb: string }[] = [
@@ -51,11 +52,12 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   const [step, setStep] = useState<"brief" | "review" | "done">("brief");
   const [mode, setMode] = useState<"form" | "chat">("form");
   // Chat mode
-  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; content: string }[]>([
-    { role: "assistant", content: "Hi! Tell me what you'd like to advertise and your budget — e.g. “Promote my Diwali candle sale, ₹5000 for a week, to drive WhatsApp chats.” I'll draft the whole campaign for you to approve." },
+  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; content: string; doc?: string }[]>([
+    { role: "assistant", content: "Hi! Tell me what you'd like to advertise and your budget — e.g. “Promote my Diwali candle sale, ₹5000 for a week, to drive WhatsApp chats.” Already have a brief? Attach it (📎 PDF, Word, text, or a screenshot) and I'll build from it." },
   ]);
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [docBusy, setDocBusy] = useState(false);
   // Brief
   const [goal, setGoal] = useState<Goal>("WHATSAPP");
   const [product, setProduct] = useState("");
@@ -68,6 +70,13 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   const [imageHash, setImageHash] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Creative (review) — format-aware assets
+  const [creativeFormat, setCreativeFormat] = useState<"single" | "carousel" | "video">("single");
+  const [cards, setCards] = useState<{ imageHash: string | null; imageName: string; imagePreview: string | null; headline: string; description: string }[]>([]);
+  const [cardBusy, setCardBusy] = useState<number | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [videoName, setVideoName] = useState("");
+  const [videoBusy, setVideoBusy] = useState(false);
   // Plan + review
   const [plan, setPlan] = useState<AdPlan | null>(null);
   const [previews, setPreviews] = useState<{ key: string; label: string; html: string }[]>([]);
@@ -92,6 +101,48 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
     finally { setUploading(false); }
   }
 
+  const blankCard = () => ({ imageHash: null, imageName: "", imagePreview: null, headline: "", description: "" });
+  const addCard = () => setCards(cs => (cs.length < 10 ? [...cs, blankCard()] : cs));
+  const removeCard = (i: number) => setCards(cs => (cs.length > 2 ? cs.filter((_, j) => j !== i) : cs));
+  const patchCard = (i: number, p: Partial<{ imageHash: string | null; imageName: string; imagePreview: string | null; headline: string; description: string }>) => setCards(cs => cs.map((c, j) => (j === i ? { ...c, ...p } : c)));
+
+  async function uploadCardImage(i: number, f: File) {
+    setCardBusy(i); setMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", await prepImage(f));
+      const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
+      if (d.imageHash) patchCard(i, { imageHash: d.imageHash, imageName: f.name, imagePreview: URL.createObjectURL(f) });
+      else setMsg(d.error || "Image upload failed.");
+    } catch { setMsg("Image upload failed."); }
+    finally { setCardBusy(null); }
+  }
+  async function uploadVideo(f: File) {
+    setVideoBusy(true); setMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", f);   // videos aren't downscaled client-side
+      const d = await fetch("/api/admin/meta/media", { method: "POST", body: fd }).then(r => r.json());
+      if (d.videoId) { setVideoId(d.videoId); setVideoName(f.name); }
+      else setMsg(d.error || "Video upload failed.");
+    } catch { setMsg("Video upload failed."); }
+    finally { setVideoBusy(false); }
+  }
+
+  // Build the Meta creative for one ad set from the chosen format + uploaded
+  // assets. Shared by the live preview and publish so they always match.
+  function buildCreativeFor(set: { primaryText: string; headline: string; description: string }) {
+    if (creativeFormat === "video") return { format: "video" as const, primaryText: set.primaryText, headline: set.headline, description: set.description, videoId, imageHash: imageHash ?? undefined };
+    if (creativeFormat === "carousel") return { format: "carousel" as const, primaryText: set.primaryText, headline: set.headline, cards: cards.map(c => ({ imageHash: c.imageHash, headline: c.headline, description: c.description })) };
+    return { format: "single" as const, primaryText: set.primaryText, headline: set.headline, description: set.description, imageHash };
+  }
+
+  // Seed the creative editor from the drafted plan, then open the review screen.
+  function enterReview(p: AdPlan) {
+    setCreativeFormat(p.creativeFormat);
+    setCards(p.cards.length ? p.cards.map(c => ({ imageHash: null, imageName: "", imagePreview: null, headline: c.headline, description: c.description })) : [blankCard(), blankCard()]);
+    setStep("review");
+    void loadReview(p);
+  }
+
   function briefValid(): string | null {
     if (!product.trim()) return "Tell the AI what you're advertising.";
     if (!(Number(budget) > 0)) return "Enter your total budget.";
@@ -111,32 +162,49 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       }).then(r => r.json());
       if (d.error || !d.plan) { setMsg(d.error || "Could not draft the campaign."); return; }
       setPlan(d.plan); setReach({}); setPreviews([]);
-      setStep("review");
-      void loadReview(d.plan);
+      enterReview(d.plan);
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
   }
 
-  async function sendChat(override?: string) {
-    const text = (override ?? chatInput).trim();
-    if (!text || chatBusy) return;
-    const next = [...chatMsgs, { role: "user" as const, content: text }];
-    setChatMsgs(next); setChatInput(""); setChatBusy(true); setMsg(null);
+  // Send the whole transcript to the chat agent; a returned plan updates the live
+  // preview (we stay in chat so the client can keep refining).
+  async function submit(next: { role: "user" | "assistant"; content: string; doc?: string }[]) {
+    setChatMsgs(next); setChatBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/meta/ads-chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: next, currency }),
+        body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.content })), currency }),
       }).then(r => r.json());
       if (d.error) setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error}` }]);
       else {
         if (d.reply) setChatMsgs(m => [...m, { role: "assistant", content: d.reply }]);
-        // A drafted plan populates the LIVE PREVIEW panel (left) — we stay in chat
-        // so the client can keep refining ("make it punchier", "women only") and
-        // watch the ad update. Publishing happens on the review screen.
         if (d.plan) { setPlan(d.plan); setReach({}); setPreviews([]); }
       }
     } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Connection error — try again." }]); }
     finally { setChatBusy(false); }
+  }
+
+  function sendChat(override?: string) {
+    const text = (override ?? chatInput).trim();
+    if (!text || chatBusy) return;
+    setChatInput("");
+    void submit([...chatMsgs, { role: "user", content: text }]);
+  }
+
+  // Attach a prepared brief (PDF / Word / text / screenshot). The doc is read into
+  // text server-side, then fed to the assistant as a message so it builds from it.
+  async function attachDoc(file: File) {
+    if (docBusy || chatBusy) return;
+    setDocBusy(true); setMsg(null);
+    try {
+      const fd = new FormData(); fd.append("file", file);
+      const d = await fetch("/api/admin/meta/ads-doc", { method: "POST", body: fd }).then(r => r.json());
+      if (d.error || !d.text) { setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error || "Couldn't read that file."}` }]); return; }
+      const content = `Here is my prepared ad brief — build the campaign from it:\n\n${d.text}`;
+      void submit([...chatMsgs, { role: "user", content, doc: file.name }]);
+    } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Couldn't upload that file — try again." }]); }
+    finally { setDocBusy(false); }
   }
 
   const EXAMPLE_PROMPTS = [
@@ -145,15 +213,9 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
     "Test 2 audiences for my dental clinic, ₹8,000 over 10 days",
   ];
 
-  // Live Meta previews (from ad set 1's copy — image + format are shared) plus a
-  // per-ad-set audience estimate. All best-effort.
+  // Live Meta previews for the current creative + a per-ad-set audience estimate.
   async function loadReview(p: AdPlan) {
-    const dest = { objective: p.objective, conversionLocation: p.conversionLocation, websiteUrl: p.conversionLocation === "WEBSITE" ? websiteUrl : null, ctaType: p.ctaType ?? null };
-    const first = p.adSets[0];
-    if (first) {
-      fetch("/api/admin/meta/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...dest, creative: { format: "single", primaryText: first.primaryText, headline: first.headline, description: first.description, imageHash } }) })
-        .then(r => r.json()).then(d => setPreviews(d.previews ?? [])).catch(() => {});
-    }
+    void refreshPreviews(p);
     p.adSets.forEach((s, i) => {
       fetch("/api/admin/meta/estimate", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ objective: p.objective, conversionLocation: p.conversionLocation, optimizationGoal: p.optimizationGoal ?? null, placements: "advantage",
@@ -162,8 +224,32 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
     });
   }
 
+  // Re-render the Meta previews from the current format + uploaded assets. Called
+  // on entering review and via the "Update preview" button after uploads.
+  async function refreshPreviews(p: AdPlan | null = plan) {
+    if (!p) return;
+    const first = p.adSets[0]; if (!first) return;
+    const dest = { objective: p.objective, conversionLocation: p.conversionLocation, websiteUrl: p.conversionLocation === "WEBSITE" ? websiteUrl : null, ctaType: p.ctaType ?? null };
+    try {
+      const d = await fetch("/api/admin/meta/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...dest, creative: buildCreativeFor(first) }) }).then(r => r.json());
+      setPreviews(d.previews ?? []);
+    } catch { /* best-effort */ }
+  }
+
+  function creativeError(): string | null {
+    if (creativeFormat === "single" && !imageHash) return "Add an image for the ad.";
+    if (creativeFormat === "video" && !videoId) return "Upload a video/reel for the ad.";
+    if (creativeFormat === "carousel") {
+      if (cards.length < 2) return "A carousel needs at least 2 cards.";
+      if (cards.some(c => !c.imageHash || !c.headline.trim())) return "Each carousel card needs an image and a headline.";
+    }
+    return null;
+  }
+
   async function publish() {
     if (!plan) return;
+    const cErr = creativeError();
+    if (cErr) { setMsg(cErr); return; }
     setBusy(true); setMsg(null);
     const base = {
       objective: plan.objective, conversionLocation: plan.conversionLocation,
@@ -172,7 +258,6 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       budgetLevel: "campaign", budgetType: "daily", placements: "advantage", specialAdCategories: [] as string[], activate: true,
     };
     const targetingOf = (s: AdSetPlan) => ({ countries: plan.countries, cities: [], regions: [], ageMin: s.ageMin, ageMax: s.ageMax, genders: s.genders, interests: [], locales: [], customAudiences: [], excludedCustomAudiences: [], advantageAudience: true });
-    const creativeOf = (s: AdSetPlan) => ({ format: "single", primaryText: s.primaryText, headline: s.headline, description: s.description, imageHash });
     try {
       let campaignId: string | null = null;
       const failures: string[] = [];
@@ -182,7 +267,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           ...base, campaignId,
           name: i === 0 ? plan.campaignName : `${plan.campaignName} · ${s.audienceLabel}`,
           budget: plan.dailyBudget,   // held at campaign (CBO); ignored for added ad sets
-          targeting: targetingOf(s), creative: creativeOf(s),
+          targeting: targetingOf(s), creative: buildCreativeFor(s),
         };
         const d: { success?: boolean; campaignId?: string; error?: string } = await fetch("/api/admin/meta/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(r => r.json());
         if (i === 0) {
@@ -328,7 +413,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
                   {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />} {imageHash ? "Change image" : "Add an image"}
                   <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); }} />
                 </label>
-                <button onClick={() => { setStep("review"); if (plan) void loadReview(plan); }} className={`${btnPrimary} w-full justify-center`}>Review &amp; publish <ArrowRight className="w-4 h-4" /></button>
+                <button onClick={() => { if (plan) enterReview(plan); }} className={`${btnPrimary} w-full justify-center`}>Review &amp; publish <ArrowRight className="w-4 h-4" /></button>
                 <p className="text-[10px] text-slate-400 text-center">Keep chatting to refine — the preview updates live.</p>
               </>
             ) : (
@@ -340,9 +425,11 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
           <div className="space-y-3">
             <div className="rounded-card border border-line bg-white h-[440px] overflow-y-auto p-4 flex flex-col gap-2.5">
               {chatMsgs.map((m, i) => (
-                <div key={i} className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug whitespace-pre-wrap ${m.role === "user" ? "self-end bg-brand-700 text-white rounded-br-md" : "self-start bg-canvas text-ink-800 rounded-bl-md"}`}>{m.content}</div>
+                m.doc
+                  ? <div key={i} className="self-end max-w-[85%] rounded-2xl rounded-br-md px-3.5 py-2 text-[13px] bg-brand-700 text-white flex items-center gap-2"><Paperclip className="w-3.5 h-3.5 shrink-0" /> {m.doc}</div>
+                  : <div key={i} className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13px] leading-snug whitespace-pre-wrap ${m.role === "user" ? "self-end bg-brand-700 text-white rounded-br-md" : "self-start bg-canvas text-ink-800 rounded-bl-md"}`}>{m.content}</div>
               ))}
-              {chatBusy && <div className="self-start bg-canvas text-ink-400 rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> thinking…</div>}
+              {(chatBusy || docBusy) && <div className="self-start bg-canvas text-ink-400 rounded-2xl rounded-bl-md px-3.5 py-2 text-[13px] flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {docBusy ? "reading your brief…" : "thinking…"}</div>}
               {/* Starter prompts, shown before the first message */}
               {chatMsgs.length <= 1 && !chatBusy && (
                 <div className="mt-auto grid sm:grid-cols-1 gap-2 pt-3">
@@ -356,6 +443,10 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
               <div ref={chatEndRef} />
             </div>
             <div className="flex gap-2">
+              <label className={`shrink-0 flex items-center justify-center w-10 rounded-control border border-line text-ink-500 hover:bg-canvas cursor-pointer ${docBusy || chatBusy ? "opacity-50 pointer-events-none" : ""}`} title="Attach a prepared brief (PDF, Word, text, or screenshot)">
+                <Paperclip className="w-4 h-4" />
+                <input type="file" accept=".pdf,.doc,.docx,.txt,.md,image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachDoc(f); e.target.value = ""; }} />
+              </label>
               <input className={`${inp} flex-1`} placeholder="Tell me what you want to advertise…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }} />
               <button onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
             </div>
@@ -417,6 +508,60 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
               </div>
             </div>
           ))}
+
+          {/* Creative — format-aware asset upload (shared across ad sets) */}
+          <div className="bg-white rounded-card border border-line p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide">Creative</p>
+              <div className="flex gap-1 p-0.5 bg-canvas rounded-control">
+                {([["single", "Image", ImageIcon], ["carousel", "Carousel", Images], ["video", "Video / Reel", Video]] as const).map(([val, label, Icon]) => (
+                  <button key={val} onClick={() => setCreativeFormat(val)} className={`flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[11px] font-bold transition-colors ${creativeFormat === val ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}><Icon className="w-3.5 h-3.5" /> {label}</button>
+                ))}
+              </div>
+            </div>
+
+            {creativeFormat === "single" && (
+              <div className="flex items-center gap-3">
+                <label className={`cursor-pointer px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas flex items-center gap-1.5 ${uploading ? "opacity-60 pointer-events-none" : ""}`}>
+                  {uploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImagePlus className="w-3.5 h-3.5" />} {imageHash ? "Change image" : "Upload image"}
+                  <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadImage(f); }} />
+                </label>
+                {imagePreview && <img src={imagePreview} alt="" className="w-14 h-14 rounded-lg object-cover border border-line" />}
+              </div>
+            )}
+
+            {creativeFormat === "video" && (
+              <div className="flex items-center gap-3">
+                <label className={`cursor-pointer px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas flex items-center gap-1.5 ${videoBusy ? "opacity-60 pointer-events-none" : ""}`}>
+                  {videoBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Video className="w-3.5 h-3.5" />} {videoId ? "Change video" : "Upload video / reel"}
+                  <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); }} />
+                </label>
+                {videoId && <span className="text-[11px] text-emerald-700 font-semibold truncate">✓ {videoName || "video uploaded"}</span>}
+                {videoBusy && <span className="text-[11px] text-slate-400">Uploading &amp; encoding on Meta — this can take a minute…</span>}
+              </div>
+            )}
+
+            {creativeFormat === "carousel" && (
+              <div className="space-y-2.5">
+                {cards.map((c, i) => (
+                  <div key={i} className="flex items-start gap-2.5 border border-line rounded-control p-2.5">
+                    <label className={`shrink-0 w-14 h-14 rounded-lg border border-dashed border-line flex items-center justify-center cursor-pointer overflow-hidden ${cardBusy === i ? "opacity-60 pointer-events-none" : "hover:bg-canvas"}`}>
+                      {cardBusy === i ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : c.imagePreview ? <img src={c.imagePreview} alt="" className="w-full h-full object-cover" /> : <ImagePlus className="w-4 h-4 text-slate-300" />}
+                      <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadCardImage(i, f); }} />
+                    </label>
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <input className={`${inp} w-full`} placeholder={`Card ${i + 1} headline`} maxLength={32} value={c.headline} onChange={e => patchCard(i, { headline: e.target.value })} />
+                      <input className={`${inp} w-full`} placeholder="Card description (optional)" maxLength={20} value={c.description} onChange={e => patchCard(i, { description: e.target.value })} />
+                    </div>
+                    {cards.length > 2 && <button onClick={() => removeCard(i)} className="p-1 text-ink-400 hover:text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></button>}
+                  </div>
+                ))}
+                {cards.length < 10 && <button onClick={addCard} className="text-[12px] font-bold text-brand-700 hover:underline">+ Add card</button>}
+              </div>
+            )}
+
+            <button onClick={() => refreshPreviews()} className="text-[11px] font-bold text-ink-500 hover:text-ink-800">↻ Update preview</button>
+          </div>
 
           {/* Live Meta previews (ad set 1's copy; image + format shared) */}
           {previews.length > 0 && (
