@@ -89,6 +89,7 @@ export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Pr
   if (!WA_CONFIG_ID) throw new Error("WhatsApp Embedded Signup is not configured yet");
   return new Promise((resolve, reject) => {
     let session: { wabaId?: string; phoneNumberId?: string } = {};
+    const seen: string[] = [];   // WA_EMBEDDED_SIGNUP events, for diagnosis on failure
     const onMessage = (event: MessageEvent) => {
       // https + exact facebook.com or a *.facebook.com subdomain — never a
       // lookalike like "evilfacebook.com", and never a throw: opaque origins
@@ -99,20 +100,35 @@ export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Pr
       if (origin.protocol !== "https:" || !/(^|\.)facebook\.com$/.test(origin.hostname)) return;
       try {
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
-        if (data?.type === "WA_EMBEDDED_SIGNUP" && data?.data) {
-          session = { wabaId: data.data.waba_id, phoneNumberId: data.data.phone_number_id };
+        if (data?.type === "WA_EMBEDDED_SIGNUP") {
+          seen.push(String(data?.event ?? "?"));
+          // Accumulate — waba_id and phone_number_id can arrive in separate messages.
+          if (data?.data?.waba_id) session.wabaId = data.data.waba_id;
+          if (data?.data?.phone_number_id) session.phoneNumberId = data.data.phone_number_id;
         }
       } catch { /* non-JSON message from the popup — ignore */ }
     };
     window.addEventListener("message", onMessage);
     window.FB!.login((response) => {
-      window.removeEventListener("message", onMessage);
       const code = response?.authResponse?.code;
-      if (!code) return reject(new Error("Sign-up was cancelled"));
-      if (!session.wabaId || !session.phoneNumberId) {
-        return reject(new Error("Meta did not return the WhatsApp account details — please complete the whole flow"));
-      }
-      resolve({ code, wabaId: session.wabaId, phoneNumberId: session.phoneNumberId });
+      if (!code) { window.removeEventListener("message", onMessage); return reject(new Error("Sign-up was cancelled")); }
+      // The WA_EMBEDDED_SIGNUP sessionInfo message can land a beat AFTER the
+      // FB.login callback fires (a known ES race) — poll briefly for it instead
+      // of checking once, so a completed flow isn't wrongly rejected.
+      const start = Date.now();
+      const poll = () => {
+        if (session.wabaId && session.phoneNumberId) {
+          window.removeEventListener("message", onMessage);
+          return resolve({ code, wabaId: session.wabaId, phoneNumberId: session.phoneNumberId });
+        }
+        if (Date.now() - start > 5000) {
+          window.removeEventListener("message", onMessage);
+          if (typeof console !== "undefined") console.warn("[EmbeddedSignup] no account details after 5s — WA_EMBEDDED_SIGNUP events seen:", seen, "partial session:", session);
+          return reject(new Error("Meta did not return the WhatsApp account details — please complete the whole flow"));
+        }
+        setTimeout(poll, 120);
+      };
+      poll();
     }, {
       config_id: WA_CONFIG_ID,
       response_type: "code",
