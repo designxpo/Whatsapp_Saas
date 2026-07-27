@@ -8,7 +8,7 @@
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video, History, Plus } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
@@ -53,16 +53,22 @@ async function prepImage(f: File): Promise<File> {
   } catch { return f; }
 }
 
+type ChatMsg = { role: "user" | "assistant"; content: string; doc?: string };
+const GREETING: ChatMsg = { role: "assistant", content: "Hi! Tell me what you'd like to advertise and your budget — e.g. “Promote my Diwali candle sale, ₹5000 for a week, to drive WhatsApp chats.” Already have a brief? Attach it (📎 PDF, Word, text, or a screenshot) and I'll build from it." };
+const DRAFT_KEY = "talko:adchat:draft";   // per-browser draft so a refresh/close doesn't lose the current chat
+
 export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: { currency: string; hasPage: boolean; onClose: () => void; onCreated: () => void }) {
   const [step, setStep] = useState<"brief" | "review" | "done">("brief");
   const [mode, setMode] = useState<"form" | "chat">("form");
   // Chat mode
-  const [chatMsgs, setChatMsgs] = useState<{ role: "user" | "assistant"; content: string; doc?: string }[]>([
-    { role: "assistant", content: "Hi! Tell me what you'd like to advertise and your budget — e.g. “Promote my Diwali candle sale, ₹5000 for a week, to drive WhatsApp chats.” Already have a brief? Attach it (📎 PDF, Word, text, or a screenshot) and I'll build from it." },
-  ]);
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([GREETING]);
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
+  // Chat history — local draft (survives refresh) + server-saved sessions sidebar
+  const [sessions, setSessions] = useState<{ id: string; title: string; updatedAt: string }[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
   // Brief
   const [goal, setGoal] = useState<Goal>("WHATSAPP");
   const [product, setProduct] = useState("");
@@ -92,6 +98,63 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   const [doneWarn, setDoneWarn] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" }); }, [chatMsgs, chatBusy]);
+
+  // On mount: restore the local draft (so a refresh/close doesn't lose the chat)
+  // and load the saved-session list for the history sidebar.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as { messages?: ChatMsg[]; plan?: AdPlan | null; sessionId?: string | null };
+        if (Array.isArray(d.messages) && d.messages.length) setChatMsgs(d.messages);
+        if (d.plan) setPlan(d.plan);
+        if (d.sessionId) setSessionId(d.sessionId);
+      }
+    } catch { /* ignore corrupt draft */ }
+    void loadSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist the current chat locally on every change (cleared once it's empty).
+  useEffect(() => {
+    try {
+      if (chatMsgs.length <= 1 && !sessionId) { localStorage.removeItem(DRAFT_KEY); return; }
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ messages: chatMsgs, plan, sessionId }));
+    } catch { /* storage full / unavailable — non-fatal */ }
+  }, [chatMsgs, plan, sessionId]);
+
+  async function loadSessions() {
+    try { const d = await fetch("/api/admin/meta/ad-chats").then(r => r.json()); setSessions(d.sessions ?? []); } catch { /* best-effort */ }
+  }
+  // Upsert the current conversation to the server (keeps saving to the same row).
+  async function saveSession(messages: ChatMsg[], planToSave: AdPlan | null) {
+    try {
+      const d = await fetch("/api/admin/meta/ad-chats", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: sessionId, messages, plan: planToSave ?? null }) }).then(r => r.json());
+      if (d.id) { if (d.id !== sessionId) setSessionId(d.id); void loadSessions(); }
+    } catch { /* best-effort autosave */ }
+  }
+  function newChat() {
+    setChatMsgs([GREETING]); setPlan(null); setReach({}); setPreviews([]); setSessionId(null);
+    setChatInput(""); setStep("brief"); setShowHistory(false);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ }
+  }
+  async function loadSession(id: string) {
+    try {
+      const d = await fetch(`/api/admin/meta/ad-chats/${id}`).then(r => r.json());
+      if (d.session) {
+        setChatMsgs(d.session.messages?.length ? d.session.messages : [GREETING]);
+        setPlan(d.session.plan ?? null); setReach({}); setPreviews([]);
+        setSessionId(d.session.id); setShowHistory(false); setStep("brief"); setMode("chat");
+      }
+    } catch { /* best-effort */ }
+  }
+  async function deleteSession(id: string) {
+    try {
+      await fetch(`/api/admin/meta/ad-chats/${id}`, { method: "DELETE" });
+      setSessions(s => s.filter(x => x.id !== id));
+      if (id === sessionId) newChat();
+    } catch { /* best-effort */ }
+  }
 
   const toggleCountry = (code: string) => setCountries(cs => (cs.includes(code) ? cs.filter(c => c !== code) : [...cs, code]));
 
@@ -174,18 +237,23 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
 
   // Send the whole transcript to the chat agent; a returned plan updates the live
   // preview (we stay in chat so the client can keep refining).
-  async function submit(next: { role: "user" | "assistant"; content: string; doc?: string }[]) {
+  async function submit(next: ChatMsg[]) {
     setChatMsgs(next); setChatBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/meta/ads-chat", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next.map(m => ({ role: m.role, content: m.content })), currency }),
       }).then(r => r.json());
-      if (d.error) setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error}` }]);
+      let finalMsgs = next;
+      let nextPlan: AdPlan | null = plan;
+      if (d.error) finalMsgs = [...next, { role: "assistant", content: `⚠️ ${d.error}` }];
       else {
-        if (d.reply) setChatMsgs(m => [...m, { role: "assistant", content: d.reply }]);
-        if (d.plan) { setPlan(d.plan); setReach({}); setPreviews([]); }
+        if (d.reply) finalMsgs = [...next, { role: "assistant", content: d.reply }];
+        if (d.plan) { nextPlan = d.plan; setPlan(d.plan); setReach({}); setPreviews([]); }
       }
+      setChatMsgs(finalMsgs);
+      // Autosave to history once the conversation has real user content.
+      if (finalMsgs.some(m => m.role === "user")) void saveSession(finalMsgs, nextPlan);
     } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Connection error — try again." }]); }
     finally { setChatBusy(false); }
   }
@@ -396,7 +464,31 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       )}
 
       {step === "brief" && mode === "chat" && (
-        <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
+        <div className="space-y-3">
+          {/* History bar — saved sessions + start a fresh chat */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowHistory(v => !v)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control border text-[12px] font-bold transition-colors ${showHistory ? "bg-brand-50 border-brand-200 text-brand-700" : "bg-white border-line text-ink-600 hover:bg-canvas"}`}>
+              <History className="w-3.5 h-3.5" /> History{sessions.length ? ` (${sessions.length})` : ""}
+            </button>
+            <div className="flex-1" />
+            <button onClick={newChat} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-line bg-white text-[12px] font-bold text-ink-600 hover:bg-canvas transition-colors"><Plus className="w-3.5 h-3.5" /> New chat</button>
+          </div>
+          {showHistory && (
+            <div className="rounded-card border border-line bg-white max-h-56 overflow-y-auto divide-y divide-line">
+              {sessions.length === 0
+                ? <p className="text-[12px] text-slate-400 px-3 py-4 text-center">No saved chats yet — start one below and it&apos;ll appear here.</p>
+                : sessions.map(s => (
+                    <div key={s.id} className={`flex items-center gap-2 px-3 py-2 ${s.id === sessionId ? "bg-brand-50" : "hover:bg-canvas"}`}>
+                      <button onClick={() => loadSession(s.id)} className="flex-1 text-left min-w-0">
+                        <p className="text-[13px] font-semibold text-ink-800 truncate">{s.title}</p>
+                        <p className="text-[10px] text-slate-400">{new Date(s.updatedAt).toLocaleString()}</p>
+                      </button>
+                      <button onClick={() => deleteSession(s.id)} className="p-1 text-ink-300 hover:text-red-600 shrink-0" title="Delete chat"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  ))}
+            </div>
+          )}
+          <div className="grid lg:grid-cols-[340px_1fr] gap-5 items-start">
           {/* LEFT — live ad preview, fills in as the AI drafts */}
           <div className="lg:sticky lg:top-4 space-y-3">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Live preview</p>
@@ -458,6 +550,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
               <button onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
             </div>
             {!hasPage && <p className="text-[11px] text-amber-600">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
+          </div>
           </div>
         </div>
       )}
