@@ -8,7 +8,7 @@
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
 import { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video, History, Plus } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video, History, Plus, BrainCircuit } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
@@ -69,6 +69,11 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   const [sessions, setSessions] = useState<{ id: string; title: string; updatedAt: string }[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  // Saved standing context (one tiny settings row, reused across chats)
+  const [adCtx, setAdCtx] = useState("");
+  const [ctxOpen, setCtxOpen] = useState(false);
+  const [ctxSaving, setCtxSaving] = useState(false);
+  const [ctxSaved, setCtxSaved] = useState(false);
   // Brief
   const [goal, setGoal] = useState<Goal>("WHATSAPP");
   const [product, setProduct] = useState("");
@@ -112,8 +117,18 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       }
     } catch { /* ignore corrupt draft */ }
     void loadSessions();
+    fetch("/api/admin/meta/ad-context").then(r => r.json()).then(d => setAdCtx(d.context ?? "")).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function saveContext() {
+    setCtxSaving(true);
+    try {
+      await fetch("/api/admin/meta/ad-context", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context: adCtx }) });
+      setCtxSaved(true); setTimeout(() => setCtxSaved(false), 2000);
+    } catch { /* best-effort */ }
+    finally { setCtxSaving(false); }
+  }
 
   // Persist the current chat locally on every change (cleared once it's empty).
   useEffect(() => {
@@ -393,6 +408,28 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
         <div className="flex gap-1 p-0.5 bg-canvas rounded-control max-w-xs">
           <button onClick={() => setMode("form")} className={`flex-1 flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 text-[12px] font-bold transition-colors ${mode === "form" ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}><FormInput className="w-3.5 h-3.5" /> Guided form</button>
           <button onClick={() => setMode("chat")} className={`flex-1 flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 text-[12px] font-bold transition-colors ${mode === "chat" ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}><MessageSquareText className="w-3.5 h-3.5" /> Chat to build</button>
+        </div>
+      )}
+
+      {/* Saved standing context — one small setting reused across every chat */}
+      {step === "brief" && (
+        <div className="rounded-card border border-line bg-white">
+          <button onClick={() => setCtxOpen(o => !o)} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
+            <BrainCircuit className="w-4 h-4 text-brand-600 shrink-0" />
+            <span className="text-[13px] font-bold text-ink-800 flex-1">Saved context {adCtx.trim() && <span className="text-[10px] font-semibold text-emerald-600">• saved</span>}</span>
+            <span className="text-[11px] text-slate-400">{ctxOpen ? "Hide" : "Edit"}</span>
+          </button>
+          {ctxOpen && (
+            <div className="px-3.5 pb-3.5 space-y-2 border-t border-line pt-3">
+              <p className="text-[11px] text-slate-500 leading-snug">Save your business basics once — brand, tone, standing offers, do&apos;s &amp; don&apos;ts. The AI reuses this in every future campaign chat, so you never re-type it. Stored as a single setting — no extra database load.</p>
+              <textarea className={`${inp} w-full`} rows={4} placeholder="e.g. We're LumiSkincare — vegan skincare for women 25–45. Warm, friendly tone. Never promise medical results. Always mention free delivery over ₹999." value={adCtx} onChange={e => setAdCtx(e.target.value.slice(0, 4000))} />
+              <div className="flex items-center gap-2">
+                <button onClick={saveContext} disabled={ctxSaving} className={`${btnPrimary} !py-1.5 !text-[12px]`}>{ctxSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save context</button>
+                {ctxSaved && <span className="text-[11px] font-semibold text-emerald-600">Saved — the AI will use this from now on.</span>}
+                <span className="ml-auto text-[10px] text-slate-400 tabular-nums">{adCtx.length}/4000</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

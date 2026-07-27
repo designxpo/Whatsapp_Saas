@@ -3,6 +3,7 @@ import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth
 import { runChat, type ChatTool, type ChatTurn } from "@/lib/ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "@/lib/ai/keys";
 import { planAdCampaign, type AdGoal } from "@/lib/adplanner";
+import { getAdContext } from "@/lib/adchats";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -81,8 +82,15 @@ export async function POST(req: Request) {
       throw err;
     }
 
+    // The tenant's saved standing context grounds the whole conversation, so the
+    // assistant never re-asks basics the client already recorded (one small read).
+    const savedContext = await getAdContext(tid).catch(() => "");
+    const system = savedContext
+      ? `${SYSTEM}\nThe business has saved this standing context — treat it as known and do NOT re-ask anything it already answers:\n"""\n${savedContext}\n"""`
+      : SYSTEM;
+
     const turns: ChatTurn[] = history.map(m => (m.role === "assistant" ? { role: "assistant", text: m.content!.trim() } : { role: "user", text: m.content!.trim() }));
-    const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: SYSTEM, turns, tools: [DRAFT_TOOL], maxTokens: 700 });
+    const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system, turns, tools: [DRAFT_TOOL], maxTokens: 700 });
 
     const call = res.toolCalls.find(c => c.name === "draft_campaign");
     if (call) {
@@ -99,6 +107,7 @@ export async function POST(req: Request) {
         goal,
         product: String(a.product ?? "").trim() || "our offer",
         brief: a.brief ? String(a.brief).trim().slice(0, 8000) : undefined,
+        savedContext: savedContext || undefined,
         budgetTotal: budgetTotal || undefined,
         dailyBudget: dailyBudget || undefined,
         ongoing,

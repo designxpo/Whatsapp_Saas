@@ -251,6 +251,21 @@ describe("planAdCampaign — end-to-end grounding simulation", () => {
     expect(plan.budgetTotal).toBe(500 * 30);      // projection, not a hard cap
   });
 
+  it("injects the tenant's saved standing context into the copywriting prompt", async () => {
+    ads.getAdsAccountId.mockResolvedValue("");
+    ai.runChat.mockResolvedValueOnce({ text: PLAN_JSON, toolCalls: [] });
+
+    await planAdCampaign({
+      goal: "WHATSAPP", product: "candles", budgetTotal: 5000, days: 7,
+      currency: "INR", countries: ["IN"], variants: 1,
+      savedContext: "We are LumiSkincare — vegan skincare, warm tone; never promise medical results.",
+    }, "tenant1");
+
+    const promptText = (ai.runChat.mock.calls[0][0] as { turns: { text: string }[] }).turns[0].text;
+    expect(promptText).toContain("LumiSkincare");
+    expect(promptText).toContain("saved standing context");
+  });
+
   it("still derives a daily budget from a total + days when given a total", async () => {
     ads.getAdsAccountId.mockResolvedValue("");
     ai.runChat.mockResolvedValueOnce({ text: PLAN_JSON, toolCalls: [] });

@@ -4,6 +4,8 @@
 // where it was left. Content is capped so a pasted brief can't bloat a row.
 
 import { tdb } from "./tenantdb";
+import { db } from "./supabase";
+import { getTenantSetting, setTenantSetting } from "./store";
 import { DEFAULT_TENANT_ID } from "./tenant";
 
 export interface AdChatMessage { role: "user" | "assistant"; content: string; doc?: string }
@@ -69,4 +71,31 @@ export async function saveAdChat(input: { id?: string | null; messages: unknown;
 
 export async function deleteAdChat(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await tdb(tenantId).from(TABLE).delete().eq("id", id);
+}
+
+// ── Maintenance: 30-day auto-expiry ───────────────────────────────────────────
+// Delete chat sessions not touched in `days` (default 30) so history can't grow
+// unbounded. Global across all tenants (a housekeeping sweep run from the cron),
+// so it uses the raw client, not the tenant wrapper. Returns rows removed.
+export async function purgeOldAdChats(days = 30): Promise<number> {
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data, error } = await db().from(TABLE).delete().lt("updated_at", cutoff).select("id");
+  if (error) return 0;
+  return (data as unknown[] | null)?.length ?? 0;
+}
+
+// ── Saved standing context (light on the DB) ──────────────────────────────────
+// A tenant's reusable ad-builder context (business, tone, standing offers,
+// do's/don'ts) lives in ONE small wa_settings row — not a growing table — and is
+// injected into every future draft so the client never re-types their basics.
+// One tiny keyed read per draft = negligible load, and it survives the 30-day
+// history purge above (different table).
+const CONTEXT_KEY = "ad_chat_context";
+const MAX_CONTEXT = 4_000;
+
+export async function getAdContext(tenantId = DEFAULT_TENANT_ID): Promise<string> {
+  return ((await getTenantSetting<string>(tenantId, CONTEXT_KEY, "")) || "").slice(0, MAX_CONTEXT);
+}
+export async function setAdContext(text: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSetting(tenantId, CONTEXT_KEY, String(text ?? "").trim().slice(0, MAX_CONTEXT));
 }

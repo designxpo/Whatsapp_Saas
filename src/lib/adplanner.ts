@@ -11,6 +11,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import type { AdObjective } from "./ads";
 import { getAdsAccountId, getAdsPageId } from "./ads";
 import { gatherGrounding, groundAdSets, reachNote, type EstimateCtx, type ReachStatus, type FlaggedAdSet, type AdSetAudience } from "./adgrounding";
+import { getAdContext } from "./adchats";
 
 export type AdGoal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
 
@@ -27,6 +28,7 @@ export interface AdBrief {
   audienceNote?: string;      // optional free-text targeting hint
   businessName?: string;
   variants?: number;          // how many ad sets (distinct audiences) to test, 1-4
+  savedContext?: string;      // the tenant's saved standing context (else read from settings)
   creativeFormat?: CreativeFormat;   // desired creative type (from the doc/chat); default single
   brief?: string;             // a longer prepared brief (e.g. read from an uploaded document)
 }
@@ -139,9 +141,15 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
   const countries = brief.countries.length ? brief.countries : ["IN"];
   const creativeFormat: CreativeFormat = (["single", "carousel", "video"] as const).includes(brief.creativeFormat as CreativeFormat) ? brief.creativeFormat as CreativeFormat : "single";
 
-  // Light business grounding — the active agent's product info sharpens the copy.
+  // Light business grounding — the active agent's product info + the tenant's
+  // saved standing context (one small settings read, reused across drafts).
   const agent = await resolveAgent(null, tenantId).catch(() => null);
-  const businessBits = [brief.businessName && `Business: ${brief.businessName}`, agent?.productInfo?.trim() && `About the business: ${agent.productInfo.trim().slice(0, 800)}`].filter(Boolean).join("\n");
+  const savedContext = ((brief.savedContext ?? (await getAdContext(tenantId).catch(() => ""))) || "").trim();
+  const businessBits = [
+    brief.businessName && `Business: ${brief.businessName}`,
+    agent?.productInfo?.trim() && `About the business: ${agent.productInfo.trim().slice(0, 800)}`,
+    savedContext && `The client's saved standing context (always honour this): ${savedContext}`,
+  ].filter(Boolean).join("\n");
 
   // Live Meta grounding — the connected ad account (if any) lets us feed real
   // past performance + saved audiences into the prompt, and later validate the
