@@ -18,8 +18,10 @@ export interface AdBrief {
   goal: AdGoal;
   websiteUrl?: string;        // required when goal === WEBSITE
   product: string;            // what they're advertising / the offer
-  budgetTotal: number;        // major units, the client's total spend
-  days: number;               // how many days to run
+  budgetTotal?: number;       // major units, the client's TOTAL spend (omit if dailyBudget is given)
+  dailyBudget?: number;       // major units, per-DAY spend (alternative to budgetTotal)
+  ongoing?: boolean;          // campaign runs continuously with no end date
+  days?: number;              // how many days to run (omit when ongoing)
   currency: string;           // account currency (for prompt context only)
   countries: string[];        // ISO codes to target (geo picked in the form)
   audienceNote?: string;      // optional free-text targeting hint
@@ -57,8 +59,9 @@ export interface AdPlan {
   optimizationGoal?: string;
   ctaType?: string;                 // WEBSITE only
   dailyBudget: number;              // major units, the CAMPAIGN (CBO) budget shared across ad sets
-  days: number;
-  budgetTotal: number;
+  days: number;                     // nominal run length; when ongoing this is just the estimate window
+  ongoing: boolean;                 // true = runs continuously with no end date
+  budgetTotal: number;              // dailyBudget × days (a projection when ongoing)
   currency: string;
   countries: string[];
   adSets: AdSetPlan[];              // one or more audiences, each with its own copy
@@ -118,9 +121,20 @@ const toKeywords = (v: unknown): string[] =>
 
 export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_TENANT_ID): Promise<AdPlan> {
   const goal = resolveGoal(brief.goal);
-  const days = clampInt(brief.days, 1, 365, 7);
-  const budgetTotal = Math.max(1, Math.round(brief.budgetTotal));
-  const dailyBudget = Math.max(1, Math.round(budgetTotal / days));
+  // Budget can be expressed as a total-over-N-days OR a per-day amount, and the
+  // campaign may be ongoing (no end date). We always publish a daily budget, so
+  // `days` is only used to derive the daily amount + frame the reach/estimate;
+  // for ongoing campaigns it's a nominal window.
+  const ongoing = !!brief.ongoing;
+  const days = clampInt(brief.days, 1, 365, ongoing ? 30 : 7);
+  let dailyBudget: number, budgetTotal: number;
+  if (Number(brief.dailyBudget) > 0) {
+    dailyBudget = Math.max(1, Math.round(Number(brief.dailyBudget)));
+    budgetTotal = dailyBudget * days;
+  } else {
+    budgetTotal = Math.max(1, Math.round(Number(brief.budgetTotal) || 0));
+    dailyBudget = Math.max(1, Math.round(budgetTotal / days));
+  }
   const variants = clampInt(brief.variants, 1, 10, 1);
   const countries = brief.countries.length ? brief.countries : ["IN"];
   const creativeFormat: CreativeFormat = (["single", "carousel", "video"] as const).includes(brief.creativeFormat as CreativeFormat) ? brief.creativeFormat as CreativeFormat : "single";
@@ -157,7 +171,9 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     businessBits,
     `What they're advertising: ${brief.product}`,
     brief.brief ? `The client's prepared brief (use it as the source of truth for structure, offer, audience, and tone):\n"""\n${brief.brief.slice(0, 6000)}\n"""` : "",
-    `Total budget: ${brief.currency} ${budgetTotal} over ${days} day(s) (shared across all ad sets). Target countries: ${countries.join(", ")}.`,
+    ongoing
+      ? `Budget: ${brief.currency} ${dailyBudget}/day, running continuously with no end date (shared across all ad sets). Target countries: ${countries.join(", ")}.`
+      : `Total budget: ${brief.currency} ${budgetTotal} over ${days} day(s) (shared across all ad sets). Target countries: ${countries.join(", ")}.`,
     brief.audienceNote ? `Audience hint from the client: ${brief.audienceNote}` : "",
     pre.pastWins ? `Account history — lean into what already worked: ${pre.pastWins}` : "",
     audienceLine,
@@ -180,7 +196,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
   const fallback = (): AdPlan => ({
     campaignName: `${brief.product.slice(0, 30) || "New campaign"} — ${brief.goal === "WEBSITE" ? "Traffic" : "Chats"}`,
     objective: goal.objective, conversionLocation: goal.conversionLocation, optimizationGoal: goal.optimizationGoal, ctaType: goal.ctaType,
-    dailyBudget, days, budgetTotal, currency: brief.currency, countries,
+    dailyBudget, days, ongoing, budgetTotal, currency: brief.currency, countries,
     adSets: Array.from({ length: variants }, (_, i) => ({
       audienceLabel: variants > 1 ? `Audience ${i + 1}` : "Everyone",
       ageMin: 18, ageMax: 65, genders: [], primaryText: baseCopy.primaryText, headline: baseCopy.headline, description: "", interestKeywords: [],
@@ -225,7 +241,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     return {
       campaignName: str(p.campaignName, 120) || f.campaignName,
       objective: goal.objective, conversionLocation: goal.conversionLocation, optimizationGoal: goal.optimizationGoal, ctaType: goal.ctaType,
-      dailyBudget, days, budgetTotal, currency: brief.currency, countries,
+      dailyBudget, days, ongoing, budgetTotal, currency: brief.currency, countries,
       adSets,
       creativeFormat, cards,
       rationale: str(p.rationale, 600) || f.rationale,

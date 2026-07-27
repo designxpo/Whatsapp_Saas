@@ -19,7 +19,7 @@ interface AdSetPlan {
 }
 interface AdPlan {
   campaignName: string; objective: string; conversionLocation: Goal; optimizationGoal?: string; ctaType?: string;
-  dailyBudget: number; days: number; budgetTotal: number; currency: string; countries: string[];
+  dailyBudget: number; days: number; ongoing?: boolean; budgetTotal: number; currency: string; countries: string[];
   adSets: AdSetPlan[]; creativeFormat: "single" | "carousel" | "video"; cards: { headline: string; description: string }[];
   rationale: string; tips: string[];
   suggestedAudiences?: { id: string; name: string; count: number | null }[]; grounded?: boolean;
@@ -206,7 +206,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       const fd = new FormData(); fd.append("file", file);
       const d = await fetch("/api/admin/meta/ads-doc", { method: "POST", body: fd }).then(r => r.json());
       if (d.error || !d.text) { setChatMsgs(m => [...m, { role: "assistant", content: `⚠️ ${d.error || "Couldn't read that file."}` }]); return; }
-      const content = `Here is my prepared ad brief — build the campaign from it:\n\n${d.text}`;
+      const content = `I've attached my prepared ad brief below. Read it, tell me in ONE short sentence what you understood (offer, goal, budget, audience), then draft the campaign — only ask me for a required detail if it's genuinely missing from BOTH the brief and our chat so far.\n\n"""\n${d.text}\n"""`;
       void submit([...chatMsgs, { role: "user", content, doc: file.name }]);
     } catch { setChatMsgs(m => [...m, { role: "assistant", content: "⚠️ Couldn't upload that file — try again." }]); }
     finally { setDocBusy(false); }
@@ -473,7 +473,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             {[
               { label: "Goal", value: GOALS.find(g => g.value === plan.conversionLocation)?.label ?? plan.conversionLocation },
               { label: "Daily budget", value: money(plan.dailyBudget) },
-              { label: "Total over " + plan.days + "d", value: money(plan.dailyBudget * plan.days) },
+              plan.ongoing ? { label: "Duration", value: "Until paused" } : { label: "Total over " + plan.days + "d", value: money(plan.dailyBudget * plan.days) },
               { label: "Ad sets", value: `${plan.adSets.length} audience${plan.adSets.length === 1 ? "" : "s"}` },
             ].map(s => (
               <div key={s.label} className="bg-white rounded-card border border-line px-3 py-2.5">

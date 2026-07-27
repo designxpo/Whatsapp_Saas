@@ -233,4 +233,34 @@ describe("planAdCampaign — end-to-end grounding simulation", () => {
     expect(ads.estimateAudience).not.toHaveBeenCalled();
     expect(ai.runChat).toHaveBeenCalledTimes(1);             // no refine pass
   });
+
+  // Regression: the chat looped forever when a user gave a daily budget + no end
+  // date, because the plan only understood total-budget-over-N-days.
+  it("accepts a daily budget with no end date (ongoing) — the reported loop", async () => {
+    ads.getAdsAccountId.mockResolvedValue("");
+    ai.runChat.mockResolvedValueOnce({ text: PLAN_JSON, toolCalls: [] });
+
+    const plan = await planAdCampaign({
+      goal: "WEBSITE", product: "online course", dailyBudget: 500, ongoing: true,
+      websiteUrl: "https://course.example.com", currency: "INR", countries: ["IN"], variants: 1,
+    }, "tenant1");
+
+    expect(plan.dailyBudget).toBe(500);           // used the per-day amount as-is
+    expect(plan.ongoing).toBe(true);              // marked continuous
+    expect(plan.days).toBe(30);                   // nominal window for estimate/display
+    expect(plan.budgetTotal).toBe(500 * 30);      // projection, not a hard cap
+  });
+
+  it("still derives a daily budget from a total + days when given a total", async () => {
+    ads.getAdsAccountId.mockResolvedValue("");
+    ai.runChat.mockResolvedValueOnce({ text: PLAN_JSON, toolCalls: [] });
+
+    const plan = await planAdCampaign({
+      goal: "WHATSAPP", product: "yoga", budgetTotal: 7000, days: 7,
+      currency: "INR", countries: ["IN"], variants: 1,
+    }, "tenant1");
+
+    expect(plan.dailyBudget).toBe(1000);          // 7000 / 7
+    expect(plan.ongoing).toBe(false);
+  });
 });
