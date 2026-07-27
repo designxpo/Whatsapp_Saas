@@ -12,12 +12,17 @@ import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash
 import { inp, btnPrimary } from "../_shared";
 
 type Goal = "WHATSAPP" | "MESSENGER" | "WEBSITE";
-interface AdSetPlan { audienceLabel: string; ageMin: number; ageMax: number; genders: number[]; primaryText: string; headline: string; description: string }
+interface AdSetPlan {
+  audienceLabel: string; ageMin: number; ageMax: number; genders: number[]; primaryText: string; headline: string; description: string;
+  interestKeywords?: string[]; interests?: { id: string; name: string }[];        // validated against Meta by the planner
+  reachLower?: number; reachUpper?: number; reachStatus?: "ok" | "narrow" | "broad" | "unknown"; reachNote?: string;
+}
 interface AdPlan {
   campaignName: string; objective: string; conversionLocation: Goal; optimizationGoal?: string; ctaType?: string;
   dailyBudget: number; days: number; budgetTotal: number; currency: string; countries: string[];
   adSets: AdSetPlan[]; creativeFormat: "single" | "carousel" | "video"; cards: { headline: string; description: string }[];
   rationale: string; tips: string[];
+  suggestedAudiences?: { id: string; name: string; count: number | null }[]; grounded?: boolean;
 }
 
 const GOALS: { value: Goal; label: string; blurb: string }[] = [
@@ -219,7 +224,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
     p.adSets.forEach((s, i) => {
       fetch("/api/admin/meta/estimate", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ objective: p.objective, conversionLocation: p.conversionLocation, optimizationGoal: p.optimizationGoal ?? null, placements: "advantage",
-          targeting: { countries: p.countries, cities: [], regions: [], ageMin: s.ageMin, ageMax: s.ageMax, genders: s.genders, interests: [], locales: [], customAudiences: [], excludedCustomAudiences: [], advantageAudience: true } }) })
+          targeting: { countries: p.countries, cities: [], regions: [], ageMin: s.ageMin, ageMax: s.ageMax, genders: s.genders, interests: s.interests ?? [], locales: [], customAudiences: [], excludedCustomAudiences: [], advantageAudience: (s.interests?.length ?? 0) === 0 } }) })
         .then(r => r.json()).then(d => { if (d.lower != null || d.upper != null) setReach(m => ({ ...m, [i]: { lower: d.lower, upper: d.upper } })); }).catch(() => {});
     });
   }
@@ -257,7 +262,9 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
       optimizationGoal: plan.optimizationGoal ?? null,
       budgetLevel: "campaign", budgetType: "daily", placements: "advantage", specialAdCategories: [] as string[], activate: true,
     };
-    const targetingOf = (s: AdSetPlan) => ({ countries: plan.countries, cities: [], regions: [], ageMin: s.ageMin, ageMax: s.ageMax, genders: s.genders, interests: [], locales: [], customAudiences: [], excludedCustomAudiences: [], advantageAudience: true });
+    // Use the planner's Meta-validated interests when present; fall back to
+    // Advantage+ audience expansion when the ad set has none.
+    const targetingOf = (s: AdSetPlan) => ({ countries: plan.countries, cities: [], regions: [], ageMin: s.ageMin, ageMax: s.ageMax, genders: s.genders, interests: s.interests ?? [], locales: [], customAudiences: [], excludedCustomAudiences: [], advantageAudience: (s.interests?.length ?? 0) === 0 });
     try {
       let campaignId: string | null = null;
       const failures: string[] = [];
@@ -480,6 +487,9 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
             <input className={`${inp} w-full mt-1`} value={plan.campaignName} onChange={e => setPlan(cur => (cur ? { ...cur, campaignName: e.target.value } : cur))} />
           </div>
           {plan.adSets.length > 1 && <p className="text-[11px] text-slate-500">Targeting {plan.countries.join(", ")} · Advantage+ audience · {money(plan.dailyBudget)}/day shared across {plan.adSets.length} ad sets (Meta shifts spend to the best).</p>}
+          {(plan.suggestedAudiences?.length ?? 0) > 0 && (
+            <p className="text-[11px] text-slate-500">💡 You could also retarget a saved audience: {plan.suggestedAudiences!.map(a => a.name).join(", ")} — set it per ad set in the full ad builder.</p>
+          )}
 
           {/* One card per ad set */}
           {plan.adSets.map((s, i) => (
@@ -489,9 +499,20 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
                 <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.audienceLabel}</p>
                 {plan.adSets.length > 1 && <button onClick={() => removeSet(i)} className="p-1 text-ink-400 hover:text-red-600 rounded" title="Remove this ad set"><Trash2 className="w-4 h-4" /></button>}
               </div>
-              <p className="text-[11px] text-slate-500">
-                {genderLabel(s.genders)} · age {s.ageMin}–{s.ageMax} · {reach[i] ? `est. reach ${(reach[i].lower ?? 0).toLocaleString()}–${(reach[i].upper ?? 0).toLocaleString()}` : "estimating reach…"}
-              </p>
+              <p className="text-[11px] text-slate-500">{genderLabel(s.genders)} · age {s.ageMin}–{s.ageMax}</p>
+              {(s.interests?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {s.interests!.map(it => (
+                    <span key={it.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600" title="Validated Meta interest">{it.name}</span>
+                  ))}
+                </div>
+              )}
+              {(() => {
+                const lo = s.reachLower ?? reach[i]?.lower, hi = s.reachUpper ?? reach[i]?.upper;
+                if (lo == null && hi == null) return <p className="text-[11px] text-slate-400">estimating reach…</p>;
+                const warn = s.reachStatus === "narrow" || s.reachStatus === "broad";
+                return <p className={`text-[11px] ${warn ? "text-amber-700" : "text-slate-500"}`}>est. reach {(lo ?? 0).toLocaleString()}–{(hi ?? 0).toLocaleString()}{s.reachStatus === "narrow" ? " · narrow — broadened where possible" : s.reachStatus === "broad" ? " · very broad" : ""}</p>;
+              })()}
               <div>
                 <label className="text-[10px] font-bold text-ink-400 uppercase">Primary text</label>
                 <textarea className={`${inp} w-full mt-1`} rows={2} value={s.primaryText} onChange={e => patchSet(i, { primaryText: e.target.value })} />
