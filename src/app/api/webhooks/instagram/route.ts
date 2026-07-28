@@ -167,10 +167,16 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   const repliedToStory = !!(msg?.reply_to as Record<string, unknown> | undefined)?.story;
   if (repliedToStory) {
     const seq = await getSequenceByTrigger("story_reply", null, channel.tenantId);
-    if (seq && (!seq.triggerValue || text.toLowerCase().includes(seq.triggerValue.toLowerCase()))) {
+    const gated = !!seq && (!seq.triggerValue || text.toLowerCase().includes(seq.triggerValue.toLowerCase()));
+    // Diagnostic: shows in Vercel logs exactly why a story reply did/didn't enrol.
+    console.log(JSON.stringify({ tag: "ig_story_reply", tenant: channel.tenantId, hasSeq: !!seq, seqId: seq?.id ?? null, active: seq?.active ?? null, triggerValue: seq?.triggerValue ?? null, gated, textSample: text.slice(0, 40) }));
+    if (seq && gated) {
       await enroll(seq.id, { phone: senderId, platform: "instagram", conversationId: conv.id }, channel.tenantId);
       return;
     }
+  } else if (msg?.reply_to) {
+    // A reply that ISN'T to a story — log its shape so we can see what Meta sent.
+    console.log(JSON.stringify({ tag: "ig_reply_to_shape", keys: Object.keys(msg.reply_to as object) }));
   }
 
   // A media-only DM (image/video with no caption) is stored + shown in Live Chat
