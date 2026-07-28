@@ -44,6 +44,7 @@ export interface Channel extends ChannelCreds {
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   crmSource: string | null;   // CRM lead Source for NEW leads that arrive on this number (null = "WhatsApp"); e.g. "ppc-whatsapp" so per-number campaigns are attributable
   mode: "full" | "manual";    // "manual" = personal line: no AI/flow/welcome/sequence/follow-up
+  commentAi: boolean;         // IG: may the AI publicly answer comments with no matching rule (default true)
   coex: boolean;              // coexistence: number is ALSO active on the WhatsApp Business phone app
   active: boolean;
   isDefault: boolean;
@@ -90,6 +91,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     kbTag: (r.kb_tag as string | null) ?? null,
     crmSource: (r.crm_source as string | null) ?? null,
     mode: (r.mode as string) === "manual" ? "manual" : "full",
+    commentAi: (r.comment_ai as boolean) ?? true,
     coex: (r.coex as boolean) ?? false,
     active: (r.active as boolean) ?? true,
     isDefault: (r.is_default as boolean) ?? false,
@@ -307,7 +309,7 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
 // Token is encrypted at rest and the row is scoped to the tenant.
 export async function saveInstagramChannel(input: {
   id?: string; tenantId?: string; name: string; igUserId: string; pageId?: string | null;
-  token: string; agentId?: string | null; kbTag?: string | null; active?: boolean; isDefault?: boolean;
+  token: string; agentId?: string | null; kbTag?: string | null; commentAi?: boolean; active?: boolean; isDefault?: boolean;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -323,16 +325,25 @@ export async function saveInstagramChannel(input: {
     // must keep saving even before the migration is applied — an unconditional
     // write would 500 every channel save with PGRST204 until then.
     ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
+    // Same conditional-write reason for comment_ai (migration 0085).
+    ...(input.commentAi !== undefined ? { comment_ai: input.commentAi } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
-  const q = input.id
-    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
-    : db().from("wa_channels").insert(row).select().single();
-  const { data, error } = await q;
-  if (error) throw error;
-  return mapChannel(data as Record<string, unknown>);
+  const runSave = (r: Record<string, unknown>) => input.id
+    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(r).select().single();
+  let res = await runSave(row);
+  // Tolerate a pre-0085 DB (comment_ai column absent) — retry once without it so
+  // IG channel saves keep working until the migration is applied.
+  if (res.error && /comment_ai/i.test(res.error.message ?? "") && "comment_ai" in row) {
+    const rest: Record<string, unknown> = { ...row };
+    delete rest.comment_ai;
+    res = await runSave(rest);
+  }
+  if (res.error) throw res.error;
+  return mapChannel(res.data as Record<string, unknown>);
 }
 
 // Save a Facebook Messenger channel (Page id + Page access token; no WABA/IG).

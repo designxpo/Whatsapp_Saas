@@ -259,6 +259,9 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // No fixed rule matched → let the AI answer the comment contextually (public
   // reply + DM), capped + escalating to a human after AI_REPLY_CAP replies.
   if (!rule) {
+    // Per-account switch: if AI comment replies are off, leave un-ruled comments
+    // untouched (fixed rules still fire; DMs are unaffected).
+    if (!channel.commentAi) return;
     if (!(await claimComment(commentId, null, tid))) return;
     // Prefer the @username carried in the comment payload; fall back to the
     // Profile API (works only if they've also DMed) for name + avatar.
