@@ -24,7 +24,8 @@
 // Host is env-overridable for a legacy Facebook-login setup.
 const GRAPH = `https://${process.env.META_IG_GRAPH_HOST || "graph.instagram.com"}/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
-const MAX_PER_HOUR = 200;                  // conservative per-account pacing
+const MAX_PER_HOUR = 200;                  // conservative per-account DM pacing
+const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // public comment replies — IG is stricter here
 
 export interface IgCreds {
   igUserId: string;   // IG professional account id
@@ -52,15 +53,19 @@ export function within24hWindow(lastInboundAt: string | null | undefined): boole
 // should back it with a shared store (Redis/DB). It still curbs per-instance
 // bursts that trip Meta's spam heuristics.
 const sendTimes = new Map<string, number[]>();
-function allowSend(igUserId: string): boolean {
+// Sliding-window limiter keyed by "<kind>:<igUserId>" so DMs and public comment
+// replies are paced on SEPARATE budgets (a comment-reply burst must not starve
+// DMs, and vice-versa).
+function withinRate(key: string, max: number): boolean {
   const now = Date.now();
   const cutoff = now - 60 * 60 * 1000;
-  const arr = (sendTimes.get(igUserId) ?? []).filter((t) => t > cutoff);
-  if (arr.length >= MAX_PER_HOUR) { sendTimes.set(igUserId, arr); return false; }
+  const arr = (sendTimes.get(key) ?? []).filter((t) => t > cutoff);
+  if (arr.length >= max) { sendTimes.set(key, arr); return false; }
   arr.push(now);
-  sendTimes.set(igUserId, arr);
+  sendTimes.set(key, arr);
   return true;
 }
+function allowSend(igUserId: string): boolean { return withinRate(`dm:${igUserId}`, MAX_PER_HOUR); }
 
 async function postMessage(creds: IgCreds, payload: Record<string, unknown>): Promise<IgSendResult> {
   try {
@@ -234,6 +239,11 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
 // ── Public reply under a comment (optional, alongside the private DM) ─────────
 export async function replyToComment(creds: IgCreds, commentId: string, text: string): Promise<{ ok: boolean; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
+  // Pace public replies on their own budget — unbounded identical/rapid replies
+  // are the fastest way to get an account action-blocked.
+  if (!withinRate(`comment:${creds.igUserId}`, MAX_COMMENT_REPLIES_PER_HOUR)) {
+    return { ok: false, error: "Hourly comment-reply cap reached for this account" };
+  }
   try {
     const r = await fetch(`${GRAPH}/${commentId}/replies`, {
       method: "POST",

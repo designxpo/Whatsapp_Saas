@@ -37,20 +37,27 @@ const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", 
 
 type RuleButton = { label: string; url: string };
 const MAX_BUTTONS = 3;
+const MAX_PUBLIC_REPLIES = 5;
 type CommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
-  keyword: string; dmMessage: string; buttons: RuleButton[]; publicReply: string;
+  keyword: string; dmMessage: string; buttons: RuleButton[]; publicReplies: string[];
   requireFollow: boolean; followPrompt: string; matchCount?: number;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
-const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReply: "", requireFollow: false, followPrompt: "" };
+const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], requireFollow: false, followPrompt: "" };
 
 // Rules from the API may arrive with the new `buttons` array or only the legacy
 // single button — normalize to an array so the editor is uniform.
 function ruleButtonsOf(r: { buttons?: RuleButton[]; buttonLabel?: string | null; buttonUrl?: string | null }): RuleButton[] {
   if (Array.isArray(r.buttons) && r.buttons.length) return r.buttons.map(b => ({ label: b.label ?? "", url: b.url ?? "" }));
   if (r.buttonUrl) return [{ label: r.buttonLabel ?? "", url: r.buttonUrl }];
+  return [];
+}
+// Same for the rotating public replies — new array, else the legacy single reply.
+function rulePublicRepliesOf(r: { publicReplies?: string[]; publicReply?: string | null }): string[] {
+  if (Array.isArray(r.publicReplies) && r.publicReplies.length) return r.publicReplies.filter(Boolean);
+  if (r.publicReply) return [r.publicReply];
   return [];
 }
 
@@ -133,9 +140,10 @@ function InstagramManager() {
     const buttons = ruleForm.buttons.filter(b => b.url.trim() || b.label.trim());
     if (buttons.some(b => !b.url.trim())) { setMsg("Add a link for every button (or remove it)"); return; }
     if (buttons.some(b => !/^https?:\/\//i.test(b.url.trim()))) { setMsg("Every button link must start with http:// or https://"); return; }
+    const publicReplies = ruleForm.publicReplies.map(s => s.trim()).filter(Boolean);
     setRuleBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons }) });
+      const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons, publicReplies }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
       else { setRuleForm(null); loadRules(); }
@@ -236,7 +244,7 @@ function InstagramManager() {
                 <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · 🔗 ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · 🔒 follow" : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReply: r.publicReply ?? "", requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
               <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           );
@@ -315,7 +323,26 @@ function InstagramManager() {
                 </button>
               )}
             </div>
-            <input className={`${inp} w-full`} placeholder="Public reply under the comment (optional, e.g. Sent you a DM! 📩)" value={ruleForm.publicReply} onChange={e => setRuleForm({ ...ruleForm, publicReply: e.target.value })} />
+            {/* Rotating public replies — the system picks one at random per comment
+                so replies never look identical (an IG spam/ban signal). */}
+            <div className="space-y-2">
+              <p className="text-[11px] font-semibold text-ink-500">Public reply under the comment (optional) — add a few variants and we rotate them so replies don&apos;t look automated.</p>
+              {ruleForm.publicReplies.map((v, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input className={`${inp} flex-1`} placeholder={`Reply ${i + 1}, e.g. Sent you a DM! 📩`} maxLength={280}
+                    value={v}
+                    onChange={e => { const next = [...ruleForm.publicReplies]; next[i] = e.target.value; setRuleForm({ ...ruleForm, publicReplies: next }); }} />
+                  <button type="button" onClick={() => setRuleForm({ ...ruleForm, publicReplies: ruleForm.publicReplies.filter((_, j) => j !== i) })}
+                    className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Remove reply"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              ))}
+              {ruleForm.publicReplies.length < MAX_PUBLIC_REPLIES && (
+                <button type="button" onClick={() => setRuleForm({ ...ruleForm, publicReplies: [...ruleForm.publicReplies, ""] })}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-dashed border-line text-xs font-bold text-ink-600 hover:bg-canvas">
+                  <Plus className="w-3.5 h-3.5" /> Add reply variant {ruleForm.publicReplies.length ? `(${ruleForm.publicReplies.length}/${MAX_PUBLIC_REPLIES})` : "(optional)"}
+                </button>
+              )}
+            </div>
 
             {/* Follow-to-unlock gate */}
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-2">

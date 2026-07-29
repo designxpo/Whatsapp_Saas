@@ -36,6 +36,11 @@ export async function POST(req: Request) {
   if (buttons.some(b => !/^https?:\/\//i.test(b.url))) {
     return NextResponse.json({ error: "Every button link must start with http(s)://" }, { status: 400 });
   }
+  // Public replies: accept the new array, or the legacy single reply as a fallback.
+  const rawReplies = Array.isArray(body.publicReplies)
+    ? (body.publicReplies as unknown[])
+    : (body.publicReply ? [body.publicReply] : []);
+  const publicReplies = rawReplies.map(v => String(v ?? "").trim().slice(0, 280)).filter(Boolean);
   try {
     const channels = await listChannels(tid);
     const igChannel = channels.find(c => c.kind === "instagram");
@@ -56,7 +61,7 @@ export async function POST(req: Request) {
       keyword: String(body.keyword ?? "").slice(0, 60),
       dmMessage: dmMessage.slice(0, 900),
       buttons: buttons.slice(0, 3),
-      publicReply: String(body.publicReply ?? "").slice(0, 280),
+      publicReplies: publicReplies.slice(0, 5),
       requireFollow: !!body.requireFollow,
       followPrompt: String(body.followPrompt ?? "").slice(0, 640),
     }, tid);

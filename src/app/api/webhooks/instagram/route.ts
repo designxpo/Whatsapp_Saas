@@ -11,7 +11,7 @@ import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within24hWindow, getIgProfile, getFollowStatus, sendTypingOn, type IgCreds, type IgButton } from "@/lib/instagram";
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
-import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, type IgCommentRule } from "@/lib/igcomments";
+import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, pickPublicReply, type IgCommentRule } from "@/lib/igcomments";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 // A user replying to a follow-gate prompt to confirm they followed.
@@ -324,8 +324,11 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   await touchOutbound(conv.id, dmBody);
 
   await bumpRuleMatch(rule.id, rule.matchCount, tid);
-  if (rule.publicReply) {
-    await replyToComment(creds, commentId, rule.publicReply).catch(e => console.error("[ig webhook] public reply", e));
+  // Public reply: pick ONE variant at random so repeated comments never get an
+  // identical reply (identical automated replies are an IG spam/ban signal).
+  const publicReply = pickPublicReply(rule);
+  if (publicReply) {
+    await replyToComment(creds, commentId, publicReply).catch(e => console.error("[ig webhook] public reply", e));
   }
 }
 

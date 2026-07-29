@@ -16,6 +16,9 @@ export interface RuleButton {
   url: string;
 }
 export const MAX_RULE_BUTTONS = 3;
+// Rotating public-reply variants — vary the reply so IG doesn't see identical
+// automated replies (an account-ban signal). Cap keeps the editor manageable.
+export const MAX_PUBLIC_REPLIES = 5;
 
 // Coerce raw jsonb / legacy fields into a clean, capped button list.
 export function normalizeButtons(raw: unknown): RuleButton[] {
@@ -27,6 +30,26 @@ export function normalizeButtons(raw: unknown): RuleButton[] {
     })
     .filter(b => /^https?:\/\//i.test(b.url))
     .slice(0, MAX_RULE_BUTTONS);
+}
+
+// Coerce raw jsonb into a clean, de-duped, capped list of public-reply variants.
+export function normalizePublicReplies(raw: unknown): string[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of arr) {
+    const s = String(v ?? "").trim().slice(0, 280);
+    if (s && !seen.has(s)) { seen.add(s); out.push(s); }
+  }
+  return out.slice(0, MAX_PUBLIC_REPLIES);
+}
+
+// Pick one public reply at random from a rule's variants (falls back to the
+// legacy single reply). Empty when the rule has no public reply configured.
+export function pickPublicReply(rule: Pick<IgCommentRule, "publicReplies" | "publicReply">): string {
+  const list = rule.publicReplies?.length ? rule.publicReplies : (rule.publicReply ? [rule.publicReply] : []);
+  if (!list.length) return "";
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 export interface IgCommentRule {
@@ -44,7 +67,8 @@ export interface IgCommentRule {
   buttons: RuleButton[];
   buttonLabel: string | null;   // legacy mirror of buttons[0] — kept for old readers
   buttonUrl: string | null;     // legacy mirror of buttons[0]
-  publicReply: string | null;
+  publicReplies: string[];      // rotating public-reply variants (picked at random)
+  publicReply: string | null;   // legacy mirror of publicReplies[0]
   requireFollow: boolean;
   followPrompt: string | null;
   matchCount: number;
@@ -58,6 +82,9 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
   const legacyLabel = (r.button_label as string | null) ?? null;
   let buttons = normalizeButtons(r.buttons);
   if (!buttons.length && legacyUrl) buttons = normalizeButtons([{ label: legacyLabel ?? "", url: legacyUrl }]);
+  const legacyReply = (r.public_reply as string | null) ?? null;
+  let publicReplies = normalizePublicReplies(r.public_replies);
+  if (!publicReplies.length && legacyReply) publicReplies = normalizePublicReplies([legacyReply]);
   return {
     id: r.id as string,
     tenantId: r.tenant_id as string,
@@ -73,7 +100,8 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
     buttons,
     buttonLabel: buttons[0]?.label ?? legacyLabel,
     buttonUrl: buttons[0]?.url ?? legacyUrl,
-    publicReply: (r.public_reply as string | null) ?? null,
+    publicReplies,
+    publicReply: publicReplies[0] ?? legacyReply,
     requireFollow: (r.require_follow as boolean) ?? false,
     followPrompt: (r.follow_prompt as string | null) ?? null,
     matchCount: (r.match_count as number) ?? 0,
@@ -100,7 +128,8 @@ export interface CommentRuleInput {
   buttons?: RuleButton[];
   buttonLabel?: string | null;   // legacy single-button input (still accepted)
   buttonUrl?: string | null;
-  publicReply?: string | null;
+  publicReplies?: string[];
+  publicReply?: string | null;   // legacy single-reply input (still accepted)
   requireFollow?: boolean;
   followPrompt?: string | null;
 }
@@ -110,6 +139,8 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   // legacy columns always mirror buttons[0] so old readers keep working.
   let buttons = normalizeButtons(input.buttons);
   if (!buttons.length && input.buttonUrl) buttons = normalizeButtons([{ label: input.buttonLabel ?? "", url: input.buttonUrl }]);
+  let publicReplies = normalizePublicReplies(input.publicReplies);
+  if (!publicReplies.length && input.publicReply) publicReplies = normalizePublicReplies([input.publicReply]);
   const row: Record<string, unknown> = {
     tenant_id: tenantId,
     channel_id: input.channelId ?? null,
@@ -124,7 +155,8 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     buttons,
     button_label: buttons[0]?.label || null,
     button_url: buttons[0]?.url || null,
-    public_reply: input.publicReply?.trim() || null,
+    public_replies: publicReplies,
+    public_reply: publicReplies[0] || null,
     require_follow: input.requireFollow ?? false,
     follow_prompt: input.followPrompt?.trim() || null,
   };
@@ -132,12 +164,16 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     ? db().from("wa_ig_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_ig_comment_rules").insert(r).select().single());
   let { data, error } = await runSave(row);
-  // Tolerant fallback: if migration 0086 (the `buttons` column) isn't applied
-  // yet, retry without it — the legacy button_label/button_url still persist
-  // buttons[0], so single-button rules keep working until the migration lands.
-  if (error && /buttons/i.test(error.message ?? "") && "buttons" in row) {
-    const rest = { ...row }; delete rest.buttons;
-    ({ data, error } = await runSave(rest));
+  // Tolerant fallback: if a jsonb column (migration 0086 `buttons` / 0087
+  // `public_replies`) isn't applied yet, retry without the offending column —
+  // the legacy button_*/public_reply columns still persist variant[0], so
+  // single-value rules keep working until the migration lands. Loop so both
+  // columns can be stripped if neither migration has been applied.
+  const attempt = { ...row };
+  for (let i = 0; i < 2 && error && /\b(buttons|public_replies)\b/i.test(error.message ?? ""); i++) {
+    if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
+    if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
+    ({ data, error } = await runSave(attempt));
   }
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
