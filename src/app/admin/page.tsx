@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star } from "lucide-react";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -252,8 +252,8 @@ export default function Admin() {
           const a = accountState(ent);
           if (a.active) return null;
           return (
-            <div className="shrink-0 px-6 py-2 text-[12px] font-semibold text-center bg-red-50 text-red-700 border-b border-red-200 flex items-center justify-center gap-3">
-              ⚠️ {a.message}
+            <div className="shrink-0 px-6 py-2 text-[12px] font-semibold text-center bg-red-50 text-red-700 border-b border-red-200 flex items-center justify-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {a.message}
               <button onClick={() => setTab("settings")} className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Manage billing</button>
             </div>
           );
@@ -265,13 +265,13 @@ export default function Admin() {
         )}
         {me?.isPlatformOwner && !impersonating && (
           <div className="h-9 shrink-0 bg-brand-50 border-b border-brand-100 flex items-center justify-center gap-3 text-[12px] text-brand-800 font-semibold">
-            🛡️ Owner preview — this is the platform&apos;s default workspace
+<ShieldCheck className="w-3.5 h-3.5" /> Owner preview — this is the platform&apos;s default workspace
             <a href="/admin/owner" className="px-2 py-0.5 rounded-control bg-brand-700 text-white text-[11px] font-bold hover:bg-brand-800">Open Owner Portal</a>
           </div>
         )}
         {impersonating && (
           <div className="h-9 shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-3 text-[12px] text-amber-800 font-semibold">
-            👀 You&apos;re viewing a tenant&apos;s workspace as the owner
+<Eye className="w-3.5 h-3.5" /> You&apos;re viewing a tenant&apos;s workspace as the owner
             <button onClick={exitImpersonation} className="px-2 py-0.5 rounded-control bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700">Exit to Owner Portal</button>
           </div>
         )}
@@ -323,12 +323,12 @@ export default function Admin() {
 // First-login product walkthrough — a short guided tour. Marks the tenant
 // onboarded on finish/skip so it shows once.
 const TOUR_STEPS: { title: string; body: string; tab?: Tab }[] = [
-  { title: "Welcome to Talko AI 👋", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
+  { title: "Welcome to Talko AI", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
   { title: "Connect your channels", body: "Go to Settings to connect a WhatsApp number, and the Instagram section to link an Instagram account. Everything runs from here.", tab: "settings" },
   { title: "Teach the AI", body: "Add your business docs in AI Knowledge Base — the assistant answers customer questions automatically, grounded in your content.", tab: "assistant" },
   { title: "Build chatbot flows", body: "Create drag-and-drop flows for WhatsApp or Instagram, triggered by keywords, comments or ads.", tab: "flows" },
   { title: "Automate follow-ups", body: "Use Sequences for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.", tab: "sequences" },
-  { title: "You're all set 🚀", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
+  { title: "You're all set", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
 ];
 function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => void }) {
   const [i, setI] = useState(0);
@@ -386,7 +386,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
       <div>
-        <h2 className="text-xl font-bold">Welcome 👋</h2>
+        <h2 className="text-xl font-bold">Welcome</h2>
         <p className="text-sm text-slate-500 mt-1">This platform sends WhatsApp broadcasts, and an AI assistant answers replies automatically using your knowledge base. Humans take over anytime from Live Chat.</p>
       </div>
 
@@ -466,7 +466,7 @@ function GroundingRail({ goTo }: { goTo: GoTo }) {
             <button key={f.id} onClick={() => goTo("livechat", { filter: "all" })} className="block w-full text-left rounded-md px-1.5 py-1 hover:bg-canvas">
               <p className="text-[11px] font-semibold text-ink-800 truncate">{f.question || "(reply)"}</p>
               {claims(f.unsupportedClaims).length > 0 && (
-                <p className="text-[10px] text-rose-600 truncate">⚠ {claims(f.unsupportedClaims)[0]}</p>
+                <p className="text-[10px] text-rose-600 truncate"><AlertTriangle className="inline w-3 h-3 mr-0.5 align-[-1px]" />{claims(f.unsupportedClaims)[0]}</p>
               )}
             </button>
           ))}

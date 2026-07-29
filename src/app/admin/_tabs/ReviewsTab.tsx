@@ -179,7 +179,7 @@ export default function ReviewsTab() {
                     <span className="text-sm font-semibold text-ink-900">{r.author || "Anonymous"}</span>
                     {r.locationName && <span className="text-[11px] text-ink-400">· {r.locationName}</span>}
                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meetsAuto ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{meetsAuto ? "auto-post" : "needs approval"}</span>
-                    {r.replyStatus === "posted" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">✓ posted</span>}
+                    {r.replyStatus === "posted" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600"><Check className="w-3 h-3" /> posted</span>}
                   </div>
                   {r.text && <p className="text-sm text-ink-700 mt-1.5 whitespace-pre-wrap">{r.text}</p>}
                 </div>

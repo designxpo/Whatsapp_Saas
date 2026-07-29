@@ -72,7 +72,7 @@ function HandleHubTab() {
             <span className="text-[11px] text-slate-500">Prefilled greeting (what the customer&apos;s first message says)</span>
             <input className={`${inp} w-full mt-1`} placeholder="Hi! I'd like to know more." value={config.greeting} onChange={e => setConfig({ ...config, greeting: e.target.value })} />
           </label>
-          <button onClick={saveConfig} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold">{saved ? "Saved ✓" : "Save entry point"}</button>
+          <button onClick={saveConfig} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold">{saved ? "Saved" : "Save entry point"}</button>
           {!config.number && <p className="text-[11px] text-amber-600">Add your WhatsApp number to generate tracked links + QR codes.</p>}
         </div>
 
@@ -109,7 +109,7 @@ function HandleHubTab() {
                 {s.link
                   ? <div className="flex items-center gap-2 mt-2">
                       <input readOnly value={s.link} className="text-[11px] font-mono bg-slate-50 border border-line rounded px-2 py-1 flex-1 min-w-0 text-slate-600" onFocus={e => e.currentTarget.select()} />
-                      <button onClick={() => copy(s.link!, s.id)} className="text-xs font-bold text-brand-700 hover:underline shrink-0">{copied === s.id ? "Copied ✓" : "Copy"}</button>
+                      <button onClick={() => copy(s.link!, s.id)} className="text-xs font-bold text-brand-700 hover:underline shrink-0">{copied === s.id ? "Copied" : "Copy"}</button>
                     </div>
                   : <p className="text-[11px] text-amber-600 mt-2">Set your number above to activate this link.</p>}
               </div>

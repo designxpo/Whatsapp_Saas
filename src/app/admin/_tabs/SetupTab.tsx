@@ -2,7 +2,7 @@
 
 // Setup & status tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshCw } from "lucide-react";
+import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshCw, X } from "lucide-react";
 import { type Tab } from "../_shared";
 import { MetaDoctor } from "./MetaDoctor";
 
@@ -80,7 +80,7 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
           <span className="font-bold text-ink-900">{doneCount}/{required.length} required steps ready.</span>
           {doneCount < required.length
             ? <span className="text-slate-500"> Finish the items below to go live.</span>
-            : <span className="text-emerald-700"> 🎉 You&apos;re live — customers can message you and the AI will reply.</span>}
+            : <span className="text-emerald-700"> You&apos;re live — customers can message you and the AI will reply.</span>}
         </div>
       )}
 
@@ -110,7 +110,7 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
                 </div>
                 <p className="text-[13px] text-ink-600 mt-0.5">{s.detail}</p>
                 {s.hint && <p className="text-[12px] text-slate-500 mt-1">{s.hint}</p>}
-                {tr && <p className={`text-[12px] mt-1 font-medium ${tr.ok ? "text-emerald-700" : "text-red-600"}`}>{tr.ok ? "✓ " : "✗ "}{tr.detail}</p>}
+                {tr && <p className={`flex items-start gap-1.5 text-[12px] mt-1 font-medium ${tr.ok ? "text-emerald-700" : "text-red-600"}`}>{tr.ok ? <CircleCheck className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />} <span>{tr.detail}</span></p>}
               </div>
             </div>
             <div className="flex items-center gap-2 pl-8">

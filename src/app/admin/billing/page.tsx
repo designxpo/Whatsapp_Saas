@@ -42,7 +42,7 @@ export default function BillingPage() {
 
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get("status");
-    if (s === "success") setBanner("✅ Subscription active — thanks! It may take a few seconds to reflect.");
+    if (s === "success") setBanner("Subscription active — thanks! It may take a few seconds to reflect.");
     if (s === "cancelled") setBanner("Checkout cancelled — no charge was made.");
   }, []);
 
@@ -65,7 +65,7 @@ export default function BillingPage() {
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Could not send request"); return; }
       setRequested(s => new Set(s).add(planKey));
-      setBanner(`✅ Request sent — our team will move you to ${planName} shortly.`);
+      setBanner(`Request sent — our team will move you to ${planName} shortly.`);
     } finally { setBusy(null); }
   }
 
@@ -155,7 +155,7 @@ export default function BillingPage() {
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
                     </button>
                   ) : requested.has(p.key) ? (
-                    <span className="block text-center text-xs font-bold text-emerald-600 py-2">✓ Requested</span>
+                    <span className="flex items-center justify-center gap-1 text-center text-xs font-bold text-emerald-600 py-2"><Check className="w-3.5 h-3.5" /> Requested</span>
                   ) : (
                     <button onClick={() => requestUpgrade(p.key, p.name)} disabled={busy === p.key} className="w-full py-2 rounded-control border border-brand-700 text-brand-700 hover:bg-brand-50 text-xs font-bold flex items-center justify-center gap-1.5">
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Request {p.name}

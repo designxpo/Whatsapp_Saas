@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail, LayoutDashboard, Activity, Megaphone } from "lucide-react";
+import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail, LayoutDashboard, Activity, Megaphone, X } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 import { MetaDoctor } from "../_tabs/MetaDoctor";
 
@@ -363,7 +363,7 @@ export default function OwnerPortal() {
                     {chip("CRM", h.crm.configured)}
                     {chip("IG", h.instagram.configured)}
                     {h.integrations?.active > 0 && (h.integrations.errored > 0
-                      ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Integrations {h.integrations.errored}✕</span>
+                      ? <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600">Integrations {h.integrations.errored} <X className="w-3 h-3" /></span>
                       : chip("Integrations", true, String(h.integrations.active)))}
                   </div>
                 </div>

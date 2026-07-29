@@ -2,7 +2,7 @@
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Check, Instagram, Loader2, MessageCircle, Plus, Trash2, Video } from "lucide-react";
+import { Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { launchInstagramSignup, instagramSignupReady, instagramSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
@@ -255,7 +255,7 @@ function InstagramManager() {
                 : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · 🔗 ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · 🔒 follow" : ""} · {r.matchCount ?? 0} sent</p>
+                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · follow-gated" : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
               <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -284,7 +284,7 @@ function InstagramManager() {
                   : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-                  <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · 💬 {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
+                  <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
                 <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
                 <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -320,8 +320,8 @@ function InstagramManager() {
                 <button type="button" onClick={() => { setRuleForm(null); setPickAccount(true); }} className="text-ink-400 hover:text-ink-900 font-semibold">Change account</button>
               </div>
             )}
-            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${ruleForm.replyOnly ? "bg-violet-100 text-violet-700" : "bg-brand-100 text-brand-700"}`}>
-              {ruleForm.replyOnly ? "💬 Comment reply only — no DM" : "📩 Comment → DM"}
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${ruleForm.replyOnly ? "bg-violet-100 text-violet-700" : "bg-brand-100 text-brand-700"}`}>
+              {ruleForm.replyOnly ? <><MessageCircle className="w-3 h-3" /> Comment reply only — no DM</> : <><Send className="w-3 h-3" /> Comment → DM</>}
             </span>
             <input className={`${inp} w-full`} placeholder="Rule name (internal)" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
             <div>
@@ -403,7 +403,7 @@ function InstagramManager() {
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-2">
               <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer">
                 <input type="checkbox" className="accent-brand-700" checked={ruleForm.requireFollow} onChange={e => setRuleForm({ ...ruleForm, requireFollow: e.target.checked })} />
-                🔒 Require a follow before sending the link
+                <Lock className="w-3.5 h-3.5" /> Require a follow before sending the link
               </label>
               {ruleForm.requireFollow && <>
                 <textarea className={`${inp} w-full`} rows={2} placeholder="Follow prompt, e.g. Almost there! Follow us, then tap “I've followed” to unlock your guide 🎁" value={ruleForm.followPrompt} onChange={e => setRuleForm({ ...ruleForm, followPrompt: e.target.value })} />

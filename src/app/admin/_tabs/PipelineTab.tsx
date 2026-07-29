@@ -3,7 +3,7 @@
 // Sales Pipeline — WhatsApp-native Kanban (stage-on-contact). Extracted as its
 // own lazy-loaded tab. Tenant scoping is handled server-side by the APIs.
 import { useState, useEffect, useCallback } from "react";
-import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink, Check } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
 
 type PStage = { id: string; name: string; position: number; color: string | null; lsqStage: string | null; onEnterTag: string | null; onEnterSequenceId: string | null; isWon: boolean; isLost: boolean };
@@ -162,7 +162,7 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                 className={`w-72 shrink-0 rounded-card border bg-canvas/60 ${overStage === s.id ? "border-brand-600 ring-2 ring-brand-600/30" : "border-line"}`}>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-line">
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: accent }} />
-                  <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.name}{s.isWon && " ✓"}{s.isLost && " ✕"}</p>
+                  <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.name}{s.isWon && <Check className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-emerald-600" />}{s.isLost && <X className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-red-500" />}</p>
                   <span className="text-[11px] font-bold text-ink-400">{list.length}</span>
                   <button onClick={() => setAddTo(a => (a === s.id ? null : s.id))} className="p-0.5 text-ink-400 hover:text-brand-700" title="Add a lead here"><Plus className="w-4 h-4" /></button>
                 </div>

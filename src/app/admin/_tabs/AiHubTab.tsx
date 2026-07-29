@@ -3,7 +3,7 @@
 // AI Hub tab (agents, function-calling, prompts, key) + its sidebar rail —
 // extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2, Zap, Drama } from "lucide-react";
 import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiPromptT, RailCard, StatRow } from "../_shared";
 
 function AiHubRail({ goTo, agents, fns, prompts, autoRoute, tone }: { goTo: (t: Tab) => void; agents: AiAgentT[]; fns: AiFunctionT[]; prompts: AiPromptT[]; autoRoute: boolean | null; tone: boolean | null }) {
@@ -186,12 +186,12 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
         <div className="grid grid-cols-2 gap-2">
           <button onClick={async () => { const d = await fetch("/api/admin/ai/routing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto: !autoRoute }) }).then(r => r.json()); setAutoRoute(d.auto === true); }}
             className={`text-left rounded-control border p-3 transition-colors ${autoRoute ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
-            <p className="text-xs font-bold text-ink-900">⚡ Auto-routing <span className={autoRoute ? "text-brand-700" : "text-slate-400"}>{autoRoute === null ? "…" : autoRoute ? "ON" : "OFF"}</span></p>
+            <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Auto-routing <span className={autoRoute ? "text-brand-700" : "text-slate-400"}>{autoRoute === null ? "…" : autoRoute ? "ON" : "OFF"}</span></p>
             <p className="text-[11px] text-slate-500 mt-0.5">Switch to the right agent automatically based on what the customer asks.</p>
           </button>
           <button onClick={async () => { const d = await fetch("/api/admin/ai/routing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: !tone }) }).then(r => r.json()); setTone(d.tone !== false); }}
             className={`text-left rounded-control border p-3 transition-colors ${tone ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
-            <p className="text-xs font-bold text-ink-900">🎭 Persona tone <span className={tone ? "text-brand-700" : "text-slate-400"}>{tone === null ? "…" : tone ? "ON" : "OFF"}</span></p>
+            <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Drama className="w-3.5 h-3.5" /> Persona tone <span className={tone ? "text-brand-700" : "text-slate-400"}>{tone === null ? "…" : tone ? "ON" : "OFF"}</span></p>
             <p className="text-[11px] text-slate-500 mt-0.5">Instant FAQ &amp; cached answers are rewritten in the agent&apos;s voice before sending.</p>
           </button>
         </div>
@@ -216,7 +216,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           </div>
         ))}
-        {agents.length === 0 && !agentFormOpen && <p className="text-center text-slate-400 text-sm py-4">No agents yet — hit <b>New agent</b>, describe the job in one line, and ✨ Generate writes the personality for you.</p>}
+        {agents.length === 0 && !agentFormOpen && <p className="text-center text-slate-400 text-sm py-4">No agents yet — hit <b>New agent</b>, describe the job in one line, and Generate writes the personality for you.</p>}
         {agentFormOpen && (
         <div className="border-t border-slate-100 pt-3 space-y-3">
           <div className="space-y-1.5">
@@ -225,7 +225,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="flex gap-2">
               <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Their job in one line — e.g. Sales assistant who helps visitors pick the right product for their budget" value={agent.description} onChange={e => setAgent({ ...agent, description: e.target.value })} />
               <button onClick={generatePersona} disabled={busy === "gen" || !agent.description.trim()} className="self-end px-3 py-2 rounded-lg bg-brand-700 text-white text-xs font-bold disabled:opacity-50 shrink-0">
-                {busy === "gen" ? <Loader2 className="w-4 h-4 animate-spin" /> : "✨ Generate"}
+                {busy === "gen" ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Sparkles className="w-4 h-4" /> Generate</>}
               </button>
             </div>
           </div>
@@ -234,7 +234,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             <input className={`${inp} w-full`} placeholder="Topic keywords — e.g. pricing, availability, booking, offers" value={agent.routingKeywords ?? ""} onChange={e => setAgent({ ...agent, routingKeywords: e.target.value })} />
           </div>
           <div className="space-y-1.5">
-            <p className="text-[11px] font-bold text-ink-700">3 · Personality &amp; instructions <span className="font-normal text-slate-400">(✨ Generate fills this — edit freely)</span></p>
+            <p className="text-[11px] font-bold text-ink-700">3 · Personality &amp; instructions <span className="font-normal text-slate-400">(AI Generate fills this — edit freely)</span></p>
             <textarea className={`${inp} w-full resize-none font-mono text-xs`} rows={7} placeholder="Persona & role prompt…" value={agent.persona} onChange={e => setAgent({ ...agent, persona: e.target.value })} />
           </div>
           <details className="rounded-control border border-line px-3 py-2">
@@ -313,14 +313,14 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {sub === "prompts" && <>
       <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-[13px] text-brand-900">
-        Writing tools are <b>one-tap rewrites</b> your team uses on drafts in the Live Chat composer (the ✨ button) — change tone, translate, shorten. Click a sample below to add it.
+        Writing tools are <b>one-tap rewrites</b> your team uses on drafts in the Live Chat composer (the AI-assist button) — change tone, translate, shorten. Click a sample below to add it.
       </div>
 
       {/* Prompts */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase">Your writing tools</p>
-          <p className="text-[11px] text-slate-400 mt-0.5">Available to everyone in the Live Chat composer (✨ button).</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Available to everyone in the Live Chat composer (AI-assist button).</p>
         </div>
         <div className="flex gap-1.5 flex-wrap">
           {[["Friendly tone", "Rewrite the text in a warm, approachable, friendly tone, as if speaking to a friend."], ["Formal tone", "Rewrite the text in a polite, professional, formal tone."], ["Fix spelling & grammar", "Fix all spelling and grammar mistakes in the text without changing its meaning."], ["Translate to Hindi", "Translate the text to conversational Hindi written in Devanagari."], ["Translate to English", "Translate the text to natural English."], ["Shorten", "Rewrite the text to be as short as possible while keeping all key information."]].map(([n, p]) => (

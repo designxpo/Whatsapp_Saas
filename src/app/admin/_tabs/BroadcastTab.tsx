@@ -217,7 +217,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         }),
       });
       const d = await res.json();
-      setTestMsg(res.ok && d.success ? { ok: true, text: `Test sent to ${phone.trim()} ✓ — check the phone.` } : { ok: false, text: d.error || "Test send failed" });
+      setTestMsg(res.ok && d.success ? { ok: true, text: `Test sent to ${phone.trim()} — check the phone.` } : { ok: false, text: d.error || "Test send failed" });
     } catch { setTestMsg({ ok: false, text: "Connection error" }); }
     finally { setTesting(false); }
   }
@@ -327,7 +327,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             <option value="">{approved.length ? "Choose an approved template…" : "No approved templates yet — create one in Templates"}</option>
             {approved.map(t => (
               <option key={`${t.name}-${t.language}`} value={`${t.name}|${t.language}`}>
-                {t.name} · {t.language} · {t.category}{t.components?.some(c => c.type === "HEADER" && c.format === "IMAGE") ? " · 🖼 image" : ""}
+                {t.name} · {t.language} · {t.category}{t.components?.some(c => c.type === "HEADER" && c.format === "IMAGE") ? " · image" : ""}
               </option>
             ))}
             <option value="__manual">Other — type a template name manually…</option>
@@ -680,7 +680,7 @@ function ApiBroadcasting() {
             {tResults.length === 0 && <p className="text-xs text-slate-400">No active rules listen to this event.</p>}
             {tResults.map((r, i) => (
               <div key={i} className={`rounded-lg border px-3 py-2 text-xs ${r.outcome === "dry_run_match" ? "border-brand-100 bg-brand-50" : "border-amber-200 bg-amber-50"}`}>
-                <p className="font-bold text-slate-700">{r.rule} — {r.outcome === "dry_run_match" ? "✓ would send" : `skipped (${r.detail})`}</p>
+                <p className="font-bold text-slate-700">{r.rule} — {r.outcome === "dry_run_match" ? <span className="inline-flex items-center gap-1"><Check className="w-3 h-3" /> would send</span> : `skipped (${r.detail})`}</p>
                 {r.outcome === "dry_run_match" && (
                   <p className="text-slate-500 mt-0.5">
                     at {r.sendAfter ? new Date(r.sendAfter).toLocaleString() : "now"}

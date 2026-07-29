@@ -5,13 +5,13 @@
 // Chat ChatView and the Contacts table, so it lives in its own shared module
 // (its own webpack chunk) rather than inside either tab. Pure relocation.
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database } from "lucide-react";
+import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database, Briefcase, LifeBuoy, Compass, MessageCircle, Ban, Hand, Bot, User, type LucideIcon } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
 
 type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
 type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[] };
 // Category → badge emoji. Priority drives the badge colour (attention signal).
-const CAT_EMOJI: Record<BriefCategory, string> = { sales: "💼", support: "🛟", seeker: "🧭", feedback: "💬", spam: "🚫", general: "👋" };
+const CAT_ICON: Record<BriefCategory, LucideIcon> = { sales: Briefcase, support: LifeBuoy, seeker: Compass, feedback: MessageCircle, spam: Ban, general: Hand };
 const PRIO_STYLE: Record<"high" | "medium" | "low", string> = {
   high: "bg-red-100 text-red-700", medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
 };
@@ -160,8 +160,8 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
               {brief && (
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIO_STYLE[brief.priority]}`}>
-                      {CAT_EMOJI[brief.category]} {brief.categoryLabel.toUpperCase()}
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIO_STYLE[brief.priority]}`}>
+                      {(() => { const I = CAT_ICON[brief.category]; return <I className="w-3 h-3" />; })()} {brief.categoryLabel.toUpperCase()}
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400">{brief.priority} priority</span>
                   </div>
@@ -298,8 +298,12 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
               </div>
               {!p?.conversation ? <p className="text-xs text-slate-400">No conversation yet — they haven&apos;t messaged you, or you haven&apos;t broadcast to them.</p> : (
                 <>
-                  <p className="text-[11px] text-slate-500">
-                    {p.conversation.status === "escalated" ? "🔴 Escalated to a human" : p.conversation.botEnabled ? "🤖 AI is replying" : "👤 Human handling (bot off)"}
+                  <p className="text-[11px] text-slate-500 inline-flex items-center gap-1 flex-wrap">
+                    {p.conversation.status === "escalated"
+                      ? <><span className="inline-block w-2 h-2 rounded-full bg-red-500" /> Escalated to a human</>
+                      : p.conversation.botEnabled
+                        ? <><Bot className="w-3.5 h-3.5" /> AI is replying</>
+                        : <><User className="w-3.5 h-3.5" /> Human handling (bot off)</>}
                     {p.conversation.assignedTo ? ` · assigned to ${p.conversation.assignedTo}` : ""}
                   </p>
                   <div className="border border-line rounded-control divide-y divide-line max-h-44 overflow-y-auto">

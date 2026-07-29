@@ -3,7 +3,7 @@
 // WhatsApp Forms tab (FormsRail + form types + responses + builder) — extracted
 // from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
 import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
@@ -142,7 +142,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       if (!res.ok) { setMsg(d.error || "Failed"); return; }
       if (d.validationErrors?.length) setMsg(`Saved as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`);
       else if (d.publishError) setMsg(`Saved — publishing failed: ${d.publishError}`);
-      else setMsg(d.status === "PUBLISHED" ? "Updated & published ✓" : "Draft updated ✓");
+      else setMsg(d.status === "PUBLISHED" ? "Updated & published" : "Draft updated");
       resetBuilder();
       load();
     } finally { setBusy(null); }
@@ -156,7 +156,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     try {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, rename: next.trim(), channelId }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed ✓"); load(); }
+      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed"); load(); }
     } finally { setBusy(null); }
   }
 
@@ -315,7 +315,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
                         ))}</div>
                       : f.type === "optin"
                         ? <div className="flex items-center gap-1.5 text-[10px] text-ink-400"><span className="inline-block w-3 h-3 border border-line rounded" />{f.label}</div>
-                        : <div className="border border-line rounded-lg px-2 py-1.5 text-[10px] text-ink-400">{f.type === "date" ? "📅 Select date" : f.type === "textarea" ? "Type here…" : `Enter ${f.type}`}</div>}
+                        : <div className="border border-line rounded-lg px-2 py-1.5 text-[10px] text-ink-400">{f.type === "date" ? <span className="inline-flex items-center gap-1"><Calendar className="w-3 h-3" /> Select date</span> : f.type === "textarea" ? "Type here…" : `Enter ${f.type}`}</div>}
                   </div>
                 ))}
                 {!fields.some(f => f.label.trim()) && <p className="text-[10px] text-ink-400 text-center py-4">Add fields to see them here</p>}

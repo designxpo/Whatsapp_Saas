@@ -2,7 +2,7 @@
 
 // Catalog (commerce) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2, MessageSquareText } from "lucide-react";
+import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2, MessageSquareText, Check, X, AlertTriangle } from "lucide-react";
 import { inp, ImageUpload, ImgFallback } from "../_shared";
 import { SegmentedControl } from "@/components/SegmentedControl";
 
@@ -81,7 +81,7 @@ function CatalogTab() {
 
       {view === "orders" ? <OrdersView /> : <>
       {checkoutId && <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">Published a multi-screen checkout flow — id <code className="font-mono">{checkoutId}</code>. Use it in a flow&apos;s “WhatsApp form” node; on submit, the order is created from the contact&apos;s open cart.</p>}
-      {!form && msg && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">⚠ {msg}{/credential|token|WABA|not configured/i.test(msg) ? " — checkout flows need a connected WhatsApp number with WhatsApp Flows access." : ""}</p>}
+      {!form && msg && <p className="flex items-start gap-1.5 text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {msg}{/credential|token|WABA|not configured/i.test(msg) ? " — checkout flows need a connected WhatsApp number with WhatsApp Flows access." : ""}</p>}
 
       {products.map(p => (
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
@@ -224,7 +224,7 @@ function ConfirmTemplateCard() {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-bold text-ink-900">WhatsApp order confirmation</p>
           {approved ? (
-            <p className="text-[12px] text-emerald-800">✓ Live — paid orders auto-send a WhatsApp confirmation, even after the 24-hour window closes.</p>
+            <p className="flex items-start gap-1.5 text-[12px] text-emerald-800"><Check className="w-3.5 h-3.5 shrink-0 mt-0.5" /> Live — paid orders auto-send a WhatsApp confirmation, even after the 24-hour window closes.</p>
           ) : pending ? (
             <p className="text-[12px] text-amber-800">Submitted to Meta — awaiting approval (usually minutes to a few hours). Until then, paid orders send a plain message inside the 24-hour window.</p>
           ) : rejected ? (
@@ -305,7 +305,7 @@ function OrdersView() {
         </div>
       </div>
 
-      {msg && <p className={`text-[12px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+      {msg && <p className={`text-[12px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
 
       {orders === null && <Loader2 className="w-5 h-5 animate-spin text-slate-300" />}
       {orders?.length === 0 && <p className="text-xs text-ink-400 py-6 text-center">No orders {filter ? `with status “${STATUS_LABEL[filter as OrderStatus]}”` : "yet"}. They appear here the moment a customer checks out in chat.</p>}

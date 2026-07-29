@@ -2,7 +2,7 @@
 
 // Sequences (drip) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X, FlaskConical, Send, Zap, RefreshCw, Sparkles } from "lucide-react";
+import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X, FlaskConical, Send, Zap, RefreshCw, Sparkles, AlertTriangle, Clock } from "lucide-react";
 import { inp, ChannelSelect, ImgFallback } from "../_shared";
 
 // ── Sequences (drip) ──────────────────────────────────────────────────────────
@@ -32,11 +32,11 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
           const a = st.action;
           return (
             <div key={i} className="space-y-1.5">
-              <p className="text-center"><span className="text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5">⏱ {fmtDelay(st.delayMinutes)}</span></p>
+              <p className="text-center"><span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5"><Clock className="w-3 h-3" /> {fmtDelay(st.delayMinutes)}</span></p>
               <div className="flex">
                 <div className={`max-w-[85%] px-3 py-2 text-[13px] shadow-sm ${bubble}`}>
                   {a.type === "text" && <p className="whitespace-pre-wrap break-words">{a.text?.trim() || "Empty message…"}</p>}
-                  {a.type === "template" && <><p className="font-semibold break-words">📄 {a.templateName?.trim() || "template"}</p><p className="text-[11px] text-slate-400 mt-0.5">approved template message</p></>}
+                  {a.type === "template" && <><p className="font-semibold break-words"><FileText className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />{a.templateName?.trim() || "template"}</p><p className="text-[11px] text-slate-400 mt-0.5">approved template message</p></>}
                   {a.type === "media" && <>
                     {a.mediaKind === "image" && a.url
                       ? <ImgFallback url={a.url} imgClass="w-40 h-24 object-cover rounded-md" boxClass="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400" icon={<ImageIcon className="w-6 h-6" />} />
@@ -75,7 +75,7 @@ function LeadWelcomePanel() {
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/lead-welcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) }).then(r => r.json());
-      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved ✓"); }
+      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved"); }
     } finally { setBusy(false); }
   }
   if (!cfg) return null;
@@ -127,7 +127,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/stage-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.stage.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
+      else { setDrips(d.drips ?? []); setMsg("Saved"); }
     } finally { setBusy(false); }
   }
 
@@ -301,7 +301,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         {seqId && (
           <select className={`${inp} w-48`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
             <option value="">{contacts.length ? "Pick a contact who messaged you…" : "No contacts on this platform yet"}</option>
-            {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " ✅" : ""}</option>)}
+            {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " (open)" : ""}</option>)}
           </select>
         )}
         <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
@@ -310,7 +310,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
+      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>(open)</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
       {/* Enrollment monitor */}
       <div className="border border-line rounded-control overflow-hidden">
@@ -324,7 +324,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
             <div className="col-span-3 truncate font-mono text-ink-600">{e.phone}<span className="text-ink-300"> · {e.platform === "instagram" ? "IG" : "WA"}</span></div>
             <div className="col-span-2 text-ink-600">#{(e.currentStep ?? 0) + 1}</div>
             <div className="col-span-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${ENR_BADGE[e.status] ?? "bg-slate-100 text-slate-500"}`}>{e.status}</span></div>
-            <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
+            <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="inline-flex items-center gap-1 text-red-600" title={e.lastError}><AlertTriangle className="w-3 h-3 shrink-0" /> {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
           </div>
         ))}
       </div>

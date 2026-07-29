@@ -58,7 +58,7 @@ function SamplePicker({ accept, fileName, uploading, previewUrl, hint, onFile }:
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {previewUrl ? <img src={previewUrl} alt="" className="w-10 h-10 rounded object-cover" /> : <UploadCloud className="w-5 h-5 text-slate-400 shrink-0" />}
       <span className="text-xs text-slate-500 flex-1 truncate">
-        {uploading ? "Uploading sample to Meta…" : fileName ? `✓ ${fileName} — sample uploaded` : hint}
+        {uploading ? "Uploading sample to Meta…" : fileName ? `${fileName} — sample uploaded` : hint}
       </span>
       {uploading && <Loader2 className="w-4 h-4 animate-spin text-slate-400 shrink-0" />}
       <input type="file" accept={accept} className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />

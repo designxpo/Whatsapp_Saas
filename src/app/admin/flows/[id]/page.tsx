@@ -102,7 +102,7 @@ function Shell({ id, type, selected, children, target = true, foot }: {
       {foot && <p className="px-2.5 pb-2 -mt-1 text-[10px] text-ink-400">{foot}</p>}
       {problems.length > 0 && (
         <div className="mx-2 mb-2 rounded-lg bg-red-50 border border-red-100 px-2.5 py-1.5 space-y-0.5">
-          {problems.map((p, i) => <p key={i} className="text-[10px] leading-snug text-red-600">⚠ {p}</p>)}
+          {problems.map((p, i) => <p key={i} className="flex items-start gap-1 text-[10px] leading-snug text-red-600"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> {p}</p>)}
         </div>
       )}
     </div>
@@ -341,8 +341,8 @@ function ConditionNode({ id, type, selected, data }: NodeProps) {
         <option value="equals">equals</option><option value="contains">contains</option>
       </select>
       <input className={inp} placeholder="Value" value={str(data.value)} onChange={e => set({ value: e.target.value })} />
-      <OptionRow id="yes"><p className="text-[10px] font-bold text-brand-600 text-right pr-1">✓ yes</p></OptionRow>
-      <OptionRow id="no"><p className="text-[10px] font-bold text-red-500 text-right pr-1">✗ no</p></OptionRow>
+      <OptionRow id="yes"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-brand-600 pr-1"><Check className="w-3 h-3" /> yes</p></OptionRow>
+      <OptionRow id="no"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-red-500 pr-1"><X className="w-3 h-3" /> no</p></OptionRow>
     </Shell>
   );
 }
@@ -979,7 +979,7 @@ function Editor({ flowId }: { flowId: string }) {
         <button onClick={() => setSimOpen(s => !s)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control text-xs font-bold border whitespace-nowrap transition-colors ${simOpen ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-600 hover:bg-canvas"}`}><FlaskConical className="w-3.5 h-3.5" /> Test</button>
         <button onClick={save} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold whitespace-nowrap disabled:opacity-60 transition-colors">
           {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          {Date.now() - savedAt < 2500 ? "Saved ✓" : "Save"}
+          {Date.now() - savedAt < 2500 ? "Saved" : "Save"}
         </button>
       </header>
 
@@ -1039,7 +1039,7 @@ function Editor({ flowId }: { flowId: string }) {
                       All numbers &amp; accounts
                     </button>
                     {hidden.length > 0 && (
-                      <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug">⚠ Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
+                      <p className="px-2 py-1.5 mt-1 text-[10px] text-amber-700 bg-amber-50 rounded leading-snug flex items-start gap-1"><AlertTriangle className="w-3 h-3 shrink-0 mt-0.5" /> Pinned to {hidden.length} number/account not on the platforms toggled above. Pick “All numbers” to clear.</p>
                     )}
                     <div className="h-px bg-line my-1" />
                     {opts.map(c => {
@@ -1064,9 +1064,9 @@ function Editor({ flowId }: { flowId: string }) {
 
         <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Knowledge</span>
         <select className="border border-line rounded-control px-2 py-1 text-xs bg-white text-ink-900 shrink-0" value={primaryKbTag} onChange={e => setPrimaryKbTag(e.target.value)} title="AI in this flow answers from KB docs with this tag first, then falls back to the default knowledge base. Tag docs in the AI Assistant tab.">
-          <option value="">🧠 Default knowledge</option>
-          {kbTags.map(t => <option key={t} value={t}>🧠 {t} first</option>)}
-          {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>🧠 {primaryKbTag} first</option>}
+          <option value="">Default knowledge</option>
+          {kbTags.map(t => <option key={t} value={t}>{t} first</option>)}
+          {primaryKbTag && !kbTags.includes(primaryKbTag) && <option value={primaryKbTag}>{primaryKbTag} first</option>}
         </select>
       </div>
 

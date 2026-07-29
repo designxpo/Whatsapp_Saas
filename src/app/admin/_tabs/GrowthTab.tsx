@@ -2,7 +2,7 @@
 
 // Growth tools tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Plus, Trash2, TrendingUp, Download, Sparkles } from "lucide-react";
+import { Copy, Plus, Trash2, TrendingUp, Download, Sparkles, Lightbulb } from "lucide-react";
 import { inp } from "../_shared";
 
 // ── Growth tools ──────────────────────────────────────────────────────────────
@@ -108,7 +108,7 @@ function GrowthTab() {
               </div>
             </div>
           ) : (
-            <p className="text-[11px] text-ink-400">💡 Save the tool to generate its shareable link + QR code.</p>
+            <p className="text-[11px] text-ink-400 inline-flex items-center gap-1"><Lightbulb className="w-3.5 h-3.5" /> Save the tool to generate its shareable link + QR code.</p>
           )}
 
           <div className="flex items-center gap-3">

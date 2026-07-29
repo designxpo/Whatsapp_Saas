@@ -2,7 +2,7 @@
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Loader2, Trash2, ArrowLeft } from "lucide-react";
+import { Copy, Loader2, Trash2, ArrowLeft, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
@@ -155,7 +155,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync leads to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
       </div>
 
-      {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+      {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
 
       {newSecret && (
         <div className="bg-amber-50 border border-amber-200 rounded-card p-4 space-y-1.5">
@@ -352,14 +352,14 @@ function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integrat
         <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">Endpoint URL</p>
         <div className="flex items-center gap-2">
           <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={url}>{url}</code>
-          <button onClick={copy} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied ? "✓" : <Copy className="w-3.5 h-3.5" />}</button>
+          <button onClick={copy} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
         </div>
       </div>
       <div className="flex items-center gap-2">
         <input className={`${inp} flex-1`} type="password" placeholder={isStripe ? "Signing secret (whsec_…)" : "Webhook secret"} value={secret} onChange={e => setSecret(e.target.value)} />
         <button onClick={save} disabled={busy || !secret.trim()} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60 shrink-0">{busy ? "Saving…" : i.hasWebhookSecret ? "Rotate" : "Save"}</button>
       </div>
-      {msg && <p className={`text-[11px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? "✓ " : "✗ "}{msg.text}</p>}
+      {msg && <p className={`text-[11px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
     </div>
   );
 }
@@ -401,7 +401,7 @@ function LsqInboundCard() {
           <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide">{row.label}</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 min-w-0 text-[11px] font-mono bg-canvas border border-line rounded px-2 py-1.5 truncate" title={row.v}>{row.v}</code>
-            <button onClick={() => copy(row.v, row.k)} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied === row.k ? "✓" : <Copy className="w-3.5 h-3.5" />}</button>
+            <button onClick={() => copy(row.v, row.k)} className="px-2 py-1.5 rounded-control border border-line text-[10px] font-bold text-ink-600 hover:bg-canvas shrink-0">{copied === row.k ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
           </div>
         </div>
       ))}

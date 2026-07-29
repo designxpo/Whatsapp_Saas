@@ -188,7 +188,7 @@ function AnalyticsTab() {
             {brief && (
               <div className="space-y-3">
                 <div className="flex items-start gap-2">
-                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${healthStyle(brief.health)}`}>{brief.health === "strong" ? "🟢 Strong" : brief.health === "at-risk" ? "🔴 At risk" : "🟡 Steady"}</span>
+                  <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${healthStyle(brief.health)}`}>{brief.health === "strong" ? "Strong" : brief.health === "at-risk" ? "At risk" : "Steady"}</span>
                   <p className="text-sm font-semibold text-ink-900">{brief.headline}</p>
                 </div>
                 <div className="grid md:grid-cols-2 gap-3">

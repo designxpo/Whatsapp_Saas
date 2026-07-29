@@ -4,7 +4,7 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
@@ -513,7 +513,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               : null;
             // Form lifecycle markers render as status cards, not plain bubbles.
             if (m.body === "[form-abandoned]") {
-              return <Fragment key={m.id}>{dateDivider}<div className="flex justify-center"><span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">⚠️ Form not completed</span></div></Fragment>;
+              return <Fragment key={m.id}>{dateDivider}<div className="flex justify-center"><span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1"><AlertTriangle className="w-3 h-3" /> Form not completed</span></div></Fragment>;
             }
             const isComment = m.body.startsWith("[comment] ");
             const commentIsFb = isComment && conv?.platform === "messenger";
@@ -555,7 +555,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                     </div>
                   ) : submitted ? (
                     <div>
-                      <p className="text-[11px] font-bold text-emerald-700 mb-1">✅ Form submitted</p>
+                      <p className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 mb-1"><Check className="w-3 h-3" /> Form submitted</p>
                       <div className="space-y-0.5">
                         {body.slice(7).split(" · ").map((pair, i) => {
                           const idx = pair.indexOf(": ");
@@ -568,7 +568,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                   ) : sentMatch ? (
                     <div>
                       <p className="whitespace-pre-wrap break-words">{linkify(sentMatch[1])}</p>
-                      <p className="mt-1 text-[11px] font-bold text-brand-700">📋 Form sent · {sentMatch[2]}</p>
+                      <p className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-brand-700"><Send className="w-3 h-3" /> Form sent · {sentMatch[2]}</p>
                     </div>
                   ) : (
                     <p className="whitespace-pre-wrap break-words">{linkify(body)}</p>
@@ -590,8 +590,8 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
 
         <div className="px-5 py-3 border-t border-line space-y-2 bg-white">
           {actError && (
-            <p className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">
-              ⚠ {actError}{/Invalid OAuth|access token|credentials not configured/i.test(actError) ? " — WhatsApp (Meta) credentials are not set yet, so messages can't actually send." : ""}
+            <p className="flex items-start gap-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <span>{actError}{/Invalid OAuth|access token|credentials not configured/i.test(actError) ? " — WhatsApp (Meta) credentials are not set yet, so messages can't actually send." : ""}</span>
             </p>
           )}
           {windowClosed && (
@@ -614,7 +614,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             <div className="flex gap-1.5 flex-wrap">
               {aiPrompts.length === 0 && <p className="text-[11px] text-ink-400">No AI prompts yet — add them in the AI Hub tab.</p>}
               {aiPrompts.map(p => (
-                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="px-2 py-1 rounded-full border border-brand-100 text-[11px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40">✨ {p.name}</button>
+                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-brand-100 text-[11px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40"><Sparkles className="w-3 h-3" /> {p.name}</button>
               ))}
             </div>
           )}

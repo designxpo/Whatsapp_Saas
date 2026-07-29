@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
-import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd, Sparkles } from "lucide-react";
+import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd, Sparkles, Target, FlaskConical, Bot, Compass, User, Minus } from "lucide-react";
 import { type Tab, inp, btnPrimary, railLoading, RailCard, StatRow } from "../_shared";
 import AiAdBuilder from "./AiAdBuilder";
 
@@ -1639,7 +1639,7 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
           <label className="flex items-start gap-2.5 rounded-control border border-line p-3 cursor-pointer">
             <input type="checkbox" className="accent-brand-700 mt-0.5" checked={advantageCreative} onChange={e => setAdvantageCreative(e.target.checked)} />
             <div>
-              <p className={lbl}>✨ Advantage+ creative <span className="font-normal text-slate-400">(recommended)</span></p>
+              <p className={lbl}><Sparkles className="w-3.5 h-3.5 inline-block align-middle mr-1" />Advantage+ creative <span className="font-normal text-slate-400">(recommended)</span></p>
               <p className="text-[11px] text-slate-400">Let Meta auto-fit your creative to every placement &amp; format (Feed, Story, Reels…) and apply AI enhancements — brightness/contrast, text variations, image templates, music. You keep your originals; Meta shows whichever performs best per person.</p>
             </div>
           </label>
@@ -1648,17 +1648,17 @@ function CreateAdBuilder({ currency, hasPage, campaigns = [], onClose, onCreated
         {step === 5 && <>
           <div className="bg-canvas rounded-control p-3 space-y-1 text-xs">
             <p><b className="text-ink-900">{name}</b> · {CONVERSION_LOCATIONS.find(c => c.key === destination)?.label}{destination === "WEBSITE" && pixelId ? ` (${PIXEL_EVENTS.find(e => e[0] === conversionEvent)?.[1]})` : ""}{specialCats.length ? ` · ${specialCats.length} special category` : ""}</p>
-            <p className="text-slate-500">🎯 {OBJECTIVES.find(o => o.key === objective)?.label} · {budgetLevel === "campaign" ? "CBO" : "ABO"} · {sym}{budget} {budgetType === "lifetime" ? `total until ${endDate || "—"}` : "/day"} · {BID_STRATEGIES.find(b => b.key === bidStrategy)?.label}</p>
-            <p className="text-slate-500">📍 {locations.map(l => l.kind === "radius" ? `${l.name} (${l.radius ?? 10}km)` : l.name).join(", ") || "—"} · age {ageMin}–{ageMax} · {gender}{interests.length ? ` · ${interests.map(i => i.name).join(", ")}` : ""}{languages.length ? ` · ${languages.map(l => l.name).join(", ")}` : ""}{includeAuds.length ? ` · +${includeAuds.length} audience` : ""}{excludeAuds.length ? ` · −${excludeAuds.length} excluded` : ""}{advantage && !includeAuds.length ? " · Advantage+" : ""} · {placements === "manual" ? platforms.join(", ") : "auto placements"}</p>
-            <p className="text-slate-500">🖼 {creativeFormat === "video" ? (videoId ? `Video · ${videoName}` : "no video") : creativeFormat === "carousel" ? `Carousel · ${cards.filter(c => c.imageHash).length}/${cards.length} cards ready` : (imageHash ? imageName : "no image")} · “{headline}”{description ? ` · ${description}` : ""}</p>
-            {extraCreatives.length > 0 && <p className="text-slate-500">🧪 {extraCreatives.length + 1} creatives → {extraCreatives.length + 1} ads in one ad set (Meta rotates + optimises)</p>}
-            {advantageCreative && <p className="text-slate-500">✨ Advantage+ creative on — Meta auto-fits &amp; enhances per placement</p>}
+            <p className="text-slate-500"><Target className="w-3.5 h-3.5 inline-block align-middle mr-1" />{OBJECTIVES.find(o => o.key === objective)?.label} · {budgetLevel === "campaign" ? "CBO" : "ABO"} · {sym}{budget} {budgetType === "lifetime" ? `total until ${endDate || "—"}` : "/day"} · {BID_STRATEGIES.find(b => b.key === bidStrategy)?.label}</p>
+            <p className="text-slate-500"><MapPin className="w-3.5 h-3.5 inline-block align-middle mr-1" />{locations.map(l => l.kind === "radius" ? `${l.name} (${l.radius ?? 10}km)` : l.name).join(", ") || "—"} · age {ageMin}–{ageMax} · {gender}{interests.length ? ` · ${interests.map(i => i.name).join(", ")}` : ""}{languages.length ? ` · ${languages.map(l => l.name).join(", ")}` : ""}{includeAuds.length ? ` · +${includeAuds.length} audience` : ""}{excludeAuds.length ? ` · −${excludeAuds.length} excluded` : ""}{advantage && !includeAuds.length ? " · Advantage+" : ""} · {placements === "manual" ? platforms.join(", ") : "auto placements"}</p>
+            <p className="text-slate-500"><ImageIcon className="w-3.5 h-3.5 inline-block align-middle mr-1" />{creativeFormat === "video" ? (videoId ? `Video · ${videoName}` : "no video") : creativeFormat === "carousel" ? `Carousel · ${cards.filter(c => c.imageHash).length}/${cards.length} cards ready` : (imageHash ? imageName : "no image")} · “{headline}”{description ? ` · ${description}` : ""}</p>
+            {extraCreatives.length > 0 && <p className="text-slate-500"><FlaskConical className="w-3.5 h-3.5 inline-block align-middle mr-1" />{extraCreatives.length + 1} creatives → {extraCreatives.length + 1} ads in one ad set (Meta rotates + optimises)</p>}
+            {advantageCreative && <p className="text-slate-500"><Sparkles className="w-3.5 h-3.5 inline-block align-middle mr-1" />Advantage+ creative on — Meta auto-fits &amp; enhances per placement</p>}
             <p className="text-slate-500 line-clamp-2">{primaryText}</p>
           </div>
 
           {destination === "WHATSAPP" && (
             <div className="rounded-control border border-line p-3 space-y-2">
-              <p className={lbl}>🤖 Auto-start a chatbot flow <span className="font-normal text-slate-400">(optional)</span></p>
+              <p className={lbl}><Bot className="w-3.5 h-3.5 inline-block align-middle mr-1" />Auto-start a chatbot flow <span className="font-normal text-slate-400">(optional)</span></p>
               <p className="text-[11px] text-slate-500">When a lead messages from this ad, run a flow automatically — no keyword needed. Off-script replies still fall through to the AI.</p>
               <select className={`${inp} w-full`} value={flowId} onChange={e => setFlowId(e.target.value)}>
                 <option value="">No flow — AI / keyword handles it</option>
@@ -1769,12 +1769,12 @@ function AudienceDefinition({ estimate, loading, err, locations, ageMin, ageMax,
       </div>
 
       <div className="border-t border-line pt-2.5 space-y-0.5 text-[11px] text-slate-500">
-        <p>📍 {locations.filter(l => l.kind === "country").map(l => l.name).join(", ") || "—"}</p>
-        {locations.some(l => l.kind === "radius") && <p>🧭 {locations.filter(l => l.kind === "radius").map(l => `${l.name} (${l.radius ?? 10}km)`).join(", ")}</p>}
-        <p>👤 Age {ageMin}–{ageMax} · {gender}{languages.length ? ` · ${languages.map(l => l.name).join(", ")}` : ""}</p>
-        {interests.length > 0 && <p>🎯 {interests.map(i => i.name).join(", ")}</p>}
-        {includeAuds.length > 0 && <p>➕ {includeAuds.length} custom audience{includeAuds.length > 1 ? "s" : ""}</p>}
-        {excludeAuds.length > 0 && <p>➖ {excludeAuds.length} excluded</p>}
+        <p><MapPin className="w-3.5 h-3.5 inline-block align-middle mr-1" />{locations.filter(l => l.kind === "country").map(l => l.name).join(", ") || "—"}</p>
+        {locations.some(l => l.kind === "radius") && <p><Compass className="w-3.5 h-3.5 inline-block align-middle mr-1" />{locations.filter(l => l.kind === "radius").map(l => `${l.name} (${l.radius ?? 10}km)`).join(", ")}</p>}
+        <p><User className="w-3.5 h-3.5 inline-block align-middle mr-1" />Age {ageMin}–{ageMax} · {gender}{languages.length ? ` · ${languages.map(l => l.name).join(", ")}` : ""}</p>
+        {interests.length > 0 && <p><Target className="w-3.5 h-3.5 inline-block align-middle mr-1" />{interests.map(i => i.name).join(", ")}</p>}
+        {includeAuds.length > 0 && <p><Plus className="w-3.5 h-3.5 inline-block align-middle mr-1" />{includeAuds.length} custom audience{includeAuds.length > 1 ? "s" : ""}</p>}
+        {excludeAuds.length > 0 && <p><Minus className="w-3.5 h-3.5 inline-block align-middle mr-1" />{excludeAuds.length} excluded</p>}
       </div>
     </div>
   );
@@ -1938,7 +1938,7 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
         <div className="rounded-lg border border-line overflow-hidden bg-white">
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-brand-700" />
-            <div className="min-w-0 flex-1"><p className="text-xs font-bold text-ink-900 leading-tight">Your Page</p><p className="text-[9px] text-slate-400">Sponsored · 🌐</p></div>
+            <div className="min-w-0 flex-1"><p className="text-xs font-bold text-ink-900 leading-tight">Your Page</p><p className="text-[9px] text-slate-400">Sponsored · <Globe className="w-2.5 h-2.5 inline-block align-middle" /></p></div>
             <MoreHorizontal className="w-4 h-4 text-ink-500" />
           </div>
           <p className="text-[11px] text-ink-800 px-2.5 pb-2 whitespace-pre-wrap line-clamp-4">{primaryText || "Your primary text appears here — the hook that makes people stop scrolling."}</p>
