@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save } from "lucide-react";
+import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 import { MetaDoctor } from "../_tabs/MetaDoctor";
 
@@ -25,6 +25,15 @@ type TenantHealthRow = {
   ai: { configured: boolean }; kb: { ready: number; total: number }; crm: { configured: boolean };
   integrations: { active: number; errored: number };
 };
+type WaitlistRow = {
+  id: string; name: string; email: string; phone: string | null; company: string | null;
+  plan: string | null; channels: string[]; message: string | null; status: string; createdAt: string;
+};
+const WAITLIST_STATUSES = ["new", "contacted", "converted", "archived"];
+const WAITLIST_BADGE: Record<string, string> = {
+  new: "bg-brand-100 text-brand-700", contacted: "bg-amber-100 text-amber-700",
+  converted: "bg-emerald-100 text-emerald-700", archived: "bg-slate-100 text-slate-500",
+};
 const STATUSES = ["active", "trialing", "suspended", "cancelled"];
 const PLAN_FALLBACK = ["trial", "creator", "creator-pro", "starter", "growth", "scale"];
 const PAYMENTS = ["trialing", "active", "past_due", "cancelled", "none"];
@@ -44,6 +53,7 @@ export default function OwnerPortal() {
   const [flags, setFlags] = useState<{ key: string; enabled: boolean; description: string | null }[]>([]);
   const [analytics, setAnalytics] = useState<{ newThisMonth: number; trialsEndingSoon: number; signupsByDay: { date: string; count: number }[] } | null>(null);
   const [health, setHealth] = useState<TenantHealthRow[]>([]);
+  const [waitlist, setWaitlist] = useState<WaitlistRow[]>([]);
   const [q, setQ] = useState("");
   // Editable plan→feature matrix (synced from plans; saved back per plan).
   const [matrix, setMatrix] = useState<Record<string, Record<string, boolean>>>({});
@@ -59,7 +69,18 @@ export default function OwnerPortal() {
     fetch("/api/owner/flags").then(r => r.json()).then(f => setFlags(f.flags ?? [])).catch(() => {});
     fetch("/api/owner/analytics").then(r => r.json()).then(a => setAnalytics(a.analytics ?? null)).catch(() => {});
     fetch("/api/owner/health").then(r => r.json()).then(h => setHealth(h.tenants ?? [])).catch(() => {});
+    fetch("/api/owner/waitlist").then(r => r.json()).then(w => setWaitlist(w.entries ?? [])).catch(() => {});
   }, []);
+
+  async function setWaitlistStatus(id: string, status: string) {
+    setWaitlist(ws => ws.map(w => (w.id === id ? { ...w, status } : w)));   // optimistic
+    await fetch("/api/owner/waitlist", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) }).catch(() => {});
+  }
+  async function delWaitlist(id: string) {
+    if (!confirm("Delete this waitlist submission?")) return;
+    setWaitlist(ws => ws.filter(w => w.id !== id));
+    await fetch("/api/owner/waitlist", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+  }
   async function toggleFlag(key: string, enabled: boolean) {
     setFlags(fs => fs.map(f => f.key === key ? { ...f, enabled } : f));
     await fetch("/api/owner/flags", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, enabled }) }).catch(() => {});
@@ -179,6 +200,49 @@ export default function OwnerPortal() {
             {planMix.map(p => <span key={p.key}>{p.name}: <b className="text-ink-800">{p.count}</b></span>)}
           </div>
         )}
+
+        {/* Pre-launch waitlist / interest submissions from the marketing site. */}
+        <div className="bg-white rounded-card border border-line p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Inbox className="w-3.5 h-3.5" /> Waitlist &amp; interest</p>
+            <div className="flex items-center gap-3 text-[11px] text-ink-500">
+              {WAITLIST_STATUSES.map(s => {
+                const n = waitlist.filter(w => w.status === s).length;
+                return <span key={s} className="capitalize">{s}: <b className="text-ink-800">{n}</b></span>;
+              })}
+            </div>
+          </div>
+          {!waitlist.length && <p className="text-xs text-ink-400">No submissions yet. They&apos;ll appear here the moment someone joins the waitlist on the marketing site.</p>}
+          {waitlist.length > 0 && (
+            <div className="space-y-2">
+              {waitlist.map(w => (
+                <div key={w.id} className="border border-line rounded-control px-3 py-2.5 flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-ink-900 truncate">{w.name || "—"}</span>
+                      {w.company && <span className="text-[11px] text-ink-400">· {w.company}</span>}
+                      {w.plan && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{w.plan}</span>}
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full capitalize ${WAITLIST_BADGE[w.status] ?? "bg-slate-100 text-slate-500"}`}>{w.status}</span>
+                    </div>
+                    <p className="text-[11px] text-ink-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                      <a href={`mailto:${w.email}`} className="inline-flex items-center gap-1 font-mono text-brand-700 hover:underline"><Mail className="w-3 h-3" />{w.email}</a>
+                      {w.phone && <span className="font-mono">{w.phone}</span>}
+                      <span className="text-ink-400">· {w.createdAt.slice(0, 16).replace("T", " ")}</span>
+                    </p>
+                    {w.channels.length > 0 && <p className="text-[11px] text-ink-400 mt-1">Channels: {w.channels.join(", ")}</p>}
+                    {w.message && <p className="text-[11px] text-ink-600 mt-1 bg-canvas rounded px-2 py-1 whitespace-pre-wrap">{w.message}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <select value={w.status} onChange={e => setWaitlistStatus(w.id, e.target.value)} className={inp} title="Move through the pipeline">
+                      {WAITLIST_STATUSES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
+                    </select>
+                    <button onClick={() => delWaitlist(w.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Platform-level Meta diagnostics — env + live Graph credential check. */}
         <MetaDoctor />
