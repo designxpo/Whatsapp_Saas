@@ -24,8 +24,9 @@ export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
+  const replyOnly = !!body.replyOnly;
   const dmMessage = String(body.dmMessage ?? "").trim();
-  if (!dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
+  if (!replyOnly && !dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
   // Buttons: accept the new array, or the legacy single button as a fallback.
   const rawButtons = Array.isArray(body.buttons)
     ? (body.buttons as unknown[])
@@ -41,6 +42,7 @@ export async function POST(req: Request) {
     ? (body.publicReplies as unknown[])
     : (body.publicReply ? [body.publicReply] : []);
   const publicReplies = rawReplies.map(v => String(v ?? "").trim().slice(0, 280)).filter(Boolean);
+  if (replyOnly && !publicReplies.length) return NextResponse.json({ error: "Add at least one public reply for a reply-only rule" }, { status: 400 });
   try {
     const channels = await listChannels(tid);
     const igChannel = channels.find(c => c.kind === "instagram");
@@ -62,6 +64,7 @@ export async function POST(req: Request) {
       dmMessage: dmMessage.slice(0, 900),
       buttons: buttons.slice(0, 3),
       publicReplies: publicReplies.slice(0, 5),
+      replyOnly,
       requireFollow: !!body.requireFollow,
       followPrompt: String(body.followPrompt ?? "").slice(0, 640),
     }, tid);

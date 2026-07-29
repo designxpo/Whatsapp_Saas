@@ -308,6 +308,19 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
 
+  // Reply-only rule: post a public reply (rotated) and send NO DM at all.
+  if (rule.replyOnly) {
+    const publicReply = pickPublicReply(rule);
+    if (publicReply) {
+      const res = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const }; });
+      if (res.ok) {
+        await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
+        await bumpRuleMatch(rule.id, rule.matchCount, tid);
+      }
+    }
+    return;
+  }
+
   const followGate = rule.requireFollow && (await getFollowStatus(creds, fromId)) !== true;
   const dmBody = followGate ? followPromptText(rule) : rule.dmMessage;
   let sent;

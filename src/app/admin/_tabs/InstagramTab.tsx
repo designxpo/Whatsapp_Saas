@@ -42,10 +42,10 @@ type CommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
   keyword: string; dmMessage: string; buttons: RuleButton[]; publicReplies: string[];
-  requireFollow: boolean; followPrompt: string; matchCount?: number;
+  replyOnly: boolean; requireFollow: boolean; followPrompt: string; matchCount?: number;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
-const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], requireFollow: false, followPrompt: "" };
+const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, requireFollow: false, followPrompt: "" };
 
 // Rules from the API may arrive with the new `buttons` array or only the legacy
 // single button — normalize to an array so the editor is uniform.
@@ -73,6 +73,8 @@ function InstagramManager() {
   const [posts, setPosts] = useState<IgPost[]>([]);
   const [ruleForm, setRuleForm] = useState<CommentRule | null>(null);
   const [pickAccount, setPickAccount] = useState(false);
+  // Which mode the "New…" flow is creating (carried through the account picker).
+  const [pendingReplyOnly, setPendingReplyOnly] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
   const loadRules = useCallback(() => { fetch("/api/admin/ig-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
 
@@ -135,12 +137,24 @@ function InstagramManager() {
 
   async function saveRule() {
     if (!ruleForm) return;
+    const publicReplies = ruleForm.publicReplies.map(s => s.trim()).filter(Boolean);
+    // Reply-only rules: no DM/buttons, but need at least one public reply.
+    if (ruleForm.replyOnly) {
+      if (!publicReplies.length) { setMsg("Add at least one public reply"); return; }
+      setRuleBusy(true); setMsg(null);
+      try {
+        const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons: [], publicReplies }) });
+        const d = await res.json();
+        if (!res.ok) setMsg(d.error || "Save failed");
+        else { setRuleForm(null); loadRules(); }
+      } finally { setRuleBusy(false); }
+      return;
+    }
     if (!ruleForm.dmMessage.trim()) { setMsg("DM message is required"); return; }
     // Drop blank rows; a button that has a label but no link is a mistake.
     const buttons = ruleForm.buttons.filter(b => b.url.trim() || b.label.trim());
     if (buttons.some(b => !b.url.trim())) { setMsg("Add a link for every button (or remove it)"); return; }
     if (buttons.some(b => !/^https?:\/\//i.test(b.url.trim()))) { setMsg("Every button link must start with http:// or https://"); return; }
-    const publicReplies = ruleForm.publicReplies.map(s => s.trim()).filter(Boolean);
     setRuleBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons, publicReplies }) });
@@ -227,11 +241,11 @@ function InstagramManager() {
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
-          <button onClick={() => { setMsg(null); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
+          <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: false, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
         <p className="text-[11px] text-ink-400">When someone comments, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keyword, attach a link button, and optionally require a follow first — like ManyChat.</p>
 
-        {rules.map(r => {
+        {rules.filter(r => !r.replyOnly).map(r => {
           const post = posts.find(p => p.id === r.postId);
           const thumb = r.postThumbnail || post?.thumbnail;
           return (
@@ -249,7 +263,37 @@ function InstagramManager() {
             </div>
           );
         })}
-        {!rules.length && !ruleForm && !pickAccount && <p className="text-xs text-ink-400">No comment rules yet — create one to turn post comments into DMs.</p>}
+        {!rules.some(r => !r.replyOnly) && !ruleForm && !pickAccount && <p className="text-xs text-ink-400">No comment-to-DM rules yet — create one to turn post comments into DMs.</p>}
+
+        {/* Comment-reply-only automation — posts a public reply, never a DM. */}
+        <div className="border-t border-line pt-3 mt-1 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment reply automation <span className="text-[10px] font-bold text-violet-600 normal-case">· public reply, no DM</span></p>
+            <button onClick={() => { setMsg(null); setPendingReplyOnly(true); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: true, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New reply rule</button>
+          </div>
+          <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment — no DM is sent. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip Instagram&apos;s spam filters. Target a post or all posts, and gate by keyword.</p>
+
+          {rules.filter(r => r.replyOnly).map(r => {
+            const post = posts.find(p => p.id === r.postId);
+            const thumb = r.postThumbnail || post?.thumbnail;
+            const nReplies = rulePublicRepliesOf(r).length;
+            return (
+              <div key={r.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+                {thumb
+                  ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                  : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                  <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · 💬 {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
+                </div>
+                <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
+                <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+                <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+              </div>
+            );
+          })}
+          {!rules.some(r => r.replyOnly) && !ruleForm && !pickAccount && <p className="text-xs text-ink-400">No comment-reply rules yet — create one to auto-reply publicly under comments (no DM).</p>}
+        </div>
 
         {/* Step 1: pick the Instagram account so posts are never mixed across accounts. */}
         {pickAccount && (
@@ -257,7 +301,7 @@ function InstagramManager() {
             <p className="text-xs font-bold text-ink-700">Which Instagram account is this rule for?</p>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {channels.map(c => (
-                <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_RULE, channelId: c.id }); setPickAccount(false); }}
+                <button key={c.id} type="button" onClick={() => { setRuleForm({ ...BLANK_RULE, replyOnly: pendingReplyOnly, channelId: c.id }); setPickAccount(false); }}
                   className="flex items-center gap-2 border border-line rounded-control px-3 py-2 text-left hover:border-pink-500 hover:bg-pink-50 transition-colors">
                   <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
                   <div className="min-w-0"><p className="text-sm font-semibold text-ink-900 truncate">{c.name}</p><p className="text-[10px] text-ink-400 font-mono truncate">{c.igUserId}</p></div>
@@ -276,6 +320,9 @@ function InstagramManager() {
                 <button type="button" onClick={() => { setRuleForm(null); setPickAccount(true); }} className="text-ink-400 hover:text-ink-900 font-semibold">Change account</button>
               </div>
             )}
+            <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${ruleForm.replyOnly ? "bg-violet-100 text-violet-700" : "bg-brand-100 text-brand-700"}`}>
+              {ruleForm.replyOnly ? "💬 Comment reply only — no DM" : "📩 Comment → DM"}
+            </span>
             <input className={`${inp} w-full`} placeholder="Rule name (internal)" value={ruleForm.name} onChange={e => setRuleForm({ ...ruleForm, name: e.target.value })} />
             <div>
               <p className="text-[11px] font-bold text-ink-500 mb-1.5">Target post {channels.length > 1 && ruleForm.channelId && <span className="text-ink-400 font-normal">· {channels.find(c => c.id === ruleForm.channelId)?.name}</span>}</p>
@@ -301,8 +348,11 @@ function InstagramManager() {
               {!posts.length && <p className="text-[11px] text-amber-600 mt-1.5">No posts loaded — token needs comment/media permissions. You can still create an &ldquo;All&rdquo; rule.</p>}
             </div>
             <input className={`${inp} w-full`} placeholder="Trigger keyword (optional — blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
+            {!ruleForm.replyOnly && (
             <textarea className={`${inp} w-full`} rows={2} placeholder="DM message, e.g. Thanks for commenting! Here's your guide 📄" value={ruleForm.dmMessage} onChange={e => setRuleForm({ ...ruleForm, dmMessage: e.target.value })} />
+            )}
             {/* Link buttons — up to 3, shown as tappable buttons under the DM */}
+            {!ruleForm.replyOnly && (
             <div className="space-y-2">
               {ruleForm.buttons.map((b, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -323,10 +373,11 @@ function InstagramManager() {
                 </button>
               )}
             </div>
+            )}
             {/* Rotating public replies — the system picks one at random per comment
                 so replies never look identical (an IG spam/ban signal). */}
             <div className="space-y-2">
-              <p className="text-[11px] font-semibold text-ink-500">Public reply under the comment (optional) — add a few variants and we rotate them so replies don&apos;t look automated.</p>
+              <p className="text-[11px] font-semibold text-ink-500">{ruleForm.replyOnly ? "Public replies — add a few variants and we rotate them at random on each comment (keeps replies natural, avoids spam flags)." : "Public reply under the comment (optional) — add a few variants and we rotate them so replies don't look automated."}</p>
               {ruleForm.publicReplies.map((v, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <input className={`${inp} flex-1`} placeholder={`Reply ${i + 1}, e.g. Sent you a DM! 📩`} maxLength={280}
@@ -344,7 +395,8 @@ function InstagramManager() {
               )}
             </div>
 
-            {/* Follow-to-unlock gate */}
+            {/* Follow-to-unlock gate (DM rules only — a reply-only rule sends no link) */}
+            {!ruleForm.replyOnly && (
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-2">
               <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer">
                 <input type="checkbox" className="accent-brand-700" checked={ruleForm.requireFollow} onChange={e => setRuleForm({ ...ruleForm, requireFollow: e.target.checked })} />
@@ -355,6 +407,7 @@ function InstagramManager() {
                 <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I’ve followed ✅” button. On tap we re-check the follow, then send the link. Verified blocking needs Meta App Review (<code className="font-mono">is_user_follow_business</code>); until then we trust the tap.</p>
               </>}
             </div>
+            )}
 
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} /> enabled</label>

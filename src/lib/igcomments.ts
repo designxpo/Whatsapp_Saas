@@ -69,6 +69,7 @@ export interface IgCommentRule {
   buttonUrl: string | null;     // legacy mirror of buttons[0]
   publicReplies: string[];      // rotating public-reply variants (picked at random)
   publicReply: string | null;   // legacy mirror of publicReplies[0]
+  replyOnly: boolean;           // true → post a public reply only, never DM
   requireFollow: boolean;
   followPrompt: string | null;
   matchCount: number;
@@ -102,6 +103,7 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
     buttonUrl: buttons[0]?.url ?? legacyUrl,
     publicReplies,
     publicReply: publicReplies[0] ?? legacyReply,
+    replyOnly: (r.reply_only as boolean) ?? false,
     requireFollow: (r.require_follow as boolean) ?? false,
     followPrompt: (r.follow_prompt as string | null) ?? null,
     matchCount: (r.match_count as number) ?? 0,
@@ -124,12 +126,13 @@ export interface CommentRuleInput {
   postPermalink?: string | null;
   postThumbnail?: string | null;
   keyword?: string | null;
-  dmMessage: string;
+  dmMessage?: string;            // optional when replyOnly
   buttons?: RuleButton[];
   buttonLabel?: string | null;   // legacy single-button input (still accepted)
   buttonUrl?: string | null;
   publicReplies?: string[];
   publicReply?: string | null;   // legacy single-reply input (still accepted)
+  replyOnly?: boolean;
   requireFollow?: boolean;
   followPrompt?: string | null;
 }
@@ -141,6 +144,7 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   if (!buttons.length && input.buttonUrl) buttons = normalizeButtons([{ label: input.buttonLabel ?? "", url: input.buttonUrl }]);
   let publicReplies = normalizePublicReplies(input.publicReplies);
   if (!publicReplies.length && input.publicReply) publicReplies = normalizePublicReplies([input.publicReply]);
+  const replyOnly = !!input.replyOnly;
   const row: Record<string, unknown> = {
     tenant_id: tenantId,
     channel_id: input.channelId ?? null,
@@ -151,28 +155,30 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     post_permalink: input.postPermalink ?? null,
     post_thumbnail: input.postThumbnail ?? null,
     keyword: input.keyword?.trim() || null,
-    dm_message: input.dmMessage.trim(),
-    buttons,
-    button_label: buttons[0]?.label || null,
-    button_url: buttons[0]?.url || null,
+    // Reply-only rules carry no DM; keep the column non-null with "".
+    dm_message: replyOnly ? "" : (input.dmMessage ?? "").trim(),
+    buttons: replyOnly ? [] : buttons,
+    button_label: replyOnly ? null : (buttons[0]?.label || null),
+    button_url: replyOnly ? null : (buttons[0]?.url || null),
     public_replies: publicReplies,
     public_reply: publicReplies[0] || null,
-    require_follow: input.requireFollow ?? false,
-    follow_prompt: input.followPrompt?.trim() || null,
+    reply_only: replyOnly,
+    require_follow: replyOnly ? false : (input.requireFollow ?? false),
+    follow_prompt: replyOnly ? null : (input.followPrompt?.trim() || null),
   };
   const runSave = (r: Record<string, unknown>) => (input.id
     ? db().from("wa_ig_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_ig_comment_rules").insert(r).select().single());
   let { data, error } = await runSave(row);
-  // Tolerant fallback: if a jsonb column (migration 0086 `buttons` / 0087
-  // `public_replies`) isn't applied yet, retry without the offending column —
-  // the legacy button_*/public_reply columns still persist variant[0], so
-  // single-value rules keep working until the migration lands. Loop so both
-  // columns can be stripped if neither migration has been applied.
+  // Tolerant fallback: if a newer column (0086 `buttons` / 0087 `public_replies`
+  // / 0088 `reply_only`) isn't applied yet, retry without the offending column —
+  // the legacy columns still persist variant[0], so rules keep working until the
+  // migration lands. Loop so every missing column can be stripped in turn.
   const attempt = { ...row };
-  for (let i = 0; i < 2 && error && /\b(buttons|public_replies)\b/i.test(error.message ?? ""); i++) {
+  for (let i = 0; i < 3 && error && /\b(buttons|public_replies|reply_only)\b/i.test(error.message ?? ""); i++) {
     if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
     if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
+    if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;
     ({ data, error } = await runSave(attempt));
   }
   if (error) throw error;
@@ -193,7 +199,9 @@ export async function getCommentRule(id: string, tenantId: string): Promise<IgCo
 // rules win over any-account; specific-post over all-posts; keyword over
 // catch-all. Returns null when nothing matches (anti-spam default).
 export async function matchCommentRule(text: string, mediaId: string | null, tenantId: string, channelId?: string | null): Promise<IgCommentRule | null> {
-  const rules = (await listCommentRules(tenantId)).filter(r => r.enabled && r.dmMessage);
+  // A rule is actionable if it can either send a DM, or (reply-only) post a
+  // public reply. Reply-only rules carry no dmMessage but must have a reply.
+  const rules = (await listCommentRules(tenantId)).filter(r => r.enabled && (r.replyOnly ? r.publicReplies.length > 0 : !!r.dmMessage));
   const lc = text.toLowerCase();
   const keywordOk = (r: IgCommentRule) => !r.keyword || lc.includes(r.keyword.toLowerCase());
   const postOk = (r: IgCommentRule) => !r.postId || r.postId === mediaId;
