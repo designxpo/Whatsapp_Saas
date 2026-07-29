@@ -30,6 +30,7 @@ export interface FbCommentRule {
   publicReplies: string[];      // rotating public-reply variants
   publicReply: string | null;   // legacy mirror of publicReplies[0]
   replyOnly: boolean;           // true → public reply only, never DM
+  likeComment: boolean;         // like the comment (as the Page) when the rule fires
   matchCount: number;
   createdAt: string;
 }
@@ -60,6 +61,7 @@ function mapRule(r: Record<string, unknown>): FbCommentRule {
     publicReplies,
     publicReply: publicReplies[0] ?? legacyReply,
     replyOnly: (r.reply_only as boolean) ?? false,
+    likeComment: (r.like_comment as boolean) ?? false,
     matchCount: (r.match_count as number) ?? 0,
     createdAt: r.created_at as string,
   };
@@ -87,6 +89,7 @@ export interface CommentRuleInput {
   publicReplies?: string[];
   publicReply?: string | null;   // legacy single-reply input
   replyOnly?: boolean;
+  likeComment?: boolean;
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<FbCommentRule> {
@@ -112,6 +115,7 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     public_replies: publicReplies,
     public_reply: publicReplies[0] || null,
     reply_only: replyOnly,
+    like_comment: !!input.likeComment,
   };
   const runSave = (r: Record<string, unknown>) => (input.id
     ? db().from("wa_fb_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
@@ -120,10 +124,11 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   // Tolerant fallback until migration 0089 lands — strip any not-yet-present
   // column; the legacy columns still persist variant[0].
   const attempt = { ...row };
-  for (let i = 0; i < 3 && error && /\b(buttons|public_replies|reply_only)\b/i.test(error.message ?? ""); i++) {
+  for (let i = 0; i < 4 && error && /\b(buttons|public_replies|reply_only|like_comment)\b/i.test(error.message ?? ""); i++) {
     if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
     if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
     if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;
+    if (/like_comment/i.test(error.message ?? "")) delete attempt.like_comment;
     ({ data, error } = await runSave(attempt));
   }
   if (error) throw error;

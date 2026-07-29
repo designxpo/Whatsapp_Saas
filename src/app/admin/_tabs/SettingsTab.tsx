@@ -1016,10 +1016,10 @@ const FB_MAX_PUBLIC_REPLIES = 5;
 type FbCommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
-  keyword: string; dmMessage: string; buttons: FbRuleButton[]; publicReplies: string[]; replyOnly: boolean; matchCount?: number;
+  keyword: string; dmMessage: string; buttons: FbRuleButton[]; publicReplies: string[]; replyOnly: boolean; likeComment: boolean; matchCount?: number;
 };
 type FbPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
-const BLANK_FB_RULE: FbCommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false };
+const BLANK_FB_RULE: FbCommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, likeComment: false };
 // Normalize a rule from the API (new arrays, or legacy single button/reply).
 function fbButtonsOf(r: { buttons?: FbRuleButton[]; buttonLabel?: string | null; buttonUrl?: string | null }): FbRuleButton[] {
   if (Array.isArray(r.buttons) && r.buttons.length) return r.buttons.map(b => ({ label: b.label ?? "", url: b.url ?? "" }));
@@ -1333,6 +1333,11 @@ export function MessengerCard() {
                 </button>
               )}
             </div>
+
+            <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer" title="When this rule fires, also like the commenter's comment as your Page — a friendly engagement nudge.">
+              <input type="checkbox" className="accent-blue-600" checked={ruleForm.likeComment} onChange={e => setRuleForm({ ...ruleForm, likeComment: e.target.checked })} />
+              👍 Like the comment too
+            </label>
 
             <div className="flex items-center gap-3 flex-wrap">
               <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-blue-600" checked={ruleForm.enabled} onChange={e => setRuleForm({ ...ruleForm, enabled: e.target.checked })} /> enabled</label>

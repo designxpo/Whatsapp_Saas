@@ -65,6 +65,7 @@ export async function POST(req: Request) {
       buttons: buttons.slice(0, 3),
       publicReplies: publicReplies.slice(0, 5),
       replyOnly,
+      likeComment: !!body.likeComment,
     }, tid);
     logActivity(await currentUser(), "settings.save", `fb comment rule "${rule.name || rule.id}"`);
     return NextResponse.json({ rule });

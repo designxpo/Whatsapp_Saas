@@ -19,6 +19,7 @@ const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
 const MAX_PER_HOUR = 250;                  // conservative per-Page DM pacing
 const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // public comment replies — Meta is stricter here
+const MAX_COMMENT_LIKES_PER_HOUR = 100;    // liking commenters' comments (light engagement)
 
 export interface FbCreds {
   pageId: string;   // connected Facebook Page id
@@ -212,6 +213,27 @@ export async function replyToFbComment(creds: FbCreds, commentId: string, text: 
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Comment reply error" };
+  }
+}
+
+// Like a Page comment AS the Page. Best-effort engagement signal on comments an
+// automation replies to. Paced on its own budget to avoid spam flags. Needs the
+// Page token's pages_manage_engagement permission.
+export async function likeFbComment(creds: FbCreds, commentId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!commentId) return { ok: false, error: "commentId required" };
+  if (!withinRate(`like:${creds.pageId}`, MAX_COMMENT_LIKES_PER_HOUR)) {
+    return { ok: false, error: "Hourly comment-like cap reached for this Page" };
+  }
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}/likes`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+    });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j.error?.message || `Comment like failed (${r.status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Comment like error" };
   }
 }
 

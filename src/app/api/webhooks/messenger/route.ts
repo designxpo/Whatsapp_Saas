@@ -9,7 +9,7 @@ import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
-import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
+import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, likeFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
 import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments";
 import { pickPublicReply } from "@/lib/igcomments";
 import { handleFlowMessage } from "@/lib/flowengine";
@@ -294,6 +294,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
       }
     }
+    if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
     return;
   }
 
@@ -313,4 +314,5 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (publicReply) {
     await replyToFbComment(creds, commentId, publicReply).catch(e => console.error("[fb webhook] public reply", e));
   }
+  if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
 }
