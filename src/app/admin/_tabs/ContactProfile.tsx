@@ -8,7 +8,13 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
 
-type SalesBrief = { temperature: "hot" | "warm" | "cold"; summary: string; interestedIn: string; intent: string; objections: string; nextStep: string; talkingPoints: string[] };
+type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
+type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[] };
+// Category → badge emoji. Priority drives the badge colour (attention signal).
+const CAT_EMOJI: Record<BriefCategory, string> = { sales: "💼", support: "🛟", seeker: "🧭", feedback: "💬", spam: "🚫", general: "👋" };
+const PRIO_STYLE: Record<"high" | "medium" | "low", string> = {
+  high: "bg-red-100 text-red-700", medium: "bg-amber-100 text-amber-700", low: "bg-slate-100 text-slate-600",
+};
 type CrmLead = { id: string; stage: string | null; owner: string | null; score: number | null; source: string | null; fields: { label: string; value: string }[] };
 type LeadProfile = {
   contact: { id: string; phone: string; name: string; email: string | null; tags: string[]; attributes: Record<string, string>; status: string; source: string | null; createdAt: string };
@@ -30,7 +36,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
   const [attrKey, setAttrKey] = useState("");
   const [attrVal, setAttrVal] = useState("");
   const [edit, setEdit] = useState<{ name: string; email: string } | null>(null);
-  const [brief, setBrief] = useState<SalesBrief | null>(null);
+  const [brief, setBrief] = useState<ConversationBrief | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefErr, setBriefErr] = useState<string | null>(null);
   const [crm, setCrm] = useState<{ configured: boolean; lead: CrmLead | null } | null>(null);
@@ -139,35 +145,39 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
               </button>
             </div>
 
-            {/* AI sales brief */}
+            {/* AI conversation brief — adapts to the kind of conversation (sales,
+                support, seeker, feedback, spam…), not a fixed sales frame. */}
             <div className="rounded-control border border-brand-100 bg-brand-50/60 p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-bold text-brand-700 uppercase tracking-[0.06em] flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Sales brief</p>
+                <p className="text-[11px] font-bold text-brand-700 uppercase tracking-[0.06em] flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Conversation brief</p>
                 <button disabled={briefBusy} onClick={genBrief} className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-1 disabled:opacity-50">
                   {briefBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} {brief ? "Regenerate" : "Generate"}
                 </button>
               </div>
               {briefErr && <p className="text-[11px] text-red-600">{briefErr}</p>}
-              {!brief && !briefBusy && !briefErr && <p className="text-xs text-slate-500">One tap to summarise this lead for your call — their interest, intent, objections, and the best next step.</p>}
+              {!brief && !briefBusy && !briefErr && <p className="text-xs text-slate-500">One tap to read the conversation — the AI works out what it&apos;s about (a buyer, a support issue, a question, feedback…) and gives you the gist and the best next step.</p>}
               {briefBusy && !brief && <p className="text-xs text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Reading the conversation…</p>}
               {brief && (
                 <div className="space-y-1.5">
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${brief.temperature === "hot" ? "bg-red-100 text-red-700" : brief.temperature === "warm" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
-                    {brief.temperature === "hot" ? "🔥 HOT" : brief.temperature === "warm" ? "🌤 WARM" : "❄️ COLD"} LEAD
-                  </span>
-                  <p className="text-xs text-ink-900">{brief.summary}</p>
-                  <div className="text-xs text-ink-700 space-y-0.5">
-                    <p><span className="font-semibold text-slate-500">Interested in:</span> {brief.interestedIn}</p>
-                    <p><span className="font-semibold text-slate-500">Intent:</span> {brief.intent}</p>
-                    <p><span className="font-semibold text-slate-500">Objections:</span> {brief.objections}</p>
-                    <p><span className="font-semibold text-brand-700">Next step:</span> {brief.nextStep}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${PRIO_STYLE[brief.priority]}`}>
+                      {CAT_EMOJI[brief.category]} {brief.categoryLabel.toUpperCase()}
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">{brief.priority} priority</span>
                   </div>
+                  <p className="text-xs text-ink-900">{brief.summary}</p>
+                  {brief.highlights.length > 0 && (
+                    <div className="text-xs text-ink-700 space-y-0.5">
+                      {brief.highlights.map((h, i) => <p key={i}><span className="font-semibold text-slate-500">{h.label}:</span> {h.value}</p>)}
+                    </div>
+                  )}
+                  <p className="text-xs text-ink-700"><span className="font-semibold text-brand-700">Next step:</span> {brief.nextStep}</p>
                   {brief.talkingPoints.length > 0 && (
                     <ul className="list-disc pl-4 text-xs text-ink-700 space-y-0.5">
                       {brief.talkingPoints.map((t, i) => <li key={i}>{t}</li>)}
                     </ul>
                   )}
-                  <p className="text-[10px] text-slate-400 pt-0.5">AI-generated from this lead&apos;s chat — verify before acting.</p>
+                  <p className="text-[10px] text-slate-400 pt-0.5">AI-generated from this conversation — verify before acting.</p>
                 </div>
               )}
             </div>

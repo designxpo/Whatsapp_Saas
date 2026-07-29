@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, currentTenantId } from "@/lib/auth";
 import { getContactByPhone } from "@/lib/store";
-import { generateSalesBrief } from "@/lib/llm";
+import { generateConversationBrief } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 import { db } from "@/lib/supabase";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s default
 
-// POST { phone } — generate an AI sales-call brief from the lead's chat + details.
+// POST { phone } — generate an adaptive AI conversation brief from the thread +
+// details. The model classifies the conversation (sales, support, seeker,
+// feedback, spam…) and summarises it accordingly — not always a sales frame.
 export async function POST(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const tid = await currentTenantId();
@@ -60,7 +62,7 @@ export async function POST(req: Request) {
   if (linkRows?.length) lines.push(`Links tapped:\n${linkRows.map(l => `  - ${l.target_url} (${l.clicks}×)`).join("\n")}`);
 
   try {
-    const brief = await generateSalesBrief(lines.join("\n"), tid);
+    const brief = await generateConversationBrief(lines.join("\n"), tid);
     return NextResponse.json({ brief });
   } catch (err) {
     const busy = err instanceof Error && /AI_BUSY/.test(err.message);

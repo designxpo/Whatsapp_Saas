@@ -657,55 +657,82 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
   }
 }
 
-// ── Sales brief ───────────────────────────────────────────────────────────────
-// A concise, sales-call-ready summary of one lead, generated from their chat
-// history + collected details. Returns structured fields the UI renders as a card.
-// Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
-export interface SalesBrief {
-  temperature: "hot" | "warm" | "cold";
+// ── Conversation brief ─────────────────────────────────────────────────────────
+// An adaptive, at-a-glance summary of ONE conversation. Not every chat is a sales
+// lead — the model first CLASSIFIES the conversation (sales, support, a knowledge
+// seeker, feedback, spam, general), then summarises it the way that category
+// deserves, choosing category-appropriate highlight fields instead of forcing a
+// sales frame onto e.g. a spiritual seeker. Uses the tenant's own chat provider.
+export type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
+const BRIEF_CATEGORIES: BriefCategory[] = ["sales", "support", "seeker", "feedback", "spam", "general"];
+
+export interface ConversationBrief {
+  category: BriefCategory;
+  categoryLabel: string;              // short human badge, specific to this person
+  priority: "high" | "medium" | "low";
   summary: string;
-  interestedIn: string;
-  intent: string;
-  objections: string;
+  highlights: { label: string; value: string }[];   // category-appropriate facets
   nextStep: string;
   talkingPoints: string[];
 }
 
-export async function generateSalesBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<SalesBrief> {
+export async function generateConversationBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ConversationBrief> {
   const ai = await resolveTenantAi(tenantId);
   const instruction =
-    `Read the lead context below (their chat, collected details, campaigns received, and links tapped) and ` +
-    `produce a tight brief a salesperson can glance at right before calling this lead.\n\n` +
+    `Read the context below (chat history, collected details, campaigns received, links tapped) and produce a ` +
+    `concise brief for whoever handles this conversation. It is NOT always a sales lead — FIRST classify what ` +
+    `kind of conversation this is, THEN summarise it the way that category deserves.\n\n` +
+    `Categories (pick the single best fit):\n` +
+    `- "sales": shows buying interest — asks price/plans/enrolment, wants to purchase or book.\n` +
+    `- "support": an existing customer/user needing help, reporting an issue, or asking how something works.\n` +
+    `- "seeker": seeking knowledge, guidance, or the content this account shares (e.g. spiritual/educational questions) with no commercial intent.\n` +
+    `- "feedback": praise, a complaint, or a suggestion about the brand or its content.\n` +
+    `- "spam": irrelevant, promotional, abusive, or bot-like messages.\n` +
+    `- "general": a casual greeting or vague message that doesn't fit the above yet.\n\n` +
     `Rules:\n` +
-    `- Be specific and grounded ONLY in the context. Never invent facts. If something is unknown, say "Unknown".\n` +
-    `- "temperature": "hot" if they showed buying intent (asked price/EMI/enrolment, booked, repeated interest), ` +
-    `"warm" if engaged but exploring, "cold" if barely engaged.\n` +
-    `- "summary": 1-2 sentences on who they are and where they are in the journey.\n` +
-    `- "interestedIn": the specific product/course/offer they care about (or "Unknown").\n` +
-    `- "intent": what they're trying to do / their key questions.\n` +
-    `- "objections": hesitations or blockers they voiced (or "None surfaced").\n` +
-    `- "nextStep": the single best next action for the sales rep.\n` +
-    `- "talkingPoints": 2-4 short bullet phrases to open or steer the call.\n` +
-    `Return ONLY JSON: {"temperature","summary","interestedIn","intent","objections","nextStep","talkingPoints":[]}.`;
+    `- Ground everything ONLY in the context. Never invent facts. If a fact is unknown, say "Unknown".\n` +
+    `- "categoryLabel": 2-4 words naming the category specifically for THIS person (e.g. "Sales lead", "Refund request", "Gita seeker", "Positive feedback", "Spam / promo", "Just saying hi").\n` +
+    `- "priority": "high" if it needs prompt human attention (hot buyer, angry complaint, urgent issue), "medium" if worth a timely reply, "low" if casual or no action needed.\n` +
+    `- "summary": 1-2 sentences — who they are and where this conversation stands.\n` +
+    `- "highlights": 2-5 {label,value} pairs that matter FOR THIS category. Pick fitting labels, e.g.\n` +
+    `    sales → Interested in, Intent, Objections, Urgency\n` +
+    `    support → Issue, Product/area, Urgency, Status\n` +
+    `    seeker → Seeking, Topics discussed, Engagement\n` +
+    `    feedback → Sentiment, About, Their ask\n` +
+    `    spam/general → keep to 1-2 (e.g. Why flagged, Message gist)\n` +
+    `  Use "Unknown" or "None surfaced" when a chosen facet has no info.\n` +
+    `- "nextStep": the single best next action, phrased FOR THIS category (a seeker gets "Answer their question / share the requested chapter", not "qualify their interest").\n` +
+    `- "talkingPoints": 2-4 short phrases to open or steer the reply. Use [] for spam.\n` +
+    `Return ONLY JSON: {"category","categoryLabel","priority","summary","highlights":[{"label","value"}],"nextStep","talkingPoints":[]}.`;
 
   const res = await runChat({
     provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
-    system: "You are a sales-enablement assistant. You output ONLY valid JSON — no markdown fences, no preamble.",
-    turns: [{ role: "user", text: `${instruction}\n\n--- LEAD CONTEXT ---\n${context}` }],
+    system: "You are a conversation-intelligence assistant for a customer-messaging platform. You classify and summarise ANY kind of conversation — sales, support, knowledge-seeking, feedback, or spam. You output ONLY valid JSON — no markdown fences, no preamble.",
+    turns: [{ role: "user", text: `${instruction}\n\n--- CONVERSATION CONTEXT ---\n${context}` }],
     maxTokens: 1024,
   });
 
   const raw = (res.text ?? "").trim().replace(/^```json\s*|\s*```$/g, "");
-  let parsed: Partial<SalesBrief> = {};
-  try { parsed = JSON.parse(raw) as Partial<SalesBrief>; } catch { /* fall through to defaults */ }
-  const temp = parsed.temperature === "hot" || parsed.temperature === "cold" ? parsed.temperature : "warm";
+  let parsed: Partial<ConversationBrief> = {};
+  try { parsed = JSON.parse(raw) as Partial<ConversationBrief>; } catch { /* fall through to defaults */ }
+  const category = BRIEF_CATEGORIES.includes(parsed.category as BriefCategory) ? (parsed.category as BriefCategory) : "general";
+  const priority = parsed.priority === "high" || parsed.priority === "low" ? parsed.priority : "medium";
+  const highlights = Array.isArray(parsed.highlights)
+    ? parsed.highlights
+        .map(h => ({ label: String((h as { label?: unknown })?.label ?? "").trim(), value: String((h as { value?: unknown })?.value ?? "").trim() }))
+        .filter(h => h.label && h.value)
+        .slice(0, 5)
+    : [];
+  const DEFAULT_LABEL: Record<BriefCategory, string> = {
+    sales: "Sales lead", support: "Support", seeker: "Seeker", feedback: "Feedback", spam: "Spam", general: "General",
+  };
   return {
-    temperature: temp,
-    summary: (parsed.summary ?? "").toString().trim() || "Not enough conversation yet to summarise this lead.",
-    interestedIn: (parsed.interestedIn ?? "").toString().trim() || "Unknown",
-    intent: (parsed.intent ?? "").toString().trim() || "Unknown",
-    objections: (parsed.objections ?? "").toString().trim() || "None surfaced",
-    nextStep: (parsed.nextStep ?? "").toString().trim() || "Reach out and qualify their interest.",
+    category,
+    categoryLabel: (parsed.categoryLabel ?? "").toString().trim() || DEFAULT_LABEL[category],
+    priority,
+    summary: (parsed.summary ?? "").toString().trim() || "Not enough conversation yet to summarise this thread.",
+    highlights,
+    nextStep: (parsed.nextStep ?? "").toString().trim() || "Read the thread and reply appropriately.",
     talkingPoints: Array.isArray(parsed.talkingPoints) ? parsed.talkingPoints.map(t => String(t).trim()).filter(Boolean).slice(0, 4) : [],
   };
 }

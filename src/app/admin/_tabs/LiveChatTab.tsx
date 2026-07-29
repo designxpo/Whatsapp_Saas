@@ -684,7 +684,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
           {contact?.email && <p className="text-xs text-ink-400 mt-0.5">{contact.email}</p>}
           {conv?.phone && (
             <button onClick={() => setShowProfile(true)} className="mt-3 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> Sales brief &amp; full profile
+              <Sparkles className="w-3.5 h-3.5" /> AI brief &amp; full profile
             </button>
           )}
         </div>
