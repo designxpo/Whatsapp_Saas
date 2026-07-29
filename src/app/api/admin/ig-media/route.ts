@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import { listChannels } from "@/lib/channels";
 import { fetchIgMedia } from "@/lib/instagram";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
 // GET — this tenant's IG posts for the rule post-picker. ?channelId=… selects a
-// specific connected account; otherwise the first active one.
+// specific connected account; otherwise the first active one. Read-only, so
+// any logged-in team member (not just admin role) can browse it.
 export async function GET(req: Request) {
-  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  if (!(await requireAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const channelId = new URL(req.url).searchParams.get("channelId");
