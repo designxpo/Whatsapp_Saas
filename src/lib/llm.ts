@@ -737,6 +737,55 @@ export async function generateConversationBrief(context: string, tenantId = "000
   };
 }
 
+// ── Review reply ───────────────────────────────────────────────────────────────
+// Draft a public reply to a business review, tuned to the star rating: a warm
+// thank-you for high ratings, an empathetic service-recovery for low ones. Uses
+// the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
+export interface ReviewReplyInput {
+  author?: string;
+  rating: number;              // 1..5
+  text: string;                // the review body
+  businessName?: string;       // for tone; never invented into promises
+  tone?: string;               // freeform brand/tone guidance
+  signature?: string;          // appended verbatim if provided (e.g. "— Team X")
+}
+
+export async function generateReviewReply(input: ReviewReplyInput, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+  const ai = await resolveTenantAi(tenantId);
+  const rating = Math.min(5, Math.max(1, Math.round(input.rating) || 3));
+  const band = rating >= 4 ? "positive" : rating === 3 ? "mixed" : "negative";
+  const guide: Record<typeof band, string> = {
+    positive: "Warmly thank them by name, echo ONE specific thing they praised, and invite them back. Keep it genuine, not gushing.",
+    mixed: "Thank them for the honest feedback, acknowledge the specific thing that fell short, note any positive, and offer to make it better. Balanced and sincere.",
+    negative: "Lead with a sincere apology, take it seriously WITHOUT admitting legal fault or inventing facts, acknowledge their specific issue, and offer to make it right — invite them to continue privately (e.g. a call/DM/email) rather than debating in public.",
+  };
+  const instruction =
+    `Write a SHORT public reply (2-4 sentences, under 80 words) from the business to this ${rating}-star review.\n\n` +
+    `Rules:\n` +
+    `- Ground ONLY in what the review says. NEVER invent facts, offers, discounts, names, or details not present.\n` +
+    `- Address the reviewer by first name if given; otherwise a warm neutral greeting.\n` +
+    `- Tone for a ${band} (${rating}★) review: ${guide[band]}\n` +
+    `- Sound human and specific to THIS review — not a generic template. No hashtags, no emoji spam (at most one, only if it fits).\n` +
+    `- Never share or request sensitive personal data publicly.\n` +
+    (input.tone ? `- Brand voice guidance: ${input.tone}\n` : "") +
+    (input.signature ? `- End with this signature on its own line, verbatim: "${input.signature}"\n` : "") +
+    `Return ONLY the reply text — no preamble, no quotes around it.`;
+
+  const ctx =
+    `Business: ${input.businessName || "(unspecified)"}\n` +
+    `Reviewer: ${input.author?.trim() || "(anonymous)"}\n` +
+    `Rating: ${rating} / 5\n` +
+    `Review: ${(input.text || "").trim() || "(no text — rating only)"}`;
+
+  const res = await runChat({
+    provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+    system: "You write concise, sincere, on-brand public replies to customer reviews for a business. You never invent facts and never over-promise. You output ONLY the reply text.",
+    turns: [{ role: "user", text: `${instruction}\n\n--- REVIEW ---\n${ctx}` }],
+    maxTokens: 400,
+  });
+  return (res.text ?? "").trim().replace(/^["']|["']$/g, "").trim();
+}
+
 // ── Executive brief ───────────────────────────────────────────────────────────
 // A CEO-level read of the whole platform from its metrics (this week vs last).
 // Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
