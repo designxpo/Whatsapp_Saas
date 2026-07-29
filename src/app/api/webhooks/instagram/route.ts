@@ -334,11 +334,19 @@ async function handlePostback(channel: Channel, ev: Record<string, unknown>) {
   const senderId = String((ev.sender as Record<string, unknown>)?.id ?? "");
   const payload = String((ev.postback as Record<string, unknown>)?.payload ?? "");
   if (!senderId) return;
-  if (payload.startsWith("FOLLOWCHK:")) await resolveFollowGate(channel, senderId, payload.slice("FOLLOWCHK:".length));
+  if (payload.startsWith("FOLLOWCHK:")) {
+    // Mirror the tap so the portal thread shows the user confirmed the follow
+    // (a tap carries no text, so nothing else records it).
+    const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
+    await appendConvMessage({ conversationId: conv.id, role: "user", body: "[comment] tapped “I've followed ✅”", source: "inbound", tenantId: channel.tenantId, channelId: channel.id }).catch(() => {});
+    await resolveFollowGate(channel, senderId, payload.slice("FOLLOWCHK:".length));
+  }
 }
 
 // Re-check follow and deliver the held reward or re-prompt. When Meta can't
 // verify (null, pre-App-Review) we trust the tap so real followers aren't blocked.
+// Every DM we send here is mirrored into the portal thread so Live Chat shows the
+// full conversation (the reward link, not just the earlier follow prompt).
 async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string) {
   const tid = channel.tenantId;
   const rule = await getCommentRule(ruleId, tid);
@@ -346,16 +354,22 @@ async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string
   const creds = credsOf(channel);
   const follows = await getFollowStatus(creds, igsid);
   const now = new Date().toISOString();
+  const conv = await getOrCreateConversation(igsid, "", channel.id, "instagram", tid);
   if (follows === false) {
-    await sendIgButtons(creds, igsid, "I don't see a follow yet 👀 — tap Visit profile, hit Follow, then tap “I've followed”.", await followButtons(channel, rule), { lastInboundAt: now });
+    const reprompt = "I don't see a follow yet 👀 — tap Visit profile, hit Follow, then tap “I've followed”.";
+    await sendIgButtons(creds, igsid, reprompt, await followButtons(channel, rule), { lastInboundAt: now });
+    await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${reprompt}`, source: "bot", tenantId: tid, channelId: channel.id }).catch(() => {});
     return;
   }
   const buttons = rewardButtons(rule);
   const sent = buttons.length
     ? await sendIgButtons(creds, igsid, rule.dmMessage, buttons, { lastInboundAt: now })
     : await sendIgMessage(creds, igsid, rule.dmMessage, { lastInboundAt: now });
-  if (sent.ok) { await clearFollowGate(igsid, tid); await bumpRuleMatch(rule.id, rule.matchCount, tid); }
-  else console.warn("[ig webhook] reward blocked:", sent.blockedBy, sent.error);
+  if (sent.ok) {
+    await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${rule.dmMessage}`, source: "bot", tenantId: tid, channelId: channel.id }).catch(() => {});
+    await touchOutbound(conv.id, rule.dmMessage).catch(() => {});
+    await clearFollowGate(igsid, tid); await bumpRuleMatch(rule.id, rule.matchCount, tid);
+  } else console.warn("[ig webhook] reward blocked:", sent.blockedBy, sent.error);
 }
 
 function rewardButtons(rule: IgCommentRule): IgButton[] {
