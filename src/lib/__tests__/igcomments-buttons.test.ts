@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeButtons, MAX_RULE_BUTTONS, normalizePublicReplies, pickPublicReply, MAX_PUBLIC_REPLIES } from "../igcomments";
+import { normalizeButtons, MAX_RULE_BUTTONS, normalizePublicReplies, pickPublicReply, MAX_PUBLIC_REPLIES, parseKeywords, matchesKeywords } from "../igcomments";
 
 describe("normalizeButtons", () => {
   it("keeps valid http(s) buttons and trims labels to 20 chars", () => {
@@ -51,6 +51,30 @@ describe("normalizePublicReplies", () => {
     expect(normalizePublicReplies(null)).toEqual([]);
     expect(normalizePublicReplies("nope")).toEqual([]);
     expect(normalizePublicReplies([" ", "\t"])).toEqual([]);
+  });
+});
+
+describe("parseKeywords", () => {
+  it("splits comma-separated words, trims, lowercases, drops blanks", () => {
+    expect(parseKeywords(" Guide ,LINK,, price ")).toEqual(["guide", "link", "price"]);
+  });
+  it("returns [] for null/empty", () => {
+    expect(parseKeywords(null)).toEqual([]);
+    expect(parseKeywords("  ")).toEqual([]);
+  });
+});
+
+describe("matchesKeywords", () => {
+  it("matches any comment when no keyword is set", () => {
+    expect(matchesKeywords("literally anything", null)).toBe(true);
+    expect(matchesKeywords("hi", "")).toBe(true);
+  });
+  it("matches when the text contains ANY one of the words", () => {
+    expect(matchesKeywords("Please send me the GUIDE 🙏", "guide, link, price")).toBe(true);
+    expect(matchesKeywords("what's the PRICE?", "guide, link, price")).toBe(true);
+  });
+  it("does not match when none of the words appear", () => {
+    expect(matchesKeywords("beautiful post", "guide, link, price")).toBe(false);
   });
 });
 

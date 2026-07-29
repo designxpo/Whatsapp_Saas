@@ -347,7 +347,10 @@ function InstagramManager() {
               </div>
               {!posts.length && <p className="text-[11px] text-amber-600 mt-1.5">No posts loaded — token needs comment/media permissions. You can still create an &ldquo;All&rdquo; rule.</p>}
             </div>
-            <input className={`${inp} w-full`} placeholder="Trigger keyword (optional — blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
+            <div>
+              <input className={`${inp} w-full`} placeholder="Trigger words — comma-separated (optional, blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
+              <p className="text-[11px] text-ink-400 mt-1">Add several to match more comments, e.g. <span className="font-mono">guide, link, price, send me</span> — fires if the comment contains any one of them.</p>
+            </div>
             {!ruleForm.replyOnly && (
             <textarea className={`${inp} w-full`} rows={2} placeholder="DM message, e.g. Thanks for commenting! Here's your guide 📄" value={ruleForm.dmMessage} onChange={e => setRuleForm({ ...ruleForm, dmMessage: e.target.value })} />
             )}

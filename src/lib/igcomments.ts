@@ -44,6 +44,21 @@ export function normalizePublicReplies(raw: unknown): string[] {
   return out.slice(0, MAX_PUBLIC_REPLIES);
 }
 
+// A rule's keyword field holds one OR MANY trigger words, comma-separated
+// (e.g. "guide, link, free"). Split into a clean lowercase token list.
+export function parseKeywords(keyword: string | null | undefined): string[] {
+  return (keyword ?? "").split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
+}
+
+// True if the comment text matches the rule's keyword(s): no keyword → matches
+// any comment; otherwise matches if the text contains ANY one of the words.
+export function matchesKeywords(text: string, keyword: string | null | undefined): boolean {
+  const words = parseKeywords(keyword);
+  if (!words.length) return true;
+  const lc = text.toLowerCase();
+  return words.some(w => lc.includes(w));
+}
+
 // Pick one public reply at random from a rule's variants (falls back to the
 // legacy single reply). Empty when the rule has no public reply configured.
 export function pickPublicReply(rule: Pick<IgCommentRule, "publicReplies" | "publicReply">): string {
@@ -202,8 +217,7 @@ export async function matchCommentRule(text: string, mediaId: string | null, ten
   // A rule is actionable if it can either send a DM, or (reply-only) post a
   // public reply. Reply-only rules carry no dmMessage but must have a reply.
   const rules = (await listCommentRules(tenantId)).filter(r => r.enabled && (r.replyOnly ? r.publicReplies.length > 0 : !!r.dmMessage));
-  const lc = text.toLowerCase();
-  const keywordOk = (r: IgCommentRule) => !r.keyword || lc.includes(r.keyword.toLowerCase());
+  const keywordOk = (r: IgCommentRule) => matchesKeywords(text, r.keyword);
   const postOk = (r: IgCommentRule) => !r.postId || r.postId === mediaId;
   const channelOk = (r: IgCommentRule) => !r.channelId || !channelId || r.channelId === channelId;
   const candidates = rules.filter(r => channelOk(r) && postOk(r) && keywordOk(r));

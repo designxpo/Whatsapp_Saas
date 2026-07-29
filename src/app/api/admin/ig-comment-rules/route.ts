@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       postCaption: (body.postCaption as string | null) ?? null,
       postPermalink: (body.postPermalink as string | null) ?? null,
       postThumbnail: (body.postThumbnail as string | null) ?? null,
-      keyword: String(body.keyword ?? "").slice(0, 60),
+      keyword: String(body.keyword ?? "").slice(0, 200),   // comma-separated list of trigger words
       dmMessage: dmMessage.slice(0, 900),
       buttons: buttons.slice(0, 3),
       publicReplies: publicReplies.slice(0, 5),
