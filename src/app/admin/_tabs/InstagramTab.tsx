@@ -35,14 +35,24 @@ function InstagramTab() {
 
 const EMPTY_IG = { id: undefined as string | undefined, name: "", igUserId: "", pageId: "", token: "", agentId: "", kbTag: "", commentAi: true, active: true, isDefault: false };
 
+type RuleButton = { label: string; url: string };
+const MAX_BUTTONS = 3;
 type CommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
-  keyword: string; dmMessage: string; buttonLabel: string; buttonUrl: string; publicReply: string;
+  keyword: string; dmMessage: string; buttons: RuleButton[]; publicReply: string;
   requireFollow: boolean; followPrompt: string; matchCount?: number;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
-const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttonLabel: "", buttonUrl: "", publicReply: "", requireFollow: false, followPrompt: "" };
+const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReply: "", requireFollow: false, followPrompt: "" };
+
+// Rules from the API may arrive with the new `buttons` array or only the legacy
+// single button — normalize to an array so the editor is uniform.
+function ruleButtonsOf(r: { buttons?: RuleButton[]; buttonLabel?: string | null; buttonUrl?: string | null }): RuleButton[] {
+  if (Array.isArray(r.buttons) && r.buttons.length) return r.buttons.map(b => ({ label: b.label ?? "", url: b.url ?? "" }));
+  if (r.buttonUrl) return [{ label: r.buttonLabel ?? "", url: r.buttonUrl }];
+  return [];
+}
 
 function InstagramManager() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
@@ -119,9 +129,13 @@ function InstagramManager() {
   async function saveRule() {
     if (!ruleForm) return;
     if (!ruleForm.dmMessage.trim()) { setMsg("DM message is required"); return; }
+    // Drop blank rows; a button that has a label but no link is a mistake.
+    const buttons = ruleForm.buttons.filter(b => b.url.trim() || b.label.trim());
+    if (buttons.some(b => !b.url.trim())) { setMsg("Add a link for every button (or remove it)"); return; }
+    if (buttons.some(b => !/^https?:\/\//i.test(b.url.trim()))) { setMsg("Every button link must start with http:// or https://"); return; }
     setRuleBusy(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(ruleForm) });
+      const res = await fetch("/api/admin/ig-comment-rules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...ruleForm, buttons }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
       else { setRuleForm(null); loadRules(); }
@@ -219,10 +233,10 @@ function InstagramManager() {
                 : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{r.buttonUrl ? " · 🔗 button" : ""}{r.requireFollow ? " · 🔒 follow" : ""} · {r.matchCount ?? 0} sent</p>
+                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · 🔗 ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · 🔒 follow" : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttonLabel: r.buttonLabel ?? "", buttonUrl: r.buttonUrl ?? "", publicReply: r.publicReply ?? "", requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReply: r.publicReply ?? "", requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
               <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           );
@@ -280,9 +294,26 @@ function InstagramManager() {
             </div>
             <input className={`${inp} w-full`} placeholder="Trigger keyword (optional — blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
             <textarea className={`${inp} w-full`} rows={2} placeholder="DM message, e.g. Thanks for commenting! Here's your guide 📄" value={ruleForm.dmMessage} onChange={e => setRuleForm({ ...ruleForm, dmMessage: e.target.value })} />
-            <div className="grid grid-cols-2 gap-2">
-              <input className={inp} placeholder="Button label (optional, e.g. Download)" maxLength={20} value={ruleForm.buttonLabel} onChange={e => setRuleForm({ ...ruleForm, buttonLabel: e.target.value })} />
-              <input className={inp} placeholder="Button link https://… (optional)" value={ruleForm.buttonUrl} onChange={e => setRuleForm({ ...ruleForm, buttonUrl: e.target.value.trim() })} />
+            {/* Link buttons — up to 3, shown as tappable buttons under the DM */}
+            <div className="space-y-2">
+              {ruleForm.buttons.map((b, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input className={`${inp} w-1/3`} placeholder={`Button ${i + 1} label`} maxLength={20}
+                    value={b.label}
+                    onChange={e => { const next = [...ruleForm.buttons]; next[i] = { ...next[i], label: e.target.value }; setRuleForm({ ...ruleForm, buttons: next }); }} />
+                  <input className={`${inp} flex-1`} placeholder="https://…"
+                    value={b.url}
+                    onChange={e => { const next = [...ruleForm.buttons]; next[i] = { ...next[i], url: e.target.value.trim() }; setRuleForm({ ...ruleForm, buttons: next }); }} />
+                  <button type="button" onClick={() => setRuleForm({ ...ruleForm, buttons: ruleForm.buttons.filter((_, j) => j !== i) })}
+                    className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Remove button"><Trash2 className="w-4 h-4" /></button>
+                </div>
+              ))}
+              {ruleForm.buttons.length < MAX_BUTTONS && (
+                <button type="button" onClick={() => setRuleForm({ ...ruleForm, buttons: [...ruleForm.buttons, { label: "", url: "" }] })}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-control border border-dashed border-line text-xs font-bold text-ink-600 hover:bg-canvas">
+                  <Plus className="w-3.5 h-3.5" /> Add button {ruleForm.buttons.length ? `(${ruleForm.buttons.length}/${MAX_BUTTONS})` : "(optional)"}
+                </button>
+              )}
             </div>
             <input className={`${inp} w-full`} placeholder="Public reply under the comment (optional, e.g. Sent you a DM! 📩)" value={ruleForm.publicReply} onChange={e => setRuleForm({ ...ruleForm, publicReply: e.target.value })} />
 

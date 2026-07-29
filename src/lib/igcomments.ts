@@ -10,6 +10,25 @@
 
 import { db } from "./supabase";
 
+// A link button on the DM. Meta's button template caps at 3 per message.
+export interface RuleButton {
+  label: string;
+  url: string;
+}
+export const MAX_RULE_BUTTONS = 3;
+
+// Coerce raw jsonb / legacy fields into a clean, capped button list.
+export function normalizeButtons(raw: unknown): RuleButton[] {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr
+    .map(b => {
+      const o = (b ?? {}) as Record<string, unknown>;
+      return { label: String(o.label ?? "").trim().slice(0, 20), url: String(o.url ?? "").trim() };
+    })
+    .filter(b => /^https?:\/\//i.test(b.url))
+    .slice(0, MAX_RULE_BUTTONS);
+}
+
 export interface IgCommentRule {
   id: string;
   tenantId: string;
@@ -22,8 +41,9 @@ export interface IgCommentRule {
   postThumbnail: string | null;
   keyword: string | null;
   dmMessage: string;
-  buttonLabel: string | null;
-  buttonUrl: string | null;
+  buttons: RuleButton[];
+  buttonLabel: string | null;   // legacy mirror of buttons[0] — kept for old readers
+  buttonUrl: string | null;     // legacy mirror of buttons[0]
   publicReply: string | null;
   requireFollow: boolean;
   followPrompt: string | null;
@@ -32,6 +52,12 @@ export interface IgCommentRule {
 }
 
 function mapRule(r: Record<string, unknown>): IgCommentRule {
+  // Prefer the jsonb `buttons` array; fall back to the legacy single button so
+  // rules created before migration 0086 still surface their button.
+  const legacyUrl = (r.button_url as string | null) ?? null;
+  const legacyLabel = (r.button_label as string | null) ?? null;
+  let buttons = normalizeButtons(r.buttons);
+  if (!buttons.length && legacyUrl) buttons = normalizeButtons([{ label: legacyLabel ?? "", url: legacyUrl }]);
   return {
     id: r.id as string,
     tenantId: r.tenant_id as string,
@@ -44,8 +70,9 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
     postThumbnail: (r.post_thumbnail as string | null) ?? null,
     keyword: (r.keyword as string | null) ?? null,
     dmMessage: (r.dm_message as string) ?? "",
-    buttonLabel: (r.button_label as string | null) ?? null,
-    buttonUrl: (r.button_url as string | null) ?? null,
+    buttons,
+    buttonLabel: buttons[0]?.label ?? legacyLabel,
+    buttonUrl: buttons[0]?.url ?? legacyUrl,
     publicReply: (r.public_reply as string | null) ?? null,
     requireFollow: (r.require_follow as boolean) ?? false,
     followPrompt: (r.follow_prompt as string | null) ?? null,
@@ -70,7 +97,8 @@ export interface CommentRuleInput {
   postThumbnail?: string | null;
   keyword?: string | null;
   dmMessage: string;
-  buttonLabel?: string | null;
+  buttons?: RuleButton[];
+  buttonLabel?: string | null;   // legacy single-button input (still accepted)
   buttonUrl?: string | null;
   publicReply?: string | null;
   requireFollow?: boolean;
@@ -78,7 +106,11 @@ export interface CommentRuleInput {
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<IgCommentRule> {
-  const row = {
+  // Accept either the new `buttons` array or the legacy single button; the
+  // legacy columns always mirror buttons[0] so old readers keep working.
+  let buttons = normalizeButtons(input.buttons);
+  if (!buttons.length && input.buttonUrl) buttons = normalizeButtons([{ label: input.buttonLabel ?? "", url: input.buttonUrl }]);
+  const row: Record<string, unknown> = {
     tenant_id: tenantId,
     channel_id: input.channelId ?? null,
     name: (input.name ?? "").trim(),
@@ -89,16 +121,24 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     post_thumbnail: input.postThumbnail ?? null,
     keyword: input.keyword?.trim() || null,
     dm_message: input.dmMessage.trim(),
-    button_label: input.buttonLabel?.trim() || null,
-    button_url: input.buttonUrl?.trim() || null,
+    buttons,
+    button_label: buttons[0]?.label || null,
+    button_url: buttons[0]?.url || null,
     public_reply: input.publicReply?.trim() || null,
     require_follow: input.requireFollow ?? false,
     follow_prompt: input.followPrompt?.trim() || null,
   };
-  const q = input.id
-    ? db().from("wa_ig_comment_rules").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
-    : db().from("wa_ig_comment_rules").insert(row).select().single();
-  const { data, error } = await q;
+  const runSave = (r: Record<string, unknown>) => (input.id
+    ? db().from("wa_ig_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_ig_comment_rules").insert(r).select().single());
+  let { data, error } = await runSave(row);
+  // Tolerant fallback: if migration 0086 (the `buttons` column) isn't applied
+  // yet, retry without it — the legacy button_label/button_url still persist
+  // buttons[0], so single-button rules keep working until the migration lands.
+  if (error && /buttons/i.test(error.message ?? "") && "buttons" in row) {
+    const rest = { ...row }; delete rest.buttons;
+    ({ data, error } = await runSave(rest));
+  }
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
 }

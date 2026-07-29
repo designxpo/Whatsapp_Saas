@@ -359,7 +359,12 @@ async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string
 }
 
 function rewardButtons(rule: IgCommentRule): IgButton[] {
-  return rule.buttonUrl ? [{ type: "web_url", url: rule.buttonUrl, title: (rule.buttonLabel || "Open link").slice(0, 20) }] : [];
+  // Up to 3 link buttons (Meta's button-template cap). Falls back to the legacy
+  // single button for rules created before multi-button support.
+  const list = rule.buttons?.length
+    ? rule.buttons
+    : rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : [];
+  return list.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) }));
 }
 function followPromptText(rule: IgCommentRule): string {
   return rule.followPrompt?.trim() || "Almost there! Follow us first, then tap “I've followed” to get your link 🎁";

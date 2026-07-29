@@ -26,9 +26,15 @@ export async function POST(req: Request) {
 
   const dmMessage = String(body.dmMessage ?? "").trim();
   if (!dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
-  const buttonUrl = String(body.buttonUrl ?? "").trim();
-  if (buttonUrl && !/^https?:\/\//i.test(buttonUrl)) {
-    return NextResponse.json({ error: "Button link must start with http(s)://" }, { status: 400 });
+  // Buttons: accept the new array, or the legacy single button as a fallback.
+  const rawButtons = Array.isArray(body.buttons)
+    ? (body.buttons as unknown[])
+    : (body.buttonUrl ? [{ label: body.buttonLabel, url: body.buttonUrl }] : []);
+  const buttons = rawButtons
+    .map(b => { const o = (b ?? {}) as Record<string, unknown>; return { label: String(o.label ?? "").trim().slice(0, 20), url: String(o.url ?? "").trim() }; })
+    .filter(b => b.url);
+  if (buttons.some(b => !/^https?:\/\//i.test(b.url))) {
+    return NextResponse.json({ error: "Every button link must start with http(s)://" }, { status: 400 });
   }
   try {
     const channels = await listChannels(tid);
@@ -49,8 +55,7 @@ export async function POST(req: Request) {
       postThumbnail: (body.postThumbnail as string | null) ?? null,
       keyword: String(body.keyword ?? "").slice(0, 60),
       dmMessage: dmMessage.slice(0, 900),
-      buttonLabel: String(body.buttonLabel ?? "").slice(0, 20),
-      buttonUrl,
+      buttons: buttons.slice(0, 3),
       publicReply: String(body.publicReply ?? "").slice(0, 280),
       requireFollow: !!body.requireFollow,
       followPrompt: String(body.followPrompt ?? "").slice(0, 640),
