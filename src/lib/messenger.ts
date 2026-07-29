@@ -17,7 +17,8 @@
 
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
-const MAX_PER_HOUR = 250;                  // conservative per-Page pacing
+const MAX_PER_HOUR = 250;                  // conservative per-Page DM pacing
+const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // public comment replies — Meta is stricter here
 
 export interface FbCreds {
   pageId: string;   // connected Facebook Page id
@@ -44,15 +45,18 @@ export function within24hWindow(lastInboundAt: string | null | undefined): boole
 // Serverless instances don't share memory, so this is a soft per-instance guard;
 // it still curbs bursts that trip Meta's spam heuristics.
 const sendTimes = new Map<string, number[]>();
-function allowSend(pageId: string): boolean {
+// Keyed by "<kind>:<pageId>" so DMs and public comment replies are paced on
+// SEPARATE budgets (a comment-reply burst must not starve DMs, or vice-versa).
+function withinRate(key: string, max: number): boolean {
   const now = Date.now();
   const cutoff = now - 60 * 60 * 1000;
-  const arr = (sendTimes.get(pageId) ?? []).filter((t) => t > cutoff);
-  if (arr.length >= MAX_PER_HOUR) { sendTimes.set(pageId, arr); return false; }
+  const arr = (sendTimes.get(key) ?? []).filter((t) => t > cutoff);
+  if (arr.length >= max) { sendTimes.set(key, arr); return false; }
   arr.push(now);
-  sendTimes.set(pageId, arr);
+  sendTimes.set(key, arr);
   return true;
 }
+function allowSend(pageId: string): boolean { return withinRate(`dm:${pageId}`, MAX_PER_HOUR); }
 
 async function postMessage(creds: FbCreds, payload: Record<string, unknown>): Promise<FbSendResult> {
   try {
@@ -192,6 +196,11 @@ export async function sendFbButtons(
 // ── Public reply under a Page comment (optional) ──────────────────────────────
 export async function replyToFbComment(creds: FbCreds, commentId: string, text: string): Promise<{ ok: boolean; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
+  // Pace public replies on their own budget — unbounded identical/rapid replies
+  // are the fastest way to get a Page action-blocked.
+  if (!withinRate(`comment:${creds.pageId}`, MAX_COMMENT_REPLIES_PER_HOUR)) {
+    return { ok: false, error: "Hourly comment-reply cap reached for this Page" };
+  }
   try {
     const r = await fetch(`${GRAPH}/${commentId}/comments`, {
       method: "POST",

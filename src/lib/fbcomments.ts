@@ -10,6 +10,7 @@
 // tenant_id and EVERY write stamps it — app-layer scoping is the real guard.
 
 import { db } from "./supabase";
+import { normalizeButtons, normalizePublicReplies, matchesKeywords, type RuleButton } from "./igcomments";
 
 export interface FbCommentRule {
   id: string;
@@ -23,14 +24,24 @@ export interface FbCommentRule {
   postThumbnail: string | null;
   keyword: string | null;
   dmMessage: string;
-  buttonLabel: string | null;
-  buttonUrl: string | null;
-  publicReply: string | null;
+  buttons: RuleButton[];
+  buttonLabel: string | null;   // legacy mirror of buttons[0]
+  buttonUrl: string | null;     // legacy mirror of buttons[0]
+  publicReplies: string[];      // rotating public-reply variants
+  publicReply: string | null;   // legacy mirror of publicReplies[0]
+  replyOnly: boolean;           // true → public reply only, never DM
   matchCount: number;
   createdAt: string;
 }
 
 function mapRule(r: Record<string, unknown>): FbCommentRule {
+  const legacyUrl = (r.button_url as string | null) ?? null;
+  const legacyLabel = (r.button_label as string | null) ?? null;
+  let buttons = normalizeButtons(r.buttons);
+  if (!buttons.length && legacyUrl) buttons = normalizeButtons([{ label: legacyLabel ?? "", url: legacyUrl }]);
+  const legacyReply = (r.public_reply as string | null) ?? null;
+  let publicReplies = normalizePublicReplies(r.public_replies);
+  if (!publicReplies.length && legacyReply) publicReplies = normalizePublicReplies([legacyReply]);
   return {
     id: r.id as string,
     tenantId: r.tenant_id as string,
@@ -43,9 +54,12 @@ function mapRule(r: Record<string, unknown>): FbCommentRule {
     postThumbnail: (r.post_thumbnail as string | null) ?? null,
     keyword: (r.keyword as string | null) ?? null,
     dmMessage: (r.dm_message as string) ?? "",
-    buttonLabel: (r.button_label as string | null) ?? null,
-    buttonUrl: (r.button_url as string | null) ?? null,
-    publicReply: (r.public_reply as string | null) ?? null,
+    buttons,
+    buttonLabel: buttons[0]?.label ?? legacyLabel,
+    buttonUrl: buttons[0]?.url ?? legacyUrl,
+    publicReplies,
+    publicReply: publicReplies[0] ?? legacyReply,
+    replyOnly: (r.reply_only as boolean) ?? false,
     matchCount: (r.match_count as number) ?? 0,
     createdAt: r.created_at as string,
   };
@@ -66,14 +80,22 @@ export interface CommentRuleInput {
   postPermalink?: string | null;
   postThumbnail?: string | null;
   keyword?: string | null;
-  dmMessage: string;
-  buttonLabel?: string | null;
+  dmMessage?: string;            // optional when replyOnly
+  buttons?: RuleButton[];
+  buttonLabel?: string | null;   // legacy single-button input
   buttonUrl?: string | null;
-  publicReply?: string | null;
+  publicReplies?: string[];
+  publicReply?: string | null;   // legacy single-reply input
+  replyOnly?: boolean;
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<FbCommentRule> {
-  const row = {
+  let buttons = normalizeButtons(input.buttons);
+  if (!buttons.length && input.buttonUrl) buttons = normalizeButtons([{ label: input.buttonLabel ?? "", url: input.buttonUrl }]);
+  let publicReplies = normalizePublicReplies(input.publicReplies);
+  if (!publicReplies.length && input.publicReply) publicReplies = normalizePublicReplies([input.publicReply]);
+  const replyOnly = !!input.replyOnly;
+  const row: Record<string, unknown> = {
     tenant_id: tenantId,
     channel_id: input.channelId ?? null,
     name: (input.name ?? "").trim(),
@@ -83,15 +105,27 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     post_permalink: input.postPermalink ?? null,
     post_thumbnail: input.postThumbnail ?? null,
     keyword: input.keyword?.trim() || null,
-    dm_message: input.dmMessage.trim(),
-    button_label: input.buttonLabel?.trim() || null,
-    button_url: input.buttonUrl?.trim() || null,
-    public_reply: input.publicReply?.trim() || null,
+    dm_message: replyOnly ? "" : (input.dmMessage ?? "").trim(),
+    buttons: replyOnly ? [] : buttons,
+    button_label: replyOnly ? null : (buttons[0]?.label || null),
+    button_url: replyOnly ? null : (buttons[0]?.url || null),
+    public_replies: publicReplies,
+    public_reply: publicReplies[0] || null,
+    reply_only: replyOnly,
   };
-  const q = input.id
-    ? db().from("wa_fb_comment_rules").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
-    : db().from("wa_fb_comment_rules").insert(row).select().single();
-  const { data, error } = await q;
+  const runSave = (r: Record<string, unknown>) => (input.id
+    ? db().from("wa_fb_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_fb_comment_rules").insert(r).select().single());
+  let { data, error } = await runSave(row);
+  // Tolerant fallback until migration 0089 lands — strip any not-yet-present
+  // column; the legacy columns still persist variant[0].
+  const attempt = { ...row };
+  for (let i = 0; i < 3 && error && /\b(buttons|public_replies|reply_only)\b/i.test(error.message ?? ""); i++) {
+    if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
+    if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
+    if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;
+    ({ data, error } = await runSave(attempt));
+  }
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
 }
@@ -110,9 +144,8 @@ export async function getCommentRule(id: string, tenantId: string): Promise<FbCo
 // win over any-Page; specific-post over all-posts; keyword over catch-all.
 // Returns null when nothing matches (anti-spam default).
 export async function matchCommentRule(text: string, postId: string | null, tenantId: string, channelId?: string | null): Promise<FbCommentRule | null> {
-  const rules = (await listCommentRules(tenantId)).filter(r => r.enabled && r.dmMessage);
-  const lc = text.toLowerCase();
-  const keywordOk = (r: FbCommentRule) => !r.keyword || lc.includes(r.keyword.toLowerCase());
+  const rules = (await listCommentRules(tenantId)).filter(r => r.enabled && (r.replyOnly ? r.publicReplies.length > 0 : !!r.dmMessage));
+  const keywordOk = (r: FbCommentRule) => matchesKeywords(text, r.keyword);
   const postOk = (r: FbCommentRule) => !r.postId || r.postId === postId;
   const channelOk = (r: FbCommentRule) => !r.channelId || !channelId || r.channelId === channelId;
   const candidates = rules.filter(r => channelOk(r) && postOk(r) && keywordOk(r));

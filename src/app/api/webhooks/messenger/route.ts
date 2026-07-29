@@ -11,6 +11,7 @@ import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
 import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments";
+import { pickPublicReply } from "@/lib/igcomments";
 import { handleFlowMessage } from "@/lib/flowengine";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
@@ -282,9 +283,23 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
 
   const creds = credsOf(channel);
-  const buttons: FbButton[] = rule.buttonUrl
-    ? [{ type: "web_url", url: rule.buttonUrl, title: (rule.buttonLabel || "Open link").slice(0, 20) }]
-    : [];
+
+  // Reply-only rule: post a public reply (rotated) and send NO DM at all.
+  if (rule.replyOnly) {
+    const publicReply = pickPublicReply(rule);
+    if (publicReply) {
+      const res = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] reply-only public reply", e); return { ok: false as const }; });
+      if (res.ok) {
+        await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
+        await bumpRuleMatch(rule.id, rule.matchCount, tid);
+      }
+    }
+    return;
+  }
+
+  // Up to 3 link buttons (Meta button-template cap); fall back to legacy single.
+  const btnList = rule.buttons?.length ? rule.buttons : (rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : []);
+  const buttons: FbButton[] = btnList.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) }));
   const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons);
   if (!sent.ok) { console.warn("[fb webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
 
@@ -293,7 +308,9 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   await touchOutbound(conv.id, rule.dmMessage);
 
   await bumpRuleMatch(rule.id, rule.matchCount, tid);
-  if (rule.publicReply) {
-    await replyToFbComment(creds, commentId, rule.publicReply).catch(e => console.error("[fb webhook] public reply", e));
+  // Public reply: rotate a random variant so replies are never identical.
+  const publicReply = pickPublicReply(rule);
+  if (publicReply) {
+    await replyToFbComment(creds, commentId, publicReply).catch(e => console.error("[fb webhook] public reply", e));
   }
 }

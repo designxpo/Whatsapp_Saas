@@ -24,12 +24,25 @@ export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
+  const replyOnly = !!body.replyOnly;
   const dmMessage = String(body.dmMessage ?? "").trim();
-  if (!dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
-  const buttonUrl = String(body.buttonUrl ?? "").trim();
-  if (buttonUrl && !/^https?:\/\//i.test(buttonUrl)) {
-    return NextResponse.json({ error: "Button link must start with http(s)://" }, { status: 400 });
+  if (!replyOnly && !dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
+  // Buttons: new array, or legacy single button as a fallback.
+  const rawButtons = Array.isArray(body.buttons)
+    ? (body.buttons as unknown[])
+    : (body.buttonUrl ? [{ label: body.buttonLabel, url: body.buttonUrl }] : []);
+  const buttons = rawButtons
+    .map(b => { const o = (b ?? {}) as Record<string, unknown>; return { label: String(o.label ?? "").trim().slice(0, 20), url: String(o.url ?? "").trim() }; })
+    .filter(b => b.url);
+  if (buttons.some(b => !/^https?:\/\//i.test(b.url))) {
+    return NextResponse.json({ error: "Every button link must start with http(s)://" }, { status: 400 });
   }
+  // Public replies: new array, or legacy single reply as a fallback.
+  const rawReplies = Array.isArray(body.publicReplies)
+    ? (body.publicReplies as unknown[])
+    : (body.publicReply ? [body.publicReply] : []);
+  const publicReplies = rawReplies.map(v => String(v ?? "").trim().slice(0, 280)).filter(Boolean);
+  if (replyOnly && !publicReplies.length) return NextResponse.json({ error: "Add at least one public reply for a reply-only rule" }, { status: 400 });
   try {
     const channels = await listChannels(tid);
     const fbChannel = channels.find(c => c.kind === "messenger");
@@ -47,11 +60,11 @@ export async function POST(req: Request) {
       postCaption: (body.postCaption as string | null) ?? null,
       postPermalink: (body.postPermalink as string | null) ?? null,
       postThumbnail: (body.postThumbnail as string | null) ?? null,
-      keyword: String(body.keyword ?? "").slice(0, 60),
+      keyword: String(body.keyword ?? "").slice(0, 200),   // comma-separated trigger words
       dmMessage: dmMessage.slice(0, 900),
-      buttonLabel: String(body.buttonLabel ?? "").slice(0, 20),
-      buttonUrl,
-      publicReply: String(body.publicReply ?? "").slice(0, 280),
+      buttons: buttons.slice(0, 3),
+      publicReplies: publicReplies.slice(0, 5),
+      replyOnly,
     }, tid);
     logActivity(await currentUser(), "settings.save", `fb comment rule "${rule.name || rule.id}"`);
     return NextResponse.json({ rule });
