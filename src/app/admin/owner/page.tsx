@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail } from "lucide-react";
+import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail, LayoutDashboard, Activity, Megaphone } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 import { MetaDoctor } from "../_tabs/MetaDoctor";
 
@@ -38,6 +38,16 @@ const STATUSES = ["active", "trialing", "suspended", "cancelled"];
 const PLAN_FALLBACK = ["trial", "creator", "creator-pro", "starter", "growth", "scale"];
 const PAYMENTS = ["trialing", "active", "past_due", "cancelled", "none"];
 
+type SectionKey = "overview" | "tenants" | "waitlist" | "plans" | "health" | "platform";
+const SECTIONS: { key: SectionKey; label: string; icon: typeof Users }[] = [
+  { key: "overview", label: "Overview", icon: LayoutDashboard },
+  { key: "tenants", label: "Tenants", icon: Users },
+  { key: "waitlist", label: "Waitlist", icon: Inbox },
+  { key: "plans", label: "Plans & pricing", icon: CreditCard },
+  { key: "health", label: "Health & diagnostics", icon: Activity },
+  { key: "platform", label: "Platform", icon: Megaphone },
+];
+
 export default function OwnerPortal() {
   const router = useRouter();
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -54,6 +64,7 @@ export default function OwnerPortal() {
   const [analytics, setAnalytics] = useState<{ newThisMonth: number; trialsEndingSoon: number; signupsByDay: { date: string; count: number }[] } | null>(null);
   const [health, setHealth] = useState<TenantHealthRow[]>([]);
   const [waitlist, setWaitlist] = useState<WaitlistRow[]>([]);
+  const [section, setSection] = useState<SectionKey>("overview");
   const [q, setQ] = useState("");
   // Editable plan→feature matrix (synced from plans; saved back per plan).
   const [matrix, setMatrix] = useState<Record<string, Record<string, boolean>>>({});
@@ -170,22 +181,51 @@ export default function OwnerPortal() {
   if (loading) return <main className="min-h-screen flex items-center justify-center bg-canvas"><Loader2 className="w-6 h-6 animate-spin text-ink-400" /></main>;
   if (denied) return <main className="min-h-screen flex flex-col items-center justify-center gap-3 bg-canvas"><p className="text-sm text-ink-500">This area is for the product owner only.</p><a href="/admin" className="text-sm font-bold text-brand-700">← Back to app</a></main>;
 
-  return (
-    <main className="min-h-screen bg-canvas p-6">
-      <div className="max-w-5xl mx-auto space-y-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-extrabold text-brand-dark flex items-center gap-2"><ShieldCheck className="w-6 h-6" /> Owner Portal</h1>
-            <p className="text-sm text-slate-500">Control every tenant — subscriptions, payments, features and access.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <a href="/admin" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><LogIn className="w-3.5 h-3.5" /> App dashboard</a>
-            <a href="/admin/setup" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> System setup</a>
-            <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white flex items-center gap-1.5"><LogOut className="w-3.5 h-3.5" /> Log out</button>
-          </div>
-        </div>
+  const newLeads = waitlist.filter(w => w.status === "new").length;
+  const activeMeta = SECTIONS.find(s => s.key === section);
 
-        {stats && (
+  return (
+    <main className="min-h-screen bg-canvas">
+      <div className="mx-auto max-w-6xl flex flex-col md:flex-row md:gap-6 p-4 md:p-6">
+        {/* Sidebar nav — sticky on desktop, a horizontal scroll row on mobile. */}
+        <aside className="md:w-56 shrink-0 md:sticky md:top-6 md:self-start">
+          <div className="flex items-center gap-2 px-1 mb-3">
+            <ShieldCheck className="w-5 h-5 text-brand-dark" />
+            <span className="text-sm font-extrabold text-brand-dark">Owner Portal</span>
+          </div>
+          <nav className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0">
+            {SECTIONS.map(s => {
+              const A = s.icon; const active = section === s.key;
+              return (
+                <button key={s.key} onClick={() => setSection(s.key)}
+                  className={`flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold whitespace-nowrap transition ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-white"}`}>
+                  <A className="w-4 h-4 shrink-0" /> {s.label}
+                  {s.key === "waitlist" && newLeads > 0 && <span className={`ml-auto text-[10px] font-bold px-1.5 rounded-full ${active ? "bg-white/20 text-white" : "bg-brand-100 text-brand-700"}`}>{newLeads}</span>}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="hidden md:flex flex-col gap-1 mt-4 pt-4 border-t border-line">
+            <a href="/admin" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-500 hover:bg-white"><LogIn className="w-4 h-4" /> App dashboard</a>
+            <a href="/admin/setup" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-500 hover:bg-white"><Settings className="w-4 h-4" /> System setup</a>
+            <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }} className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-500 hover:bg-white"><LogOut className="w-4 h-4" /> Log out</button>
+          </div>
+        </aside>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0 space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h1 className="text-xl font-extrabold text-brand-dark flex items-center gap-2">{activeMeta && <activeMeta.icon className="w-5 h-5" />} {activeMeta?.label}</h1>
+              <p className="text-sm text-slate-500">Control every tenant — subscriptions, payments, features and access.</p>
+            </div>
+            <div className="flex md:hidden items-center gap-2">
+              <a href="/admin" className="p-2 rounded-control border border-line text-ink-600 hover:bg-white" title="App dashboard"><LogIn className="w-4 h-4" /></a>
+              <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }} className="p-2 rounded-control border border-line text-ink-600 hover:bg-white" title="Log out"><LogOut className="w-4 h-4" /></button>
+            </div>
+          </div>
+
+        {section === "overview" && stats && (
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[["Tenants", stats.total, Users], ["Active", stats.active, ShieldCheck], ["Trialing", stats.trialing, CreditCard], ["Suspended", stats.suspended, Ban], ["MRR", money(stats.mrrCents, "INR"), CreditCard]].map(([label, val, Icon], i) => {
               const I = Icon as typeof Users;
@@ -194,7 +234,7 @@ export default function OwnerPortal() {
           </div>
         )}
 
-        {planMix.length > 0 && (
+        {section === "overview" && planMix.length > 0 && (
           <div className="bg-white rounded-card border border-line p-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-ink-500">
             <span className="font-bold uppercase text-ink-400">Plan mix</span>
             {planMix.map(p => <span key={p.key}>{p.name}: <b className="text-ink-800">{p.count}</b></span>)}
@@ -202,6 +242,7 @@ export default function OwnerPortal() {
         )}
 
         {/* Pre-launch waitlist / interest submissions from the marketing site. */}
+        {section === "waitlist" && (
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Inbox className="w-3.5 h-3.5" /> Waitlist &amp; interest</p>
@@ -243,11 +284,12 @@ export default function OwnerPortal() {
             </div>
           )}
         </div>
+        )}
 
         {/* Platform-level Meta diagnostics — env + live Graph credential check. */}
-        <MetaDoctor />
+        {section === "health" && <MetaDoctor />}
 
-        {planRequests.length > 0 && (
+        {section === "overview" && planRequests.length > 0 && (
           <div className="bg-white rounded-card border border-amber-200 p-4 space-y-2">
             <p className="text-xs font-bold text-amber-600 uppercase">Plan upgrade requests</p>
             {planRequests.map((r, i) => {
@@ -265,7 +307,7 @@ export default function OwnerPortal() {
           </div>
         )}
 
-        {analytics && (
+        {section === "overview" && analytics && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-white rounded-card border border-line p-4"><p className="text-[11px] font-bold uppercase text-ink-400">New this month</p><p className="text-2xl font-extrabold text-ink-900 mt-1">{analytics.newThisMonth}</p></div>
             <div className="bg-white rounded-card border border-line p-4"><p className="text-[11px] font-bold uppercase text-ink-400">Trials ending ≤7d</p><p className="text-2xl font-extrabold text-ink-900 mt-1">{analytics.trialsEndingSoon}</p></div>
@@ -282,7 +324,7 @@ export default function OwnerPortal() {
         )}
 
         {/* Feature flags */}
-        {flags.length > 0 && (
+        {section === "platform" && flags.length > 0 && (
           <div className="bg-white rounded-card border border-line p-4 space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase">Platform feature flags</p>
             <div className="grid sm:grid-cols-2 gap-2">
@@ -296,7 +338,7 @@ export default function OwnerPortal() {
           </div>
         )}
 
-        {health.length > 0 && (() => {
+        {section === "health" && health.length > 0 && (() => {
           const broken = health.filter(h => h.health === "error");
           const warn = health.filter(h => h.health === "warn");
           const dot = (s: string) => s === "error" ? "bg-red-500" : s === "warn" ? "bg-amber-500" : s === "ok" ? "bg-emerald-500" : "bg-slate-300";
@@ -330,6 +372,7 @@ export default function OwnerPortal() {
           );
         })()}
 
+        {section === "tenants" && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-bold text-slate-400 uppercase">Tenants</p>
@@ -350,8 +393,10 @@ export default function OwnerPortal() {
           ))}
           {!tenants.length && <p className="text-xs text-ink-400">No tenants yet — they appear here when people sign up.</p>}
         </div>
+        )}
 
         {/* Plans */}
+        {section === "plans" && (
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs font-bold text-slate-400 uppercase">Plans & pricing</p>
@@ -392,9 +437,10 @@ export default function OwnerPortal() {
             </div>
           )}
         </div>
+        )}
 
         {/* Features per plan — the entitlement defaults for tenants on each plan */}
-        {plans.length > 0 && (
+        {section === "plans" && plans.length > 0 && (
           <div className="bg-white rounded-card border border-line p-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -433,6 +479,7 @@ export default function OwnerPortal() {
         )}
 
         {/* Announcements */}
+        {section === "platform" && (
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Announcements (pinned = banner for all tenants)</p>
           <div className="grid grid-cols-2 gap-2">
@@ -451,8 +498,9 @@ export default function OwnerPortal() {
             </div>
           ))}
         </div>
+        )}
 
-        {audit.length > 0 && (
+        {section === "overview" && audit.length > 0 && (
           <div className="bg-white rounded-card border border-line p-4">
             <p className="text-xs font-bold text-slate-400 uppercase mb-2">Recent owner actions</p>
             <div className="space-y-1">
@@ -460,6 +508,7 @@ export default function OwnerPortal() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Tenant editor — centered modal so it's always visible (no scrolling). */}
