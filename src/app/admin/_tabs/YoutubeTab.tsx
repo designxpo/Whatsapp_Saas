@@ -4,7 +4,7 @@
 // Instagram & Facebook. YouTube has no DMs, so automation here is public-reply +
 // moderation only. Mirrors InstagramTab's reply-only mode.
 import { useState, useEffect, useCallback } from "react";
-import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert } from "lucide-react";
+import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert, RefreshCw } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 
@@ -75,6 +75,7 @@ function YoutubeManager() {
   const [videos, setVideos] = useState<YtVideo[]>([]);
   const [videosError, setVideosError] = useState<string | null>(null);
   const [status, setStatus] = useState<YtStatus[]>([]);
+  const [checking, setChecking] = useState(false);
   const [ruleForm, setRuleForm] = useState<YtRule | null>(null);
   const [pickChannel, setPickChannel] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
@@ -163,6 +164,22 @@ function YoutubeManager() {
     } finally { setBusy(false); }
   }
 
+  // Run the same poll the cron runs, for this tenant only — so testing a new
+  // rule doesn't mean waiting for the next tick. Safe to spam: the dedupe log
+  // and rate caps still apply, so it can't double-reply.
+  async function checkNow() {
+    setChecking(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/yt-status", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Check failed");
+      else setMsg(d.acted > 0
+        ? `Checked — replied to ${d.acted} comment${d.acted === 1 ? "" : "s"}.`
+        : "Checked — nothing new to reply to. Only comments posted after a rule was saved are picked up.");
+      loadStatus();
+    } finally { setChecking(false); }
+  }
+
   async function remove(id: string) {
     if (!confirm("Disconnect this YouTube channel? Its rules stay.")) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
@@ -199,6 +216,12 @@ function YoutubeManager() {
           <p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel to auto-reply to comments and moderate spam. Public replies only — YouTube has no DMs.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {!!channels.length && (
+            <button onClick={checkNow} disabled={checking} title="Run the comment check right now instead of waiting for the next automatic run"
+              className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              {checking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} {checking ? "Checking…" : "Check now"}
+            </button>
+          )}
           <a href="/api/admin/onboarding/youtube/start" className="px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5">
             <Youtube className="w-3.5 h-3.5" /> Connect with Google
           </a>
@@ -294,6 +317,9 @@ function YoutubeManager() {
           <button onClick={() => { setMsg(null); if (!channels.length) { setMsg("Connect a YouTube channel first."); return; } if (channels.length > 1) { setRuleForm(null); setPickChannel(true); } else { setPickChannel(false); setRuleForm({ ...BLANK_RULE, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
         <p className="text-[11px] text-ink-400">When someone comments, publicly reply under their comment and/or moderate it. Add a few reply variants and we rotate them so replies stay natural and don&apos;t trip YouTube&apos;s spam filters. Target one video or all videos, and gate by keyword.</p>
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">
+          <b>Testing a rule?</b> Save the rule first, then post a <b>brand-new comment</b>. Each comment is answered only once, and comments posted before the rule existed are never revisited — so re-testing with the same comment will look like nothing happened. Hit <b>Check now</b> above to run immediately instead of waiting for the next automatic check.
+        </p>
 
         {rules.map(r => {
           const video = videos.find(v => v.id === r.videoId);

@@ -73,6 +73,11 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
     if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) continue;
 
     const rule = await matchYtCommentRule(c.text, c.videoId, channel.tenantId, channel.id);
+    const aiWillAnswer = !rule && channel.commentAi && aiEnabled;
+    // Take no action → do NOT claim. Claiming here used to burn the comment id
+    // permanently, so a rule created afterwards could never fire on a comment
+    // the poller had already walked past with nothing to do.
+    if (!rule && !aiWillAnswer) continue;
     // Idempotency: claim the comment once (whether a rule fires or the AI answers).
     if (!(await claimYtComment(c.id, rule?.id ?? null, channel.tenantId))) continue;
 
@@ -91,7 +96,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
 
     // No rule matched → let the AI answer publicly, if the channel opts in and the
     // tenant's AI is on. Grounded in the channel's persona + KB.
-    if (channel.commentAi && aiEnabled) {
+    if (aiWillAnswer) {
       try {
         const res = await generateReply(
           [{ role: "user", body: c.text }],
@@ -122,12 +127,14 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
 }
 
 // Cron entrypoint — poll every connected YouTube channel and act on new comments.
-// Returns the number of replies/moderations performed this tick.
-export async function drainYtComments(): Promise<number> {
+// Returns the number of replies/moderations performed this tick. Pass a
+// tenantId to poll just that workspace (the portal's "Check now" button, so an
+// admin testing a rule doesn't wait for the next 5-minute cron tick).
+export async function drainYtComments(tenantId?: string): Promise<number> {
   if (!youtubeConfigured()) return 0;   // dormant until the OAuth client is set
   let channels: Channel[];
   try {
-    channels = (await listChannels()).filter(c => c.kind === "youtube" && c.active && c.ytChannelId && c.token);
+    channels = (await listChannels(tenantId)).filter(c => c.kind === "youtube" && c.active && c.ytChannelId && c.token);
   } catch { return 0; }
   if (!channels.length) return 0;
   const aiEnabledCache = new Map<string, boolean>();

@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
-import { currentTenantId, requireAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { drainYtComments } from "@/lib/ytpoller";
+import { currentTenantId, requireAdmin, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;   // a poll can involve several Google round-trips + an AI call
 
 // GET — what the last YouTube poll actually did, per connected channel. Exists
 // so "the reply didn't appear" is diagnosable from the portal instead of
@@ -32,5 +34,19 @@ export async function GET() {
     return NextResponse.json({ status });
   } catch (err) {
     return NextResponse.json({ status: [], error: errorMessage(err) });
+  }
+}
+
+// POST — "Check now": run the poll for THIS tenant immediately instead of
+// waiting for the next 5-minute cron tick. Same code path as the cron, so it
+// respects the dedupe log and rate caps; it can't double-reply.
+export async function POST() {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  try {
+    const acted = await drainYtComments(tid);
+    return NextResponse.json({ acted });
+  } catch (err) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
