@@ -68,7 +68,7 @@ export type Tier = {
 export const TIERS: Tier[] = [
   {
     name: "Starter", priceMonthly: 1999, tagline: "For solo founders getting started",
-    features: ["1 WhatsApp number", "Website web-chat widget", "1,000 conversations / mo", "AI auto-replies (your key)", "Comment-to-DM automation", "Broadcasts & templates", "Unified inbox", "2 team seats"],
+    features: ["1 WhatsApp number", "Website web-chat widget", "YouTube comment automation", "1,000 conversations / mo", "AI auto-replies (your key)", "Comment-to-DM automation", "Broadcasts & templates", "Unified inbox", "2 team seats"],
     cta: "Join the waitlist", href: "/waitlist?plan=Starter",
   },
   {

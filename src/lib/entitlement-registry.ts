@@ -5,12 +5,14 @@
 // the resolver in entitlements.ts merges those with per-tenant overrides.
 
 export type FeatureKey =
-  | "ch_whatsapp" | "ch_instagram" | "ch_messenger" | "ch_webchat"
+  | "ch_whatsapp" | "ch_instagram" | "ch_messenger" | "ch_webchat" | "ch_youtube"
+  | "reviews"
   | "ai_autoreply" | "broadcasts" | "flows" | "sequences" | "commerce"
   | "forms" | "pipeline" | "growth" | "ads" | "aihub" | "crm";
 
 export const FEATURE_KEYS: FeatureKey[] = [
-  "ch_whatsapp", "ch_instagram", "ch_messenger", "ch_webchat",
+  "ch_whatsapp", "ch_instagram", "ch_messenger", "ch_webchat", "ch_youtube",
+  "reviews",
   "ai_autoreply", "broadcasts", "flows", "sequences", "commerce",
   "forms", "pipeline", "growth", "ads", "aihub", "crm",
 ];
@@ -20,6 +22,8 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   ch_instagram: { label: "Instagram channel", group: "Channels" },
   ch_messenger: { label: "Facebook Messenger channel", group: "Channels" },
   ch_webchat:   { label: "Website web chat", group: "Channels" },
+  ch_youtube:   { label: "YouTube comment automation", group: "Channels" },
+  reviews:      { label: "Google review replies", group: "Reputation" },
   ai_autoreply: { label: "AI auto-replies", group: "AI" },
   broadcasts:   { label: "Broadcasts & templates", group: "Messaging" },
   flows:        { label: "Chatbot flows", group: "Automation" },
@@ -42,6 +46,7 @@ export const TAB_FEATURE: Record<string, FeatureKey | null> = {
   assistant: null, setup: null, integrations: null, optouts: null, settings: null,
   broadcast: "broadcasts", templates: "broadcasts",
   instagram: "ch_instagram", facebook: "ch_messenger", webchat: "ch_webchat",
+  youtube: "ch_youtube", reviews: "reviews",
   flows: "flows", sequences: "sequences", catalog: "commerce", forms: "forms",
   pipeline: "pipeline", growth: "growth", ads: "ads", aihub: "aihub",
 };

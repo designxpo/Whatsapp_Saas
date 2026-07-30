@@ -47,6 +47,7 @@ const MOD_LABEL: Record<Moderate, string> = { off: "No moderation", hold_spam: "
 
 // Result flags the OAuth callback lands back with (?yt=connected / ?yt_error=…).
 const YT_ERROR_MESSAGES: Record<string, string> = {
+  not_in_plan: "YouTube automation isn't included in your current plan — upgrade to unlock it.",
   not_configured: "YouTube isn't configured on this deployment yet (Google OAuth pending) — add a channel manually below once it's set up, or ask your platform admin.",
   denied: "Google sign-in was cancelled.",
   state_mismatch: "Something went wrong verifying the request — please try connecting again.",

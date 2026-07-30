@@ -20,6 +20,7 @@ type GrLocation = { accountId: string; id: string; name: string; address: string
 // Result flags the Google OAuth callback lands back with (?gr=connected|pick
 // &channelId=… / ?gr_error=…).
 const GR_ERROR_MESSAGES: Record<string, string> = {
+  not_in_plan: "Google review replies are available on Growth and above — upgrade to unlock them.",
   not_configured: "Google isn't configured on this deployment yet (OAuth pending) — ask your platform admin.",
   denied: "Google sign-in was cancelled.",
   state_mismatch: "Something went wrong verifying the request — please try connecting again.",
