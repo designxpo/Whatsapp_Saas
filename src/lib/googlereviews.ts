@@ -82,7 +82,17 @@ async function apiGetDetailed(token: string, url: string): Promise<{ data: Recor
       return { data: null, error: "Google hasn't approved this project for Business Profile API access yet — that request is separate from OAuth verification and can take a few weeks." };
     }
     if (r.status === 401) return { data: null, error: "Google access expired or was revoked — reconnect." };
-    if (r.status === 429) return { data: null, error: "Google is rate-limiting this project — try again shortly." };
+    if (r.status === 429 || err?.status === "RESOURCE_EXHAUSTED") {
+      // Google enforces a near-zero default quota on these endpoints until the
+      // Business Profile API access request is approved, and reports it as
+      // RESOURCE_EXHAUSTED (429) rather than a clean permission error. A 429 on
+      // an account's first-ever call to this API is almost always THIS, not
+      // genuine traffic-based throttling — waiting won't fix it.
+      if (/quota exceeded|per minute|per day/i.test(msg)) {
+        return { data: null, error: `Google's default quota for this API is exhausted — this happens immediately for projects still waiting on Business Profile API access approval (separate from OAuth verification, can take a few weeks). Not a temporary rate limit. Google's exact message: "${msg}"` };
+      }
+      return { data: null, error: `Google is rate-limiting this project — try again shortly. Google's message: "${msg}"` };
+    }
     return { data: null, error: msg || `Google API error (${r.status})` };
   } catch (e) {
     return { data: null, error: e instanceof Error ? e.message : "Google API request failed" };
