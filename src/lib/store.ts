@@ -909,6 +909,18 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
   return { id: (data as Record<string, unknown>).id as string, createdAt: (data as Record<string, unknown>).created_at as string };
 }
 
+// A Messenger/Instagram send failed (Standard-Access tester gate, 24h window,
+// rate cap, Meta API error, …) and would otherwise vanish silently — the lead
+// sees nothing, and no error surfaces anywhere in the portal. Post it as a
+// visible note in the conversation instead, so an admin can see WHY.
+export async function logSendFailure(conversationId: string, channelId: string | null | undefined, reason: string, tenantId?: string): Promise<void> {
+  await appendConvMessage({
+    conversationId, role: "assistant",
+    body: `⚠️ Reply not delivered: ${reason}`,
+    source: "bot", channelId: channelId ?? undefined, tenantId,
+  }).catch(() => undefined);
+}
+
 // ── Grounding audit (anti-hallucination L4) ──────────────────────────────────
 // Records one async semantic-audit verdict, tenant-scoped. Fire-and-forget; never
 // throws. No-ops gracefully if 0066 hasn't been applied yet (table missing).

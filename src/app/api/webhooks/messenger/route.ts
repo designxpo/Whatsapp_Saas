@@ -2,7 +2,7 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, landCapturedLead, upsertContacts, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, landCapturedLead, upsertContacts, logSendFailure, type Conversation } from "@/lib/store";
 import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
 import { fetchLeadgen } from "@/lib/ads";
 import { generateReply } from "@/lib/llm";
@@ -201,9 +201,11 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const tid = channel.tenantId;
   const now = new Date().toISOString();
   const deliver = async (msg: string): Promise<boolean> => {
-    if (commentId) return (await replyToFbComment(creds, commentId, msg)).ok;
-    const r = await sendFbMessage(creds, conv.phone, msg, { lastInboundAt: now });
-    if (!r.ok) console.warn("[fb webhook] ai reply blocked:", r.blockedBy, r.error);
+    const r = commentId ? await replyToFbComment(creds, commentId, msg) : await sendFbMessage(creds, conv.phone, msg, { lastInboundAt: now });
+    if (!r.ok) {
+      console.warn("[fb webhook] ai reply blocked:", "blockedBy" in r ? r.blockedBy : undefined, r.error);
+      await logSendFailure(conv.id, channel.id, r.error || "unknown error", tid);
+    }
     return r.ok;
   };
   const closeOut = async () => {

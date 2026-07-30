@@ -25,7 +25,7 @@ import {
   appendConvMessage, touchOutbound, setConversationStatus,
   setContactAttributes, getContactByPhone, claimReply, setConversationAgent, setConversationKbTag,
   addContactTag, takeArmedFlow, updateContactProfile, setConversationName, setConversationLeadPhone, upsertContacts,
-  landCapturedLead, formLinkForWaba,
+  landCapturedLead, formLinkForWaba, logSendFailure,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
 import { isAiEnabled, getFlowNudge, getFlowReminders } from "./messaging-settings";
@@ -315,6 +315,7 @@ function igSender(conversationId: string, phone: string, channel: Channel, tenan
   };
   const sendIg = async (body: string): Promise<{ id?: string; error?: string }> => {
     const r = await sendIgMessage(creds, phone, body, { lastInboundAt: new Date().toISOString() });
+    if (r.error) await logSendFailure(conversationId, channel.id, r.error, tenantId);
     await log(body, r.messageId);
     return { id: r.messageId, error: r.error };
   };
@@ -362,6 +363,7 @@ function fbSender(conversationId: string, phone: string, channel: Channel, tenan
   };
   const sendFb = async (body: string): Promise<{ id?: string; error?: string }> => {
     const r = await sendFbMessage(creds, phone, body, { lastInboundAt: now() });
+    if (r.error) await logSendFailure(conversationId, channel.id, r.error, tenantId);
     await log(body, r.messageId);
     return { id: r.messageId, error: r.error };
   };

@@ -2,7 +2,7 @@ export const maxDuration = 180;   // inline transcription + LLM reply — match 
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, logSendFailure, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
@@ -210,9 +210,11 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // DM-triggered AI replies in the DM. (Rule-based comment-to-DM is separate and
   // intentionally DMs — handled in handleComment.)
   const deliver = async (msg: string): Promise<boolean> => {
-    if (commentId) return (await replyToComment(creds, commentId, msg)).ok;
-    const r = await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
-    if (!r.ok) console.warn("[ig webhook] ai reply blocked:", r.blockedBy, r.error);
+    const r = commentId ? await replyToComment(creds, commentId, msg) : await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
+    if (!r.ok) {
+      console.warn("[ig webhook] ai reply blocked:", "blockedBy" in r ? r.blockedBy : undefined, r.error);
+      await logSendFailure(conv.id, channel.id, r.error || "unknown error", tid);
+    }
     return r.ok;
   };
   const closeOut = async () => { await deliver(CLOSING_MSG); await escalateConversation(conv.id); };
