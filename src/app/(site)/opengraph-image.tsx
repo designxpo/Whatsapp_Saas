@@ -29,7 +29,7 @@ export default function OpengraphImage() {
           Turn every chat into a customer
         </div>
         <div style={{ fontSize: 31, marginTop: 26, opacity: 0.92, maxWidth: 1000, lineHeight: 1.3 }}>
-          AI that replies, qualifies and sells across WhatsApp, Instagram, Messenger &amp; web chat — one inbox, on autopilot.
+          AI that replies, qualifies and sells across WhatsApp, Instagram, Messenger, YouTube &amp; web chat — one inbox, on autopilot.
         </div>
         <div style={{ fontSize: 25, marginTop: 46, fontWeight: 700, opacity: 0.95 }}>
           thetalko.in  ·  Free 14-day trial

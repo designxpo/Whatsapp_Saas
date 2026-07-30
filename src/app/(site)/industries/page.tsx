@@ -6,7 +6,7 @@ import { IndustrySections } from "../_components/industries";
 export const metadata: Metadata = {
   title: "WhatsApp Automation by Industry — Talko AI",
   description:
-    "How D2C brands, EdTech, clinics, real estate agencies, restaurants and travel companies run on Talko AI — chat commerce, patient triage, lead qualification, chat ordering and grounded AI answers on WhatsApp, Instagram, Messenger and web chat.",
+    "How D2C brands, EdTech, clinics, real estate agencies, restaurants and travel companies run on Talko AI — chat commerce, patient triage, lead qualification, chat ordering and grounded AI answers on WhatsApp, Instagram, Messenger, YouTube, Google reviews and web chat.",
   // No `openGraph` object: it would overwrite (not merge) the shared og:image
   // from (site)/opengraph-image.tsx. og:title/og:description auto-infer above.
 };

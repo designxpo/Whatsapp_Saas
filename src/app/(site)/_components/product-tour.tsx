@@ -18,7 +18,7 @@ const SCREENS: Screen[] = [
   {
     key: "inbox", label: "Unified Inbox", icon: MessageSquare, src: "/tour/inbox.png",
     title: "One AI inbox for every channel",
-    blurb: "WhatsApp, Instagram, Messenger and web chat land in a single live inbox. The AI answers instantly from your knowledge base — and your team takes over in one click.",
+    blurb: "WhatsApp, Instagram, Messenger, YouTube comments and web chat land in a single live inbox. The AI answers instantly from your knowledge base — and your team takes over in one click.",
     points: ["Replies that quote your own docs, prices & policies", "Labels, assignment, AI personas & lead capture", "Filter by channel, ‘needs reply’ or escalations"],
   },
   {

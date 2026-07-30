@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
   Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
-  Rocket, TrendingUp, MessagesSquare, Globe, ArrowRight, AtSign, Sparkles, type LucideIcon,
+  Rocket, TrendingUp, MessagesSquare, Globe, ArrowRight, AtSign, Sparkles, Youtube, type LucideIcon,
 } from "lucide-react";
 import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
 import { Parallax, Reveal, CountUp } from "./motion";
@@ -18,7 +18,7 @@ import {
 const ICONS: Record<string, LucideIcon> = {
   bot: Bot, megaphone: Megaphone, workflow: Workflow, repeat: Repeat,
   shopping: ShoppingBag, instagram: Instagram, inbox: Inbox, shield: ShieldCheck,
-  messenger: MessagesSquare, webchat: Globe, comment: AtSign, star: Star, sparkles: Sparkles,
+  messenger: MessagesSquare, webchat: Globe, comment: AtSign, star: Star, sparkles: Sparkles, youtube: Youtube,
 };
 
 // Gradient icon chip (white icon). `i` cycles through the harmonised palette so

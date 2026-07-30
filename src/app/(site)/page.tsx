@@ -51,7 +51,7 @@ export default function HomePage() {
 
       {/* Features */}
       <Container className="py-8">
-        <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger and your website." />
+        <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger, YouTube and your website — plus AI replies for your Google reviews." />
         <FeatureGrid />
       </Container>
 

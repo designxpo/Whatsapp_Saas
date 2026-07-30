@@ -8,9 +8,9 @@ export const metadata: Metadata = {
   // No brand suffix here — the root template ("%s — Talko AI") DOES reach this
   // layout title (it renders "… — Talko AI", single brand). It does NOT reach
   // deeper page.tsx titles, which bake the brand in themselves.
-  title: "WhatsApp & Instagram Automation with AI Chatbots",
+  title: "WhatsApp, Instagram, YouTube & Reviews Automation with AI",
   description:
-    "Automate WhatsApp, Instagram, Messenger & web chat with AI replies, broadcasts, chatbot flows and catalog checkout. One inbox for every conversation. Free 14-day trial.",
+    "Automate WhatsApp, Instagram, Messenger, YouTube comments, Google reviews & web chat with AI replies, broadcasts, chatbot flows and catalog checkout. One inbox for every conversation. Free 14-day trial.",
 };
 
 // Site-wide entity graph. `sameAs` is the primary lever for the "Talko AI"
@@ -31,7 +31,7 @@ const orgSchema = {
   // Raster PNG — Google's logo guidelines don't reliably consume SVG.
   logo: `${SITE_URL}/brand/talkopng.png`,
   description:
-    "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger and website chat conversations with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
+    "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
   parentOrganization: { "@type": "Organization", name: "PM Technologies" },
   ...(ORG_SAME_AS.length ? { sameAs: ORG_SAME_AS } : {}),
 };

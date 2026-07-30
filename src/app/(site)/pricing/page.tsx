@@ -10,8 +10,8 @@ import { SITE_URL } from "@/lib/siteurl";
 export const metadata: Metadata = {
   // NOTE: the root title template does NOT reach page.tsx segments under
   // (site)/ (only the (site) layout's own title) — so bake the brand in here.
-  title: "WhatsApp Automation Pricing — Plans from ₹999/mo — Talko AI",
-  description: "Simple, transparent WhatsApp & Instagram automation pricing from ₹999/mo. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+  title: "Pricing — Plans from ₹999/mo — Talko AI",
+  description: "Simple, transparent pricing from ₹999/mo for WhatsApp, Instagram, Messenger, YouTube, Google reviews & web chat automation. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
   // No `openGraph` object: Next overwrites (never merges) it per segment, so
   // setting one would wipe the shared og:image from (site)/opengraph-image.tsx.
   // Omitting it lets og:title/og:description auto-infer from the fields above.
@@ -44,8 +44,8 @@ const pricingSchema = {
   operatingSystem: "Web",
   url: SITE_URL,
   description:
-    "AI conversation automation for WhatsApp, Instagram, Facebook Messenger and website chat — one inbox with AI replies, broadcasts, chatbot flows and catalog checkout.",
-  offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: 999, highPrice: 4999, offerCount: paidOffers.length, offers: paidOffers },
+    "AI conversation automation for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat — one inbox with AI replies, broadcasts, chatbot flows and catalog checkout.",
+  offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: 999, highPrice: 5999, offerCount: paidOffers.length, offers: paidOffers },
 };
 
 export default function PricingPage() {

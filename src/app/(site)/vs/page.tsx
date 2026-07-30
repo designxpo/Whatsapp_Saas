@@ -33,8 +33,9 @@ export default function VsIndexPage() {
             </h1>
             <p className="mt-5 text-balance text-lg leading-relaxed text-slate-600">
               Each tool below is excellent in its core lane. Talko AI&rsquo;s edge is doing all of it in one
-              platform — WhatsApp, Instagram, Messenger and website chat in a single inbox, with AI grounded
-              on your knowledge base and running on your own AI key. Pick a comparison to see the detail.
+              platform — WhatsApp, Instagram, Messenger, YouTube and website chat in a single inbox, plus AI
+              replies for your Google reviews, with AI grounded on your knowledge base and running on your
+              own AI key. Pick a comparison to see the detail.
             </p>
           </div>
         </Container>

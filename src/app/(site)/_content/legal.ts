@@ -9,8 +9,8 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-06-22";
-export const LEGAL_EFFECTIVE = "22 June 2026";
+export const LEGAL_VERSION = "2026-07-30";
+export const LEGAL_EFFECTIVE = "30 July 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -44,8 +44,8 @@ const TERMS: LegalDoc = {
       p(`If you are entering into these Terms on behalf of a company or other organisation, you represent that you have the authority to bind that organisation, and "you" refers to that organisation.`),
     ] },
     { heading: "2. The Service", blocks: [
-      p(`${C} is a multi-channel conversational platform that lets businesses connect WhatsApp, Instagram, Facebook Messenger and a website web-chat widget, automate replies with AI, run broadcasts, build chatbot flows and drip sequences, and manage conversations from a unified inbox.`),
-      p(`The Service connects to third-party platforms (such as Meta's WhatsApp, Instagram and Messenger APIs) and to AI providers using credentials and API keys that you supply. Your use of those platforms remains subject to their own terms and policies.`),
+      p(`${C} is a multi-channel conversational platform that lets businesses connect WhatsApp, Instagram, Facebook Messenger, a YouTube channel, a Google Business Profile and a website web-chat widget, automate replies with AI, run broadcasts, build chatbot flows and drip sequences, moderate and reply to comments and reviews, and manage conversations from a unified inbox.`),
+      p(`The Service connects to third-party platforms (such as Meta's WhatsApp, Instagram and Messenger APIs, and Google's YouTube Data API and Business Profile APIs) and to AI providers, using credentials and API keys or OAuth authorisations that you supply. Your use of those platforms remains subject to their own terms and policies.`),
     ] },
     { heading: "3. Eligibility and accounts", blocks: [
       p(`You must be at least 18 years old and capable of forming a binding contract to use the Service. You are responsible for the accuracy of the information you provide and for keeping it up to date.`),
@@ -67,7 +67,7 @@ const TERMS: LegalDoc = {
       p(`You are responsible for Your Data and for having all necessary rights, consents and lawful bases to collect and process it, including the consent of the end-customers you message. With respect to personal data of your end-customers, you act as the data controller and ${C} acts as your processor.`),
     ] },
     { heading: "8. Third-party services", blocks: [
-      p(`The Service integrates with third-party services including Meta (WhatsApp, Instagram, Messenger), payment processors, AI model providers and other tools you choose to connect. We are not responsible for third-party services, their availability, or changes to their APIs or policies, which may affect the Service. Your use of those services is governed by their own terms.`),
+      p(`The Service integrates with third-party services including Meta (WhatsApp, Instagram, Messenger), Google (YouTube Data API Services, Business Profile APIs), payment processors, AI model providers and other tools you choose to connect. We are not responsible for third-party services, their availability, or changes to their APIs or policies, which may affect the Service. Your use of those services is governed by their own terms, including the YouTube Terms of Service (https://www.youtube.com/t/terms) where you connect a YouTube channel.`),
     ] },
     { heading: "9. Intellectual property", blocks: [
       p(`The Service, including its software, design, trademarks and content (excluding Your Data), is owned by ${C} or its licensors and is protected by intellectual-property laws. We grant you a limited, non-exclusive, non-transferable, revocable licence to use the Service for your internal business purposes during your subscription. You may not copy, modify, resell, reverse-engineer or create derivative works of the Service except as permitted by law.`),
@@ -115,13 +115,13 @@ const PRIVACY_DOC: LegalDoc = {
     ] },
     { heading: "2. Our role: controller and processor", blocks: [
       p(`For information about your own account and use of the Service (such as your name, email and billing details), ${C} acts as the data controller.`),
-      p(`For the personal data of your end-customers that flows through the Service — the contacts and conversations on your connected WhatsApp, Instagram, Messenger and web-chat channels — you are the data controller and ${C} acts as your data processor, processing that data on your instructions to provide the Service.`),
+      p(`For the personal data of your end-customers that flows through the Service — the contacts and conversations on your connected WhatsApp, Instagram, Messenger and web-chat channels, and the comments and reviews on your connected YouTube channel and Google Business Profile — you are the data controller and ${C} acts as your data processor, processing that data on your instructions to provide the Service.`),
     ] },
     { heading: "3. Information we collect", blocks: [
       ul([
         "Account information: name, business name, email, phone, password (stored hashed), and the industry, team size and use-case details you provide at sign-up.",
         "Billing information: plan, subscription status and payment metadata. Card details are handled by our payment processor and are not stored by us.",
-        "Channel & integration data: the credentials and API keys you connect (encrypted at rest), and the messages, contacts and media exchanged on your connected channels.",
+        "Channel & integration data: the credentials, API keys and OAuth tokens you connect (encrypted at rest), and the messages, contacts and media exchanged on your connected channels — including comments and video metadata from a connected YouTube channel, and reviews and business-location data from a connected Google Business Profile.",
         "AI keys: the AI provider keys you supply, stored encrypted and used only to generate replies for your account.",
         "Usage data: log data, device and browser information, IP address, feature usage and diagnostic information.",
         "Cookies and similar technologies, as described in our Cookie Policy.",
@@ -143,7 +143,8 @@ const PRIVACY_DOC: LegalDoc = {
     { heading: "6. How we share information", blocks: [
       p(`We do not sell personal information. We share information only as needed to run the Service, with sub-processors and partners that are bound by appropriate confidentiality and data-protection obligations, including:`),
       ul([
-        "Meta Platforms — to send and receive messages on WhatsApp, Instagram and Messenger.",
+        "Meta Platforms — to send and receive messages and comments on WhatsApp, Instagram and Messenger.",
+        "Google — to read, post and moderate comments via YouTube API Services on a YouTube channel you connect, and to read and reply to reviews via the Google Business Profile APIs on a Business Profile you connect.",
         "AI providers you choose (such as Google Gemini, OpenAI or Anthropic) — to generate replies using your key.",
         "Payment processors (such as Stripe or Razorpay) — to handle subscriptions and payments.",
         "Infrastructure and hosting providers (such as our cloud database and hosting platform) — to store and serve data.",
@@ -151,28 +152,32 @@ const PRIVACY_DOC: LegalDoc = {
       ]),
       p(`We may also disclose information in connection with a merger, acquisition or sale of assets, subject to this Policy.`),
     ] },
-    { heading: "7. International transfers", blocks: [
+    { heading: "7. Google API Services", blocks: [
+      p(`Where you connect a YouTube channel, ${C}'s use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy (https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Data obtained through YouTube API Services is also subject to the Google Privacy Policy (https://policies.google.com/privacy), and your use of a connected YouTube channel is subject to the YouTube Terms of Service (https://www.youtube.com/t/terms).`),
+      p(`We use YouTube API Services and Google Business Profile data only to provide the comment-automation, moderation and review-reply features you enable for your own connected channel and Business Profile — never to serve ads, to train generalised AI or machine-learning models, or for any purpose you have not requested. Access tokens are stored encrypted and are used solely on your instructions.`),
+    ] },
+    { heading: "8. International transfers", blocks: [
       p(`Your information may be processed in countries other than your own. Where we transfer personal data internationally, we use appropriate safeguards, such as standard contractual clauses, where required by applicable law.`),
     ] },
-    { heading: "8. Data retention", blocks: [
-      p(`We retain personal information for as long as your account is active or as needed to provide the Service, and thereafter only as required to comply with legal obligations, resolve disputes and enforce agreements. You can request export or deletion of Your Data; on account termination we delete or anonymise data within a reasonable period, subject to legal retention requirements.`),
+    { heading: "9. Data retention", blocks: [
+      p(`We retain personal information for as long as your account is active or as needed to provide the Service, and thereafter only as required to comply with legal obligations, resolve disputes and enforce agreements. You can request export or deletion of Your Data; on account termination we delete or anonymise data within a reasonable period, subject to legal retention requirements. If you disconnect a YouTube channel or Google Business Profile, we delete the associated OAuth tokens promptly and stop accessing the Google API on your behalf.`),
     ] },
-    { heading: "9. Security", blocks: [
-      p(`We use technical and organisational measures designed to protect personal information, including encryption of credentials and API keys at rest, per-business data isolation with row-level security, access controls and audit logging. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.`),
+    { heading: "10. Security", blocks: [
+      p(`We use technical and organisational measures designed to protect personal information, including encryption of credentials, API keys and OAuth tokens at rest, per-business data isolation with row-level security, access controls and audit logging. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.`),
     ] },
-    { heading: "10. Your rights", blocks: [
-      p(`Depending on your location, you may have rights to access, correct, delete, export or restrict the processing of your personal data, and to object to processing or withdraw consent. To exercise these rights, contact ${PRIVACY}. Where ${C} acts as a processor for end-customer data, requests from those individuals should be directed to the business that controls that data.`),
+    { heading: "11. Your rights", blocks: [
+      p(`Depending on your location, you may have rights to access, correct, delete, export or restrict the processing of your personal data, and to object to processing or withdraw consent. To exercise these rights, contact ${PRIVACY}. Where ${C} acts as a processor for end-customer data, requests from those individuals should be directed to the business that controls that data. You can revoke ${C}'s access to your Google account at any time via https://myaccount.google.com/permissions.`),
     ] },
-    { heading: "11. Cookies", blocks: [
+    { heading: "12. Cookies", blocks: [
       p(`We use cookies and similar technologies as described in our Cookie Policy.`),
     ] },
-    { heading: "12. Children", blocks: [
+    { heading: "13. Children", blocks: [
       p(`The Service is not directed to children under 16, and we do not knowingly collect their personal information. If you believe a child has provided us personal data, contact us and we will delete it.`),
     ] },
-    { heading: "13. Changes to this Policy", blocks: [
+    { heading: "14. Changes to this Policy", blocks: [
       p(`We may update this Privacy Policy from time to time. Material changes will be notified through the Service or by email, and the "last updated" date below will reflect the current version.`),
     ] },
-    { heading: "14. Contact", blocks: [
+    { heading: "15. Contact", blocks: [
       p(`For privacy questions or to exercise your rights, contact us at ${PRIVACY}.`),
     ] },
   ],
@@ -206,7 +211,7 @@ const ACCEPTABLE_USE: LegalDoc = {
       ]),
     ] },
     { heading: "4. Platform policy compliance", blocks: [
-      p(`Your connected channels remain subject to the policies of their providers, including the WhatsApp Business Messaging Policy, the WhatsApp Commerce Policy, and Meta's Instagram and Messenger platform policies. You are responsible for complying with those policies. Violations can lead the providers to restrict or ban your numbers, accounts or Pages, for which ${C} is not responsible.`),
+      p(`Your connected channels remain subject to the policies of their providers, including the WhatsApp Business Messaging Policy, the WhatsApp Commerce Policy, Meta's Instagram and Messenger platform policies, the YouTube API Services Terms of Service and YouTube Community Guidelines, and the Google Business Profile content policies. You are responsible for complying with those policies. Violations can lead the providers to restrict or ban your numbers, accounts, Pages, channel or Business Profile, for which ${C} is not responsible.`),
     ] },
     { heading: "5. System integrity", blocks: [
       p(`You must not:`),

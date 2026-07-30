@@ -3,7 +3,7 @@
 
 export const SITE = {
   name: "Talko AI",
-  tagline: "AI conversations for WhatsApp, Instagram, Messenger & web chat",
+  tagline: "AI conversations for WhatsApp, Instagram, Facebook, YouTube, Google Reviews & web chat",
   domainCta: { trial: "/signup", login: "/login" },
 };
 
@@ -16,12 +16,12 @@ export const NAV: { label: string; href: string }[] = [
 ];
 
 export const HERO = {
-  eyebrow: "WhatsApp · Instagram · Messenger · Web chat",
+  eyebrow: "WhatsApp · Instagram · Messenger · YouTube · Web chat",
   title: "Turn every chat into a customer",
   titleAccent: "a customer", // rendered with the brand→violet gradient
 
   subtitle:
-    "AI that replies, qualifies and sells across WhatsApp, Instagram, Facebook Messenger and your website — one inbox, on autopilot.",
+    "AI that replies, qualifies and sells everywhere your customers show up — WhatsApp, Instagram, Facebook, YouTube and your website — and keeps your Google reviews answered. One inbox, on autopilot.",
   primary: { label: "Join the waitlist", href: "/waitlist" },
   secondary: { label: "See pricing", href: "/pricing" },
   note: "Launching soon · Early access · Bring your own AI key",
@@ -46,7 +46,8 @@ export const FEATURES: Feature[] = [
   { icon: "instagram", title: "Instagram, done right", body: "Auto-reply to DMs and comments — fully within Meta's rules." },
   { icon: "messenger", title: "Facebook Messenger", body: "Auto-reply to Page DMs and turn comments into private replies — same AI, same inbox." },
   { icon: "comment", title: "Comment automation", body: "Turn Instagram & Facebook comments into DMs or public replies — multiple link buttons, keyword triggers, and rotating replies that stay ban-safe." },
-  { icon: "star", title: "AI review replies", body: "Draft on-brand replies to your Google reviews in seconds — warm for 5★, empathetic recovery for the tough ones." },
+  { icon: "youtube", title: "YouTube comment automation", body: "Auto-reply to comments on your videos, moderate spam, and let AI take over the thread when someone replies — all paced to stay safe from spam strikes." },
+  { icon: "star", title: "AI review replies", body: "Connect your Google Business Profile and reply on autopilot — warm for 5★, empathetic recovery for the tough ones, drafted for your approval below your threshold." },
   { icon: "sparkles", title: "Conversation intelligence", body: "Every chat auto-summarised — who they are, what they want, and the single best next step." },
   { icon: "webchat", title: "Website web chat", body: "Drop a live-chat bubble on your site with one line of code — visitors chat with your AI instantly." },
   { icon: "inbox", title: "One unified inbox", body: "WhatsApp, Instagram, Messenger and web chat — every conversation in one live inbox, with team assignment and labels." },
@@ -71,13 +72,13 @@ export const TIERS: Tier[] = [
     cta: "Join the waitlist", href: "/waitlist?plan=Starter",
   },
   {
-    name: "Growth", priceMonthly: 4999, tagline: "For growing teams that automate", highlighted: true,
-    features: ["WhatsApp, Instagram, Messenger & web chat", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Comment automation — buttons, rotating & reply-only", "AI review replies (Google)", "AI conversation briefs", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
+    name: "Growth", priceMonthly: 5999, tagline: "For growing teams that automate", highlighted: true,
+    features: ["WhatsApp, Instagram, Messenger & web chat", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Comment automation — buttons, rotating & reply-only", "YouTube comment automation & moderation", "AI review replies — Google Business Profile", "AI conversation briefs", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
     cta: "Join the waitlist", href: "/waitlist?plan=Growth",
   },
   {
     name: "Scale", priceMonthly: null, customLabel: "Custom", tagline: "For high-volume & multi-brand",
-    features: ["Every channel, unlimited numbers", "Custom message volume", "Google review management, multi-location", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
+    features: ["Every channel, unlimited numbers", "Custom message volume", "Multiple YouTube channels", "Google review management, multi-location", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
     cta: "Join the waitlist", href: "/waitlist?plan=Scale",
   },
 ];
@@ -91,8 +92,8 @@ export const CREATOR_TIERS: Tier[] = [
     cta: "Join the waitlist", href: "/waitlist?plan=Creator",
   },
   {
-    name: "Creator Pro", priceMonthly: 2499, tagline: "For creator-led brands & agencies", highlighted: true,
-    features: ["Up to 3 Instagram accounts", "Messenger & website web chat", "10,000 conversations / mo", "Reply-only & multi-button comment automation", "AI review replies + conversation briefs", "Drip sequences & WhatsApp Forms", "Meta Ads & AI Hub", "5 team seats", "Priority support"],
+    name: "Creator Pro", priceMonthly: 2999, tagline: "For creator-led brands & agencies", highlighted: true,
+    features: ["Up to 3 Instagram accounts", "Messenger & website web chat", "1 YouTube channel — comment automation", "10,000 conversations / mo", "Reply-only & multi-button comment automation", "AI review replies + conversation briefs", "Drip sequences & WhatsApp Forms", "Meta Ads & AI Hub", "5 team seats", "Priority support"],
     cta: "Join the waitlist", href: "/waitlist?plan=Creator Pro",
   },
 ];
@@ -131,8 +132,8 @@ export const FAQS: Faq[] = [
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
   { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
-  { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere." },
-  { q: "Do you have a plan for creators & influencers?", a: "Yes — our Creator and Creator Pro plans are Instagram-first, built for creators who don't need the WhatsApp business stack. You get AI auto-replies, comment-to-DM and keyword automation, link-in-bio lead capture, basic flows and a merch catalog from ₹999/mo. Creator Pro adds Messenger, multiple Instagram accounts, ads and more volume." },
+  { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere. We're not a Meta-only tool — the same platform covers Google's ecosystem too, with more channels on the roadmap." },
+  { q: "Do you have a plan for creators & influencers?", a: "Yes — our Creator and Creator Pro plans are Instagram-first, built for creators who don't need the WhatsApp business stack. You get AI auto-replies, comment-to-DM and keyword automation, link-in-bio lead capture, basic flows and a merch catalog from ₹999/mo. Creator Pro adds Messenger, multiple Instagram accounts, YouTube comment automation, ads and more volume." },
   { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
 ];
 
@@ -316,15 +317,17 @@ export const PROBLEMS: ProblemSolution[] = [
 // ── Comparison: Talko AI vs the global leaders ───────────────────────────────
 // Columns are well-known players, each strong in one lane (WATI / AiSensy /
 // Interakt → WhatsApp Business API, Respond.io → omnichannel inbox, ManyChat →
-// IG/Messenger, Tidio → website chat). Cells reflect publicly available
-// capabilities as of June 2026 and are a positioning snapshot, not a spec sheet
-// — Talko's edge is doing all of it in one platform, on your own AI key. The
-// summary row (count of ✓) is derived in the component, so adding/removing a
-// row or column keeps the score honest.
+// IG/Messenger, Tidio → website chat) — all Meta/web-chat tools; none extend to
+// YouTube or Google Business Profile. Cells reflect publicly available
+// capabilities as of July 2026 and are a positioning snapshot, not a spec sheet
+// — Talko's edge is covering the full Meta AND Google ecosystem in one
+// platform, on your own AI key. The summary row (count of ✓) is derived in the
+// component, so adding/removing a row or column keeps the score honest.
 export const COMPARE_COLS = ["Talko AI", "WATI", "AiSensy", "Interakt", "Respond.io", "ManyChat", "Tidio"] as const;
 export type CompareRow = { feature: string; values: (boolean | string)[] };
 export const COMPARE_ROWS: CompareRow[] = [
   { feature: "WhatsApp, Instagram, Messenger & website chat — one inbox", values: [true, "WhatsApp only", "WhatsApp only", "WhatsApp only", true, "No web chat", "Web-first"] },
+  { feature: "YouTube comment automation & Google review replies", values: [true, false, false, false, false, false, false] },
   { feature: "AI replies grounded on your own knowledge base", values: [true, "Add-on", "Add-on", "Add-on", "Add-on", "Basic", true] },
   { feature: "Bring your own AI key — no per-message AI markup", values: [true, false, false, false, false, false, false] },
   { feature: "No-code chatbot flows & drip sequences", values: [true, true, true, "Basic", true, true, "Flows only"] },
@@ -334,7 +337,7 @@ export const COMPARE_ROWS: CompareRow[] = [
   { feature: "Predictable pricing — no per-contact fees", values: [true, "Per-conversation", "Per-conversation", "Per-conversation", "Per-seat + AI", "Per-contact", "Per-seat + AI"] },
 ];
 export const COMPARE_NOTE =
-  "Based on publicly available information as of June 2026. Each tool is excellent in its core lane — Talko AI's advantage is covering every channel in one platform on your own AI key. Capabilities change; check each provider for current details.";
+  "Based on publicly available information as of July 2026. Each tool is excellent in its core lane — Talko AI's advantage is covering every channel, including YouTube and Google reviews, in one platform on your own AI key. Capabilities change; check each provider for current details.";
 
 // ── /vs comparison landing pages ─────────────────────────────────────────────
 // One SEO page per competitor ("Talko AI vs WATI", "WATI alternative"), targeting
@@ -514,7 +517,7 @@ export const INTEGRATIONS: IntegrationBrand[] = INTEGRATION_CATEGORIES.flatMap(c
 export type Benefit = { title: string; body: string; tone: "mint" | "violet" | "peach" };
 export const WHY: Benefit[] = [
   { tone: "mint", title: "Replies in your brand voice", body: "Grounded AI answers from your own knowledge base — accurate, on-brand, and instant, not generic canned text." },
-  { tone: "violet", title: "Compliant, data-driven automation", body: "Official Meta APIs, opt-in respected, guardrails in code. Scale conversations without risking your number." },
+  { tone: "violet", title: "Compliant, data-driven automation", body: "Official Meta and Google APIs, opt-in respected, guardrails in code. Scale conversations without risking your number, channel or listing." },
   { tone: "peach", title: "Save time and money", body: "Bring your own AI key for predictable costs, replace a stack of tools, and let automation handle the busywork." },
 ];
 

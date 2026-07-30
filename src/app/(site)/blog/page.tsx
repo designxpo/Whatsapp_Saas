@@ -7,7 +7,7 @@ import { POSTS } from "../_content/site";
 
 export const metadata: Metadata = {
   title: "WhatsApp & Instagram Automation Blog — Talko AI",
-  description: "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger and website chat.",
+  description: "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger, YouTube, Google reviews and website chat.",
   // No `openGraph` object: it would overwrite (not merge) the shared og:image
   // from (site)/opengraph-image.tsx. og:title/og:description auto-infer above.
 };

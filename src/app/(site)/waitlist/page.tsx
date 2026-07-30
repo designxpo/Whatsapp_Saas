@@ -5,7 +5,7 @@ import { Check } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Join the Waitlist — Early Access to Talko AI",
-  description: "Be first on launch day. Tell us which plan fits and the channels you want to automate — WhatsApp, Instagram, Messenger, web chat and Google reviews. We'll set you up before anyone else.",
+  description: "Be first on launch day. Tell us which plan fits and the channels you want to automate — WhatsApp, Instagram, Messenger, YouTube, web chat and Google reviews. We'll set you up before anyone else.",
 };
 
 const PERKS = [
