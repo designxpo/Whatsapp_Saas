@@ -59,6 +59,7 @@ export default function ReviewsTab() {
   const [pickerChannelId, setPickerChannelId] = useState<string | null>(null);
   const [pickerLocations, setPickerLocations] = useState<GrLocation[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState<string | null>(null);   // location id currently being saved
 
   const load = useCallback(() => {
@@ -93,10 +94,11 @@ export default function ReviewsTab() {
 
   useEffect(() => {
     if (!pickerChannelId) { setPickerLocations([]); return; }
-    setPickerLoading(true);
+    setPickerLoading(true); setPickerError(null);
     fetch(`/api/admin/reviews/google-locations?channelId=${encodeURIComponent(pickerChannelId)}`)
       .then(r => r.json())
-      .then(d => { setPickerLocations(d.locations ?? []); if (d.error) setMsg(d.error); })
+      .then(d => { setPickerLocations(d.locations ?? []); setPickerError(d.error ?? null); })
+      .catch(() => setPickerError("Couldn't reach the server — check your connection and try again."))
       .finally(() => setPickerLoading(false));
   }, [pickerChannelId]);
 
@@ -196,7 +198,7 @@ export default function ReviewsTab() {
           <p className="text-xs font-bold text-slate-400 uppercase">Which Business Profile location is this?</p>
           {pickerLoading && <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your locations…</p>}
           {!pickerLoading && !pickerLocations.length && (
-            <p className="text-xs text-amber-600">No locations found on this Google login — make sure you signed in with the account that manages your Business Profile, or that Business Profile API access has been approved for this project.</p>
+            <p className="text-xs text-red-600">{pickerError ?? "No locations found on this Google login."}</p>
           )}
           <div className="space-y-1.5">
             {pickerLocations.map(loc => (

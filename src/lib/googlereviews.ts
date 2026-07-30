@@ -57,31 +57,62 @@ async function accessTokenFor(creds: GrCreds): Promise<string | null> {
 }
 
 async function apiGet(token: string, url: string): Promise<Record<string, unknown> | null> {
+  const { data } = await apiGetDetailed(token, url);
+  return data;
+}
+
+// Keeps Google's error instead of collapsing every failure to null. Without
+// this, "this Google account manages no Business Profile" is indistinguishable
+// from "the API isn't enabled" or "the access request isn't approved" — the
+// three very different reasons the location picker can come back empty.
+async function apiGetDetailed(token: string, url: string): Promise<{ data: Record<string, unknown> | null; error?: string }> {
   try {
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
-    return r.ok ? j : null;
-  } catch { return null; }
+    if (r.ok) return { data: j };
+    const err = j?.error as { message?: string; status?: string } | undefined;
+    const msg = err?.message ?? "";
+    if (err?.status === "PERMISSION_DENIED" || r.status === 403) {
+      // Google uses SERVICE_DISABLED when the API isn't switched on for the
+      // project, and a plain permission denial when the access request to use
+      // the Business Profile APIs hasn't been granted yet.
+      if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) {
+        return { data: null, error: "This Google Cloud project doesn't have the Business Profile APIs enabled yet (Account Management + Business Information)." };
+      }
+      return { data: null, error: "Google hasn't approved this project for Business Profile API access yet — that request is separate from OAuth verification and can take a few weeks." };
+    }
+    if (r.status === 401) return { data: null, error: "Google access expired or was revoked — reconnect." };
+    if (r.status === 429) return { data: null, error: "Google is rate-limiting this project — try again shortly." };
+    return { data: null, error: msg || `Google API error (${r.status})` };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "Google API request failed" };
+  }
 }
 
 // ── Picker: accounts this Google login manages, and each account's locations.
 export interface GrAccount { id: string; name: string }
-export async function listAccounts(creds: GrCreds): Promise<GrAccount[]> {
+export async function listAccounts(creds: GrCreds): Promise<{ accounts: GrAccount[]; error?: string }> {
   const token = await accessTokenFor(creds);
-  if (!token) return [];
-  const data = await apiGet(token, `${ACCOUNTS_API}/accounts`);
+  if (!token) return { accounts: [], error: "Could not get a Google access token — reconnect." };
+  const { data, error } = await apiGetDetailed(token, `${ACCOUNTS_API}/accounts`);
+  if (error) return { accounts: [], error };
   const items = (data?.accounts as Record<string, unknown>[] | undefined) ?? [];
-  return items.map(a => ({ id: (a.name as string) ?? "", name: (a.accountName as string) ?? (a.name as string) ?? "" })).filter(a => a.id);
+  const accounts = items.map(a => ({ id: (a.name as string) ?? "", name: (a.accountName as string) ?? (a.name as string) ?? "" })).filter(a => a.id);
+  if (!accounts.length) {
+    return { accounts: [], error: "This Google account doesn't manage any Business Profile. Sign in with the account that owns the business listing." };
+  }
+  return { accounts };
 }
 
 export interface GrLocation { accountId: string; id: string; name: string; address: string }
-export async function listLocations(creds: GrCreds, accountId: string): Promise<GrLocation[]> {
+export async function listLocations(creds: GrCreds, accountId: string): Promise<{ locations: GrLocation[]; error?: string }> {
   const token = await accessTokenFor(creds);
-  if (!token) return [];
+  if (!token) return { locations: [], error: "Could not get a Google access token — reconnect." };
   const qs = new URLSearchParams({ readMask: "name,title,storefrontAddress" }).toString();
-  const data = await apiGet(token, `${INFO_API}/${accountId}/locations?${qs}`);
+  const { data, error } = await apiGetDetailed(token, `${INFO_API}/${accountId}/locations?${qs}`);
+  if (error) return { locations: [], error };
   const items = (data?.locations as Record<string, unknown>[] | undefined) ?? [];
-  return items.map(l => {
+  const locations = items.map(l => {
     const addr = (l.storefrontAddress as Record<string, unknown> | undefined) ?? {};
     const lines = (addr.addressLines as string[] | undefined) ?? [];
     return {
@@ -91,6 +122,7 @@ export async function listLocations(creds: GrCreds, accountId: string): Promise<
       address: [...lines, addr.locality as string, addr.administrativeArea as string].filter(Boolean).join(", "),
     };
   }).filter(l => l.id);
+  return { locations };
 }
 
 // ── Reviews (legacy v4 — gated, see file header) ─────────────────────────────

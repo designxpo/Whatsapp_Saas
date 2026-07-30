@@ -21,10 +21,20 @@ export async function GET(req: Request) {
     if (!googleReviewsConfigured()) return NextResponse.json({ locations: [], error: "Google Reviews isn't configured on this deployment yet." });
 
     const creds = { channelId: channel.id, refreshToken: channel.token };
-    const accounts = await listAccounts(creds);
+    const acc = await listAccounts(creds);
+    if (acc.error) return NextResponse.json({ locations: [], accounts: [], error: acc.error });
     const locations: GrLocation[] = [];
-    for (const acc of accounts) locations.push(...(await listLocations(creds, acc.id)));
-    return NextResponse.json({ locations, accounts });
+    let locError: string | undefined;
+    for (const a of acc.accounts) {
+      const res = await listLocations(creds, a.id);
+      if (res.error) { locError = res.error; continue; }   // one bad account shouldn't hide the others
+      locations.push(...res.locations);
+    }
+    // Only surface a location error when nothing at all came back, so a partial
+    // success still lets the admin pick a location.
+    if (!locations.length && locError) return NextResponse.json({ locations: [], accounts: acc.accounts, error: locError });
+    if (!locations.length) return NextResponse.json({ locations: [], accounts: acc.accounts, error: "That Google account has a Business Profile but no locations we can manage yet." });
+    return NextResponse.json({ locations, accounts: acc.accounts });
   } catch (err) {
     return NextResponse.json({ locations: [], error: errorMessage(err) });
   }
