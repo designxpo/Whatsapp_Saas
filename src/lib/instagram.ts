@@ -237,7 +237,7 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
 }
 
 // ── Public reply under a comment (optional, alongside the private DM) ─────────
-export async function replyToComment(creds: IgCreds, commentId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+export async function replyToComment(creds: IgCreds, commentId: string, text: string): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   // Pace public replies on their own budget — unbounded identical/rapid replies
   // are the fastest way to get an account action-blocked.
@@ -252,7 +252,7 @@ export async function replyToComment(creds: IgCreds, commentId: string, text: st
     });
     const j = await r.json();
     if (!r.ok) return { ok: false, error: j.error?.message || `Comment reply failed (${r.status})` };
-    return { ok: true };
+    return { ok: true, id: (j.id as string) ?? undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Comment reply error" };
   }

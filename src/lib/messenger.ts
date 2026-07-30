@@ -195,7 +195,7 @@ export async function sendFbButtons(
 }
 
 // ── Public reply under a Page comment (optional) ──────────────────────────────
-export async function replyToFbComment(creds: FbCreds, commentId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+export async function replyToFbComment(creds: FbCreds, commentId: string, text: string): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   // Pace public replies on their own budget — unbounded identical/rapid replies
   // are the fastest way to get a Page action-blocked.
@@ -210,7 +210,7 @@ export async function replyToFbComment(creds: FbCreds, commentId: string, text: 
     });
     const j = await r.json();
     if (!r.ok) return { ok: false, error: j.error?.message || `Comment reply failed (${r.status})` };
-    return { ok: true };
+    return { ok: true, id: (j.id as string) ?? undefined };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Comment reply error" };
   }

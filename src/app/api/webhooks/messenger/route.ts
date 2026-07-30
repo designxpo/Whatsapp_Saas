@@ -12,6 +12,7 @@ import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { sendFbMessage, getFbProfile, sendTypingOn, sendFbPrivateReply, replyToFbComment, likeFbComment, type FbCreds, type FbButton } from "@/lib/messenger";
 import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments";
 import { pickPublicReply } from "@/lib/igcomments";
+import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
 import { handleFlowMessage } from "@/lib/flowengine";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
@@ -256,6 +257,18 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (!commentId || !text) return;
   if (fromId && channel.pageId && fromId === channel.pageId) return;   // never reply to ourselves
 
+  // AI takeover: a reply inside a thread a rule already answered → the AI responds
+  // in context, instead of the canned rule firing again. Gated by the tenant AI switch.
+  const parentId = String(value.parent_id ?? "") || null;
+  if (parentId) {
+    const watch = await getCommentWatch(parentId, tid);
+    if (watch) {
+      if (!(await claimComment(commentId, null, tid))) return;
+      await aiThreadReply(channel, watch, { commentId, text, fromId, fromName });
+      return;
+    }
+  }
+
   const rule = await matchCommentRule(text, postId, tid, channel.id);
 
   // No fixed rule matched → let the AI answer the comment publicly, capped and
@@ -292,6 +305,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
+        await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
       }
     }
     if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
@@ -312,7 +326,33 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // Public reply: rotate a random variant so replies are never identical.
   const publicReply = pickPublicReply(rule);
   if (publicReply) {
-    await replyToFbComment(creds, commentId, publicReply).catch(e => console.error("[fb webhook] public reply", e));
+    const pr = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] public reply", e); return { ok: false as const }; });
+    if (pr.ok) await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
   }
   if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
+}
+
+// A follow-up landed in a thread a rule opened → the AI answers it in context,
+// grounded in the Page's persona + KB. Capped by depth + the 60/hr reply limiter;
+// never fires on our own comments (guarded in handleComment).
+async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commentId: string; text: string; fromId: string; fromName: string }) {
+  const tid = channel.tenantId;
+  if (!(await isAiEnabled(tid))) return;
+  if (watch.depth >= MAX_AI_THREAD_DEPTH) return;   // anti-runaway cap
+  const creds = credsOf(channel);
+  const conv = await getOrCreateConversation(fu.fromId, fu.fromName, channel.id, "messenger", tid);
+  await setConversationComment(conv.id, true);
+  if (!conv.botEnabled) return;   // a human is handling this thread
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${fu.text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+  const history = [
+    { role: "user" as const, body: watch.originalText, mediaUrl: null, mediaType: null },
+    { role: "assistant" as const, body: watch.replyText, mediaUrl: null, mediaType: null },
+    { role: "user" as const, body: fu.text, mediaUrl: null, mediaType: null },
+  ].filter(h => h.body);
+  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
+  if (!r.reply || r.escalate) return;
+  const sent = await replyToFbComment(creds, watch.rootCommentId, r.reply);
+  if (!sent.ok) { console.warn("[fb webhook] ai thread reply blocked:", sent.error); return; }
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
+  await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
 }

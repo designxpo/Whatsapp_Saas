@@ -12,6 +12,7 @@ import { sendIgMessage, sendPrivateReply, sendIgButtons, replyToComment, within2
 import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequences";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, pickPublicReply, type IgCommentRule } from "@/lib/igcomments";
+import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 // A user replying to a follow-gate prompt to confirm they followed.
@@ -260,6 +261,20 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (fromId && channel.igUserId && fromId === channel.igUserId) return;   // never reply to ourselves
 
   const tid = channel.tenantId;
+
+  // AI takeover: a reply inside a thread a rule already answered → the AI responds
+  // in context (original comment + our reply + this follow-up), instead of the
+  // canned rule firing again. Gated by the per-account "AI answers comments" switch.
+  const parentId = String(value.parent_id ?? "") || null;
+  if (parentId && channel.commentAi) {
+    const watch = await getCommentWatch(parentId, tid);
+    if (watch) {
+      if (!(await claimComment(commentId, null, tid))) return;
+      await aiThreadReply(channel, watch, { commentId, text, fromId, fromUsername });
+      return;
+    }
+  }
+
   const rule = await matchCommentRule(text, mediaId, tid, channel.id);
 
   // No fixed rule matched → let the AI answer the comment contextually (public
@@ -316,6 +331,8 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
+        // Watch this thread so a follow-up reply escalates to the AI.
+        await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
       }
     }
     return;
@@ -341,8 +358,43 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // identical reply (identical automated replies are an IG spam/ban signal).
   const publicReply = pickPublicReply(rule);
   if (publicReply) {
-    await replyToComment(creds, commentId, publicReply).catch(e => console.error("[ig webhook] public reply", e));
+    const pr = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] public reply", e); return { ok: false as const }; });
+    // Watch this thread so a follow-up reply escalates to the AI.
+    if (pr.ok) await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
   }
+}
+
+// A follow-up landed in a thread a rule opened → the AI answers it in context
+// (original comment + our reply + this follow-up), grounded in the channel's
+// persona + KB. Capped by depth + the 60/hr reply limiter; never fires on our
+// own comments (guarded in handleComment).
+async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commentId: string; text: string; fromId: string; fromUsername: string }) {
+  const tid = channel.tenantId;
+  if (!(await isAiEnabled(tid))) return;
+  if (watch.depth >= MAX_AI_THREAD_DEPTH) return;   // anti-runaway cap
+  const creds = credsOf(channel);
+  const handle = fu.fromUsername ? `@${fu.fromUsername}` : "";
+  let conv = await getOrCreateConversation(fu.fromId, handle, channel.id, "instagram", tid);
+  if (!conv.name) {
+    const prof = await getIgProfile(creds, fu.fromId);
+    const display = handle || (prof.username ? `@${prof.username}` : prof.name);
+    if (display && display !== conv.name) conv = await getOrCreateConversation(fu.fromId, display, channel.id, "instagram", tid);
+  }
+  await setConversationComment(conv.id, true);
+  if (!conv.botEnabled) return;   // a human is handling this thread
+  await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${fu.text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+  const history = [
+    { role: "user" as const, body: watch.originalText, mediaUrl: null, mediaType: null },
+    { role: "assistant" as const, body: watch.replyText, mediaUrl: null, mediaType: null },
+    { role: "user" as const, body: fu.text, mediaUrl: null, mediaType: null },
+  ].filter(h => h.body);
+  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
+  if (!r.reply || r.escalate) return;
+  const sent = await replyToComment(creds, watch.rootCommentId, r.reply);
+  if (!sent.ok) { console.warn("[ig webhook] ai thread reply blocked:", sent.error); return; }
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
+  // Continue the thread: a reply to the AI's reply (or another follow-up) keeps going, one level deeper.
+  await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
 }
 
 // Postback button taps (e.g. "I've followed ✅") arrive as messaging events.
