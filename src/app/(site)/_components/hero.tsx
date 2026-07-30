@@ -12,15 +12,18 @@ import { HERO, SOCIAL_PROOF } from "../_content/site";
 // slug → cdn.simpleicons.org; src → an explicit logo URL (e.g. Iconify, for marks
 // Simple Icons dropped like OpenAI). Every chip gently floats (staggered).
 type Chip = { name: string; slug?: string; src?: string; pos: string; size?: string; hide?: boolean };
+// The five CHANNEL chips stay visible from sm up (they are the product story);
+// AI + integration chips are lg-only so small screens don't get crowded. Meta
+// and Razorpay still appear in the grayscale logo wall below the hero.
 const CHIPS: Chip[] = [
   { name: "WhatsApp", slug: "whatsapp", pos: "left-[2%] top-[30%]", size: "h-14 w-14" },
   { name: "Instagram", slug: "instagram", pos: "left-[11%] top-[58%]" },
+  { name: "Google Reviews", src: "/brand/logos/google.svg", pos: "left-[5%] top-[76%]" },
   { name: "Gemini", slug: "googlegemini", pos: "left-[22%] top-[16%]", hide: true },
   { name: "ChatGPT", src: "https://api.iconify.design/logos:openai-icon.svg", pos: "left-[46%] top-[3%]", hide: true },
-  { name: "Razorpay", slug: "razorpay", pos: "left-[5%] top-[76%]", hide: true },
   { name: "Shopify", slug: "shopify", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
   { name: "Messenger", slug: "messenger", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
-  { name: "Meta", slug: "meta", pos: "right-[11%] top-[56%]" },
+  { name: "YouTube", src: "/brand/logos/youtube.svg", pos: "right-[11%] top-[56%]", size: "h-14 w-14" },
   { name: "Claude", slug: "claude", pos: "right-[22%] top-[15%]", hide: true },
   { name: "Stripe", slug: "stripe", pos: "right-[5%] top-[74%]", hide: true },
   { name: "HubSpot", slug: "hubspot", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },

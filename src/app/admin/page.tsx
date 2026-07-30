@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye } from "lucide-react";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -84,54 +84,73 @@ const PRELOAD: Partial<Record<Tab, () => Promise<unknown>>> = {
 };
 const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 
-const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode }[] }[] = [
+// Sidebar nav, grouped by WHAT THE USER IS TRYING TO DO rather than by internal
+// feature area — the old single 13-item "Main Menu" mixed the daily inbox with
+// per-platform setup, so nothing was findable. Each item carries a plain-English
+// `hint` surfaced as a tooltip, so a label like "Sequences" explains itself.
+const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode; hint: string }[] }[] = [
   {
-    group: "Main Menu",
+    group: "Home & Inbox",
     items: [
-      { key: "home", label: "Home", icon: <Home className="w-[18px] h-[18px]" /> },
-      { key: "livechat", label: "Live Chat", icon: <MessageSquare className="w-[18px] h-[18px]" /> },
-      { key: "broadcast", label: "Broadcast", icon: <Send className="w-[18px] h-[18px]" /> },
-      { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" /> },
-      { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" /> },
-      { key: "campaigns", label: "History", icon: <History className="w-[18px] h-[18px]" /> },
-      { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" /> },
-      { key: "ads", label: "Meta Ads", icon: <Megaphone className="w-[18px] h-[18px]" /> },
-      { key: "instagram", label: "Instagram", icon: <Instagram className="w-[18px] h-[18px]" /> },
-      { key: "facebook", label: "Facebook", icon: <Facebook className="w-[18px] h-[18px]" /> },
-      { key: "youtube", label: "YouTube", icon: <Youtube className="w-[18px] h-[18px]" /> },
-      { key: "webchat", label: "Web Chat", icon: <MessageSquare className="w-[18px] h-[18px]" /> },
-      { key: "reviews", label: "Reviews", icon: <Star className="w-[18px] h-[18px]" /> },
+      { key: "home", label: "Home", icon: <Home className="w-[18px] h-[18px]" />, hint: "Your dashboard and setup progress" },
+      { key: "livechat", label: "Live Chat", icon: <MessageSquare className="w-[18px] h-[18px]" />, hint: "Every conversation from every channel, in one inbox" },
+      { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" />, hint: "Everyone who has ever messaged you" },
+      { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
+      { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" />, hint: "See what's working — messages, replies, sales" },
     ],
   },
   {
-    group: "Features",
+    group: "Your Channels",
     items: [
-      { key: "assistant", label: "AI Knowledge Base", icon: <Bot className="w-[18px] h-[18px]" /> },
-      { key: "flows", label: "Chatbot Flows", icon: <Zap className="w-[18px] h-[18px]" /> },
-      { key: "sequences", label: "Sequences", icon: <Workflow className="w-[18px] h-[18px]" /> },
-      { key: "catalog", label: "Catalog", icon: <ShoppingBag className="w-[18px] h-[18px]" /> },
-      { key: "growth", label: "Growth Tools", icon: <TrendingUp className="w-[18px] h-[18px]" /> },
-      { key: "handlehub", label: "Handle Hub", icon: <AtSign className="w-[18px] h-[18px]" /> },
-      { key: "aihub", label: "AI Hub", icon: <Sparkles className="w-[18px] h-[18px]" /> },
-      { key: "templates", label: "Templates", icon: <LayoutTemplate className="w-[18px] h-[18px]" /> },
-      { key: "forms", label: "WhatsApp Forms", icon: <ClipboardList className="w-[18px] h-[18px]" /> },
+      { key: "instagram", label: "Instagram", icon: <Instagram className="w-[18px] h-[18px]" />, hint: "Auto-reply to Instagram DMs and comments" },
+      { key: "facebook", label: "Facebook", icon: <Facebook className="w-[18px] h-[18px]" />, hint: "Auto-reply to Facebook Page messages and comments" },
+      { key: "youtube", label: "YouTube", icon: <Youtube className="w-[18px] h-[18px]" />, hint: "Auto-reply to video comments and hide spam" },
+      { key: "reviews", label: "Google Reviews", icon: <Star className="w-[18px] h-[18px]" />, hint: "Reply to your Google Business Profile reviews" },
+      { key: "webchat", label: "Website Chat", icon: <Globe className="w-[18px] h-[18px]" />, hint: "Add a chat bubble to your website" },
     ],
   },
   {
-    group: "General",
+    group: "Send Messages",
     items: [
-      { key: "setup", label: "Setup & status", icon: <ListChecks className="w-[18px] h-[18px]" /> },
-      { key: "integrations", label: "Integrations", icon: <Plug className="w-[18px] h-[18px]" /> },
-      { key: "optouts", label: "Opt-outs", icon: <Ban className="w-[18px] h-[18px]" /> },
-      { key: "settings", label: "Settings", icon: <Settings className="w-[18px] h-[18px]" /> },
+      { key: "broadcast", label: "Broadcast", icon: <Send className="w-[18px] h-[18px]" />, hint: "Send one message to many people at once" },
+      { key: "templates", label: "Templates", icon: <LayoutTemplate className="w-[18px] h-[18px]" />, hint: "Message formats WhatsApp has approved" },
+      { key: "sequences", label: "Sequences", icon: <Workflow className="w-[18px] h-[18px]" />, hint: "Automatic follow-up messages over days" },
+      { key: "campaigns", label: "History", icon: <History className="w-[18px] h-[18px]" />, hint: "Everything you've already sent" },
+    ],
+  },
+  {
+    group: "AI & Automation",
+    items: [
+      { key: "assistant", label: "AI Knowledge Base", icon: <Bot className="w-[18px] h-[18px]" />, hint: "Teach the AI about your business so it answers correctly" },
+      { key: "flows", label: "Chatbot Flows", icon: <Zap className="w-[18px] h-[18px]" />, hint: "Build a step-by-step chat with buttons — no code" },
+      { key: "aihub", label: "AI Hub", icon: <Sparkles className="w-[18px] h-[18px]" />, hint: "AI personalities, tools and your own AI key" },
+    ],
+  },
+  {
+    group: "Grow & Sell",
+    items: [
+      { key: "catalog", label: "Catalog", icon: <ShoppingBag className="w-[18px] h-[18px]" />, hint: "Your products, and checkout inside the chat" },
+      { key: "growth", label: "Growth Tools", icon: <TrendingUp className="w-[18px] h-[18px]" />, hint: "Opt-in links and lead magnets that grow your list" },
+      { key: "handlehub", label: "Links & QR Codes", icon: <AtSign className="w-[18px] h-[18px]" />, hint: "Trackable chat links and QR codes for posters, ads and bios" },
+      { key: "forms", label: "WhatsApp Forms", icon: <ClipboardList className="w-[18px] h-[18px]" />, hint: "Collect name, email and details inside a chat" },
+      { key: "ads", label: "Meta Ads", icon: <Megaphone className="w-[18px] h-[18px]" />, hint: "Run Facebook and Instagram ads that open a chat" },
+    ],
+  },
+  {
+    group: "Settings & Setup",
+    items: [
+      { key: "setup", label: "Setup Guide", icon: <ListChecks className="w-[18px] h-[18px]" />, hint: "Step-by-step checklist to get fully live" },
+      { key: "integrations", label: "Integrations", icon: <Plug className="w-[18px] h-[18px]" />, hint: "Connect your CRM, payments and other tools" },
+      { key: "optouts", label: "Do Not Contact", icon: <Ban className="w-[18px] h-[18px]" />, hint: "People who asked to stop receiving messages" },
+      { key: "settings", label: "Settings", icon: <Settings className="w-[18px] h-[18px]" />, hint: "WhatsApp numbers, your team, and billing" },
     ],
   },
 ];
 const TAB_TITLES: Record<Tab, string> = {
-  home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Web Chat", reviews: "Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
-  sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Handle Hub",
+  home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
+  sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Links & QR Codes",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
-  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Opt-outs", settings: "Settings", setup: "Setup & status", integrations: "Integrations",
+  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations",
 };
 
 export default function Admin() {
@@ -220,10 +239,10 @@ export default function Admin() {
                 {items.map(n => {
                   const active = tab === n.key;
                   return (
-                    <button key={n.key} onClick={() => goTo(n.key)}
+                    <button key={n.key} onClick={() => goTo(n.key)} title={n.hint}
                       onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
                       className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
-                      {n.icon}{n.label}
+                      {n.icon}<span className="truncate">{n.label}</span>
                     </button>
                   );
                 })}

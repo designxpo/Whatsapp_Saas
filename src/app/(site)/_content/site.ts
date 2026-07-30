@@ -477,6 +477,8 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
     { name: "WhatsApp", src: "/brand/logos/whatsapp.svg", slug: "whatsapp" },
     { name: "Instagram", src: "/brand/logos/instagram.svg", slug: "instagram" },
     { name: "Messenger", src: "/brand/logos/messenger.svg", slug: "messenger" },
+    { name: "YouTube", src: "/brand/logos/youtube.svg", slug: "youtube" },
+    { name: "Google Reviews", src: "/brand/logos/google.svg", slug: "google" },
     { name: "Website web chat", src: "/brand/favicon-96.png" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
