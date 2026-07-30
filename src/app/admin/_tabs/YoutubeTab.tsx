@@ -41,6 +41,12 @@ type YtRule = {
   keyword: string; publicReplies: string[]; moderate: Moderate; matchCount?: number;
 };
 type YtVideo = { id: string; title: string; thumbnail: string; publishedAt: string };
+// What the last background poll did for a channel — surfaced so a silent
+// failure (cron not running, YouTube refusing the reply) is visible here.
+type YtStatus = {
+  channelId: string; lastCheckedAt: string | null; commentsSeen: number | null;
+  repliesPosted: number | null; lastReplyId: string | null; lastReplyAt: string | null; lastError: string | null;
+};
 const BLANK_RULE: YtRule = { channelId: null, name: "", enabled: true, videoId: null, videoTitle: null, videoThumbnail: null, keyword: "", publicReplies: [], moderate: "off" };
 
 const MOD_LABEL: Record<Moderate, string> = { off: "No moderation", hold_spam: "Hold for review", reject_spam: "Reject (hide)" };
@@ -68,6 +74,7 @@ function YoutubeManager() {
   const [rules, setRules] = useState<YtRule[]>([]);
   const [videos, setVideos] = useState<YtVideo[]>([]);
   const [videosError, setVideosError] = useState<string | null>(null);
+  const [status, setStatus] = useState<YtStatus[]>([]);
   const [ruleForm, setRuleForm] = useState<YtRule | null>(null);
   const [pickChannel, setPickChannel] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
@@ -88,6 +95,10 @@ function YoutubeManager() {
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   useEffect(() => { loadRules(); }, [loadRules]);
+  const loadStatus = useCallback(() => {
+    fetch("/api/admin/yt-status").then(r => r.json()).then(d => setStatus(d.status ?? [])).catch(() => {});
+  }, []);
+  useEffect(() => { loadStatus(); }, [loadStatus]);
   // One-time result of the "Connect with Google" redirect flow (?yt=connected /
   // ?yt_error=…). Consume it once, then scrub the query string so a page
   // refresh doesn't replay it.
@@ -219,18 +230,32 @@ function YoutubeManager() {
         </div>
       )}
 
-      {channels.map(c => (
+      {channels.map(c => {
+        const st = status.find(s => s.channelId === c.id);
+        return (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">yt {c.ytChannelId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+            {/* Last background poll — makes a silent failure visible instead of
+                leaving "why didn't it reply?" unanswerable from the portal. */}
+            {!st
+              ? <p className="text-[11px] text-amber-600 mt-0.5">Not checked yet — the background poller runs every few minutes.</p>
+              : <p className={`text-[11px] mt-0.5 ${st.lastError ? "text-red-600" : "text-ink-500"}`}>
+                  Last checked {st.lastCheckedAt ? new Date(st.lastCheckedAt).toLocaleString() : "—"}
+                  {typeof st.commentsSeen === "number" && <> · {st.commentsSeen} comment{st.commentsSeen === 1 ? "" : "s"} seen</>}
+                  {typeof st.repliesPosted === "number" && <> · {st.repliesPosted} replied</>}
+                  {st.lastError && <> · {st.lastError}</>}
+                  {!st.lastError && st.lastReplyId && <span className="font-mono"> · last reply id {st.lastReplyId}</span>}
+                </p>}
           </div>
           <button onClick={() => { setForm({ id: c.id, name: c.name, ytChannelId: c.ytChannelId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
-      ))}
+        );
+      })}
 
       {form && (
         <div className="border-2 border-red-500/30 rounded-control p-3 space-y-2">

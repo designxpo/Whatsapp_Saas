@@ -25,8 +25,24 @@ async function getCursor(channelId: string): Promise<Date | null> {
     return v ? new Date(v) : null;
   } catch { return null; }
 }
-async function setCursor(channelId: string, tenantId: string, at: string): Promise<void> {
-  await db().from("wa_yt_poll_cursor").upsert({ channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at }, { onConflict: "channel_id" }).then(() => {}, () => {});
+// Diagnostics recorded alongside the cursor so the portal can explain what the
+// last poll actually did. Extra columns land in 0097; the write is best-effort
+// and column-by-column optional so a pre-0097 DB still advances the cursor.
+interface PollOutcome { commentsSeen?: number; repliesPosted?: number; lastReplyId?: string | null; lastError?: string | null }
+async function setCursor(channelId: string, tenantId: string, at: string, o?: PollOutcome): Promise<void> {
+  const row: Record<string, unknown> = { channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at };
+  if (o) {
+    row.last_checked_at = at;
+    row.comments_seen = o.commentsSeen ?? 0;
+    row.replies_posted = o.repliesPosted ?? 0;
+    row.last_error = o.lastError ?? null;
+    if (o.lastReplyId) { row.last_reply_id = o.lastReplyId; row.last_reply_at = at; }
+  }
+  const write = (r: Record<string, unknown>) => db().from("wa_yt_poll_cursor").upsert(r, { onConflict: "channel_id" });
+  const { error } = await write(row);
+  // Pre-0097 DB: retry with just the cursor so polling never breaks on the
+  // diagnostic columns being absent.
+  if (error) await write({ channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at }).then(() => {}, () => {});
 }
 
 async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>): Promise<number> {
@@ -37,9 +53,14 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   // First poll (no cursor): only look at the most recent page so we don't reply
   // to a large backlog of historical comments the moment a channel connects.
   const comments = await listNewComments(creds, since, since ? 3 : 1);
-  if (!comments.length) { await setCursor(channel.id, channel.tenantId, new Date().toISOString()); return 0; }
+  if (!comments.length) {
+    await setCursor(channel.id, channel.tenantId, new Date().toISOString(), { commentsSeen: 0, repliesPosted: 0 });
+    return 0;
+  }
 
   let acted = 0;
+  let lastReplyId: string | null = null;
+  let lastError: string | null = null;
   let aiEnabled = aiEnabledCache.get(channel.tenantId);
   if (aiEnabled === undefined) { aiEnabled = await isAiEnabled(channel.tenantId); aiEnabledCache.set(channel.tenantId, aiEnabled); }
 
@@ -57,7 +78,11 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
 
     if (rule) {
       const reply = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
-      if (reply) { const r = await replyToComment(creds, c.id, reply); if (r.ok) acted++; }
+      if (reply) {
+        const r = await replyToComment(creds, c.id, reply);
+        if (r.ok) { acted++; lastReplyId = r.id ?? null; }
+        else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] rule reply failed", channel.id, c.id, r.error); }
+      }
       if (rule.moderate === "hold_spam") await setModeration(creds, c.id, "heldForReview");
       else if (rule.moderate === "reject_spam") await setModeration(creds, c.id, "rejected");
       await bumpYtRuleMatch(rule.id, rule.matchCount, channel.tenantId);
@@ -76,12 +101,23 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
           effectiveKbTag(null, channel),
           false,
         );
-        if (res.reply && !res.escalate) { const r = await replyToComment(creds, c.id, res.reply); if (r.ok) acted++; }
-      } catch (e) { console.error("[ytpoller] ai reply", c.id, e); }
+        if (res.reply && !res.escalate) {
+          const r = await replyToComment(creds, c.id, res.reply);
+          if (r.ok) { acted++; lastReplyId = r.id ?? null; }
+          else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] ai reply failed", channel.id, c.id, r.error); }
+        } else if (res.escalate) {
+          lastError = "The AI declined to answer this comment (not enough in the knowledge base).";
+        }
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : "AI reply failed";
+        console.error("[ytpoller] ai reply", c.id, e);
+      }
     }
   }
 
-  await setCursor(channel.id, channel.tenantId, newestSeen || new Date().toISOString());
+  await setCursor(channel.id, channel.tenantId, newestSeen || new Date().toISOString(), {
+    commentsSeen: comments.length, repliesPosted: acted, lastReplyId, lastError,
+  });
   return acted;
 }
 
