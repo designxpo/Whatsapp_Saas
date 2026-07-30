@@ -72,6 +72,13 @@ export async function getReview(id: string, tenantId: string): Promise<Review | 
   return data ? mapReview(data as Record<string, unknown>) : null;
 }
 
+// Direct lookup (not the capped 500-row list) — the poller's idempotency check:
+// has this external review already been imported for this tenant?
+export async function getReviewByExternalId(tenantId: string, source: ReviewSource, externalId: string): Promise<Review | null> {
+  const { data } = await db().from("wa_reviews").select("*").eq("tenant_id", tenantId).eq("source", source).eq("external_id", externalId).maybeSingle();
+  return data ? mapReview(data as Record<string, unknown>) : null;
+}
+
 export interface ReviewInput {
   id?: string;
   source?: ReviewSource;

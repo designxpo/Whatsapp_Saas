@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import { getReview, setReviewReply, getReviewSettings } from "@/lib/reviews";
 import { generateReviewReply } from "@/lib/llm";
+import { listChannels } from "@/lib/channels";
+import { replyToReview, deleteReviewReply, type GrCreds } from "@/lib/googlereviews";
 import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 import { errorMessage } from "@/lib/errors";
+
+// The tenant's connected, fully-configured Google Reviews channel (if any).
+// Phase 2 supports one active connection per tenant; a review doesn't need to
+// record which channel it came from since there's only ever this one to reply
+// through.
+async function googleCredsFor(tenantId: string): Promise<GrCreds | null> {
+  const ch = (await listChannels(tenantId)).find(c => c.kind === "google_reviews" && c.active && c.googleAccountId && c.googleLocationId && c.token);
+  return ch ? { channelId: ch.id, refreshToken: ch.token, accountId: ch.googleAccountId, locationId: ch.googleLocationId } : null;
+}
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s default
@@ -41,12 +52,25 @@ export async function POST(req: Request) {
     if (body.action === "post") {
       const text = body.text !== undefined ? String(body.text) : (review.replyText ?? "");
       if (!text.trim()) return NextResponse.json({ error: "Nothing to post — draft a reply first" }, { status: 400 });
-      // Phase 1: we only record it as posted (you paste it into Google). Phase 2
-      // will actually PUT the reply via the Google Business Profile API here.
+      // A Google-sourced review posts live via the Business Profile API; a
+      // manually-added one just records the reply (there's nowhere to post it).
+      if (review.source === "google" && review.externalId) {
+        const creds = await googleCredsFor(tid);
+        if (!creds) return NextResponse.json({ error: "This tenant's Google Reviews connection isn't set up — connect it in the Reviews tab first." }, { status: 400 });
+        const posted = await replyToReview(creds, review.externalId, text);
+        if (!posted.ok) return NextResponse.json({ error: posted.error || "Google refused the reply" }, { status: 502 });
+      }
       const saved = await setReviewReply(review.id, tid, text, "posted", auto);
       return NextResponse.json({ review: saved });
     }
     if (body.action === "unpost") {
+      if (review.source === "google" && review.externalId) {
+        const creds = await googleCredsFor(tid);
+        if (creds) {
+          const removed = await deleteReviewReply(creds, review.externalId);
+          if (!removed.ok) return NextResponse.json({ error: removed.error || "Google refused to remove the reply" }, { status: 502 });
+        }
+      }
       const saved = await setReviewReply(review.id, tid, review.replyText ?? "", "draft", auto);
       return NextResponse.json({ review: saved });
     }

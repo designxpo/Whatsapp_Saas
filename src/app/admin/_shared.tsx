@@ -42,7 +42,7 @@ export function statusBadge(s: string): string {
 }
 
 // ── Multi-number channels (shared across broadcast/templates/forms/ads/etc.) ──
-export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; ytChannelId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
+export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" | "google_reviews"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; ytChannelId?: string | null; googleAccountId?: string | null; googleLocationId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
 let CHANNELS_CACHE: ChannelRow[] | null = null;
 export async function loadChannelList(force = false): Promise<ChannelRow[]> {
   if (!CHANNELS_CACHE || force) {

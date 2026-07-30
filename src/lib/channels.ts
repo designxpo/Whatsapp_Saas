@@ -16,7 +16,7 @@ export interface ChannelCreds {
   appId?: string | null;
 }
 
-export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube";
+export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" | "google_reviews";
 
 // Web-chat widget look & feel (kind="webchat"), injected into the embed loader.
 export interface WebchatConfig {
@@ -41,6 +41,8 @@ export interface Channel extends ChannelCreds {
   igUserId: string | null;    // IG professional account id (Messaging API), null for WA
   pageId: string | null;      // connected Facebook Page id (IG)
   ytChannelId: string | null; // YouTube channel id (kind="youtube"); token = OAuth refresh token
+  googleAccountId: string | null;   // Business Profile account resource id (kind="google_reviews")
+  googleLocationId: string | null;  // Business Profile location resource id; token = OAuth refresh token
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   crmSource: string | null;   // CRM lead Source for NEW leads that arrive on this number (null = "WhatsApp"); e.g. "ppc-whatsapp" so per-number campaigns are attributable
@@ -88,6 +90,8 @@ function mapChannel(r: Record<string, unknown>): Channel {
     igUserId: (r.ig_user_id as string | null) ?? null,
     pageId: (r.page_id as string | null) ?? null,
     ytChannelId: (r.yt_channel_id as string | null) ?? null,
+    googleAccountId: (r.google_account_id as string | null) ?? null,
+    googleLocationId: (r.google_location_id as string | null) ?? null,
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
     kbTag: (r.kb_tag as string | null) ?? null,
@@ -426,6 +430,42 @@ export async function saveYoutubeChannel(input: {
     const rest: Record<string, unknown> = { ...row };
     if (/yt_channel_id/i.test(res.error.message ?? "")) delete rest.yt_channel_id;
     if (/comment_ai/i.test(res.error.message ?? "")) delete rest.comment_ai;
+    res = await runSave(rest);
+  }
+  if (res.error) throw res.error;
+  return mapChannel(res.data as Record<string, unknown>);
+}
+
+// Save a Google Reviews channel (kind="google_reviews"; no phone/WABA/IG). The
+// OAuth refresh token is stored (encrypted) in access_token, same as YouTube.
+// Created right after OAuth with account/location left null and active=false
+// (the tenant hasn't picked a location yet); the location picker then updates
+// the same row in place via `id`.
+export async function saveGoogleReviewsChannel(input: {
+  id?: string; tenantId?: string; name: string; token?: string | null;
+  googleAccountId?: string | null; googleLocationId?: string | null; active?: boolean;
+}): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const row: Record<string, unknown> = {
+    tenant_id: tenantId,
+    kind: "google_reviews",
+    name: input.name.trim(),
+    active: input.active ?? true,
+  };
+  const tok = (input.token ?? "").trim();
+  if (tok) row.access_token = encryptSecret(tok);
+  else if (!input.id) row.access_token = "";   // access_token is NOT NULL
+  if (input.googleAccountId !== undefined) row.google_account_id = input.googleAccountId;
+  if (input.googleLocationId !== undefined) row.google_location_id = input.googleLocationId;
+  const runSave = (r: Record<string, unknown>) => input.id
+    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(r).select().single();
+  let res = await runSave(row);
+  // Tolerate a pre-0094 DB (google_account_id/google_location_id absent).
+  for (let i = 0; i < 2 && res.error && /\b(google_account_id|google_location_id)\b/i.test(res.error.message ?? ""); i++) {
+    const rest: Record<string, unknown> = { ...row };
+    if (/google_account_id/i.test(res.error.message ?? "")) delete rest.google_account_id;
+    if (/google_location_id/i.test(res.error.message ?? "")) delete rest.google_location_id;
     res = await runSave(rest);
   }
   if (res.error) throw res.error;

@@ -14,6 +14,7 @@ import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
 import { purgeOldAdChats } from "@/lib/adchats";
 import { drainYtComments } from "@/lib/ytpoller";
+import { drainGoogleReviews } from "@/lib/reviewpoller";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -149,6 +150,15 @@ export async function POST(req: Request) {
       try { ytComments = await drainYtComments(); } catch (e) { console.error("[cron] ytcomments", e); }
     }
 
+    // Google Reviews — poll connected Business Profile locations for new
+    // reviews and apply the reply policy (auto-post high stars, draft the
+    // rest). No-ops until a location is connected and the OAuth client + the
+    // Business Profile API access request are both in place.
+    let googleReviews = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { googleReviews = await drainGoogleReviews(); } catch (e) { console.error("[cron] googlereviews", e); }
+    }
+
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
@@ -157,7 +167,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, kbSync, crmSync, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, kbSync, crmSync, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
