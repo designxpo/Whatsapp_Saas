@@ -12,7 +12,7 @@ export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 // The set of dashboard tabs (sidebar keys). The shell owns the active-tab state
 // and passes `goTo` to tabs for cross-tab navigation.
-export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "webchat" | "reviews" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "handlehub" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
+export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "youtube" | "webchat" | "reviews" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "handlehub" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations";
 
 // A deep-link "intent" carried alongside a tab switch, so Home stat cards, the
 // Sales Pipeline, and Contacts can open Live Chat already focused on a specific
@@ -42,7 +42,7 @@ export function statusBadge(s: string): string {
 }
 
 // ── Multi-number channels (shared across broadcast/templates/forms/ads/etc.) ──
-export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
+export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; ytChannelId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
 let CHANNELS_CACHE: ChannelRow[] | null = null;
 export async function loadChannelList(force = false): Promise<ChannelRow[]> {
   if (!CHANNELS_CACHE || force) {
@@ -62,11 +62,11 @@ export function useChannelList() {
 // single-number env mode). `kind` scopes the options so an Instagram sequence
 // lists IG accounts, not WhatsApp numbers (default stays "whatsapp" for the
 // WA-only surfaces: broadcasts, templates, forms, API rules).
-export function ChannelSelect({ value, onChange, allLabel, className, kind = "whatsapp" }: { value: string | null; onChange: (v: string | null) => void; allLabel?: string; className?: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" }) {
+export function ChannelSelect({ value, onChange, allLabel, className, kind = "whatsapp" }: { value: string | null; onChange: (v: string | null) => void; allLabel?: string; className?: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" }) {
   const channels = useChannelList().filter(c => (c.kind ?? "whatsapp") === kind);
   if (!channels.length) return null;
   return (
-    <select className={className ?? inp} value={value ?? ""} onChange={e => onChange(e.target.value || null)} title={kind === "instagram" ? "Instagram account" : kind === "messenger" ? "Facebook Page" : kind === "webchat" ? "Web-chat site" : "WhatsApp number"}>
+    <select className={className ?? inp} value={value ?? ""} onChange={e => onChange(e.target.value || null)} title={kind === "instagram" ? "Instagram account" : kind === "messenger" ? "Facebook Page" : kind === "webchat" ? "Web-chat site" : kind === "youtube" ? "YouTube channel" : "WhatsApp number"}>
       <option value="">{allLabel ?? "Default number"}</option>
       {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
     </select>

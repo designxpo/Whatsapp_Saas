@@ -16,7 +16,7 @@ export interface ChannelCreds {
   appId?: string | null;
 }
 
-export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat";
+export type ChannelKind = "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube";
 
 // Web-chat widget look & feel (kind="webchat"), injected into the embed loader.
 export interface WebchatConfig {
@@ -40,6 +40,7 @@ export interface Channel extends ChannelCreds {
   name: string;
   igUserId: string | null;    // IG professional account id (Messaging API), null for WA
   pageId: string | null;      // connected Facebook Page id (IG)
+  ytChannelId: string | null; // YouTube channel id (kind="youtube"); token = OAuth refresh token
   agentId: string | null;     // default AI persona for conversations on this number
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   crmSource: string | null;   // CRM lead Source for NEW leads that arrive on this number (null = "WhatsApp"); e.g. "ppc-whatsapp" so per-number campaigns are attributable
@@ -86,6 +87,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     wabaId: (r.waba_id as string) ?? "",
     igUserId: (r.ig_user_id as string | null) ?? null,
     pageId: (r.page_id as string | null) ?? null,
+    ytChannelId: (r.yt_channel_id as string | null) ?? null,
     appId: (r.app_id as string | null) ?? null,
     agentId: (r.agent_id as string | null) ?? null,
     kbTag: (r.kb_tag as string | null) ?? null,
@@ -208,6 +210,16 @@ export async function getChannelBySiteKey(siteKey: string): Promise<Channel | nu
   if (!siteKey) return null;
   try {
     const { data } = await db().from("wa_channels").select("*").eq("site_key", siteKey).eq("kind", "webchat").maybeSingle();
+    return data ? mapChannel(data as Record<string, unknown>) : null;
+  } catch { return null; }
+}
+
+// Inbound YouTube routing (poll-based): match a connected channel by its YouTube
+// channel id. Filtered by kind so it never collides with another channel type.
+export async function getChannelByYtId(ytChannelId: string): Promise<Channel | null> {
+  if (!ytChannelId) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*").eq("yt_channel_id", ytChannelId).eq("kind", "youtube").maybeSingle();
     return data ? mapChannel(data as Record<string, unknown>) : null;
   } catch { return null; }
 }
@@ -375,6 +387,49 @@ export async function saveMessengerChannel(input: {
   const { data, error } = await q;
   if (error) throw error;
   return mapChannel(data as Record<string, unknown>);
+}
+
+// Save a YouTube channel (kind="youtube"; no phone/WABA/IG). The connected
+// YouTube channel id lives in yt_channel_id and the OAuth refresh token is stored
+// (encrypted) in access_token — youtube.ts exchanges it for short-lived access
+// tokens at call time. Token is optional on edit (blank = keep the current one).
+export async function saveYoutubeChannel(input: {
+  id?: string; tenantId?: string; name: string; ytChannelId: string;
+  token?: string | null; agentId?: string | null; kbTag?: string | null; commentAi?: boolean; active?: boolean; isDefault?: boolean;
+}): Promise<Channel> {
+  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const row: Record<string, unknown> = {
+    tenant_id: tenantId,
+    kind: "youtube",
+    name: input.name.trim(),
+    yt_channel_id: input.ytChannelId.trim(),
+    agent_id: input.agentId || null,
+    // Only written when the caller sends it (matches kb_tag/comment_ai precedent):
+    // an unconditional write would 500 every save before the migration lands.
+    ...(input.kbTag !== undefined ? { kb_tag: input.kbTag?.trim() || null } : {}),
+    ...(input.commentAi !== undefined ? { comment_ai: input.commentAi } : {}),
+    active: input.active ?? true,
+    is_default: input.isDefault ?? false,
+  };
+  // A refresh token is required on create; on edit a blank keeps the stored one.
+  const tok = (input.token ?? "").trim();
+  if (tok) row.access_token = encryptSecret(tok);
+  else if (!input.id) row.access_token = "";   // access_token is NOT NULL
+  if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
+  const runSave = (r: Record<string, unknown>) => input.id
+    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+    : db().from("wa_channels").insert(r).select().single();
+  let res = await runSave(row);
+  // Tolerate a pre-0093 DB (yt_channel_id / comment_ai absent) — strip and retry
+  // so a YouTube channel still saves until the migration is applied.
+  for (let i = 0; i < 2 && res.error && /\b(yt_channel_id|comment_ai)\b/i.test(res.error.message ?? ""); i++) {
+    const rest: Record<string, unknown> = { ...row };
+    if (/yt_channel_id/i.test(res.error.message ?? "")) delete rest.yt_channel_id;
+    if (/comment_ai/i.test(res.error.message ?? "")) delete rest.comment_ai;
+    res = await runSave(rest);
+  }
+  if (res.error) throw res.error;
+  return mapChannel(res.data as Record<string, unknown>);
 }
 
 // Save a website web-chat channel. A public site_key is minted once on create
