@@ -67,6 +67,7 @@ function YoutubeManager() {
   const [msg, setMsg] = useState<string | null>(null);
   const [rules, setRules] = useState<YtRule[]>([]);
   const [videos, setVideos] = useState<YtVideo[]>([]);
+  const [videosError, setVideosError] = useState<string | null>(null);
   const [ruleForm, setRuleForm] = useState<YtRule | null>(null);
   const [pickChannel, setPickChannel] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
@@ -129,8 +130,10 @@ function YoutubeManager() {
   useEffect(() => {
     if (editorChannel === null) return;
     const qs = editorChannel ? `?channelId=${encodeURIComponent(editorChannel)}` : "";
-    setVideos([]);
-    fetch(`/api/admin/yt-videos${qs}`).then(r => r.json()).then(d => setVideos(d.videos ?? [])).catch(() => {});
+    setVideos([]); setVideosError(null);
+    fetch(`/api/admin/yt-videos${qs}`).then(r => r.json())
+      .then(d => { setVideos(d.videos ?? []); setVideosError(d.error ?? null); })
+      .catch(() => setVideosError("Couldn't reach the server — check your connection and try again."));
   }, [editorChannel]);
 
   async function save() {
@@ -334,7 +337,13 @@ function YoutubeManager() {
                   );
                 })}
               </div>
-              {!videos.length && <p className="text-[11px] text-amber-600 mt-1.5">No videos loaded yet — connect a channel with a valid token, or create an &ldquo;All videos&rdquo; rule.</p>}
+              {!videos.length && (
+                <p className={`text-[11px] mt-1.5 ${videosError ? "text-red-600" : "text-amber-600"}`}>
+                  {videosError
+                    ? <>{videosError} You can still create an &ldquo;All videos&rdquo; rule.</>
+                    : <>No videos found on this channel yet — publish a video, or create an &ldquo;All videos&rdquo; rule that covers future uploads.</>}
+                </p>
+              )}
             </div>
             <div>
               <input className={`${inp} w-full`} placeholder="Trigger words — comma-separated (optional, blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />

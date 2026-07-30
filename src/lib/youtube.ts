@@ -78,12 +78,33 @@ async function accessTokenFor(creds: YtCreds): Promise<string | null> {
 }
 
 async function apiGet(token: string, path: string, params: Record<string, string>): Promise<Record<string, unknown> | null> {
+  const { data } = await apiGetDetailed(token, path, params);
+  return data;
+}
+
+// Same call, but keeps Google's error message instead of collapsing every
+// failure to null — the picker needs to tell "this channel has no videos" apart
+// from "the API rejected us" (quota exhausted, API not enabled, token revoked).
+async function apiGetDetailed(token: string, path: string, params: Record<string, string>): Promise<{ data: Record<string, unknown> | null; error?: string }> {
   try {
     const qs = new URLSearchParams(params).toString();
     const r = await fetch(`${API}/${path}?${qs}`, { headers: { Authorization: `Bearer ${token}` } });
     const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
-    return r.ok ? j : null;
-  } catch { return null; }
+    if (r.ok) return { data: j };
+    const err = (j?.error as { message?: string; errors?: { reason?: string }[] } | undefined);
+    const reason = err?.errors?.[0]?.reason;
+    // Map the failures a tenant can actually act on to plain language.
+    if (reason === "quotaExceeded" || reason === "dailyLimitExceeded") {
+      return { data: null, error: "YouTube's daily API quota for this deployment is used up. It resets at midnight Pacific time." };
+    }
+    if (r.status === 401) return { data: null, error: "YouTube access was revoked or expired — reconnect the channel." };
+    if (reason === "accessNotConfigured") {
+      return { data: null, error: "The YouTube Data API v3 isn't enabled on this deployment's Google Cloud project." };
+    }
+    return { data: null, error: err?.message || `YouTube API error (${r.status})` };
+  } catch (e) {
+    return { data: null, error: e instanceof Error ? e.message : "YouTube API request failed" };
+  }
 }
 
 function toChannelOption(it: Record<string, unknown>): YtChannelOption {
@@ -119,24 +140,35 @@ export async function listMyChannelOptions(creds: YtCreds): Promise<YtChannelOpt
   return resolveChannelsForToken(token);
 }
 
-// ── Video picker: the channel's most recent uploads ──────────────────────────
-export async function listVideos(creds: YtCreds, limit = 25): Promise<YtVideo[]> {
+// ── Video picker: the channel's uploads ──────────────────────────────────────
+// Goes via the channel's "uploads" playlist (channels.list → playlistItems.list,
+// 1 unit each) rather than search.list, which costs 100 units and can lag behind
+// for freshly-published videos. Returns the reason on failure so the picker can
+// say WHY it's empty instead of always claiming "no videos".
+export async function listVideos(creds: YtCreds, limit = 25): Promise<{ videos: YtVideo[]; error?: string }> {
   const token = await accessTokenFor(creds);
-  if (!token) return [];
-  // search.list is 100 units — acceptable for an occasional picker load. Order by
-  // date, restrict to this channel's own videos.
-  const data = await apiGet(token, "search", {
-    part: "snippet", channelId: creds.channelId, order: "date", type: "video",
-    maxResults: String(Math.min(50, Math.max(1, limit))),
+  if (!token) return { videos: [], error: "Could not get a Google access token — reconnect the channel." };
+
+  const ch = await apiGetDetailed(token, "channels", { part: "contentDetails", id: creds.channelId });
+  if (ch.error) return { videos: [], error: ch.error };
+  const chItems = (ch.data?.items as Record<string, unknown>[] | undefined) ?? [];
+  if (!chItems.length) return { videos: [], error: "This Google login can't see that YouTube channel — reconnect with the account that manages it." };
+  const uploads = (((chItems[0].contentDetails as Record<string, unknown>)?.relatedPlaylists as Record<string, unknown>)?.uploads as string) ?? "";
+  if (!uploads) return { videos: [], error: "This channel has no uploads playlist yet." };
+
+  const pl = await apiGetDetailed(token, "playlistItems", {
+    part: "snippet", playlistId: uploads, maxResults: String(Math.min(50, Math.max(1, limit))),
   });
-  const items = (data?.items as Record<string, unknown>[] | undefined) ?? [];
-  return items.map(it => {
-    const id = ((it.id as Record<string, unknown>)?.videoId as string) ?? "";
+  if (pl.error) return { videos: [], error: pl.error };
+  const items = (pl.data?.items as Record<string, unknown>[] | undefined) ?? [];
+  const videos = items.map(it => {
     const sn = (it.snippet as Record<string, unknown>) ?? {};
+    const id = ((sn.resourceId as Record<string, unknown>)?.videoId as string) ?? "";
     const thumbs = (sn.thumbnails as Record<string, Record<string, unknown>>) ?? {};
     const thumb = (thumbs.medium?.url as string) || (thumbs.default?.url as string) || "";
     return { id, title: (sn.title as string) ?? "", thumbnail: thumb, publishedAt: (sn.publishedAt as string) ?? "" };
   }).filter(v => v.id);
+  return { videos };
 }
 
 // ── Incremental comment poll ─────────────────────────────────────────────────

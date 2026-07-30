@@ -18,8 +18,8 @@ export async function GET(req: Request) {
     const yt = (channelId && yts.find(c => c.id === channelId)) || yts.find(c => c.active) || yts[0];
     if (!yt || !yt.ytChannelId) return NextResponse.json({ videos: [], error: "Connect a YouTube channel first" });
     if (!youtubeConfigured()) return NextResponse.json({ videos: [], error: "YouTube isn't configured on this deployment yet (Google OAuth pending)." });
-    const videos = await listVideos({ channelId: yt.ytChannelId, refreshToken: yt.token });
-    return NextResponse.json({ videos });
+    const { videos, error } = await listVideos({ channelId: yt.ytChannelId, refreshToken: yt.token });
+    return NextResponse.json({ videos, ...(error ? { error } : {}) });
   } catch (err) {
     return NextResponse.json({ videos: [], error: errorMessage(err) });
   }
