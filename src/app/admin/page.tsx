@@ -142,6 +142,13 @@ export default function Admin() {
   const [chatIntent, setChatIntent] = useState<ChatIntent | null>(null);
   const goTo = useCallback<GoTo>((t, intent) => { setChatIntent(intent ?? null); setTab(t); }, []);
   const clearChatIntent = useCallback(() => setChatIntent(null), []);
+  // Land on the right tab after a full-page redirect back into the SPA (e.g. the
+  // YouTube "Connect with Google" OAuth round trip returns to /admin?tab=youtube).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && t in TAB_TITLES) setTab(t as Tab);
+  }, []);
   const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);

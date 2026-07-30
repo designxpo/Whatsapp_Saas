@@ -21,7 +21,7 @@ function YoutubeTab() {
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>A <b>YouTube channel</b> you manage, on a Google account with access to reply to and moderate its comments.</span></li>
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>The <b>YouTube Data API v3</b> enabled on your Google Cloud project, with the <code className="font-mono text-[12px]">youtube.force-ssl</code> OAuth scope (needed to post replies and moderate).</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Paste your <b>channel id</b> and an <b>OAuth refresh token</b> below. One-click “Connect with Google” arrives once the app passes Google’s OAuth verification.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Click <b>Connect with Google</b> below and approve access on the channel-owner&apos;s Google account. While the app is in Google&apos;s Testing mode, that account must be added as a test user on the OAuth consent screen first.</span></li>
         </ol>
         <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up: YouTube has no new-comment webhook, so new comments are polled every few minutes (not instant), and the daily API quota caps total replies. We rotate reply variants and pace per hour to keep the channel safe from spam strikes.</p>
       </section>
@@ -45,6 +45,18 @@ const BLANK_RULE: YtRule = { channelId: null, name: "", enabled: true, videoId: 
 
 const MOD_LABEL: Record<Moderate, string> = { off: "No moderation", hold_spam: "Hold for review", reject_spam: "Reject (hide)" };
 
+// Result flags the OAuth callback lands back with (?yt=connected / ?yt_error=…).
+const YT_ERROR_MESSAGES: Record<string, string> = {
+  not_configured: "YouTube isn't configured on this deployment yet (Google OAuth pending) — add a channel manually below once it's set up, or ask your platform admin.",
+  denied: "Google sign-in was cancelled.",
+  state_mismatch: "Something went wrong verifying the request — please try connecting again.",
+  exchange_failed: "Google didn't return a valid token — please try connecting again.",
+  no_refresh_token: "Google didn't grant offline access. Visit myaccount.google.com/permissions, remove Talko AI's access, then try connecting again.",
+  channel_lookup_failed: "Connected to Google, but couldn't find a YouTube channel on that account.",
+  channel_limit: "Your plan's channel limit is reached — remove a channel or upgrade to connect another.",
+  save_failed: "Something went wrong saving the channel — please try again.",
+};
+
 function YoutubeManager() {
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
@@ -67,6 +79,18 @@ function YoutubeManager() {
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   useEffect(() => { loadRules(); }, [loadRules]);
+  // One-time result of the "Connect with Google" redirect flow (?yt=connected /
+  // ?yt_error=…). Consume it once, then scrub the query string so a page
+  // refresh doesn't replay it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get("yt");
+    const error = params.get("yt_error");
+    if (connected === "connected") load();
+    if (error) setMsg(YT_ERROR_MESSAGES[error] || "Something went wrong connecting YouTube.");
+    if (connected || error) window.history.replaceState(null, "", window.location.pathname);
+  }, [load]);
 
   const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
   useEffect(() => {
@@ -127,7 +151,12 @@ function YoutubeManager() {
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel to auto-reply to comments and moderate spam. Public replies only — YouTube has no DMs.</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add channel</button>
+        <div className="flex items-center gap-2 shrink-0">
+          <a href="/api/admin/onboarding/youtube/start" className="px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5">
+            <Youtube className="w-3.5 h-3.5" /> Connect with Google
+          </a>
+          <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
+        </div>
       </div>
 
       {channels.map(c => (
