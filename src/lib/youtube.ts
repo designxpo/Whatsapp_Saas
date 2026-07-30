@@ -25,6 +25,7 @@ export interface YtCreds {
 }
 
 export interface YtVideo { id: string; title: string; thumbnail: string; publishedAt: string }
+export interface YtChannelOption { id: string; title: string; thumbnail: string }
 export interface YtComment {
   id: string;             // top-level comment id (reply target)
   videoId: string;
@@ -83,6 +84,39 @@ async function apiGet(token: string, path: string, params: Record<string, string
     const j = (await r.json().catch(() => null)) as Record<string, unknown> | null;
     return r.ok ? j : null;
   } catch { return null; }
+}
+
+function toChannelOption(it: Record<string, unknown>): YtChannelOption {
+  const sn = (it.snippet as Record<string, unknown>) ?? {};
+  const thumbs = (sn.thumbnails as Record<string, Record<string, unknown>>) ?? {};
+  return { id: (it.id as string) ?? "", title: (sn.title as string) ?? "", thumbnail: (thumbs.default?.url as string) ?? "" };
+}
+
+// Resolve which YouTube channel(s) an access token's Google login can manage.
+// `mine=true` only finds a channel tied DIRECTLY to the personal Google
+// identity — a channel run as a Brand Account (very common for businesses)
+// won't show up there, so we fall back to `managedByMe=true`, which lists
+// every channel the login has content-manager access to (can be more than
+// one — the caller must handle that case, e.g. with a picker).
+export async function resolveChannelsForToken(accessToken: string): Promise<YtChannelOption[]> {
+  const fetchOnce = async (param: "mine" | "managedByMe"): Promise<YtChannelOption[]> => {
+    try {
+      const r = await fetch(`${API}/channels?part=snippet&${param}=true`, { headers: { Authorization: `Bearer ${accessToken}` } });
+      const j = (await r.json().catch(() => null)) as { items?: Record<string, unknown>[] } | null;
+      if (!r.ok) return [];
+      return (j?.items ?? []).map(toChannelOption).filter(c => c.id);
+    } catch { return []; }
+  };
+  const mine = await fetchOnce("mine");
+  return mine.length ? mine : await fetchOnce("managedByMe");
+}
+
+// Same resolution, but from a stored refresh token (the location-picker route,
+// called after the OAuth callback already created a provisional channel).
+export async function listMyChannelOptions(creds: YtCreds): Promise<YtChannelOption[]> {
+  const token = await accessTokenFor(creds);
+  if (!token) return [];
+  return resolveChannelsForToken(token);
 }
 
 // ── Video picker: the channel's most recent uploads ──────────────────────────

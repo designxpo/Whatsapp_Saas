@@ -398,7 +398,7 @@ export async function saveMessengerChannel(input: {
 // (encrypted) in access_token — youtube.ts exchanges it for short-lived access
 // tokens at call time. Token is optional on edit (blank = keep the current one).
 export async function saveYoutubeChannel(input: {
-  id?: string; tenantId?: string; name: string; ytChannelId: string;
+  id?: string; tenantId?: string; name: string; ytChannelId?: string;
   token?: string | null; agentId?: string | null; kbTag?: string | null; commentAi?: boolean; active?: boolean; isDefault?: boolean;
 }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
@@ -406,7 +406,10 @@ export async function saveYoutubeChannel(input: {
     tenant_id: tenantId,
     kind: "youtube",
     name: input.name.trim(),
-    yt_channel_id: input.ytChannelId.trim(),
+    // Omitted (not blank) when the channel is still "pick one" pending — a
+    // multi-channel Google login's OAuth callback creates the row before the
+    // admin has chosen which channel it is.
+    ...(input.ytChannelId !== undefined ? { yt_channel_id: input.ytChannelId.trim() || null } : {}),
     agent_id: input.agentId || null,
     // Only written when the caller sends it (matches kb_tag/comment_ai precedent):
     // an unconditional write would 500 every save before the migration lands.

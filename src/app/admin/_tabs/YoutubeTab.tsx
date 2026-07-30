@@ -69,6 +69,13 @@ function YoutubeManager() {
   const [ruleForm, setRuleForm] = useState<YtRule | null>(null);
   const [pickChannel, setPickChannel] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
+  // OAuth channel picker — shown when a connected Google login manages more
+  // than one YouTube channel (e.g. a content manager, or several Brand
+  // Accounts) and the callback couldn't guess which one to use.
+  const [oauthPickerId, setOauthPickerId] = useState<string | null>(null);
+  const [oauthOptions, setOauthOptions] = useState<{ id: string; title: string; thumbnail: string }[]>([]);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState<string | null>(null);
   const loadRules = useCallback(() => { fetch("/api/admin/yt-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
@@ -86,11 +93,36 @@ function YoutubeManager() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const connected = params.get("yt");
+    const channelId = params.get("channelId");
     const error = params.get("yt_error");
     if (connected === "connected") load();
+    if (connected === "pick" && channelId) setOauthPickerId(channelId);
     if (error) setMsg(YT_ERROR_MESSAGES[error] || "Something went wrong connecting YouTube.");
     if (connected || error) window.history.replaceState(null, "", window.location.pathname);
   }, [load]);
+
+  useEffect(() => {
+    if (!oauthPickerId) { setOauthOptions([]); return; }
+    setOauthLoading(true);
+    fetch(`/api/admin/yt-channels?channelId=${encodeURIComponent(oauthPickerId)}`)
+      .then(r => r.json())
+      .then(d => { setOauthOptions(d.channels ?? []); if (d.error) setMsg(d.error); })
+      .finally(() => setOauthLoading(false));
+  }, [oauthPickerId]);
+
+  async function pickOauthChannel(opt: { id: string; title: string }) {
+    if (!oauthPickerId) return;
+    setOauthBusy(opt.id); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/yt-channels", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId: oauthPickerId, ytChannelId: opt.id, name: opt.title }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Save failed"); return; }
+      setOauthPickerId(null); setOauthOptions([]); load();
+    } finally { setOauthBusy(null); }
+  }
 
   const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
   useEffect(() => {
@@ -158,6 +190,30 @@ function YoutubeManager() {
           <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>
       </div>
+
+      {/* OAuth channel picker — shown once, right after "Connect with Google",
+          when that Google login manages more than one channel (a content
+          manager, or a Brand Account alongside a personal channel). */}
+      {oauthPickerId && (
+        <div className="rounded-card border-2 border-red-500/30 bg-white p-4 space-y-3">
+          <p className="text-xs font-bold text-slate-400 uppercase">Which YouTube channel is this?</p>
+          {oauthLoading && <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your channels…</p>}
+          {!oauthLoading && !oauthOptions.length && (
+            <p className="text-xs text-amber-600">No channels found on this Google login — make sure you signed in with the account that manages your YouTube channel.</p>
+          )}
+          <div className="space-y-1.5">
+            {oauthOptions.map(opt => (
+              <button key={opt.id} type="button" disabled={!!oauthBusy} onClick={() => pickOauthChannel(opt)}
+                className="w-full flex items-center gap-2.5 border border-line rounded-control px-3 py-2 text-left hover:border-red-500 hover:bg-red-50 transition-colors disabled:opacity-60">
+                {opt.thumbnail ? <img src={opt.thumbnail} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" /> : <Youtube className="w-5 h-5 text-red-600 shrink-0" />}
+                <p className="text-sm font-semibold text-ink-900 truncate flex-1">{opt.title}</p>
+                {oauthBusy === opt.id && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setOauthPickerId(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+        </div>
+      )}
 
       {channels.map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">

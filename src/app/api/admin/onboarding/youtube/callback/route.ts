@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listChannels, saveYoutubeChannel } from "@/lib/channels";
+import { resolveChannelsForToken } from "@/lib/youtube";
 import { enforceLimit } from "@/lib/usage";
 import { logActivity } from "@/lib/team";
 
@@ -54,13 +55,23 @@ export async function GET(req: NextRequest) {
     // it — fail loudly rather than saving a channel that can never auto-refresh.
     if (!tokenJson.refresh_token) return back("yt_error=no_refresh_token");
 
-    const chRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
-      headers: { Authorization: `Bearer ${tokenJson.access_token}` },
-    });
-    const chJson = (await chRes.json().catch(() => null)) as { items?: { id?: string; snippet?: { title?: string } }[] } | null;
-    const channel = chJson?.items?.[0];
-    if (!chRes.ok || !channel?.id) return back("yt_error=channel_lookup_failed");
+    // `mine=true` only finds a channel tied directly to the personal Google
+    // identity — a Brand Account channel (common for businesses) needs
+    // `managedByMe=true` instead, which can return more than one channel.
+    const options = await resolveChannelsForToken(tokenJson.access_token);
+    if (!options.length) return back("yt_error=channel_lookup_failed");
 
+    if (options.length > 1) {
+      // Content manager with access to several channels — can't guess which
+      // one is right, so stash the token on a provisional row and hand off to
+      // the picker (mirrors the Google Reviews location picker).
+      try { await enforceLimit(tenantId, "channels"); }
+      catch { return back("yt_error=channel_limit"); }
+      const provisional = await saveYoutubeChannel({ tenantId, name: "YouTube (pick a channel)", token: tokenJson.refresh_token, active: false });
+      return back(`yt=pick&channelId=${encodeURIComponent(provisional.id)}`);
+    }
+
+    const channel = options[0];
     // Reconnecting an already-connected channel updates it in place (fresh
     // refresh token) instead of creating a duplicate row.
     const existing = (await listChannels(tenantId)).find(c => c.kind === "youtube" && c.ytChannelId === channel.id);
@@ -70,12 +81,12 @@ export async function GET(req: NextRequest) {
     }
     await saveYoutubeChannel({
       id: existing?.id, tenantId,
-      name: channel.snippet?.title || "YouTube channel",
+      name: channel.title || "YouTube channel",
       ytChannelId: channel.id,
       token: tokenJson.refresh_token,
       active: true,
     });
-    logActivity(await currentUser(), "channel.save", `YouTube "${channel.snippet?.title ?? channel.id}" connected`);
+    logActivity(await currentUser(), "channel.save", `YouTube "${channel.title || channel.id}" connected`);
     return back("yt=connected");
   } catch {
     return back("yt_error=save_failed");
