@@ -12,7 +12,7 @@ import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
   FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, INTEGRATION_CATEGORIES, CTA_BULLETS, type Feature,
-  PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE,
+  PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE, GLOSSARY,
 } from "../_content/site";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -62,22 +62,27 @@ export function ThreeSteps() {
           <div className="absolute -bottom-12 left-8 h-60 w-60 rounded-full bg-[#7c5cff]/16 blur-3xl" />
         </Parallax>
         <div className="relative">
-        <SectionTitle title="Get started in three easy steps" subtitle="Go live in an afternoon." />
-        <div className="mt-10 grid gap-5 md:grid-cols-3">
+        {/* Phrased as "How to..." and marked up as a real ordered list — this
+            is the page's step-by-step content, so it should read as one to
+            both browsers and answer engines, not just visually. */}
+        <SectionTitle title="How to get started with Talko AI" subtitle="Go live in an afternoon." />
+        <ol className="mt-10 grid list-none gap-5 md:grid-cols-3">
           {STEPS.map((s, i) => {
             const Icon = STEP_ICONS[i] ?? Search;
             const tone = TONES[STEP_TONES[i] ?? "lavender"];
             return (
-              <Reveal key={s.n} delay={i * 110} className="h-full">
-                <div className={`h-full rounded-2xl ${tone.bg} p-6`}>
-                  <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}><Icon className="h-5 w-5" /></span>
-                  <h3 className="mt-4 text-base font-extrabold text-slate-900">{s.title}</h3>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
-                </div>
-              </Reveal>
+              <li key={s.n}>
+                <Reveal delay={i * 110} className="h-full">
+                  <div className={`h-full rounded-2xl ${tone.bg} p-6`}>
+                    <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}><Icon className="h-5 w-5" /></span>
+                    <h3 className="mt-4 text-base font-extrabold text-slate-900">{s.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
+                  </div>
+                </Reveal>
+              </li>
             );
           })}
-        </div>
+        </ol>
         </div>
       </div>
     </Container>
@@ -304,6 +309,28 @@ export function ComparisonTable() {
           </Link>
         </div>
       </Reveal>
+    </section>
+  );
+}
+
+// Compact glossary — real <dl>/<dt>/<dd> term definitions. Purely a clarity
+// aid (each entry is a direct "X is a..." answer), not a comparison or a step.
+export function Glossary() {
+  return (
+    <section className="py-16">
+      <Container>
+        <SectionTitle id="glossary" eyebrow="Quick glossary" title="Key terms, defined plainly" subtitle="What the platform actually means by each of these — no jargon." />
+        <Reveal className="mx-auto mt-10 max-w-3xl">
+          <dl className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            {GLOSSARY.map(g => (
+              <div key={g.term} className="px-6 py-5">
+                <dt className="text-sm font-bold text-slate-900">{g.term}</dt>
+                <dd className="mt-1.5 text-sm leading-relaxed text-slate-500">{g.definition}</dd>
+              </div>
+            ))}
+          </dl>
+        </Reveal>
+      </Container>
     </section>
   );
 }

@@ -72,8 +72,8 @@ export function Button({
 }
 
 export function SectionTitle({
-  eyebrow, title, subtitle, center = true, level = 2,
-}: { eyebrow?: string; title: string; subtitle?: string; center?: boolean; level?: 1 | 2 }) {
+  eyebrow, title, subtitle, center = true, level = 2, id,
+}: { eyebrow?: string; title: string; subtitle?: string; center?: boolean; level?: 1 | 2; id?: string }) {
   // Render as <h1> (one per page, for SEO) or the default <h2> for sections.
   const Heading = level === 1 ? "h1" : "h2";
   const headingStyles = level === 1
@@ -82,7 +82,8 @@ export function SectionTitle({
   return (
     <Reveal className={`max-w-2xl ${center ? "mx-auto text-center" : ""}`}>
       {eyebrow && <div className={center ? "flex justify-center" : ""}><Eyebrow>{eyebrow}</Eyebrow></div>}
-      <Heading className={headingStyles}>{title}</Heading>
+      {/* scroll-mt so a jump to #id doesn't tuck the heading under the sticky nav */}
+      <Heading id={id} className={`scroll-mt-24 ${headingStyles}`}>{title}</Heading>
       {subtitle && <p className="mt-3 text-balance text-slate-600">{subtitle}</p>}
     </Reveal>
   );

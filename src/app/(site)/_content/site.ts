@@ -129,7 +129,7 @@ export const TESTIMONIALS: Testimonial[] = [
 export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
   { q: "What is Talko AI?", a: "Talko AI is an AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat. It replies, qualifies leads and sells across every channel from one inbox, using AI grounded on your own knowledge base and billed to your own AI provider key." },
-  { q: "How do I get started with Talko AI?", a: "Start a free 14-day trial, connect WhatsApp, Instagram, Messenger or your website chat in a few clicks, add your own AI key, and Talko AI starts replying, qualifying and selling immediately — no credit card and no developer required." },
+  { q: "How do I get started with Talko AI?", a: "Start a free 14-day trial, connect WhatsApp, Instagram, Messenger or your website chat in a few clicks, add your own AI key, and Talko AI starts replying, qualifying and selling immediately across every channel — no credit card required and no developer needed." },
   { q: "Do I need my own WhatsApp Business account?", a: "For WhatsApp, Instagram and Messenger, yes — Talko AI connects your own number, Instagram account and Facebook Page through Meta's official APIs, so your brand stays yours. The website web-chat widget needs no Meta account at all — just paste one line of code on your site." },
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
@@ -137,6 +137,17 @@ export const FAQS: Faq[] = [
   { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere. We're not a Meta-only tool — the same platform covers Google's ecosystem too, with more channels on the roadmap." },
   { q: "Do you have a plan for creators & influencers?", a: "Yes — our Creator and Creator Pro plans are Instagram-first, built for creators who don't need the WhatsApp business stack. You get AI auto-replies, comment-to-DM and keyword automation, link-in-bio lead capture, basic flows and a merch catalog from ₹999/mo. Creator Pro adds Messenger, multiple Instagram accounts, YouTube comment automation, ads and more volume." },
   { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
+];
+
+// Short glossary of the platform's core concepts — rendered as a <dl> so each
+// term is a real, machine-extractable "X is a..." definition, not just prose.
+export type GlossaryTerm = { term: string; definition: string };
+export const GLOSSARY: GlossaryTerm[] = [
+  { term: "AI reply", definition: "An automated response written by your connected AI model (Gemini, OpenAI or Anthropic), grounded on your own knowledge base so it stays accurate and on-brand." },
+  { term: "Broadcast", definition: "A scheduled, tracked message sent to a segment of your contacts using an approved template — with delivery, read and click tracking built in." },
+  { term: "Chatbot flow", definition: "A no-code, drag-and-build conversation path that qualifies leads, answers questions or books appointments without a human on the other end." },
+  { term: "Drip sequence", definition: "A series of automated follow-up messages triggered by an event, like a new lead or an abandoned cart, sent on a schedule you define once." },
+  { term: "Comment automation", definition: "A rule that turns a public comment on Instagram, Facebook or YouTube into an automatic reply, a private DM, or a moderation action." },
 ];
 
 export type Post = {

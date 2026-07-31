@@ -34,7 +34,12 @@ const orgSchema = {
   logo: `${SITE_URL}/brand/talkopng.png`,
   description:
     "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
-  parentOrganization: { "@type": "Organization", name: "PM Technologies" },
+  // `url` is required here too — schema.org's Organization validators flag a
+  // nested Organization with no url of its own, even though it isn't the
+  // page's primary entity. PM Technologies operates as Talko AI at this
+  // domain, so the same URL is the accurate answer, not a placeholder.
+  parentOrganization: { "@type": "Organization", name: "PM Technologies", url: SITE_URL },
+  contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: "info@thetalko.in" },
   ...(ORG_SAME_AS.length ? { sameAs: ORG_SAME_AS } : {}),
 };
 
@@ -44,6 +49,7 @@ const websiteSchema = {
   "@id": `${SITE_URL}/#website`,
   url: SITE_URL,
   name: "Talko AI",
+  description: "Talko AI — AI-powered WhatsApp, Instagram, Messenger, YouTube and Google Reviews automation for businesses.",
   publisher: { "@id": ORG_ID },
 };
 

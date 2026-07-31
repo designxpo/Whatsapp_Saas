@@ -23,6 +23,8 @@ export function BrandMark({ name, slug, iconify, src, wordmark }: { name: string
         src={sources[idx]}
         alt={name}
         title={name}
+        width={120}
+        height={32}
         className="h-8 w-auto max-w-[150px] object-contain transition duration-300 hover:scale-105"
         loading="lazy"
         onError={() => setIdx(i => i + 1)}
@@ -35,6 +37,8 @@ export function BrandMark({ name, slug, iconify, src, wordmark }: { name: string
       <img
         src={sources[idx]}
         alt={`${name} logo`}
+        width={32}
+        height={32}
         className="h-8 w-8 shrink-0 object-contain transition duration-300 hover:scale-110"
         loading="lazy"
         onError={() => setIdx(i => i + 1)}

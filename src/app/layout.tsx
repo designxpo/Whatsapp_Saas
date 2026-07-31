@@ -64,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             so their TLS/connection setup isn't on the critical path. */}
         <link rel="preconnect" href="https://cdn.simpleicons.org" crossOrigin="anonymous" />
         <link rel="preconnect" href="https://api.iconify.design" crossOrigin="anonymous" />
+        <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
         {/* No-JS safety net: scroll-reveal bakes a hidden state into SSR markup
             (opacity:0). If JS never runs, force every [data-reveal] element
             visible so no content is lost. (Reduced-motion has its own rule.) */}

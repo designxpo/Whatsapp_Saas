@@ -88,7 +88,7 @@ export function Hero() {
           <div key={c.name}
             className={`absolute z-10 ${c.pos} ${FLOATS[i % FLOATS.length]} ${c.hide ? "hidden lg:flex" : "hidden sm:flex"} items-center justify-center rounded-full bg-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.22)] ring-1 ring-slate-100 ${c.size ?? "h-12 w-12"}`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={c.src ?? `https://cdn.simpleicons.org/${c.slug}`} alt={c.name} title={c.name} className="h-1/2 w-1/2 object-contain" loading="lazy" />
+            <img src={c.src ?? `https://cdn.simpleicons.org/${c.slug}`} alt={c.name} title={c.name} width={28} height={28} className="h-1/2 w-1/2 object-contain" loading="lazy" />
           </div>
         ))}
 
@@ -100,7 +100,7 @@ export function Hero() {
             <RatingBadge label="Trustpilot" score="4.8" />
           </div>
 
-          <h1 className="mx-auto mt-6 max-w-3xl text-balance text-[2.5rem] font-extrabold leading-[1.05] tracking-tight text-slate-900 sm:text-6xl">
+          <h1 id="hero-heading" className="mx-auto mt-6 max-w-3xl text-balance text-[2.5rem] font-extrabold leading-[1.05] tracking-tight text-slate-900 sm:text-6xl">
             {HERO.titleAccent && HERO.title.endsWith(HERO.titleAccent)
               ? <>{HERO.title.slice(0, -HERO.titleAccent.length)}<GradientText>{HERO.titleAccent}</GradientText></>
               : HERO.title}
@@ -130,7 +130,7 @@ export function Hero() {
                       <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
                         {a.initials}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.img} alt={a.name} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                        <img src={a.img} alt={a.name} width={36} height={36} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
                       </span>
                       <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: a.dot }} />
                     </span>
@@ -157,7 +157,7 @@ export function Hero() {
             { name: "WooCommerce", slug: "woocommerce" },
           ].map(l => (
             // eslint-disable-next-line @next/next/no-img-element
-            <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/94a3b8`} alt={l.name} title={l.name} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
+            <img key={l.name} src={`https://cdn.simpleicons.org/${l.slug}/94a3b8`} alt={l.name} title={l.name} width={28} height={28} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
           ))}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Container, SectionTitle } from "./_components/ui";
-import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable } from "./_components/sections";
+import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable, Glossary } from "./_components/sections";
 import { WhyChoose } from "./_components/why-choose";
 import { PricingTiers } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
@@ -19,9 +19,12 @@ import { SITE_URL } from "@/lib/siteurl";
 const faqSchema = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
+  description: "Frequently asked questions about Talko AI's WhatsApp, Instagram, Messenger, YouTube and Google Reviews automation platform.",
   mainEntity: FAQS.map(f => ({
     "@type": "Question",
     name: f.q,
+    text: f.q,
+    dateCreated: "2026-06-01",
     acceptedAnswer: { "@type": "Answer", text: f.a },
   })),
 };
@@ -40,6 +43,12 @@ const webPageSchema = {
   about: { "@id": `${SITE_URL}/#organization` },
   datePublished: "2026-06-01",
   dateModified: "2026-07-31",
+  // Marks the headline and the plain-language summary as the voice/LLM-ready
+  // excerpt of the page — the two elements that alone answer "what is this".
+  speakable: {
+    "@type": "SpeakableSpecification",
+    cssSelector: ["#hero-heading", "#site-tldr"],
+  },
 };
 
 // SoftwareApplication — disambiguates "Talko AI the product" from "Talko AI /
@@ -75,7 +84,7 @@ export default function HomePage() {
       {/* Plain-language definition + key takeaway near the top of the page —
           answers "what is Talko AI" directly for readers and answer engines,
           instead of making them infer it from the hero's benefit-led copy. */}
-      <p className="mx-auto max-w-2xl px-5 pb-6 text-center text-sm leading-relaxed text-slate-500">
+      <p id="site-tldr" className="mx-auto max-w-2xl px-5 pb-6 text-center text-sm leading-relaxed text-slate-500">
         <strong className="font-bold text-slate-700">In short:</strong> Talko AI is an AI-powered customer conversation
         platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and
         website chat. It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply,
@@ -101,7 +110,7 @@ export default function HomePage() {
 
       {/* Features */}
       <Container className="py-8">
-        <SectionTitle eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger, YouTube and your website — plus AI replies for your Google reviews." />
+        <SectionTitle id="features" eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger, YouTube and your website — plus AI replies for your Google reviews." />
         <FeatureGrid />
       </Container>
 
@@ -110,12 +119,15 @@ export default function HomePage() {
       {/* Talko AI vs the alternatives */}
       <ComparisonTable />
 
+      {/* Core concepts, defined plainly — extractable as direct answers */}
+      <Glossary />
+
       <IntegrationsStrip />
       <StatsBand />
 
       {/* Pricing teaser */}
       <Container className="py-12">
-        <SectionTitle eyebrow="Pricing" title="Simple, transparent pricing" subtitle="Free for 14 days. Cancel anytime." />
+        <SectionTitle id="pricing" eyebrow="Pricing" title="Simple, transparent pricing" subtitle="Free for 14 days. Cancel anytime." />
         <PricingTiers />
         <div className="mt-8 flex flex-col items-center gap-2 text-center">
           <Link href="/pricing" className="text-sm font-bold text-[#0783fd] hover:underline">Compare all plans →</Link>
@@ -126,7 +138,7 @@ export default function HomePage() {
       <Testimonials />
 
       <Container className="py-12">
-        <SectionTitle eyebrow="FAQ" title="Frequently asked questions" />
+        <SectionTitle id="faq" eyebrow="FAQ" title="Frequently asked questions" />
         <Faq />
       </Container>
 
