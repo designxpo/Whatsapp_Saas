@@ -128,6 +128,8 @@ export const TESTIMONIALS: Testimonial[] = [
 
 export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
+  { q: "What is Talko AI?", a: "Talko AI is an AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat. It replies, qualifies leads and sells across every channel from one inbox, using AI grounded on your own knowledge base and billed to your own AI provider key." },
+  { q: "How do I get started with Talko AI?", a: "Start a free 14-day trial, connect WhatsApp, Instagram, Messenger or your website chat in a few clicks, add your own AI key, and Talko AI starts replying, qualifying and selling immediately — no credit card and no developer required." },
   { q: "Do I need my own WhatsApp Business account?", a: "For WhatsApp, Instagram and Messenger, yes — Talko AI connects your own number, Instagram account and Facebook Page through Meta's official APIs, so your brand stays yours. The website web-chat widget needs no Meta account at all — just paste one line of code on your site." },
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },

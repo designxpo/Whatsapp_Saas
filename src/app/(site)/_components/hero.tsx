@@ -130,7 +130,7 @@ export function Hero() {
                       <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
                         {a.initials}
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.img} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                        <img src={a.img} alt={a.name} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
                       </span>
                       <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: a.dot }} />
                     </span>

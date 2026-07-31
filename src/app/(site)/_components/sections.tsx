@@ -292,6 +292,12 @@ export function ComparisonTable() {
           </table>
         </div>
         <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-500">{COMPARE_NOTE}</p>
+        <p className="mx-auto mt-3 max-w-3xl text-center text-xs text-slate-400">
+          Built only on official channel APIs — see{" "}
+          <a href="https://business.whatsapp.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">Meta&apos;s WhatsApp Business Platform</a>,{" "}
+          <a href="https://developers.google.com/youtube/v3" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">the YouTube Data API</a> and{" "}
+          <a href="https://support.google.com/business/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">Google Business Profile</a> — never unofficial scraping that risks a ban.
+        </p>
         <div className="mt-6 text-center">
           <Link href="/vs" className="inline-flex items-center gap-1.5 text-sm font-bold text-[#0783fd] hover:underline">
             See detailed comparisons <ArrowRight className="h-4 w-4" aria-hidden="true" />

@@ -124,11 +124,21 @@ export function Faq() {
     <div className="mx-auto mt-10 max-w-3xl divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">
       {FAQS.map((f, i) => (
         <div key={f.q}>
-          <button onClick={() => setOpen(open === i ? null : i)} className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left">
-            <span className="text-sm font-bold text-slate-900">{f.q}</span>
-            <ChevronDown className={`h-4 w-4 shrink-0 text-[#0783fd] transition-transform ${open === i ? "rotate-180" : ""}`} />
-          </button>
-          {open === i && <p className="px-6 pb-5 text-sm leading-relaxed text-slate-500">{f.a}</p>}
+          {/* Heading wraps the trigger (the standard accessible accordion
+              pattern) so each question is a real, crawlable h3 — not just a
+              styled span. */}
+          <h3>
+            <button onClick={() => setOpen(open === i ? null : i)} aria-expanded={open === i} className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left">
+              <span className="text-sm font-bold text-slate-900">{f.q}</span>
+              <ChevronDown className={`h-4 w-4 shrink-0 text-[#0783fd] transition-transform ${open === i ? "rotate-180" : ""}`} />
+            </button>
+          </h3>
+          {/* Answer stays in the DOM even when collapsed (visually hidden via
+              max-height, not removed) so crawlers and answer engines can read
+              every answer, not just whichever one is open. */}
+          <p className={`grid px-6 text-sm leading-relaxed text-slate-500 transition-all ${open === i ? "grid-rows-[1fr] pb-5 opacity-100" : "grid-rows-[0fr] pb-0 opacity-0"}`}>
+            <span className="overflow-hidden">{f.a}</span>
+          </p>
         </div>
       ))}
     </div>

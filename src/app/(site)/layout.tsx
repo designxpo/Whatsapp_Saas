@@ -8,9 +8,11 @@ export const metadata: Metadata = {
   // No brand suffix here — the root template ("%s — Talko AI") DOES reach this
   // layout title (it renders "… — Talko AI", single brand). It does NOT reach
   // deeper page.tsx titles, which bake the brand in themselves.
-  title: "WhatsApp, Instagram, YouTube & Reviews Automation with AI",
+  // Kept ≤65 chars with the brand suffix, and shares "chat(s)" with the H1
+  // ("Turn every chat into a customer") so title/H1 aren't topically disjoint.
+  title: "WhatsApp, Instagram & YouTube Chat Automation with AI",
   description:
-    "Automate WhatsApp, Instagram, Messenger, YouTube comments, Google reviews & web chat with AI replies, broadcasts, chatbot flows and catalog checkout. One inbox for every conversation. Free 14-day trial.",
+    "Turn WhatsApp, Instagram, YouTube and Google review chats into customers with AI replies, broadcasts and checkout — all in one inbox. Free 14-day trial.",
 };
 
 // Site-wide entity graph. `sameAs` is the primary lever for the "Talko AI"

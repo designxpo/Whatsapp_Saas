@@ -10,7 +10,8 @@ import { Hero } from "./_components/hero";
 import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
 import { JsonLd } from "./_components/json-ld";
-import { FAQS } from "./_content/site";
+import { FAQS, TIERS } from "./_content/site";
+import { SITE_URL } from "@/lib/siteurl";
 
 // FAQPage schema — the single structured-data type most correlated with AI
 // answer-engine citation, since it's already the Q&A an engine wants to quote.
@@ -25,12 +26,61 @@ const faqSchema = {
   })),
 };
 
+// WebPage wrapper carrying the freshness signal (GEO/AEO checkers look for a
+// published/updated date; a homepage has no visible byline for this, so it
+// lives in structured data instead). Bump dateModified when the homepage copy
+// changes materially — it's a manual signal, not a build timestamp.
+const webPageSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": `${SITE_URL}/#webpage`,
+  url: SITE_URL,
+  name: "Talko AI — WhatsApp, Instagram & YouTube Chat Automation with AI",
+  isPartOf: { "@id": `${SITE_URL}/#website` },
+  about: { "@id": `${SITE_URL}/#organization` },
+  datePublished: "2026-06-01",
+  dateModified: "2026-07-31",
+};
+
+// SoftwareApplication — disambiguates "Talko AI the product" from "Talko AI /
+// PM Technologies the organization" (both already covered by Organization
+// schema in layout.tsx), which is what search/AI engines use `sameAs`-style
+// typing for when no external profile URLs exist yet to link out to.
+const softwareAppSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "Talko AI",
+  applicationCategory: "BusinessApplication",
+  operatingSystem: "Web",
+  url: SITE_URL,
+  description: "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
+  offers: {
+    "@type": "Offer",
+    price: String(TIERS[0].priceMonthly),
+    priceCurrency: "INR",
+    url: `${SITE_URL}/pricing`,
+  },
+  publisher: { "@id": `${SITE_URL}/#organization` },
+};
+
 export default function HomePage() {
   return (
     <>
       <JsonLd data={faqSchema} />
+      <JsonLd data={webPageSchema} />
+      <JsonLd data={softwareAppSchema} />
       {/* Hero — orbit panel */}
       <Hero />
+
+      {/* Plain-language definition + key takeaway near the top of the page —
+          answers "what is Talko AI" directly for readers and answer engines,
+          instead of making them infer it from the hero's benefit-led copy. */}
+      <p className="mx-auto max-w-2xl px-5 pb-6 text-center text-sm leading-relaxed text-slate-500">
+        <strong className="font-bold text-slate-700">In short:</strong> Talko AI is an AI-powered customer conversation
+        platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and
+        website chat. It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply,
+        qualify leads and sell across every channel — on their own AI key.
+      </p>
 
       {/* Platform glimpse — leads the page with a look inside the product */}
       <PlatformGlimpse />

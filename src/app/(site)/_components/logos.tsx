@@ -34,7 +34,7 @@ export function BrandMark({ name, slug, iconify, src, wordmark }: { name: string
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={sources[idx]}
-        alt=""
+        alt={`${name} logo`}
         className="h-8 w-8 shrink-0 object-contain transition duration-300 hover:scale-110"
         loading="lazy"
         onError={() => setIdx(i => i + 1)}
