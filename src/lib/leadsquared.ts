@@ -685,8 +685,9 @@ export async function pushIgActivity(p: {
   body: string;
   via?: "lead" | "bot" | "agent";
   tenantId?: string;
+  source?: string;                 // per-channel CRM lead source (defaults to "Instagram")
 }): Promise<void> {
-  return pushChatActivity({ phone: p.phone, handle: p.handle, direction: p.direction, body: p.body, via: p.via, channel: "Instagram", tenantId: p.tenantId });
+  return pushChatActivity({ phone: p.phone, handle: p.handle, direction: p.direction, body: p.body, via: p.via, channel: "Instagram", tenantId: p.tenantId, source: p.source });
 }
 
 // ── CRM sync queue (wa_crm_sync, 0077) ────────────────────────────────────────

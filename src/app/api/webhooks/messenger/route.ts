@@ -140,7 +140,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
       await landCapturedLead(conv.phone, shared, "messenger", channel.tenantId);
     }
   }
-  if (text.trim()) after(() => syncFbToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
+  if (text.trim()) after(() => syncFbToLsq(channel, conv, text, "inbound", "lead"));   // mirror to LeadSquared timeline
 
   // A media-only message is stored + shown in Live Chat; don't run the bot on
   // empty text (an agent replies manually).
@@ -182,11 +182,11 @@ async function handleLeadgen(channel: Channel, value: Record<string, unknown>) {
 // Mirror a Messenger message onto the lead's LeadSquared timeline. FB users have
 // no phone, so the lead is matched by a phone shared in chat / captured by a flow
 // (Messenger has no handle field). Never throws.
-async function syncFbToLsq(conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", tenantId: string) {
+async function syncFbToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent") {
   try {
-    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
+    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, channel.tenantId).catch(() => null))?.attributes);
     if (!phone) return;   // no phone to match a CRM lead — skip
-    await pushChatActivity({ phone, direction, body, via, channel: "Messenger", tenantId });
+    await pushChatActivity({ phone, direction, body, via, channel: "Messenger", tenantId: channel.tenantId, source: channel.crmSource || undefined });
   } catch { /* CRM sync must never break Messenger handling */ }
 }
 
@@ -236,7 +236,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
-  if (!commentId) after(() => syncFbToLsq(conv, aiReply, "outbound", "bot", tid));   // DM AI replies → LeadSquared
+  if (!commentId) after(() => syncFbToLsq(channel, conv, aiReply, "outbound", "bot"));   // DM AI replies → LeadSquared
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 

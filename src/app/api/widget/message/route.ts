@@ -1,6 +1,6 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
-import { getChannelBySiteKey, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
+import { getChannelBySiteKey, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, landCapturedLead, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
@@ -13,11 +13,11 @@ const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
 // Mirror a web-chat message onto the lead's LeadSquared timeline. Website
 // visitors have no phone, so the lead is matched by a phone shared in chat /
 // captured by a flow. Never throws — CRM sync must not break the widget reply.
-async function syncWebToLsq(conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", tenantId: string) {
+async function syncWebToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent") {
   try {
-    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
+    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, channel.tenantId).catch(() => null))?.attributes);
     if (!phone) return;   // no phone to match a CRM lead — skip
-    await pushChatActivity({ phone, direction, body, via, channel: "Web chat", tenantId });
+    await pushChatActivity({ phone, direction, body, via, channel: "Web chat", tenantId: channel.tenantId, source: channel.crmSource || undefined });
   } catch { /* CRM sync must never break web-chat handling */ }
 }
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
       await landCapturedLead(conv.phone, shared, "web-chat", tid);
     }
   }
-  after(() => syncWebToLsq(conv, text, "inbound", "lead", tid));   // mirror to LeadSquared timeline
+  after(() => syncWebToLsq(channel, conv, text, "inbound", "lead"));   // mirror to LeadSquared timeline
 
   // Human has taken over (bot off) or cap reached → no AI; the agent replies from
   // the Live Chat inbox and the widget picks it up via polling.
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
-  after(() => syncWebToLsq(conv, aiReply, "outbound", "bot", tid));   // AI reply → LeadSquared
+  after(() => syncWebToLsq(channel, conv, aiReply, "outbound", "bot"));   // AI reply → LeadSquared
   // Return the saved message's id + timestamp so the widget seeds its dedup state
   // and the next poll won't re-render this same reply (the double-bubble bug).
   return NextResponse.json({ ok: true, reply: r.reply, messages: [{ id: saved?.id, at: saved?.createdAt, body: r.reply, from: "bot" }], id: saved?.id, at: saved?.createdAt }, { headers: cors });

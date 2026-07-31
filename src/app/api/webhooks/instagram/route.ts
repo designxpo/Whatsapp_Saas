@@ -84,12 +84,12 @@ function credsOf(channel: Channel): IgCreds {
 // Mirror an Instagram message to the lead's LeadSquared timeline. IG users have
 // no phone, so we match by a phone they've shared (saved as a contact attribute)
 // first, then by @handle (needs LSQ_IG_HANDLE_FIELD). Best-effort — never blocks.
-async function syncIgToLsq(conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", tenantId: string) {
+async function syncIgToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent") {
   try {
     const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
-    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tenantId).catch(() => null))?.attributes);
+    const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, channel.tenantId).catch(() => null))?.attributes);
     if (!phone && !handle) return;
-    await pushIgActivity({ igUserId: conv.phone, handle, phone, direction, body, via, tenantId });
+    await pushIgActivity({ igUserId: conv.phone, handle, phone, direction, body, via, tenantId: channel.tenantId, source: channel.crmSource || undefined });
   } catch { /* CRM sync must never break IG handling */ }
 }
 
@@ -158,7 +158,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
       await landCapturedLead(conv.phone, shared, "instagram", channel.tenantId);
     }
   }
-  after(() => syncIgToLsq(conv, text, "inbound", "lead", channel.tenantId));   // mirror to LeadSquared timeline
+  after(() => syncIgToLsq(channel, conv, text, "inbound", "lead"));   // mirror to LeadSquared timeline
 
   // Follow-gate: a waiting user's "done"/"followed" re-checks their follow.
   const gate = await getFollowGate(senderId, channel.tenantId);
@@ -241,7 +241,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${replyBody}` : replyBody, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, replyBody);   // AI handled it → clear "awaiting your reply"
-  if (!commentId) after(() => syncIgToLsq(conv, replyBody, "outbound", "bot", tid));   // DM AI replies → LeadSquared
+  if (!commentId) after(() => syncIgToLsq(channel, conv, replyBody, "outbound", "bot"));   // DM AI replies → LeadSquared
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 
