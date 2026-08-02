@@ -1441,6 +1441,24 @@ export async function setTenantSetting(tenantId: string, key: string, value: unk
   if (error) throw error;
 }
 
+// Atomic "claim once" for a one-time-per-tenant flag (e.g. "have we already
+// sent this tenant's onboarding nudge?"). Unlike get-then-set with
+// setTenantSetting — a check-then-act race under overlapping cron ticks — this
+// relies on wa_settings' real (tenant_id, key) primary key (0020 migration): a
+// second concurrent insert for the same key fails instead of silently
+// upserting, so only the first caller ever gets `true` back.
+export async function claimTenantSettingOnce(tenantId: string, key: string): Promise<boolean> {
+  const { error } = await tdb(tenantId).from("wa_settings").insert({ key, value: true });
+  return !error;
+}
+
+// Release a claim taken via claimTenantSettingOnce — used when the action the
+// claim gated didn't actually succeed, so a later tick can retry it instead of
+// the flag permanently (and silently) disabling that action for this tenant.
+export async function releaseTenantSetting(tenantId: string, key: string): Promise<void> {
+  await tdb(tenantId).from("wa_settings").delete().eq("key", key);
+}
+
 // Store an encrypted secret under a settings key. Never persists plaintext.
 export async function setTenantSecret(tenantId: string, key: string, plaintext: string): Promise<void> {
   await setTenantSetting(tenantId, key, { enc: encryptSecret(plaintext) });

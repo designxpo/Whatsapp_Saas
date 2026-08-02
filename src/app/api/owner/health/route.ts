@@ -5,6 +5,7 @@ import { getTenantHealthSummary } from "@/lib/setupstatus";
 import { getSetting } from "@/lib/store";
 import { crmSyncStats } from "@/lib/leadsquared";
 import { errorMessage } from "@/lib/errors";
+import { OPERATIONAL_MAX_MIN } from "@/lib/publicstatus";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,11 +38,12 @@ export async function GET() {
     const crm = await crmSyncStats().catch(() => ({ pending: 0, dead: 0 }));
     // Threshold is generous: SaaS cron is the */5 GitHub-Actions pinger (no
     // vercel.json on Hobby), and GH schedules routinely run minutes late at
-    // peak — a tight bound would flap red and train alarm-blindness.
+    // peak — a tight bound would flap red and train alarm-blindness. Shared
+    // with the public /status page (publicstatus.ts) so the two can't drift.
     const platform = {
       cronLastTick: tick || null,
       cronAgeMin,
-      cronOk: cronAgeMin !== null && cronAgeMin <= 20,
+      cronOk: cronAgeMin !== null && cronAgeMin <= OPERATIONAL_MAX_MIN,
       crmSync: crm,
     };
 

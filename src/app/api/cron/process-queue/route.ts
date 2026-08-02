@@ -15,6 +15,7 @@ import { respondToConversation } from "@/lib/assistant";
 import { purgeOldAdChats } from "@/lib/adchats";
 import { drainYtComments } from "@/lib/ytpoller";
 import { drainGoogleReviews } from "@/lib/reviewpoller";
+import { drainOnboardingNudges } from "@/lib/onboardingnudge";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -159,6 +160,13 @@ export async function POST(req: Request) {
       try { googleReviews = await drainGoogleReviews(); } catch (e) { console.error("[cron] googlereviews", e); }
     }
 
+    // Onboarding nudge — email a tenant's owner once if they signed up 24h+ ago
+    // and still haven't connected a single channel. One-time per tenant.
+    let onboardingNudges = 0;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { onboardingNudges = await drainOnboardingNudges(); } catch (e) { console.error("[cron] onboardingnudges", e); }
+    }
+
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
@@ -167,7 +175,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, kbSync, crmSync, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, kbSync, crmSync, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

@@ -5,9 +5,18 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshCw, X } from "lucide-react";
 import { type Tab } from "../_shared";
 import { MetaDoctor } from "./MetaDoctor";
+import { SITE_URL } from "@/lib/siteurl";
 
 type SetupCheck = { key: string; title: string; status: "ok" | "warn" | "todo" | "error"; detail: string; hint?: string; fixTab?: string; optional?: boolean };
 type PlanSummary = { key: string; name: string; includedChannels: { key: string; label: string }[] };
+
+// Matching public guide for each checklist item — only shown while the item
+// still needs attention. "kb" and "crm" have no dedicated guide yet, so they
+// simply don't get a link rather than pointing somewhere that doesn't exist.
+const GUIDE_SLUG: Partial<Record<string, string>> = {
+  whatsapp: "connect-whatsapp", instagram: "connect-instagram", messenger: "connect-messenger",
+  webchat: "website-chat-widget", ai: "add-your-ai-key",
+};
 
 // Self-serve onboarding: each integration verified live, in plain English.
 function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
@@ -119,6 +128,11 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <button onClick={() => test(s.key)} disabled={testing === s.key} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
                   {testing === s.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Test now
                 </button>
+              )}
+              {s.status !== "ok" && GUIDE_SLUG[s.key] && (
+                <a href={`${SITE_URL}/guides/${GUIDE_SLUG[s.key]}`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 hover:underline">
+                  Need help connecting this?
+                </a>
               )}
             </div>
           </div>

@@ -157,6 +157,20 @@ export async function listChannels(tenantId?: string): Promise<Channel[]> {
   } catch { return []; }     // table missing → env single-number mode
 }
 
+// Single source of truth for "which of these tenants have at least one active
+// channel" — batched so callers processing many tenants at once (e.g. the
+// onboarding-nudge cron) don't hand-roll their own copy of this query that can
+// silently drift from the single-tenant check below.
+export async function tenantsWithActiveChannel(tenantIds: string[]): Promise<Set<string>> {
+  if (!tenantIds.length) return new Set();
+  const { data } = await db().from("wa_channels").select("tenant_id").eq("active", true).in("tenant_id", tenantIds);
+  return new Set((data ?? []).map(r => r.tenant_id as string));
+}
+
+export async function hasActiveChannel(tenantId: string): Promise<boolean> {
+  return (await tenantsWithActiveChannel([tenantId])).has(tenantId);
+}
+
 // The tenant's WhatsApp channel rows, THROWING on query failure — unlike
 // listChannels' catch→[]. Callers making consequential decisions ("is this the
 // tenant's FIRST number → make it default", "does this phone id already exist

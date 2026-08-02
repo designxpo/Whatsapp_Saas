@@ -53,6 +53,13 @@ const websiteSchema = {
   publisher: { "@id": ORG_ID },
 };
 
+// Dogfooding: the marketing site runs Talko AI's own website-chat widget,
+// the identical embed a customer pastes into their own site. Off by default —
+// set this once a "Talko AI" webchat channel exists in the portal and its
+// site key is added here, the same activation pattern used for Meta's
+// Embedded Signup (coded, inert until the env var is configured).
+const MARKETING_WEBCHAT_SITE_KEY = process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SITE_KEY;
+
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
@@ -68,6 +75,10 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <main id="main-content">{children}</main>
         <SiteFooter />
       </div>
+      {MARKETING_WEBCHAT_SITE_KEY && (
+        // eslint-disable-next-line @next/next/no-sync-scripts
+        <script src={`/api/widget/${MARKETING_WEBCHAT_SITE_KEY}/loader.js`} async />
+      )}
     </>
   );
 }
