@@ -2,11 +2,12 @@ import type { MetadataRoute } from "next";
 import { POSTS, COMPETITORS } from "./(site)/_content/site";
 import { INDUSTRIES } from "./(site)/_content/industries";
 import { LEGAL_DOCS } from "./(site)/_content/legal";
+import { GUIDES } from "./(site)/_content/guides";
 import { SITE_URL } from "@/lib/siteurl";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
-  const routes = ["", "/features", "/industries", "/pricing", "/about", "/blog", "/vs"].map(path => ({
+  const routes = ["", "/features", "/industries", "/pricing", "/about", "/blog", "/vs", "/guides"].map(path => ({
     url: `${SITE_URL}${path}`,
     lastModified: now,
     changeFrequency: "weekly" as const,
@@ -36,5 +37,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const legal = ["/legal", ...LEGAL_DOCS.map(d => `/legal/${d.slug}`)].map(path => ({
     url: `${SITE_URL}${path}`, lastModified: now, changeFrequency: "yearly" as const, priority: 0.3,
   }));
-  return [...routes, ...industries, ...comparisons, ...authRoutes, ...posts, ...legal];
+  const guides = GUIDES.map(g => ({
+    url: `${SITE_URL}/guides/${g.slug}`, lastModified: now, changeFrequency: "monthly" as const, priority: 0.6,
+  }));
+  return [...routes, ...industries, ...comparisons, ...authRoutes, ...posts, ...legal, ...guides];
 }
