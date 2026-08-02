@@ -4,7 +4,6 @@
 export const SITE = {
   name: "Talko AI",
   tagline: "AI conversations for WhatsApp, Instagram, Facebook, YouTube, Google Reviews & web chat",
-  domainCta: { trial: "/signup", login: "/login" },
 };
 
 export const NAV: { label: string; href: string }[] = [
