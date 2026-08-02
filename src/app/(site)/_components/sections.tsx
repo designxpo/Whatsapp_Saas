@@ -74,7 +74,10 @@ export function ThreeSteps() {
               <li key={s.n}>
                 <Reveal delay={i * 110} className="h-full">
                   <div className={`h-full rounded-2xl ${tone.bg} p-6`}>
-                    <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${tone.icon}`}><Icon className="h-5 w-5" /></span>
+                    {/* Same gradient icon-chip language as FeatureGrid/IndustryStrip
+                        (ICON_GRADIENTS), not the flat TONES.icon color — this section
+                        was the one place on the page using a different icon system. */}
+                    <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}><Icon className="h-5 w-5" /></span>
                     <h3 className="mt-4 text-base font-extrabold text-slate-900">{s.title}</h3>
                     <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
                   </div>
