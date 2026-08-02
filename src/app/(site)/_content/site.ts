@@ -510,10 +510,10 @@ export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   ] },
   { title: "E-commerce", blurb: "Import your product catalog in one click.", items: [
     { name: "Shopify", src: "/brand/logos/shopify.svg", slug: "shopify" },
-    { name: "WooCommerce", src: "/brand/logos/woocommerce.svg", slug: "woocommerce" },
+    { name: "WooCommerce", src: "/brand/logos/woocommerce.svg", slug: "woocommerce", wordmark: true },
   ] },
   { title: "Scheduling", blurb: "Customers book a meeting without leaving chat.", items: [
-    { name: "Cal.com", src: "/brand/logos/caldotcom.svg", slug: "caldotcom" },
+    { name: "Cal.com", src: "/brand/logos/caldotcom.svg", slug: "caldotcom", wordmark: true },
   ] },
   { title: "Automation & alerts", blurb: "Pipe events into 5,000+ apps and your team's tools.", items: [
     { name: "Zapier", src: "/brand/logos/zapier.svg", slug: "zapier" },
