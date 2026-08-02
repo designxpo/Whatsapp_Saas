@@ -81,7 +81,7 @@ export function SiteFooter() {
           <p className="mt-3 max-w-xs text-sm text-white/70">{SITE.tagline}. One inbox for every conversation.</p>
         </div>
         <FooterCol title="Product" links={[["Features", "/features"], ["Industries", "/industries"], ["Pricing", "/pricing"], ["Guides", "/guides"], ["Blog", "/blog"], ["Changelog", "/changelog"], ["Status", "/status"]]} />
-        <FooterCol title="Company" links={[["About", "/about"], ["Contact", "mailto:info@thetalko.in"], ["Sign in", "/login"], ["Start free trial", "/signup"]]} />
+        <FooterCol title="Company" links={[["About", "/about"], ["Contact", "/contact"], ["Sign in", "/login"], ["Start free trial", "/signup"]]} />
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-white/70">Get started</p>
           <p className="mt-3 text-sm text-white/70">Start your free 14-day trial — no credit card required.</p>

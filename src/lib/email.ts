@@ -15,10 +15,10 @@ function resend(): Resend {
 
 export interface SendEmailResult { ok: boolean; error?: string }
 
-export async function sendEmail(opts: { to: string; subject: string; html: string }): Promise<SendEmailResult> {
+export async function sendEmail(opts: { to: string; subject: string; html: string; replyTo?: string }): Promise<SendEmailResult> {
   try {
     const from = process.env.RESEND_FROM_EMAIL || "Talko AI <no-reply@thetalko.in>";
-    const r = await resend().emails.send({ from, to: opts.to, subject: opts.subject, html: opts.html });
+    const r = await resend().emails.send({ from, to: opts.to, subject: opts.subject, html: opts.html, replyTo: opts.replyTo });
     if (r.error) return { ok: false, error: r.error.message };
     return { ok: true };
   } catch (e) {

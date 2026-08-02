@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowUpRight, Rocket, Plug, Workflow } from "lucide-react";
+import { ArrowUpRight, Rocket, Plug, Workflow, LifeBuoy } from "lucide-react";
 import { Container, Glow, SectionTitle } from "../_components/ui";
 import { CtaBand } from "../_components/sections";
 import { GUIDES, type Guide } from "../_content/guides";
@@ -56,6 +56,21 @@ export default function GuidesPage() {
           </Container>
         );
       })}
+
+      {/* Not part of the step-by-step Guide set (it's symptom/cause/fix, not a
+          walkthrough) — surfaced as its own card rather than forced into a
+          category above it doesn't belong in. */}
+      <Container className="py-8">
+        <Link href="/guides/troubleshooting"
+          className="group mx-auto flex max-w-3xl items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><LifeBuoy className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base font-bold text-slate-900 group-hover:text-[#0783fd]">Something not working? Troubleshooting</h3>
+            <p className="mt-1 text-sm leading-relaxed text-slate-500">Symptom, cause and fix for the issues that come up most — WhatsApp, Instagram, YouTube, Reviews, AI replies and billing.</p>
+          </div>
+          <ArrowUpRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#0783fd]" />
+        </Link>
+      </Container>
 
       <CtaBand />
     </>
