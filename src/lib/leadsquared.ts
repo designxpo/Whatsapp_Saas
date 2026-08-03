@@ -154,6 +154,14 @@ export async function lsqConfigured(tenantId: string = DEFAULT_TENANT_ID): Promi
   return (await resolveLsq(tenantId)) !== null;
 }
 
+// How long a WhatsApp/chat session must go quiet before flushCrmSessions
+// combines its buffered messages into ONE LeadSquared activity — instead of
+// every message posting its own note, which turned a 6-question qualification
+// flow into 12+ tiny timeline entries.
+const SESSION_GAP_MS = Math.max(1, parseInt(process.env.LSQ_SESSION_GAP_MINUTES ?? "10", 10)) * 60_000;
+const SESSION_NOTE_CAP = 8000;
+const SESSION_MAX_ATTEMPTS = 5;
+
 // Read-only connectivity check for the Setup wizard. RetrieveLeadByPhoneNumber
 // with a dummy number NEVER creates data — a 200 (even empty) means the keys +
 // host are valid; 401/403 means bad keys. Honours "do not create test leads".
@@ -599,6 +607,39 @@ async function postActivity(c: LsqCreds, leadId: string, note: string): Promise<
   }
 }
 
+// Append one line to a lead's session buffer (wa_crm_session, 0098) instead of
+// posting it as its own LeadSquared activity — flushCrmSessions combines the
+// whole session into one note once it goes quiet. Optimistic-concurrency CAS
+// retry (on last_message_at) so two messages for the same lead landing at
+// nearly the same time can't clobber each other's append (lost-update).
+async function bufferSessionLine(kind: "wa" | "chat", phone: string, channel: string, tenantId: string, leadId: string, line: string): Promise<PushResult> {
+  const key = { kind, phone, channel, tenant_id: tenantId };
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const existing = await db().from("wa_crm_session").select("id, lines, last_message_at").match(key).maybeSingle();
+      if (existing.error) throw existing.error;
+      const now = new Date().toISOString();
+      if (existing.data) {
+        const lines = [...((existing.data.lines as string[]) ?? []), line];
+        const upd = await db().from("wa_crm_session")
+          .update({ lines, lead_id: leadId, last_message_at: now })
+          .eq("id", existing.data.id).eq("last_message_at", existing.data.last_message_at as string)
+          .select("id");
+        if (upd.error) throw upd.error;
+        if (upd.data?.length) return { ok: true };   // won the race
+        continue;   // someone else (a concurrent message, or a flush lease) updated it first — retry with fresh data
+      }
+      const ins = await db().from("wa_crm_session").insert({ kind, phone, channel, tenant_id: tenantId, lead_id: leadId, lines: [line] });
+      if (!ins.error) return { ok: true };
+      // Likely a unique-violation (another concurrent insert won) — loop back
+      // and pick it up as an update instead.
+    }
+    return { ok: false, retriable: true, error: "session buffer write contention (gave up after 5 attempts)" };
+  } catch (err) {
+    return { ok: false, retriable: true, error: `session buffer write failed: ${errorMessage(err)}` };
+  }
+}
+
 // One attempt at a WhatsApp timeline push for the payload's tenant. A tenant
 // with LSQ unconfigured/disconnected is a clean no-op (queued rows just drain).
 async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
@@ -619,7 +660,7 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
 
     const arrow = p.direction === "inbound" ? "⬅️ Lead"
       : "➡️ " + (p.via === "bot" ? "AI Assistant" : p.via === "crm" ? "Sales (CRM)" : p.via === "campaign" ? "Campaign" : "Agent");
-    return await postActivity(c, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
+    return await bufferSessionLine("wa", p.phone.replace(/\D/g, ""), "", tid, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
   } catch (err) {
     return { ok: false, retriable: true, error: errorMessage(err) };
   }
@@ -661,7 +702,8 @@ async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
 
     const who = p.via === "bot" ? "AI Assistant" : p.via === "agent" ? "Agent" : "Sales";
     const arrow = p.direction === "inbound" ? `⬅️ Lead (${p.channel})` : `➡️ ${who} (${p.channel})`;
-    return await postActivity(c, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
+    const bufferPhone = p.phone ? p.phone.replace(/\D/g, "") : `handle:${p.handle}`;   // phone-less IG lead keyed by handle
+    return await bufferSessionLine("chat", bufferPhone, p.channel, tid, leadId, `${arrow}: ${p.body}`.slice(0, 1800));
   } catch (err) {
     return { ok: false, retriable: true, error: errorMessage(err) };
   }
@@ -796,6 +838,64 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
     console.error("[leadsquared] drainCrmSync failed:", errorMessage(err));
   }
   return { replayed, deferred, dead };
+}
+
+// ── CRM session batching (wa_crm_session, 0098) ───────────────────────────────
+// Combines a lead's buffered messages into ONE LeadSquared activity once the
+// session has gone quiet for SESSION_GAP_MS. Soft-claims each row (lease the
+// last_message_at forward) so an overlapping cron tick — or a genuinely new
+// message arriving mid-post — can't cause a double-post; on success the row is
+// deleted ONLY if nothing new landed while we were posting (a second CAS on
+// the lease), so a message that arrives mid-flush is never silently lost —
+// worst case it re-posts the already-flushed lines alongside it on the NEXT
+// flush (a rare, explainable duplicate, never silent data loss). Spans ALL
+// tenants like drainCrmSync — each row resolves its own tenant's LSQ creds.
+export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promise<{ flushed: number; deferred: number }> {
+  let flushed = 0, deferred = 0;
+  try {
+    const cutoff = new Date(Date.now() - SESSION_GAP_MS).toISOString();
+    const { data, error } = await db().from("wa_crm_session")
+      .select("*").lte("last_message_at", cutoff).order("last_message_at").limit(limit);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as { id: string; tenant_id: string; lead_id: string; lines: string[]; attempts: number; last_message_at: string }[]) {
+      if (deadlineAt && Date.now() > deadlineAt) break;
+      const lease = new Date(Date.now() + 5 * 60_000).toISOString();
+      const claim = await db().from("wa_crm_session")
+        .update({ last_message_at: lease })
+        .eq("id", row.id).eq("last_message_at", row.last_message_at).select("id");
+      if (!claim.data?.length) continue;   // another tick already claimed it, or a new message just extended the session
+
+      // A tenant whose LSQ creds don't resolve (disconnected, or a transient
+      // blip) — leave it leased; it retries on a later tick like drainCrmSync
+      // treats the same ambiguity.
+      const c = await resolveLsq(row.tenant_id);
+      if (!c) { deferred++; continue; }
+
+      let note = row.lines.join("\n");
+      if (note.length > SESSION_NOTE_CAP) note = "…[earlier messages truncated]…\n" + note.slice(-SESSION_NOTE_CAP);
+      const r = await postActivity(c, row.lead_id, note);
+
+      if (r.ok) {
+        const del = await db().from("wa_crm_session").delete().eq("id", row.id).eq("last_message_at", lease);
+        if (del.error) console.error(`[leadsquared] session flush posted but delete failed (row ${row.id} may duplicate): ${del.error.message}`);
+        flushed++;
+        continue;
+      }
+      const attempts = (row.attempts ?? 0) + 1;
+      if (attempts >= SESSION_MAX_ATTEMPTS || !r.retriable) {
+        console.error(`[leadsquared] session flush dropped after ${attempts} attempt(s): ${r.error}`);
+        await db().from("wa_crm_session").delete().eq("id", row.id).eq("last_message_at", lease);
+      } else {
+        console.error(`[leadsquared] session flush deferred (attempt ${attempts}): ${r.error}`);
+        await db().from("wa_crm_session").update({ attempts, last_message_at: lease }).eq("id", row.id).eq("last_message_at", lease);
+      }
+      deferred++;
+    }
+  } catch (err) {
+    console.error("[leadsquared] flushCrmSessions failed:", errorMessage(err));
+  }
+  return { flushed, deferred };
 }
 
 // Queue health: how much is waiting / dead (optionally for one tenant).

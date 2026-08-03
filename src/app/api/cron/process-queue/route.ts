@@ -8,7 +8,7 @@ import { drainFlowReminders } from "@/lib/flowengine";
 import { drainAdRules } from "@/lib/adrules";
 import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
 import { drainAiFollowups } from "@/lib/followups";
-import { drainCrmSync, crmSyncStats } from "@/lib/leadsquared";
+import { drainCrmSync, crmSyncStats, flushCrmSessions } from "@/lib/leadsquared";
 import { drainAbandonedCarts } from "@/lib/commerce";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
@@ -144,6 +144,14 @@ export async function POST(req: Request) {
       } catch (e) { console.error("[cron] crmsync", e); }
     }
 
+    // CRM session batching — combine each lead's buffered WhatsApp/chat messages
+    // into ONE LeadSquared activity once the conversation has gone quiet, instead
+    // of one timeline entry per message. All tenants.
+    let crmSessions = { flushed: 0, deferred: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try { crmSessions = await flushCrmSessions(100, startedAt + DEADLINE); } catch (e) { console.error("[cron] crmsessions", e); }
+    }
+
     // YouTube comment automation — poll connected channels for new comments and
     // apply rules (public reply + moderation) / AI answers. No-ops until a
     // YouTube channel is connected and the OAuth client is configured.
@@ -183,7 +191,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, kbSync, crmSync, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, kbSync, crmSync, crmSessions, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
