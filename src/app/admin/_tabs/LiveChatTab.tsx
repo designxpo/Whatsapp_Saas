@@ -763,12 +763,21 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
 
           {(() => {
             const source = crmSourceSnap?.lead?.source || localSourceLabel(contact?.attributes);
-            return source ? (
+            const utmSource = contact?.attributes?.utm_source;
+            const utmMedium = contact?.attributes?.utm_medium;
+            if (!source && !utmSource && !utmMedium) return null;
+            return (
               <div>
                 <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Source</p>
-                <p className="text-xs font-semibold text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>
+                {source && <p className="text-xs font-semibold text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>}
+                {(utmSource || utmMedium) && (
+                  <p className="text-[11px] text-ink-400 mt-1 flex gap-3 flex-wrap">
+                    {utmSource && <span>utm_source: <span className="font-semibold text-ink-600">{utmSource}</span></span>}
+                    {utmMedium && <span>utm_medium: <span className="font-semibold text-ink-600">{utmMedium}</span></span>}
+                  </p>
+                )}
               </div>
-            ) : null;
+            );
           })()}
 
           {contact && contact.tags.length > 0 && (
