@@ -11,6 +11,18 @@ import { SegmentedControl } from "@/components/SegmentedControl";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null };
 
+// Best-known lead source from what we have locally, BEFORE (or absent) a CRM
+// lookup: Meta ad referral > Handle Hub link label > web-chat UTM. Same
+// priority chain used when this attribution is pushed to LeadSquared, so the
+// fallback always agrees with what the CRM will eventually show.
+function localSourceLabel(attrs?: Record<string, string>): string | undefined {
+  if (!attrs) return undefined;
+  if (attrs.ad_headline || attrs.ad_source) return attrs.ad_headline || attrs.ad_source;
+  if (attrs.handle_source) return attrs.handle_source;
+  const utm = [attrs.utm_source, attrs.utm_medium, attrs.utm_campaign].filter(Boolean).join(" / ");
+  return utm || undefined;
+}
+
 // WhatsApp-style day-divider label: Today / Yesterday / weekday (last week) /
 // "12 June 2026" for anything older.
 function dayLabel(iso: string): string {
@@ -370,6 +382,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [actError, setActError] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
   const [contact, setContact] = useState<{ email: string | null; tags: string[]; attributes: Record<string, string> } | null>(null);
+  const [crmSourceSnap, setCrmSourceSnap] = useState<{ configured: boolean; lead: { source: string | null } | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -395,6 +408,8 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     fetch(`/api/admin/contacts?search=${encodeURIComponent(key)}&limit=1`).then(r => r.json())
       .then(d => { const c = (d.contacts ?? [])[0]; setContact(c ? { email: c.email, tags: c.tags ?? [], attributes: c.attributes ?? {} } : null); })
       .catch(() => {});
+    setCrmSourceSnap(null);
+    fetch(`/api/admin/contacts/crm?phone=${encodeURIComponent(key)}`).then(r => r.json()).then(setCrmSourceSnap).catch(() => {});
   }, [conv?.phone, conv?.leadPhone]);
   // Stick to the bottom when new messages arrive (jump on first paint).
   useEffect(() => {
@@ -745,6 +760,16 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               )}
             </>
           )}
+
+          {(() => {
+            const source = crmSourceSnap?.lead?.source || localSourceLabel(contact?.attributes);
+            return source ? (
+              <div>
+                <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Source</p>
+                <p className="text-xs font-semibold text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>
+              </div>
+            ) : null;
+          })()}
 
           {contact && contact.tags.length > 0 && (
             <div>
