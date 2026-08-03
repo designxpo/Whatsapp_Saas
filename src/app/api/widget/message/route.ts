@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, landCapturedLead, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, setContactAttributes, landCapturedLead, type Conversation } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
@@ -10,14 +10,25 @@ import { corsHeaders, originAllowed, webchatConvId, verifyWidgetIdentity } from 
 
 const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
 
+// Web chat has no native ad-referral the way WhatsApp/Meta ads do, so the
+// widget captures the landing page's own utm_source/utm_medium/utm_campaign
+// (first touch) and we combine them into a Source label like "google / cpc /
+// summer_sale" — falling back to the channel's configured crmSource, same
+// precedence WhatsApp uses for its Handle Hub / ad-referral source.
+function utmSourceLabel(utm?: Record<string, string>): string | undefined {
+  if (!utm) return undefined;
+  const parts = [utm.utm_source, utm.utm_medium, utm.utm_campaign].map(s => (s || "").trim()).filter(Boolean);
+  return parts.length ? parts.join(" / ") : undefined;
+}
+
 // Mirror a web-chat message onto the lead's LeadSquared timeline. Website
 // visitors have no phone, so the lead is matched by a phone shared in chat /
 // captured by a flow. Never throws — CRM sync must not break the widget reply.
-async function syncWebToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent") {
+async function syncWebToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", visitSource?: string) {
   try {
     const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, channel.tenantId).catch(() => null))?.attributes);
     if (!phone) return;   // no phone to match a CRM lead — skip
-    await pushChatActivity({ phone, direction, body, via, channel: "Web chat", tenantId: channel.tenantId, source: channel.crmSource || undefined });
+    await pushChatActivity({ phone, direction, body, via, channel: "Web chat", tenantId: channel.tenantId, source: visitSource || channel.crmSource || undefined });
   } catch { /* CRM sync must never break web-chat handling */ }
 }
 
@@ -32,13 +43,14 @@ export async function OPTIONS(req: Request) {
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   const cors = corsHeaders(origin);
-  let body: { siteKey?: string; visitorId?: string; text?: string; identity?: unknown };
+  let body: { siteKey?: string; visitorId?: string; text?: string; identity?: unknown; utm?: Record<string, string> };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400, headers: cors }); }
 
   const siteKey = (body.siteKey ?? "").trim();
   const visitorId = (body.visitorId ?? "").trim();
   const text = (body.text ?? "").trim();
   if (!siteKey || !visitorId || !text) return NextResponse.json({ error: "siteKey, visitorId and text are required" }, { status: 400, headers: cors });
+  const visitSource = utmSourceLabel(body.utm);
 
   const channel = await getChannelBySiteKey(siteKey);
   if (!channel || !channel.active) return NextResponse.json({ error: "Unknown or inactive web-chat key" }, { status: 404, headers: cors });
@@ -72,9 +84,20 @@ export async function POST(req: Request) {
       // New number → a Contacts row tagged web-chat; a returning lead → their
       // existing contact gains the tag and this chat picks up their known name.
       await landCapturedLead(conv.phone, shared, "web-chat", tid);
+      // Stamp the raw utm_ fields onto the contact (mirrors WhatsApp's ad_id/
+      // ad_headline pattern) so they show up in the contact drawer even though
+      // the combined label above is what actually reaches the CRM Source.
+      if (body.utm) {
+        const attrs: Record<string, string> = {};
+        for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
+          const v = (body.utm[k] || "").trim();
+          if (v) attrs[k] = v.slice(0, 100);
+        }
+        if (Object.keys(attrs).length) await setContactAttributes(shared, attrs, tid).catch(() => undefined);
+      }
     }
   }
-  after(() => syncWebToLsq(channel, conv, text, "inbound", "lead"));   // mirror to LeadSquared timeline
+  after(() => syncWebToLsq(channel, conv, text, "inbound", "lead", visitSource));   // mirror to LeadSquared timeline
 
   // Human has taken over (bot off) or cap reached → no AI; the agent replies from
   // the Live Chat inbox and the widget picks it up via polling.
@@ -121,7 +144,7 @@ export async function POST(req: Request) {
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
-  after(() => syncWebToLsq(channel, conv, aiReply, "outbound", "bot"));   // AI reply → LeadSquared
+  after(() => syncWebToLsq(channel, conv, aiReply, "outbound", "bot", visitSource));   // AI reply → LeadSquared
   // Return the saved message's id + timestamp so the widget seeds its dedup state
   // and the next poll won't re-render this same reply (the double-bubble bug).
   return NextResponse.json({ ok: true, reply: r.reply, messages: [{ id: saved?.id, at: saved?.createdAt, body: r.reply, from: "bot" }], id: saved?.id, at: saved?.createdAt }, { headers: cors });
