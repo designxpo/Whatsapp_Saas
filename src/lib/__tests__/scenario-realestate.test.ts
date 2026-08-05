@@ -175,7 +175,7 @@ import {
   type FlowGraph, type FlowNode, type SimOutput,
 } from "@/lib/flowengine";
 import { emitEvent, createIntegration, signPayload, humanText } from "@/lib/integrations";
-import { getHandleHubConfig, trackedLink, parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
+import { createEntryPoint, trackedLink, parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
 import { moveContact, applyStageEffects, listStages } from "@/lib/pipeline";
 import { readSecret } from "@/lib/crypto";
 
@@ -553,19 +553,13 @@ describe("Real estate agency (Skyline Realty)", () => {
   });
 
   describe("[ref:CODE] source attribution (handlehub)", () => {
-    it("the hoarding QR link: config normalizes the number/handle and trackedLink embeds the greeting + ref token", async () => {
-      h.store.getTenantSetting.mockImplementation(async (_t: string, key: string, fallback: unknown) => {
-        if (key === "handle_hub_number") return "+91 22 4890-1234";
-        if (key === "handle_hub_handle") return "@SkylineRealty";
-        if (key === "handle_hub_greeting") return "Hi Skyline! I saw your listing.";
-        return fallback;
-      });
-      const cfg = await getHandleHubConfig(SKYLINE);
-      expect(cfg).toEqual({ number: "912248901234", handle: "SkylineRealty", greeting: "Hi Skyline! I saw your listing." });
-      expect(trackedLink(cfg, { refCode: "qr4main" }))
+    it("the hoarding QR link: the entry point normalizes the number/handle and trackedLink embeds the greeting + ref token", async () => {
+      const ep = await createEntryPoint(SKYLINE, { number: "+91 22 4890-1234", handle: "@SkylineRealty", greeting: "Hi Skyline! I saw your listing." });
+      expect(ep).toMatchObject({ number: "912248901234", handle: "SkylineRealty", greeting: "Hi Skyline! I saw your listing." });
+      expect(trackedLink(ep, { refCode: "qr4main" }))
         .toBe(`https://wa.me/912248901234?text=${encodeURIComponent("Hi Skyline! I saw your listing. [ref:qr4main]")}`);
       // No number configured yet → nothing to point the QR at.
-      expect(trackedLink({ ...cfg, number: "" }, { refCode: "qr4main" })).toBeNull();
+      expect(trackedLink({ ...ep, number: "" }, { refCode: "qr4main" })).toBeNull();
     });
 
     it("the first inbound round-trips: parseRef finds the code, stripRef restores the human text", () => {

@@ -1,7 +1,9 @@
-// Handle Hub — one branded WhatsApp entry point surfaced everywhere as per-source
+// Handle Hub — branded WhatsApp entry points surfaced everywhere as per-source
 // TRACKED links + QR codes, so every conversation's origin (which QR / ad / post)
-// is captured. Works today on the tenant's number; the @handle becomes the prettier
-// front once Meta's Cloud API exposes username click-to-chat (WHATSAPP-USERNAME-PLAN.md).
+// is captured. A tenant can run multiple entry points (numbers) — e.g. a PPC
+// number and an organic number can each have their own set of tracked sources.
+// The @handle becomes the prettier front once Meta's Cloud API exposes
+// username click-to-chat (WHATSAPP-USERNAME-PLAN.md).
 //
 // Attribution mechanism: each source embeds a short "[ref:CODE]" token in the
 // click-to-chat prefilled text. On the first inbound the webhook reads the code,
@@ -10,43 +12,65 @@
 // chat still works, it's just unattributed (the same limit every such tool has).
 
 import { db } from "./supabase";
-import { getTenantSetting, setTenantSetting } from "./store";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import QRCode from "qrcode";
 
+export interface HandleEntryPoint {
+  id: string; label: string; number: string; handle: string; greeting: string; createdAt: string;
+}
 export interface HandleSource {
-  id: string; label: string; refCode: string; kind: string;
+  id: string; entryPointId: string; label: string; refCode: string; kind: string;
   touches: number; lastTouchAt: string | null; createdAt: string;
 }
-export interface HandleHubConfig { number: string; handle: string; greeting: string }
-
-const CFG = { number: "handle_hub_number", handle: "handle_hub_handle", greeting: "handle_hub_greeting" } as const;
 const DEFAULT_GREETING = "Hi! I'd like to know more.";
 
-// ── Config (per tenant, in wa_settings) ──────────────────────────────────────
-export async function getHandleHubConfig(tenantId = DEFAULT_TENANT_ID): Promise<HandleHubConfig> {
-  const [number, handle, greeting] = await Promise.all([
-    getTenantSetting<string>(tenantId, CFG.number, ""),
-    getTenantSetting<string>(tenantId, CFG.handle, ""),
-    getTenantSetting<string>(tenantId, CFG.greeting, DEFAULT_GREETING),
-  ]);
+// ── Entry points (CRUD) — one per WhatsApp number, per tenant ─────────────────
+function mapEntryPoint(r: Record<string, unknown>): HandleEntryPoint {
   return {
-    number: (number || "").replace(/\D/g, ""),
-    handle: (handle || "").replace(/^@+/, "").trim(),
-    greeting: (greeting || DEFAULT_GREETING).trim() || DEFAULT_GREETING,
+    id: r.id as string, label: (r.label as string) ?? "", number: (r.number as string) ?? "",
+    handle: (r.handle as string) ?? "", greeting: (r.greeting as string) || DEFAULT_GREETING,
+    createdAt: r.created_at as string,
   };
 }
-export async function setHandleHubConfig(tenantId: string, p: Partial<HandleHubConfig>): Promise<void> {
-  if (p.number !== undefined) await setTenantSetting(tenantId, CFG.number, p.number.replace(/\D/g, ""));
-  if (p.handle !== undefined) await setTenantSetting(tenantId, CFG.handle, p.handle.replace(/^@+/, "").trim());
-  if (p.greeting !== undefined) await setTenantSetting(tenantId, CFG.greeting, (p.greeting || "").slice(0, 300));
+
+export async function listEntryPoints(tenantId = DEFAULT_TENANT_ID): Promise<HandleEntryPoint[]> {
+  const { data } = await db().from("wa_handle_entry_points").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: true });
+  return (data ?? []).map(r => mapEntryPoint(r as Record<string, unknown>));
 }
 
-// ── Sources (CRUD) ───────────────────────────────────────────────────────────
+export async function createEntryPoint(tenantId: string, p: { label?: string; number: string; handle?: string; greeting?: string }): Promise<HandleEntryPoint> {
+  const number = (p.number || "").replace(/\D/g, "");
+  if (!number) throw new Error("A WhatsApp number is required");
+  const ins = await db().from("wa_handle_entry_points").insert({
+    tenant_id: tenantId,
+    label: (p.label || "").trim().slice(0, 80) || `WhatsApp ${number.slice(-4)}`,
+    number,
+    handle: (p.handle || "").replace(/^@+/, "").trim().slice(0, 60),
+    greeting: (p.greeting || "").trim().slice(0, 300) || DEFAULT_GREETING,
+  }).select().single();
+  if (ins.error || !ins.data) throw new Error(ins.error?.message || "Could not create entry point");
+  return mapEntryPoint(ins.data as Record<string, unknown>);
+}
+
+export async function updateEntryPoint(id: string, tenantId: string, p: { label?: string; number?: string; handle?: string; greeting?: string }): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (p.label !== undefined) patch.label = p.label.trim().slice(0, 80);
+  if (p.number !== undefined) patch.number = p.number.replace(/\D/g, "");
+  if (p.handle !== undefined) patch.handle = p.handle.replace(/^@+/, "").trim().slice(0, 60);
+  if (p.greeting !== undefined) patch.greeting = (p.greeting || "").trim().slice(0, 300) || DEFAULT_GREETING;
+  if (Object.keys(patch).length) await db().from("wa_handle_entry_points").update(patch).eq("id", id).eq("tenant_id", tenantId);
+}
+
+// Cascades — deleting an entry point deletes its sources too (FK on delete cascade).
+export async function deleteEntryPoint(id: string, tenantId: string): Promise<void> {
+  await db().from("wa_handle_entry_points").delete().eq("id", id).eq("tenant_id", tenantId);
+}
+
+// ── Sources (CRUD) — each belongs to exactly one entry point ─────────────────
 function mapSource(r: Record<string, unknown>): HandleSource {
   return {
-    id: r.id as string, label: (r.label as string) ?? "", refCode: (r.ref_code as string) ?? "",
-    kind: (r.kind as string) ?? "link", touches: (r.touches as number) ?? 0,
+    id: r.id as string, entryPointId: (r.entry_point_id as string) ?? "", label: (r.label as string) ?? "",
+    refCode: (r.ref_code as string) ?? "", kind: (r.kind as string) ?? "link", touches: (r.touches as number) ?? 0,
     lastTouchAt: (r.last_touch_at as string | null) ?? null, createdAt: r.created_at as string,
   };
 }
@@ -58,12 +82,13 @@ export async function listSources(tenantId = DEFAULT_TENANT_ID): Promise<HandleS
 
 const genCode = () => Math.random().toString(36).slice(2, 9);   // 7-char base36
 
-export async function createSource(tenantId: string, p: { label: string; kind?: string }): Promise<HandleSource> {
+export async function createSource(tenantId: string, p: { entryPointId: string; label: string; kind?: string }): Promise<HandleSource> {
+  if (!p.entryPointId) throw new Error("Pick which WhatsApp number this tracked link should use");
   const label = (p.label || "").trim().slice(0, 80) || "Untitled source";
   const kind = (p.kind || "link").trim().slice(0, 20);
   // Retry on the (rare) ref-code collision — the unique index is the source of truth.
   for (let i = 0; i < 6; i++) {
-    const ins = await db().from("wa_handle_sources").insert({ tenant_id: tenantId, label, ref_code: genCode(), kind }).select().single();
+    const ins = await db().from("wa_handle_sources").insert({ tenant_id: tenantId, entry_point_id: p.entryPointId, label, ref_code: genCode(), kind }).select().single();
     if (!ins.error && ins.data) return mapSource(ins.data as Record<string, unknown>);
   }
   throw new Error("Could not allocate a unique ref code");
@@ -76,10 +101,10 @@ export async function deleteSource(id: string, tenantId = DEFAULT_TENANT_ID): Pr
 // ── Tracked link + QR ────────────────────────────────────────────────────────
 // wa.me click-to-chat with the ref token appended to the prefilled greeting.
 // Returns null when no number is configured yet (nothing to point the link at).
-export function trackedLink(cfg: HandleHubConfig, source: Pick<HandleSource, "refCode">): string | null {
-  if (!cfg.number) return null;
-  const text = `${cfg.greeting} [ref:${source.refCode}]`;
-  return `https://wa.me/${cfg.number}?text=${encodeURIComponent(text)}`;
+export function trackedLink(entryPoint: Pick<HandleEntryPoint, "number" | "handle" | "greeting">, source: Pick<HandleSource, "refCode">): string | null {
+  if (!entryPoint.number) return null;
+  const text = `${entryPoint.greeting} [ref:${source.refCode}]`;
+  return `https://wa.me/${entryPoint.number}?text=${encodeURIComponent(text)}`;
 }
 
 export async function qrDataUrl(link: string): Promise<string> {
