@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { sendEmail } from "@/lib/email";
+// Submitter-controlled text is interpolated into an HTML email body — escaping
+// it stops a message injecting markup into the email the support inbox opens.
+import { escapeHtml } from "@/lib/emailtemplate";
 
 export const dynamic = "force-dynamic";
 
@@ -39,10 +42,4 @@ export async function POST(req: Request) {
   });
   if (!result.ok) return NextResponse.json({ error: "Couldn't send your message — please email us directly instead." }, { status: 502 });
   return NextResponse.json({ success: true });
-}
-
-// Submitter-controlled text is interpolated into an HTML email body — escape
-// it so a message can't inject markup into the email the support inbox opens.
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }

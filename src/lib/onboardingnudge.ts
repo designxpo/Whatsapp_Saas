@@ -12,6 +12,7 @@ import { db } from "./supabase";
 import { claimTenantSettingOnce, releaseTenantSetting } from "./store";
 import { tenantsWithActiveChannel } from "./channels";
 import { sendEmail } from "./email";
+import { renderEmail } from "./emailtemplate";
 import { SITE_URL } from "./siteurl";
 
 // Exported so the in-app banner fallback (src/app/api/admin/me/route.ts)
@@ -41,16 +42,32 @@ export async function drainOnboardingNudges(): Promise<number> {
     // (unique tenant_id+key) and it moves on without sending anything.
     if (!(await claimTenantSettingOnce(tenantId, NUDGE_SENT_KEY))) continue;
 
+    // No unsubscribe link: this is a single onboarding message tied to an
+    // account the recipient created, not a recurring stream — there is nothing
+    // to unsubscribe FROM. It never sends twice (the claim above guarantees it).
+    const { html, text } = renderEmail({
+      preheader: "Your workspace is ready — it just needs one channel connected before it can reply to anyone.",
+      heading: "Your Talko AI workspace is waiting on one thing",
+      paragraphs: [
+        "You created a workspace, but no channel is connected yet — so there's nothing for the AI to answer, and nothing arriving in your inbox.",
+        "Connecting the first one is the only step that unlocks the rest. Pick whichever channel your customers already message you on:",
+      ],
+      steps: [
+        "Connect a channel — WhatsApp, Instagram, Messenger, or paste one line of HTML for website chat. Roughly five minutes, most of it Meta's verification screens.",
+        "Add your AI provider key (Gemini, OpenAI or Anthropic) so replies are billed to you at your provider's rates, with no markup from us.",
+        "Send yourself a test message and watch the first AI reply come back.",
+      ],
+      highlight: "Nothing here needs a developer, and you can stop after step one — a connected channel already gives you the unified inbox and Live Chat, even before AI replies are switched on.",
+      cta: { label: "Connect your first channel", href: "/login" },
+      secondary: { label: "Read the getting-started guide", href: "/guides/getting-started" },
+      footerReason: "You're getting this once because you created a Talko AI workspace and haven't connected a channel yet. We won't send it again.",
+    }, SITE_URL);
+
     const result = await sendEmail({
       to: ownerEmail,
-      subject: "Finish setting up Talko AI — it takes about 5 minutes",
-      html: `
-        <p>Hi there,</p>
-        <p>You signed up for Talko AI, but no channel is connected yet — so nothing's automated for you yet either.</p>
-        <p>It only takes about five minutes to connect WhatsApp, Instagram, or your website chat and see your first AI reply.</p>
-        <p><a href="${SITE_URL}/login">Finish setup →</a></p>
-        <p>Need a hand? Our <a href="${SITE_URL}/guides/getting-started">getting started guide</a> walks through it step by step.</p>
-      `,
+      subject: "One step left to switch on Talko AI",
+      html,
+      text,
     });
     if (result.ok) {
       sent++;
