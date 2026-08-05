@@ -4,9 +4,7 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 import { Button, GRADIENTS } from "./ui";
 import { Reveal } from "./motion";
-import { TIERS, type Tier } from "../_content/site";
-
-const ANNUAL_DISCOUNT = 0.2; // 20% off when billed annually
+import { TIERS, ANNUAL_DISCOUNT, type Tier } from "../_content/site";
 
 function inr(n: number) { return `₹${n.toLocaleString("en-IN")}`; }
 

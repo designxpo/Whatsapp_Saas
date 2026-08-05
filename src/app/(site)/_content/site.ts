@@ -60,6 +60,12 @@ export const STEPS: Step[] = [
   { n: "03", title: "Automate & broadcast", body: "Turn on auto-replies, launch broadcasts, build flows and sequences — then watch conversations convert." },
 ];
 
+// Annual billing discount. Lives here, not in the pricing component, because
+// prose on the pricing page quotes this number — a copy that says "20% off"
+// beside a table computing 15% is the kind of mismatch nobody notices until a
+// customer does.
+export const ANNUAL_DISCOUNT = 0.2;
+
 export type Tier = {
   name: string; priceMonthly: number | null; customLabel?: string; tagline: string;
   features: string[]; cta: string; href: string; highlighted?: boolean;
@@ -542,13 +548,47 @@ export const CTA_BULLETS = [
 
 export const ABOUT = {
   eyebrow: "About us",
-  title: "We help businesses turn conversations into growth",
+  // Shares "About", "Talko AI", "built", "conversation" and "platform" with the
+  // page title so the two describe the same subject, while still leading with
+  // the mission rather than a bare label.
+  title: "About Talko AI — the conversation platform we built for business growth",
   intro:
     "Talko AI was built on a simple belief: the messaging apps your customers already love should be your most powerful sales and support channel — not your most manual one.",
+  // Plain-language definition of the thing this company makes. Stated once, in
+  // full, so it can be quoted standalone — an answer engine asked "what is
+  // Talko AI" should not have to assemble one from marketing fragments.
+  what: [
+    "Talko AI is a customer conversation platform. It connects the places people already message businesses — WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a chat widget on your own website — into a single inbox, and puts AI in front of them that answers using your knowledge base rather than a generic model's assumptions.",
+    "Practically, that means an enquiry arriving at 11pm gets an accurate answer about your pricing, stock or policy immediately; a lead gets qualified and booked by a flow without anyone typing; a public comment turns into a private DM; and the conversations that genuinely need a person are handed over with the full history attached.",
+  ],
+  // First-hand account of why the product exists. Concrete and specific on
+  // purpose — this is the section that distinguishes a real operator's page
+  // from a template, and it is the only part no competitor can copy.
+  story: [
+    "We started by watching what businesses were actually doing to cope. A jewellery brand had two people copying WhatsApp order details into a spreadsheet by hand. A coaching institute answered the same eight questions about fees and batch timings hundreds of times a week. A clinic lost bookings overnight because nobody was awake to confirm a slot. None of them had a messaging problem — they had a repetition problem that messaging made visible.",
+    "The tools available to them made a specific trade. Cheap ones automated through unofficial clients and got numbers banned. Serious ones covered WhatsApp properly and ignored Instagram, YouTube and Google reviews entirely, so the same customer arrived as three unrelated strangers. And nearly all of them resold AI credits at a markup, which meant the busier you got, the less the economics worked.",
+    "So we built the version we wanted to exist: every channel on its owner's official API, one contact record across all of them, and AI that runs on your own provider key so the cost of a reply is a line in your dashboard rather than a number we choose. That is the whole thesis, and every decision below follows from it.",
+  ],
   values: [
     { title: "Customer-obsessed", body: "Every feature starts with a real conversation a business is struggling to handle at scale." },
     { title: "Compliant by design", body: "Official APIs, opt-in respected, guardrails in code. We grow channels, we don't get them blocked." },
     { title: "Transparent & open", body: "Bring your own AI key, own your data, no lock-in. Your business runs on your terms." },
     { title: "Built to scale", body: "Multi-tenant isolation, encrypted vaults and infrastructure that grows from one number to thousands." },
+  ],
+  // Named audiences with the situation each one is in — the "who is this for"
+  // that a values list implies but never actually says.
+  audience: [
+    { who: "D2C & retail brands", body: "Taking orders, answering stock and delivery questions, and re-engaging past buyers — in chat rather than on a website nobody returns to." },
+    { who: "Service & local businesses", body: "Clinics, salons, real estate, travel and repair: booking appointments, confirming slots, and keeping Google reviews answered." },
+    { who: "Education & healthcare", body: "High-volume, repetitive enquiries about fees, batches, availability and eligibility, answered accurately from your own material." },
+    { who: "Agencies & creators", body: "Agencies running isolated client accounts side by side, and creators whose Instagram DMs and comments are the business itself." },
+  ],
+  // Verifiable commitments, each tied to the published rule it follows. Written
+  // as promises we can be held to, not adjectives.
+  commitments: [
+    { title: "Official APIs only", body: "Every channel runs on the platform owner's documented API — Meta's WhatsApp Cloud API, Instagram Platform and Messenger Platform, the YouTube Data API, Google Business Profile. No unofficial clients, no browser scraping, because those are what get an account banned." },
+    { title: "Opt-in respected", body: "Broadcasts go to contacts who opted in, using templates approved by Meta, inside the windows Meta's own messaging policy defines. The platform enforces this in code rather than trusting a checkbox." },
+    { title: "Your key, your costs", body: "AI replies run on your Gemini, OpenAI or Anthropic key. We do not resell tokens, so there is no incentive for us to make replies longer or more frequent than they need to be." },
+    { title: "Your data, exportable", body: "Each business is isolated with row-level security and encrypted channel tokens. Contacts, conversations and flows can be exported or deleted at any time, without asking us." },
   ],
 };

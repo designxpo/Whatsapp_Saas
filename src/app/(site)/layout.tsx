@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteNav, SiteFooter } from "./_components/chrome";
 import { SiteBackground } from "./_components/site-background";
 import { JsonLd } from "./_components/json-ld";
-import { SITE_URL } from "@/lib/siteurl";
+import { orgSchema, websiteSchema, softwareSchema } from "./_content/schema";
 
 export const metadata: Metadata = {
   // No brand suffix here — the root template ("%s — Talko AI") DOES reach this
@@ -15,44 +15,6 @@ export const metadata: Metadata = {
     "Turn WhatsApp, Instagram, YouTube and Google review chats into customers with AI replies, broadcasts and checkout — all in one inbox. Free 14-day trial.",
 };
 
-// Site-wide entity graph. `sameAs` is the primary lever for the "Talko AI"
-// brand-name collision (thetalko.com, gettalko.com, talka.ai) — it tells
-// search/AI engines which external profiles ARE this entity. Add each profile
-// URL here as it goes live (G2, Capterra, Product Hunt, LinkedIn, Crunchbase).
-const ORG_ID = `${SITE_URL}/#organization`;
-const ORG_SAME_AS: string[] = [
-  // e.g. "https://www.g2.com/products/talko-ai", "https://www.linkedin.com/company/talko-ai",
-];
-
-const orgSchema = {
-  "@context": "https://schema.org",
-  "@type": "Organization",
-  "@id": ORG_ID,
-  name: "Talko AI",
-  url: SITE_URL,
-  // Raster PNG — Google's logo guidelines don't reliably consume SVG.
-  logo: `${SITE_URL}/brand/talkopng.png`,
-  description:
-    "Talko AI is a SaaS platform that lets businesses automate WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat with AI replies, broadcasts, chatbot flows and catalog checkout — all in one inbox.",
-  // `url` is required here too — schema.org's Organization validators flag a
-  // nested Organization with no url of its own, even though it isn't the
-  // page's primary entity. PM Technologies operates as Talko AI at this
-  // domain, so the same URL is the accurate answer, not a placeholder.
-  parentOrganization: { "@type": "Organization", name: "PM Technologies", url: SITE_URL },
-  contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: "info@thetalko.in" },
-  ...(ORG_SAME_AS.length ? { sameAs: ORG_SAME_AS } : {}),
-};
-
-const websiteSchema = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  "@id": `${SITE_URL}/#website`,
-  url: SITE_URL,
-  name: "Talko AI",
-  description: "Talko AI — AI-powered WhatsApp, Instagram, Messenger, YouTube and Google Reviews automation for businesses.",
-  publisher: { "@id": ORG_ID },
-};
-
 // Dogfooding: the marketing site runs Talko AI's own website-chat widget,
 // the identical embed a customer pastes into their own site. Off by default —
 // set this once a "Talko AI" webchat channel exists in the portal and its
@@ -63,8 +25,12 @@ const MARKETING_WEBCHAT_SITE_KEY = process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SIT
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      {/* One shared entity graph on every page — Organization, WebSite and the
+          SoftwareApplication itself. Each page's own WebPage node references
+          these by `@id` rather than re-declaring near-duplicates. */}
       <JsonLd data={orgSchema} />
       <JsonLd data={websiteSchema} />
+      <JsonLd data={softwareSchema} />
       {/* Living gradient backdrop behind the whole site (drifts on scroll). */}
       <SiteBackground />
       <div className="relative min-h-screen overflow-x-hidden text-slate-600 antialiased">

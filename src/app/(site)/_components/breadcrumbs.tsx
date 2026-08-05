@@ -8,9 +8,14 @@ export type Crumb = { name: string; href: string };
 // One source of truth for both the visible breadcrumb trail and its
 // BreadcrumbList JSON-LD — they can never drift. Server component; drop it
 // near the top of a deep page. `items` should start at "Home".
-export function Breadcrumbs({ items }: { items: Crumb[] }) {
+export function Breadcrumbs({ items, className = "" }: { items: Crumb[]; className?: string }) {
   const schema = {
     "@context": "https://schema.org",
+    // `@id` derived from the trail's own last href, which is the page this
+    // breadcrumb belongs to. Matches the `breadcrumb: { "@id": … }` reference
+    // that webPageSchema() emits for the same path, so the two nodes join up
+    // instead of the WebPage pointing at nothing.
+    "@id": `${SITE_URL}${items[items.length - 1]?.href ?? ""}#breadcrumb`,
     "@type": "BreadcrumbList",
     itemListElement: items.map((it, i) => ({
       "@type": "ListItem",
@@ -22,7 +27,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
   return (
     <>
       <JsonLd data={schema} />
-      <nav aria-label="Breadcrumb">
+      <nav aria-label="Breadcrumb" className={className}>
         <ol className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
           {items.map((it, i) => {
             const last = i === items.length - 1;

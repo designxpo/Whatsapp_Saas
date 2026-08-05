@@ -10,8 +10,8 @@ import { Hero } from "./_components/hero";
 import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
 import { JsonLd } from "./_components/json-ld";
-import { FAQS, TIERS } from "./_content/site";
-import { SITE_URL } from "@/lib/siteurl";
+import { webPageSchema } from "./_content/schema";
+import { FAQS } from "./_content/site";
 
 // FAQPage schema — the single structured-data type most correlated with AI
 // answer-engine citation, since it's already the Q&A an engine wants to quote.
@@ -31,53 +31,39 @@ const faqSchema = {
 
 // WebPage wrapper carrying the freshness signal (GEO/AEO checkers look for a
 // published/updated date; a homepage has no visible byline for this, so it
-// lives in structured data instead). Bump dateModified when the homepage copy
+// lives in structured data instead). Bump `updated` when the homepage copy
 // changes materially — it's a manual signal, not a build timestamp.
-const webPageSchema = {
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  "@id": `${SITE_URL}/#webpage`,
-  url: SITE_URL,
-  name: "Talko AI — WhatsApp, Instagram & YouTube Chat Automation with AI",
-  isPartOf: { "@id": `${SITE_URL}/#website` },
-  about: { "@id": `${SITE_URL}/#organization` },
-  datePublished: "2026-06-01",
-  dateModified: "2026-07-31",
-  // Marks the headline and the plain-language summary as the voice/LLM-ready
-  // excerpt of the page — the two elements that alone answer "what is this".
+//
+// Built from the shared builder so the homepage joins the same entity graph as
+// every other page, then extended with `speakable`: the headline and the
+// plain-language summary are the two elements that alone answer "what is this",
+// which is exactly what a voice or LLM excerpt should quote. No breadcrumb —
+// the homepage IS the root, so there's no trail to point at.
+const homeWebPage = {
+  ...webPageSchema({
+    path: "",
+    name: "Talko AI — WhatsApp, Instagram & YouTube Chat Automation with AI",
+    description: "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
+    published: "2026-06-01",
+    updated: "2026-08-05",
+    breadcrumb: false,
+  }),
   speakable: {
     "@type": "SpeakableSpecification",
     cssSelector: ["#hero-heading", "#site-tldr"],
   },
 };
 
-// SoftwareApplication — disambiguates "Talko AI the product" from "Talko AI /
-// PM Technologies the organization" (both already covered by Organization
-// schema in layout.tsx), which is what search/AI engines use `sameAs`-style
-// typing for when no external profile URLs exist yet to link out to.
-const softwareAppSchema = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Talko AI",
-  applicationCategory: "BusinessApplication",
-  operatingSystem: "Web",
-  url: SITE_URL,
-  description: "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
-  offers: {
-    "@type": "Offer",
-    price: String(TIERS[0].priceMonthly),
-    priceCurrency: "INR",
-    url: `${SITE_URL}/pricing`,
-  },
-  publisher: { "@id": `${SITE_URL}/#organization` },
-};
+// NOTE: the SoftwareApplication that used to be declared here now lives in
+// _content/schema.ts and ships from the (site) layout on every page, with a
+// stable `@id` and the full priced offer table. Declaring a second, near-
+// identical copy here made the homepage assert two competing product entities.
 
 export default function HomePage() {
   return (
     <>
       <JsonLd data={faqSchema} />
-      <JsonLd data={webPageSchema} />
-      <JsonLd data={softwareAppSchema} />
+      <JsonLd data={homeWebPage} />
       {/* Hero — orbit panel */}
       <Hero />
 

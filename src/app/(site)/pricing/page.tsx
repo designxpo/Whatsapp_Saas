@@ -1,68 +1,109 @@
 import type { Metadata } from "next";
-import { Container, Glow, SectionTitle } from "../_components/ui";
+import Link from "next/link";
+import { Container, Glow, SectionTitle, Card } from "../_components/ui";
 import { Testimonials, CtaBand } from "../_components/sections";
 import { PricingTiers } from "../_components/pricing";
-import { Faq } from "../_components/chrome";
 import { JsonLd } from "../_components/json-ld";
-import { TIERS, CREATOR_TIERS, type Tier } from "../_content/site";
-import { SITE_URL } from "@/lib/siteurl";
+import { Breadcrumbs } from "../_components/breadcrumbs";
+import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { webPageSchema } from "../_content/schema";
+import { PRICING_SEO, BIZ_RANGE, CREATOR_RANGE, CREATOR_FLOOR, ANNUAL_OFF } from "../_content/pageseo";
+import { CREATOR_TIERS } from "../_content/site";
+
+const PATH = "/pricing";
+// "from ₹999" is the site-wide floor and holds — but that floor is the
+// Instagram-first Creator tier, so the description must not imply ₹999 buys the
+// WhatsApp stack. It doesn't; the cheapest business plan is ₹1,999.
+const TITLE = "Talko AI Pricing — Plans from ₹999/mo & Free Trial";
+const DESCRIPTION = "Talko AI pricing: Instagram-first Creator plans from ₹999/mo, WhatsApp business plans from ₹1,999/mo. 14-day free trial, no card, cancel anytime.";
 
 export const metadata: Metadata = {
   // NOTE: the root title template does NOT reach page.tsx segments under
   // (site)/ (only the (site) layout's own title) — so bake the brand in here.
-  title: "Pricing — Plans from ₹999/mo — Talko AI",
-  description: "Simple, transparent pricing from ₹999/mo for WhatsApp, Instagram, Messenger, YouTube, Google reviews & web chat automation. Start free for 14 days. Bring your own AI key for predictable costs. Cancel anytime.",
+  title: TITLE,
+  description: DESCRIPTION,
   // No `openGraph` object: Next overwrites (never merges) it per segment, so
   // setting one would wipe the shared og:image from (site)/opengraph-image.tsx.
   // Omitting it lets og:title/og:description auto-infer from the fields above.
 };
 
-// SoftwareApplication + priced Offers so AI engines can answer "how much does
-// Talko AI cost" with a real table, and Google can show pricing rich results.
-// Paid tiers only (Scale is custom/quote → no fixed price to publish).
-const paidOffers = [...TIERS, ...CREATOR_TIERS]
-  .filter((t): t is Tier & { priceMonthly: number } => typeof t.priceMonthly === "number")
-  .map(t => ({
-    "@type": "Offer",
-    name: `${t.name} plan`,
-    price: t.priceMonthly,
-    priceCurrency: "INR",
-    priceSpecification: {
-      "@type": "UnitPriceSpecification",
-      price: t.priceMonthly,
-      priceCurrency: "INR",
-      unitText: "MONTH",
-    },
-    url: `${SITE_URL}/pricing`,
-  }));
-
-const pricingSchema = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "Talko AI",
-  applicationCategory: "BusinessApplication",
-  operatingSystem: "Web",
-  url: SITE_URL,
-  description:
-    "AI conversation automation for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat — one inbox with AI replies, broadcasts, chatbot flows and catalog checkout.",
-  offers: { "@type": "AggregateOffer", priceCurrency: "INR", lowPrice: 999, highPrice: 5999, offerCount: paidOffers.length, offers: paidOffers },
-};
+// Who each plan is actually for. Pricing pages fail readers (and AI answer
+// engines) at exactly this step: they list what you get, never who should buy
+// which. Ordered by how most visitors self-identify, not by price.
+const FITS: { who: string; use: string; plan: string }[] = [
+  {
+    who: "D2C & retail brands",
+    use: "Customers ask about stock, sizes and delivery in chat, then order there. You need catalog checkout, order updates and broadcasts to past buyers.",
+    plan: "A business plan — WhatsApp is where the orders happen.",
+  },
+  {
+    who: "Service & local businesses",
+    use: "Clinics, salons, real estate, travel and repair services booking appointments and answering the same twenty questions daily, plus Google reviews to keep answered.",
+    plan: "A business plan — flows for booking, AI for the questions.",
+  },
+  {
+    who: "Creators & influencers",
+    use: "Instagram DMs and comments are the whole business. You want comment-to-DM automation, keyword replies and link-in-bio capture — not a WhatsApp business stack.",
+    plan: "A Creator plan — Instagram-first, from ₹999/mo.",
+  },
+  {
+    who: "Agencies & multi-brand teams",
+    use: "Several client accounts, each with its own channels, knowledge base, AI key and team, kept fully isolated from one another.",
+    plan: "Scale — quoted per account rather than stacking subscriptions.",
+  },
+];
 
 export default function PricingPage() {
   return (
     <>
-      <JsonLd data={pricingSchema} />
+      <JsonLd data={webPageSchema({ path: PATH, name: TITLE, description: DESCRIPTION, updated: PRICING_SEO.updated, published: PRICING_SEO.published })} />
+
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
-        <Container className="relative pt-20 pb-4">
-          <SectionTitle level={1} eyebrow="Pricing" title="Simple and transparent pricing"
+        <Container className="relative pt-16 pb-4">
+          <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Pricing", href: PATH }]} />
+          <SectionTitle level={1} eyebrow="Pricing" title="Simple, transparent Talko AI pricing — plans from ₹999/mo"
             subtitle="Every plan includes a 14-day free trial. AI replies run on your own provider key, so usage costs stay yours and predictable." />
+          <KeyTakeaway updated={PRICING_SEO.updated}>
+            <p>
+              <strong className="font-semibold text-slate-900">Business plans run {BIZ_RANGE}; Creator plans, which are Instagram-first, run {CREATOR_RANGE}; Scale is quoted per account.</strong>{" "}
+              Annual billing takes {ANNUAL_OFF} off any of them. Every plan starts with a 14-day free trial and no credit card.
+            </p>
+            <p>
+              Two costs sit outside your subscription, and both are billed to you directly rather than marked up by us: Meta&apos;s
+              per-conversation WhatsApp fees, and your AI provider&apos;s usage on the Gemini, OpenAI or Anthropic key you bring. That is
+              what &quot;transparent&quot; means here — you can see each line separately instead of one bundled number.
+            </p>
+          </KeyTakeaway>
         </Container>
       </section>
 
-      <Container className="pb-8">
-        <PricingTiers />
-        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR, billed monthly. Need annual billing or a custom volume? <span className="font-semibold text-[#0783fd]">Talk to sales.</span></p>
+      <Container className="pt-12 pb-8">
+        {/* H2 before the tier cards' H3 plan names — the page previously went
+            H1 → H3 here with no section heading in between. */}
+        <SectionTitle title="Business plans" eyebrow="For teams" id="business-plans"
+          subtitle="Every channel, one inbox. Pick by monthly message volume and how many numbers you need." />
+        <div className="mt-12"><PricingTiers /></div>
+        {/* Was "Need annual billing? Talk to sales" — which contradicted the
+            annual toggle directly above it. Annual is self-serve; only volume
+            pricing needs a conversation. */}
+        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR. Annual billing saves {ANNUAL_OFF} — use the toggle above. Need a custom volume or several brands? <Link href="/contact" className="font-semibold text-[#0783fd] hover:underline">Talk to sales.</Link></p>
+      </Container>
+
+      {/* Audience → plan mapping. Answers "which one should I buy", which the
+          tier table alone never does. */}
+      <Container className="py-12">
+        <SectionTitle title="Which plan fits your business?" eyebrow="Decide faster" id="which-plan"
+          subtitle="Four situations that cover most of who signs up, and the plan each one points to." />
+        <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {FITS.map(f => (
+            <Card key={f.who} className="h-full">
+              <h3 className="text-base font-bold text-slate-900">{f.who}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.use}</p>
+              <p className="mt-3 text-sm font-semibold text-[#0783fd]">{f.plan}</p>
+            </Card>
+          ))}
+        </div>
       </Container>
 
       {/* Instagram-first plans for creators & influencers */}
@@ -78,9 +119,13 @@ export default function PricingPage() {
 
       <Testimonials />
 
+      {/* Billing-specific questions rather than the shared site FAQ the
+          homepage already publishes: a visitor here wants trial, message-fee
+          and cancellation answers, and duplicating the same FAQPage across two
+          URLs splits the signal between them. */}
       <Container className="py-16">
-        <SectionTitle eyebrow="FAQ" title="Frequently asked questions" />
-        <Faq />
+        <PageFaq items={PRICING_SEO.faqs} path={PATH} title="Pricing and billing questions" />
+        <SourceList items={PRICING_SEO.sources} className="mt-14" />
       </Container>
 
       <CtaBand />
