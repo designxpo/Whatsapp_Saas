@@ -114,6 +114,15 @@ export function IndustrySections() {
                       </li>
                     ))}
                   </ul>
+                  {/* The hub was describing all six playbooks without linking to
+                      any of them — /industries/<slug> existed and sat in the
+                      sitemap, but was only reachable from the homepage strip and
+                      from its siblings, never from the page it belongs under. */}
+                  <Link href={`/industries/${ind.slug}`}
+                    className="group mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-[#0783fd] hover:underline">
+                    Read the full {ind.navLabel} playbook
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                  </Link>
                 </Reveal>
                 <Reveal delay={120}>
                   <PhoneChat ind={ind} />

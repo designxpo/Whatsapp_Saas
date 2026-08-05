@@ -270,6 +270,40 @@ export const STATUS_SEO: PageSeo = {
   sources: [SRC.cloudApi, SRC.webhooks, SRC.gbp],
 };
 
+// ── /industries ─────────────────────────────────────────────────────────────
+
+export const INDUSTRIES_SEO: PageSeo = {
+  updated: "2026-08-05",
+  published: "2026-06-01",
+  faqs: [
+    {
+      q: "Which industries does Talko AI have a playbook for?",
+      a: "Six, each documented on this page and in its own detailed guide: D2C and e-commerce, EdTech and education, healthcare and clinics, real estate, restaurants, and travel. They aren't separate products — every playbook is the same platform's building blocks (AI replies, chatbot flows, broadcasts, drip sequences, in-chat payments) arranged for how that sector actually sells and supports.",
+    },
+    {
+      q: "What if my industry isn't listed?",
+      a: "The building blocks don't care what you sell. If your business answers repetitive enquiries, qualifies leads, books appointments or takes orders in chat, the nearest playbook above is a working starting point — most businesses adapt one rather than starting from nothing. Tell us what you do and we'll point you at the closest fit.",
+    },
+    {
+      q: "How much of a playbook can I run without a developer?",
+      a: "All of it. Flows are drag-and-build, broadcasts use templates you submit from the portal, and the AI is grounded by uploading your own material. The only technical step in any playbook is pasting an AI provider key, and the website widget's single line of HTML.",
+    },
+    {
+      q: "Are these playbooks compliant on WhatsApp?",
+      a: "They're built to be. Every one uses Meta's official APIs, sends promotional messages only to contacts who opted in, and uses templates in the category Meta approved them under. The recovery and re-engagement steps fire once rather than repeatedly, because repeated unsolicited sends are what get a number rate-limited or blocked.",
+    },
+    {
+      q: "Can one account run more than one industry playbook?",
+      a: "Yes. A business that both sells products and books appointments can run the e-commerce and service flows side by side in the same workspace, on the same number. Agencies go a step further and run a separate isolated workspace per client, each with its own channels, knowledge base and AI key.",
+    },
+    {
+      q: "How is a playbook different from the features list?",
+      a: "The features page tells you what the platform can do. A playbook tells you which of those to switch on, in what order, for a specific kind of business — including the parts most people skip, like grounding the AI on your own policies before letting it answer refund questions.",
+    },
+  ],
+  sources: [SRC.whatsappPolicy, SRC.cloudApi, SRC.instagram, SRC.gbp],
+};
+
 // ── /contact ────────────────────────────────────────────────────────────────
 
 export const CONTACT_SEO: PageSeo = {
