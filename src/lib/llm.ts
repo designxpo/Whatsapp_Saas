@@ -8,6 +8,7 @@ import { readBehavior, behaviorBlock } from "./behavior";
 import { syncLeadProfile } from "./leadsquared";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
+import { moderateText } from "./moderation";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
 export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
@@ -346,10 +347,25 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
   return prev ? `${prev} ${last}`.slice(0, 400) : last;
 }
 
-// Generates a grounded reply from conversation history. `history` must end with
-// the user's latest message. `phone` enables function-calling attribute capture.
-// `agentId` pins a specific agent (conversation routing); null → active agent.
+// Generates a grounded reply, then screens it through the content-safety layer
+// before any caller can send it. EVERY channel's AI reply (WhatsApp, Instagram,
+// Messenger, web chat, YouTube comments) funnels through this one function, so
+// wrapping it here is the single place that covers all of them — rather than
+// eight scattered pre-send checks that a new channel could forget to add.
+//
+// A blocked reply becomes an escalation, not silence: the customer's message
+// lands with a human instead of the conversation dead-ending.
 export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
+  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce);
+  if (!result.reply) return result;
+  const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });
+  if (verdict.allowed) return result;
+  return { reply: null, escalate: true, reason: `blocked by safety filter (${verdict.reason})`, usedChunks: result.usedChunks };
+}
+
+// The unscreened generator. Private on purpose — callers must go through
+// generateReply() above so nothing can send AI text that skipped moderation.
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -617,6 +633,9 @@ export async function composeFollowup(
   const guarded = sanitizeOutbound(raw, { agentName: opts.agentName ?? undefined, context: convText, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES });
   const text = guarded.text.trim();
   if (text.length < 2) return null;
+  // Screened like any other outbound AI text — a follow-up nudge is sent
+  // unprompted, so a bad one is worse than a bad reply, not better.
+  if (!(await moderateText(text, { tenantId, surface: "ai_reply" })).allowed) return null;
   return { text, groundingActions: guarded.actions };
 }
 
@@ -649,7 +668,14 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     // Sanitize against the ORIGINAL factual answer as the allow-set: the persona
     // rewrite must not introduce an email/number/duration that wasn't in the
     // curated source (a tone pass occasionally invents a contact line).
-    return sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
+    const toned = sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
+    // This is a SECOND model generation, steered by the tenant's own persona and
+    // constraints text — so its output needs screening independently of
+    // generateReply's. Falling back to the curated `answer` (rather than failing
+    // the send) mirrors the catch below: the customer still gets a correct reply,
+    // just without the persona rewrite.
+    if (!(await moderateText(toned, { tenantId, surface: "ai_reply" })).allowed) return answer;
+    return toned;
   } catch (err) {
     // AiKeyMissingError, rate limits, etc. — never block; serve the raw answer.
     console.error("[llm] persona tone failed (serving raw answer):", err);
@@ -783,7 +809,13 @@ export async function generateReviewReply(input: ReviewReplyInput, tenantId = "0
     turns: [{ role: "user", text: `${instruction}\n\n--- REVIEW ---\n${ctx}` }],
     maxTokens: 400,
   });
-  return (res.text ?? "").trim().replace(/^["']|["']$/g, "").trim();
+  const reply = (res.text ?? "").trim().replace(/^["']|["']$/g, "").trim();
+  // Throws rather than returning empty: the poller's catch leaves the review
+  // at replyStatus "none" for a human, which is the right outcome here — an
+  // empty string would post a blank public reply on the business's profile.
+  const verdict = await moderateText(reply, { tenantId, surface: "review_reply" });
+  if (!verdict.allowed) throw new Error(`review reply blocked by safety filter (${verdict.reason})`);
+  return reply;
 }
 
 // ── Executive brief ───────────────────────────────────────────────────────────

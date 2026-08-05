@@ -2,6 +2,7 @@ import { insertLog, optoutSet } from "./store";
 import { getTrackedUrls, mintLinks } from "./links";
 import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
+import { moderateText, collectStrings } from "./moderation";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
 const MSG_DELAY_MS = 100;   // ~10 msg/s
@@ -223,6 +224,15 @@ export async function sendText(phone: string, body: string, channel?: ChannelCre
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   if (!body.trim()) return { error: "Empty message body" };
+  // Last-line content check. This is the single funnel for free-text WhatsApp
+  // sends — AI replies, agent-typed Live Chat messages, flow steps, canned
+  // replies, the CRM send API — so screening here covers every one of them,
+  // including callers added later that forget to check for themselves.
+  // Repeats are cache-hits in moderation.ts, so the double-check on an AI reply
+  // (already screened in generateReply) costs nothing.
+  if (!(await moderateText(body, { surface: "ai_reply" })).allowed) {
+    return { error: "Blocked by the content safety filter" };
+  }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
@@ -269,6 +279,13 @@ export async function sendProductList(phone: string, header: string, body: strin
 async function sendInteractive(phone: string, interactive: Record<string, unknown>, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
+  // Shared funnel for every interactive send (cta_url, list, flow) — the payload
+  // shape differs per type, so the customer-visible strings are collected
+  // structurally rather than by naming fields each variant may not have.
+  const visible = collectStrings(interactive).join("\n");
+  if (visible && !(await moderateText(visible, { surface: "ai_reply" })).allowed) {
+    return { error: "Blocked by the content safety filter" };
+  }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
@@ -291,6 +308,17 @@ export async function sendTemplateSingle(phone: string, templateName: string, la
   const components: Record<string, unknown>[] = [];
   if (headerImageUrl?.trim()) components.push({ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl.trim() } }] });
   if (bodyParams.length) components.push({ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: t })) });
+  // The template BODY was approved by Meta, but its parameters are runtime
+  // tenant text substituted in at send time — and this is the funnel every
+  // template send uses (broadcasts, canned replies, sequence steps, API rules),
+  // so screening the params here covers all of them at once. Identical copy
+  // across a broadcast's recipients is a cache hit, not N API calls.
+  if (bodyParams.length) {
+    const params = bodyParams.filter(p => p?.trim()).join("\n");
+    if (params && !(await moderateText(params, { surface: "broadcast_media" })).allowed) {
+      return { error: "Blocked by the content safety filter" };
+    }
+  }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
@@ -366,6 +394,12 @@ export async function sendMedia(phone: string, kind: "image" | "video" | "docume
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const media: Record<string, unknown> = { link: url };
   if (caption && (kind === "image" || kind === "video" || kind === "document")) media.caption = caption;
+  // The caption is customer-visible free text. The media itself is screened at
+  // upload time (/api/upload) — a `link` here can point anywhere, so callers
+  // accepting an arbitrary URL screen it themselves before calling this.
+  if (caption && !(await moderateText(caption, { surface: "ai_reply" })).allowed) {
+    return { error: "Blocked by the content safety filter" };
+  }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
@@ -398,6 +432,10 @@ export async function sendButtons(phone: string, body: string, buttons: { id: st
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const btns = buttons.filter(b => b.title.trim()).slice(0, 3);
   if (!body.trim() || btns.length === 0) return { error: "Body and at least one button required" };
+  // Button titles are customer-visible too, so they're screened with the body.
+  if (!(await moderateText([body, ...btns.map(b => b.title)].join("\n"), { surface: "ai_reply" })).allowed) {
+    return { error: "Blocked by the content safety filter" };
+  }
   try {
     const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
       method: "POST",
@@ -693,6 +731,13 @@ export async function createTemplate(input: CreateTemplateInput, channel?: Chann
   const built = buildTemplateComponents(input);
   if (built.error || !built.components) return { error: built.error ?? "Invalid template" };
   const components = built.components;
+  // Templates are submitted to Meta under the shared Tech Provider app and, once
+  // approved, blast to thousands. Meta reviews them too, but a rejected-for-
+  // policy submission counts against the WABA — better to never send it.
+  const visible = collectStrings(components).join("\n");
+  if (visible && !(await moderateText(visible, { surface: "broadcast_media" })).allowed) {
+    return { error: "Blocked by the content safety filter — revise the template copy." };
+  }
   try {
     const res = await fetch(`${GRAPH}/${wabaId}/message_templates`, {
       method: "POST",

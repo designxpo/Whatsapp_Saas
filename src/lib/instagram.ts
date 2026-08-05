@@ -22,6 +22,8 @@
 // graph.facebook.com). Sending/reading via graph.facebook.com fails with
 // "(#3) Application does not have the capability" for Instagram-login apps.
 // Host is env-overridable for a legacy Facebook-login setup.
+import { moderateText } from "./moderation";
+
 const GRAPH = `https://${process.env.META_IG_GRAPH_HOST || "graph.instagram.com"}/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
 const MAX_PER_HOUR = 200;                  // conservative per-account DM pacing
@@ -104,6 +106,11 @@ export async function sendIgMessage(
     return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold",
              error: opts.lastInboundAt ? "Outside the 24-hour messaging window" : "No prior interaction — cold DMs are not allowed" };
   }
+  // Last-line content check — the single funnel for Instagram DM text, so it
+  // covers AI replies, flow steps and agent-typed Live Chat messages alike.
+  if (!(await moderateText(text, { surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
   return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } });
 }
@@ -142,6 +149,10 @@ export async function sendIgQuickReplies(
     return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
   }
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
+  // Body + every quick-reply label are all customer-visible.
+  if (!(await moderateText([text, ...replies.map(r => r.title)].join("\n"), { surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   const quick_replies = replies.slice(0, 13).map(r => ({
     content_type: "text",
     title: r.title.slice(0, 20),
@@ -167,9 +178,14 @@ function buttonsAsText(text: string, buttons: IgButton[]): string {
 // The comment IS the user-initiated opt-in. Meta allows a single private reply
 // per comment — so this sends exactly ONE short block. Optionally attaches
 // buttons (link and/or postback), with a plain-text fallback.
-export async function sendPrivateReply(creds: IgCreds, commentId: string, text: string, buttons?: IgButton[] | null): Promise<IgSendResult> {
+export async function sendPrivateReply(creds: IgCreds, commentId: string, text: string, buttons?: IgButton[] | null, tenantId?: string): Promise<IgSendResult> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
+  // Last-line safety check before anything leaves under the shared Meta app —
+  // covers rule-configured DM text as well as AI-generated text.
+  if (!(await moderateText(text, { tenantId, surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   const body = text.slice(0, 640);
   if (buttons && buttons.length) {
     const r = await postMessage(creds, { recipient: { comment_id: commentId }, message: buttonTemplate(body, buttons) });
@@ -237,12 +253,16 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
 }
 
 // ── Public reply under a comment (optional, alongside the private DM) ─────────
-export async function replyToComment(creds: IgCreds, commentId: string, text: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+export async function replyToComment(creds: IgCreds, commentId: string, text: string, tenantId?: string): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   // Pace public replies on their own budget — unbounded identical/rapid replies
   // are the fastest way to get an account action-blocked.
   if (!withinRate(`comment:${creds.igUserId}`, MAX_COMMENT_REPLIES_PER_HOUR)) {
     return { ok: false, error: "Hourly comment-reply cap reached for this account" };
+  }
+  // Public replies carry the most policy risk (visible, under the shared app).
+  if (!(await moderateText(text, { tenantId, surface: "comment_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
   }
   try {
     const r = await fetch(`${GRAPH}/${commentId}/replies`, {

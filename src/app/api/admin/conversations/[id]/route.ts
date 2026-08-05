@@ -16,6 +16,7 @@ import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
+import { moderateImageUrl } from "@/lib/moderation";
 
 export const dynamic = "force-dynamic";
 
@@ -130,12 +131,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ success: true, messageId });
     }
     if (body.action === "media") {
-      // Agent sends a photo / video / file to the customer. The clip was already
-      // uploaded to public storage (via /api/upload); we just relay the URL.
+      // Agent sends a photo / video / file to the customer. Normally the clip was
+      // uploaded via /api/upload (screened there) — but `url` is request-supplied,
+      // so nothing guarantees that, and an arbitrary link would otherwise skip
+      // the byte-level check entirely. Screen it here rather than trust it.
       const url = (body.url ?? "").trim();
       const kind = body.kind;
       if (!url || (kind !== "image" && kind !== "video" && kind !== "document")) {
         return NextResponse.json({ error: "url and a valid kind (image|video|document) are required" }, { status: 400 });
+      }
+      if (kind === "image" && !(await moderateImageUrl(url, { tenantId: tid, surface: "upload" })).allowed) {
+        return NextResponse.json({ error: "This image was blocked by the content safety filter." }, { status: 400 });
       }
       const caption = (body.caption ?? "").trim();
       const mediaType = (body.mediaType ?? "").trim() || (kind === "image" ? "image/*" : kind === "video" ? "video/*" : "application/octet-stream");

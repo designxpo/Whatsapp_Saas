@@ -11,6 +11,7 @@
 
 import { db } from "./supabase";
 import { normalizeButtons, normalizePublicReplies, matchesKeywords, type RuleButton } from "./igcomments";
+import { assertTextsAllowed } from "./moderation";
 
 export interface FbCommentRule {
   id: string;
@@ -93,6 +94,12 @@ export interface CommentRuleInput {
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<FbCommentRule> {
+  // Screened when authored, same reasoning as the Instagram rule saver — this
+  // text posts publicly and DMs automatically with nobody watching.
+  await assertTextsAllowed(
+    [input.dmMessage, input.publicReply, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
+    { tenantId, surface: "comment_rule" },
+  );
   let buttons = normalizeButtons(input.buttons);
   if (!buttons.length && input.buttonUrl) buttons = normalizeButtons([{ label: input.buttonLabel ?? "", url: input.buttonUrl }]);
   let publicReplies = normalizePublicReplies(input.publicReplies);

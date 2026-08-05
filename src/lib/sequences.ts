@@ -15,6 +15,7 @@ import { sendText, sendTemplateSingle, sendMedia } from "./whatsapp";
 import { sendIgMessage, within24hWindow } from "./instagram";
 import { getConversationByPhone } from "./store";
 import { pushWaActivity } from "./leadsquared";
+import { assertTextsAllowed } from "./moderation";
 
 
 export type SequenceTriggerKind =
@@ -85,6 +86,9 @@ export async function deleteSequence(id: string, tenantId = DEFAULT_TENANT_ID): 
 }
 
 export async function setSequenceSteps(sequenceId: string, steps: { delayMinutes: number; action: SequenceStepAction }[], tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  // Drip steps fire automatically, long after they're authored and with nobody
+  // watching — so the copy is screened at save time, not at send time.
+  await assertTextsAllowed(steps.flatMap(s => [s.action.text, s.action.caption]), { tenantId, surface: "sequence_text" });
   // Delete is tenant-scoped as well as sequence-scoped: the caller already
   // validated sequenceId belongs to tenantId, but scoping the delete too means a
   // mismatched pair can never clear another tenant's steps.

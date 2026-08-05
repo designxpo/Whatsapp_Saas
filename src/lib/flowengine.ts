@@ -28,6 +28,7 @@ import {
   landCapturedLead, formLinkForWaba, logSendFailure,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
+import { assertTextsAllowed, collectStrings } from "./moderation";
 import { isAiEnabled, getFlowNudge, getFlowReminders } from "./messaging-settings";
 import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
@@ -134,6 +135,13 @@ export async function createFlow(name: string, tenantId = DEFAULT_TENANT_ID): Pr
 }
 
 export async function updateFlow(id: string, p: Partial<{ name: string; active: boolean; triggerKeywords: string[]; platform: FlowPlatform; channelId: string | null; channelIds: string[]; primaryKbTag: string | null; graph: FlowGraph }>, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  // Screen the flow's authored copy at save time — every message and button
+  // label a customer will eventually see, caught before the flow can go live.
+  // Node `data` is untyped, so strings are collected structurally rather than
+  // by naming fields a future node type might not use.
+  if (p.graph) {
+    await assertTextsAllowed(collectStrings(p.graph.nodes.map(n => n.data)), { tenantId, surface: "flow_text" });
+  }
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (p.name !== undefined) patch.name = p.name;
   if (p.active !== undefined) patch.active = p.active;

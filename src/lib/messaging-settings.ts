@@ -1,6 +1,7 @@
 // Welcome + away message settings — shared by the settings API and the webhook.
 
 import { getTenantSetting, setTenantSetting } from "./store";
+import { assertTextsAllowed, collectStrings } from "./moderation";
 import { DEFAULT_TENANT_ID } from "./auth";
 
 // ── AI auto-replies master switch (per tenant) ────────────────────────────────
@@ -34,6 +35,9 @@ export async function getFlowNudge(tenantId: string = DEFAULT_TENANT_ID): Promis
 }
 export async function setFlowNudge(v: FlowNudgeSetting, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
   const variations = (v.variations ?? []).map(x => String(x).trim().slice(0, 300)).filter(Boolean).slice(0, 6);
+  // Auto-sent to customers with nobody watching — screened when authored, the
+  // same treatment quick replies and sequence steps get.
+  await assertTextsAllowed(variations, { tenantId, surface: "flow_text" });
   await setTenantSetting(tenantId, "flow_nudge", { enabled: v.enabled === true, variations });
 }
 
@@ -86,7 +90,9 @@ export async function getFlowReminders(tenantId: string = DEFAULT_TENANT_ID): Pr
   return { enabled: s.enabled !== false, steps: steps.length ? steps : FLOW_REMINDER_DEFAULTS };
 }
 export async function setFlowReminders(v: FlowRemindersSetting, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
-  await setTenantSetting(tenantId, "flow_default_reminders", { enabled: v.enabled === true, steps: cleanReminderSteps(v.steps) });
+  const steps = cleanReminderSteps(v.steps);
+  await assertTextsAllowed(collectStrings(steps), { tenantId, surface: "flow_text" });
+  await setTenantSetting(tenantId, "flow_default_reminders", { enabled: v.enabled === true, steps });
 }
 
 export async function getWelcomeSetting(tenantId: string = DEFAULT_TENANT_ID): Promise<WelcomeSetting> {
@@ -98,10 +104,14 @@ export async function getAwaySetting(tenantId: string = DEFAULT_TENANT_ID): Prom
 }
 
 export async function setWelcomeSetting(tenantId: string, value: Partial<WelcomeSetting>): Promise<void> {
+  // The welcome/away messages are the first and last thing a customer sees from
+  // this business, sent automatically — screened at save time like flow copy.
+  await assertTextsAllowed(collectStrings(value), { tenantId, surface: "flow_text" });
   return setTenantSetting(tenantId, "welcome", value);
 }
 
 export async function setAwaySetting(tenantId: string, value: Partial<AwaySetting>): Promise<void> {
+  await assertTextsAllowed(collectStrings(value), { tenantId, surface: "flow_text" });
   return setTenantSetting(tenantId, "away", value);
 }
 

@@ -4,6 +4,7 @@ import { encryptSecret, readSecret } from "./crypto";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { safeFilterValue, escapeLike, safeAttrKey } from "./filters";
 import { logError } from "./errors";
+import { assertTextAllowed } from "./moderation";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "sent" | "partial" | "failed";
@@ -1063,6 +1064,12 @@ export async function pruneEphemeral(): Promise<{ dedup: number; loginAttempts: 
     const { data } = await db().from("wa_login_attempts").delete().lt("created_at", cutoff).select("id");
     out.loginAttempts = data?.length ?? 0;
   } catch { /* table missing */ }
+  try {
+    // Moderation blocks are an incident log, not permanent evidence — 90 days
+    // is long enough to investigate a pattern without growing unbounded.
+    const cutoff = new Date(Date.now() - 90 * 24 * 3600_000).toISOString();
+    await db().from("wa_moderation_log").delete().lt("created_at", cutoff);
+  } catch { /* table missing (pre-0099) */ }
   return out;
 }
 
@@ -1405,6 +1412,9 @@ export async function listQuickReplies(tenantId = DEFAULT_TENANT_ID): Promise<Qu
 }
 
 export async function createQuickReply(shortcut: string, body: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  // Saved canned text an agent will send verbatim to customers — screened here
+  // so it can't be stored, then sent, unchecked.
+  await assertTextAllowed(body, { tenantId, surface: "quick_reply" });
   const { error } = await db().from("wa_quick_replies").upsert({ tenant_id: tenantId, shortcut: shortcut.trim().toLowerCase(), body: body.trim() }, { onConflict: "tenant_id,shortcut" });
   if (error) throw error;
 }

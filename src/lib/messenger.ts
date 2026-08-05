@@ -15,6 +15,8 @@
 // Requires the Facebook Page id + a Page access token with pages_messaging
 // (obtained via Embedded Signup / Page connect).
 
+import { moderateText } from "./moderation";
+
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
 const MAX_PER_HOUR = 250;                  // conservative per-Page DM pacing
@@ -96,6 +98,11 @@ export async function sendFbMessage(
              error: opts.lastInboundAt ? "Outside the 24-hour messaging window" : "No prior interaction — cold messages are not allowed" };
   }
   if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
+  // Last-line content check — the single funnel for Messenger DM text, so it
+  // covers AI replies, flow steps and agent-typed Live Chat messages alike.
+  if (!(await moderateText(text, { surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   return postMessage(creds, { recipient: { id: recipientPsid }, message: { text: text.slice(0, 2000) } });
 }
 
@@ -132,6 +139,10 @@ export async function sendFbQuickReplies(
     return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
   }
   if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
+  // Body + every quick-reply label are all customer-visible.
+  if (!(await moderateText([text, ...replies.map(r => r.title)].join("\n"), { surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   const quick_replies = replies.slice(0, 13).map(r => ({
     content_type: "text",
     title: r.title.slice(0, 20),
@@ -163,9 +174,15 @@ export async function sendFbPrivateReply(
   commentId: string,
   text: string,
   buttons?: FbButton[] | null,
+  tenantId?: string,
 ): Promise<FbSendResult> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
+  // Last-line safety check before anything leaves under the shared Meta app —
+  // covers rule-configured DM text as well as AI-generated text.
+  if (!(await moderateText(text, { tenantId, surface: "dm_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   const body = text.slice(0, 640);
   if (buttons && buttons.length) {
     const r = await postMessage(creds, { recipient: { comment_id: commentId }, message: buttonTemplate(body, buttons) });
@@ -195,12 +212,16 @@ export async function sendFbButtons(
 }
 
 // ── Public reply under a Page comment (optional) ──────────────────────────────
-export async function replyToFbComment(creds: FbCreds, commentId: string, text: string): Promise<{ ok: boolean; id?: string; error?: string }> {
+export async function replyToFbComment(creds: FbCreds, commentId: string, text: string, tenantId?: string): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
   // Pace public replies on their own budget — unbounded identical/rapid replies
   // are the fastest way to get a Page action-blocked.
   if (!withinRate(`comment:${creds.pageId}`, MAX_COMMENT_REPLIES_PER_HOUR)) {
     return { ok: false, error: "Hourly comment-reply cap reached for this Page" };
+  }
+  // Public replies carry the most policy risk (visible, under the shared app).
+  if (!(await moderateText(text, { tenantId, surface: "comment_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
   }
   try {
     const r = await fetch(`${GRAPH}/${commentId}/comments`, {

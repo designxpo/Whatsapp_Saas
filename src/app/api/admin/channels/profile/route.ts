@@ -5,6 +5,7 @@ import { getBusinessProfile, updateBusinessProfile, setProfilePicture, type Busi
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
+import { moderateImageFile, assertTextsAllowed } from "@/lib/moderation";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
       const f = file as File;
       if (!PHOTO_TYPES.has(f.type)) return NextResponse.json({ error: "Use a JPEG or PNG image" }, { status: 400 });
       if (f.size > MAX_PHOTO) return NextResponse.json({ error: "Image too large (max 5 MB)" }, { status: 400 });
+      // The profile photo is shown to every customer under the WABA.
+      if (!(await moderateImageFile(f, { tenantId: tid, surface: "upload" })).allowed) {
+        return NextResponse.json({ error: "This image was blocked by the content safety filter. Use a different image." }, { status: 400 });
+      }
       const channel = await credsFor((form.get("channelId") as string) || null, tid);
       const r = await setProfilePicture({ bytes: await f.arrayBuffer(), mime: f.type }, channel);
       if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
@@ -53,6 +58,8 @@ export async function POST(req: Request) {
       about: body.about, address: body.address, description: body.description,
       email: body.email, vertical: body.vertical, websites: body.websites,
     };
+    // about/description are public profile copy every customer can read.
+    await assertTextsAllowed([fields.about, fields.description], { tenantId: tid, surface: "flow_text" });
     const r = await updateBusinessProfile(fields, channel);
     if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
     logActivity(await currentUser(), "channel.profile", "updated profile");

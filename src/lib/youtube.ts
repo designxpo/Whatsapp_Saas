@@ -15,6 +15,8 @@
 // when the client env vars or a channel refresh token are absent (Phase 1a is
 // dormant until the OAuth client is approved).
 
+import { moderateText } from "./moderation";
+
 const API = "https://www.googleapis.com/youtube/v3";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // per-channel public-reply pacing
@@ -212,11 +214,15 @@ export async function listNewComments(creds: YtCreds, since: Date | null, maxPag
 export interface YtSendResult { ok: boolean; id?: string; error?: string; blockedBy?: "rate" | "config" }
 
 // Post a public reply under a top-level comment. comments.insert = 50 units.
-export async function replyToComment(creds: YtCreds, parentCommentId: string, text: string): Promise<YtSendResult> {
+export async function replyToComment(creds: YtCreds, parentCommentId: string, text: string, tenantId?: string): Promise<YtSendResult> {
   if (!parentCommentId || !text.trim()) return { ok: false, error: "parent comment and text required" };
   const token = await accessTokenFor(creds);
   if (!token) return { ok: false, blockedBy: "config", error: "YouTube is not connected on this deployment" };
   if (!withinRate(creds.channelId, MAX_COMMENT_REPLIES_PER_HOUR)) return { ok: false, blockedBy: "rate", error: "Hourly reply cap reached for this channel" };
+  // Public replies carry the most policy risk (visible, under the shared app).
+  if (!(await moderateText(text, { tenantId, surface: "comment_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   try {
     const r = await fetch(`${API}/comments?part=snippet`, {
       method: "POST",

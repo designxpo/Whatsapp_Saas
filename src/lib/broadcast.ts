@@ -4,6 +4,7 @@ import { startSend } from "./campaign";
 import { getChannel, credsFor } from "./channels";
 import { fetchTemplates } from "./whatsapp";
 import { templateIssues } from "./preflight";
+import { assertImageAllowed } from "./moderation";
 
 
 // Best-effort: fetch the chosen template's Meta definition so we can preflight
@@ -60,6 +61,13 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
   if (input.channelId) {
     const owned = await getChannel(input.channelId, tenantId);
     assert(owned, "Channel not found.");
+  }
+
+  // The header image is a PASTED URL (never routed through /api/upload), and a
+  // broadcast fans it out to thousands of customers at once — the highest-blast-
+  // radius media path in the product, so it's screened before any send starts.
+  if (input.headerImageUrl?.trim()) {
+    await assertImageAllowed(input.headerImageUrl.trim(), { tenantId, surface: "broadcast_media" });
   }
 
   // Trigger an existing campaign — recompute its audience and send now.

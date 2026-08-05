@@ -24,7 +24,16 @@ export async function POST(req: Request) {
     const p = await saveProduct({ ...body, name: body.name! }, tid);
     logActivity(await currentUser(), "product.save", p.name);
     return NextResponse.json({ success: true, product: p });
-  } catch (err) { return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0020 is applied` }, { status: 500 }); }
+  } catch (err) {
+    // The migration hint only makes sense for a schema/DB failure — appending it
+    // to e.g. a content-safety rejection produced a nonsense message.
+    const msg = errorMessage(err);
+    const schemaish = /column|relation|constraint|schema|does not exist/i.test(msg);
+    return NextResponse.json(
+      { error: schemaish ? `${msg} — make sure migration 0020 is applied` : msg },
+      { status: schemaish ? 500 : 400 },
+    );
+  }
 }
 
 export async function DELETE(req: Request) {

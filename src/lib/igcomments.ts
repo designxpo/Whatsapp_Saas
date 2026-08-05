@@ -9,6 +9,7 @@
 // tenant_id and EVERY write stamps it — app-layer scoping is the real guard.
 
 import { db } from "./supabase";
+import { assertTextsAllowed } from "./moderation";
 
 // A link button on the DM. Meta's button template caps at 3 per message.
 export interface RuleButton {
@@ -153,6 +154,13 @@ export interface CommentRuleInput {
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<IgCommentRule> {
+  // Rule text fires automatically onto PUBLIC comment threads and into DMs with
+  // nobody watching, so it's screened when authored — the send-time check in
+  // instagram.ts stays as the backstop, not the only line of defense.
+  await assertTextsAllowed(
+    [input.dmMessage, input.followPrompt, input.publicReply, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
+    { tenantId, surface: "comment_rule" },
+  );
   // Accept either the new `buttons` array or the legacy single button; the
   // legacy columns always mirror buttons[0] so old readers keep working.
   let buttons = normalizeButtons(input.buttons);

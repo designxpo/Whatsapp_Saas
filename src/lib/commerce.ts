@@ -10,6 +10,7 @@ import { sendText, sendTemplateSingle } from "./whatsapp";
 import { credsFor, getChannel } from "./channels";
 import { sendFbMessage } from "./messenger";
 import { sendIgMessage } from "./instagram";
+import { assertImageAllowed, assertTextsAllowed } from "./moderation";
 
 
 export interface CartItem { productId: string; name: string; qty: number; priceCents: number }
@@ -53,6 +54,13 @@ function genRetailerId(name: string): string {
 }
 
 export async function saveProduct(p: Partial<Product> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<Product> {
+  // The catalog UI also accepts a PASTED image link, which skips /api/upload's
+  // byte-level screening entirely — so the URL is screened here too. Product
+  // images get shown to customers in chat, so this can't be upload-only.
+  if (p.imageUrl?.trim()) await assertImageAllowed(p.imageUrl.trim(), { tenantId, surface: "product_image" });
+  // The product's own copy is sent verbatim to customers by the catalog/product
+  // flow node, so screen it alongside the image rather than only the image.
+  await assertTextsAllowed([p.name, p.description, p.buttonText], { tenantId, surface: "product_image" });
   const retailerId = p.retailerId?.trim() || (p.id ? null : genRetailerId(p.name));
   const base = {
     tenant_id: tenantId,

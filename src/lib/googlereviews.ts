@@ -16,6 +16,8 @@
 // encrypted in wa_channels.access_token) is exchanged for a short-lived access
 // token at call time.
 
+import { moderateText } from "./moderation";
+
 const ACCOUNTS_API = "https://mybusinessaccountmanagement.googleapis.com/v1";
 const INFO_API = "https://mybusinessbusinessinformation.googleapis.com/v1";
 const REVIEWS_API = "https://mybusiness.googleapis.com/v4";
@@ -184,9 +186,13 @@ export interface GrResult { ok: boolean; error?: string }
 
 // Post/update the owner reply on a review. PUT is idempotent (replaces any
 // existing reply), so this also serves as "edit reply".
-export async function replyToReview(creds: GrCreds, reviewExternalId: string, text: string): Promise<GrResult> {
+export async function replyToReview(creds: GrCreds, reviewExternalId: string, text: string, tenantId?: string): Promise<GrResult> {
   const token = await accessTokenFor(creds);
   if (!token) return { ok: false, error: "Google Reviews isn't connected" };
+  // A review reply is public and posted on the business's own Google profile.
+  if (!(await moderateText(text, { tenantId, surface: "review_reply" })).allowed) {
+    return { ok: false, error: "Blocked by the content safety filter" };
+  }
   try {
     const r = await fetch(`${REVIEWS_API}/${reviewExternalId}/reply`, {
       method: "PUT",
