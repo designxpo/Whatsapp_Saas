@@ -5,11 +5,16 @@
 // The @handle becomes the prettier front once Meta's Cloud API exposes
 // username click-to-chat (WHATSAPP-USERNAME-PLAN.md).
 //
-// Attribution mechanism: each source embeds a short "[ref:CODE]" token in the
-// click-to-chat prefilled text. On the first inbound the webhook reads the code,
-// records the touch, tags the contact's source, and strips the token from the
-// stored message. Best-effort — if the user edits the prefilled text away, the
-// chat still works, it's just unattributed (the same limit every such tool has).
+// Attribution mechanism: each source embeds its ref code as INVISIBLE
+// zero-width characters appended after the greeting — the customer's
+// prefilled (and sent) message reads clean, with nothing bracketed or
+// odd-looking, in their own WhatsApp thread. On the first inbound the webhook
+// decodes it, records the touch, tags the contact's source, and strips it
+// before anything downstream (chatbot, Live Chat, LeadSquared) ever sees it.
+// Best-effort — if the customer deletes the prefilled text, the chat still
+// works, it's just unattributed (the same limit every such tool has). Old
+// links already handed out used a visible "[ref:CODE]" bracket —
+// parseRef/stripRef still recognize that format too.
 
 import { db } from "./supabase";
 import { DEFAULT_TENANT_ID } from "./tenant";
@@ -98,12 +103,64 @@ export async function deleteSource(id: string, tenantId = DEFAULT_TENANT_ID): Pr
   await db().from("wa_handle_sources").delete().eq("tenant_id", tenantId).eq("id", id);
 }
 
+// ── Invisible ref encoding — zero-width characters, nothing visible ──────────
+// U+200B/U+200C encode bits 0/1; U+200D×3 marks where the payload starts. A
+// 4-bit length prefix (code length − 1, so 1–16 chars fit) precedes the 6-bit
+// chunks (2^6=64 ≥ 36 base36 symbols) — codes aren't always exactly 7 chars
+// (Math.random().toString(36) can occasionally yield fewer), so the length is
+// encoded rather than assumed.
+const ZW0 = "\u200B", ZW1 = "\u200C", ZW_MARK = "\u200D\u200D\u200D";
+const B36 = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+function encodeInvisibleRef(code: string): string {
+  const c = code.toLowerCase();
+  if (!c.length || c.length > 16) return "";
+  let bits = (c.length - 1).toString(2).padStart(4, "0");
+  for (const ch of c) {
+    const v = B36.indexOf(ch);
+    if (v < 0) return "";
+    bits += v.toString(2).padStart(6, "0");
+  }
+  return ZW_MARK + [...bits].map(b => (b === "1" ? ZW1 : ZW0)).join("");
+}
+
+function decodeInvisibleRef(text: string): string | null {
+  const idx = (text || "").indexOf(ZW_MARK);
+  if (idx < 0) return null;
+  let bits = "";
+  for (let i = idx + ZW_MARK.length; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === ZW0) bits += "0";
+    else if (ch === ZW1) bits += "1";
+    else break;
+  }
+  if (bits.length < 4) return null;
+  const len = parseInt(bits.slice(0, 4), 2) + 1;
+  const need = 4 + len * 6;
+  if (bits.length < need) return null;
+  const chars: string[] = [];
+  for (let i = 4; i < need; i += 6) {
+    const v = parseInt(bits.slice(i, i + 6), 2);
+    if (v >= B36.length) return null;   // corrupted/edited payload
+    chars.push(B36[v]);
+  }
+  return chars.join("");
+}
+
+function stripInvisibleRef(text: string): string {
+  const idx = (text || "").indexOf(ZW_MARK);
+  if (idx < 0) return text || "";
+  let end = idx + ZW_MARK.length;
+  while (end < text.length && (text[end] === ZW0 || text[end] === ZW1)) end++;
+  return text.slice(0, idx) + text.slice(end);
+}
+
 // ── Tracked link + QR ────────────────────────────────────────────────────────
-// wa.me click-to-chat with the ref token appended to the prefilled greeting.
-// Returns null when no number is configured yet (nothing to point the link at).
+// wa.me click-to-chat with the ref token appended (invisibly) to the prefilled
+// greeting. Returns null when no number is configured yet.
 export function trackedLink(entryPoint: Pick<HandleEntryPoint, "number" | "handle" | "greeting">, source: Pick<HandleSource, "refCode">): string | null {
   if (!entryPoint.number) return null;
-  const text = `${entryPoint.greeting} [ref:${source.refCode}]`;
+  const text = `${entryPoint.greeting}${encodeInvisibleRef(source.refCode)}`;
   return `https://wa.me/${entryPoint.number}?text=${encodeURIComponent(text)}`;
 }
 
@@ -112,17 +169,21 @@ export async function qrDataUrl(link: string): Promise<string> {
 }
 
 // ── Attribution (inbound) ─────────────────────────────────────────────────────
-// Matches "[ref:CODE]" or "(ref:CODE)" (case-insensitive) in a prefilled message.
+// Legacy visible format, still recognized for any link already handed out
+// before the invisible encoding shipped. Matches "[ref:CODE]" or "(ref:CODE)"
+// (case-insensitive).
 export const REF_RE = /[[(]\s*ref\s*:\s*([a-z0-9]{4,16})\s*[\])]/i;
 
 export function parseRef(text: string): string | null {
+  const inv = decodeInvisibleRef(text || "");
+  if (inv) return inv;
   const m = (text || "").match(REF_RE);
   return m ? m[1].toLowerCase() : null;
 }
 
 // Remove the token so the stored/answered message is the customer's real text.
 export function stripRef(text: string): string {
-  return (text || "").replace(REF_RE, "").replace(/\s{2,}/g, " ").trim();
+  return stripInvisibleRef(text || "").replace(REF_RE, "").replace(/\s{2,}/g, " ").trim();
 }
 
 export async function resolveRef(tenantId: string, code: string): Promise<HandleSource | null> {

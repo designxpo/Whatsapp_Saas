@@ -15,10 +15,11 @@
 //     gets the full signed envelope (HMAC verifiable with signPayload), Slack
 //     gets the one-line humanText. A broken endpoint is isolated and recorded
 //     on its own row; emitEvent never throws. Secrets are stored encrypted.
-//  3. handlehub — every QR/hoarding gets a tracked wa.me link embedding
-//     "[ref:CODE]"; on the first inbound parseRef/stripRef recover the source
-//     and the human text, resolveRef is tenant-scoped, recordTouch bumps the
-//     counter and never throws.
+//  3. handlehub — every QR/hoarding gets a tracked wa.me link with its ref code
+//     embedded INVISIBLY (nothing bracketed in the customer's own message); on
+//     the first inbound parseRef/stripRef recover the source and the human
+//     text (a legacy visible "[ref:CODE]" is still recognized too), resolveRef
+//     is tenant-scoped, recordTouch bumps the counter and never throws.
 //  4. pipeline — dragging a lead into "Site visit scheduled" is tenant-scoped
 //     (a rival's stage id is rejected) and applyStageEffects fires the stage
 //     automations: auto-tag, a REAL sequence enrollment (via lib/sequences
@@ -553,11 +554,14 @@ describe("Real estate agency (Skyline Realty)", () => {
   });
 
   describe("[ref:CODE] source attribution (handlehub)", () => {
-    it("the hoarding QR link: the entry point normalizes the number/handle and trackedLink embeds the greeting + ref token", async () => {
+    it("the hoarding QR link: the entry point normalizes the number/handle and trackedLink embeds the greeting + an invisible ref token", async () => {
       const ep = await createEntryPoint(SKYLINE, { number: "+91 22 4890-1234", handle: "@SkylineRealty", greeting: "Hi Skyline! I saw your listing." });
       expect(ep).toMatchObject({ number: "912248901234", handle: "SkylineRealty", greeting: "Hi Skyline! I saw your listing." });
-      expect(trackedLink(ep, { refCode: "qr4main" }))
-        .toBe(`https://wa.me/912248901234?text=${encodeURIComponent("Hi Skyline! I saw your listing. [ref:qr4main]")}`);
+      const link = trackedLink(ep, { refCode: "qr4main" })!;
+      expect(link).toContain("https://wa.me/912248901234?text=");
+      const prefilled = decodeURIComponent(link.split("text=")[1]);
+      expect(prefilled.replace(/[\u200B\u200C\u200D]/g, "")).toBe("Hi Skyline! I saw your listing.");   // nothing visibly bracketed
+      expect(parseRef(prefilled)).toBe("qr4main");   // still recoverable
       // No number configured yet → nothing to point the QR at.
       expect(trackedLink({ ...ep, number: "" }, { refCode: "qr4main" })).toBeNull();
     });
