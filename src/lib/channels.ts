@@ -590,6 +590,26 @@ export async function subscribePageToApp(pageId: string, pageToken: string): Pro
   }
 }
 
+// Meta's inbound IG webhooks stamp entry.id with the account's CANONICAL id —
+// which, for accounts that have moved onto "Instagram API with Instagram
+// Login", is a different (longer) id than the classic Facebook-Page-linked
+// Instagram Business Account id an admin is likely to have pasted into the
+// form. Sends still work with either id (Meta aliases them on the send path),
+// but getChannelByIgId does an exact match on inbound — so a stale/wrong id
+// here means every DM/comment silently fails to match and gets dropped. Ask
+// Graph directly instead of trusting hand-typed input.
+export async function resolveIgAccountId(igToken: string): Promise<{ id?: string; username?: string; error?: string }> {
+  try {
+    const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const res = await fetch(`${GRAPH}/me?fields=id,username&access_token=${encodeURIComponent(igToken)}`);
+    const data = (await res.json().catch(() => null)) as { id?: string; username?: string; error?: { message?: string } } | null;
+    if (res.ok && data?.id) return { id: data.id, username: data.username };
+    return { error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // Instagram flavour of the same requirement (Instagram-login API): the IG
 // professional account itself must be subscribed to the app for DM/comment
 // webhooks to flow.

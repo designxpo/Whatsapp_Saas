@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveInstagramChannel, getChannel, subscribeIgToApp } from "@/lib/channels";
+import { saveInstagramChannel, getChannel, subscribeIgToApp, resolveIgAccountId } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -33,15 +33,22 @@ export async function POST(req: Request) {
       token = existing.token;
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
+    // Trust Graph's own answer for the account id over whatever was pasted in —
+    // inbound webhooks match on this id EXACTLY, so a stale/wrong value here
+    // silently drops every DM/comment (sends keep working, masking the problem).
+    const typedIgUserId = body.igUserId!.trim();
+    const resolved = await resolveIgAccountId(token);
+    const igUserId = resolved.id || typedIgUserId;
     const saved = await saveInstagramChannel({
-      id: body.id, tenantId, name: body.name!, igUserId: body.igUserId!, pageId: body.pageId ?? null,
+      id: body.id, tenantId, name: body.name!, igUserId, pageId: body.pageId ?? null,
       token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, commentAi: body.commentAi, active: body.active, isDefault: body.isDefault,
     });
     // Subscribe the IG account to the app — without this Meta never delivers
     // DM/comment events for a freshly added account.
-    const webhook = await subscribeIgToApp(saved.igUserId ?? body.igUserId!, token);
-    logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook });
+    const webhook = await subscribeIgToApp(saved.igUserId ?? igUserId, token);
+    const idCorrected = !!resolved.id && resolved.id !== typedIgUserId;
+    logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}${idCorrected ? ` — account id corrected from ${typedIgUserId} to Meta's canonical id` : ""}`);
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0021_instagram_channel.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
   }

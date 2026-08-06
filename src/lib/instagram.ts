@@ -16,7 +16,13 @@
 //   6. Opt-out handled upstream (STOP) like WhatsApp.
 //
 // Requires the IG professional account id + an access token with
-// instagram_manage_messages (obtained via Embedded Signup).
+// instagram_manage_messages (obtained via Embedded Signup). That id must be
+// the account's CANONICAL Instagram-Login id — that's what Meta stamps as
+// entry.id on inbound webhooks, and it's NOT always the same as the classic
+// Facebook-Page-linked Instagram Business Account id. Sends silently accept
+// either (Meta aliases them), so a mismatch only shows up as inbound DMs/
+// comments never arriving. channels.ts#resolveIgAccountId asks Graph for the
+// canonical id at channel-save time instead of trusting hand-typed input.
 
 // Instagram API with Instagram Login talks to graph.instagram.com (NOT
 // graph.facebook.com). Sending/reading via graph.facebook.com fails with
