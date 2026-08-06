@@ -6,7 +6,7 @@ import {
   setConversationAgent, markConversationRead, getContactByPhone, type ConvStatus,
 } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
-import { sendText, sendButtons, sendTemplateSingle, sendMedia } from "@/lib/whatsapp";
+import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
 import { credsFor, getChannel, explicitDefaultChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
@@ -49,7 +49,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string; cannedId?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
@@ -129,6 +129,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (conv.botEnabled) await setBotEnabled(id, false);
       logActivity(await currentUser(), "inbox.reply", `to ${conv.phone}: ${text.slice(0, 80)}`);
       return NextResponse.json({ success: true, messageId });
+    }
+    // Tap-react on a message in the thread — WhatsApp only (IG/Messenger/web
+    // chat have no reaction API path today).
+    if (body.action === "react") {
+      const targetMessageId = (body.targetMessageId ?? "").trim();
+      const emoji = typeof body.emoji === "string" ? body.emoji : "";
+      if (!targetMessageId) return NextResponse.json({ error: "targetMessageId required" }, { status: 400 });
+      if (conv.platform === "instagram" || conv.platform === "messenger" || conv.platform === "webchat") {
+        return NextResponse.json({ error: "Reactions aren't supported on this channel yet" }, { status: 400 });
+      }
+      if (conv.lastInboundAt && Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000) {
+        return NextResponse.json({ error: "Outside WhatsApp's 24-hour window — the customer must message again before you can react." }, { status: 409 });
+      }
+      const channel = await credsFor(conv.channelId, tid);
+      const sent = await sendReaction(conv.phone, targetMessageId, emoji, channel);
+      if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
+      await appendConvMessage({ conversationId: id, role: "assistant", body: emoji || "(removed a reaction)", metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
+      await touchOutbound(id, emoji || "(removed a reaction)");
+      return NextResponse.json({ success: true });
     }
     if (body.action === "media") {
       // Agent sends a photo / video / file to the customer. Normally the clip was

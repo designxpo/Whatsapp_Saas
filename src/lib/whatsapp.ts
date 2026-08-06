@@ -252,6 +252,32 @@ export async function sendText(phone: string, body: string, channel?: ChannelCre
   }
 }
 
+// React to a specific inbound/outbound message with an emoji (tap-and-hold
+// react, mirrored from the agent's side). Pass emoji: "" to remove a reaction.
+// No free-text body, so nothing to run through moderateText here.
+export async function sendReaction(phone: string, messageId: string, emoji: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+  const { token, phoneId } = getCreds(channel);
+  if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
+  if (!messageId) return { error: "Missing target message id" };
+  try {
+    const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to: (phone || "").replace(/\D/g, ""),
+        type: "reaction",
+        reaction: { message_id: messageId, emoji },
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
+    return { error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // Sends a single product card from the WABA's connected catalog (Meta Commerce
 // Manager). Free-form, 24h-window rules apply.
 export async function sendProduct(phone: string, body: string, catalogId: string, productRetailerId: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {

@@ -4,12 +4,15 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 
-type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null };
+type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
+
+// WhatsApp's own default quick-react set.
+const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 // Best-known lead source from what we have locally, BEFORE (or absent) a CRM
 // lookup: Meta ad referral > Handle Hub link label > web-chat UTM. Same
@@ -381,6 +384,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
+  const [reactMsgId, setReactMsgId] = useState<string | null>(null);
   const [contact, setContact] = useState<{ email: string | null; tags: string[]; attributes: Record<string, string> } | null>(null);
   const [crmSourceSnap, setCrmSourceSnap] = useState<{ configured: boolean; lead: { source: string | null } | null } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -490,6 +494,12 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   // path, and web chat has no window.
   const windowClosed = !!conv && conv.platform === "whatsapp" &&
     (!conv.lastInboundAt || Date.now() - new Date(conv.lastInboundAt).getTime() > 24 * 60 * 60 * 1000);
+  // Tap-react on a message — WhatsApp only, mirrors what the customer can do.
+  const canReact = !!conv && conv.platform !== "instagram" && conv.platform !== "messenger" && conv.platform !== "webchat";
+  async function reactTo(metaMessageId: string, emoji: string) {
+    setReactMsgId(null);
+    await act({ action: "react", targetMessageId: metaMessageId, emoji });
+  }
 
   return (
     <>
@@ -551,10 +561,30 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             const contNext = !!nextM && nextM.role === m.role
               && nextM.body !== "[form-abandoned]" && m.body !== "[form-abandoned]"
               && !startsNewDay(messages, i + 1);
+            const reactable = canReact && !isComment && !!m.metaMessageId;
+            const reactButton = reactable && (
+              <div className="relative shrink-0 self-end mb-1">
+                <button
+                  onClick={() => setReactMsgId(reactMsgId === m.id ? null : m.id)}
+                  title="React"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full text-ink-400 hover:text-brand-700 hover:bg-white"
+                >
+                  <SmilePlus className="w-4 h-4" />
+                </button>
+                {reactMsgId === m.id && (
+                  <div className={`absolute z-10 bottom-8 ${m.role === "user" ? "left-0" : "right-0"} flex items-center gap-0.5 bg-white border border-line rounded-full shadow-lg px-1.5 py-1`}>
+                    {REACTION_EMOJIS.map(e => (
+                      <button key={e} onClick={() => reactTo(m.metaMessageId!, e)} className="text-lg leading-none p-1 rounded-full hover:bg-canvas hover:scale-125 transition-transform">{e}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
             return (
               <Fragment key={m.id}>
               {dateDivider}
-              <div className={`flex ${m.role === "user" ? "justify-start" : "justify-end"}`}>
+              <div className={`group flex items-end gap-1 ${m.role === "user" ? "justify-start" : "justify-end"}`}>
+                {m.role !== "user" && reactButton}
                 <div className={`max-w-[78%] sm:max-w-[68%] min-w-[2.75rem] px-3.5 py-2 text-sm shadow-sm rounded-2xl ${m.role === "user" ? "rounded-bl-md" : "rounded-br-md"} ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
                   {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
@@ -595,6 +625,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                     </p>
                   )}
                 </div>
+                {m.role === "user" && reactButton}
               </div>
               </Fragment>
             );

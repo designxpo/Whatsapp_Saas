@@ -661,6 +661,7 @@ export interface ConvMessage {
   channelId?: string | null;   // which number/account it arrived on / went out from
   mediaUrl?: string | null;    // e.g. an inbound voice note, playable in Live Chat
   mediaType?: string | null;   // its MIME type, e.g. "audio/ogg"
+  metaMessageId?: string | null;   // Meta's wamid — needed to target a reaction at this message
 }
 
 // Which channel a conversation arrived on. WhatsApp/Instagram are Meta numbers;
@@ -989,17 +990,18 @@ export async function getConvHistory(conversationId: string, limit = 20, tenantI
     const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
     return { data: (data ?? []) as unknown as Record<string, unknown>[], error };
   };
-  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type, channel_id");
+  let { data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type, channel_id, meta_message_id");
   // Pre-migration safety: drop the newest optional column (channel 0073), then
   // fall back to the columns that always exist (0052).
-  if (error && (error as { code?: string }).code === "42703") ({ data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type"));
-  if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at"));
+  if (error && (error as { code?: string }).code === "42703") ({ data, error } = await fetchRows("id, role, body, source, created_at, media_url, media_type, meta_message_id"));
+  if (error && (error as { code?: string }).code === "42703") ({ data } = await fetchRows("id, role, body, source, created_at, meta_message_id"));
   const rows = data.reverse();
   return rows.map(r => ({
     id: r.id as string, role: r.role as "user" | "assistant", body: r.body as string,
     source: (r.source as ConvMessage["source"]) ?? "bot", createdAt: r.created_at as string,
     channelId: (r.channel_id as string | null) ?? null,
     mediaUrl: (r.media_url as string | null) ?? null, mediaType: (r.media_type as string | null) ?? null,
+    metaMessageId: (r.meta_message_id as string | null) ?? null,
   }));
 }
 

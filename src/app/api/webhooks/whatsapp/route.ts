@@ -84,6 +84,12 @@ function messageText(m: Record<string, unknown>): string {
     const br = (it?.button_reply ?? it?.list_reply) as Record<string, unknown> | undefined;
     return (br?.title as string) ?? "";
   }
+  // A tap-react on one of our messages — Meta omits "emoji" when the customer
+  // REMOVES their reaction, not just when they add one.
+  if (type === "reaction") {
+    const emoji = (m.reaction as Record<string, unknown> | undefined)?.emoji as string | undefined;
+    return emoji || "(removed a reaction)";
+  }
   return `[${type} message]`;
 }
 
