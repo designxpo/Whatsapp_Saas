@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listChannels, getChannel, saveChannel, deleteChannel, type Channel } from "@/lib/channels";
+import { listChannels, getChannel, saveChannel, deleteChannel, verifyWhatsappPhoneId, type Channel } from "@/lib/channels";
 import { subscribeWaba } from "@/lib/embeddedsignup";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
@@ -45,6 +45,15 @@ export async function POST(req: Request) {
       token = existing.token;
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
+    // phoneId is hand-typed here (Embedded Signup, the other way to add a
+    // number, gets it straight from Meta's own callback) — verify it resolves
+    // with this token before persisting, so a typo/permission gap fails with a
+    // clear message now instead of surfacing later as silently-dropped inbound
+    // webhooks or a cryptic Graph error on the first send.
+    const verify = await verifyWhatsappPhoneId(body.phoneId!, token);
+    if (!verify.ok) {
+      return NextResponse.json({ error: `Couldn't verify this phone number with Meta: ${verify.error}. Check the phone number id and that this token has access to it.` }, { status: 400 });
+    }
     const saved = await saveChannel({ ...body, name: body.name!, phoneId: body.phoneId!, wabaId: body.wabaId!, token, tenantId: tid });
     // Subscribe the WABA to our app — WITHOUT this Meta never delivers inbound
     // messages, which is exactly why a manually-added number "connected but
@@ -52,7 +61,7 @@ export async function POST(req: Request) {
     // used to skip it (unlike the Messenger/Instagram save routes). Idempotent,
     // and non-fatal: the number still saves so a bad token can be fixed + re-saved.
     const webhook = await subscribeWaba(saved.wabaId ?? body.wabaId!, token);
-    logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId}) — WABA webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.error}`}`);
+    logActivity(await currentUser(), "channel.save", `${saved.name} (${saved.phoneId}${verify.displayPhone ? ` · ${verify.displayPhone}` : ""}) — WABA webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.error}`}`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook: { ok: webhook.ok, detail: webhook.ok ? "WABA subscribed to the app's webhooks." : (webhook.error ?? "unknown error") } });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0013_channels.sql and 0070_channel_kb.sql are applied` }, { status: 500 });

@@ -295,6 +295,25 @@ export function effectiveKbTag(
   return conv?.primaryKbTag ?? channel?.kbTag ?? null;
 }
 
+// phoneId/wabaId are hand-typed on the manual "add a number" admin form (the
+// embedded-signup flow gets them straight from Meta's own callback instead) —
+// verify the pairing against Graph at save time. Unlike Instagram's account id
+// (which Meta silently aliases, so a wrong id only breaks INBOUND routing),
+// WhatsApp has no aliasing: a wrong/inaccessible phoneId usually breaks
+// outbound sends immediately too — but failing loudly HERE, with a clear
+// message, beats discovering it via a cryptic Graph error on the first send.
+export async function verifyWhatsappPhoneId(phoneId: string, token: string): Promise<{ ok: boolean; displayPhone?: string; error?: string }> {
+  try {
+    const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(phoneId)}?fields=id,display_phone_number&access_token=${encodeURIComponent(token)}`);
+    const data = (await res.json().catch(() => null)) as { id?: string; display_phone_number?: string; error?: { message?: string } } | null;
+    if (res.ok && data?.id) return { ok: true, displayPhone: data.display_phone_number };
+    return { ok: false, error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function saveChannel(input: Partial<Channel> & { name: string; phoneId: string; wabaId: string; token: string; tenantId?: string }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -570,6 +589,24 @@ export async function derivePageToken(pageId: string, token: string): Promise<st
     const data = (await res.json().catch(() => null)) as { access_token?: string } | null;
     return res.ok && data?.access_token ? data.access_token : null;
   } catch { return null; }
+}
+
+// pageId is hand-typed on the manual "add a Page" admin form. Inbound Messenger
+// webhooks match entry.id against wa_channels.page_id with an EXACT string
+// match (getChannelByPageId) — a pasted typo/stale id silently drops every
+// inbound event while sends (keyed off the same pasted id + its own token)
+// keep working, same masking effect as the Instagram account-id bug. Ask the
+// PAGE token's own /me for its id instead of trusting the pasted value.
+export async function resolvePageId(pageToken: string): Promise<{ id?: string; name?: string; error?: string }> {
+  try {
+    const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+    const res = await fetch(`${GRAPH}/me?fields=id,name&access_token=${encodeURIComponent(pageToken)}`);
+    const data = (await res.json().catch(() => null)) as { id?: string; name?: string; error?: { message?: string } } | null;
+    if (res.ok && data?.id) return { id: data.id, name: data.name };
+    return { error: data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 // Meta only delivers Page webhooks (Messenger messages, feed comments) after

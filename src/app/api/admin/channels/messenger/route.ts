@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { saveMessengerChannel, getChannel, subscribePageToApp, derivePageToken } from "@/lib/channels";
+import { saveMessengerChannel, getChannel, subscribePageToApp, derivePageToken, resolvePageId } from "@/lib/channels";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
@@ -38,15 +38,22 @@ export async function POST(req: Request) {
     // was pasted; also self-heals channels saved with the wrong token earlier.
     const pageToken = await derivePageToken(body.pageId!, token);
     if (pageToken) token = pageToken;
+    // Trust the (now page-scoped) token's own /me over whatever id was pasted
+    // in — inbound webhooks match page_id EXACTLY, so a stale/wrong value here
+    // silently drops every message (sends keep working, masking the problem).
+    const typedPageId = body.pageId!.trim();
+    const resolvedPage = await resolvePageId(token);
+    const pageId = resolvedPage.id || typedPageId;
     const saved = await saveMessengerChannel({
-      id: body.id, tenantId, name: body.name!, pageId: body.pageId!,
+      id: body.id, tenantId, name: body.name!, pageId,
       token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, active: body.active, isDefault: body.isDefault,
     });
     // Subscribe the Page to the app — without this Meta never delivers a single
     // message event, which is exactly why a portal-added Page "didn't work".
-    const webhook = await subscribePageToApp(saved.pageId ?? body.pageId!, token);
-    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook });
+    const webhook = await subscribePageToApp(saved.pageId ?? pageId, token);
+    const idCorrected = !!resolvedPage.id && resolvedPage.id !== typedPageId;
+    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}${idCorrected ? ` — page id corrected from ${typedPageId} to Meta's canonical id` : ""}`);
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected });
   } catch (err) {
     return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0053 and 0070_channel_kb.sql are applied` }, { status: 500 });
   }
