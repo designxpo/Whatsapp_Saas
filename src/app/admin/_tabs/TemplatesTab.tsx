@@ -28,10 +28,16 @@ const newTplButton = (type: TplBtnType = "QUICK_REPLY"): TplButton =>
 const newTplCard = (): TplCard =>
   ({ headerFormat: "IMAGE", headerHandle: "", fileName: "", previewUrl: "", bodyText: "", buttons: [newTplButton("QUICK_REPLY")], uploading: false });
 
+// A URL ending in {{1}} is a DYNAMIC button — the per-message suffix (an order
+// id, a booking reference) is supplied at send time. Meta requires a sample
+// value for one, and rejects the whole submission without it, so `example` has
+// to travel with the button rather than being dropped here.
+const isDynamicUrl = (b: TplButton) => b.type === "URL" && /\{\{\s*1\s*\}\}/.test(b.url);
+
 function serializeTplButtons(btns: TplButton[]) {
   return btns.map(b =>
     b.type === "QUICK_REPLY" ? { type: b.type, text: b.text }
-    : b.type === "URL" ? { type: b.type, text: b.text, url: b.url }
+    : b.type === "URL" ? { type: b.type, text: b.text, url: b.url, ...(isDynamicUrl(b) ? { example: b.example } : {}) }
     : b.type === "PHONE_NUMBER" ? { type: b.type, text: b.text, phoneNumber: b.phoneNumber }
     : { type: b.type, example: b.example });
 }
@@ -71,7 +77,7 @@ function TplButtonEditor({ btns, max, onChange }: { btns: TplButton[]; max: numb
   return (
     <div className="space-y-2">
       {btns.map((b, i) => (
-        <div key={i} className="flex gap-2 items-center">
+        <div key={i} className="flex flex-wrap gap-2 items-center">
           <select className={`${inp} w-32 shrink-0`} value={b.type} onChange={e => set(i, { ...newTplButton(e.target.value as TplBtnType) })}>
             <option value="QUICK_REPLY">Quick reply</option>
             <option value="URL">URL</option>
@@ -81,9 +87,17 @@ function TplButtonEditor({ btns, max, onChange }: { btns: TplButton[]; max: numb
           {b.type === "COPY_CODE"
             ? <input className={`${inp} flex-1`} placeholder="Example code, e.g. SAVE20" maxLength={15} value={b.example} onChange={e => set(i, { example: e.target.value })} />
             : <input className={`${inp} w-40 shrink-0`} placeholder="Button text" maxLength={25} value={b.text} onChange={e => set(i, { text: e.target.value })} />}
-          {b.type === "URL" && <input className={`${inp} flex-1`} placeholder="https://example.com" value={b.url} onChange={e => set(i, { url: e.target.value })} />}
+          {b.type === "URL" && <input className={`${inp} flex-1`} placeholder="https://example.com/track/{{1}}" value={b.url} onChange={e => set(i, { url: e.target.value })} />}
           {b.type === "PHONE_NUMBER" && <input className={`${inp} flex-1`} placeholder="+919876543210" value={b.phoneNumber} onChange={e => set(i, { phoneNumber: e.target.value })} />}
           <button onClick={() => onChange(btns.filter((_, j) => j !== i))} className="p-1.5 text-slate-400 hover:text-red-600 shrink-0"><X className="w-4 h-4" /></button>
+          {/* Meta rejects a {{1}} URL button submitted without a sample value,
+              so this input appears exactly when the URL becomes dynamic. */}
+          {isDynamicUrl(b) && (
+            <div className="basis-full pl-32 -mt-1">
+              <input className={`${inp} w-full`} placeholder="Sample value for {{1}} — e.g. 404-0952515-9776314" value={b.example} onChange={e => set(i, { example: e.target.value })} />
+              <p className="text-[11px] text-slate-400 mt-1">Per-message link. Meta needs one sample to approve it; the real value comes from your event data (set it under Broadcast → API broadcasting).</p>
+            </div>
+          )}
         </div>
       ))}
       {btns.length < max && (
