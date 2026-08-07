@@ -9,8 +9,25 @@ their own WhatsApp / Instagram / Messenger in one click — no IDs or tokens pas
 > buttons are hidden until the env vars in **Step 6** are set in production. Nothing
 > below requires code changes.
 
-**Base URL used throughout:** `https://whatsapp-saas-navy.vercel.app`
-(swap in your custom domain everywhere if/when you add one).
+## ⚠️ Which host goes in which field
+
+There are TWO live origins and they serve different things. Pasting the wrong one
+is the single easiest way to stall a review, because Meta validates these URLs by
+fetching them and a 404 reads as "the developer didn't provide it":
+
+| Field | Host | Verified |
+|---|---|---|
+| Privacy Policy, Terms, legal pages | `https://www.thetalko.in/legal/…` | 200 |
+| Webhooks, data-deletion callback, all `/api/…` | `https://app.thetalko.in/api/…` | 200 |
+| Allowed Domains for the JavaScript SDK | `https://app.thetalko.in` | portal lives here |
+| App Domains | `thetalko.in`, `www.thetalko.in`, `app.thetalko.in` | |
+
+Do NOT use `app.thetalko.in/legal/…` — it 404s (legal pages render on the
+marketing host only). The older `whatsapp-saas-navy.vercel.app` deployment still
+answers for legal pages but **404s on `/api/webhooks/meta-deletion`**, so any app
+still pointing its deletion callback there fails Meta's check.
+
+Re-check each URL with `curl -o /dev/null -w '%{http_code}'` before submitting.
 
 ---
 
@@ -32,8 +49,8 @@ to your webhooks. Tenants never visit Business Manager.
 - [ ] A **Meta Business Manager** account for *your* company (business.facebook.com).
 - [ ] A **Facebook Developer** account (developers.facebook.com) under that business.
 - [ ] Legal pages live (already shipped):
-  - Privacy Policy → `https://whatsapp-saas-navy.vercel.app/legal/privacy`
-  - Terms of Service → `https://whatsapp-saas-navy.vercel.app/legal/terms`
+  - Privacy Policy → `https://www.thetalko.in/legal/privacy`
+  - Terms of Service → `https://www.thetalko.in/legal/terms`
 - [ ] Access to the **Vercel** project to set environment variables.
 - [ ] A screen recording + written steps of the connect flow (App Review needs this).
 
@@ -44,11 +61,13 @@ to your webhooks. Tenants never visit Business Manager.
 1. developers.facebook.com → **My Apps → Create App**.
 2. App type: **Business**. Link it to your Business Manager.
 3. In **App settings → Basic**, fill:
-   - **App Domains:** `whatsapp-saas-navy.vercel.app`
-   - **Privacy Policy URL:** `https://whatsapp-saas-navy.vercel.app/legal/privacy`
-   - **Terms of Service URL:** `https://whatsapp-saas-navy.vercel.app/legal/terms`
+   - **App Domains:** `thetalko.in`, `www.thetalko.in`, `app.thetalko.in`
+   - **Privacy Policy URL:** `https://www.thetalko.in/legal/privacy`
+   - **Terms of Service URL:** `https://www.thetalko.in/legal/terms`
    - **User Data Deletion:** either the data-deletion *instructions URL*
-     `https://whatsapp-saas-navy.vercel.app/legal/privacy` **or** a callback (see Step 7).
+     `https://www.thetalko.in/legal/data-deletion` **or** a callback (see Step 7).
+     Prefer the callback — Meta validates it by calling it, and a working callback
+     is one fewer thing a reviewer can mark incomplete.
    - App icon (1024×1024), category, contact email.
 4. Note the **App ID** and **App Secret** (App settings → Basic). → env in Step 6.
 
@@ -67,7 +86,8 @@ Add these products to the same app (left sidebar → "Add product"):
 
 ## Step 3 — Configure webhooks
 
-One callback URL per product. The **Verify Token** is any random string *you* invent —
+One callback URL per product, all on the app host — so `…` below means
+`https://app.thetalko.in`. The **Verify Token** is any random string *you* invent —
 it just has to match the env var. Use a strong random value (e.g. `openssl rand -hex 24`).
 
 | Product | Callback URL | Verify token env var | Subscribe to fields |
@@ -134,7 +154,7 @@ These produce the `config_id`s the front-end popup uses.
      requests the Instagram + Pages permissions from Step 4.
    - Copy its **Configuration ID** → `NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID`.
 3. In **Facebook Login for Business → Settings**, add to **Allowed Domains for the
-   JavaScript SDK:** `https://whatsapp-saas-navy.vercel.app`.
+   JavaScript SDK:** `https://app.thetalko.in`.
 
 ---
 
@@ -168,12 +188,12 @@ The moment `NEXT_PUBLIC_META_APP_ID` + the config IDs are present, the
 Meta prefers a real **Data Deletion Request Callback** over an instructions URL — it's
 already implemented:
 
-- **Callback URL:** `https://whatsapp-saas-navy.vercel.app/api/webhooks/meta-deletion`
+- **Callback URL:** `https://app.thetalko.in/api/webhooks/meta-deletion`
   → paste this in **App settings → Basic → User Data Deletion → Data Deletion Request URL**.
 - It verifies Meta's `signed_request` against `META_APP_SECRET`, records the request
   (table `meta_deletion_requests`, migration **0061**; falls back to the audit log if
   not yet applied), and returns the required `{ url, confirmation_code }` JSON.
-- **Status page:** `https://whatsapp-saas-navy.vercel.app/legal/data-deletion?code=…`
+- **Status page:** `https://www.thetalko.in/legal/data-deletion?code=…`
   (also reachable without a code as user-facing deletion instructions).
 
 To enable: apply migration `0061_meta_deletion.sql` in Supabase (optional — the
