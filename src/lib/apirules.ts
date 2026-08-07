@@ -1,8 +1,9 @@
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { createCampaign, getContactByPhone, dailySentCount, type Contact } from "./store";
-import { sendCampaign } from "./whatsapp";
+import { sendCampaign, fetchTemplates, dynamicUrlButtonIndexes } from "./whatsapp";
 import { credsFor } from "./channels";
+import { getTrackedUrls } from "./links";
 import { getDailyCap } from "./quota";
 
 
@@ -29,6 +30,13 @@ export interface ApiRule {
   languageCode: string;
   variables: string[];
   headerImageUrl: string | null;
+  /**
+   * One value per template URL button index, using the same token syntax as
+   * `variables` — e.g. ["{{payload.order_id}}"] fills a "Track your delivery"
+   * button declared as https://…/track/{{1}}. Empty when the template has no
+   * dynamic URL buttons.
+   */
+  buttonUrlParams: string[];
   delayValue: number;
   delayUnit: "minutes" | "hours" | "days";
   windowStartHour: number | null;
@@ -51,6 +59,10 @@ function mapRule(r: Record<string, unknown>): ApiRule {
     languageCode: (r.language_code as string) ?? "en_US",
     variables: (r.variables as string[]) ?? [],
     headerImageUrl: (r.header_image_url as string | null) ?? null,
+    // ?? [] rather than assuming the column: a rule row read before migration
+    // 0101 is applied has no such field, and a rules list that throws would
+    // take the whole Broadcast tab down.
+    buttonUrlParams: (r.button_url_params as string[]) ?? [],
     delayValue: (r.delay_value as number) ?? 0,
     delayUnit: (r.delay_unit as ApiRule["delayUnit"]) ?? "minutes",
     windowStartHour: (r.window_start_hour as number | null) ?? null,
@@ -70,7 +82,76 @@ export async function listRules(tenantId = DEFAULT_TENANT_ID): Promise<ApiRule[]
   return (data ?? []).map(mapRule);
 }
 
+/**
+ * A rule the admin configured wrong — as opposed to a DB or Meta failure. The
+ * route maps this to a 400 with the message shown verbatim, because the admin
+ * is the one who can fix it.
+ */
+export class RuleConfigError extends Error {
+  constructor(message: string) { super(message); this.name = "RuleConfigError"; }
+}
+
+/**
+ * Checks a rule's button-parameter configuration against what the template
+ * actually declares. Pure, so the rules can be tested without Meta or a DB.
+ *
+ * Meta rejects the SEND, not the configuration, in every case below — which
+ * previously meant a rule looked fine in the portal and then failed silently
+ * for every order. Returns an admin-readable message, or null when valid.
+ */
+export function validateButtonParams(opts: {
+  dynamicIndexes: number[];      // template URL buttons containing {{1}}
+  clickTracked: boolean;         // template submitted with click tracking on
+  buttonUrlParams: string[];
+}): string | null {
+  const filled = opts.buttonUrlParams.map(v => (v ?? "").trim());
+  const anyFilled = filled.some(Boolean);
+
+  if (opts.clickTracked) {
+    // A click-tracked template's URL button is {SITE}/r/{{1}} and its parameter
+    // must be the per-recipient short code, which we mint at send time.
+    return anyFilled
+      ? "This template uses click tracking, so its URL button parameter is the tracking code — remove the button values, or turn click tracking off for the template."
+      : null;
+  }
+
+  const missing = opts.dynamicIndexes.filter(i => !filled[i]);
+  if (missing.length) {
+    return `This template has a dynamic URL button (a link ending in {{1}}) at position ${missing.map(i => i + 1).join(", ")}. Meta rejects the send unless every one gets a value — set it to something like {{payload.order_id}}.`;
+  }
+
+  const extra = filled.map((v, i) => (v && !opts.dynamicIndexes.includes(i) ? i : -1)).filter(i => i >= 0);
+  if (extra.length) {
+    return `Button ${extra.map(i => i + 1).join(", ")} on this template is a fixed link, so it takes no value. Meta rejects a send that supplies one — clear it, or change the template's button URL to end in {{1}}.`;
+  }
+  return null;
+}
+
+// Reads the template from Meta and validates the rule's button params against
+// it. A template we can't read (Meta down, creds missing, template not synced
+// yet) is NOT treated as invalid — blocking configuration on a transient
+// third-party failure is worse than the send error this guards against.
+async function assertButtonParamsValid(input: { templateName: string; languageCode?: string; channelId?: string | null; buttonUrlParams?: string[] }, tenantId: string): Promise<void> {
+  const params = input.buttonUrlParams ?? [];
+  let tpl;
+  try {
+    const channel = await credsFor(input.channelId ?? null);
+    const all = await fetchTemplates(channel);
+    tpl = all.find(t => t.name === input.templateName && (!input.languageCode || t.language === input.languageCode))
+      ?? all.find(t => t.name === input.templateName);
+  } catch {
+    return;   // can't verify → don't block the save
+  }
+  if (!tpl) return;
+
+  const clickTracked = (await getTrackedUrls(input.templateName, tenantId).catch(() => [])).length > 0;
+  const err = validateButtonParams({ dynamicIndexes: dynamicUrlButtonIndexes(tpl), clickTracked, buttonUrlParams: params });
+  if (err) throw new RuleConfigError(err);
+}
+
 export async function saveRule(input: Partial<ApiRule> & { name: string; eventKey: string; templateName: string }, tenantId = DEFAULT_TENANT_ID): Promise<ApiRule> {
+  await assertButtonParamsValid(input, tenantId);
+
   // Each rule owns a hidden campaign so its sends get funnel + click analytics.
   let campaignId = input.campaignId ?? null;
   if (!input.id && !campaignId) {
@@ -95,6 +176,7 @@ export async function saveRule(input: Partial<ApiRule> & { name: string; eventKe
     language_code: input.languageCode ?? "en_US",
     variables: input.variables ?? [],
     header_image_url: input.headerImageUrl ?? null,
+    button_url_params: input.buttonUrlParams ?? [],
     delay_value: input.delayValue ?? 0,
     delay_unit: input.delayUnit ?? "minutes",
     window_start_hour: input.windowStartHour ?? null,
@@ -207,6 +289,7 @@ export interface RuleFireResult {
   detail?: string;
   sendAfter?: string;
   variables?: string[];
+  buttonUrlParams?: string[];
 }
 
 export async function processEvent(params: {
@@ -240,10 +323,15 @@ export async function processEvent(params: {
       if ((count ?? 0) > 0) { results.push({ ...base, outcome: "skipped", detail: `frequency cap (${rule.frequencyCapHours}h)` }); continue; }
     }
 
-    const variables = resolveVariables(rule.variables, { payload, contact, phone: params.phone, name: params.name ?? "" });
+    const ctx = { payload, contact, phone: params.phone, name: params.name ?? "" };
+    const variables = resolveVariables(rule.variables, ctx);
+    // Resolved here, not at drain time: a delayed send fires against a payload
+    // that is already history, and the same token syntax means an order id maps
+    // exactly like a body variable does.
+    const buttonUrlParams = resolveVariables(rule.buttonUrlParams, ctx);
     const sendAfter = computeSendAfter(rule);
 
-    if (params.dryRun) { results.push({ ...base, outcome: "dry_run_match", sendAfter, variables }); continue; }
+    if (params.dryRun) { results.push({ ...base, outcome: "dry_run_match", sendAfter, variables, buttonUrlParams }); continue; }
 
     const { error: insErr } = await db().from("wa_rule_sends").insert({
       tenant_id: tenantId,
@@ -251,6 +339,7 @@ export async function processEvent(params: {
       phone: params.phone.replace(/\D/g, ""),
       recipient_name: params.name ?? contact?.name ?? "",
       variables,
+      button_url_params: buttonUrlParams,
       payload,
       send_after: sendAfter,
     });
@@ -319,6 +408,7 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
         variables: (row.variables as string[]) ?? [],
         recipients: [{ phone: row.phone as string, fullName: (row.recipient_name as string) ?? "" }],
         headerImageUrl: rule.headerImageUrl,
+        buttonUrlParams: (row.button_url_params as string[]) ?? [],
         channel: await credsFor(rule.channelId),
         tenantId: rule.tenantId,
       });

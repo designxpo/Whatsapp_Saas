@@ -75,6 +75,17 @@ export async function sendCampaign(params: {
   variables: string[];
   recipients: { phone: string; fullName: string }[];
   headerImageUrl?: string | null;
+  /**
+   * Values for the template's dynamic URL buttons, indexed by button position —
+   * e.g. ["404-0952515-9776314"] fills a "Track your delivery" button declared
+   * as https://…/track/{{1}}. Same value for every recipient (it describes the
+   * subject of the message, not the person).
+   *
+   * Ignored when the template is click-tracked: that template's URL button is
+   * already {SITE}/r/{{1}} and its parameter must be the per-recipient short
+   * code, so the two mechanisms are mutually exclusive by construction.
+   */
+  buttonUrlParams?: (string | null)[];
   channel?: ChannelCreds;
   tenantId?: string;
 }): Promise<SendResult> {
@@ -118,6 +129,10 @@ export async function sendCampaign(params: {
       for (const c of codes) {
         components.push({ type: "button", sub_type: "url", index: String(c.index), parameters: [{ type: "text", text: c.code }] });
       }
+    } else if (params.buttonUrlParams?.length) {
+      // Not click-tracked, so the URL button's {{1}} belongs to the caller — an
+      // order id, a return id, a booking reference.
+      components.push(...urlButtonComponents(params.buttonUrlParams));
     }
 
     try {
@@ -328,12 +343,14 @@ async function sendInteractive(phone: string, interactive: Record<string, unknow
 
 // Sends one approved template to one recipient — the only message type allowed
 // outside the 24h customer-service window. bodyParams fill {{1}}..{{n}} in order.
-export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds, headerImageUrl?: string): Promise<{ id?: string; error?: string }> {
+export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds, headerImageUrl?: string, buttonUrlParams?: (string | null)[]): Promise<{ id?: string; error?: string }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const components: Record<string, unknown>[] = [];
   if (headerImageUrl?.trim()) components.push({ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl.trim() } }] });
   if (bodyParams.length) components.push({ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: t })) });
+  // Values for dynamic URL buttons (https://…/{{1}}), indexed by button position.
+  if (buttonUrlParams?.length) components.push(...urlButtonComponents(buttonUrlParams));
   // The template BODY was approved by Meta, but its parameters are runtime
   // tenant text substituted in at send time — and this is the funnel every
   // template send uses (broadcasts, canned replies, sequence steps, API rules),
@@ -802,7 +819,36 @@ export interface WaTemplate {
   language: string;
   category: string;
   rejected_reason?: string | null;
-  components: { type: string; format?: string; text?: string; buttons?: { type: string; text?: string }[]; cards?: unknown[] }[];
+  // `url` matters as much as `text`: a URL button declared as https://…/{{1}} is
+  // DYNAMIC and Meta rejects any send that doesn't supply its parameter.
+  components: { type: string; format?: string; text?: string; buttons?: { type: string; text?: string; url?: string }[]; cards?: unknown[] }[];
+}
+
+/**
+ * Indexes of this template's URL buttons that carry a {{1}} placeholder, in
+ * Meta's button ordering (index 0 = first button of any type).
+ *
+ * Meta requires a parameter for every one of these at send time. Callers use
+ * this to know how many values they must supply — and to fail loudly at
+ * configuration time rather than on a rejected send.
+ */
+export function dynamicUrlButtonIndexes(tpl: Pick<WaTemplate, "components">): number[] {
+  const buttons = tpl.components.find(c => c.type?.toUpperCase() === "BUTTONS")?.buttons ?? [];
+  return buttons.reduce<number[]>((acc, b, i) => {
+    if (b.type?.toUpperCase() === "URL" && /\{\{\s*\d+\s*\}\}/.test(b.url ?? "")) acc.push(i);
+    return acc;
+  }, []);
+}
+
+// Builds the `{type:"button", sub_type:"url", …}` components Meta expects for
+// dynamic URL buttons. Entries that are null/blank are skipped, so a caller can
+// pass a sparse array keyed by button index.
+function urlButtonComponents(params: (string | null | undefined)[]): Record<string, unknown>[] {
+  return params.flatMap((value, index) =>
+    value?.trim()
+      ? [{ type: "button", sub_type: "url", index: String(index), parameters: [{ type: "text", text: value.trim() }] }]
+      : [],
+  );
 }
 
 export async function fetchTemplates(channel?: ChannelCreds): Promise<WaTemplate[]> {

@@ -423,15 +423,25 @@ type UiCond = { source: "payload" | "contact_attr" | "contact_tag" | "contact_fi
 type UiRule = {
   id?: string; campaignId?: string | null; name: string; active: boolean; eventKey: string;
   conditions: UiCond[]; templateName: string; languageCode: string; variables: string[];
-  headerImageUrl: string | null; delayValue: number; delayUnit: string;
+  headerImageUrl: string | null; buttonUrlParams: string[]; delayValue: number; delayUnit: string;
   windowStartHour: number | null; windowEndHour: number | null; frequencyCapHours: number;
   channelId: string | null;
 };
 const NEW_RULE: UiRule = {
   name: "", active: true, eventKey: "", conditions: [], templateName: "", languageCode: "en_US",
-  variables: [], headerImageUrl: null, delayValue: 0, delayUnit: "minutes",
+  variables: [], headerImageUrl: null, buttonUrlParams: [], delayValue: 0, delayUnit: "minutes",
   windowStartHour: null, windowEndHour: null, frequencyCapHours: 0, channelId: null,
 };
+// Drops empty entries from the END only. A textarea always yields a trailing
+// blank line, which would otherwise be saved as a value for a button that
+// doesn't exist — and Meta rejects a send carrying a parameter for a button
+// that isn't dynamic.
+function trimTrailingBlank(lines: string[]): string[] {
+  let end = lines.length;
+  while (end > 0 && !lines[end - 1]) end--;
+  return lines.slice(0, end);
+}
+
 const COND_SOURCES: { v: UiCond["source"]; label: string }[] = [
   { v: "payload", label: "Event data" },
   { v: "contact_attr", label: "Contact attribute" },
@@ -449,6 +459,7 @@ function ApiBroadcasting() {
   const [templates, setTemplates] = useState<{ name: string; status: string; language: string }[]>([]);
   const [editing, setEditing] = useState<UiRule | null>(null);
   const [varsText, setVarsText] = useState("");
+  const [btnParamsText, setBtnParamsText] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -457,7 +468,7 @@ function ApiBroadcasting() {
   const [tPhone, setTPhone] = useState("");
   const [tData, setTData] = useState("{\n  \"product\": \"Starter Plan\"\n}");
   const [tBusy, setTBusy] = useState(false);
-  const [tResults, setTResults] = useState<{ rule: string; outcome: string; detail?: string; sendAfter?: string; variables?: string[] }[] | null>(null);
+  const [tResults, setTResults] = useState<{ rule: string; outcome: string; detail?: string; sendAfter?: string; variables?: string[]; buttonUrlParams?: string[] }[] | null>(null);
   const [tErr, setTErr] = useState<string | null>(null);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -472,6 +483,7 @@ function ApiBroadcasting() {
     const rule = r ?? NEW_RULE;
     setEditing({ ...rule, conditions: rule.conditions.map(c => ({ ...c })) });
     setVarsText((r?.variables ?? []).join("\n"));
+    setBtnParamsText((r?.buttonUrlParams ?? []).join("\n"));
     setMsg(null);
   }
   const setEd = (patch: Partial<UiRule>) => setEditing(e => (e ? { ...e, ...patch } : e));
@@ -484,7 +496,15 @@ function ApiBroadcasting() {
     try {
       const res = await fetch("/api/admin/api-rules", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...editing, eventKey: editing.eventKey.trim(), variables: varsText.split(/\r?\n/).map(v => v.trim()).filter(Boolean) }),
+        body: JSON.stringify({
+          ...editing,
+          eventKey: editing.eventKey.trim(),
+          variables: varsText.split(/\r?\n/).map(v => v.trim()).filter(Boolean),
+          // NOT .filter(Boolean): a line's POSITION is the button index, so
+          // dropping a blank first line would move button 2's value onto
+          // button 1. Only trailing blanks are trimmed.
+          buttonUrlParams: trimTrailingBlank(btnParamsText.split(/\r?\n/).map(v => v.trim())),
+        }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
@@ -592,6 +612,17 @@ function ApiBroadcasting() {
             <p className="text-[11px] text-slate-400 mt-1">Tokens: <code className="bg-slate-100 px-1 rounded">{"{{payload.x}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{contact.name}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{contact.attr.key}}"}</code> — or plain literal text.</p>
           </div>
 
+          {/* Only relevant for templates whose URL button ends in {{1}} — the
+              "Track your delivery" pattern, where each message deep-links to a
+              specific order. Left blank for a fixed link, which is the norm. */}
+          <div>
+            <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Button link values <span className="font-normal normal-case">— one per URL button, in button order</span></p>
+            <textarea className={`${inp} w-full font-mono`} rows={2} placeholder={"{{payload.order_id}}"} value={btnParamsText} onChange={e => setBtnParamsText(e.target.value)} />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Only for a template whose button link ends in <code className="bg-slate-100 px-1 rounded">{"{{1}}"}</code> — e.g. <code className="bg-slate-100 px-1 rounded">https://shop.com/track/{"{{1}}"}</code> becomes a per-order link. Leave blank for fixed links.
+            </p>
+          </div>
+
           <div className="flex items-end gap-4 flex-wrap">
             <div>
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Delay</p>
@@ -685,6 +716,7 @@ function ApiBroadcasting() {
                   <p className="text-slate-500 mt-0.5">
                     at {r.sendAfter ? new Date(r.sendAfter).toLocaleString() : "now"}
                     {r.variables?.length ? ` · variables: ${r.variables.map(v => `"${v}"`).join(", ")}` : ""}
+                    {r.buttonUrlParams?.some(Boolean) ? ` · button links: ${r.buttonUrlParams.map(v => `"${v}"`).join(", ")}` : ""}
                   </p>
                 )}
               </div>

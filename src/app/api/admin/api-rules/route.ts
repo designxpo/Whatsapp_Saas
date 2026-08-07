@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listRules, saveRule, setRuleActive, deleteRule, type ApiRule } from "@/lib/apirules";
+import { listRules, saveRule, setRuleActive, deleteRule, RuleConfigError, type ApiRule } from "@/lib/apirules";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -34,6 +34,9 @@ export async function POST(req: Request) {
     logActivity(await currentUser(), "rule.save", `${rule.name} (${rule.eventKey})`);
     return NextResponse.json({ success: true, rule });
   } catch (err) {
+    // A misconfigured rule is the admin's to fix, not a server fault — 400 with
+    // the message verbatim, so the UI can show it instead of "something failed".
+    if (err instanceof RuleConfigError) return NextResponse.json({ error: err.message }, { status: 400 });
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
