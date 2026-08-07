@@ -9,8 +9,8 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-07-30";
-export const LEGAL_EFFECTIVE = "30 July 2026";
+export const LEGAL_VERSION = "2026-08-07";
+export const LEGAL_EFFECTIVE = "7 August 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -145,19 +145,26 @@ const PRIVACY_DOC: LegalDoc = {
       ul([
         "Meta Platforms — to send and receive messages and comments on WhatsApp, Instagram and Messenger.",
         "Google — to read, post and moderate comments via YouTube API Services on a YouTube channel you connect, and to read and reply to reviews via the Google Business Profile APIs on a Business Profile you connect.",
-        "AI providers you choose (such as Google Gemini, OpenAI or Anthropic) — to generate replies using your key.",
+        "AI providers you choose (such as Google Gemini, OpenAI or Anthropic) — to generate replies using your own API key, billed to your provider account.",
+        "OpenAI, L.L.C. — to screen outbound messages and uploaded images against our content-safety rules before they are sent. This check runs on our key for every business, separately from the AI provider you choose for replies.",
         "Payment processors (such as Stripe or Razorpay) — to handle subscriptions and payments.",
-        "Infrastructure and hosting providers (such as our cloud database and hosting platform) — to store and serve data.",
+        "Vercel Inc. — application hosting.",
+        "Supabase, Inc. — managed database and file storage.",
         "Professional advisers, and authorities where required by law or to protect rights and safety.",
       ]),
       p(`We may also disclose information in connection with a merger, acquisition or sale of assets, subject to this Policy.`),
+      // Spelled out as its own paragraph rather than left as one bullet: this is
+      // the limb platform data-handling reviews ask about directly, and a policy
+      // that only gestures at it can't be pointed to as the answer.
+      p(`Requests from public authorities. We may disclose personal information to courts, regulators, law-enforcement or other public authorities where we are legally required to do so. We assess each request for legal validity and scope, disclose only what the request compels rather than the wider account, keep a record of what was disclosed and to whom, and notify the affected business unless we are legally prohibited from doing so. We have not received a national-security request for personal information.`),
     ] },
     { heading: "7. Google API Services", blocks: [
       p(`Where you connect a YouTube channel, ${C}'s use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy (https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Data obtained through YouTube API Services is also subject to the Google Privacy Policy (https://policies.google.com/privacy), and your use of a connected YouTube channel is subject to the YouTube Terms of Service (https://www.youtube.com/t/terms).`),
       p(`We use YouTube API Services and Google Business Profile data only to provide the comment-automation, moderation and review-reply features you enable for your own connected channel and Business Profile — never to serve ads, to train generalised AI or machine-learning models, or for any purpose you have not requested. Access tokens are stored encrypted and are used solely on your instructions.`),
     ] },
     { heading: "8. International transfers", blocks: [
-      p(`Your information may be processed in countries other than your own. Where we transfer personal data internationally, we use appropriate safeguards, such as standard contractual clauses, where required by applicable law.`),
+      p(`${LEGAL_META.legalEntity} is established in ${LEGAL_META.governingLaw}, and your information may be processed outside your own country. In particular, the AI, hosting and content-safety providers named in section 6 — Anthropic, PBC, OpenAI, L.L.C., Google LLC and Vercel Inc. — are established in the United States and process data there. Our managed database and file storage are provided by Supabase, Inc. in the hosting region configured for our workspace.`),
+      p(`Where we transfer personal data internationally, we use appropriate safeguards, such as standard contractual clauses, where required by applicable law.`),
     ] },
     { heading: "9. Data retention", blocks: [
       p(`We retain personal information for as long as your account is active or as needed to provide the Service, and thereafter only as required to comply with legal obligations, resolve disputes and enforce agreements. You can request export or deletion of Your Data; on account termination we delete or anonymise data within a reasonable period, subject to legal retention requirements. If you disconnect a YouTube channel or Google Business Profile, we delete the associated OAuth tokens promptly and stop accessing the Google API on your behalf.`),
