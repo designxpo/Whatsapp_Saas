@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
-import { getChannelByIgId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
+import { getChannelByIgId, getChannelById, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, logSendFailure, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
@@ -144,6 +144,15 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
     if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
   if (conv.isComment) await setConversationComment(conv.id, false);   // a real DM → move to Chats
+  // Anchor to the conversation's OWN account. `channel` came from the webhook's
+  // account id, but if this thread already belongs to a different IG channel
+  // (e.g. the same user first engaged another of the tenant's accounts), persona,
+  // KB and send creds must follow the account the conversation is on — not bleed
+  // in the wrong (or global-default) persona/KB. New threads: ids match, no-op.
+  if (conv.channelId && conv.channelId !== channel.id) {
+    const owner = await getChannelById(conv.channelId);
+    if (owner) channel = owner;
+  }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, channelId: channel.id, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24-hour window
   // Capture a phone the lead shares (IG has no number of its own) so the chat can

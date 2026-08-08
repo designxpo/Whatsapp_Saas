@@ -744,7 +744,14 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     // Follow the customer: channel_id tracks the number/account they LAST wrote
     // to, so manual replies, templates and the Live Chat badge use the number
     // the customer is actually talking to (they can message any of our numbers).
-    if (channelId && row.channel_id !== channelId) patch.channel_id = channelId;
+    //
+    // WhatsApp ONLY: a tenant has one brand across many numbers, so following the
+    // customer to their last number is right. IG/Messenger/web-chat channels are
+    // DISTINCT accounts, each with its own persona + KB — re-pointing a live
+    // conversation at a different account there would bleed the wrong (often the
+    // global-default) persona/KB into the thread. Keep those anchored to the
+    // account the conversation began on.
+    if (channelId && row.channel_id !== channelId && platform === "whatsapp") patch.channel_id = channelId;
     if (Object.keys(patch).length) {
       const { error } = await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("phone", p);
       if (!error) Object.assign(row, patch);

@@ -212,6 +212,19 @@ export async function getChannelByIgId(igUserId: string): Promise<Channel | null
   } catch { return null; }
 }
 
+// Resolve a channel by its own id. Used to re-anchor an inbound to the account a
+// conversation actually belongs to (see the IG webhook): the webhook resolves a
+// channel from the platform account id in the payload, but a conversation is the
+// durable record of which account/persona/KB the thread is on — so persona, KB
+// and send creds must follow THAT channel, not whichever the payload named.
+export async function getChannelById(id: string): Promise<Channel | null> {
+  if (!id) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*").eq("id", id).maybeSingle();
+    return data ? mapChannel(data as Record<string, unknown>) : null;
+  } catch { return null; }
+}
+
 // Inbound Messenger routing: the page webhook's entry.id is the Facebook Page id.
 // Filtered by kind so it never matches an Instagram channel that has the same
 // linked Page (IG channels also store page_id).
