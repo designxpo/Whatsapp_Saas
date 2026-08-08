@@ -228,7 +228,7 @@ function ChannelsManager() {
   const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [profileFor, setProfileFor] = useState<{ id: string; name: string } | null>(null);
+  const [profileFor, setProfileFor] = useState<{ id: string; name: string; coex: boolean } | null>(null);
 
   const load = useCallback(async () => {
     const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
@@ -323,7 +323,7 @@ function ChannelsManager() {
             <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
           </div>
-          <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name }); setForm(null); }}
+          <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
             className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
           <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -337,7 +337,7 @@ function ChannelsManager() {
         </p>
       )}
 
-      {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} onClose={() => setProfileFor(null)} />}
+      {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} coex={profileFor.coex} onClose={() => setProfileFor(null)} />}
 
       {form && (
         <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
@@ -388,7 +388,7 @@ const WA_VERTICAL_OPTS: { v: string; label: string }[] = [
   { v: "GOVT", label: "Government" }, { v: "NONPROFIT", label: "Non-profit" }, { v: "OTHER", label: "Other" },
 ];
 
-function BusinessProfileEditor({ channelId, name, onClose }: { channelId: string; name: string; onClose: () => void }) {
+function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: string; name: string; coex: boolean; onClose: () => void }) {
   const [p, setP] = useState({ about: "", description: "", email: "", address: "", vertical: "", website: "" });
   const [photoUrl, setPhotoUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -441,28 +441,43 @@ function BusinessProfileEditor({ channelId, name, onClose }: { channelId: string
       </div>
       {loading ? <p className="text-xs text-ink-400">Loading…</p> : (
         <>
+          {/* Coexistence (APP+API) numbers: Meta keeps the business profile owned by
+              the WhatsApp Business phone app and rejects Cloud API profile writes with
+              (#200), no matter the token's permissions. So show it read-only with the
+              one place it CAN be edited, rather than an editable form that always errors. */}
+          {coex && (
+            <div className="rounded-control border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+              This number is also on the <b>WhatsApp Business app</b> (APP+API). Meta manages its
+              business profile there, so it can’t be edited from the portal. Edit it in the app
+              (<b>Settings → Business tools → Business profile</b>) and it syncs back here.
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <ConvAvatar url={photoUrl} label={name} size={56} />
-            <div>
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
-              <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Change photo</button>
-              <p className="text-[10px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
-            </div>
+            {!coex && (
+              <div>
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png" hidden onChange={e => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
+                <button onClick={() => fileRef.current?.click()} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Change photo</button>
+                <p className="text-[10px] text-ink-400 mt-1">Square JPEG/PNG, ≥192px.</p>
+              </div>
+            )}
           </div>
-          <input className={`${inp} w-full`} placeholder="About (status, ≤139 chars)" maxLength={139} value={p.about} onChange={e => setP({ ...p, about: e.target.value })} />
-          <textarea className={`${inp} w-full`} rows={2} placeholder="Description (≤512 chars)" maxLength={512} value={p.description} onChange={e => setP({ ...p, description: e.target.value })} />
+          <input className={`${inp} w-full disabled:opacity-70`} placeholder="About (status, ≤139 chars)" maxLength={139} disabled={coex} value={p.about} onChange={e => setP({ ...p, about: e.target.value })} />
+          <textarea className={`${inp} w-full disabled:opacity-70`} rows={2} placeholder="Description (≤512 chars)" maxLength={512} disabled={coex} value={p.description} onChange={e => setP({ ...p, description: e.target.value })} />
           <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Email" value={p.email} onChange={e => setP({ ...p, email: e.target.value })} />
-            <input className={inp} placeholder="Website (https://…)" value={p.website} onChange={e => setP({ ...p, website: e.target.value })} />
-            <input className={inp} placeholder="Address" value={p.address} onChange={e => setP({ ...p, address: e.target.value })} />
-            <select className={inp} value={p.vertical} onChange={e => setP({ ...p, vertical: e.target.value })}>
+            <input className={`${inp} disabled:opacity-70`} placeholder="Email" disabled={coex} value={p.email} onChange={e => setP({ ...p, email: e.target.value })} />
+            <input className={`${inp} disabled:opacity-70`} placeholder="Website (https://…)" disabled={coex} value={p.website} onChange={e => setP({ ...p, website: e.target.value })} />
+            <input className={`${inp} disabled:opacity-70`} placeholder="Address" disabled={coex} value={p.address} onChange={e => setP({ ...p, address: e.target.value })} />
+            <select className={`${inp} disabled:opacity-70`} disabled={coex} value={p.vertical} onChange={e => setP({ ...p, vertical: e.target.value })}>
               {WA_VERTICAL_OPTS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
             </select>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
-            {msg && <p className={`text-xs ${/fail|error|invalid|required|missing/i.test(msg) ? "text-red-500" : "text-emerald-600"}`}>{msg}</p>}
-          </div>
+          {!coex && (
+            <div className="flex items-center gap-3">
+              <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
+              {msg && <p className={`text-xs ${/fail|error|invalid|required|missing/i.test(msg) ? "text-red-500" : "text-emerald-600"}`}>{msg}</p>}
+            </div>
+          )}
         </>
       )}
     </div>
