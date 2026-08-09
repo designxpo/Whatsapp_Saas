@@ -599,18 +599,29 @@ export async function looksLikeCity(text: string, tenantId = "00000000-0000-0000
 // send (empty output, fully stripped, or the tenant has no AI key).
 export async function composeFollowup(
   history: { role: "user" | "assistant"; body: string }[],
-  opts: { tenantId?: string; agentName?: string | null } = {},
+  opts: { tenantId?: string; agentName?: string | null; customerName?: string | null } = {},
 ): Promise<{ text: string; groundingActions: GroundingAction[] } | null> {
   const tenantId = opts.tenantId ?? "00000000-0000-0000-0000-000000000001";
   const transcript = (history ?? []).filter(m => m.body?.trim()).slice(-12);
   if (!transcript.length) return null;
   const convText = transcript.map(m => `${m.role === "user" ? "Customer" : "Us"}: ${m.body.trim()}`).join("\n");
+  // The customer's real name comes ONLY from the stored record — this composer
+  // gets no "remembered profile" block (unlike generateReply), so left to itself
+  // it improvises a name off the transcript and shortens it ("Priyesh" → "Pri").
+  // Give it the exact name and forbid nicknaming; if we have no usable name (empty,
+  // a placeholder, or phone-like), tell it to address no one by name at all.
+  const nm = (opts.customerName ?? "").trim();
+  const usableName = nm && /\p{L}/u.test(nm) && !/^\+?[\d\s()+-]+$/.test(nm) ? nm : "";
+  const nameRule = usableName
+    ? `• If you address them by name, use EXACTLY "${usableName}" — copy it verbatim. NEVER shorten it, nickname it, abbreviate it to initials, or swap in any other name. When unsure, use no name at all.`
+    : "• Do NOT address them by any name — you don't reliably know it, so never guess, shorten, or invent one.";
   const system = [
     "You are the SAME business assistant continuing an existing chat — not a new conversation.",
     "The customer has gone quiet: they did not reply to your last message. Write ONE brief, warm follow-up nudge to gently re-engage them.",
     "RULES:",
     "• 1–2 short sentences. Friendly and low-pressure — never pushy, needy, or guilt-trippy.",
     "• This is a CONTINUATION: do NOT greet from scratch, do NOT open with hi/hello as if it's first contact, and NEVER introduce yourself by any name.",
+    nameRule,
     "• If your last message asked a question, gently re-offer to help with that. Otherwise, lightly check whether they have any questions.",
     "• Introduce NO new facts — no prices, fees, dates, durations, phone numbers, email addresses, links, or claims that aren't already present in the conversation above. If you have nothing specific to add, stay general ('just checking if you had any questions about …').",
     "• Reply in the SAME language the customer was using (English by default; clean Hinglish in Latin script only if they wrote Hinglish).",

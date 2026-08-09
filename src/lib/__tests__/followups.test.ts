@@ -65,4 +65,31 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
     expect(r).toBeNull();
     expect(runChat).not.toHaveBeenCalled();
   });
+
+  // The bug this guards: the composer sees no profile block, so without the real
+  // name it improvised a shortened one ("Priyesh" → "Pri"). We now hand it the
+  // exact stored name and forbid nicknaming it.
+  it("instructs the model to use the customer's exact name and never shorten it", async () => {
+    runChat.mockResolvedValue({ text: "Just checking in, Priyesh — any questions?", toolCalls: [] });
+    await composeFollowup(TRANSCRIPT, { customerName: "Priyesh" });
+    const system = (runChat.mock.calls[0][0] as { system: string }).system;
+    expect(system).toContain('use EXACTLY "Priyesh"');
+    expect(system).toMatch(/NEVER shorten it, nickname it/i);
+  });
+
+  it("tells the model to use NO name when none is known", async () => {
+    runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
+    await composeFollowup(TRANSCRIPT);
+    const system = (runChat.mock.calls[0][0] as { system: string }).system;
+    expect(system).toMatch(/Do NOT address them by any name/i);
+    expect(system).not.toContain("use EXACTLY");
+  });
+
+  it("ignores a phone-number-like 'name' and falls back to no-name", async () => {
+    runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
+    await composeFollowup(TRANSCRIPT, { customerName: "+91 83688 72108" });
+    const system = (runChat.mock.calls[0][0] as { system: string }).system;
+    expect(system).toMatch(/Do NOT address them by any name/i);
+    expect(system).not.toContain("use EXACTLY");
+  });
 });

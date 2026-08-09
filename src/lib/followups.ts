@@ -145,7 +145,12 @@ export async function drainAiFollowups(max = 50): Promise<number> {
       // restored and this conversation is simply left alone.
       if (channel?.mode === "manual") { await release(); continue; }
       const history = await getConvHistory(id, 16, tenantId);
-      const nudge = await composeFollowup(history, { tenantId, agentName: channel?.name ?? null });
+      // Pass the stored display name so the nudge addresses them by their REAL
+      // name (not a name the model invents off the transcript). Drop the generic
+      // "Website visitor" placeholder — composeFollowup then uses no name.
+      const convName = ((r.name as string | null) ?? "").trim();
+      const customerName = convName && convName.toLowerCase() !== "website visitor" ? convName : null;
+      const nudge = await composeFollowup(history, { tenantId, agentName: channel?.name ?? null, customerName });
       // Nothing safe to say (no AI key / busy, or every claim stripped) — release so a
       // later tick can retry; don't burn an attempt on a no-op.
       if (!nudge?.text) { await release(); continue; }
