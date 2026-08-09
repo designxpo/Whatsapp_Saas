@@ -47,7 +47,8 @@ export function SiteNav() {
           ))}
         </div>
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/waitlist" className={`rounded-full ${GRADIENTS.brand} px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(106,92,255,0.8)] transition-opacity hover:opacity-90`}>Join the waitlist</Link>
+          <Link href="/login" className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#0783fd]">Log in</Link>
+          <Link href="/signup" className={`rounded-full ${GRADIENTS.brand} px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(106,92,255,0.8)] transition-opacity hover:opacity-90`}>Start free trial</Link>
         </div>
         <button onClick={() => setOpen(v => !v)} className="md:hidden text-slate-700" aria-label="Toggle menu">
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -60,7 +61,8 @@ export function SiteNav() {
               <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="rounded-lg px-2 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 hover:text-[#0783fd]">{l.label}</Link>
             ))}
             <div className="mt-2 flex flex-col gap-2">
-              <Link href="/waitlist" onClick={() => setOpen(false)} className={`rounded-full ${GRADIENTS.brand} px-4 py-2 text-center text-sm font-bold text-white`}>Join the waitlist</Link>
+              <Link href="/login" onClick={() => setOpen(false)} className="rounded-full border border-slate-200 px-4 py-2 text-center text-sm font-bold text-slate-700 hover:bg-slate-50">Log in</Link>
+              <Link href="/signup" onClick={() => setOpen(false)} className={`rounded-full ${GRADIENTS.brand} px-4 py-2 text-center text-sm font-bold text-white`}>Start free trial</Link>
             </div>
           </div>
         </div>

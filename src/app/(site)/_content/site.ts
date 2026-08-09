@@ -21,9 +21,9 @@ export const HERO = {
 
   subtitle:
     "AI that replies, qualifies and sells everywhere your customers show up — WhatsApp, Instagram, Facebook, YouTube and your website — and keeps your Google reviews answered. One inbox, on autopilot.",
-  primary: { label: "Join the waitlist", href: "/waitlist" },
+  primary: { label: "Start free trial", href: "/signup" },
   secondary: { label: "See pricing", href: "/pricing" },
-  note: "Launching soon · Early access · Bring your own AI key",
+  note: "14-day free trial · No credit card · Bring your own AI key",
 };
 
 export const LOGOS = ["D2C brands", "EdTech", "Real estate", "Healthcare", "Travel", "Agencies"];
@@ -74,17 +74,17 @@ export const TIERS: Tier[] = [
   {
     name: "Starter", priceMonthly: 1999, tagline: "For solo founders getting started",
     features: ["1 WhatsApp number", "Website web-chat widget", "YouTube comment automation", "1,000 conversations / mo", "AI auto-replies (your key)", "Comment-to-DM automation", "Broadcasts & templates", "Unified inbox", "2 team seats"],
-    cta: "Join the waitlist", href: "/waitlist?plan=Starter",
+    cta: "Start free trial", href: "/signup?plan=Starter",
   },
   {
     name: "Growth", priceMonthly: 5999, tagline: "For growing teams that automate", highlighted: true,
     features: ["WhatsApp, Instagram, Messenger & web chat", "10,000 conversations / mo", "Chatbot flows & drip sequences", "Comment automation — buttons, rotating & reply-only", "YouTube comment automation & moderation", "AI review replies — Google Business Profile", "AI conversation briefs", "Catalog & cart recovery", "Growth tools & ad → chat", "10 team seats"],
-    cta: "Join the waitlist", href: "/waitlist?plan=Growth",
+    cta: "Start free trial", href: "/signup?plan=Growth",
   },
   {
     name: "Scale", priceMonthly: null, customLabel: "Custom", tagline: "For high-volume & multi-brand",
     features: ["Every channel, unlimited numbers", "Custom message volume", "Multiple YouTube channels", "Google review management, multi-location", "Priority support & onboarding", "Dedicated success manager", "Advanced roles & audit logs", "Custom integrations"],
-    cta: "Join the waitlist", href: "/waitlist?plan=Scale",
+    cta: "Talk to sales", href: "/contact",
   },
 ];
 
@@ -94,12 +94,12 @@ export const CREATOR_TIERS: Tier[] = [
   {
     name: "Creator", priceMonthly: 999, tagline: "For individual creators & influencers",
     features: ["1 Instagram account", "3,000 conversations / mo", "AI auto-replies (your key)", "Comment-to-DM, keyword & rotating replies", "Lead capture / link-in-bio", "Basic chatbot flows", "Merch catalog & checkout", "2 team seats"],
-    cta: "Join the waitlist", href: "/waitlist?plan=Creator",
+    cta: "Start free trial", href: "/signup?plan=Creator",
   },
   {
     name: "Creator Pro", priceMonthly: 2999, tagline: "For creator-led brands & agencies", highlighted: true,
     features: ["Up to 3 Instagram accounts", "Messenger & website web chat", "1 YouTube channel — comment automation", "10,000 conversations / mo", "Reply-only & multi-button comment automation", "AI review replies + conversation briefs", "Drip sequences & WhatsApp Forms", "Meta Ads & AI Hub", "5 team seats", "Priority support"],
-    cta: "Join the waitlist", href: "/waitlist?plan=Creator Pro",
+    cta: "Start free trial", href: "/signup?plan=Creator Pro",
   },
 ];
 
