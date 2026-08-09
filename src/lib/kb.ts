@@ -72,16 +72,113 @@ async function extractDocx(buffer: Buffer): Promise<string> {
   return value;
 }
 
-async function extractUrl(url: string): Promise<string> {
+// Placeholder copy a page shows BEFORE client-side JS renders the real content —
+// "Loading…", "Preparing awesomeness…", a bare "Skip to content". Real content
+// always dwarfs any spinner, so a short body that reads like this means nothing
+// actually rendered on the server.
+function isLoadingShell(text: string): boolean {
+  const t = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!t) return true;
+  if (t.length > 300) return false;   // real content is longer than any spinner copy
+  // Spinner-specific — deliberately NOT a bare "loading" (a real "loading dock"
+  // page must survive). Only "loading…/loading..." or "<thing> is loading" count.
+  return t === "skip to content"
+    || /\b(?:preparing|please wait|just a moment|one moment|redirecting)\b/.test(t)
+    || /\bloading\s*(?:[…·•]|\.\.\.|$)/.test(t)
+    || /\b(?:is|now|still|page|content|site)\s+loading\b/.test(t);
+}
+
+// Keep human prose, drop the code/markup/CSS that also lives in an embedded payload
+// (Tailwind class lists, RSC ids, minified JS, JSON keys). Deliberately recall-
+// biased: a little noise is harmless to embeddings, but dropping real sentences
+// costs KB coverage.
+function looksLikeProse(s: string): boolean {
+  const t = s.trim();
+  if (t.length < 20 || t.length > 4000) return false;
+  const words = t.split(/\s+/);
+  if (words.length < 5) return false;                                                              // needs to be a phrase, not a token
+  if (/[{}<>=\\|]|=>|::|\/\/|@media|;\s*}|\$\{|\bfunction\b/.test(t)) return false;                 // code / markup
+  if (/(?:^|\s)(?:sm|md|lg|xl|2xl|hover|focus|active|group|peer|dark|first|last|odd|even|disabled|before|after|placeholder|motion-safe|motion-reduce|aria|data)[-:]/.test(t)) return false;  // utility classes
+  const letters = (t.match(/\p{L}/gu) || []).length;
+  if (letters / t.length < 0.6) return false;                                                       // enough real letters
+  const tokeny = words.filter(w => /[-_]/.test(w) || /\d/.test(w)).length;
+  if (tokeny / words.length > 0.4) return false;                                                    // class-list / id soup
+  return true;
+}
+
+// Recover readable text embedded in the INITIAL HTML by JS frameworks — WITHOUT a
+// headless browser (which won't run on serverless). A React/Next site serves a
+// near-empty DOM but ships the real page text in one of:
+//   • Next.js App Router RSC flight data  (self.__next_f.push([1,"…"]))
+//   • JSON script blocks                  (__NEXT_DATA__, <script type="application/json">)
+//   • JSON-LD structured data             (<script type="application/ld+json">)
+// Parsing them is what lets a JS-rendered site ingest at all instead of storing a
+// spinner. Excluding the double-quote from the prose scan makes JSON boundaries
+// split keys from values, so we mine clean string VALUES, not "key":"value" soup.
+export function extractEmbeddedText(html: string): string {
+  const out: string[] = [];
+  const push = (s: string) => { if (looksLikeProse(s)) out.push(s.trim()); };
+
+  // 1) RSC flight payload — concatenate every pushed chunk, then mine prose runs
+  //    out of the (RSC-encoded) blob; the scan breaks at markup/quote boundaries.
+  let flightBlob = "";
+  for (const m of html.matchAll(/self\.__next_f\.push\(\[\d+,\s*("(?:[^"\\]|\\.)*")\s*\]\)/g)) {
+    try { flightBlob += JSON.parse(m[1]); } catch { /* skip malformed chunk */ }
+  }
+  if (flightBlob) for (const frag of flightBlob.match(/[\p{L}][\p{L}\p{N} ,.'’:;!?&()/–—-]{19,}/gu) || []) push(frag);
+
+  // 2) + 3) JSON / JSON-LD script blocks — walk every string value (clean by design).
+  for (const m of html.matchAll(/<script[^>]*type=["'](?:application\/json|application\/ld\+json)["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    try {
+      const walk = (n: unknown): void => {
+        if (typeof n === "string") push(n);
+        else if (Array.isArray(n)) n.forEach(walk);
+        else if (n && typeof n === "object") Object.values(n as Record<string, unknown>).forEach(walk);
+      };
+      walk(JSON.parse(m[1]));
+    } catch { /* not JSON — skip */ }
+  }
+
+  // De-dupe, preserve first-seen order (keeps the page's natural reading flow).
+  return [...new Set(out)].join("\n");
+}
+
+// Turn a fetched HTML page into KB text. Prefers the rendered DOM (server-rendered
+// pages — unchanged behaviour), and when that's thin (a JS-rendered site that ships
+// only a loading shell) recovers the content the framework embedded in the initial
+// HTML instead. Throws a guidance error when nothing readable exists, so the doc
+// FAILS LOUDLY with a fix rather than silently storing a spinner as "ready". Split
+// out from extractUrl so it's unit-testable with no network fetch.
+export async function extractReadableText(html: string): Promise<string> {
   const cheerio = await import("cheerio");
+  const $ = cheerio.load(html);
+  $("script, style, noscript, nav, header, footer, svg").remove();
+  const dom = ($("main").text() || $("article").text() || $("body").text())
+    .replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+
+  // Server-rendered page with real content: use it directly — the embedded payload
+  // would only duplicate it. Keeps every currently-working SSR doc identical.
+  if (dom.length >= 500 && !isLoadingShell(dom)) return dom;
+
+  // Thin/loading DOM → recover the framework-embedded content, keeping the richer
+  // of the two (some sites SSR a little AND embed the rest).
+  const embedded = extractEmbeddedText(html);
+  const best = embedded.length > dom.length ? embedded : dom;
+
+  if (best.replace(/\s/g, "").length < 80 || isLoadingShell(best)) {
+    throw new Error(
+      "The page loaded but exposed no readable text — it renders its content with JavaScript. " +
+      "Paste the text into the KB as a Text document, or point the URL at a server-rendered page.",
+    );
+  }
+  return best;
+}
+
+async function extractUrl(url: string): Promise<string> {
   // SSRF guard: validates the URL (and redirects) resolve to a public address.
   const res = await safeFetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; wa-broadcaster KB ingest)" } });
   if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
-  const html = await res.text();
-  const $ = cheerio.load(html);
-  $("script, style, noscript, nav, header, footer, svg").remove();
-  const main = $("main").text() || $("article").text() || $("body").text();
-  return main.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  return extractReadableText(await res.text());
 }
 
 export async function extractText(sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }): Promise<string> {
