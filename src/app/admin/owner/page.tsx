@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Users, CreditCard, ShieldCheck, Ban, Settings, LogOut, LogIn, Save, Inbox, Trash2, Mail, LayoutDashboard, Activity, Megaphone, X } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
@@ -58,6 +58,9 @@ export default function OwnerPortal() {
   const [open, setOpen] = useState<string | null>(null);
   const [draft, setDraft] = useState<Tenant | null>(null);
   const [busy, setBusy] = useState(false);
+  // One styled confirm dialog powers every destructive action (tenant/plan/
+  // waitlist delete) — no native window.prompt/confirm. See ConfirmDialog below.
+  const [confirmCfg, setConfirmCfg] = useState<ConfirmCfg | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [anns, setAnns] = useState<Ann[]>([]);
   const [flags, setFlags] = useState<{ key: string; enabled: boolean; description: string | null }[]>([]);
@@ -87,10 +90,15 @@ export default function OwnerPortal() {
     setWaitlist(ws => ws.map(w => (w.id === id ? { ...w, status } : w)));   // optimistic
     await fetch("/api/owner/waitlist", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, status }) }).catch(() => {});
   }
-  async function delWaitlist(id: string) {
-    if (!confirm("Delete this waitlist submission?")) return;
-    setWaitlist(ws => ws.filter(w => w.id !== id));
-    await fetch("/api/owner/waitlist", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+  function delWaitlist(id: string) {
+    setConfirmCfg({
+      title: "Delete submission",
+      message: "Delete this waitlist submission? This can’t be undone.",
+      onConfirm: async () => {
+        setWaitlist(ws => ws.filter(w => w.id !== id));
+        await fetch("/api/owner/waitlist", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
+      },
+    });
   }
   async function toggleFlag(key: string, enabled: boolean) {
     setFlags(fs => fs.map(f => f.key === key ? { ...f, enabled } : f));
@@ -116,19 +124,31 @@ export default function OwnerPortal() {
     } finally { setMatrixBusy(false); }
   }
 
-  async function removeTenant(t: Tenant) {
+  // The server requires the typed name to equal (company || name) exactly, so
+  // the dialog's requireTyping mirrors that check — the confirm button can never
+  // be clicked into a 400.
+  function askDeleteTenant(t: Tenant) {
     const name = t.company || t.name;
-    const typed = window.prompt(`Permanently delete "${name}" and ALL its data? Type the name to confirm:`);
-    if (typed === null) return;
-    const res = await fetch("/api/owner/tenants", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, confirmName: typed }) });
-    if (!res.ok) { const d = await res.json().catch(() => ({})); alert(d.error || "Delete failed"); return; }
-    closeEditor(); load();
+    setConfirmCfg({
+      title: "Delete tenant",
+      confirmLabel: "Delete permanently",
+      requireTyping: name,
+      message: <>This permanently deletes <b className="text-ink-900">{name}</b> and <b>all</b> its data — contacts, conversations, channels and settings. This can’t be undone.</>,
+      onConfirm: async () => {
+        const res = await fetch("/api/owner/tenants", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: t.id, confirmName: name }) });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || "Delete failed"); }
+        closeEditor(); load();
+      },
+    });
   }
 
   const planMix = plans.length ? plans.map(p => ({ key: p.key, name: p.name, count: tenants.filter(t => t.plan === p.key).length })) : [];
   // Tenant-initiated plan-change requests (from the in-app billing page when
   // self-serve Stripe is off) — surfaced here so the owner can action them.
-  const planRequests = audit.filter(a => a.action === "billing.request").slice(0, 8);
+  // Only surface requests from tenants that still exist — a deleted tenant's
+  // billing.request audit row lingers in the log, so filter by the live set.
+  const activeTenantIds = new Set(tenants.map(t => t.id));
+  const planRequests = audit.filter(a => a.action === "billing.request" && a.tenantId != null && activeTenantIds.has(a.tenantId)).slice(0, 8);
 
   // ── Plans ──
   const [planDraft, setPlanDraft] = useState<Plan | null>(null);
@@ -139,7 +159,13 @@ export default function OwnerPortal() {
     await fetch("/api/owner/plans", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(planDraft) });
     setPlanDraft(null); load();
   }
-  async function delPlan(id: string) { if (!confirm("Delete this plan?")) return; await fetch("/api/owner/plans", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); }
+  function delPlan(id: string) {
+    setConfirmCfg({
+      title: "Delete plan",
+      message: "Delete this plan? Existing tenants keep their plan, but it will no longer be selectable.",
+      onConfirm: async () => { await fetch("/api/owner/plans", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }); load(); },
+    });
+  }
 
   // ── Announcements ──
   const [annForm, setAnnForm] = useState<{ title: string; body: string; level: Ann["level"]; pinned: boolean }>({ title: "", body: "", level: "info", pinned: false });
@@ -547,12 +573,77 @@ export default function OwnerPortal() {
               <div className="flex items-center gap-2 pt-1">
                 <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Save className="w-3.5 h-3.5" /> {busy ? "Saving…" : "Save changes"}</button>
                 <div className="flex-1" />
-                <button onClick={() => removeTenant(draft)} className="px-3 py-1.5 rounded-control border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold">Delete tenant</button>
+                <button onClick={() => askDeleteTenant(draft)} className="px-3 py-1.5 rounded-control border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Delete tenant</button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {confirmCfg && <ConfirmDialog cfg={confirmCfg} onClose={() => setConfirmCfg(null)} />}
     </main>
+  );
+}
+
+// One destructive-action dialog, styled to the portal (replaces window.prompt /
+// confirm / alert). Pass `requireTyping` to force an exact type-to-confirm (used
+// for tenant deletion). `onConfirm` may throw — the thrown message shows inline
+// and the dialog stays open so nothing is lost.
+type ConfirmCfg = {
+  title: string;
+  message: ReactNode;
+  confirmLabel?: string;
+  requireTyping?: string;
+  onConfirm: () => Promise<void> | void;
+};
+
+function ConfirmDialog({ cfg, onClose }: { cfg: ConfirmCfg; onClose: () => void }) {
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const need = cfg.requireTyping ?? null;
+  const ready = !need || typed.trim() === need;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [busy, onClose]);
+  async function go() {
+    if (!ready) { setErr("The name doesn’t match. Type it exactly."); return; }
+    setBusy(true); setErr(null);
+    try { await cfg.onConfirm(); onClose(); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Something went wrong."); setBusy(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-[60] bg-ink-950/50 flex items-center justify-center p-4 u-fade-in" onClick={() => { if (!busy) onClose(); }}>
+      <div className="bg-white rounded-card border border-line w-full max-w-md shadow-2xl u-scale-in" onClick={e => e.stopPropagation()}>
+        <div className="p-5">
+          <div className="flex items-start gap-3">
+            <div className="shrink-0 w-10 h-10 rounded-full bg-red-50 flex items-center justify-center"><Trash2 className="w-5 h-5 text-red-600" /></div>
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold text-ink-900">{cfg.title}</p>
+              <div className="text-[12px] text-ink-500 mt-0.5 leading-relaxed">{cfg.message}</div>
+            </div>
+          </div>
+          {need && (
+            <div className="mt-4">
+              <label className="text-[11px] font-bold text-ink-500">Type <span className="font-mono text-ink-900">{need}</span> to confirm</label>
+              <input autoFocus className={`${inp} w-full mt-1.5`} value={typed}
+                onChange={e => { setTyped(e.target.value); if (err) setErr(null); }}
+                onKeyDown={e => { if (e.key === "Enter") go(); }}
+                placeholder={need} />
+            </div>
+          )}
+          {err && <p className="text-[11px] text-red-600 mt-2 font-semibold">{err}</p>}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-line bg-canvas/40">
+          <button onClick={onClose} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
+          <button onClick={go} disabled={busy || !ready} className="px-4 py-1.5 rounded-control bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {busy ? "Working…" : (cfg.confirmLabel ?? "Delete")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
