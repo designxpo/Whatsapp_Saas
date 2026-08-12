@@ -727,7 +727,14 @@ export async function escalateConversation(conversationId: string): Promise<void
   // recurring "bot keeps going silent" regression: it fired on the AI reply cap and
   // on any handoff/complaint, permanently muting the bot. The bot now stays on
   // until a human actually takes over (an inbox/CRM reply or the manual toggle).
-  await db().from("wa_conversations").update({ status: "escalated", needs_reply: true }).eq("id", conversationId).then(() => {}, () => {});
+  // escalated_at (0103) lets the clean-up sweep age these out; isolated retry so
+  // a pre-migration DB can never break an escalation.
+  const { error } = await db().from("wa_conversations")
+    .update({ status: "escalated", needs_reply: true, escalated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    await db().from("wa_conversations").update({ status: "escalated", needs_reply: true }).eq("id", conversationId).then(() => {}, () => {});
+  }
 }
 
 // Find-or-create by phone. Keeps the latest name if provided; channel_id
@@ -1083,7 +1090,55 @@ export async function pruneEphemeral(): Promise<{ dedup: number; loginAttempts: 
 }
 
 export async function setConversationStatus(id: string, status: ConvStatus): Promise<void> {
-  await db().from("wa_conversations").update({ status }).eq("id", id);
+  // Stamp when the chat entered escalation (and clear it on the way out) so the
+  // clean-up sweep can tell a fresh handoff from a forgotten one (0103).
+  const patch: Record<string, unknown> = { status, escalated_at: status === "escalated" ? new Date().toISOString() : null };
+  const { error } = await db().from("wa_conversations").update(patch).eq("id", id);
+  // Pre-migration safety: never let a missing column block an agent from
+  // changing a chat's status.
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    await db().from("wa_conversations").update({ status }).eq("id", id);
+  }
+}
+
+// Dry run for the escalation sweep: how many of THIS TENANT's chats would be
+// reset right now. Lets the settings card show the blast radius up front.
+export async function countStaleEscalations(tenantId: string, olderThanDays: number): Promise<number> {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60_000).toISOString();
+  const { count, error } = await db().from("wa_conversations")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("status", "escalated")
+    .lt("escalated_at", cutoff);
+  if (error) return 0;   // escalated_at missing (0103 not applied)
+  return count ?? 0;
+}
+
+// Bulk-reset this tenant's conversations that have sat escalated past
+// `olderThanDays` back to active, turning the bot on again so they don't leave
+// the escalated queue only to sit silent (nobody watching, AI muted).
+//
+// tenant_id is filtered on BOTH statements — a sweep must never reach across
+// tenants. Rows with a NULL escalated_at are deliberately skipped: age is
+// unknown, and resetting a chat we can't date is worse than leaving it queued.
+export async function resetStaleEscalations(tenantId: string, olderThanDays: number, limit = 500): Promise<{ id: string; phone: string; name: string }[]> {
+  const cutoff = new Date(Date.now() - olderThanDays * 24 * 60 * 60_000).toISOString();
+  const { data: due, error: findErr } = await db().from("wa_conversations")
+    .select("id, phone, name")
+    .eq("tenant_id", tenantId)
+    .eq("status", "escalated")
+    .lt("escalated_at", cutoff)
+    .limit(limit);
+  if (findErr || !due?.length) return [];
+  const ids = (due as Record<string, unknown>[]).map(r => r.id as string);
+  const { error: updErr } = await db().from("wa_conversations")
+    .update({ status: "active", bot_enabled: true, escalated_at: null })
+    .eq("tenant_id", tenantId)
+    .in("id", ids);
+  if (updErr) throw updErr;
+  return (due as Record<string, unknown>[]).map(r => ({
+    id: r.id as string, phone: (r.phone as string) ?? "", name: (r.name as string) ?? "",
+  }));
 }
 
 export async function setBotEnabled(id: string, enabled: boolean): Promise<void> {

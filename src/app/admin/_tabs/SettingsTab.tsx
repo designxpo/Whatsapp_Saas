@@ -583,6 +583,121 @@ function ApiKeysCard() {
 type CannedRow = { id: string; label: string; templateName: string; language: string; params: string[]; headerImageUrl?: string; stage?: string };
 type CannedTpl = { name: string; status: string; language: string; components: { type: string; format?: string; text?: string }[] };
 
+// ── Settings: automatic escalation clean-up ───────────────────────────────────
+// Escalated chats pile up because nobody sets the status back once a handoff is
+// dealt with, so the Escalated filter stops meaning "needs a human". This sweep
+// resets long-abandoned ones. OFF by default and previewable, because it changes
+// conversation status in bulk. Scoped to this workspace only.
+type SweepStatus = {
+  enabled: boolean; staleAfterDays: number; everyDays: number;
+  lastRunAt: string | null; lastResetCount: number | null; dueNow: number; nextRunAt: string | null;
+};
+
+function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
+  const [s, setS] = useState<SweepStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/escalation-sweep").then(r => r.json()).then(d => { if (!d.error) setS(d); }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(patch: Partial<SweepStatus>) {
+    if (!s) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/escalation-sweep", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: s.enabled, staleAfterDays: s.staleAfterDays, everyDays: s.everyDays, ...patch }),
+      }).then(r => r.json());
+      if (d.error) setMsg(d.error); else setS(d);
+    } finally { setBusy(false); }
+  }
+
+  async function runNow() {
+    if (!s) return;
+    if (!confirm(`Reset ${s.dueNow} chat(s) escalated ${s.staleAfterDays}+ days back to Active and turn their bot back on?\n\nThis can't be undone.`)) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/escalation-sweep", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runNow: true }),
+      }).then(r => r.json());
+      if (d.error) setMsg(d.error);
+      else { setS(d.status); setMsg(`Reset ${d.reset} chat(s).`); }
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Escalation clean-up</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Chats left Escalated for a long time go back to Active and their bot is turned back on, so the Escalated list
+            only shows what really needs a person. Turning the bot back on is the point — a chat a human replied to has the
+            bot off, so resetting the status alone would leave it silent with nobody watching.
+          </p>
+        </div>
+        {s === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300 shrink-0" /> : isAdmin && (
+          <button onClick={() => save({ enabled: !s.enabled })} disabled={busy}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 disabled:opacity-60 ${s.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+            {s.enabled ? "ON" : "OFF"}
+          </button>
+        )}
+      </div>
+
+      {s && (
+        <>
+          <div className="flex flex-wrap items-end gap-4 pt-1">
+            <label className="text-[11px]">
+              <span className="block font-bold text-slate-400 uppercase mb-1">Reset after</span>
+              <span className="flex items-center gap-1.5">
+                <input type="number" min={1} max={365} disabled={!isAdmin || busy} value={s.staleAfterDays}
+                  onChange={e => setS({ ...s, staleAfterDays: Number(e.target.value) })}
+                  onBlur={e => save({ staleAfterDays: Number(e.target.value) })}
+                  className="w-16 border border-line rounded-control px-2 py-1 text-xs" />
+                <span className="text-slate-500">days escalated</span>
+              </span>
+            </label>
+            <label className="text-[11px]">
+              <span className="block font-bold text-slate-400 uppercase mb-1">Runs every</span>
+              <span className="flex items-center gap-1.5">
+                <input type="number" min={1} max={365} disabled={!isAdmin || busy} value={s.everyDays}
+                  onChange={e => setS({ ...s, everyDays: Number(e.target.value) })}
+                  onBlur={e => save({ everyDays: Number(e.target.value) })}
+                  className="w-16 border border-line rounded-control px-2 py-1 text-xs" />
+                <span className="text-slate-500">days</span>
+              </span>
+            </label>
+            {isAdmin && (
+              <button onClick={runNow} disabled={busy || s.dueNow === 0}
+                className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-40">
+                Run now
+              </button>
+            )}
+          </div>
+
+          {/* Blast radius before anything happens. */}
+          <div className="text-[11px] text-slate-500 border-t border-line pt-2 space-y-0.5">
+            <p>
+              <b className={s.dueNow > 0 ? "text-amber-700" : "text-slate-600"}>{s.dueNow.toLocaleString()} chat(s)</b> would be reset right now
+              {s.dueNow > 500 && <span className="text-amber-700"> — capped at 500 per run, so the rest follow on later runs</span>}.
+            </p>
+            <p>
+              {s.lastRunAt
+                ? <>Last run {new Date(s.lastRunAt).toLocaleString()}{s.lastResetCount != null ? ` · reset ${s.lastResetCount}` : ""}{s.enabled && s.nextRunAt ? ` · next ${new Date(s.nextRunAt).toLocaleDateString()}` : ""}</>
+                : "Never run."}
+            </p>
+            {s.dueNow === 0 && <p className="text-slate-400">Nothing is old enough yet. If migration 0103 was just applied, existing chats are dated from the customer&apos;s last message.</p>}
+          </div>
+          {msg && <p className="text-[11px] font-semibold text-brand-700">{msg}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
 function CannedTemplatesCard() {
   const [list, setList] = useState<CannedRow[] | null>(null);
   const [tpls, setTpls] = useState<CannedTpl[]>([]);
@@ -1723,6 +1838,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
         {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
       </section>
+
+      <EscalationSweepCard isAdmin={isAdmin} />
 
       {/* Off-script nudge — what flows say when a typed reply matches no menu option */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

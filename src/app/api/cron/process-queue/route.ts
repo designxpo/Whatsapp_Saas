@@ -17,6 +17,7 @@ import { drainYtComments } from "@/lib/ytpoller";
 import { drainGoogleReviews } from "@/lib/reviewpoller";
 import { drainOnboardingNudges } from "@/lib/onboardingnudge";
 import { drainWeeklyRecaps } from "@/lib/weeklyrecap";
+import { drainEscalationSweeps } from "@/lib/escalations";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -183,6 +184,15 @@ export async function POST(req: Request) {
       try { weeklyRecaps = await drainWeeklyRecaps(); } catch (e) { console.error("[cron] weeklyrecaps", e); }
     }
 
+    // Escalation clean-up — per tenant, for tenants that switched it on: chats
+    // left escalated past their configured age go back to active with the bot
+    // re-enabled, so the Escalated queue reflects what actually needs a human.
+    // Each tenant self-throttles to its own interval.
+    let escalationSweeps = { tenants: 0, reset: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try { escalationSweeps = await drainEscalationSweeps(); } catch (e) { console.error("[cron] escalationsweeps", e); }
+    }
+
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).
     try { await pruneEphemeral(); } catch (e) { console.error("[cron] prune", e); }
 
@@ -191,7 +201,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, kbSync, crmSync, crmSessions, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, escalationSweeps, kbSync, crmSync, crmSessions, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
