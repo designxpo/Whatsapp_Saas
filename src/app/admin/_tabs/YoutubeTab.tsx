@@ -371,19 +371,21 @@ function YoutubeManager() {
             <div>
               <p className="text-[11px] font-bold text-ink-500 mb-1.5">Target video</p>
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+                {/* Fixed 16:9 via the padding-bottom hack (h-0 + pb-[56.25%]), NOT
+                    aspect-video: Safari is unreliable about aspect-ratio on grid-item
+                    <button>s, which let the intrinsic image height win and made
+                    portrait Shorts thumbs overflow and overlap. The hack defines the
+                    box height from width with zero aspect-ratio dependency; all cell
+                    content is absolute inset-0 so nothing can stretch the box. */}
                 <button type="button" onClick={() => setRuleForm({ ...ruleForm, videoId: null, videoTitle: null, videoThumbnail: null })}
-                  className={`aspect-video rounded-lg flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold border transition-colors ${!ruleForm.videoId ? "ring-2 ring-red-500 border-red-500 text-red-600 bg-red-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
-                  <Youtube className="w-4 h-4" /> All
+                  className={`relative w-full h-0 pb-[56.25%] rounded-lg border transition-colors ${!ruleForm.videoId ? "ring-2 ring-red-500 border-red-500 text-red-600 bg-red-50" : "border-line text-ink-500 hover:bg-canvas"}`}>
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-[10px] font-bold"><Youtube className="w-4 h-4" /> All</span>
                 </button>
                 {videos.map(v => {
                   const sel = ruleForm.videoId === v.id;
                   return (
                     <button type="button" key={v.id} title={v.title || v.id} onClick={() => setRuleForm({ ...ruleForm, videoId: v.id, videoTitle: v.title, videoThumbnail: v.thumbnail })}
-                      className={`relative aspect-video rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-red-500 border-red-500" : "border-line hover:opacity-90"}`}>
-                      {/* absolute inset-0 (not in-flow w/h-full): otherwise Safari
-                          hits a cyclic aspect-ratio↔height dependency and falls back
-                          to the image's intrinsic size, so portrait Shorts thumbs
-                          overflow and overlap the row below. */}
+                      className={`relative w-full h-0 pb-[56.25%] rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-red-500 border-red-500" : "border-line hover:opacity-90"}`}>
                       {v.thumbnail
                         ? <img src={v.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover" />
                         : <div className="absolute inset-0 bg-canvas flex items-center justify-center text-ink-300"><Video className="w-4 h-4" /></div>}
