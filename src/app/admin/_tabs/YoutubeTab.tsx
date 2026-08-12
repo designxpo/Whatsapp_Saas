@@ -380,9 +380,13 @@ function YoutubeManager() {
                   return (
                     <button type="button" key={v.id} title={v.title || v.id} onClick={() => setRuleForm({ ...ruleForm, videoId: v.id, videoTitle: v.title, videoThumbnail: v.thumbnail })}
                       className={`relative aspect-video rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-red-500 border-red-500" : "border-line hover:opacity-90"}`}>
+                      {/* absolute inset-0 (not in-flow w/h-full): otherwise Safari
+                          hits a cyclic aspect-ratio↔height dependency and falls back
+                          to the image's intrinsic size, so portrait Shorts thumbs
+                          overflow and overlap the row below. */}
                       {v.thumbnail
-                        ? <img src={v.thumbnail} alt="" className="w-full h-full object-cover" />
-                        : <div className="w-full h-full bg-canvas flex items-center justify-center text-ink-300"><Video className="w-4 h-4" /></div>}
+                        ? <img src={v.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        : <div className="absolute inset-0 bg-canvas flex items-center justify-center text-ink-300"><Video className="w-4 h-4" /></div>}
                       {sel && <span className="absolute inset-0 bg-red-500/15 flex items-center justify-center"><Check className="w-5 h-5 text-white drop-shadow" /></span>}
                     </button>
                   );
