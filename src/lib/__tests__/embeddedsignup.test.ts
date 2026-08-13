@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { exchangeSignupCode, subscribeWaba, registerPhone } from "../embeddedsignup";
+import { exchangeSignupCode, subscribeWaba, registerPhone, resolveFacebookPages } from "../embeddedsignup";
 import { signupExtras } from "../embedded-signup-client";
 
 const res = (status: number, body: unknown) =>
@@ -69,5 +69,36 @@ describe("embeddedsignup", () => {
   it("signupExtras maps the variant to Meta's featureType", () => {
     expect(signupExtras("coex")).toEqual({ setup: {}, featureType: "whatsapp_business_app_onboarding", sessionInfoVersion: "3" });
     expect(signupExtras("new")).toEqual({ setup: {}, featureType: "", sessionInfoVersion: "3" });
+  });
+
+  it("resolveFacebookPages returns each Page with its own token", async () => {
+    const fetchMock = vi.fn(async (_url: unknown, _init?: RequestInit) => res(200, { data: [
+      { id: "111", name: "My Shop", access_token: "page-tok-1" },
+      { id: "222", name: "Side Page", access_token: "page-tok-2" },
+    ] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await resolveFacebookPages("user-tok");
+    expect(r.ok).toBe(true);
+    expect(r.pages).toEqual([
+      { id: "111", name: "My Shop", token: "page-tok-1" },
+      { id: "222", name: "Side Page", token: "page-tok-2" },
+    ]);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toMatch(/\/me\/accounts/);
+    expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer user-tok");
+  });
+
+  it("resolveFacebookPages drops Pages without a token and fails when none remain", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => res(200, { data: [{ id: "333", name: "No Token" }] })));
+    const r = await resolveFacebookPages("user-tok");
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/No Facebook Page/);
+  });
+
+  it("resolveFacebookPages surfaces Meta's error message", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => res(400, { error: { message: "Invalid OAuth access token." } })));
+    const r = await resolveFacebookPages("bad");
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/Invalid OAuth/);
   });
 });

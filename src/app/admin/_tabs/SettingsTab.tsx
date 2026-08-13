@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
-import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
+import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -1181,6 +1181,8 @@ export function MessengerCard() {
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Multi-Page picker for "Connect with Facebook" (shown when the login has >1 Page).
+  const [pagePick, setPagePick] = useState<{ id: string; name: string }[] | null>(null);
   // Comment-to-DM rules
   const [rules, setRules] = useState<FbCommentRule[]>([]);
   const [posts, setPosts] = useState<FbPost[]>([]);
@@ -1221,6 +1223,29 @@ export function MessengerCard() {
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
+  // Connect a Page via Facebook Login — grants pages_manage_engagement (public
+  // comment replies) + pages_messaging etc., and stores the Page's OWN token, so
+  // the token can never be missing a scope the way a hand-pasted one can. When the
+  // login exposes more than one Page, we re-run it with the chosen pageId (a fresh
+  // code, no re-consent) so Page tokens never reach the browser.
+  async function connectWithFacebook(pageId?: string) {
+    if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const { code } = await launchFacebookSignup();
+      const res = await fetch("/api/admin/onboarding/messenger", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, pageId }),
+      });
+      const d = await res.json();
+      if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }
+      else if (!res.ok) setMsg(d.error || "Connection failed");
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`); setPagePick(null); load(); }
+      else { setPagePick(null); load(); }
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
+    finally { setBusy(false); }
+  }
+
   async function remove(id: string) {
     if (!confirm("Remove this Facebook Page? Its conversations stay but it will stop replying.")) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
@@ -1270,8 +1295,30 @@ export function MessengerCard() {
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p>
           <p className="text-xs text-slate-500 mt-0.5">Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
+        <div className="flex items-center gap-2 shrink-0">
+          {(facebookSignupReady() || metaPreview()) && (
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => connectWithFacebook()} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Facebook className="w-3.5 h-3.5" />} Connect with Facebook
+              </button>
+              {!facebookSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
+            </div>
+          )}
+          <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
+        </div>
       </div>
+
+      {pagePick && (
+        <div className="rounded-control border border-line bg-canvas p-3 space-y-2">
+          <p className="text-xs font-bold text-ink-700">Choose the Page to connect</p>
+          <div className="flex flex-wrap gap-2">
+            {pagePick.map(p => (
+              <button key={p.id} onClick={() => connectWithFacebook(p.id)} disabled={busy} className="px-3 py-1.5 rounded-control bg-white border border-line hover:border-[#0783fd] hover:bg-brand-50 text-ink-700 text-xs font-bold disabled:opacity-60">{p.name}</button>
+            ))}
+          </div>
+          <button onClick={() => setPagePick(null)} className="text-[11px] text-ink-400 hover:text-ink-600">Cancel</button>
+        </div>
+      )}
 
       {pages.map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">

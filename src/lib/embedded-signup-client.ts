@@ -14,6 +14,10 @@ const GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || "v22.0";
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
+// Facebook Login for Business config for the Messenger (Page) channel — a config
+// that requests pages_show_list, pages_messaging, pages_manage_engagement,
+// pages_read_engagement, pages_read_user_content. Set once the config exists.
+const FB_CONFIG_ID = process.env.NEXT_PUBLIC_META_FACEBOOK_CONFIG_ID;
 
 interface FbLoginResponse { authResponse?: { code?: string } | null; status?: string }
 interface FbLoginOptions {
@@ -32,6 +36,7 @@ declare global {
 
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
+export const facebookSignupReady = () => !!APP_ID && !!FB_CONFIG_ID;
 
 // Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
 // the client bundle at build time, so fixing them requires a redeploy).
@@ -39,6 +44,8 @@ export const whatsappSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !WA_CONFIG_ID && "NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID"].filter(Boolean) as string[];
 export const instagramSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
+export const facebookSignupMissing = (): string[] =>
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_FACEBOOK_CONFIG_ID"].filter(Boolean) as string[];
 
 // Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
 // buttons even before the Meta Tech Provider app is configured, so the operator
@@ -150,6 +157,25 @@ export async function launchInstagramSignup(): Promise<{ code: string }> {
       resolve({ code });
     }, {
       config_id: IG_CONFIG_ID,
+      response_type: "code",
+      override_default_response_type: true,
+    });
+  });
+}
+
+// Facebook Login for the Messenger (Page) channel → { code }. The Page and its
+// own access token are resolved server-side from the exchanged token (see the
+// onboarding route). Re-invoked with no re-consent when the user picks a Page.
+export async function launchFacebookSignup(): Promise<{ code: string }> {
+  await loadSdk();
+  if (!FB_CONFIG_ID) throw new Error("Facebook login is not configured yet");
+  return new Promise((resolve, reject) => {
+    window.FB!.login((response) => {
+      const code = response?.authResponse?.code;
+      if (!code) return reject(new Error("Sign-up was cancelled"));
+      resolve({ code });
+    }, {
+      config_id: FB_CONFIG_ID,
       response_type: "code",
       override_default_response_type: true,
     });

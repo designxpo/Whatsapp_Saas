@@ -82,6 +82,32 @@ export async function resolveInstagramAsset(token: string): Promise<{ ok: boolea
   }
 }
 
+// Resolve the Facebook Pages a freshly-exchanged USER token can manage, each with
+// its own PAGE access token (which inherits the granted scopes — pages_messaging,
+// pages_manage_engagement, etc.). The Messenger "Connect with Facebook" flow lets
+// the admin pick one; the Page token is what we store as the channel token so
+// public comment replies (POST /{comment}/comments) actually work.
+export async function resolveFacebookPages(
+  userToken: string,
+): Promise<{ ok: boolean; pages?: { id: string; name: string; token: string }[]; error?: string }> {
+  if (!userToken) return { ok: false, error: "Missing token" };
+  try {
+    const url = new URL(`${GRAPH}/me/accounts`);
+    url.searchParams.set("fields", "id,name,access_token");
+    url.searchParams.set("limit", "100");
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${userToken}` } });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j.error?.message || `Page lookup failed (${r.status})` };
+    const pages = ((j.data as { id?: string; name?: string; access_token?: string }[] | undefined) ?? [])
+      .filter(p => p.id && p.access_token)
+      .map(p => ({ id: p.id as string, name: (p.name as string) || `Page ${p.id}`, token: p.access_token as string }));
+    if (!pages.length) return { ok: false, error: "No Facebook Page found on this account — you need a Page you manage, with a role that can read and reply to its messages." };
+    return { ok: true, pages };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Page lookup error" };
+  }
+}
+
 // Register the phone number on Cloud API (best-effort; some flows pre-register).
 export async function registerPhone(phoneNumberId: string, token: string, pin?: string): Promise<{ ok: boolean; error?: string }> {
   if (!phoneNumberId || !token) return { ok: false, error: "Missing phoneNumberId / token" };
