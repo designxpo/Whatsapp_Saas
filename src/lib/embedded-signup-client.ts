@@ -16,7 +16,11 @@ const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
 // Facebook Login for the Messenger (Page) channel uses plain scope-based login —
 // only the app id is required (no separate "Login for Business" config to create).
-const FB_PAGE_SCOPES = "pages_show_list,pages_messaging,pages_manage_engagement,pages_read_engagement,pages_read_user_content";
+// Kept to permissions the app actually has: pages_read_user_content is omitted
+// (not enabled on the app → Meta rejects the whole dialog as "Invalid Scopes";
+// comment text arrives in the webhook payload, so it isn't needed). Reply/like/hide
+// use pages_manage_engagement; DMs use pages_messaging.
+const FB_PAGE_SCOPES = "pages_show_list,pages_messaging,pages_manage_engagement,pages_read_engagement";
 
 interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
 interface FbBusinessLoginOptions {
