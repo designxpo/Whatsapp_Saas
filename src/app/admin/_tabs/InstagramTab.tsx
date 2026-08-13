@@ -22,8 +22,7 @@ function InstagramTab() {
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>An Instagram <b>Professional</b> account (Business or Creator), <b>linked to a Facebook Page</b>. In the IG app: Settings → Account type → switch to Professional, then link your Page.</span></li>
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>In <b>Instagram → Settings → Messages → Connected Tools</b>, turn ON <i>“Allow access to messages”</i> so the API can read/reply to DMs.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>On your Meta app, add the <code className="font-mono text-[12px]">instagram_manage_messages</code> permission (and <code className="font-mono text-[12px]">instagram_manage_comments</code> for comment-to-DM), and subscribe the Instagram webhook to <code className="font-mono text-[12px]">/api/webhooks/instagram</code> (fields: <i>messages</i>, <i>comments</i>) using your existing verify token.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">4</span><span>Grab two things to paste below: the <b>Instagram account id</b> (the IG professional account / IGSID) and an <b>access token</b> with <code className="font-mono text-[12px]">instagram_manage_messages</code>. The Page id is optional.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Grab two things to paste below: the <b>Instagram account id</b> (the professional account / IGSID) and an <b>access token</b> with messaging access. The Page id is optional — Talko sets up the connection and routing automatically.</span></li>
         </ol>
         <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up on Meta&apos;s rules (enforced automatically): you can only DM someone within <b>24 hours</b> of their last message, never cold-DM, and a comment reply is a single message. Staying inside these keeps the account safe from blocks.</p>
       </section>
@@ -108,7 +107,7 @@ function InstagramManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail}. DMs won't arrive until this is fixed — check the token's permissions.`); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this account: ${d.webhook.detail}. DMs won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -231,7 +230,7 @@ function InstagramManager() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save account"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, the <code className="font-mono">instagram_manage_messages</code> permission on your Meta app, and the IG webhook pointed at <code className="font-mono">/api/webhooks/instagram</code>.</p>
+          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. Talko handles the connection and routing.</p>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
         </div>
       )}
@@ -407,7 +406,7 @@ function InstagramManager() {
               </label>
               {ruleForm.requireFollow && <>
                 <textarea className={`${inp} w-full`} rows={2} placeholder="Follow prompt, e.g. Almost there! Follow us, then tap “I've followed” to unlock your guide 🎁" value={ruleForm.followPrompt} onChange={e => setRuleForm({ ...ruleForm, followPrompt: e.target.value })} />
-                <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I’ve followed ✅” button. On tap we re-check the follow, then send the link. Verified blocking needs Meta App Review (<code className="font-mono">is_user_follow_business</code>); until then we trust the tap.</p>
+                <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I’ve followed ✅” button. On tap we re-check the follow, then send the link. Verified follow-checking needs extra Meta approval; until then we trust the tap.</p>
               </>}
             </div>
             )}

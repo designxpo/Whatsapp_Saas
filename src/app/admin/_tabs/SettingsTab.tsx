@@ -255,7 +255,7 @@ function ChannelsManager() {
         // Saved, but Meta refused the WABA webhook subscription — inbound messages
         // won't arrive until it succeeds. Switch the form to edit mode (so a re-save
         // fixes the SAME number, never a duplicate) and surface the reason.
-        setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail} — inbound messages won't arrive until this is fixed. Make sure the token has whatsapp_business_management, then re-save.`);
+        setMsg(`Saved, but Meta wouldn't finish connecting this number: ${d.webhook.detail} — inbound messages won't arrive until it's fixed. Check the access token has full messaging permission, then re-save.`);
         setForm(f => (f ? { ...f, id: d.channel?.id ?? f.id, token: "" } : f));
         load();
       }
@@ -292,7 +292,7 @@ function ChannelsManager() {
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="min-w-[240px]">
           <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p>
-          <p className="text-xs text-slate-500 mt-0.5">Connect multiple numbers/WABAs — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
+          <p className="text-xs text-slate-500 mt-0.5">Connect multiple WhatsApp numbers — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
@@ -1205,7 +1205,7 @@ export function MessengerCard() {
       const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta refused the webhook subscription: ${d.webhook.detail}. Messages won't arrive until this is fixed — check the Page token's permissions (pages_messaging).`); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -1302,7 +1302,7 @@ export function MessengerCard() {
           {msg && <p className="text-xs text-red-500">{msg}</p>}
         </div>
       )}
-      {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet. Subscribe your Page to the <code className="font-mono">messenger</code> webhook at <code className="font-mono">/api/webhooks/messenger</code>.</p>}
+      {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet — add one above to auto-reply to Page messages.</p>}
 
       {/* Comment-to-DM automation (ManyChat-style: multiple rules + per-post targeting) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
