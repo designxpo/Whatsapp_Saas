@@ -20,8 +20,7 @@ function YoutubeTab() {
         <p className="text-xs font-bold text-slate-400 uppercase">Before you connect</p>
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>A <b>YouTube channel</b> you manage, on a Google account with access to reply to and moderate its comments.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>The <b>YouTube Data API v3</b> enabled on your Google Cloud project, with the <code className="font-mono text-[12px]">youtube.force-ssl</code> OAuth scope (needed to post replies and moderate).</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Click <b>Connect with Google</b> below and approve access on the channel-owner&apos;s Google account. While the app is in Google&apos;s Testing mode, that account must be added as a test user on the OAuth consent screen first.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>Click <b>Connect with Google</b> below and approve access on that Google account. That&apos;s it — Talko handles the API access and permissions for you.</span></li>
         </ol>
         <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up: YouTube has no new-comment webhook, so new comments are polled every few minutes (not instant), and the daily API quota caps total replies. We rotate reply variants and pace per hour to keep the channel safe from spam strikes.</p>
       </section>
@@ -304,7 +303,7 @@ function YoutubeManager() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save channel"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs the <code className="font-mono">youtube.force-ssl</code> scope and the YouTube Data API v3 enabled. Comments are polled every few minutes and paced to stay within Google’s daily quota.</p>
+          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Comments are polled every few minutes (YouTube has no live webhook) and paced to stay within the daily limit.</p>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
         </div>
       )}
