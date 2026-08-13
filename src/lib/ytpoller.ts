@@ -50,9 +50,19 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   if (!creds.channelId || !creds.refreshToken) return 0;
 
   const since = await getCursor(channel.id);
-  // First poll (no cursor): only look at the most recent page so we don't reply
-  // to a large backlog of historical comments the moment a channel connects.
-  const comments = await listNewComments(creds, since, since ? 3 : 1);
+  // First poll (no cursor): this is the moment automation goes live for this
+  // channel. Set the watermark to NOW and reply to NOTHING. Auto-replies must
+  // only ever fire on comments posted AFTER activation — never the existing
+  // backlog, however recent its newest comment is. (listNewComments only
+  // time-filters when `since` is set; with since=null it returns the most-recent
+  // existing comments, so without this guard the first poll replies to months-old
+  // comments the instant a channel connects.)
+  if (!since) {
+    await setCursor(channel.id, channel.tenantId, new Date().toISOString(), { commentsSeen: 0, repliesPosted: 0 });
+    return 0;
+  }
+
+  const comments = await listNewComments(creds, since, 3);
   if (!comments.length) {
     await setCursor(channel.id, channel.tenantId, new Date().toISOString(), { commentsSeen: 0, repliesPosted: 0 });
     return 0;
