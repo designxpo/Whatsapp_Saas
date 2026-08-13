@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { exchangeSignupCode, subscribeWaba, registerPhone, resolveFacebookPages } from "../embeddedsignup";
+import { exchangeSignupCode, subscribeWaba, registerPhone, resolveFacebookPages, exchangeForLongLivedToken } from "../embeddedsignup";
 import { signupExtras } from "../embedded-signup-client";
 
 const res = (status: number, body: unknown) =>
@@ -100,5 +100,24 @@ describe("embeddedsignup", () => {
     const r = await resolveFacebookPages("bad");
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/Invalid OAuth/);
+  });
+
+  it("exchangeForLongLivedToken sends grant_type=fb_exchange_token + app creds", async () => {
+    const fetchMock = vi.fn(async (_url: unknown) => res(200, { access_token: "long-tok" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = await exchangeForLongLivedToken("short-tok");
+    expect(r).toEqual({ ok: true, token: "long-tok" });
+    const url = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(url.searchParams.get("grant_type")).toBe("fb_exchange_token");
+    expect(url.searchParams.get("client_id")).toBe("test-app-id");
+    expect(url.searchParams.get("fb_exchange_token")).toBe("short-tok");
+  });
+
+  it("exchangeForLongLivedToken fails loudly when app creds are missing", async () => {
+    delete process.env.META_APP_SECRET;
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("must not hit the network"); }));
+    const r = await exchangeForLongLivedToken("short-tok");
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/META_APP_ID \/ META_APP_SECRET/);
   });
 });

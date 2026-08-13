@@ -14,21 +14,21 @@ const GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || "v22.0";
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
-// Facebook Login for Business config for the Messenger (Page) channel — a config
-// that requests pages_show_list, pages_messaging, pages_manage_engagement,
-// pages_read_engagement, pages_read_user_content. Set once the config exists.
-const FB_CONFIG_ID = process.env.NEXT_PUBLIC_META_FACEBOOK_CONFIG_ID;
+// Facebook Login for the Messenger (Page) channel uses plain scope-based login —
+// only the app id is required (no separate "Login for Business" config to create).
+const FB_PAGE_SCOPES = "pages_show_list,pages_messaging,pages_manage_engagement,pages_read_engagement,pages_read_user_content";
 
-interface FbLoginResponse { authResponse?: { code?: string } | null; status?: string }
-interface FbLoginOptions {
+interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
+interface FbBusinessLoginOptions {
   config_id: string;
   response_type: "code";
   override_default_response_type: boolean;
   extras?: Record<string, unknown>;
 }
+interface FbClassicLoginOptions { scope: string; return_scopes?: boolean }
 interface FbSdk {
   init(opts: { appId: string; autoLogAppEvents?: boolean; xfbml?: boolean; version: string }): void;
-  login(cb: (r: FbLoginResponse) => void, opts: FbLoginOptions): void;
+  login(cb: (r: FbLoginResponse) => void, opts: FbBusinessLoginOptions | FbClassicLoginOptions): void;
 }
 declare global {
   interface Window { FB?: FbSdk; fbAsyncInit?: () => void }
@@ -36,7 +36,8 @@ declare global {
 
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
-export const facebookSignupReady = () => !!APP_ID && !!FB_CONFIG_ID;
+// Facebook Page login needs only the app id (plain scope-based login).
+export const facebookSignupReady = () => !!APP_ID;
 
 // Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
 // the client bundle at build time, so fixing them requires a redeploy).
@@ -45,7 +46,7 @@ export const whatsappSignupMissing = (): string[] =>
 export const instagramSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
 export const facebookSignupMissing = (): string[] =>
-  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_FACEBOOK_CONFIG_ID"].filter(Boolean) as string[];
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID"].filter(Boolean) as string[];
 
 // Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
 // buttons even before the Meta Tech Provider app is configured, so the operator
@@ -163,21 +164,17 @@ export async function launchInstagramSignup(): Promise<{ code: string }> {
   });
 }
 
-// Facebook Login for the Messenger (Page) channel → { code }. The Page and its
-// own access token are resolved server-side from the exchanged token (see the
-// onboarding route). Re-invoked with no re-consent when the user picks a Page.
-export async function launchFacebookSignup(): Promise<{ code: string }> {
+// Facebook Login for the Messenger (Page) channel → { token }. Plain scope-based
+// login (only the app id is needed) returns a short-lived USER access token; the
+// onboarding route exchanges it for a long-lived one and derives the Page tokens.
+// Re-invoked (no re-consent) when the user picks among multiple Pages.
+export async function launchFacebookSignup(): Promise<{ token: string }> {
   await loadSdk();
-  if (!FB_CONFIG_ID) throw new Error("Facebook login is not configured yet");
   return new Promise((resolve, reject) => {
     window.FB!.login((response) => {
-      const code = response?.authResponse?.code;
-      if (!code) return reject(new Error("Sign-up was cancelled"));
-      resolve({ code });
-    }, {
-      config_id: FB_CONFIG_ID,
-      response_type: "code",
-      override_default_response_type: true,
-    });
+      const token = response?.authResponse?.accessToken;
+      if (!token) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
+      resolve({ token });
+    }, { scope: FB_PAGE_SCOPES, return_scopes: true });
   });
 }

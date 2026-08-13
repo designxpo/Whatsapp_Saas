@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, resolveFacebookPages } from "@/lib/embeddedsignup";
+import { exchangeForLongLivedToken, resolveFacebookPages } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
@@ -13,28 +13,30 @@ export const maxDuration = 60;
 const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` : "••••");
 
 // POST — finish "Connect with Facebook" for the Messenger (Page) channel.
-// Body: { code, pageId?, name? } from launchFacebookSignup (Facebook Login for
-// Business — grants pages_show_list + pages_messaging + pages_manage_engagement +
-// pages_read_engagement + pages_read_user_content). Exchanges the code for a user
-// token, lists the Pages the admin manages, and — once a Page is chosen (auto when
-// there's exactly one) — saves a Messenger channel with that Page's OWN token and
-// subscribes the Page to our app webhook.
+// Body: { userToken, pageId?, name? } — userToken is the short-lived USER token
+// from plain FB.login (granted pages_show_list + pages_messaging +
+// pages_manage_engagement + pages_read_engagement + pages_read_user_content). We
+// exchange it for a long-lived token, list the Pages the admin manages, and — once
+// a Page is chosen (auto when there's exactly one) — save a Messenger channel with
+// that Page's OWN long-lived token and subscribe the Page to our app webhook.
 //
-// The single-use code means a Page CHOICE re-runs FB.login for a fresh code (no
-// re-consent), so Page access tokens never touch the client.
+// A Page CHOICE re-runs FB.login for a fresh token (no re-consent), so Page access
+// tokens never touch the client.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   { const gate = await guardFeature(tenantId, "ch_messenger"); if (gate) return gate; }
 
-  let body: { code?: string; pageId?: string; name?: string };
+  let body: { userToken?: string; pageId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  if (!body.code) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
+  if (!body.userToken) return NextResponse.json({ error: "Missing user token" }, { status: 400 });
 
-  const ex = await exchangeSignupCode(body.code);
-  if (!ex.ok || !ex.token) return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+  // Long-lived so the derived Page tokens don't expire; fall back to the short
+  // token (best-effort) if the exchange can't run (e.g. app secret unset).
+  const ll = await exchangeForLongLivedToken(body.userToken);
+  const token = ll.ok && ll.token ? ll.token : body.userToken;
 
-  const res = await resolveFacebookPages(ex.token);
+  const res = await resolveFacebookPages(token);
   if (!res.ok || !res.pages?.length) return NextResponse.json({ error: res.error || "No Facebook Page found" }, { status: 502 });
 
   // Choose the Page: the one the caller picked, or the only one — else ask the

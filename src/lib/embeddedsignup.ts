@@ -45,6 +45,31 @@ export async function exchangeSignupCode(code: string): Promise<ExchangeResult> 
   }
 }
 
+// Exchange a short-lived USER token (from plain FB.login) for a long-lived one.
+// Page tokens derived from a long-lived user token are themselves long-lived
+// (effectively non-expiring), which is what a stored Messenger channel needs.
+export async function exchangeForLongLivedToken(shortToken: string): Promise<ExchangeResult> {
+  const appId = process.env.META_APP_ID;
+  const appSecret = process.env.META_APP_SECRET;
+  if (!appId || !appSecret) return { ok: false, error: "META_APP_ID / META_APP_SECRET not configured" };
+  if (!shortToken) return { ok: false, error: "Missing token" };
+
+  const url = new URL(`${GRAPH}/oauth/access_token`);
+  url.searchParams.set("grant_type", "fb_exchange_token");
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("client_secret", appSecret);
+  url.searchParams.set("fb_exchange_token", shortToken);
+
+  try {
+    const r = await fetch(url, { method: "GET" });
+    const j = await r.json();
+    if (!r.ok || !j.access_token) return { ok: false, error: j.error?.message || `Long-lived exchange failed (${r.status})` };
+    return { ok: true, token: j.access_token as string };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Long-lived exchange error" };
+  }
+}
+
 // Subscribe our app to the tenant's WABA so inbound messages hit our webhook.
 export async function subscribeWaba(wabaId: string, token: string): Promise<{ ok: boolean; error?: string }> {
   if (!wabaId || !token) return { ok: false, error: "Missing wabaId / token" };

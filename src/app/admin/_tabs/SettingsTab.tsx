@@ -1232,10 +1232,10 @@ export function MessengerCard() {
     if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`); return; }
     setBusy(true); setMsg(null);
     try {
-      const { code } = await launchFacebookSignup();
+      const { token } = await launchFacebookSignup();
       const res = await fetch("/api/admin/onboarding/messenger", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, pageId }),
+        body: JSON.stringify({ userToken: token, pageId }),
       });
       const d = await res.json();
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }
