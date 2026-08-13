@@ -11,7 +11,7 @@
 import { db } from "./supabase";
 import { listChannels, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, type YtCreds } from "./youtube";
-import { matchYtCommentRule, claimYtComment, bumpYtRuleMatch } from "./ytcomments";
+import { matchYtCommentRule, claimYtComment, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday } from "./ytcomments";
 import { pickPublicReply } from "./igcomments";
 import { generateReply } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
@@ -45,7 +45,7 @@ async function setCursor(channelId: string, tenantId: string, at: string, o?: Po
   if (error) await write({ channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at }).then(() => {}, () => {});
 }
 
-async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>): Promise<number> {
+async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>): Promise<number> {
   const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
   if (!creds.channelId || !creds.refreshToken) return 0;
 
@@ -74,22 +74,47 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   let aiEnabled = aiEnabledCache.get(channel.tenantId);
   if (aiEnabled === undefined) { aiEnabled = await isAiEnabled(channel.tenantId); aiEnabledCache.set(channel.tenantId, aiEnabled); }
 
+  // Per-tenant daily reply budget: how many more quota-consuming comment actions
+  // this tenant may take today. The cap is PLAN-AWARE (getYtDailyReplyCap — higher
+  // tiers raise it), shared across the tenant's channels within this run, and
+  // decremented as we act. Infinity when the cap is disabled platform-wide.
+  let cap = capCache.get(channel.tenantId);
+  let budget = budgetCache.get(channel.tenantId);
+  if (cap === undefined || budget === undefined) {
+    cap = await getYtDailyReplyCap(channel.tenantId);
+    budget = cap > 0 ? Math.max(0, cap - (await ytActionsUsedToday(channel.tenantId))) : Number.POSITIVE_INFINITY;
+    capCache.set(channel.tenantId, cap);
+    budgetCache.set(channel.tenantId, budget);
+  }
+
   // Oldest → newest so the cursor advances monotonically even if we stop early.
   const ordered = [...comments].reverse();
-  let newestSeen = since?.toISOString() ?? "";
+  // Advance the cursor only THROUGH comments we've fully handled. When the daily
+  // cap stops us mid-run, we leave the cursor at the last handled comment so the
+  // deferred backlog is answered next tick (or after 00:00 UTC when the cap
+  // resets) — never silently skipped past.
+  let cursorAt = since.toISOString();
+  let capReached = false;
   for (const c of ordered) {
-    if (c.publishedAt && c.publishedAt > newestSeen) newestSeen = c.publishedAt;
-    // Never reply to our own channel's comments (no self-loop).
-    if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) continue;
+    // Never reply to our own channel's comments (no self-loop) — nothing to do,
+    // so it's "handled": advance past it.
+    if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
 
     const rule = await matchYtCommentRule(c.text, c.videoId, channel.tenantId, channel.id);
     const aiWillAnswer = !rule && channel.commentAi && aiEnabled;
-    // Take no action → do NOT claim. Claiming here used to burn the comment id
-    // permanently, so a rule created afterwards could never fire on a comment
-    // the poller had already walked past with nothing to do.
-    if (!rule && !aiWillAnswer) continue;
+    // Take no action → do NOT claim, but DO advance. Claiming here used to burn the
+    // comment id permanently, so a rule created afterwards could never fire on a
+    // comment the poller had already walked past with nothing to do.
+    if (!rule && !aiWillAnswer) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
+
+    // A quota-consuming action is due. Out of daily budget → STOP here, leaving
+    // this comment and every later one for a future tick (cursor stays before it).
+    if (budget <= 0) { capReached = true; break; }
+
     // Idempotency: claim the comment once (whether a rule fires or the AI answers).
-    if (!(await claimYtComment(c.id, rule?.id ?? null, channel.tenantId))) continue;
+    // Already claimed (a prior run) → nothing more to do, advance past it.
+    if (!(await claimYtComment(c.id, rule?.id ?? null, channel.tenantId))) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
+    budget -= 1;   // one comment-action spent against the tenant's daily cap
 
     if (rule) {
       const reply = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
@@ -101,6 +126,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
       if (rule.moderate === "hold_spam") await setModeration(creds, c.id, "heldForReview");
       else if (rule.moderate === "reject_spam") await setModeration(creds, c.id, "rejected");
       await bumpYtRuleMatch(rule.id, rule.matchCount, channel.tenantId);
+      if (c.publishedAt) cursorAt = c.publishedAt;
       continue;
     }
 
@@ -128,9 +154,21 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
         console.error("[ytpoller] ai reply", c.id, e);
       }
     }
+    if (c.publishedAt) cursorAt = c.publishedAt;
   }
 
-  await setCursor(channel.id, channel.tenantId, newestSeen || new Date().toISOString(), {
+  budgetCache.set(channel.tenantId, budget < 0 ? 0 : budget);
+
+  // Cursor: through the newest comment when we finished the batch, or only through
+  // the last handled comment when the daily cap deferred the rest.
+  let newestSeen = since.toISOString();
+  for (const c of comments) if (c.publishedAt && c.publishedAt > newestSeen) newestSeen = c.publishedAt;
+  const finalCursor = capReached ? cursorAt : newestSeen;
+  if (capReached && !lastError) {
+    lastError = `Daily reply cap reached (${cap}/day) — the rest will be answered automatically after midnight UTC.`;
+  }
+
+  await setCursor(channel.id, channel.tenantId, finalCursor || new Date().toISOString(), {
     commentsSeen: comments.length, repliesPosted: acted, lastReplyId, lastError,
   });
   return acted;
@@ -148,9 +186,14 @@ export async function drainYtComments(tenantId?: string): Promise<number> {
   } catch { return 0; }
   if (!channels.length) return 0;
   const aiEnabledCache = new Map<string, boolean>();
+  // Per-tenant remaining daily reply budget + resolved cap, shared across a
+  // tenant's channels for this run so they can't each spend the full cap
+  // independently (and so one plan lookup serves all the tenant's channels).
+  const budgetCache = new Map<string, number>();
+  const capCache = new Map<string, number>();
   let acted = 0;
   for (const ch of channels) {
-    try { acted += await drainChannel(ch, aiEnabledCache); }
+    try { acted += await drainChannel(ch, aiEnabledCache, budgetCache, capCache); }
     catch (e) { console.error("[ytpoller] channel", ch.id, e); }
   }
   return acted;

@@ -9,6 +9,7 @@
 
 import { db } from "./supabase";
 import { normalizePublicReplies, matchesKeywords } from "./igcomments";
+import { getPlanLimits } from "./usage";
 
 // What to do with a matched comment beyond replying. YouTube's moderation
 // statuses: "heldForReview" (hides pending your approval) / "rejected" (hides).
@@ -127,6 +128,69 @@ export async function claimYtComment(commentId: string, ruleId: string | null, t
   const { error } = await db().from("wa_yt_comment_log").insert({ comment_id: commentId, rule_id: ruleId, tenant_id: tenantId });
   if (error) return false;
   return true;
+}
+
+// ── Daily reply cap (shared-quota protection) ────────────────────────────────
+// YouTube's Data API v3 quota is measured in UNITS, not requests, and it's a
+// SINGLE 10,000-unit/day pool shared by every tenant on the project. Reads are
+// cheap (commentThreads.list = 1 unit) but writes are 50× more: comments.insert
+// = 50 units, setModerationStatus = 50 units. One busy channel can therefore
+// drain the whole day's quota — and starve every other tenant — in ~100 replies.
+//
+// So we cap the number of quota-consuming comment ACTIONS (public reply and/or
+// moderation) a tenant may take per UTC day. The count is the tenant's rows in
+// wa_yt_comment_log for the current UTC day (one row is claimed per acted-on
+// comment, before the insert fires) — no extra table or counter to keep in sync.
+//
+// Env: YT_REPLY_DAILY_CAP (default 100). 0 or negative disables the cap.
+export const YT_REPLY_DAILY_CAP = (() => {
+  const n = parseInt(process.env.YT_REPLY_DAILY_CAP ?? "100", 10);
+  return Number.isFinite(n) ? n : 100;
+})();
+
+// How many comment actions this tenant has taken since 00:00 UTC today. Counts
+// wa_yt_comment_log rows (one per acted-on comment). Best-effort: any DB hiccup
+// returns 0 so a counting failure never blocks legitimate replies.
+export async function ytActionsUsedToday(tenantId: string): Promise<number> {
+  try {
+    const start = new Date();
+    start.setUTCHours(0, 0, 0, 0);
+    const { count } = await db()
+      .from("wa_yt_comment_log")
+      .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .gte("created_at", start.toISOString());
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+// Effective daily cap for a tenant, PLAN-AWARE: the subscription plan's
+// yt_comment_replies_per_day when it sets one (> 0), otherwise the platform
+// default (YT_REPLY_DAILY_CAP env, default 100). A plan value of 0 means "use the
+// platform default", not unlimited — so higher tiers RAISE the cap (an upgrade
+// path) while the shared quota always keeps a floor. Returns YT_REPLY_DAILY_CAP
+// (which may be <= 0 to disable the cap platform-wide) when no plan cap is set.
+export async function getYtDailyReplyCap(tenantId: string): Promise<number> {
+  let planCap = 0;
+  try { planCap = (await getPlanLimits(tenantId)).yt_comment_replies_per_day ?? 0; } catch { planCap = 0; }
+  return planCap > 0 ? planCap : YT_REPLY_DAILY_CAP;
+}
+
+// Does this tenant have a YouTube channel connected? Drives whether the usage card
+// shows the YouTube reply-cap row at all (no channel → no row, no clutter).
+export async function hasYoutubeChannel(tenantId: string): Promise<boolean> {
+  try {
+    const { count } = await db()
+      .from("wa_channels")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("kind", "youtube");
+    return (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
 }
 
 export async function bumpYtRuleMatch(id: string, current: number, tenantId: string): Promise<void> {

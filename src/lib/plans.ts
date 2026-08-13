@@ -3,7 +3,7 @@
 
 import { db } from "./supabase";
 
-export interface PlanLimits { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number }
+export interface PlanLimits { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number; yt_comment_replies_per_day: number }
 // Feature entitlements are an open key→bool map (canonical keys: FEATURE_KEYS in
 // entitlements.ts). Kept as a Record so new feature keys never force a type change.
 export type PlanFeatures = Record<string, boolean>;
@@ -13,7 +13,9 @@ export interface Plan {
   stripePriceId: string | null;   // Stripe Price this plan maps to (null → not purchasable via Stripe)
 }
 
-const DEF_LIMITS: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2 };
+// yt_comment_replies_per_day: 0 = "use the platform default" (YT_REPLY_DAILY_CAP),
+// NOT unlimited — the shared YouTube quota always keeps a floor. See ytcomments.ts.
+const DEF_LIMITS: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2, yt_comment_replies_per_day: 0 };
 // Unknown/legacy plans fall back to everything-on (fail-open); real plans carry explicit flags.
 const DEF_FEATURES: PlanFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
 

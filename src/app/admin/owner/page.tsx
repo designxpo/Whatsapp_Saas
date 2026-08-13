@@ -16,7 +16,7 @@ type Tenant = {
   features: Features; grandfathered: boolean; contacts: number; conversations: number; createdAt: string;
 };
 type Stats = { total: number; active: number; trialing: number; suspended: number; mrrCents: number };
-type PlanLimits = { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number };
+type PlanLimits = { contacts: number; conversations_per_month: number; messages_per_month: number; channels: number; team_seats: number; yt_comment_replies_per_day: number };
 type Plan = { id: string; key: string; name: string; priceCents: number; currency: string; interval: string; limits: PlanLimits; features: Features; sort: number; active: boolean; stripePriceId?: string | null };
 type Ann = { id: string; title: string; body: string; level: "info" | "success" | "warning"; pinned: boolean; active: boolean; createdAt: string };
 type TenantHealthRow = {
@@ -152,7 +152,7 @@ export default function OwnerPortal() {
 
   // ── Plans ──
   const [planDraft, setPlanDraft] = useState<Plan | null>(null);
-  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2 }, features: Object.fromEntries(FEATURE_KEYS.map(k => [k, true])), sort: plans.length, active: true, stripePriceId: "" };
+  const blankPlan: Plan = { id: "", key: "", name: "", priceCents: 0, currency: "INR", interval: "month", limits: { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 1, team_seats: 2, yt_comment_replies_per_day: 0 }, features: Object.fromEntries(FEATURE_KEYS.map(k => [k, true])), sort: plans.length, active: true, stripePriceId: "" };
   const planOptions = plans.length ? plans.map(p => p.key) : PLAN_FALLBACK;
   async function savePlan() {
     if (!planDraft || !planDraft.key.trim() || !planDraft.name.trim()) return;
@@ -432,7 +432,7 @@ export default function OwnerPortal() {
             <div key={p.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2 text-xs">
               <div className="min-w-0 flex-1">
                 <p className="font-bold text-ink-900">{p.name} <span className="text-ink-400 font-mono">{p.key}</span> {!p.active && <span className="text-red-500">· off</span>}</p>
-                <p className="text-ink-400">{money(p.priceCents, p.currency)}/{p.interval} · {p.limits.contacts || "∞"} contacts · {p.limits.conversations_per_month || "∞"} convos/mo · {p.limits.messages_per_month || "∞"} msgs/mo · {p.limits.channels || "∞"} channels · {p.limits.team_seats || "∞"} seats</p>
+                <p className="text-ink-400">{money(p.priceCents, p.currency)}/{p.interval} · {p.limits.contacts || "∞"} contacts · {p.limits.conversations_per_month || "∞"} convos/mo · {p.limits.messages_per_month || "∞"} msgs/mo · {p.limits.channels || "∞"} channels · {p.limits.team_seats || "∞"} seats · {p.limits.yt_comment_replies_per_day || "default"} YT replies/day</p>
               </div>
               <button onClick={() => setPlanDraft({ ...p })} className="px-2 py-1 rounded-control border border-line font-bold text-ink-600 hover:bg-canvas">Edit</button>
               <button onClick={() => delPlan(p.id)} className="px-2 py-1 rounded-control border border-red-200 text-red-600 hover:bg-red-50 font-bold">Del</button>
@@ -449,6 +449,7 @@ export default function OwnerPortal() {
               <label className="text-[11px] text-ink-500">Messages/mo (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.messages_per_month} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, messages_per_month: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Channels (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.channels} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, channels: Number(e.target.value) || 0 } })} /></label>
               <label className="text-[11px] text-ink-500">Team seats (0=∞) <input type="number" className={`${inp} w-full`} value={planDraft.limits.team_seats} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, team_seats: Number(e.target.value) || 0 } })} /></label>
+              <label className="text-[11px] text-ink-500">YouTube replies/day (0=default) <input type="number" className={`${inp} w-full`} value={planDraft.limits.yt_comment_replies_per_day} onChange={e => setPlanDraft({ ...planDraft, limits: { ...planDraft.limits, yt_comment_replies_per_day: Number(e.target.value) || 0 } })} /></label>
               <label className="col-span-2 text-[11px] text-ink-500">Stripe Price ID (price_… — required to sell this plan via Stripe) <input className={`${inp} w-full font-mono`} placeholder="price_1AbcD… (leave blank if not on Stripe)" value={planDraft.stripePriceId ?? ""} onChange={e => setPlanDraft({ ...planDraft, stripePriceId: e.target.value.trim() })} /></label>
               {/* Which features this plan includes — the tenant entitlement defaults. */}
               <div className="col-span-2 border-t border-line pt-2">

@@ -488,7 +488,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
 
 // Tenant-facing plan + usage card (consumption vs plan limits).
 function UsageCard() {
-  const [u, setU] = useState<{ usage: { contacts: number; messages: number; channels: number; seats: number }; limits: { contacts: number; messages_per_month: number; channels: number; team_seats: number }; plan: string; status: string; trialEndsAt: string | null } | null>(null);
+  const [u, setU] = useState<{ usage: { contacts: number; messages: number; channels: number; seats: number }; limits: { contacts: number; messages_per_month: number; channels: number; team_seats: number }; plan: string; status: string; trialEndsAt: string | null; yt?: { used: number; limit: number; hasChannel: boolean } } | null>(null);
   useEffect(() => { fetch("/api/admin/usage").then(r => r.json()).then(d => { if (!d.error) setU(d); }).catch(() => {}); }, []);
   if (!u) return null;
   const rows: [string, number, number][] = [
@@ -498,6 +498,11 @@ function UsageCard() {
     ["Team seats", u.usage.seats, u.limits.team_seats],
   ];
   const trialLeft = u.trialEndsAt ? Math.max(0, Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)) : null;
+  // YouTube AI replies is a DAILY meter (separate from the monthly limits above),
+  // shown only when a YouTube channel is connected. Near the cap → nudge upgrade.
+  const yt = u.yt && u.yt.hasChannel && u.yt.limit > 0 ? u.yt : null;
+  const ytPct = yt ? Math.min(100, Math.round((yt.used / yt.limit) * 100)) : 0;
+  const ytNear = yt ? yt.used / yt.limit >= 0.8 : false;
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
@@ -518,6 +523,13 @@ function UsageCard() {
             </div>
           );
         })}
+        {yt && (
+          <div>
+            <div className="flex justify-between text-[11px] mb-0.5"><span className="text-ink-500">YouTube AI replies <span className="text-ink-400">(today)</span></span><span className={`font-mono ${ytNear ? "text-amber-600 font-bold" : "text-ink-400"}`}>{yt.used.toLocaleString()} / {yt.limit.toLocaleString()}</span></div>
+            <div className="h-1.5 rounded-full bg-canvas overflow-hidden"><div className={`h-full rounded-full ${ytPct >= 100 ? "bg-red-500" : ytNear ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${ytPct}%` }} /></div>
+            {ytNear && <p className="mt-1 text-[11px] text-amber-600">{ytPct >= 100 ? "Daily limit reached — remaining comments are answered after midnight UTC." : "Approaching your daily YouTube reply limit."} <a href="/admin/billing" className="font-bold underline hover:text-amber-700">Upgrade for a higher cap</a></p>}
+          </div>
+        )}
       </div>
     </section>
   );

@@ -8,7 +8,7 @@ import { getTenant } from "./tenants";
 import { getPlan, type PlanLimits } from "./plans";
 
 export type Resource = "contacts" | "conversations" | "messages" | "channels" | "seats";
-const UNLIMITED: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 0, team_seats: 0 };
+const UNLIMITED: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 0, team_seats: 0, yt_comment_replies_per_day: 0 };
 
 export interface Usage { contacts: number; conversations: number; messages: number; channels: number; seats: number }
 
