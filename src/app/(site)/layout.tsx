@@ -16,11 +16,11 @@ export const metadata: Metadata = {
 };
 
 // Dogfooding: the marketing site runs Talko AI's own website-chat widget,
-// the identical embed a customer pastes into their own site. Off by default —
-// set this once a "Talko AI" webchat channel exists in the portal and its
-// site key is added here, the same activation pattern used for Meta's
-// Embedded Signup (coded, inert until the env var is configured).
-const MARKETING_WEBCHAT_SITE_KEY = process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SITE_KEY;
+// the identical embed a customer pastes into their own site. Live against the
+// "Talko AI" webchat channel below; an env var can override the site key
+// without a code change (e.g. to point staging at a different channel).
+const MARKETING_WEBCHAT_SITE_KEY =
+  process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SITE_KEY ?? "wc_2a942b232e74027a2e65f351116f6c8d";
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
