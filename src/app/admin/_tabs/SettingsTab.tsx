@@ -1138,7 +1138,7 @@ function VoiceSettingsCard() {
 // ── Facebook Messenger Pages (connect a Page to auto-reply to DMs) ─────────────
 const EMPTY_FB_PAGE = { id: undefined as string | undefined, name: "", pageId: "", token: "", agentId: "", kbTag: "", active: true, isDefault: false };
 
-// Comment-to-DM rules (ManyChat-style: multiple rules, per-post targeting). No
+// Comment-to-DM rules (multiple rules, per-post targeting). No
 // follow-gate — Facebook Pages have no is_user_follow_business comment flow.
 type FbRuleButton = { label: string; url: string };
 const FB_MAX_BUTTONS = 3;
@@ -1304,13 +1304,13 @@ export function MessengerCard() {
       )}
       {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet — add one above to auto-reply to Page messages.</p>}
 
-      {/* Comment-to-DM automation (ManyChat-style: multiple rules + per-post targeting) */}
+      {/* Comment-to-DM automation (multiple rules + per-post targeting) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
           <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (pages.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_FB_RULE, replyOnly: false, channelId: pages[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
-        <p className="text-[11px] text-ink-400">When someone comments on a post, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keywords, and attach up to 3 link buttons — like ManyChat.</p>
+        <p className="text-[11px] text-ink-400">When someone comments on a post, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keywords, and attach up to 3 link buttons.</p>
 
         {rules.filter(r => !r.replyOnly).map(r => {
           const post = posts.find(p => p.id === r.postId);

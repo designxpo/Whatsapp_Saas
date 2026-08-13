@@ -67,7 +67,7 @@ function InstagramManager() {
   const [form, setForm] = useState<typeof EMPTY_IG | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  // Comment-to-DM rules (ManyChat-style: multiple rules, per-post, follow-gate)
+  // Comment-to-DM rules (multiple rules, per-post, follow-gate)
   const [rules, setRules] = useState<CommentRule[]>([]);
   const [posts, setPosts] = useState<IgPost[]>([]);
   const [ruleForm, setRuleForm] = useState<CommentRule | null>(null);
@@ -236,13 +236,13 @@ function InstagramManager() {
       )}
       {!channels.length && !form && <p className="text-xs text-ink-400">No Instagram accounts connected yet.</p>}
 
-      {/* Comment-to-DM automation (ManyChat-style: multiple rules, per-post, follow-gate) */}
+      {/* Comment-to-DM automation (multiple rules, per-post, follow-gate) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5" /> Comment-to-DM automation</p>
           <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: false, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
-        <p className="text-[11px] text-ink-400">When someone comments, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keyword, attach a link button, and optionally require a follow first — like ManyChat.</p>
+        <p className="text-[11px] text-ink-400">When someone comments, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keyword, attach a link button, and optionally require a follow first.</p>
 
         {rules.filter(r => !r.replyOnly).map(r => {
           const post = posts.find(p => p.id === r.postId);

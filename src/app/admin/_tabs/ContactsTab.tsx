@@ -9,7 +9,7 @@ import { ContactProfile } from "./ContactProfile";
 
 type ContactRow = { id: string; phone: string; name: string; email: string | null; tags: string[]; status: string; source: string | null; channelId?: string | null; createdAt: string };
 
-// ── Advanced filters (AiSensy-style) ──
+// ── Advanced filters ──
 type AttrFilter = { key: string; op: "is" | "is_not" | "contains"; value: string };
 type AdvFilters = { seenFrom: string; seenTo: string; createdFrom: string; createdTo: string; source: string; attrs: AttrFilter[] };
 const EMPTY_ADV: AdvFilters = { seenFrom: "", seenTo: "", createdFrom: "", createdTo: "", source: "", attrs: [] };

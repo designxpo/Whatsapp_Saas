@@ -31,7 +31,7 @@ function Donut({ pct, label }: { pct: number; label: string }) {
   );
 }
 
-// Per-day area chart (pure SVG — clicked area + read line, AiSensy-style).
+// Per-day area chart (pure SVG — clicked area + read line).
 function PerDayChart({ days }: { days: DayPoint[] }) {
   if (days.length === 0) return <p className="text-sm text-slate-400 py-10 text-center">No daily activity logged yet.</p>;
   const W = 600, H = 190, PX = 36, PB = 26, PT = 12;
@@ -91,7 +91,7 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
     setDetailId(id); setStats(null);
   }
 
-  // Pull the segment's recipients and jump to Broadcast prefilled (AiSensy-style retargeting).
+  // Pull the segment's recipients and jump to Broadcast prefilled (retargeting).
   async function retarget(campaignId: string, segment: string, label: string) {
     setRetargeting(true);
     try {
