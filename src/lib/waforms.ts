@@ -11,7 +11,7 @@ import type { ChannelCreds } from "./channels";
 const GRAPH = "https://graph.facebook.com/v22.0";
 
 export interface WaFormField {
-  type: "text" | "email" | "phone" | "number" | "pincode" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
+  type: "text" | "email" | "phone" | "number" | "pincode" | "ifsc" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
   label: string;
   required: boolean;
   options?: string[];           // dropdown / radio / checkbox

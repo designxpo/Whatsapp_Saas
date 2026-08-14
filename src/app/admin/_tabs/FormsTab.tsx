@@ -42,12 +42,12 @@ function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: s
 }
 // ── WhatsApp Forms (Meta Flows — native in-chat forms) ────────────────────────
 type WaFormRow = { id: string; name: string; status: string; categories: string[]; validationErrors: string[]; previewUrl: string | null };
-type UiFormFieldType = "text" | "email" | "phone" | "number" | "pincode" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
+type UiFormFieldType = "text" | "email" | "phone" | "number" | "pincode" | "ifsc" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
 type UiFormField = { type: UiFormFieldType; label: string; required: boolean; options: string };
 
 const FORM_FIELD_TYPES: { v: UiFormFieldType; label: string }[] = [
   { v: "text", label: "Text" }, { v: "email", label: "Email" }, { v: "phone", label: "Phone" },
-  { v: "number", label: "Number" }, { v: "pincode", label: "PIN code (auto-fills city/state)" }, { v: "textarea", label: "Long text" }, { v: "dropdown", label: "Dropdown" },
+  { v: "number", label: "Number" }, { v: "pincode", label: "PIN code (auto-fills city/state)" }, { v: "ifsc", label: "IFSC (auto-fills bank/branch)" }, { v: "textarea", label: "Long text" }, { v: "dropdown", label: "Dropdown" },
   { v: "radio", label: "Single choice" }, { v: "checkbox", label: "Multi choice" },
   { v: "date", label: "Date" }, { v: "optin", label: "Opt-in tick" },
 ];

@@ -26,7 +26,7 @@ import { getWelcomeSetting, getAwaySetting, isOutsideWorkingHours, isAiEnabled }
 import { loadMemory, saveMemory } from "@/lib/router/memory";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { recordFormSubmitted } from "@/lib/formresponses";
-import { findPincodeValue, derivePincodeAttrs } from "@/lib/pincode";
+import { deriveFieldAttrs } from "@/lib/fieldenrich";
 import { resolveFlowIdForAd } from "@/lib/adflow";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
@@ -279,14 +279,15 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   const answers = formAnswers(m);
   if (answers && Object.keys(answers).length) {
     await setContactAttributes(from, answers, tid).catch(() => undefined);
-    // PIN autofill: if the form collected a postal code, derive city/state/district
-    // (set-if-absent, so a city field the form also asked isn't clobbered) and
-    // store them too. Non-PII lookup; best-effort.
-    const pin = findPincodeValue(answers);
-    if (pin) {
-      const add = await derivePincodeAttrs(answers, pin);
-      if (Object.keys(add).length) await setContactAttributes(from, add, tid).catch(() => undefined);
-      Object.assign(answers, add);   // so the city we derived also reaches the LSQ mirror below
+    // Smart-field autofill: derive city/state (postal code) or bank/branch (IFSC)
+    // from any matching form field (set-if-absent). Non-PII; best-effort.
+    const derived: Record<string, string> = {};
+    for (const [k, v] of Object.entries(answers)) {
+      Object.assign(derived, await deriveFieldAttrs(undefined, k, String(v), { ...answers, ...derived }));
+    }
+    if (Object.keys(derived).length) {
+      await setContactAttributes(from, derived, tid).catch(() => undefined);
+      Object.assign(answers, derived);   // so a derived city also reaches the LSQ mirror below
     }
     // Mirror a form-captured email/city onto the LSQ lead (same gap the ask path had).
     const pick = (re: RegExp) => { for (const [k, v] of Object.entries(answers)) if (re.test(k) && String(v).trim()) return String(v).trim(); return undefined; };
