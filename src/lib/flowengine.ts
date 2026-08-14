@@ -28,6 +28,7 @@ import {
   landCapturedLead, formLinkForWaba, logSendFailure,
 } from "./store";
 import { recordFormSent, recordFormSubmitted, markFormAbandoned } from "./formresponses";
+import { isPincode, isPincodeField, derivePincodeAttrs } from "./pincode";
 import { assertTextsAllowed, collectStrings } from "./moderation";
 import { isAiEnabled, getFlowNudge, getFlowReminders } from "./messaging-settings";
 import { syncLeadProfile, pushWaActivity } from "./leadsquared";
@@ -506,6 +507,7 @@ function withVars(send: FlowSender, c: ContactVars | null): FlowSender {
 export function retryHint(vtype: string): string {
   if (vtype === "phone") return "That doesn't look like a complete mobile number — please share your full number, with country code if you're outside India.";
   if (vtype === "email") return "That doesn't look like an email address — could you re-check it? (e.g. name@example.com)";
+  if (vtype === "pincode") return "That doesn't look like a 6-digit PIN code — please share your area PIN (for example, 560001).";
   return "Hmm, that doesn't look right — could you share a valid answer?";
 }
 
@@ -523,6 +525,7 @@ export async function validateInput(type: string, text: string, tenantId?: strin
     case "phone": { const d = t.replace(/\D/g, "").length; return d >= 10 && d <= 15; }
     case "number": return /^[\d\s,.\-+]+$/.test(t) && /\d/.test(t);
     case "city": return await looksLikeCity(t, tenantId);
+    case "pincode": return isPincode(t);
     default: return true;
   }
 }
@@ -1092,6 +1095,16 @@ export async function handleFlowMessage(
       if (isReal && attr) {
         await setContactAttributes(phone, { [attr]: text.slice(0, 200) }, tid).catch(() => undefined);
         if (contact) contact.attributes = { ...(contact.attributes ?? {}), [attr]: text.slice(0, 200) };  // live for {{attr}} this run
+        // PIN autofill: a postal-code answer also fills city/state/district
+        // (set-if-absent) so the flow can greet with {{city}} and skip asking
+        // for them. Non-PII lookup; best-effort.
+        if (isPincodeField(vtype, attr) && isPincode(text)) {
+          const add = await derivePincodeAttrs(contact?.attributes, text);
+          if (Object.keys(add).length) {
+            await setContactAttributes(phone, add, tid).catch(() => undefined);
+            if (contact) contact.attributes = { ...(contact.attributes ?? {}), ...add };
+          }
+        }
         // Promote a captured email onto the contact profile too (the chat-form
         // path already does) so the Contacts list shows it, not just attributes.
         if (/email/i.test(attr) && /^\S+@\S+\.\S+$/.test(text.trim())) {
@@ -1175,7 +1188,7 @@ export async function handleFlowMessage(
             answer = f.o.find(o => norm(o) === t) ?? (li !== null ? f.o[li] : answer);
           }
         } else if (
-          (["email", "phone", "number"].includes(f.t) && !(await validateInput(f.t, text, tid)))
+          (["email", "phone", "number", "pincode"].includes(f.t) && !(await validateInput(f.t, text, tid)))
           || (/name/i.test(f.n) && !/company|business|brand/i.test(f.n) && !looksLikeName(text))
         ) {
           const tries = Number(session.state?.tries ?? 0);
@@ -1193,6 +1206,14 @@ export async function handleFlowMessage(
         if (isReal) {
           await setContactAttributes(phone, { [f.n]: answer }, tid).catch(() => undefined);
           if (contact) contact.attributes = { ...(contact.attributes ?? {}), [f.n]: answer };  // live for {{attr}} this run
+          // PIN autofill for a postal-code form field (same as the ask path).
+          if (isPincodeField(f.t, f.n) && isPincode(answer)) {
+            const add = await derivePincodeAttrs(contact?.attributes, answer);
+            if (Object.keys(add).length) {
+              await setContactAttributes(phone, add, tid).catch(() => undefined);
+              if (contact) contact.attributes = { ...(contact.attributes ?? {}), ...add };
+            }
+          }
         }
         if (wf.fields[wf.i + 1]) {
           await send.text(chatFieldPrompt(wf.fields[wf.i + 1]));

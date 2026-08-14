@@ -11,7 +11,7 @@ import type { ChannelCreds } from "./channels";
 const GRAPH = "https://graph.facebook.com/v22.0";
 
 export interface WaFormField {
-  type: "text" | "email" | "phone" | "number" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
+  type: "text" | "email" | "phone" | "number" | "pincode" | "textarea" | "dropdown" | "radio" | "checkbox" | "date" | "optin";
   label: string;
   required: boolean;
   options?: string[];           // dropdown / radio / checkbox
@@ -52,7 +52,7 @@ export function buildFlowJson(title: string, fields: WaFormField[]): Record<stri
       case "optin": children.push({ type: "OptIn", name, label: f.label.slice(0, 120), required: f.required }); break;
       default: children.push({
         type: "TextInput", name, label: f.label.slice(0, 20), required: f.required,
-        "input-type": f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" ? "number" : "text",
+        "input-type": f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" || f.type === "pincode" ? "number" : "text",
       });
     }
   }
@@ -120,7 +120,7 @@ function flowField(f: WaFormField, name: string): Record<string, unknown> {
     case "checkbox": return { type: "CheckboxGroup", name, label: f.label.slice(0, 30), required: f.required, "data-source": opts };
     case "date": return { type: "DatePicker", name, label: f.label.slice(0, 20), required: f.required };
     case "optin": return { type: "OptIn", name, label: f.label.slice(0, 120), required: f.required };
-    default: return { type: "TextInput", name, label: f.label.slice(0, 20), required: f.required, "input-type": f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" ? "number" : "text" };
+    default: return { type: "TextInput", name, label: f.label.slice(0, 20), required: f.required, "input-type": f.type === "email" ? "email" : f.type === "phone" ? "phone" : f.type === "number" || f.type === "pincode" ? "number" : "text" };
   }
 }
 
