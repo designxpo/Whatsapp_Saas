@@ -46,6 +46,15 @@ export function hasWindow(platform) {
   return channelMeta(platform).id !== "webchat";
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HUMAN_AGENT_MS = 7 * DAY_MS;   // Meta's human-agent allowance on IG/Facebook
+
+// "22h left" / "30m left" / "closing now"
+function hoursLeft(msLeft) {
+  const mins = Math.floor(Math.max(0, msLeft) / 60000);
+  return mins >= 60 ? `${Math.floor(mins / 60)}h left` : mins >= 1 ? `${mins}m left` : "closing now";
+}
+
 /**
  * Compact age for a list row: "now", "6m", "3h", "2d", "1w".
  * @param {string | null | undefined} iso
@@ -85,13 +94,22 @@ export function windowStatus({ platform = "whatsapp", windowOpen = false, window
       ? { state: "none", label: "Template needed", hint: "This contact hasn't messaged you, so only an approved template can start the chat." }
       : { state: "none", label: "Waiting on them", hint: `${label} doesn't allow starting a chat — they have to message you first.` };
   }
+
+  const sinceMs = nowMs - new Date(lastInboundAt).getTime();
+  // Instagram and Facebook give a HUMAN agent 7 days, not 24 hours — a person
+  // typing here can still answer a two-day-old DM.
+  if (!templates && sinceMs < HUMAN_AGENT_MS) {
+    const daysLeft = Math.max(1, Math.ceil((HUMAN_AGENT_MS - sinceMs) / DAY_MS));
+    return sinceMs < DAY_MS
+      ? { state: "open", label: `Can reply · ${hoursLeft(DAY_MS - sinceMs)}`, hint: "You can send a normal message while this window is open." }
+      : { state: "open", label: `Can reply · ${daysLeft}d left`, hint: `Past 24 hours, but ${label} lets a person reply for 7 days. Send it yourself — the AI can't use this window.` };
+  }
+
   if (!windowOpen) {
     return templates
       ? { state: "closed", label: "Template needed", hint: "It's been over 24 hours since they messaged, so WhatsApp only allows an approved template." }
-      : { state: "closed", label: "Waiting on them", hint: `It's been over 24 hours, and ${label} has no template option — they need to message again before you can reply.` };
+      : { state: "closed", label: "Waiting on them", hint: `It's been over 7 days, and ${label} has no template option — they need to message again before you can reply.` };
   }
-  const msLeft = Math.max(0, new Date(windowClosesAt ?? new Date(lastInboundAt).getTime() + 24 * 3600 * 1000).getTime() - nowMs);
-  const mins = Math.floor(msLeft / 60000);
-  const left = mins >= 60 ? `${Math.floor(mins / 60)}h left` : mins >= 1 ? `${mins}m left` : "closing now";
-  return { state: "open", label: `Can reply · ${left}`, hint: "You can send a normal message while this window is open." };
+  const msLeft = Math.max(0, new Date(windowClosesAt ?? new Date(lastInboundAt).getTime() + DAY_MS).getTime() - nowMs);
+  return { state: "open", label: `Can reply · ${hoursLeft(msLeft)}`, hint: "You can send a normal message while this window is open." };
 }

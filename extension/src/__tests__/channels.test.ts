@@ -117,20 +117,39 @@ describe("windowStatus", () => {
     expect(s.label).toBe("Can reply · 23h left");
   });
 
-  // Instagram/Facebook have no template escape hatch, so a closed window means
-  // waiting — never "Template needed", which would send them to a dead end.
-  it("says to wait, not to use a template, on a closed Instagram chat", () => {
-    const s = windowStatus({ platform: "instagram", windowOpen: false, lastInboundAt: ago(48 * HOUR) }, NOW);
-    expect(s.state).toBe("closed");
-    expect(s.label).toBe("Waiting on them");
-    expect(s.hint).toMatch(/Instagram has no template option/);
+  // Meta gives a HUMAN agent 7 days on IG/Facebook, so a 2-day-old DM is still
+  // answerable — reporting it as closed would block real work for no reason.
+  it("keeps an Instagram chat repliable for 7 days under the human-agent window", () => {
+    const s = windowStatus({ platform: "instagram", windowOpen: false, lastInboundAt: ago(2 * 24 * HOUR) }, NOW);
+    expect(s.state).toBe("open");
+    expect(s.label).toBe("Can reply · 5d left");
+    expect(s.hint).toMatch(/lets a person reply for 7 days/);
   });
 
-  it("says the same for Facebook, and for a contact who never messaged", () => {
-    expect(windowStatus({ platform: "messenger", windowOpen: false, lastInboundAt: ago(48 * HOUR) }, NOW).label).toBe("Waiting on them");
+  it("still shows hours, not days, inside the first 24h on Instagram", () => {
+    expect(windowStatus({ platform: "instagram", windowOpen: true, lastInboundAt: ago(2 * HOUR) }, NOW).label)
+      .toBe("Can reply · 22h left");
+  });
+
+  it("closes Instagram/Facebook only after the 7 days are up", () => {
+    const s = windowStatus({ platform: "instagram", windowOpen: false, lastInboundAt: ago(8 * 24 * HOUR) }, NOW);
+    expect(s.state).toBe("closed");
+    expect(s.label).toBe("Waiting on them");
+    expect(s.hint).toMatch(/over 7 days/);
+    expect(windowStatus({ platform: "messenger", windowOpen: false, lastInboundAt: ago(10 * 24 * HOUR) }, NOW).label).toBe("Waiting on them");
+  });
+
+  it("still refuses to start a cold chat on Facebook", () => {
     const cold = windowStatus({ platform: "messenger", lastInboundAt: null }, NOW);
     expect(cold.state).toBe("none");
     expect(cold.hint).toMatch(/Facebook doesn't allow starting a chat/);
+  });
+
+  // WhatsApp has no human-agent extension — 24h then templates only.
+  it("does not give WhatsApp the 7-day window", () => {
+    const s = windowStatus({ platform: "whatsapp", windowOpen: false, lastInboundAt: ago(2 * 24 * HOUR) }, NOW);
+    expect(s.state).toBe("closed");
+    expect(s.label).toBe("Template needed");
   });
 
   it("treats web chat as always repliable — it has no messaging window", () => {

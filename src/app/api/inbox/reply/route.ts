@@ -24,7 +24,8 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 // Routing MUST follow the conversation's platform: sending an Instagram reply
 // down the WhatsApp API would log a message the customer never receives.
 //   WhatsApp  — free-form inside Meta's 24h window, else an approved template.
-//   Instagram — free-form inside its own 24h window. No template fallback exists.
+//   Instagram — free-form inside its 24h window, or up to 7 days under Meta's
+//               HUMAN_AGENT tag (a person is typing here, never the bot).
 //   Facebook  — same as Instagram (Page messaging window).
 //   Web chat  — no external API and no window; the reply is persisted and the
 //               visitor's widget picks it up on its next poll.
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
       const ch = conv.channelId ? await getChannel(conv.channelId, tenantId) : null;
       if (platform === "instagram") {
         if (!ch?.igUserId || !ch?.token) return NextResponse.json({ error: "Instagram account not connected for this chat" }, { status: 502 });
-        const sent = await sendIgMessage({ igUserId: ch.igUserId, token: ch.token }, conv.phone, message, { lastInboundAt: conv.lastInboundAt });
+        const sent = await sendIgMessage({ igUserId: ch.igUserId, token: ch.token }, conv.phone, message, { lastInboundAt: conv.lastInboundAt, humanAgent: true });
         if (!sent.ok) {
           const closed = sent.blockedBy === "window" || sent.blockedBy === "cold";
           return NextResponse.json(
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
         messageId = sent.messageId;
       } else {
         if (!ch?.pageId || !ch?.token) return NextResponse.json({ error: "Facebook Page not connected for this chat" }, { status: 502 });
-        const sent = await sendFbMessage({ pageId: ch.pageId, token: ch.token }, conv.phone, message, { lastInboundAt: conv.lastInboundAt });
+        const sent = await sendFbMessage({ pageId: ch.pageId, token: ch.token }, conv.phone, message, { lastInboundAt: conv.lastInboundAt, humanAgent: true });
         if (!sent.ok) {
           const closed = sent.blockedBy === "window" || sent.blockedBy === "cold";
           return NextResponse.json(

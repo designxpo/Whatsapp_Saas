@@ -19,6 +19,7 @@ import { moderateText } from "./moderation";
 
 const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
+const HUMAN_AGENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;   // HUMAN_AGENT tag: 7 days
 const MAX_PER_HOUR = 250;                  // conservative per-Page DM pacing
 const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // public comment replies — Meta is stricter here
 const MAX_COMMENT_LIKES_PER_HOUR = 100;    // liking commenters' comments (light engagement)
@@ -42,6 +43,21 @@ export function within24hWindow(lastInboundAt: string | null | undefined): boole
   if (!lastInboundAt) return false;
   const t = new Date(lastInboundAt).getTime();
   return Number.isFinite(t) && Date.now() - t < WINDOW_MS;
+}
+
+// ── Human-agent window (7 days) ───────────────────────────────────────────────
+// Meta lets a HUMAN agent — not automation — answer for 7 days past the standard
+// 24h, via messaging_type MESSAGE_TAG + tag HUMAN_AGENT. Bots must NEVER use it:
+// the tag asserts a person is typing.
+export function withinHumanAgentWindow(lastInboundAt: string | null | undefined): boolean {
+  if (!lastInboundAt) return false;
+  const t = new Date(lastInboundAt).getTime();
+  return Number.isFinite(t) && Date.now() - t < HUMAN_AGENT_WINDOW_MS;
+}
+
+function withHumanAgentTag(payload: Record<string, unknown>, lastInboundAt: string | null | undefined, humanAgent: boolean): Record<string, unknown> {
+  if (!humanAgent || within24hWindow(lastInboundAt)) return payload;
+  return { ...payload, messaging_type: "MESSAGE_TAG", tag: "HUMAN_AGENT" };
 }
 
 // ── Rate pacing (best-effort, in-process) ─────────────────────────────────────
@@ -90,12 +106,17 @@ export async function sendFbMessage(
   creds: FbCreds,
   recipientPsid: string,
   text: string,
-  opts: { lastInboundAt?: string | null } = {},
+  opts: { lastInboundAt?: string | null; humanAgent?: boolean } = {},
 ): Promise<FbSendResult> {
   if (!recipientPsid || !text.trim()) return { ok: false, error: "recipient and text required" };
-  if (!within24hWindow(opts.lastInboundAt)) {
+  // A person replying by hand gets Meta's 7-day human-agent allowance; anything
+  // automated stays inside the strict 24h window.
+  const allowed = opts.humanAgent ? withinHumanAgentWindow(opts.lastInboundAt) : within24hWindow(opts.lastInboundAt);
+  if (!allowed) {
     return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold",
-             error: opts.lastInboundAt ? "Outside the 24-hour messaging window" : "No prior interaction — cold messages are not allowed" };
+             error: opts.lastInboundAt
+               ? (opts.humanAgent ? "Outside the 7-day human-agent window" : "Outside the 24-hour messaging window")
+               : "No prior interaction — cold messages are not allowed" };
   }
   if (!allowSend(creds.pageId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this Page" };
   // Last-line content check — the single funnel for Messenger DM text, so it
@@ -103,7 +124,10 @@ export async function sendFbMessage(
   if (!(await moderateText(text, { surface: "dm_reply" })).allowed) {
     return { ok: false, error: "Blocked by the content safety filter" };
   }
-  return postMessage(creds, { recipient: { id: recipientPsid }, message: { text: text.slice(0, 2000) } });
+  return postMessage(creds, withHumanAgentTag(
+    { recipient: { id: recipientPsid }, message: { text: text.slice(0, 2000) } },
+    opts.lastInboundAt, !!opts.humanAgent,
+  ));
 }
 
 // Send a media attachment (image/video/audio) by public URL. Same window + rate

@@ -32,6 +32,7 @@ import { moderateText } from "./moderation";
 
 const GRAPH = `https://${process.env.META_IG_GRAPH_HOST || "graph.instagram.com"}/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 const WINDOW_MS = 24 * 60 * 60 * 1000;     // 24-hour standard messaging window
+const HUMAN_AGENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;   // HUMAN_AGENT tag: 7 days
 const MAX_PER_HOUR = 200;                  // conservative per-account DM pacing
 const MAX_COMMENT_REPLIES_PER_HOUR = 60;   // public comment replies — IG is stricter here
 
@@ -54,6 +55,24 @@ export function within24hWindow(lastInboundAt: string | null | undefined): boole
   if (!lastInboundAt) return false;
   const t = new Date(lastInboundAt).getTime();
   return Number.isFinite(t) && Date.now() - t < WINDOW_MS;
+}
+
+// ── Human-agent window (7 days) ───────────────────────────────────────────────
+// Meta allows a HUMAN agent — not automation — to answer for 7 days past the
+// standard 24h, via messaging_type MESSAGE_TAG + tag HUMAN_AGENT. That's what
+// lets an owner reply to a two-day-old DM at all; without it the message is
+// simply refused. Bots must NEVER use this: the tag asserts a person is typing.
+export function withinHumanAgentWindow(lastInboundAt: string | null | undefined): boolean {
+  if (!lastInboundAt) return false;
+  const t = new Date(lastInboundAt).getTime();
+  return Number.isFinite(t) && Date.now() - t < HUMAN_AGENT_WINDOW_MS;
+}
+
+// Adds the human-agent tag when we're past 24h but still inside 7 days. Returns
+// the payload unchanged in-window, so normal sends keep their default type.
+function withHumanAgentTag(payload: Record<string, unknown>, lastInboundAt: string | null | undefined, humanAgent: boolean): Record<string, unknown> {
+  if (!humanAgent || within24hWindow(lastInboundAt)) return payload;
+  return { ...payload, messaging_type: "MESSAGE_TAG", tag: "HUMAN_AGENT" };
 }
 
 // ── Rate pacing (best-effort, in-process) ─────────────────────────────────────
@@ -105,12 +124,17 @@ export async function sendIgMessage(
   creds: IgCreds,
   recipientIgsid: string,
   text: string,
-  opts: { lastInboundAt?: string | null } = {},
+  opts: { lastInboundAt?: string | null; humanAgent?: boolean } = {},
 ): Promise<IgSendResult> {
   if (!recipientIgsid || !text.trim()) return { ok: false, error: "recipient and text required" };
-  if (!within24hWindow(opts.lastInboundAt)) {
+  // A person replying by hand gets Meta's 7-day human-agent allowance; anything
+  // automated stays inside the strict 24h window.
+  const allowed = opts.humanAgent ? withinHumanAgentWindow(opts.lastInboundAt) : within24hWindow(opts.lastInboundAt);
+  if (!allowed) {
     return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold",
-             error: opts.lastInboundAt ? "Outside the 24-hour messaging window" : "No prior interaction — cold DMs are not allowed" };
+             error: opts.lastInboundAt
+               ? (opts.humanAgent ? "Outside the 7-day human-agent window" : "Outside the 24-hour messaging window")
+               : "No prior interaction — cold DMs are not allowed" };
   }
   // Last-line content check — the single funnel for Instagram DM text, so it
   // covers AI replies, flow steps and agent-typed Live Chat messages alike.
@@ -118,7 +142,10 @@ export async function sendIgMessage(
     return { ok: false, error: "Blocked by the content safety filter" };
   }
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
-  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } });
+  return postMessage(creds, withHumanAgentTag(
+    { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000) } },
+    opts.lastInboundAt, !!opts.humanAgent,
+  ));
 }
 
 // Send a media attachment (image/video/audio) by public URL. Same 24h-window and
