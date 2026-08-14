@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CHANNELS, channelMeta, isReplyable, relativeTime, windowStatus } from "../channels.js";
+import { CHANNELS, STATUS_FILTERS, channelMeta, isReplyable, relativeTime, windowStatus } from "../channels.js";
 
 // These strings are what an agent reads before deciding how to answer. A wrong
 // channel label sends them to the wrong place; a wrong window state makes them
@@ -10,13 +10,15 @@ const NOW = new Date("2026-08-14T12:00:00Z").getTime();
 const ago = (ms: number) => new Date(NOW - ms).toISOString();
 
 describe("channelMeta", () => {
-  it("labels every channel the product supports", () => {
+  // The labels must match the portal's Live Chat exactly — the same channel
+  // called two different names across the product is a support ticket.
+  it("labels every channel the way the portal does", () => {
     expect(CHANNELS.map(c => c.id)).toEqual(["whatsapp", "instagram", "messenger", "webchat"]);
     expect(channelMeta("whatsapp")).toMatchObject({ label: "WhatsApp", short: "WA" });
     expect(channelMeta("instagram")).toMatchObject({ label: "Instagram", short: "IG" });
-    expect(channelMeta("messenger")).toMatchObject({ label: "Messenger", short: "MSG" });
-    // "webchat" is the internal name; an agent should read the plain word.
-    expect(channelMeta("webchat")).toMatchObject({ label: "Website", short: "WEB" });
+    // Internally "messenger"/"webchat"; the portal shows Facebook / Web chat.
+    expect(channelMeta("messenger")).toMatchObject({ label: "Facebook", short: "FB" });
+    expect(channelMeta("webchat")).toMatchObject({ label: "Web chat", short: "WEB" });
   });
 
   it("defaults a missing platform to WhatsApp, matching the API", () => {
@@ -26,6 +28,18 @@ describe("channelMeta", () => {
 
   it("degrades gracefully for a channel added server-side before the extension knows it", () => {
     expect(channelMeta("telegram")).toMatchObject({ label: "Telegram", short: "TEL" });
+  });
+});
+
+describe("STATUS_FILTERS", () => {
+  it("offers the same statuses as the portal's Live Chat, same wording", () => {
+    expect(STATUS_FILTERS).toEqual([
+      { id: "all", label: "All" },
+      { id: "needs_reply", label: "Needs reply" },
+      { id: "escalated", label: "Escalated" },
+      // The portal calls a bot-off chat "Human" — a person is handling it.
+      { id: "bot_off", label: "Human" },
+    ]);
   });
 });
 
@@ -92,6 +106,14 @@ describe("windowStatus", () => {
     expect(s.state).toBe("other");
     expect(s.label).toBe("Instagram chat");
     expect(s.hint).toMatch(/portal/);
+  });
+
+  it("uses the portal's channel wording, without doubling the noun", () => {
+    expect(windowStatus({ platform: "messenger", lastInboundAt: ago(HOUR) }, NOW).label).toBe("Facebook chat");
+    // "Web chat" already ends in "chat" — never "Web chat chat".
+    const web = windowStatus({ platform: "webchat", lastInboundAt: ago(HOUR) }, NOW);
+    expect(web.label).toBe("Web chat");
+    expect(web.hint).toBe("Reply to this Web chat in the Talko portal.");
   });
 
   it("treats an empty conversation object as needing a template, never as sendable", () => {

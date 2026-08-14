@@ -88,6 +88,11 @@
 }
 
 * { box-sizing: border-box; }
+/* An author `display` rule beats the UA's `[hidden] { display: none }`, so every
+   element we toggle with .hidden (views, empty states, the composer rows) stayed
+   on screen at once — list, thread and "Loading…" stacked together. Keep this
+   above the layout rules that set display. */
+[hidden] { display: none !important; }
 html, body { height: 100%; }
 body {
   margin: 0; display: flex; flex-direction: column;
@@ -122,9 +127,46 @@ body {
 main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 #listView, #threadView { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 
+.baractions { display: flex; align-items: center; gap: 6px; }
+.icon { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ── Filter stack ───────────────────────────────────────────────────────── */
+.filters {
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; flex: 0 0 auto;
+}
+
+/* Chats vs comments — the outermost split, so it's a segmented control */
+.views { display: flex; gap: 3px; background: var(--canvas); border-radius: var(--r-control); padding: 3px; }
+.viewtab {
+  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font: inherit; font-size: 12px; font-weight: 650; color: var(--ink-600);
+  background: transparent; border: 0; border-radius: 7px; padding: 6px 8px; cursor: pointer;
+}
+.viewtab[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 2px rgba(7,59,120,.10); }
+.viewtab:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.viewtab .n { font-family: var(--mono); font-size: 10.5px; font-weight: 700; opacity: .6; }
+
+.search {
+  font: inherit; font-size: 12.5px; width: 100%; padding: 8px 10px;
+  color: var(--ink); background: var(--canvas);
+  border: 1px solid var(--line); border-radius: var(--r-control);
+}
+.search:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
+
+.statuses { display: flex; gap: 5px; flex-wrap: wrap; }
+.stchip {
+  font: inherit; font-size: 11.5px; font-weight: 650; color: var(--ink-600);
+  background: transparent; border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 10px; cursor: pointer;
+}
+.stchip:hover { border-color: var(--brand-500); color: var(--ink); }
+.stchip[aria-pressed="true"] { color: #fff; background: var(--brand); border-color: var(--brand); }
+.stchip:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
 /* ── Channel tabs (the source bifurcation) ──────────────────────────────── */
 .channels {
-  display: flex; gap: 4px; padding: 8px 10px 0;
+  display: flex; gap: 4px;
   background: var(--paper); overflow-x: auto; flex: 0 0 auto;
   scrollbar-width: none;
 }
@@ -146,22 +188,37 @@ main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .chtab[aria-selected="true"] .n { background: var(--brand-50); color: var(--brand); }
 .chtab:disabled { opacity: .4; cursor: default; }
 
-.subbar {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 8px; padding: 8px 12px; background: var(--paper);
-  border-bottom: 1px solid var(--line); flex: 0 0 auto;
+/* ── Thread tools (portal-parity actions) ───────────────────────────────── */
+.threadtools {
+  display: flex; gap: 6px; padding: 8px 12px; flex-wrap: wrap;
+  background: var(--paper); border-bottom: 1px solid var(--line); flex: 0 0 auto;
 }
-.toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  font: inherit; font-size: 11.5px; font-weight: 600; color: var(--ink-600);
-  background: transparent; border: 1px solid var(--line);
-  border-radius: 999px; padding: 4px 10px 4px 8px; cursor: pointer;
+.tool {
+  font: inherit; font-size: 11.5px; font-weight: 650; text-decoration: none;
+  color: var(--ink-600); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; cursor: pointer;
 }
-.toggle .tick { font-size: 10px; opacity: 0; transition: opacity .12s; }
-.toggle[aria-pressed="true"] { color: var(--brand); background: var(--brand-50); border-color: var(--brand-100); }
-.toggle[aria-pressed="true"] .tick { opacity: 1; }
-.toggle:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.count { font-size: 11px; color: var(--ink-400); font-variant-numeric: tabular-nums; }
+.tool:hover { border-color: var(--brand); color: var(--brand); }
+.tool:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.tool.on { color: var(--good); background: var(--good-bg); border-color: transparent; }
+.tool.danger:hover { color: var(--bad); border-color: var(--bad); }
+.tool:disabled { opacity: .5; cursor: progress; }
+
+.tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  border-radius: 999px; padding: 2px 6px;
+}
+.tag.escalated { color: var(--bad); background: var(--bad-bg); }
+
+/* Quick replies — one tap to a saved answer, as in the portal */
+.quickrow { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 7px; }
+.qr {
+  font: inherit; font-family: var(--mono); font-size: 11px; font-weight: 650;
+  color: var(--brand); background: var(--brand-50);
+  border: 1px solid var(--brand-100); border-radius: 999px; padding: 3px 9px; cursor: pointer;
+}
+.qr:hover { background: var(--brand-100); }
+.qr:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 
 /* ── Conversation rows ──────────────────────────────────────────────────── */
 .list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1 1 auto; background: var(--paper); }
@@ -268,10 +325,13 @@ main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
   border-top: 1px solid var(--line); background: var(--paper);
   padding: 10px 12px; flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px;
 }
+.composer.readonly { gap: 10px; }
+.composer.readonly p { margin: 0; font-size: 12.5px; color: var(--ink-600); }
+.aslink { text-align: center; text-decoration: none; display: block; }
+
 .flabel { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-400); }
-.templaterow { display: flex; flex-direction: column; gap: 5px; }
-.textrow { display: flex; flex-direction: column; }
-textarea, .templaterow input, .templaterow select {
+.fieldrow { display: flex; flex-direction: column; gap: 5px; }
+textarea, .fieldrow input, .fieldrow select {
   font: inherit; padding: 9px 10px; color: var(--ink);
   background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r-control);
 }
@@ -280,7 +340,7 @@ textarea:focus-visible, input:focus-visible, select:focus-visible {
   outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand);
 }
 textarea:disabled, select:disabled { opacity: .55; cursor: not-allowed; }
-.templaterow .mono { font-family: var(--mono); }
+.fieldrow .mono { font-family: var(--mono); }
 .fhint { color: var(--ink-600); font-size: 11px; }
 
 .composerbtns { display: flex; gap: 8px; }

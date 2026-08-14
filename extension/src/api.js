@@ -87,15 +87,31 @@ export async function addLead({ phone, name = "", email = "", tags = [], sourceU
 
 // ── Phase 2: inbox side-panel ────────────────────────────────────────────────
 
-// Recent conversations for the side-panel list. `platform` narrows to one source
-// channel (whatsapp | instagram | messenger | webchat); null means all of them.
-export function listInbox({ limit = 40, needsReply = false, platform = null } = {}) {
-  const q = new URLSearchParams({
+// Conversations for the side-panel list, using the portal's Live Chat filters.
+// view: "chats" | "comments" · platform: whatsapp|instagram|messenger|webchat
+// status: all|needs_reply|escalated|bot_off · q: search by name/number/handle.
+export function listInbox({ limit = 50, view = "chats", platform = null, status = "all", q = "" } = {}) {
+  const params = new URLSearchParams({
     limit: String(limit),
-    ...(needsReply ? { needsReply: "1" } : {}),
+    view,
+    status,
     ...(platform ? { platform } : {}),
+    ...(q.trim() ? { q: q.trim() } : {}),
   });
-  return apiFetch(`/api/inbox?${q}`);
+  return apiFetch(`/api/inbox?${params}`);
+}
+
+// Non-sending thread controls, as in the portal: hand to a human, or escalate.
+export function setBot({ conversationId, enabled }) {
+  return apiFetch("/api/inbox/actions", { method: "POST", body: { conversationId, action: "bot", enabled } });
+}
+export function setStatus({ conversationId, status }) {
+  return apiFetch("/api/inbox/actions", { method: "POST", body: { conversationId, action: "status", status } });
+}
+
+// The tenant's saved canned replies.
+export function listQuickReplies() {
+  return apiFetch("/api/inbox/quick-replies");
 }
 
 // One thread's messages + 24h-window state.

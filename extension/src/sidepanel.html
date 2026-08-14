@@ -13,7 +13,10 @@
       <span class="brandname">Talko</span>
       <span id="ws" class="ws"></span>
     </div>
-    <button id="refresh" class="icon" type="button" title="Refresh" aria-label="Refresh">↻</button>
+    <div class="baractions">
+      <a id="openPortal" class="icon" href="#" target="_blank" rel="noreferrer" title="Open the portal">↗</a>
+      <button id="refresh" class="icon" type="button" title="Refresh" aria-label="Refresh">↻</button>
+    </div>
   </header>
 
   <main>
@@ -25,15 +28,21 @@
       <button id="openOpts" class="primary" type="button">Open settings</button>
     </section>
 
-    <!-- Conversation list -->
+    <!-- Inbox -->
     <section id="listView">
-      <nav class="channels" id="channels" aria-label="Filter by channel"></nav>
-      <div class="subbar">
-        <button id="filter" class="toggle" type="button" aria-pressed="false">
-          <span class="tick" aria-hidden="true">✓</span> Needs reply only
-        </button>
-        <span id="listCount" class="count"></span>
+      <div class="filters">
+        <!-- Chats vs comments, as in the portal -->
+        <div class="views" role="tablist" aria-label="Chats or comments">
+          <button id="viewChats" class="viewtab" type="button" role="tab" aria-selected="true">Chats <span class="n" id="nChats"></span></button>
+          <button id="viewComments" class="viewtab" type="button" role="tab" aria-selected="false">Comments <span class="n" id="nComments"></span></button>
+        </div>
+
+        <input id="search" class="search" type="search" placeholder="Search name or number" autocomplete="off" />
+
+        <nav class="channels" id="channels" role="tablist" aria-label="Filter by channel"></nav>
+        <div class="statuses" id="statuses" role="group" aria-label="Filter by status"></div>
       </div>
+
       <ul id="list" class="list"></ul>
       <div id="listState" class="empty-state small" hidden></div>
     </section>
@@ -47,8 +56,16 @@
           <span class="whosub">
             <span id="tChannel" class="chan"></span>
             <span id="tPhone" class="mono"></span>
+            <span id="tEscalated" class="tag escalated" hidden>Escalated</span>
           </span>
         </div>
+      </div>
+
+      <!-- Thread controls, mirroring the portal's Live Chat actions -->
+      <div class="threadtools">
+        <button id="botToggle" class="tool" type="button"></button>
+        <button id="escalate" class="tool" type="button"></button>
+        <a id="openThreadPortal" class="tool" href="#" target="_blank" rel="noreferrer">Open in portal ↗</a>
       </div>
 
       <div id="tStatus" class="statusbar">
@@ -58,15 +75,16 @@
 
       <div id="messages" class="messages" aria-live="polite"></div>
 
-      <div class="composer">
-        <div id="templateRow" class="templaterow" hidden>
+      <div class="composer" id="composer">
+        <div id="templateRow" class="fieldrow" hidden>
           <label class="flabel" for="tplName">Approved template</label>
           <select id="tplName" class="mono"><option value="">Choose a template…</option></select>
           <input id="tplParams" placeholder="Values, comma-separated" hidden />
           <small id="tplHint" class="fhint" hidden></small>
         </div>
 
-        <div id="textRow" class="textrow">
+        <div id="textRow" class="fieldrow">
+          <div id="quickRow" class="quickrow" hidden></div>
           <textarea id="draft" rows="3" placeholder="Write a reply…"></textarea>
         </div>
 
@@ -77,6 +95,12 @@
           <button id="send" class="primary" type="button">Send</button>
         </div>
         <p id="composerMsg" class="cmsg" role="status" aria-live="polite" hidden></p>
+      </div>
+
+      <!-- Shown instead of the composer for channels the extension can't send on -->
+      <div class="composer readonly" id="readonlyNote" hidden>
+        <p id="readonlyText"></p>
+        <a id="readonlyLink" class="primary aslink" href="#" target="_blank" rel="noreferrer">Reply in the portal ↗</a>
       </div>
     </section>
   </main>

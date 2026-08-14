@@ -2,13 +2,22 @@
 // the labels an agent reads are unit-tested — a mislabelled channel or a wrong
 // "hours left" would push someone into sending the wrong kind of message.
 
-// Short codes rather than icons: they stay legible at badge size, read correctly
-// to a screen reader, and don't borrow another brand's logo.
+// Labels match the portal's Live Chat exactly (Facebook, Web chat) so the same
+// channel never has two names across the product. Short codes rather than icons:
+// legible at badge size, read correctly to a screen reader, no borrowed logos.
 export const CHANNELS = [
   { id: "whatsapp", label: "WhatsApp", short: "WA" },
   { id: "instagram", label: "Instagram", short: "IG" },
-  { id: "messenger", label: "Messenger", short: "MSG" },
-  { id: "webchat", label: "Website", short: "WEB" },
+  { id: "messenger", label: "Facebook", short: "FB" },
+  { id: "webchat", label: "Web chat", short: "WEB" },
+];
+
+// The portal's status filters, same keys and wording.
+export const STATUS_FILTERS = [
+  { id: "all", label: "All" },
+  { id: "needs_reply", label: "Needs reply" },
+  { id: "escalated", label: "Escalated" },
+  { id: "bot_off", label: "Human" },
 ];
 
 const BY_ID = new Map(CHANNELS.map(c => [c.id, c]));
@@ -52,7 +61,9 @@ export function relativeTime(iso, nowMs = Date.now()) {
 export function windowStatus({ platform = "whatsapp", windowOpen = false, windowClosesAt = null, lastInboundAt = null } = {}, nowMs = Date.now()) {
   if (!isReplyable(platform)) {
     const { label } = channelMeta(platform);
-    return { state: "other", label: `${label} chat`, hint: `Reply to this ${label} chat in the Talko portal.` };
+    // "Web chat" already ends in the noun — don't say "Web chat chat".
+    const noun = /chat$/i.test(label) ? label : `${label} chat`;
+    return { state: "other", label: noun, hint: `Reply to this ${noun} in the Talko portal.` };
   }
   if (!lastInboundAt) {
     return { state: "none", label: "Template needed", hint: "This contact hasn't messaged you, so only an approved template can start the chat." };

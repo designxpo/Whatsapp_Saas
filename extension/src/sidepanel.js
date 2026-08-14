@@ -1,24 +1,34 @@
-import { getSettings, listInbox, getThread, sendReply, suggestReply, listTemplates } from "./api.js";
-import { CHANNELS, channelMeta, isReplyable, relativeTime, windowStatus } from "./channels.js";
+import {
+  getSettings, listInbox, getThread, sendReply, suggestReply,
+  listTemplates, listQuickReplies, setBot, setStatus,
+} from "./api.js";
+import { CHANNELS, STATUS_FILTERS, channelMeta, isReplyable, relativeTime, windowStatus } from "./channels.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  ws: $("ws"), refresh: $("refresh"),
+  ws: $("ws"), refresh: $("refresh"), openPortal: $("openPortal"),
   connect: $("connect"), openOpts: $("openOpts"),
-  listView: $("listView"), channels: $("channels"), filter: $("filter"),
-  listCount: $("listCount"), list: $("list"), listState: $("listState"),
+  listView: $("listView"), viewChats: $("viewChats"), viewComments: $("viewComments"),
+  nChats: $("nChats"), nComments: $("nComments"), search: $("search"),
+  channels: $("channels"), statuses: $("statuses"),
+  list: $("list"), listState: $("listState"),
   threadView: $("threadView"), back: $("back"), tName: $("tName"),
-  tChannel: $("tChannel"), tPhone: $("tPhone"),
+  tChannel: $("tChannel"), tPhone: $("tPhone"), tEscalated: $("tEscalated"),
+  botToggle: $("botToggle"), escalate: $("escalate"), openThreadPortal: $("openThreadPortal"),
   tStatus: $("tStatus"), tStatusLabel: $("tStatusLabel"), tStatusHint: $("tStatusHint"),
-  messages: $("messages"),
+  messages: $("messages"), composer: $("composer"),
   templateRow: $("templateRow"), tplName: $("tplName"), tplParams: $("tplParams"), tplHint: $("tplHint"),
-  textRow: $("textRow"), draft: $("draft"),
+  textRow: $("textRow"), quickRow: $("quickRow"), draft: $("draft"),
   suggest: $("suggest"), send: $("send"), composerMsg: $("composerMsg"),
+  readonlyNote: $("readonlyNote"), readonlyText: $("readonlyText"), readonlyLink: $("readonlyLink"),
 };
 
-let needsReplyOnly = false;
-let channel = null;             // null = All channels
-let current = null;             // the open conversation
+const q = { view: "chats", platform: null, status: "all", q: "" };
+let current = null;         // the open conversation
+let quickReplies = [];      // loaded once
+let baseUrl = "https://app.thetalko.in";
+let searchTimer = null;
+
 const initials = (name) => (name || "?").trim().split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
 const chanClass = (id) => `c-${CHANNELS.some(c => c.id === id) ? id : "other"}`;
 
@@ -28,58 +38,85 @@ function showView(which) {
   el.threadView.hidden = which !== "thread";
 }
 
-// ── Channel tabs ────────────────────────────────────────────────────────────
+// ── Filters ─────────────────────────────────────────────────────────────────
 
-function renderTabs(counts = {}) {
+function renderStatusChips() {
+  el.statuses.replaceChildren();
+  for (const s of STATUS_FILTERS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "stchip";
+    b.textContent = s.label;
+    b.setAttribute("aria-pressed", String(q.status === s.id));
+    b.addEventListener("click", () => { if (q.status !== s.id) { q.status = s.id; loadList(); } });
+    el.statuses.append(b);
+  }
+}
+
+function renderChannelTabs(counts = {}) {
   el.channels.replaceChildren();
-  const tabs = [{ id: null, label: "All", short: "ALL" }, ...CHANNELS];
-  for (const t of tabs) {
+  for (const t of [{ id: null, label: "All" }, ...CHANNELS]) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "chtab";
     b.setAttribute("role", "tab");
-    b.setAttribute("aria-selected", String(channel === t.id));
-    const n = t.id === null ? counts.all : counts[t.id];
+    b.setAttribute("aria-selected", String(q.platform === t.id));
     b.append(document.createTextNode(t.label));
+    const n = t.id === null ? counts.all : counts[t.id];
     if (typeof n === "number") {
       const badge = document.createElement("span");
       badge.className = "n";
       badge.textContent = String(n);
       b.append(badge);
-      // Nothing to show on that channel — visible, but not a dead end to click.
       if (n === 0 && t.id !== null) b.disabled = true;
     }
-    b.addEventListener("click", () => { if (channel !== t.id) { channel = t.id; loadList(); } });
+    b.addEventListener("click", () => { if (q.platform !== t.id) { q.platform = t.id; loadList(); } });
     el.channels.append(b);
   }
+}
+
+function syncViewTabs(counts = {}) {
+  el.viewChats.setAttribute("aria-selected", String(q.view === "chats"));
+  el.viewComments.setAttribute("aria-selected", String(q.view === "comments"));
+  if (typeof counts.chats === "number") el.nChats.textContent = String(counts.chats);
+  if (typeof counts.comments === "number") el.nComments.textContent = String(counts.comments);
 }
 
 // ── List ────────────────────────────────────────────────────────────────────
 
 async function loadList() {
   el.list.replaceChildren();
-  el.listState.hidden = false;
-  el.listState.replaceChildren(Object.assign(document.createElement("p"), { textContent: "Loading…" }));
-  renderTabs();
+  renderStatusChips();
+  renderChannelTabs();
+  state("Loading…");
 
-  const res = await listInbox({ limit: 50, needsReply: needsReplyOnly, platform: channel });
+  const res = await listInbox({ limit: 50, ...q });
   if (!res.ok) {
     state(res.status === 401 ? "Your API key was rejected." : (res.error || "Couldn't load your chats."),
           res.status === 401 ? "Open settings" : null);
     return;
   }
   const counts = res.data?.counts ?? {};
-  renderTabs(counts);
-  el.listCount.textContent = typeof counts.needsReply === "number" ? `${counts.needsReply} waiting` : "";
+  renderChannelTabs(counts);
+  syncViewTabs(counts);
 
   const convs = res.data?.conversations ?? [];
   if (!convs.length) {
-    const where = channel ? ` in ${channelMeta(channel).label}` : "";
-    state(needsReplyOnly ? `Nothing needs a reply${where}.` : `No chats yet${where}.`);
+    state(emptyMessage());
     return;
   }
   el.listState.hidden = true;
   for (const c of convs) el.list.append(rowFor(c));
+}
+
+function emptyMessage() {
+  if (q.q) return `Nothing matches “${q.q}”.`;
+  const where = q.platform ? ` in ${channelMeta(q.platform).label}` : "";
+  const noun = q.view === "comments" ? "comments" : "chats";
+  if (q.status === "needs_reply") return `Nothing needs a reply${where}.`;
+  if (q.status === "escalated") return `No escalated ${noun}${where}.`;
+  if (q.status === "bot_off") return `No ${noun} with the AI paused${where}.`;
+  return `No ${noun} yet${where}.`;
 }
 
 function state(text, actionLabel) {
@@ -105,7 +142,6 @@ function rowFor(c) {
   li.setAttribute("role", "button");
   li.setAttribute("aria-label", `${c.name}, ${meta.label}${c.needsReply ? ", needs reply" : ""}`);
 
-  // Avatar + channel badge — the source is readable without opening the chat.
   const wrap = document.createElement("div");
   wrap.className = "avatarwrap";
   const av = document.createElement("div");
@@ -131,6 +167,12 @@ function rowFor(c) {
   nm.className = "nm";
   nm.textContent = c.name;
   nameLine.append(nm);
+  if (c.status === "escalated") {
+    const t = document.createElement("span");
+    t.className = "tag escalated";
+    t.textContent = "Escalated";
+    nameLine.append(t);
+  }
   const prev = document.createElement("div");
   prev.className = "preview";
   prev.textContent = c.lastMessage || "No messages yet";
@@ -164,18 +206,27 @@ async function openThread(c) {
   el.tName.textContent = c.name;
   el.tChannel.textContent = meta.label;
   el.tChannel.className = `chan ${chanClass(meta.id)}`;
-  el.tPhone.textContent = c.phone ? `+${c.phone}` : "";
+  el.tPhone.textContent = c.phone ? `+${c.phone}` : (c.handle ? `@${c.handle}` : "");
   el.messages.replaceChildren();
   el.composerMsg.hidden = true;
   el.draft.value = "";
   el.tplParams.value = "";
-  applyComposerMode(c);
+  const portalUrl = `${baseUrl}/admin?tab=livechat`;
+  el.openThreadPortal.href = portalUrl;
+  el.readonlyLink.href = portalUrl;
+  syncTools();
+  applyComposerMode(current);
   showView("thread");
 
   const res = await getThread({ conversationId: c.id });
   if (!res.ok) { composerMsg("bad", res.error || "Couldn't load this chat."); return; }
-  // The list row can be minutes stale — trust the thread's fresher window state.
+  // The list row can be minutes stale — trust the thread's fresher state.
   current.windowOpen = res.data?.window === "open";
+  if (res.data?.conversation) {
+    current.botEnabled = res.data.conversation.botEnabled;
+    current.status = res.data.conversation.status;
+  }
+  syncTools();
   applyComposerMode(current);
 
   const msgs = res.data?.messages ?? [];
@@ -189,6 +240,18 @@ async function openThread(c) {
   el.messages.scrollTop = el.messages.scrollHeight;
 }
 
+function syncTools() {
+  const botOn = !!current?.botEnabled;
+  el.botToggle.textContent = botOn ? "AI is answering" : "AI paused — you reply";
+  el.botToggle.className = `tool${botOn ? " on" : ""}`;
+  el.botToggle.title = botOn ? "Pause the AI on this chat" : "Let the AI answer this chat again";
+
+  const escalated = current?.status === "escalated";
+  el.tEscalated.hidden = !escalated;
+  el.escalate.textContent = escalated ? "Mark active" : "Escalate";
+  el.escalate.className = `tool${escalated ? "" : " danger"}`;
+}
+
 // One place decides what the composer allows, so the wording and the controls
 // can never disagree about whether a template is required.
 function applyComposerMode(c) {
@@ -198,15 +261,19 @@ function applyComposerMode(c) {
   el.tStatusHint.textContent = st.hint;
 
   const replyable = isReplyable(c.platform);
-  const needsTemplate = replyable && st.state !== "open";
+  el.composer.hidden = !replyable;
+  el.readonlyNote.hidden = replyable;
+  if (!replyable) {
+    el.readonlyText.textContent = `${c.meta?.label ?? "This"} messages are sent from the portal, so this chat is read-only here.`;
+    return;
+  }
 
+  const needsTemplate = st.state !== "open";
   el.templateRow.hidden = !needsTemplate;
   el.textRow.hidden = needsTemplate;
-  el.draft.disabled = !replyable;
-  el.suggest.disabled = !replyable || needsTemplate;
-  el.send.disabled = !replyable;
+  el.suggest.disabled = needsTemplate;
   el.send.textContent = needsTemplate ? "Send template" : "Send";
-  if (needsTemplate) loadTemplates();
+  if (needsTemplate) loadTemplates(); else renderQuickReplies();
 }
 
 async function loadTemplates() {
@@ -230,6 +297,24 @@ async function loadTemplates() {
   }
 }
 
+function renderQuickReplies() {
+  el.quickRow.replaceChildren();
+  el.quickRow.hidden = !quickReplies.length;
+  for (const qr of quickReplies.slice(0, 8)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "qr";
+    b.textContent = `/${qr.shortcut}`;
+    b.title = qr.body;
+    b.addEventListener("click", () => {
+      el.draft.value = qr.body;
+      el.draft.focus();
+      composerMsg("info", "Quick reply inserted — edit it, then send.");
+    });
+    el.quickRow.append(b);
+  }
+}
+
 function bubble(m) {
   const d = document.createElement("div");
   d.className = `msg ${m.role === "user" ? "user" : "assistant"}`;
@@ -249,6 +334,31 @@ function composerMsg(kind, text) {
 }
 
 // ── Actions ─────────────────────────────────────────────────────────────────
+
+async function toggleBot() {
+  if (!current) return;
+  const next = !current.botEnabled;
+  el.botToggle.disabled = true;
+  const res = await setBot({ conversationId: current.conversationId, enabled: next });
+  el.botToggle.disabled = false;
+  if (res.ok) { current.botEnabled = next; syncTools(); composerMsg("info", next ? "The AI will answer this chat." : "The AI is paused — replies are yours."); }
+  else composerMsg("bad", res.error || "Couldn't change that.");
+}
+
+async function toggleEscalate() {
+  if (!current) return;
+  const next = current.status === "escalated" ? "active" : "escalated";
+  el.escalate.disabled = true;
+  const res = await setStatus({ conversationId: current.conversationId, status: next });
+  el.escalate.disabled = false;
+  if (res.ok) {
+    current.status = next;
+    // Escalating pauses the AI server-side; mirror that here.
+    if (next === "escalated") current.botEnabled = false;
+    syncTools();
+    composerMsg("info", next === "escalated" ? "Escalated — the AI is paused." : "Marked active again.");
+  } else composerMsg("bad", res.error || "Couldn't change that.");
+}
 
 async function doSuggest() {
   if (!current) return;
@@ -303,6 +413,9 @@ async function doSend() {
     }));
     el.messages.scrollTop = el.messages.scrollHeight;
     el.draft.value = "";
+    // Replying pauses the bot server-side (pauseBot defaults true).
+    current.botEnabled = false;
+    syncTools();
   } else {
     composerMsg("bad", res.error || "Couldn't send.");
   }
@@ -310,13 +423,16 @@ async function doSend() {
 
 // ── Events ──────────────────────────────────────────────────────────────────
 
-el.filter.addEventListener("click", () => {
-  needsReplyOnly = !needsReplyOnly;
-  el.filter.setAttribute("aria-pressed", String(needsReplyOnly));
-  loadList();
+el.viewChats.addEventListener("click", () => { if (q.view !== "chats") { q.view = "chats"; q.platform = null; loadList(); } });
+el.viewComments.addEventListener("click", () => { if (q.view !== "comments") { q.view = "comments"; q.platform = null; loadList(); } });
+el.search.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => { q.q = el.search.value; loadList(); }, 250);
 });
 el.refresh.addEventListener("click", loadList);
 el.back.addEventListener("click", () => { showView("list"); loadList(); });
+el.botToggle.addEventListener("click", toggleBot);
+el.escalate.addEventListener("click", toggleEscalate);
 el.tplName.addEventListener("change", () => {
   const n = Number(el.tplName.selectedOptions[0]?.dataset.params || 0);
   el.tplParams.hidden = n === 0;
@@ -332,9 +448,13 @@ el.draft.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 (async () => {
-  const { apiKey, baseUrl } = await getSettings();
-  if (!apiKey) { showView("connect"); return; }
+  const s = await getSettings();
+  if (!s.apiKey) { showView("connect"); return; }
+  baseUrl = s.baseUrl || baseUrl;
+  el.openPortal.href = `${baseUrl}/admin`;
   try { el.ws.textContent = new URL(baseUrl).hostname.replace(/^app\./, ""); } catch { /* ignore */ }
   showView("list");
   loadList();
+  // Canned replies rarely change — fetch once, use on every thread.
+  listQuickReplies().then(r => { if (r.ok) quickReplies = r.data?.quickReplies ?? []; });
 })();
