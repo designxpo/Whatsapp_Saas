@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
+import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -1775,6 +1776,55 @@ export function WebchatCard() {
   );
 }
 
+// Small QR generator — turn a WhatsApp number or any link into a printable QR
+// (poster / packaging / receipt) to bring customers straight into chat.
+function QrTool() {
+  const [mode, setMode] = useState<"wa" | "link">("wa");
+  const [waNumber, setWaNumber] = useState("");
+  const [waText, setWaText] = useState("");
+  const [link, setLink] = useState("");
+  const value = mode === "wa" ? waClickToChatUrl(waNumber, waText) : link.trim();
+  const img = qrImageUrl(value, 240);
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div>
+        <p className="text-xs font-bold text-slate-400 uppercase">QR code</p>
+        <p className="text-xs text-slate-500 mt-0.5">Turn a WhatsApp number or any link into a QR — print it on posters, packaging or receipts to bring customers straight into chat.</p>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => setMode("wa")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${mode === "wa" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>WhatsApp chat</button>
+        <button onClick={() => setMode("link")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${mode === "link" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>Any link</button>
+      </div>
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex-1 space-y-2">
+          {mode === "wa" ? (
+            <>
+              <input className={`${inp} w-full`} placeholder="WhatsApp number with country code, e.g. 919876543210" value={waNumber} onChange={e => setWaNumber(e.target.value)} />
+              <input className={`${inp} w-full`} placeholder="Pre-filled message (optional), e.g. Hi, I'm interested" value={waText} onChange={e => setWaText(e.target.value)} />
+            </>
+          ) : (
+            <input className={`${inp} w-full`} placeholder="https://… (payment link, catalog, website)" value={link} onChange={e => setLink(e.target.value)} />
+          )}
+          {value
+            ? <p className="text-[11px] text-ink-400 break-all">Encodes: <span className="font-mono">{value}</span></p>
+            : <p className="text-[11px] text-amber-600">{mode === "wa" ? "Enter a number with country code (10+ digits)." : "Enter a link (e.g. https://…)."}</p>}
+        </div>
+        <div className="shrink-0 flex flex-col items-center gap-1.5">
+          {img ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img} alt="QR code" width={140} height={140} className="rounded-lg border border-line bg-white" />
+              <a href={img} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 hover:underline">Open full size ↗</a>
+            </>
+          ) : (
+            <div className="w-[140px] h-[140px] rounded-lg border border-dashed border-line bg-canvas flex items-center justify-center text-[11px] text-ink-300 text-center px-2">QR appears here</div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
@@ -1875,6 +1925,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       <UsageCard />
       {isAdmin && <ChannelsManager />}
+      <QrTool />
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 

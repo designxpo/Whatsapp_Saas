@@ -22,6 +22,13 @@ function CatalogTab() {
   const [msg, setMsg] = useState<string | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutId, setCheckoutId] = useState<string | null>(null);
+  // Live FX rates for the editor's converted-price hint (non-PII, best-effort).
+  const [fx, setFx] = useState<Record<string, number>>({});
+  const formCurrency = form?.currency;
+  useEffect(() => {
+    if (!formCurrency) { setFx({}); return; }
+    fetch(`/api/admin/currency?from=${encodeURIComponent(formCurrency.toUpperCase())}&to=USD,EUR,GBP,INR`).then(r => r.json()).then(d => setFx(d.rates ?? {})).catch(() => setFx({}));
+  }, [formCurrency]);
   const load = useCallback(() => { fetch("/api/admin/products").then(r => r.json()).then(d => setProducts(d.products ?? [])).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -135,6 +142,11 @@ function CatalogTab() {
                 <div className="p-2.5 space-y-0.5">
                   <p className="text-[13px] font-semibold text-slate-800 break-words">{form.name || "Product name"}</p>
                   <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
+                  {(() => {
+                    const amt = Number(form.price) || 0;
+                    const targets = Object.entries(fx).filter(([, r]) => r > 0).slice(0, 2);
+                    return amt > 0 && targets.length ? <p className="text-[10px] text-slate-400">≈ {targets.map(([c, r]) => `${c} ${(amt * r).toFixed(2)}`).join(" · ")}</p> : null;
+                  })()}
                   {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
                 </div>
                 <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{form.buttonText.trim() || "View"}</div>
