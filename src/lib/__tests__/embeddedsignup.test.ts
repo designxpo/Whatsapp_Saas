@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { exchangeSignupCode, subscribeWaba, registerPhone, resolveFacebookPages, exchangeForLongLivedToken } from "../embeddedsignup";
-import { signupExtras } from "../embedded-signup-client";
+import { signupExtras, signupFailureMessage } from "../embedded-signup-client";
 
 const res = (status: number, body: unknown) =>
   ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
@@ -69,6 +69,31 @@ describe("embeddedsignup", () => {
   it("signupExtras maps the variant to Meta's featureType", () => {
     expect(signupExtras("coex")).toEqual({ setup: {}, featureType: "whatsapp_business_app_onboarding", sessionInfoVersion: "3" });
     expect(signupExtras("new")).toEqual({ setup: {}, featureType: "", sessionInfoVersion: "3" });
+  });
+
+  // A no-code result used to be reported as "Sign-up was cancelled" whatever the
+  // cause, which told a tenant they'd cancelled when in fact the operator's Meta
+  // app had refused them ("It looks like this app isn't available"). The three
+  // causes are distinguishable and must read differently.
+  describe("signupFailureMessage", () => {
+    it("prefers Meta's own error text over any guess of ours", () => {
+      expect(signupFailureMessage(["ERROR"], "Number already registered"))
+        .toBe("Meta stopped the sign-up: Number already registered");
+    });
+
+    it("calls it cancelled only when the flow had actually started", () => {
+      const m = signupFailureMessage(["FLOW_STATUS_UPDATE", "CANCEL"]);
+      expect(m).toMatch(/cancelled/i);
+      expect(m).not.toMatch(/Development mode/);
+    });
+
+    it("blames the operator's Meta app when the popup emitted nothing at all", () => {
+      const m = signupFailureMessage([]);
+      expect(m).not.toMatch(/cancelled/i);
+      expect(m).toMatch(/not anything you did/);
+      expect(m).toMatch(/Development mode/);
+      expect(m).toMatch(/Advanced Access/);
+    });
   });
 
   it("resolveFacebookPages returns each Page with its own token", async () => {
