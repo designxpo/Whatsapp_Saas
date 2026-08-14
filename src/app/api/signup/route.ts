@@ -5,6 +5,7 @@ import { getFlag } from "@/lib/flags";
 import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
 import { sendEmailOtp } from "@/lib/emailotp";
 import { encryptSecret } from "@/lib/crypto";
+import { checkEmail } from "@/lib/emailcheck";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
 
@@ -37,7 +38,18 @@ export async function POST(req: Request) {
   const ownerEmail = body.ownerEmail?.trim().toLowerCase();
   const password = body.password ?? "";
   if (!company || !ownerName || !ownerEmail) return NextResponse.json({ error: "Company, your name and work email are required" }, { status: 400 });
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ownerEmail)) return NextResponse.json({ error: "Enter a valid work email" }, { status: 400 });
+  // Local, privacy-safe email quality gate (format + disposable inbox + typo) —
+  // the email never leaves the system. Blocks throwaway addresses that would
+  // never complete signup or become a real customer; nudges obvious typos.
+  const emailQ = checkEmail(ownerEmail);
+  if (!emailQ.ok) {
+    return NextResponse.json({
+      error: emailQ.reason === "disposable"
+        ? "Please use a permanent work or personal email — temporary/disposable inboxes aren't allowed."
+        : "Enter a valid work email",
+      ...(emailQ.suggestion ? { suggestion: emailQ.suggestion } : {}),
+    }, { status: 400 });
+  }
   if (password.length < 8) return NextResponse.json({ error: "Use a password of at least 8 characters" }, { status: 400 });
   // Legal consent is mandatory — the account cannot be created without it.
   if (body.acceptTerms !== true) return NextResponse.json({ error: "You must accept the Terms of Service and Privacy Policy to continue." }, { status: 400 });

@@ -3,8 +3,9 @@
 // WhatsApp message templates (builder + library) — extracted from admin/page.tsx,
 // lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, FileText, GalleryHorizontalEnd, Loader2, MessageSquare, MousePointerClick, Phone, Plus, RefreshCw, Star, Trash2, UploadCloud, Video, Image as ImageIcon, Link2, X } from "lucide-react";
+import { Copy, FileText, GalleryHorizontalEnd, Loader2, MessageSquare, MousePointerClick, Phone, Plus, RefreshCw, Star, Trash2, UploadCloud, Video, Image as ImageIcon, Link2, X, Sparkles } from "lucide-react";
 import { inp, ChannelSelect } from "../_shared";
+import { buildFestivalGreeting } from "@/lib/greetingtemplates";
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 type WaTplComponent = {
@@ -188,8 +189,25 @@ function TemplatesTab() {
   const [statusTab, setStatusTab] = useState<"ALL" | "PENDING" | "APPROVED" | "ACTION">("ALL");
   const [favs, setFavs] = useState<string[]>([]);
   const [channelId, setChannelId] = useState<string | null>(null);   // which number's WABA
+  const [festivals, setFestivals] = useState<{ date: string; name: string; daysAway: number }[]>([]);
 
   useEffect(() => { try { setFavs(JSON.parse(localStorage.getItem("wa_tpl_favs") || "[]")); } catch { /* fresh */ } }, []);
+  // Upcoming festivals (non-PII) → one-click greeting-template drafts.
+  useEffect(() => { fetch("/api/admin/holidays?days=120").then(r => r.json()).then(d => setFestivals(d.holidays ?? [])).catch(() => {}); }, []);
+
+  // Draft a festival greeting template — prefill the builder (the tenant edits +
+  // submits for approval), then they schedule the broadcast for that day.
+  function prefillFestival(festival: string) {
+    const g = buildFestivalGreeting(festival);
+    setMode("standard");
+    setName(g.nameSlug); setLanguage("en_US"); setCategory(g.category);
+    setHeaderType("NONE"); setHeaderText(""); setHeaderExample(""); setHeaderHandle(""); setHeaderFileName(""); setHeaderPreviewUrl("");
+    setBodyText(g.body); setFooterText(g.footer); setExamples(g.example);
+    setButtons([]); setCards([newTplCard(), newTplCard()]);
+    setMsg(`Festival greeting drafted for "${festival}" — edit the copy, then Submit for approval.`);
+    setShowBuilder(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   const toggleFav = (n: string) => setFavs(f => {
     const next = f.includes(n) ? f.filter(x => x !== n) : [...f, n];
     localStorage.setItem("wa_tpl_favs", JSON.stringify(next));
@@ -361,6 +379,20 @@ function TemplatesTab() {
       </div>
 
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800">{notice}</div>}
+
+      {festivals.length > 0 && (
+        <div className="bg-white rounded-card border border-line p-4 space-y-2">
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> Festival greetings — draft a template in one tap</p>
+          <div className="flex flex-wrap gap-1.5">
+            {festivals.slice(0, 6).map(h => (
+              <button key={h.date + h.name} onClick={() => prefillFestival(h.name)} className="px-2.5 py-1 rounded-full border border-line bg-canvas hover:border-brand-600 hover:bg-brand-50 text-[11px] font-semibold text-ink-700">
+                {h.name} · {new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })}{h.daysAway <= 14 ? ` · in ${h.daysAway}d` : ""}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-ink-400">Drafts a ready-to-edit greeting; submit it for approval, then schedule the broadcast for that day in Broadcast.</p>
+        </div>
+      )}
 
       {showBuilder && <div className="grid lg:grid-cols-[1fr_310px] gap-5 items-start">
         <section className="bg-white rounded-card border border-line p-5 space-y-4">
