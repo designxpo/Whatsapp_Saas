@@ -128,10 +128,19 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const [testPhone, setTestPhone] = useState("");
   const [testing, setTesting] = useState(false);
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Schedule (send now vs later) + festival/holiday awareness for the picked date.
+  const [scheduleMode, setScheduleMode] = useState<"now" | "later">("now");
+  const [scheduledLocal, setScheduledLocal] = useState("");
+  const [holidays, setHolidays] = useState<{ date: string; name: string; daysAway: number }[]>([]);
 
   useEffect(() => {
     fetch(`/api/admin/templates${channelId ? `?channelId=${channelId}` : ""}`).then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
   }, [channelId]);
+
+  // Upcoming festivals & holidays (non-PII) — planning aid for greeting broadcasts.
+  useEffect(() => {
+    fetch("/api/admin/holidays?days=90").then(r => r.json()).then(d => setHolidays(d.holidays ?? [])).catch(() => {});
+  }, []);
 
   // Flows available to start when a recipient replies ("bot on broadcast").
   useEffect(() => {
@@ -166,12 +175,24 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     setError(null); setResult(null);
     const problem = templateProblem();
     if (problem) { setError(problem); return; }
+    // Scheduling is only supported for a saved audience (the backend rejects
+    // scheduledFor with an explicit recipient list), and must be in the future.
+    let scheduledFor: string | null = null;
+    if (scheduleMode === "later") {
+      if (audMode === "recipients") { setError("Scheduling needs a saved audience (All / Tag / Attribute), not a pasted recipient list."); return; }
+      const when = scheduledLocal ? new Date(scheduledLocal) : null;
+      if (!when || isNaN(when.getTime()) || when.getTime() <= Date.now()) { setError("Pick a future date & time to schedule this broadcast."); return; }
+      scheduledFor = when.toISOString();
+    }
     // Confirm before a real blast — this fires to the whole audience and can't
     // be undone. Show the authoritative recipient count so it's never a surprise.
     const who = recipientCount === null
       ? "your selected audience"
       : `${recipientCount.toLocaleString()} recipient${recipientCount === 1 ? "" : "s"}`;
-    if (!confirm(`Send "${templateName.trim()}" to ${who}? This sends real WhatsApp messages and can't be undone.`)) return;
+    const ask = scheduledFor
+      ? `Schedule "${templateName.trim()}" to ${who} for ${new Date(scheduledFor).toLocaleString()}?`
+      : `Send "${templateName.trim()}" to ${who}? This sends real WhatsApp messages and can't be undone.`;
+    if (!confirm(ask)) return;
     setSending(true);
     try {
       const body: Record<string, unknown> = {
@@ -183,6 +204,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         channelId,
         replyFlowId: replyFlowId || null,
       };
+      if (scheduledFor) body.scheduledFor = scheduledFor;
       if (audMode === "recipients") body.recipients = parseRecipients();
       else body.audience = {
         mode: audMode,
@@ -406,11 +428,38 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         {testMsg && <p className={`text-xs font-semibold ${testMsg.ok ? "text-brand-700" : "text-red-600"}`}>{testMsg.text}</p>}
       </section>
 
+      <section className="bg-white rounded-card border border-line p-5 space-y-3">
+        <p className="text-xs font-bold text-slate-400 uppercase">When to send</p>
+        <div className="flex gap-2">
+          <button onClick={() => setScheduleMode("now")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${scheduleMode === "now" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>Send now</button>
+          <button onClick={() => setScheduleMode("later")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${scheduleMode === "later" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>Schedule for later</button>
+        </div>
+        {scheduleMode === "later" && (
+          <div className="space-y-1.5">
+            <input type="datetime-local" className={`${inp} w-full`} value={scheduledLocal} onChange={e => setScheduledLocal(e.target.value)} />
+            {audMode === "recipients" && <p className="text-[11px] text-amber-600">Scheduling needs a saved audience (All / Tag / Attribute), not a pasted list.</p>}
+            {(() => { const h = scheduledLocal ? holidays.find(x => x.date === scheduledLocal.slice(0, 10)) : null; return h ? <p className="text-[11px] font-semibold text-brand-700">🎉 {new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })} is {h.name} — a great day for a greeting.</p> : null; })()}
+          </div>
+        )}
+        {holidays.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[11px] text-ink-400">Upcoming festivals &amp; holidays — tap to schedule a greeting for that day:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {holidays.slice(0, 6).map(h => (
+                <button key={h.date + h.name} onClick={() => { setScheduleMode("later"); setScheduledLocal(`${h.date}T10:00`); }} className="px-2.5 py-1 rounded-full border border-line bg-canvas hover:border-brand-600 hover:bg-brand-50 text-[11px] font-semibold text-ink-700">
+                  {new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · {h.name}{h.daysAway <= 7 ? ` · in ${h.daysAway}d` : ""}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </section>
+
       {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
       {result && <div className="bg-brand-green/10 border border-brand-green/40 rounded-lg px-4 py-3 text-sm text-brand-dark font-semibold">{result}</div>}
 
       <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
-        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} Send broadcast
+        {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {scheduleMode === "later" ? "Schedule broadcast" : "Send broadcast"}
       </button>
     </div>
     <BroadcastRail goTo={goTo} preview={previewCard} />
