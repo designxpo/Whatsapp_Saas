@@ -95,27 +95,6 @@ export function signupExtras(variant: WaSignupVariant): { setup: Record<string, 
   };
 }
 
-// Why FB.login came back with no code. Meta's popup posts WA_EMBEDDED_SIGNUP
-// messages as soon as the sign-up flow actually starts, so their ABSENCE means
-// the popup never got that far — the dialog itself refused ("It looks like this
-// app isn't available"), or the browser blocked the popup. Calling that
-// "cancelled" points the tenant at themselves when the fix is entirely on the
-// operator's Meta app, so the three cases get three different messages.
-export function signupFailureMessage(seen: string[], metaError?: string | null): string {
-  if (metaError) return `Meta stopped the sign-up: ${metaError}`;
-  if (seen.length) return "Sign-up was cancelled before it finished — nothing was connected.";
-  return [
-    `Meta closed the sign-up window without starting the flow.`,
-    `If it said "this app isn't available", that is the operator's Meta app refusing, not anything you did — nothing here can fix it.`,
-    `Operator checklist for app ${APP_ID || "(unset)"}:`,
-    `(1) the app is Live, not in Development mode — a Development-mode app is invisible to every account without a role on it, which is every tenant;`,
-    `(2) whatsapp_business_management + whatsapp_business_messaging hold Advanced Access;`,
-    `(3) Embedded Signup configuration ${WA_CONFIG_ID || "(unset)"} belongs to that same app and is still active;`,
-    `(4) this site's domain is listed under Facebook Login for Business → Allowed Domains for the JavaScript SDK.`,
-    `See docs/META-ONBOARDING.md. If no window opened at all, your browser blocked the popup.`,
-  ].join(" ");
-}
-
 // WhatsApp Embedded Signup → { code, wabaId, phoneNumberId }.
 export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Promise<{ code: string; wabaId: string; phoneNumberId: string }> {
   await loadSdk();
@@ -123,7 +102,6 @@ export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Pr
   return new Promise((resolve, reject) => {
     let session: { wabaId?: string; phoneNumberId?: string } = {};
     const seen: string[] = [];   // WA_EMBEDDED_SIGNUP events, for diagnosis on failure
-    let metaError: string | null = null;
     const onMessage = (event: MessageEvent) => {
       // https + exact facebook.com or a *.facebook.com subdomain — never a
       // lookalike like "evilfacebook.com", and never a throw: opaque origins
@@ -136,11 +114,6 @@ export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Pr
         const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
         if (data?.type === "WA_EMBEDDED_SIGNUP") {
           seen.push(String(data?.event ?? "?"));
-          // Meta's own words beat any guess we could make.
-          if (data?.event === "ERROR") {
-            const d = (data?.data ?? {}) as Record<string, unknown>;
-            metaError = String(d.error_message || d.error_id || "Meta reported an error");
-          }
           // Accumulate — waba_id and phone_number_id can arrive in separate messages.
           if (data?.data?.waba_id) session.wabaId = data.data.waba_id;
           if (data?.data?.phone_number_id) session.phoneNumberId = data.data.phone_number_id;
@@ -150,10 +123,7 @@ export async function launchWhatsAppSignup(variant: WaSignupVariant = "new"): Pr
     window.addEventListener("message", onMessage);
     window.FB!.login((response) => {
       const code = response?.authResponse?.code;
-      if (!code) {
-        window.removeEventListener("message", onMessage);
-        return reject(new Error(signupFailureMessage(seen, metaError)));
-      }
+      if (!code) { window.removeEventListener("message", onMessage); return reject(new Error("Sign-up was cancelled")); }
       // The WA_EMBEDDED_SIGNUP sessionInfo message can land a beat AFTER the
       // FB.login callback fires (a known ES race) — poll briefly for it instead
       // of checking once, so a completed flow isn't wrongly rejected.
