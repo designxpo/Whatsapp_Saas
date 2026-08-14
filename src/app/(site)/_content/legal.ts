@@ -9,8 +9,8 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-08-07";
-export const LEGAL_EFFECTIVE = "7 August 2026";
+export const LEGAL_VERSION = "2026-08-14";
+export const LEGAL_EFFECTIVE = "14 August 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -162,29 +162,39 @@ const PRIVACY_DOC: LegalDoc = {
       p(`Where you connect a YouTube channel, ${C}'s use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy (https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Data obtained through YouTube API Services is also subject to the Google Privacy Policy (https://policies.google.com/privacy), and your use of a connected YouTube channel is subject to the YouTube Terms of Service (https://www.youtube.com/t/terms).`),
       p(`We use YouTube API Services and Google Business Profile data only to provide the comment-automation, moderation and review-reply features you enable for your own connected channel and Business Profile — never to serve ads, to train generalised AI or machine-learning models, or for any purpose you have not requested. Access tokens are stored encrypted and are used solely on your instructions.`),
     ] },
-    { heading: "8. International transfers", blocks: [
+    { heading: "8. Browser extension (Talko Copilot)", blocks: [
+      p(`Talko Copilot is our optional Chrome extension. It is a client of your own ${C} workspace: it communicates only with our API over HTTPS, using a workspace API key you create and paste in yourself, and it sends nothing to any third party.`),
+      ul([
+        "Stored on your device only: your workspace API key and your capture preferences, held in the browser's extension storage. Uninstalling the extension removes them.",
+        "Sent to your workspace, and only when you act: the text you highlight and the address of the page you highlighted it on (when you capture a lead or request an AI-drafted reply), and the messages, tags, notes, pipeline changes and orders you create from the extension.",
+        "Not collected: your browsing history, your page contents, cookies, form data, or anything on a page you have not selected yourself.",
+      ]),
+      p(`The extension does not read, scrape, monitor or automate the websites you visit. Its content script responds only to a selection you make and only to offer an action; nothing is captured, drafted or sent without your click. It does not act on your behalf inside WhatsApp, Instagram, Facebook, LinkedIn or any other platform — messages are sent through those platforms' official APIs by your ${C} workspace, subject to their messaging policies.`),
+      p(`Leads and conversations created through the extension are stored in your own workspace and are treated exactly like data created in the portal: you remain the data controller and we act as your processor, as described in section 2. We do not sell extension data, use it for advertising, use it to train generalised AI models, or use it for any purpose other than providing the features you invoke.`),
+    ] },
+    { heading: "9. International transfers", blocks: [
       p(`${LEGAL_META.legalEntity} is established in ${LEGAL_META.governingLaw}, and your information may be processed outside your own country. In particular, the AI, hosting and content-safety providers named in section 6 — Anthropic, PBC, OpenAI, L.L.C., Google LLC and Vercel Inc. — are established in the United States and process data there. Our managed database and file storage are provided by Supabase, Inc. in the hosting region configured for our workspace.`),
       p(`Where we transfer personal data internationally, we use appropriate safeguards, such as standard contractual clauses, where required by applicable law.`),
     ] },
-    { heading: "9. Data retention", blocks: [
+    { heading: "10. Data retention", blocks: [
       p(`We retain personal information for as long as your account is active or as needed to provide the Service, and thereafter only as required to comply with legal obligations, resolve disputes and enforce agreements. You can request export or deletion of Your Data; on account termination we delete or anonymise data within a reasonable period, subject to legal retention requirements. If you disconnect a YouTube channel or Google Business Profile, we delete the associated OAuth tokens promptly and stop accessing the Google API on your behalf.`),
     ] },
-    { heading: "10. Security", blocks: [
+    { heading: "11. Security", blocks: [
       p(`We use technical and organisational measures designed to protect personal information, including encryption of credentials, API keys and OAuth tokens at rest, per-business data isolation with row-level security, access controls and audit logging. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.`),
     ] },
-    { heading: "11. Your rights", blocks: [
+    { heading: "12. Your rights", blocks: [
       p(`Depending on your location, you may have rights to access, correct, delete, export or restrict the processing of your personal data, and to object to processing or withdraw consent. To exercise these rights, contact ${PRIVACY}. Where ${C} acts as a processor for end-customer data, requests from those individuals should be directed to the business that controls that data. You can revoke ${C}'s access to your Google account at any time via https://myaccount.google.com/permissions.`),
     ] },
-    { heading: "12. Cookies", blocks: [
+    { heading: "13. Cookies", blocks: [
       p(`We use cookies and similar technologies as described in our Cookie Policy.`),
     ] },
-    { heading: "13. Children", blocks: [
+    { heading: "14. Children", blocks: [
       p(`The Service is not directed to children under 16, and we do not knowingly collect their personal information. If you believe a child has provided us personal data, contact us and we will delete it.`),
     ] },
-    { heading: "14. Changes to this Policy", blocks: [
+    { heading: "15. Changes to this Policy", blocks: [
       p(`We may update this Privacy Policy from time to time. Material changes will be notified through the Service or by email, and the "last updated" date below will reflect the current version.`),
     ] },
-    { heading: "15. Contact", blocks: [
+    { heading: "16. Contact", blocks: [
       p(`For privacy questions or to exercise your rights, contact us at ${PRIVACY}.`),
     ] },
   ],
