@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "Talko Copilot",
+  "version": "0.1.0",
+  "description": "Capture a lead from any web page into Talko in one click — then reach them on WhatsApp with your approved templates.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Talko Copilot — capture a lead",
+    "default_popup": "src/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_ui": {
+    "page": "src/options.html",
+    "open_in_tab": true
+  },
+  "side_panel": {
+    "default_path": "src/sidepanel.html"
+  },
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "css": ["src/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting", "notifications", "sidePanel", "alarms"],
+  "host_permissions": ["https://app.thetalko.in/*"],
+  "commands": {
+    "capture-selection": {
+      "suggested_key": { "default": "Alt+Shift+L", "mac": "Alt+Shift+L" },
+      "description": "Capture the highlighted text as a Talko lead"
+    }
+  }
+}

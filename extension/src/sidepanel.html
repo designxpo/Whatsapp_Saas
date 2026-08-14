@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="sidepanel.css" />
+  <title>Talko Inbox</title>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="18" height="18" />
+      <span id="ws">Inbox</span>
+    </div>
+    <div class="baractions">
+      <button id="filter" class="chip" type="button" aria-pressed="false">Needs reply</button>
+      <button id="refresh" class="icon" type="button" title="Refresh">⟳</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Not connected -->
+    <section id="connect" class="pad center" hidden>
+      <p>Connect the extension to see your conversations.</p>
+      <button id="openOpts" class="primary" type="button">Open settings</button>
+    </section>
+
+    <!-- Conversation list -->
+    <section id="listView">
+      <ul id="list" class="list"></ul>
+      <p id="listState" class="empty" hidden></p>
+    </section>
+
+    <!-- One thread -->
+    <section id="threadView" hidden>
+      <div class="threadhead">
+        <button id="back" class="icon" type="button" title="Back">←</button>
+        <div class="who">
+          <strong id="tName"></strong>
+          <span id="tPhone" class="mono"></span>
+        </div>
+        <span id="tWindow" class="wpill"></span>
+      </div>
+
+      <div id="messages" class="messages" aria-live="polite"></div>
+
+      <div class="composer">
+        <p id="closedNotice" class="notice" hidden>
+          24-hour window closed — reach this lead with an approved template.
+        </p>
+        <textarea id="draft" rows="3" placeholder="Write a reply…"></textarea>
+        <div id="templateRow" class="templaterow" hidden>
+          <select id="tplName" class="mono"><option value="">Choose an approved template…</option></select>
+          <input id="tplParams" placeholder="template values, comma-separated" hidden />
+          <small id="tplHint" class="tplhint" hidden></small>
+        </div>
+        <div class="composerbtns">
+          <button id="suggest" class="ghost" type="button">✨ Draft with AI</button>
+          <button id="send" class="primary" type="button">Send</button>
+        </div>
+        <p id="composerMsg" class="cmsg" role="status" aria-live="polite" hidden></p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

@@ -1,0 +1,99 @@
+/* The selection action chip + draft card. Namespaced + fixed, above everything.
+   High specificity so host-page CSS can't bleed in and we don't bleed out. */
+.talko-cap {
+  position: fixed;
+  z-index: 2147483647;
+  font: 600 12.5px/1.3 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  box-shadow: 0 8px 26px rgba(15, 23, 42, .30);
+  border-radius: 12px;
+  animation: talko-cap-in .12s ease-out;
+}
+
+.talko-cap-bar {
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  background: #0f172a;
+  border-radius: 12px;
+}
+@media (prefers-color-scheme: light) {
+  .talko-cap-bar { background: #1e293b; }
+}
+
+.talko-cap-btn {
+  font: inherit;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1;
+}
+.talko-cap-btn.cap { background: #2563eb; }
+.talko-cap-btn.cap:hover { background: #1d4ed8; }
+.talko-cap-btn.draft { background: #7c3aed; }
+.talko-cap-btn.draft:hover { background: #6d28d9; }
+.talko-cap-btn.ghost { background: transparent; color: #cbd5e1; padding: 7px 9px; }
+.talko-cap-btn.ghost:hover { color: #fff; }
+.talko-cap-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.talko-cap-status {
+  display: inline-block;
+  padding: 8px 13px;
+  border-radius: 12px;
+  color: #fff;
+  background: #475569;
+}
+.talko-cap-status.busy { background: #475569; }
+.talko-cap-status.ok { background: #16803c; }
+.talko-cap-status.err { background: #b91c1c; }
+
+/* Expanded draft card */
+.talko-cap-card {
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: #ffffff;
+  color: #0f172a;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+@media (prefers-color-scheme: dark) {
+  .talko-cap-card { background: #161d27; color: #e8edf3; }
+}
+.talko-cap-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: #7c3aed;
+}
+.talko-cap-draft {
+  font-weight: 400;
+  font-size: 13px;
+  line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.talko-cap-card .talko-cap-bar {
+  background: transparent;
+  padding: 0;
+  justify-content: flex-end;
+}
+.talko-cap-card .talko-cap-btn.ghost { color: #64748b; }
+.talko-cap-card .talko-cap-btn.ghost:hover { color: #0f172a; }
+@media (prefers-color-scheme: dark) {
+  .talko-cap-card .talko-cap-btn.ghost:hover { color: #e8edf3; }
+}
+
+@keyframes talko-cap-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .talko-cap { animation: none; }
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Talko Copilot</title>
+</head>
+<body>
+  <header class="bar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" width="20" height="20" />
+      <span>Talko Copilot</span>
+    </div>
+    <button id="status" class="status" type="button" title="Connection status">Checking…</button>
+  </header>
+
+  <main>
+    <form id="lead" autocomplete="off">
+      <label class="field">
+        <span>Name</span>
+        <input id="name" type="text" placeholder="Lead's name" />
+      </label>
+
+      <label class="field">
+        <span>Phone <em>required</em></span>
+        <input id="phone" type="tel" inputmode="tel" placeholder="e.g. +91 98765 43210" required />
+      </label>
+
+      <label class="field">
+        <span>Email <em>optional</em></span>
+        <input id="email" type="email" placeholder="name@company.com" />
+      </label>
+
+      <label class="field">
+        <span>Tags</span>
+        <input id="tags" type="text" placeholder="comma, separated" />
+        <small class="hint" id="tagHint"></small>
+      </label>
+
+      <label class="check">
+        <input id="consent" type="checkbox" />
+        <span>This lead agreed to be contacted on WhatsApp</span>
+      </label>
+
+      <p class="source" id="source" hidden></p>
+
+      <button id="submit" class="primary" type="submit">Add to Talko</button>
+      <p id="result" class="result" role="status" aria-live="polite" hidden></p>
+    </form>
+
+    <section class="quick" id="quick" hidden>
+      <h2>Quick actions</h2>
+      <div class="quickrow">
+        <button id="openWa" class="ghost" type="button">Open WhatsApp chat</button>
+        <button id="copyWa" class="ghost" type="button">Copy chat link</button>
+      </div>
+      <details>
+        <summary>Show QR code</summary>
+        <div class="qrwrap">
+          <img id="qr" alt="WhatsApp chat QR code" width="180" height="180" />
+          <small class="hint">Right-click → Save image to print it.</small>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <button id="grab" class="link" type="button">Grab selection</button>
+    <button id="inbox" class="link" type="button">Inbox</button>
+    <button id="opts" class="link" type="button">Settings</button>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

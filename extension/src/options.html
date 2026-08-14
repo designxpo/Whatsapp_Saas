@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="options.css" />
+  <title>Talko Copilot — Settings</title>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">
+        <img src="../icons/icon128.png" alt="" width="34" height="34" />
+        <div>
+          <h1>Talko Copilot</h1>
+          <p>Connect the extension to your Talko workspace.</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>Connection</h2>
+
+      <label class="field">
+        <span>API key</span>
+        <input id="apiKey" type="password" placeholder="ak_live_…" spellcheck="false" />
+        <small class="hint">Create one in the portal: <strong>Settings → API keys</strong>. It's stored only in this browser and shown as a secret.</small>
+      </label>
+
+      <label class="field">
+        <span>Workspace URL</span>
+        <input id="baseUrl" type="url" placeholder="https://app.thetalko.in" spellcheck="false" />
+        <small class="hint">Leave as the default unless you're on a custom domain.</small>
+      </label>
+
+      <div class="row">
+        <button id="test" class="ghost" type="button">Test connection</button>
+        <span id="testResult" class="pill" hidden></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Capture defaults</h2>
+
+      <label class="field">
+        <span>Tags added to every captured lead</span>
+        <input id="defaultTags" type="text" placeholder="extension" />
+        <small class="hint">Comma-separated. These power the “Captured from the web” filter in your portal. A <code>web-capture</code> tag and a <code>source:…</code> tag are always added too.</small>
+      </label>
+
+      <label class="check">
+        <input id="attestConsent" type="checkbox" />
+        <span>
+          <strong>I confirm every lead I capture agreed to be contacted.</strong>
+          <small class="hint">Leave off to be safe — leads are then stored <em>not opted-in</em> and excluded from marketing broadcasts until they opt in. You can still reply within the 24-hour window.</small>
+        </span>
+      </label>
+    </section>
+
+    <div class="save">
+      <button id="save" class="primary" type="button">Save settings</button>
+      <span id="saveResult" class="saved" hidden>Saved ✓</span>
+    </div>
+
+    <footer class="note">
+      <p><strong>How this stays safe.</strong> The extension only ever talks to your own Talko backend over HTTPS — never to WhatsApp, LinkedIn, or any other site directly. It reads only text you highlight, never scrapes pages, and every lead it adds is recorded in your portal with its source. Sending still goes through the official WhatsApp Cloud API with your approved templates and opt-out rules.</p>
+    </footer>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

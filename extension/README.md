@@ -1,0 +1,126 @@
+# Talko Copilot — browser extension
+
+Capture a lead from **any** web page into Talko in one click, then reach them on
+WhatsApp with your approved templates. The extension is a thin client of your own
+Talko backend — it never talks to WhatsApp, LinkedIn, or any other platform
+directly, never scrapes pages, and records every lead it adds in your portal.
+
+Covers **Phase 1** (capture + quick actions) and **Phase 2** (inbox side-panel +
+draft-reply overlay) from the product plan.
+
+---
+
+## What it does
+
+**Phase 1 — capture & quick actions**
+
+| Feature | How | Where it lands in the portal |
+| --- | --- | --- |
+| **Capture anywhere** | Highlight a name + phone on any page → a floating **Add to Talko** chip → click it | Contacts, tagged `extension` + `web-capture` + `source:<site>`; fires the `contact_added` automation |
+| **Right-click capture** | Select text → right-click → *Add "…" to Talko as a lead* | same as above |
+| **Keyboard capture** | Select text → `Alt+Shift+L` | same as above |
+| **Manual capture** | Toolbar icon → fill the form (pre-filled from your selection + the page URL) | same, plus any tags you add |
+| **Where-from record** | Every capture also posts a `web_capture` event carrying the `source_url` | Event/automation history |
+| **Quick WhatsApp link + QR** | Popup builds a `wa.me` click-to-chat link and a printable QR | opens WhatsApp — you send, manually |
+
+**Phase 2 — inbox & AI drafts**
+
+| Feature | How | Where it lands in the portal |
+| --- | --- | --- |
+| **Needs-reply badge** | The toolbar icon shows a count of conversations waiting for a reply, refreshed every few minutes | reads `/api/inbox?needsReply=1` |
+| **Inbox side-panel** | Popup → **Inbox** → recent conversations, filter *Needs reply* | reads your live conversations |
+| **Reply from the panel** | Open a thread → type (or **✨ Draft with AI**) → **Send** | logged on the thread as an agent reply; pauses the bot |
+| **Window-aware sending** | Free-form inside the 24h window; a picker of your **approved templates** (with value prompts) when it's closed | respects Meta's messaging policy |
+| **Draft-reply overlay** | On YouTube / Google Business, highlight a comment/review → **✨ Draft reply** → copies an AI draft grounded only in that text | you paste & post it yourself |
+
+Everything is **human-in-the-loop**: nothing is captured, drafted, or sent
+without a click.
+
+---
+
+## Install (unpacked, for testing)
+
+1. Open `chrome://extensions`.
+2. Turn on **Developer mode** (top-right).
+3. Click **Load unpacked** and select this `extension/` folder.
+4. Click the Talko Copilot icon → **Settings** (or right-click the icon → Options).
+5. In your Talko portal, go to **Settings → API keys**, create a key
+   (`ak_live_…`), and paste it into the extension. Click **Test connection** —
+   it should show *Connected — <your workspace>*.
+
+The key is stored only in your browser (`chrome.storage.sync`) and sent only to
+your workspace over HTTPS.
+
+---
+
+## Permissions — and why each is needed
+
+Minimal by design (this list is what a Chrome Web Store reviewer will see):
+
+| Permission | Why |
+| --- | --- |
+| `storage` | Save your API key and capture defaults locally |
+| `contextMenus` | The right-click "Add to Talko" item |
+| `activeTab` + `scripting` | Read the text **you highlighted** on the current tab when you invoke the extension — only on your action, never in the background |
+| `notifications` | Confirm "Lead added" after a right-click / keyboard capture |
+| `sidePanel` | The inbox side-panel |
+| `alarms` | Poll every few minutes for conversations that need a reply (the toolbar count) |
+| `host_permissions: https://app.thetalko.in/*` | Talk to **your** Talko API (and nothing else) |
+| `content_scripts: <all_urls>` | Show the capture chip when you select text. The script reads **only `window.getSelection()`** on your action — it does not read, scrape, or automate page content |
+
+No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
+
+---
+
+## Architecture
+
+```
+ content.js / popup.js / context menu / shortcut
+        │  (only your highlighted text + the page URL)
+        ▼
+ background.js  ── the ONLY place that calls the API
+        │  Authorization: Bearer ak_live_…
+        ▼
+ https://app.thetalko.in
+   GET  /api/whoami                        → validate key + show workspace
+   POST /api/contacts                      → lead saved + welcome automation
+   POST /api/events                        → web_capture record (source_url)
+   GET  /api/inbox                         → recent conversations
+   GET  /api/inbox/thread                  → one thread's messages
+   POST /api/inbox/reply                   → send a WhatsApp reply (window/template aware)
+   POST /api/inbox/suggest                 → AI-drafted reply for a thread
+   GET  /api/inbox/templates               → approved templates for a thread's number
+   POST /api/assist/draft                  → draft a public reply to a review/comment
+        ▼
+ Your Talko portal (Contacts, Conversations, Automations, Activity)
+```
+
+`background.js` is the only component that reaches the network — content scripts
+message it, so the host_permission bypasses CORS and no page can see your key.
+
+## Files
+
+```
+manifest.json         MV3 manifest
+icons/                16 / 48 / 128 px
+src/
+  api.js                  thin API client (whoami, addLead, inbox, draft)
+  wa.js                   pure helpers (phone parse, wa.me link, QR url)
+  background.js           service worker — context menu, shortcut, API calls
+  popup.html/.css/.js     toolbar capture form + quick actions + Inbox launcher
+  options.html/…          connection + capture defaults
+  content.js/.css         selection chip — capture + draft-reply
+  sidepanel.html/.css/.js the inbox (list → thread → AI draft → send)
+```
+
+## Compliance notes
+
+- **WhatsApp:** sending stays on the official Cloud API via your backend, inside
+  the 24-hour window or with approved templates, honouring opt-outs. The
+  extension only *links* to `wa.me`; it never sends on your behalf.
+- **LinkedIn / other sites:** the extension only reads text you highlight
+  yourself. No connect/message automation, no bulk scraping — that's what keeps
+  accounts safe (and is required for the Chrome Web Store).
+- **Data:** the tenant stays the data controller; captured leads go only to that
+  tenant's Talko workspace. A lead is stored *not opted-in* unless you tick the
+  consent box, and only opted-in contacts enter marketing broadcasts.
