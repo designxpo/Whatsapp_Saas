@@ -39,8 +39,15 @@ async function apiFetch(path, { method = "GET", body } = {}) {
     return { ok: false, status: 0, error: `Network error: ${err?.message || err}. Check the base URL and your connection.` };
   }
   let data = {};
-  try { data = await res.json(); } catch { /* non-JSON */ }
+  // A missing route answers with Next's HTML 404, not JSON — so there's no
+  // data.error to fall back on, which is how "Request failed (404)" happened.
+  try { data = await res.json(); } catch { /* non-JSON (404/500 HTML page) */ }
   if (res.status === 401) return { ok: false, status: 401, error: "Unauthorized — the API key is wrong or revoked." };
+  if (res.status === 404 && !data?.error) {
+    return { ok: false, status: 404, error: "Your workspace doesn't have this feature yet — it needs the latest server update. Try again in a minute." };
+  }
+  if (res.status === 429) return { ok: false, status: 429, error: "Too many requests — wait a moment and try again." };
+  if (res.status >= 500 && !data?.error) return { ok: false, status: res.status, error: "The workspace had a server error. Try again shortly." };
   if (!res.ok) return { ok: false, status: res.status, error: data?.error || `Request failed (${res.status})` };
   return { ok: true, status: res.status, data };
 }
