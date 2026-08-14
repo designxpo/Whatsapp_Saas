@@ -1,5 +1,7 @@
 import { getSettings } from "./api.js";
 import { parseSelection, waClickToChatUrl, qrImageUrl, normalizePhone, sourceLabel } from "./wa.js";
+import { initTheme, themeSwitch } from "./theme.js";
+import { contactsFromCandidates, IMPORT_LIMIT, SCAN_LIMIT } from "./scan.js";
 
 const $ = (id) => document.getElementById(id);
 const els = {
@@ -8,6 +10,10 @@ const els = {
   submit: $("submit"), result: $("result"), quick: $("quick"),
   openWa: $("openWa"), copyWa: $("copyWa"), qr: $("qr"),
   grab: $("grab"), inbox: $("inbox"), opts: $("opts"), form: $("lead"),
+  themeSlot: $("themeSlot"), actions: $("actions"), scan: $("scan"),
+  scanPanel: $("scanPanel"), scanBack: $("scanBack"), scanCount: $("scanCount"),
+  scanNote: $("scanNote"), scanList: $("scanList"), scanConsent: $("scanConsent"),
+  scanToggleAll: $("scanToggleAll"), scanImport: $("scanImport"), scanMsg: $("scanMsg"),
 };
 
 let currentTab = null;
@@ -59,12 +65,12 @@ function updateQuickActions() {
 async function checkConnection() {
   const res = await send({ type: "WHOAMI" });
   if (res?.ok) {
-    els.status.textContent = `● ${res.data?.workspace || "Connected"}`;
-    els.status.className = "status ok";
-    els.status.title = `Connected to ${res.data?.workspace || "your workspace"}${res.data?.plan ? ` · ${res.data.plan}` : ""}`;
+    els.status.textContent = `● Connected — ${res.data?.workspace || "your workspace"}${res.data?.plan ? ` · ${res.data.plan}` : ""}`;
+    els.status.className = "statusrow ok";
+    els.status.title = "Open settings";
   } else {
-    els.status.textContent = res?.status === 401 ? "Key invalid — fix" : "Not connected — set key";
-    els.status.className = "status bad";
+    els.status.textContent = res?.status === 401 ? "● Key rejected — open settings" : "● Not connected — add your API key";
+    els.status.className = "statusrow bad";
     els.status.title = res?.error || "Open settings to paste your API key";
   }
 }
@@ -86,6 +92,193 @@ function applyParsed(p) {
   if (p.phone && !els.phone.value) els.phone.value = p.phone;
   if (p.email && !els.email.value) els.email.value = p.email;
   updateQuickActions();
+}
+
+// ── Scan this page ───────────────────────────────────────────────────────────
+//
+// Runs ONLY on this click, ONLY on the tab in front of the tenant, and only
+// COLLECTS candidates — scan.js decides what looks like a person, and the tenant
+// ticks the rows before anything is saved.
+//
+// This function is injected into the page, so it must stand alone: no imports,
+// no closure variables, nothing from this module.
+function collectPageContacts() {
+  const PHONE = /\+?\d[\d\s().-]{7,16}\d/;
+  const MAX = 400;
+  const out = [];
+  const clip = (s) => String(s || "").replace(/\u00a0/g, " ").slice(0, 400);  // nbsp → space
+  const push = (o) => { if (out.length < MAX) out.push(o); };
+
+  // 1. tel:/mailto: links — the strongest signal there is. The visible text may
+  //    read "Call us"; the href carries the number the site itself dials.
+  for (const a of document.querySelectorAll('a[href^="tel:"], a[href^="mailto:"]')) {
+    const href = a.getAttribute("href") || "";
+    const isTel = /^tel:/i.test(href);
+    let value = href.replace(/^(tel:|mailto:)/i, "");
+    try { value = decodeURIComponent(value); } catch { /* keep the raw value */ }
+    // A small container carries the name beside the link; a big one would be the
+    // whole page, so fall back to the link's own text.
+    const near = a.closest("li, tr, td, p, h1, h2, h3, h4, article, address, figcaption");
+    const nearText = near ? String(near.innerText || "") : "";
+    const context = nearText && nearText.length <= 300 ? nearText : String(a.innerText || "");
+    push({
+      tel: isTel ? value : "",
+      mail: isTel ? "" : value.split("?")[0],
+      text: clip(`${a.innerText || ""}\n${context}`),
+    });
+  }
+
+  // 2. Visible text, line by line. A name sits just above its number far more
+  //    often than below, so each hit carries the two lines before it.
+  const lines = String((document.body && document.body.innerText) || "").split("\n");
+  for (let i = 0; i < lines.length && i < 6000; i++) {
+    const line = lines[i].trim();
+    if (!line || !PHONE.test(line)) continue;
+    push({ text: clip([lines[i - 2], lines[i - 1], line, lines[i + 1]].filter(Boolean).map(s => s.trim()).join("\n")) });
+  }
+
+  return { url: location.href, title: document.title, candidates: out };
+}
+
+function scanMsg(kind, text) {
+  els.scanMsg.hidden = !text;
+  els.scanMsg.className = `result ${kind || "info"}`;
+  els.scanMsg.textContent = text || "";
+}
+
+function showScan(on) {
+  els.scanPanel.hidden = !on;
+  els.form.hidden = on;
+  els.actions.hidden = on;
+  if (on) els.quick.hidden = true; else updateQuickActions();
+}
+
+function checkedRows() {
+  return [...els.scanList.querySelectorAll("input[type=checkbox]")]
+    .filter(i => i.checked)
+    .map(i => JSON.parse(i.dataset.contact || "{}"));
+}
+
+function syncImportButton() {
+  const n = checkedRows().length;
+  els.scanImport.textContent = n ? `Add ${n} to Talko` : "Add to Talko";
+  els.scanImport.disabled = n === 0 || n > IMPORT_LIMIT;
+  if (n > IMPORT_LIMIT) scanMsg("bad", `Add up to ${IMPORT_LIMIT} at a time — untick ${n - IMPORT_LIMIT}.`);
+  else if (els.scanMsg.className.includes("bad")) scanMsg("", "");
+}
+
+function scanRow(c) {
+  const li = document.createElement("li");
+  li.className = "srow";
+
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.dataset.contact = JSON.stringify(c);
+  box.setAttribute("aria-label", `Add ${c.name || c.phone}`);
+  box.addEventListener("change", syncImportButton);
+
+  const info = document.createElement("div");
+  info.className = "sinfo";
+  const name = document.createElement("div");
+  name.className = `sname${c.name ? "" : " unknown"}`;
+  name.textContent = c.name || "Name not found";
+  const meta = document.createElement("div");
+  meta.className = "smeta";
+  meta.textContent = [`+${c.phone}`, c.email].filter(Boolean).join(" · ");
+  meta.title = c.context || "";
+  info.append(name, meta);
+
+  const use = document.createElement("button");
+  use.type = "button";
+  use.className = "usebtn";
+  use.textContent = "Use";
+  use.title = "Fill the form with this contact";
+  use.addEventListener("click", (e) => {
+    e.stopPropagation();
+    els.name.value = c.name || "";
+    els.phone.value = `+${c.phone}`;
+    els.email.value = c.email || "";
+    showScan(false);
+    showResult("info", "Pulled in — check the fields, then add.");
+    updateQuickActions();
+  });
+
+  // The whole row toggles, so ticking ten people doesn't mean ten small targets.
+  li.addEventListener("click", (e) => {
+    if (e.target !== box) { box.checked = !box.checked; syncImportButton(); }
+  });
+  li.append(box, info, use);
+  return li;
+}
+
+async function doScan() {
+  const tab = currentTab || await activeTab();
+  showScan(true);
+  els.scanList.replaceChildren();
+  els.scanCount.textContent = "Scanning…";
+  els.scanNote.textContent = "Reading the visible text on this page.";
+  els.scanToggleAll.textContent = "Select all";
+  els.scanImport.disabled = true;
+  scanMsg("", "");
+
+  let payload = null;
+  try {
+    if (!tab?.id) throw new Error("no tab");
+    const [{ result } = {}] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: collectPageContacts });
+    payload = result;
+  } catch {
+    els.scanCount.textContent = "Can't scan this page";
+    els.scanNote.textContent = "Chrome blocks extensions here (browser settings pages, the Web Store, and PDFs). Open a normal web page and try again.";
+    return;
+  }
+
+  const { defaultCc } = await getSettings();
+  const { contacts, total } = contactsFromCandidates(payload?.candidates ?? [], { cc: defaultCc });
+
+  if (!contacts.length) {
+    els.scanCount.textContent = "No contacts found";
+    els.scanNote.textContent = "No phone numbers on this page. Highlight the details you can see and use Grab selection instead.";
+    return;
+  }
+
+  els.scanCount.textContent = `${contacts.length} contact${contacts.length > 1 ? "s" : ""} found`;
+  els.scanNote.textContent = total > contacts.length
+    ? `Showing the first ${SCAN_LIMIT} of ${total}. Tick who to add — up to ${IMPORT_LIMIT} at a time.`
+    : `Tick who to add — up to ${IMPORT_LIMIT} at a time. Nothing is saved until you do.`;
+  for (const c of contacts) els.scanList.append(scanRow(c));
+  syncImportButton();
+}
+
+async function doImport() {
+  const contacts = checkedRows();
+  if (!contacts.length) return;
+  els.scanImport.disabled = true;
+  const label = els.scanImport.textContent;
+  els.scanImport.textContent = "Adding…";
+  scanMsg("info", "Adding to Talko…");
+
+  const res = await send({
+    type: "ADD_LEADS",
+    payload: { contacts, sourceUrl: currentTab?.url || "", consent: els.scanConsent.checked },
+  });
+
+  els.scanImport.textContent = label;
+  if (!res?.ok) {
+    els.scanImport.disabled = false;
+    scanMsg("bad", res?.error || "Couldn't add those contacts.");
+    return;
+  }
+  // Clear what landed, so a second pass can't double-add the same people.
+  for (const box of [...els.scanList.querySelectorAll("input[type=checkbox]")]) {
+    if (box.checked) box.closest("li")?.remove();
+  }
+  const added = res.data?.inserted;
+  const n = res.data?.count ?? contacts.length;
+  scanMsg("ok", added === 0
+    ? `Already in Talko — nothing changed (${n} checked).`
+    : `Added ${added ?? n} contact${(added ?? n) > 1 ? "s" : ""} ✓ · tagged ${(res.data?.tags || []).join(", ")}`);
+  els.scanCount.textContent = `${els.scanList.children.length} contact${els.scanList.children.length === 1 ? "" : "s"} left`;
+  syncImportButton();
 }
 
 // Events ----------------------------------------------------------------------
@@ -134,8 +327,21 @@ els.copyWa.addEventListener("click", async () => {
 els.grab.addEventListener("click", async () => {
   const tab = currentTab || await activeTab();
   const sel = tab?.id ? await readSelection(tab.id) : "";
+  showScan(false);
   if (sel.trim()) { applyParsed(parseSelection(sel)); showResult("ok", "Pulled the selection in — check the fields."); }
   else showResult("bad", "Nothing is selected on the page.");
+});
+
+els.scan.addEventListener("click", doScan);
+els.scanBack.addEventListener("click", () => showScan(false));
+els.scanImport.addEventListener("click", doImport);
+els.scanToggleAll.addEventListener("click", () => {
+  const boxes = [...els.scanList.querySelectorAll("input[type=checkbox]")];
+  const turnOn = boxes.some(b => !b.checked);
+  // "Select all" respects the import cap, so the button it feeds stays usable.
+  boxes.forEach((b, i) => { b.checked = turnOn && i < IMPORT_LIMIT; });
+  els.scanToggleAll.textContent = turnOn ? "Clear all" : "Select all";
+  syncImportButton();
 });
 
 els.inbox.addEventListener("click", async () => {
@@ -149,5 +355,11 @@ els.opts.addEventListener("click", () => chrome.runtime.openOptionsPage());
 els.status.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 // Boot ------------------------------------------------------------------------
+(async () => {
+  const mode = await initTheme();
+  els.themeSlot.append(themeSwitch({ mode, compact: true }));
+  const { attestConsent } = await getSettings();
+  els.scanConsent.checked = !!attestConsent;
+})();
 checkConnection();
 prefillFromPage();

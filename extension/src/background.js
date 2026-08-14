@@ -2,7 +2,7 @@
 // the popup message us; we call the backend (host_permission bypasses CORS here)
 // and report back. Nothing here automates any third-party site.
 
-import { addLead, whoami, draftReply, listInbox } from "./api.js";
+import { addLead, addLeads, whoami, draftReply, listInbox } from "./api.js";
 import { parseSelection } from "./wa.js";
 
 const MENU_ID = "talko-capture-selection";
@@ -116,6 +116,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case "ADD_LEAD": {
           const res = await addLead(msg.payload || {});
           flashBadge(res.ok);
+          sendResponse(res);
+          break;
+        }
+        // Bulk import from the popup's "Scan page" review list.
+        case "ADD_LEADS": {
+          const res = await addLeads(msg.payload || {});
+          flashBadge(res.ok);
+          if (res.ok) notify("Contacts added to Talko", `${res.data?.count ?? 0} contact(s) saved from the page you scanned.`);
           sendResponse(res);
           break;
         }

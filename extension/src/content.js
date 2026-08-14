@@ -19,6 +19,22 @@
   let box = null;
   let hideTimer = null;
 
+  // The draft card follows the tenant's theme choice, like every other surface.
+  // "system" is stamped as nothing, so the CSS falls through to the host's
+  // prefers-color-scheme (see content.css).
+  let theme = "light";
+  const stampTheme = () => {
+    if (!box) return;
+    if (theme === "system") box.removeAttribute("data-talko-theme");
+    else box.setAttribute("data-talko-theme", theme);
+  };
+  try {
+    chrome.storage?.sync?.get({ theme: "light" }, (s) => { theme = s?.theme || "light"; stampTheme(); });
+    chrome.storage?.onChanged?.addListener((changes, area) => {
+      if (area === "sync" && changes.theme) { theme = changes.theme.newValue || "light"; stampTheme(); }
+    });
+  } catch { /* storage unavailable — the light default stands */ }
+
   const clearTimer = () => { clearTimeout(hideTimer); hideTimer = null; };
   function remove() { if (box) { box.remove(); box = null; } clearTimer(); }
   function scheduleClose(ms) { clearTimer(); hideTimer = setTimeout(remove, ms); }
@@ -41,6 +57,7 @@
     box.style.top = `${Math.max(8, rect.top - 46)}px`;
     box.style.left = `${Math.min(Math.max(8, rect.left), window.innerWidth - 340)}px`;
     box.addEventListener("mousedown", (e) => e.preventDefault()); // keep selection alive
+    stampTheme();
     document.documentElement.appendChild(box);
     hideTimer = setTimeout(remove, 7000);
     return box;

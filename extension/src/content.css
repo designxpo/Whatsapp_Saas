@@ -63,9 +63,13 @@
   flex-direction: column;
   gap: 9px;
 }
+/* Same three theme states as tokens.css, expressed without custom properties:
+   the chip is injected into someone else's page, so it can't @import our sheet.
+   `data-talko-theme` is stamped by content.js from the tenant's saved choice. */
 @media (prefers-color-scheme: dark) {
-  .talko-cap-card { background: #141a21; color: #e9edf2; }
+  .talko-cap-card:not([data-talko-theme="light"]) { background: #141a21; color: #e9edf2; }
 }
+.talko-cap-card[data-talko-theme="dark"] { background: #141a21; color: #e9edf2; }
 .talko-cap-label {
   font-size: 10.5px;
   font-weight: 800;
@@ -90,9 +94,11 @@
 .talko-cap-card .talko-cap-btn.ghost { color: #525252; }
 .talko-cap-card .talko-cap-btn.ghost:hover { color: #171717; }
 @media (prefers-color-scheme: dark) {
-  .talko-cap-card .talko-cap-btn.ghost { color: #a4b0bd; }
-  .talko-cap-card .talko-cap-btn.ghost:hover { color: #e9edf2; }
+  .talko-cap-card:not([data-talko-theme="light"]) .talko-cap-btn.ghost { color: #a4b0bd; }
+  .talko-cap-card:not([data-talko-theme="light"]) .talko-cap-btn.ghost:hover { color: #e9edf2; }
 }
+.talko-cap-card[data-talko-theme="dark"] .talko-cap-btn.ghost { color: #a4b0bd; }
+.talko-cap-card[data-talko-theme="dark"] .talko-cap-btn.ghost:hover { color: #e9edf2; }
 
 @keyframes talko-cap-in {
   from { opacity: 0; transform: translateY(4px); }

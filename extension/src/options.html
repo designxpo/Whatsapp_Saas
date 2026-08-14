@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -40,12 +40,27 @@
     </section>
 
     <section class="card">
+      <h2>Appearance</h2>
+      <div class="field">
+        <span>Colour theme</span>
+        <div id="themeSlot"></div>
+        <small class="hint">Applies to the inbox panel, this page and the toolbar popup. <strong>System</strong> follows your computer's light or dark setting.</small>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Capture defaults</h2>
 
       <label class="field">
         <span>Tags added to every captured lead</span>
         <input id="defaultTags" type="text" placeholder="extension" />
         <small class="hint">Comma-separated. These power the “Captured from the web” filter in your portal. A <code>web-capture</code> tag and a <code>source:…</code> tag are always added too.</small>
+      </label>
+
+      <label class="field">
+        <span>Default country code</span>
+        <input id="defaultCc" type="text" inputmode="numeric" placeholder="91" maxlength="4" />
+        <small class="hint">Used by <strong>Scan page</strong>: a number written the local way (e.g. <code>98765 43210</code>) is saved with this code in front, so it's reachable on WhatsApp. Numbers that already carry a country code are left alone.</small>
       </label>
 
       <label class="check">
@@ -63,7 +78,7 @@
     </div>
 
     <footer class="note">
-      <p><strong>How this stays safe.</strong> The extension only ever talks to your own Talko backend over HTTPS — never to WhatsApp, LinkedIn, or any other site directly. It reads only text you highlight, never scrapes pages, and every lead it adds is recorded in your portal with its source. Sending still goes through the official WhatsApp Cloud API with your approved templates and opt-out rules.</p>
+      <p><strong>How this stays safe.</strong> The extension only ever talks to your own Talko backend over HTTPS — never to WhatsApp, LinkedIn, or any other site directly. It reads a page only when you ask it to: the text you highlight, or the contact details it finds when you press <strong>Scan page</strong>. Results are proposed, never saved on their own — you tick each row first — and every lead it adds is recorded in your portal with its source. Sending still goes through the official WhatsApp Cloud API with your approved templates and opt-out rules.</p>
     </footer>
   </div>
 

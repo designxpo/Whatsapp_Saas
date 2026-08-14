@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -12,10 +12,30 @@
       <img src="../icons/icon48.png" alt="" width="20" height="20" />
       <span>Talko Copilot</span>
     </div>
-    <button id="status" class="status" type="button" title="Connection status">Checking…</button>
+    <div id="themeSlot" class="themeslot"></div>
   </header>
 
   <main>
+    <button id="status" class="statusrow" type="button" title="Connection status">Checking…</button>
+
+    <!-- Page actions: both fill the form below, so they sit above it. -->
+    <div class="actions" id="actions">
+      <button id="grab" class="action" type="button">
+        <span class="aicon" aria-hidden="true">⇱</span>
+        <span class="atext">
+          <strong>Grab selection</strong>
+          <small>Read the text you highlighted</small>
+        </span>
+      </button>
+      <button id="scan" class="action" type="button">
+        <span class="aicon" aria-hidden="true">⌕</span>
+        <span class="atext">
+          <strong>Scan page</strong>
+          <small>Find every contact on this page</small>
+        </span>
+      </button>
+    </div>
+
     <form id="lead" autocomplete="off">
       <label class="field">
         <span>Name</span>
@@ -63,12 +83,34 @@
         </div>
       </details>
     </section>
+
+    <!-- Scan results — replaces the form, so the popup never becomes a long scroll.
+         Every row is proposed only: nothing is saved until it's ticked and added. -->
+    <section id="scanPanel" class="scan" hidden>
+      <div class="scanhead">
+        <button id="scanBack" class="backbtn" type="button">← Back</button>
+        <strong id="scanCount" class="scancount"></strong>
+      </div>
+      <p id="scanNote" class="hint"></p>
+
+      <ul id="scanList" class="scanlist"></ul>
+
+      <label class="check">
+        <input id="scanConsent" type="checkbox" />
+        <span>These people agreed to be contacted on WhatsApp</span>
+      </label>
+
+      <div class="scanfoot">
+        <button id="scanToggleAll" class="ghost" type="button">Select all</button>
+        <button id="scanImport" class="primary" type="button" disabled>Add to Talko</button>
+      </div>
+      <p id="scanMsg" class="result" role="status" aria-live="polite" hidden></p>
+    </section>
   </main>
 
   <footer class="foot">
-    <button id="grab" class="link" type="button">Grab selection</button>
-    <button id="inbox" class="link" type="button">Inbox</button>
-    <button id="opts" class="link" type="button">Settings</button>
+    <button id="inbox" class="footbtn" type="button"><span aria-hidden="true">☰</span> Inbox</button>
+    <button id="opts" class="footbtn" type="button"><span aria-hidden="true">⚙</span> Settings</button>
   </footer>
 
   <script type="module" src="popup.js"></script>

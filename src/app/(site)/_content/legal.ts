@@ -9,8 +9,8 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-08-14";
-export const LEGAL_EFFECTIVE = "14 August 2026";
+export const LEGAL_VERSION = "2026-08-15";
+export const LEGAL_EFFECTIVE = "15 August 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -166,10 +166,11 @@ const PRIVACY_DOC: LegalDoc = {
       p(`Talko Copilot is our optional Chrome extension. It is a client of your own ${C} workspace: it communicates only with our API over HTTPS, using a workspace API key you create and paste in yourself, and it sends nothing to any third party.`),
       ul([
         "Stored on your device only: your workspace API key and your capture preferences, held in the browser's extension storage. Uninstalling the extension removes them.",
-        "Sent to your workspace, and only when you act: the text you highlight and the address of the page you highlighted it on (when you capture a lead or request an AI-drafted reply), and the messages, tags, notes, pipeline changes and orders you create from the extension.",
-        "Not collected: your browsing history, your page contents, cookies, form data, or anything on a page you have not selected yourself.",
+        "Sent to your workspace, and only when you act: the text you highlight, the contact details you choose to keep after pressing “Scan page”, the address of the page they came from, and the messages, tags, notes, pipeline changes and orders you create from the extension.",
+        "Not collected: your browsing history, your page contents, cookies, form data, or anything from a page you have neither selected yourself nor asked the extension to scan.",
       ]),
-      p(`The extension does not read, scrape, monitor or automate the websites you visit. Its content script responds only to a selection you make and only to offer an action; nothing is captured, drafted or sent without your click. It does not act on your behalf inside WhatsApp, Instagram, Facebook, LinkedIn or any other platform — messages are sent through those platforms' official APIs by your ${C} workspace, subject to their messaging policies.`),
+      p(`The extension does not monitor the websites you visit and does nothing in the background. It reads a page in exactly two situations, both of which you start yourself. When you highlight text, its content script offers an action on that selection. When you press “Scan page”, it looks once through the visible text of the tab in front of you for names, phone numbers and email addresses, and lists what it found so you can review it — those results stay in the extension window and only the rows you tick are sent to your workspace; the rest are discarded when you close it. Nothing is captured, drafted, saved or sent without your click.`),
+      p(`It does not act on your behalf inside WhatsApp, Instagram, Facebook, LinkedIn or any other platform — messages are sent through those platforms' official APIs by your ${C} workspace, subject to their messaging policies.`),
       p(`Leads and conversations created through the extension are stored in your own workspace and are treated exactly like data created in the portal: you remain the data controller and we act as your processor, as described in section 2. We do not sell extension data, use it for advertising, use it to train generalised AI models, or use it for any purpose other than providing the features you invoke.`),
     ] },
     { heading: "9. International transfers", blocks: [

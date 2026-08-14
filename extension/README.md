@@ -3,7 +3,8 @@
 Capture a lead from **any** web page into Talko in one click, then reach them on
 WhatsApp with your approved templates. The extension is a thin client of your own
 Talko backend — it never talks to WhatsApp, LinkedIn, or any other platform
-directly, never scrapes pages, and records every lead it adds in your portal.
+directly, never acts in the background, and records every lead it adds in your
+portal.
 
 Covers **Phase 1** (capture + quick actions) and **Phase 2** (inbox side-panel +
 draft-reply overlay) from the product plan.
@@ -21,7 +22,9 @@ draft-reply overlay) from the product plan.
 | **Keyboard capture** | Select text → `Alt+Shift+L` | same as above |
 | **Manual capture** | Toolbar icon → fill the form (pre-filled from your selection + the page URL) | same, plus any tags you add |
 | **Where-from record** | Every capture also posts a `web_capture` event carrying the `source_url` | Event/automation history |
+| **Scan page for contacts** | Popup → **Scan page** → every name, number and email on the page you're looking at, listed for review → tick who to keep → **Add to Talko** | Contacts, tagged `page-scan` + `web-capture` + `source:<site>` |
 | **Quick WhatsApp link + QR** | Popup builds a `wa.me` click-to-chat link and a printable QR | opens WhatsApp — you send, manually |
+| **Light / dark / system theme** | The switch in the panel header (or Settings → Appearance) themes the panel, popup, settings page and the on-page chip together | preference only, saved in `chrome.storage.sync` |
 
 **Phase 2 — inbox & AI drafts**
 
@@ -73,12 +76,12 @@ Minimal by design (this list is what a Chrome Web Store reviewer will see):
 | --- | --- |
 | `storage` | Save your API key and capture defaults locally |
 | `contextMenus` | The right-click "Add to Talko" item |
-| `activeTab` + `scripting` | Read the text **you highlighted** on the current tab when you invoke the extension — only on your action, never in the background |
+| `activeTab` + `scripting` | Read the current tab **when you invoke the extension**: the text you highlighted (Grab selection), or its visible text once, to list the contact details on it (Scan page). Only on your click, only the tab in front of you, never in the background |
 | `notifications` | Confirm "Lead added" after a right-click / keyboard capture |
 | `sidePanel` | The inbox side-panel |
 | `alarms` | Poll every few minutes for conversations that need a reply (the toolbar count) |
 | `host_permissions: https://app.thetalko.in/*` | Talk to **your** Talko API (and nothing else) |
-| `content_scripts: <all_urls>` | Show the capture chip when you select text. The script reads **only `window.getSelection()`** on your action — it does not read, scrape, or automate page content |
+| `content_scripts: <all_urls>` | Show the capture chip when you select text. The script reads **only `window.getSelection()`** on your action — it does not read page content otherwise, and never automates the page |
 
 No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
 
@@ -96,6 +99,7 @@ No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
  https://app.thetalko.in
    GET  /api/whoami                        → validate key + show workspace
    POST /api/contacts                      → lead saved + welcome automation
+                                             (also the Scan page bulk import)
    POST /api/events                        → web_capture record (source_url)
    GET  /api/inbox                         → recent conversations
    GET  /api/inbox/thread                  → one thread's messages
@@ -123,8 +127,11 @@ message it, so the host_permission bypasses CORS and no page can see your key.
 manifest.json         MV3 manifest
 icons/                16 / 48 / 128 px
 src/
-  api.js                  thin API client (whoami, addLead, inbox, draft)
+  api.js                  thin API client (whoami, addLead/addLeads, inbox, draft)
   wa.js                   pure helpers (phone parse, wa.me link, QR url)
+  scan.js                 pure page-scan parser (candidates → reviewable contacts)
+  theme.js                light / dark / system, shared by every surface
+  tokens.css              the one palette + the theme contract
   channels.js             channel labels + plain-language messaging-window wording
   format.js               money, cart and product-message formatting
   background.js           service worker — context menu, shortcut, API calls
@@ -140,9 +147,12 @@ src/
   your backend — WhatsApp Cloud API, Instagram Messaging, Facebook Pages — inside
   each platform's 24-hour window, with approved templates where WhatsApp requires
   them, honouring opt-outs. No unofficial clients and no browser automation.
-- **LinkedIn / other sites:** the extension only reads text you highlight
-  yourself. No connect/message automation, no bulk scraping — that's what keeps
-  accounts safe (and is required for the Chrome Web Store).
+- **Reading pages:** two moments only, both started by the tenant — the text
+  they highlight, and one pass over the visible text of the current tab when they
+  press **Scan page**. Results are *proposals*: they stay in the popup and only
+  ticked rows are saved. Nothing is crawled, no other tab is touched, nothing runs
+  in the background, and no site is ever automated (no auto-connect, no
+  auto-message) — that's what keeps accounts safe and the listing reviewable.
 - **Data:** the tenant stays the data controller; captured leads go only to that
   tenant's Talko workspace. A lead is stored *not opted-in* unless you tick the
   consent box, and only opted-in contacts enter marketing broadcasts.

@@ -5,11 +5,12 @@ import {
   searchContacts, listCatalog, setCart, checkout,
 } from "./api.js";
 import { CHANNELS, STATUS_FILTERS, channelMeta, supportsTemplates, relativeTime, windowStatus } from "./channels.js";
+import { initTheme, themeSwitch } from "./theme.js";
 import { money, cartSummary, productMessage, payMessage, ordersSummary } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
-  ws: $("ws"), refresh: $("refresh"), openPortal: $("openPortal"),
+  ws: $("ws"), refresh: $("refresh"), openPortal: $("openPortal"), themeSlot: $("themeSlot"),
   connect: $("connect"), openOpts: $("openOpts"),
   listView: $("listView"), viewChats: $("viewChats"), viewComments: $("viewComments"),
   viewContacts: $("viewContacts"),
@@ -830,6 +831,10 @@ el.draft.addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.
 
 // ── Boot ────────────────────────────────────────────────────────────────────
 (async () => {
+  // Theme first: it repaints the whole panel, so do it before anything is drawn.
+  const mode = await initTheme();
+  el.themeSlot.append(themeSwitch({ mode, compact: true }));
+
   const s = await getSettings();
   if (!s.apiKey) { showView("connect"); return; }
   baseUrl = s.baseUrl || baseUrl;

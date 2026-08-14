@@ -7,12 +7,16 @@
 // where the manifest host_permission for the API origin bypasses CORS.
 
 import { normalizePhone, sourceLabel } from "./wa.js";
+import { DEFAULT_THEME } from "./theme.js";
+import { IMPORT_LIMIT } from "./scan.js";
 
 export const DEFAULTS = Object.freeze({
   baseUrl: "https://app.thetalko.in",
   apiKey: "",
   defaultTags: ["extension"],
   attestConsent: false,          // only true if the user confirms the lead opted in
+  theme: DEFAULT_THEME,          // "light" | "dark" | "system" — see theme.js
+  defaultCc: "91",               // country code given to numbers written the local way
 });
 
 export async function getSettings() {
@@ -90,6 +94,44 @@ export async function addLead({ phone, name = "", email = "", tags = [], sourceU
   }).catch(() => undefined);
 
   return { ok: true, status: contactRes.status, data: { ...contactRes.data, tags: allTags } };
+}
+
+// Add several reviewed contacts at once — the "Scan page" import. The tenant has
+// already ticked each row in the popup, so this is a plain bulk upsert.
+//
+// Unlike addLead it does NOT write a per-contact 'web_capture' event: that would
+// be one extra API round trip per row, and the source is already recorded on the
+// contact itself by the `page-scan` and `source:…` tags.
+export async function addLeads({ contacts = [], sourceUrl = "", consent = false } = {}) {
+  const { defaultTags, attestConsent } = await getSettings();
+
+  let host = "";
+  try { host = sourceUrl ? new URL(sourceUrl).hostname : ""; } catch { /* ignore */ }
+  const tags = Array.from(new Set([
+    ...(defaultTags || []),
+    "web-capture",
+    "page-scan",
+    ...(host ? [`source:${sourceLabel(host)}`] : []),
+  ].filter(Boolean)));
+
+  const rows = contacts
+    .map((c) => ({
+      phone: normalizePhone(c?.phone).digits,
+      name: String(c?.name ?? "").trim() || undefined,
+      email: String(c?.email ?? "").trim() || undefined,
+      tags,
+    }))
+    .filter((c) => c.phone.length >= 8)
+    .slice(0, IMPORT_LIMIT);
+
+  if (!rows.length) return { ok: false, status: 400, error: "Tick at least one contact with a phone number." };
+
+  const res = await apiFetch("/api/contacts", {
+    method: "POST",
+    body: { contacts: rows, consent: consent || attestConsent },
+  });
+  if (!res.ok) return res;
+  return { ok: true, status: res.status, data: { ...res.data, tags, count: rows.length } };
 }
 
 // ── Phase 2: inbox side-panel ────────────────────────────────────────────────
