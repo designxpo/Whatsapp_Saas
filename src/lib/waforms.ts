@@ -208,7 +208,7 @@ async function uploadFlowJson(token: string, flowId: string, flowJson: Record<st
 // Create a draft form (Flow asset) on the WABA. Returns validation errors, if any.
 export async function createWaForm(name: string, flowJson: Record<string, unknown>, channel?: ChannelCreds): Promise<{ id?: string; validationErrors?: string[]; error?: string }> {
   const { token, wabaId } = getCreds(channel);
-  if (!token || !wabaId) return { error: "Missing META_WA_ACCESS_TOKEN / META_WA_WABA_ID" };
+  if (!token || !wabaId) return { error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   try {
     const res = await fetch(`${GRAPH}/${wabaId}/flows`, {
       method: "POST",
@@ -228,7 +228,7 @@ export async function createWaForm(name: string, flowJson: Record<string, unknow
 // Publish a draft — makes it live immediately (Meta validates, no review queue).
 export async function publishWaForm(id: string, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
   const { token } = getCreds(channel);
-  if (!token) return { success: false, error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!token) return { success: false, error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   try {
     const res = await fetch(`${GRAPH}/${id}/publish`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json().catch(() => ({}));
@@ -243,7 +243,7 @@ export async function publishWaForm(id: string, channel?: ChannelCreds): Promise
 // so it can be re-opened in the builder. Read-only — safe on any form.
 export async function getWaFormDef(id: string, channel?: ChannelCreds): Promise<{ title: string; fields: WaFormField[]; error?: string }> {
   const { token } = getCreds(channel);
-  if (!token) return { title: "", fields: [], error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!token) return { title: "", fields: [], error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   try {
     const res = await fetch(`${GRAPH}/${id}/assets`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const data = await res.json().catch(() => ({}));
@@ -262,7 +262,7 @@ export async function getWaFormDef(id: string, channel?: ChannelCreds): Promise<
 // even published — only its content is locked once published.
 export async function renameWaForm(id: string, name: string, channel?: ChannelCreds): Promise<{ success: boolean; error?: string }> {
   const { token } = getCreds(channel);
-  if (!token) return { success: false, error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!token) return { success: false, error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   if (!name.trim()) return { success: false, error: "name required" };
   try {
     const res = await fetch(`${GRAPH}/${id}`, {
@@ -281,7 +281,7 @@ export async function renameWaForm(id: string, name: string, channel?: ChannelCr
 // while a Flow is in draft — published Flows are immutable, so clone instead).
 export async function updateWaFormJson(id: string, flowJson: Record<string, unknown>, channel?: ChannelCreds): Promise<{ validationErrors?: string[]; error?: string }> {
   const { token } = getCreds(channel);
-  if (!token) return { error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!token) return { error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   const up = await uploadFlowJson(token, id, flowJson);
   if (up.error) return { error: up.error };
   return { validationErrors: up.errors };
@@ -289,7 +289,7 @@ export async function updateWaFormJson(id: string, flowJson: Record<string, unkn
 
 export async function listWaForms(channel?: ChannelCreds): Promise<WaForm[]> {
   const { token, wabaId } = getCreds(channel);
-  if (!token || !wabaId) throw new Error("Missing META_WA_ACCESS_TOKEN / META_WA_WABA_ID");
+  if (!token || !wabaId) throw new Error("Connect a WhatsApp number first — open Settings → WhatsApp.");
   const res = await fetch(
     `${GRAPH}/${wabaId}/flows?fields=id,name,status,categories,validation_errors,preview.invalidate(false)&limit=100`,
     { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
@@ -310,7 +310,7 @@ export async function listWaForms(channel?: ChannelCreds): Promise<WaForm[]> {
 // Drafts can be deleted outright; published forms can only be deprecated.
 export async function deleteWaForm(id: string, channel?: ChannelCreds): Promise<{ success: boolean; deprecated?: boolean; error?: string }> {
   const { token } = getCreds(channel);
-  if (!token) return { success: false, error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!token) return { success: false, error: "Connect a WhatsApp number first — open Settings → WhatsApp." };
   try {
     const res = await fetch(`${GRAPH}/${id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
     if (res.ok) return { success: true };

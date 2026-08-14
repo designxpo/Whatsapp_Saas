@@ -8,13 +8,25 @@ import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
+// Resolve the WABA credentials for a forms request: the explicitly-picked
+// channel, else the tenant's DEFAULT WhatsApp number — so "Number: default"
+// means the tenant's own number, not the absent single-number env credentials
+// (which produced the confusing "Missing META_WA_ACCESS_TOKEN" notice).
+// undefined only when the tenant has no WhatsApp number connected at all.
+async function waCreds(channelId: string | null | undefined, tid: string) {
+  const explicit = await credsFor(channelId, tid);
+  if (explicit) return explicit;
+  const wa = (await listChannels(tid)).filter(c => c.active && c.kind === "whatsapp");
+  return wa.find(c => c.isDefault) ?? wa[0] ?? undefined;
+}
+
 // GET ?channelId=… — forms live on the WABA, so each channel can differ.
 // GET ?def=<id> — read one form's fields back (to re-open it in the builder).
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const channel = await credsFor(url.searchParams.get("channelId"), tid);
+    const channel = await waCreds(url.searchParams.get("channelId"), tid);
     const def = url.searchParams.get("def");
     if (def) return NextResponse.json(await getWaFormDef(def, channel));
     return NextResponse.json({ forms: await listWaForms(channel) });
@@ -32,7 +44,7 @@ export async function POST(req: Request) {
   let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; publishToAll?: boolean; rename?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const channel = await credsFor(body.channelId, tid);
+  const channel = await waCreds(body.channelId, tid);
 
   // Rename a form (works for published too — only content is locked on publish).
   if (body.id && typeof body.rename === "string") {
@@ -157,7 +169,7 @@ export async function DELETE(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const r = await deleteWaForm(body.id, await credsFor(body.channelId, tid));
+  const r = await deleteWaForm(body.id, await waCreds(body.channelId, tid));
   if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), r.deprecated ? "form.deprecate" : "form.delete", body.id);
   return NextResponse.json({ success: true, deprecated: r.deprecated ?? false });
