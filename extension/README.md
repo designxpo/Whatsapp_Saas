@@ -28,7 +28,8 @@ draft-reply overlay) from the product plan.
 | Feature | How | Where it lands in the portal |
 | --- | --- | --- |
 | **Needs-reply badge** | The toolbar icon shows a count of conversations waiting for a reply, refreshed every few minutes | reads `/api/inbox?needsReply=1` |
-| **Inbox side-panel** | Popup → **Inbox** → recent conversations, filter *Needs reply* | reads your live conversations |
+| **Inbox side-panel** | Popup → **Inbox** → recent conversations, filter *Needs reply only* | reads your live conversations |
+| **Split by source channel** | Tabs for **All / WhatsApp / Instagram / Messenger / Website**, each with a live count; every row also carries a channel badge on its avatar | reads `/api/inbox?platform=…` |
 | **Reply from the panel** | Open a thread → type (or **✨ Draft with AI**) → **Send** | logged on the thread as an agent reply; pauses the bot |
 | **Window-aware sending** | Free-form inside the 24h window; a picker of your **approved templates** (with value prompts) when it's closed | respects Meta's messaging policy |
 | **Draft-reply overlay** | On YouTube / Google Business, highlight a comment/review → **✨ Draft reply** → copies an AI draft grounded only in that text | you paste & post it yourself |
@@ -106,6 +107,7 @@ icons/                16 / 48 / 128 px
 src/
   api.js                  thin API client (whoami, addLead, inbox, draft)
   wa.js                   pure helpers (phone parse, wa.me link, QR url)
+  channels.js             channel labels + plain-language 24h-window wording
   background.js           service worker — context menu, shortcut, API calls
   popup.html/.css/.js     toolbar capture form + quick actions + Inbox launcher
   options.html/…          connection + capture defaults

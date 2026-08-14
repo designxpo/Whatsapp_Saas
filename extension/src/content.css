@@ -1,10 +1,11 @@
-/* The selection action chip + draft card. Namespaced + fixed, above everything.
-   High specificity so host-page CSS can't bleed in and we don't bleed out. */
+/* The selection action chip + draft card, in Talko brand colours (brand-700
+   #0783FD on brand-dark #073B78). Namespaced and fixed-position, with high
+   specificity so host-page CSS can't bleed in and we don't bleed out. */
 .talko-cap {
   position: fixed;
   z-index: 2147483647;
-  font: 600 12.5px/1.3 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  box-shadow: 0 8px 26px rgba(15, 23, 42, .30);
+  font: 650 12.5px/1.3 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  box-shadow: 0 8px 24px rgba(7, 59, 120, .28);
   border-radius: 12px;
   animation: talko-cap-in .12s ease-out;
 }
@@ -13,28 +14,29 @@
   display: inline-flex;
   gap: 6px;
   padding: 5px;
-  background: #0f172a;
+  background: #073b78;
   border-radius: 12px;
-}
-@media (prefers-color-scheme: light) {
-  .talko-cap-bar { background: #1e293b; }
 }
 
 .talko-cap-btn {
   font: inherit;
-  color: #fff;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 7px 11px;
   cursor: pointer;
   white-space: nowrap;
   line-height: 1;
+  color: #fff;
 }
-.talko-cap-btn.cap { background: #2563eb; }
-.talko-cap-btn.cap:hover { background: #1d4ed8; }
-.talko-cap-btn.draft { background: #7c3aed; }
-.talko-cap-btn.draft:hover { background: #6d28d9; }
-.talko-cap-btn.ghost { background: transparent; color: #cbd5e1; padding: 7px 9px; }
+/* Filled = the primary action; outlined = secondary. */
+.talko-cap-btn.cap { background: #0783fd; }
+.talko-cap-btn.cap:hover { background: #2a96ff; }
+.talko-cap-btn.draft {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px rgba(207, 230, 255, .45);
+}
+.talko-cap-btn.draft:hover { background: rgba(207, 230, 255, .14); box-shadow: inset 0 0 0 1px #cfe6ff; }
+.talko-cap-btn.ghost { background: transparent; color: #cfe6ff; padding: 7px 9px; }
 .talko-cap-btn.ghost:hover { color: #fff; }
 .talko-cap-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
@@ -43,10 +45,10 @@
   padding: 8px 13px;
   border-radius: 12px;
   color: #fff;
-  background: #475569;
+  background: #073b78;
 }
-.talko-cap-status.busy { background: #475569; }
-.talko-cap-status.ok { background: #16803c; }
+.talko-cap-status.busy { background: #073b78; }
+.talko-cap-status.ok { background: #0f7b3f; }
 .talko-cap-status.err { background: #b91c1c; }
 
 /* Expanded draft card */
@@ -54,21 +56,22 @@
   width: 320px;
   max-width: calc(100vw - 24px);
   background: #ffffff;
-  color: #0f172a;
-  padding: 12px;
+  color: #171717;
+  padding: 13px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   gap: 9px;
 }
 @media (prefers-color-scheme: dark) {
-  .talko-cap-card { background: #161d27; color: #e8edf3; }
+  .talko-cap-card { background: #141a21; color: #e9edf2; }
 }
 .talko-cap-label {
   font-size: 10.5px;
-  font-weight: 700;
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: .05em;
-  color: #7c3aed;
+  letter-spacing: .06em;
+  color: #0783fd;
 }
 .talko-cap-draft {
   font-weight: 400;
@@ -84,10 +87,11 @@
   padding: 0;
   justify-content: flex-end;
 }
-.talko-cap-card .talko-cap-btn.ghost { color: #64748b; }
-.talko-cap-card .talko-cap-btn.ghost:hover { color: #0f172a; }
+.talko-cap-card .talko-cap-btn.ghost { color: #525252; }
+.talko-cap-card .talko-cap-btn.ghost:hover { color: #171717; }
 @media (prefers-color-scheme: dark) {
-  .talko-cap-card .talko-cap-btn.ghost:hover { color: #e8edf3; }
+  .talko-cap-card .talko-cap-btn.ghost { color: #a4b0bd; }
+  .talko-cap-card .talko-cap-btn.ghost:hover { color: #e9edf2; }
 }
 
 @keyframes talko-cap-in {

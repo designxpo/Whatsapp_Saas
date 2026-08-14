@@ -33,7 +33,7 @@ async function refreshInboxBadge() {
     const res = await listInbox({ needsReply: true, limit: 100 });
     if (!res.ok) { await chrome.action.setBadgeText({ text: "" }); return; }
     const n = (res.data?.conversations ?? []).length;
-    await chrome.action.setBadgeBackgroundColor({ color: "#2563EB" });
+    await chrome.action.setBadgeBackgroundColor({ color: "#0783FD" });
     await chrome.action.setBadgeText({ text: n ? (n > 99 ? "99+" : String(n)) : "" });
   } catch { /* ignore */ }
 }

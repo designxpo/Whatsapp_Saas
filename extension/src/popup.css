@@ -1,11 +1,11 @@
 :root {
-  --bg: #f6f7f9;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --border: #e3e6ea;
-  --text: #10151c;
-  --muted: #616b78;
-  --brand: #2563eb;
-  --brand-d: #1d4ed8;
+  --border: #e5e7eb;
+  --text: #171717;
+  --muted: #525252;
+  --brand: #0783fd;
+  --brand-d: #0668d6;
   --good: #16803c;
   --good-bg: #e7f6ec;
   --bad: #c02626;
@@ -19,8 +19,8 @@
     --border: #273140;
     --text: #e8edf3;
     --muted: #93a0b0;
-    --brand: #4f86f7;
-    --brand-d: #6f9dfb;
+    --brand: #2a96ff;
+    --brand-d: #3d99ff;
     --good: #57c98a;
     --good-bg: #12321f;
     --bad: #f0837f;
@@ -32,7 +32,7 @@
 body {
   width: 340px;
   margin: 0;
-  font: 13px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font: 13px/1.45 Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   color: var(--text);
   background: var(--bg);
 }

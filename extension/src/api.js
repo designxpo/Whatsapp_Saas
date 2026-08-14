@@ -87,9 +87,14 @@ export async function addLead({ phone, name = "", email = "", tags = [], sourceU
 
 // ── Phase 2: inbox side-panel ────────────────────────────────────────────────
 
-// Recent conversations for the side-panel list.
-export function listInbox({ limit = 40, needsReply = false } = {}) {
-  const q = new URLSearchParams({ limit: String(limit), ...(needsReply ? { needsReply: "1" } : {}) });
+// Recent conversations for the side-panel list. `platform` narrows to one source
+// channel (whatsapp | instagram | messenger | webchat); null means all of them.
+export function listInbox({ limit = 40, needsReply = false, platform = null } = {}) {
+  const q = new URLSearchParams({
+    limit: String(limit),
+    ...(needsReply ? { needsReply: "1" } : {}),
+    ...(platform ? { platform } : {}),
+  });
   return apiFetch(`/api/inbox?${q}`);
 }
 
