@@ -342,22 +342,51 @@ main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .sell > summary:hover { color: var(--brand); }
 .cartline { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brand); }
 .sellbody { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
-.prodlist { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
-.prodlist:empty::after { content: "No products found"; color: var(--ink-400); font-size: 11.5px; padding: 4px 2px; }
+/* Product picker — a dropdown, because a native <select> can't show images.
+   Opens UPWARD: the composer sits at the bottom of the panel. */
+.picker { position: relative; }
+.pickertrigger {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  font: inherit; font-size: 12.5px; text-align: left; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r-control); padding: 6px 9px; cursor: pointer; min-height: 42px;
+}
+.pickertrigger:hover { border-color: var(--brand-500); }
+.pickertrigger[aria-expanded="true"] { border-color: var(--brand); }
+.pickertrigger:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.pickerlabel { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pickerprice { font-family: var(--mono); font-size: 11.5px; color: var(--ink-600); flex: 0 0 auto; }
+.pickercaret { color: var(--ink-400); flex: 0 0 auto; font-size: 11px; }
+
+.thumbslot { display: inline-flex; flex: 0 0 auto; }
+.thumb {
+  width: 30px; height: 30px; flex: 0 0 auto; border-radius: 7px;
+  object-fit: cover; background: var(--canvas); border: 1px solid var(--line);
+}
+/* No image on the product → a neutral tile rather than a broken-image icon. */
+.thumb.ph { display: flex; align-items: center; justify-content: center; }
+
+.pickermenu {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 5px); z-index: 5;
+  background: var(--paper); border: 1px solid var(--line);
+  border-radius: var(--r-card); box-shadow: 0 10px 28px rgba(7, 59, 120, .18);
+  padding: 8px; display: flex; flex-direction: column; gap: 7px;
+}
+.prodlist { list-style: none; margin: 0; padding: 0; max-height: 230px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.prodlist:empty::after { content: "No products found"; color: var(--ink-400); font-size: 11.5px; padding: 6px 2px; }
 .prod {
-  display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center;
-  padding: 6px 8px; background: var(--paper);
-  border: 1px solid var(--line); border-radius: 8px;
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  font: inherit; text-align: left; cursor: pointer;
+  padding: 5px 6px; background: transparent; border: 0; border-radius: 8px;
 }
+.prod:hover, .prod:focus-visible { background: var(--brand-50); outline: none; }
+.prod[aria-selected="true"] { background: var(--brand-50); }
+.prodmid { flex: 1 1 auto; min-width: 0; }
 .prodname { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prodprice { font-family: var(--mono); font-size: 11.5px; color: var(--ink-600); }
-.prodbtn {
-  font: inherit; font-size: 11px; font-weight: 700; color: #fff;
-  background: var(--brand); border: 0; border-radius: 7px; padding: 4px 8px; cursor: pointer;
-}
-.prodbtn.alt { color: var(--brand); background: var(--brand-50); }
-.prodbtn:hover { background: var(--brand-800); color: #fff; }
+.proddesc { font-size: 11px; color: var(--ink-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prodprice { font-family: var(--mono); font-size: 11.5px; font-weight: 700; color: var(--ink-600); flex: 0 0 auto; }
 .sellbtns { display: flex; gap: 6px; }
+.sellbtns .tool:disabled { opacity: .45; cursor: not-allowed; }
 
 /* Plain-language window state — the composer's rules, said out loud. */
 .statusbar {

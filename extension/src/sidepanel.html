@@ -124,8 +124,24 @@
             <span id="cartLine" class="cartline"></span>
           </summary>
           <div class="sellbody">
-            <input id="prodSearch" class="search" type="search" placeholder="Search your catalog" autocomplete="off" />
-            <ul id="prodList" class="prodlist"></ul>
+            <!-- Product dropdown: thumbnail + title, since a native select can't show images -->
+            <div class="picker">
+              <button id="prodTrigger" class="pickertrigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+                <span id="prodThumbSlot" class="thumbslot" hidden></span>
+                <span id="prodTriggerLabel" class="pickerlabel">Choose a product</span>
+                <span id="prodTriggerPrice" class="pickerprice"></span>
+                <span class="pickercaret" aria-hidden="true">▾</span>
+              </button>
+              <div id="prodMenu" class="pickermenu" hidden>
+                <input id="prodSearch" class="search" type="search" placeholder="Search your catalog" autocomplete="off" />
+                <ul id="prodList" class="prodlist" role="listbox" aria-label="Products"></ul>
+              </div>
+            </div>
+
+            <div class="sellbtns">
+              <button id="sendProduct" class="tool" type="button" disabled>Send product</button>
+              <button id="addToCart" class="tool" type="button" disabled>+ Cart</button>
+            </div>
             <p id="sellMsg" class="fhint" role="status" aria-live="polite" hidden></p>
             <div class="sellbtns">
               <button id="sendPayLink" class="tool" type="button">Send payment link</button>

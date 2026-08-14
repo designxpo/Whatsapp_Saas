@@ -19,6 +19,9 @@ const el = {
   ctxNote: $("ctxNote"), ctxNoteSave: $("ctxNoteSave"), ctxMsg: $("ctxMsg"),
   sellCard: $("sellCard"), cartLine: $("cartLine"), prodSearch: $("prodSearch"), prodList: $("prodList"),
   sellMsg: $("sellMsg"), sendPayLink: $("sendPayLink"), clearCart: $("clearCart"),
+  prodTrigger: $("prodTrigger"), prodThumbSlot: $("prodThumbSlot"), prodTriggerLabel: $("prodTriggerLabel"),
+  prodTriggerPrice: $("prodTriggerPrice"), prodMenu: $("prodMenu"),
+  sendProduct: $("sendProduct"), addToCart: $("addToCart"),
   channels: $("channels"), statuses: $("statuses"),
   list: $("list"), listState: $("listState"),
   threadView: $("threadView"), back: $("back"), tName: $("tName"),
@@ -238,6 +241,15 @@ async function openThread(c) {
   sellMsg("");
   el.sellCard.open = false;
   el.prodSearch.value = "";
+  // Reset the picker — a product chosen for the previous customer must not carry over.
+  picked = null;
+  openMenu(false);
+  el.prodThumbSlot.replaceChildren();
+  el.prodThumbSlot.hidden = true;
+  el.prodTriggerLabel.textContent = "Choose a product";
+  el.prodTriggerPrice.textContent = "";
+  el.sendProduct.disabled = true;
+  el.addToCart.disabled = true;
   loadContext();
 
   // A contact opened from the Contacts book has no conversation yet.
@@ -624,6 +636,50 @@ function syncCartLine() {
   el.cartLine.textContent = cart.length ? cartSummary(cart, currency) : "";
 }
 
+let picked = null;   // the product chosen in the dropdown
+
+// A 30px tile: the product photo when there is one, else its initial. Keeps the
+// row height identical either way, and a dead image URL falls back rather than
+// showing a broken-image icon.
+function thumbFor(p) {
+  if (p?.imageUrl) {
+    const img = document.createElement("img");
+    img.className = "thumb";
+    img.alt = "";
+    img.loading = "lazy";
+    img.src = p.imageUrl;
+    img.addEventListener("error", () => img.replaceWith(placeholderThumb(p)), { once: true });
+    return img;
+  }
+  return placeholderThumb(p);
+}
+
+function placeholderThumb(p) {
+  const d = document.createElement("div");
+  d.className = "thumb ph";
+  d.textContent = (p?.name ?? "?").trim().charAt(0).toUpperCase() || "?";
+  return d;
+}
+
+function openMenu(open) {
+  el.prodMenu.hidden = !open;
+  el.prodTrigger.setAttribute("aria-expanded", String(open));
+  if (open) { el.prodSearch.value = ""; loadCatalog(); el.prodSearch.focus(); }
+}
+
+function pickProduct(p) {
+  picked = p;
+  currency = p.currency || currency;
+  el.prodThumbSlot.replaceChildren(thumbFor(p));
+  el.prodThumbSlot.hidden = false;
+  el.prodTriggerLabel.textContent = p.name;
+  el.prodTriggerPrice.textContent = money(p.priceCents, p.currency);
+  el.sendProduct.disabled = false;
+  el.addToCart.disabled = false;
+  openMenu(false);
+  sellMsg("");
+}
+
 async function loadCatalog() {
   el.prodList.replaceChildren();
   const res = await listCatalog({ q: el.prodSearch.value, conversationId: current?.conversationId, phone: current?.phone });
@@ -635,32 +691,32 @@ async function loadCatalog() {
   for (const p of res.data?.products ?? []) {
     currency = p.currency || currency;
     const li = document.createElement("li");
-    li.className = "prod";
-    const name = document.createElement("span");
+    const opt = document.createElement("button");
+    opt.type = "button";
+    opt.className = "prod";
+    opt.setAttribute("role", "option");
+    opt.setAttribute("aria-selected", String(picked?.id === p.id));
+
+    const mid = document.createElement("div");
+    mid.className = "prodmid";
+    const name = document.createElement("div");
     name.className = "prodname";
     name.textContent = p.name;
+    mid.append(name);
+    if (p.description) {
+      const desc = document.createElement("div");
+      desc.className = "proddesc";
+      desc.textContent = p.description;
+      mid.append(desc);
+    }
+
     const price = document.createElement("span");
     price.className = "prodprice";
     price.textContent = money(p.priceCents, p.currency);
 
-    const send = document.createElement("button");
-    send.type = "button";
-    send.className = "prodbtn";
-    send.textContent = "Send";
-    send.title = "Put this product in the reply box";
-    send.addEventListener("click", () => {
-      el.draft.value = productMessage(p);
-      el.draft.focus();
-      composerMsg("info", "Product added to the reply — edit it, then send.");
-    });
-
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = "prodbtn alt";
-    add.textContent = "+ Cart";
-    add.addEventListener("click", () => addToCart(p));
-
-    li.append(name, price, send, add);
+    opt.append(thumbFor(p), mid, price);
+    opt.addEventListener("click", () => pickProduct(p));
+    li.append(opt);
     el.prodList.append(li);
   }
 }
@@ -725,9 +781,23 @@ el.ctxNoteSave.addEventListener("click", async () => {
   ctxMsg(res.ok ? "Note saved." : (res.error || "Couldn't save the note."));
 });
 
-el.sellCard.addEventListener("toggle", () => { if (el.sellCard.open) loadCatalog(); });
+el.sellCard.addEventListener("toggle", () => { if (!el.sellCard.open) openMenu(false); });
+el.prodTrigger.addEventListener("click", () => openMenu(el.prodMenu.hidden));
 let prodTimer = null;
 el.prodSearch.addEventListener("input", () => { clearTimeout(prodTimer); prodTimer = setTimeout(loadCatalog, 250); });
+// Escape closes; a click anywhere outside dismisses — standard dropdown behaviour.
+el.prodMenu.addEventListener("keydown", (e) => { if (e.key === "Escape") { openMenu(false); el.prodTrigger.focus(); } });
+document.addEventListener("click", (e) => {
+  if (!el.prodMenu.hidden && !el.prodMenu.contains(e.target) && e.target !== el.prodTrigger && !el.prodTrigger.contains(e.target)) openMenu(false);
+});
+
+el.sendProduct.addEventListener("click", () => {
+  if (!picked) return;
+  el.draft.value = productMessage(picked);
+  el.draft.focus();
+  composerMsg("info", "Product added to the reply — edit it, then send.");
+});
+el.addToCart.addEventListener("click", () => { if (picked) addToCart(picked); });
 el.sendPayLink.addEventListener("click", doSendPayLink);
 el.clearCart.addEventListener("click", async () => {
   const res = await setCart({ conversationId: current.conversationId, phone: current.phone, items: [] });
