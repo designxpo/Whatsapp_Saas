@@ -293,6 +293,72 @@ main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .whosub { display: flex; align-items: center; gap: 6px; }
 .whosub .mono { font-family: var(--mono); font-size: 11px; color: var(--ink-400); }
 
+/* ── Context card: who am I talking to ──────────────────────────────────── */
+.ctx { background: var(--paper); border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.ctx > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; cursor: pointer; list-style: none; font-size: 12px;
+}
+.ctx > summary::-webkit-details-marker { display: none; }
+.ctxline { color: var(--ink-600); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctxline strong { color: var(--ink); font-weight: 650; }
+.ctxmore { color: var(--brand); font-weight: 650; font-size: 11px; flex: 0 0 auto; }
+.ctx[open] .ctxmore::after { content: " ▴"; }
+.ctx:not([open]) .ctxmore::after { content: " ▾"; }
+.ctxbody { padding: 2px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+.ctxrow { margin: 0; font-size: 12px; color: var(--ink-600); }
+.ctxrow strong { color: var(--ink); }
+.ctxfield { display: flex; flex-direction: column; gap: 5px; }
+.ctxfield select, .ctxfield input, .ctxfield textarea {
+  font: inherit; font-size: 12.5px; padding: 7px 9px; color: var(--ink);
+  background: var(--canvas); border: 1px solid var(--line); border-radius: var(--r-control);
+}
+.ctxfield textarea { resize: vertical; }
+.ctxfield button { align-self: flex-start; }
+.taglist { display: flex; flex-wrap: wrap; gap: 5px; }
+.taglist:empty::after { content: "No tags yet"; color: var(--ink-400); font-size: 11.5px; }
+.tagchip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 650; color: var(--brand);
+  background: var(--brand-50); border: 1px solid var(--brand-100);
+  border-radius: 999px; padding: 2px 4px 2px 9px;
+}
+.tagchip button {
+  font: inherit; font-size: 13px; line-height: 1; color: var(--brand);
+  background: none; border: 0; cursor: pointer; padding: 0 3px; opacity: .6;
+}
+.tagchip button:hover { opacity: 1; color: var(--bad); }
+.tagadd { display: flex; gap: 6px; }
+.tagadd input { flex: 1 1 auto; }
+
+/* ── Sell in the chat ───────────────────────────────────────────────────── */
+.sell { border: 1px solid var(--line); border-radius: var(--r-control); background: var(--canvas); }
+.sell > summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 10px; cursor: pointer; list-style: none;
+  font-size: 12px; font-weight: 650; color: var(--ink-600);
+}
+.sell > summary::-webkit-details-marker { display: none; }
+.sell > summary:hover { color: var(--brand); }
+.cartline { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--brand); }
+.sellbody { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.prodlist { list-style: none; margin: 0; padding: 0; max-height: 190px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.prodlist:empty::after { content: "No products found"; color: var(--ink-400); font-size: 11.5px; padding: 4px 2px; }
+.prod {
+  display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center;
+  padding: 6px 8px; background: var(--paper);
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.prodname { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prodprice { font-family: var(--mono); font-size: 11.5px; color: var(--ink-600); }
+.prodbtn {
+  font: inherit; font-size: 11px; font-weight: 700; color: #fff;
+  background: var(--brand); border: 0; border-radius: 7px; padding: 4px 8px; cursor: pointer;
+}
+.prodbtn.alt { color: var(--brand); background: var(--brand-50); }
+.prodbtn:hover { background: var(--brand-800); color: #fff; }
+.sellbtns { display: flex; gap: 6px; }
+
 /* Plain-language window state — the composer's rules, said out loud. */
 .statusbar {
   display: flex; flex-direction: column; gap: 1px;

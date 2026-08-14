@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Talko Copilot",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Capture a lead from any web page into Talko in one click \u2014 then reach them on WhatsApp with your approved templates.",
   "icons": {
     "16": "icons/icon16.png",

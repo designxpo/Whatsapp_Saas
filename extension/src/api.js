@@ -114,6 +114,43 @@ export function listQuickReplies() {
   return apiFetch("/api/inbox/quick-replies");
 }
 
+// ── Who am I talking to: context + CRM edits ────────────────────────────────
+
+// Contact, order history and pipeline stage behind a conversation.
+export function getContactContext({ conversationId, phone } = {}) {
+  const q = new URLSearchParams(conversationId ? { conversationId } : { phone: phone || "" });
+  return apiFetch(`/api/inbox/contact?${q}`);
+}
+
+const contactAction = (payload) => apiFetch("/api/inbox/contact", { method: "POST", body: payload });
+export const setContactTags = ({ conversationId, phone, tags }) => contactAction({ conversationId, phone, action: "tags", tags });
+export const setContactNote = ({ conversationId, phone, note }) => contactAction({ conversationId, phone, action: "note", note });
+export const setContactStage = ({ conversationId, phone, stageId }) => contactAction({ conversationId, phone, action: "stage", stageId });
+
+// Search the whole contact book — including people with no chat open yet.
+export function searchContacts({ q = "", limit = 20 } = {}) {
+  return apiFetch(`/api/inbox/contacts?${new URLSearchParams({ q, limit: String(limit) })}`);
+}
+
+// ── Sell in the chat ────────────────────────────────────────────────────────
+
+// Catalog (optionally filtered) plus this chat's open cart.
+export function listCatalog({ q = "", conversationId, phone } = {}) {
+  const params = new URLSearchParams({ ...(q ? { q } : {}), ...(conversationId ? { conversationId } : {}), ...(phone ? { phone } : {}) });
+  return apiFetch(`/api/inbox/commerce?${params}`);
+}
+
+// Replace the chat's cart with these lines (prices come from the catalog server-side).
+export function setCart({ conversationId, phone, items }) {
+  return apiFetch("/api/inbox/commerce", { method: "POST", body: { conversationId, phone, action: "cart", items } });
+}
+
+// Turn the open cart into an order + payment link. The panel then sends the link
+// as a normal message, so every send stays on one audited path.
+export function checkout({ conversationId, phone }) {
+  return apiFetch("/api/inbox/commerce", { method: "POST", body: { conversationId, phone, action: "checkout" } });
+}
+
 // One thread's messages + 24h-window state.
 export function getThread({ conversationId, phone } = {}) {
   const q = new URLSearchParams(conversationId ? { conversationId } : { phone: phone || "" });

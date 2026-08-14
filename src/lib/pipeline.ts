@@ -132,6 +132,17 @@ export async function getBoard(tenantId = DEFAULT_TENANT_ID, max = 500): Promise
 
 // Fast path: set the contact's stage (tenant-scoped). Rejects a stage that isn't
 // this tenant's so a crafted request can't move a card into another tenant.
+// Which stage a single contact sits in. getBoard() answers this too, but it
+// loads the whole board — too heavy for a per-conversation lookup.
+export async function getContactStage(contactId: string, tenantId = DEFAULT_TENANT_ID): Promise<{ stageId: string | null; stageName: string | null }> {
+  const { data } = await db().from("contacts")
+    .select("pipeline_stage_id").eq("id", contactId).eq("tenant_id", tenantId).maybeSingle();
+  const stageId = (data?.pipeline_stage_id as string | null) ?? null;
+  if (!stageId) return { stageId: null, stageName: null };
+  const stage = (await listStages(tenantId)).find(s => s.id === stageId);
+  return { stageId, stageName: stage?.name ?? null };
+}
+
 export async function moveContact(contactId: string, stageId: string | null, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   if (stageId) {
     const ok = (await listStages(tenantId)).some(s => s.id === stageId);

@@ -35,6 +35,16 @@ draft-reply overlay) from the product plan.
 | **Window-aware sending** | Free-form inside the 24h window. WhatsApp additionally offers a picker of your **approved templates** when it's closed; Instagram/Facebook have no template option, so the panel says to wait for the customer; web chat has no window at all | respects each platform's messaging policy |
 | **Draft-reply overlay** | On YouTube / Google Business, highlight a comment/review → **✨ Draft reply** → copies an AI draft grounded only in that text | you paste & post it yourself |
 
+**Phase 3 — know the customer, and close the sale**
+
+| Feature | How | Where it lands in the portal |
+| --- | --- | --- |
+| **Context card** | Every thread opens with who they are: order count, lifetime spend, last order, lead source, pipeline stage | reads Contacts + Orders + Pipeline |
+| **CRM edits in the chat** | Add/remove tags, save a private note, move the pipeline stage — without leaving the conversation | Contacts + Sales Pipeline (stage effects fire, incl. the CRM push) |
+| **Contacts book** | A third tab searches **all** contacts, not just open chats, so you can message a past customer first | opens the chat, or starts one with an approved template |
+| **Send a product** | Search your catalog in the composer → **Send** drops name, price and link into the reply | Catalog |
+| **Take payment** | **+ Cart** builds the order → **Send payment link** creates it and drafts the link for you to send | Orders (cart → order → paid) |
+
 Everything is **human-in-the-loop**: nothing is captured, drafted, or sent
 without a click.
 
@@ -92,6 +102,11 @@ No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
    POST /api/inbox/reply                   → send a reply on the chat's own channel
    POST /api/inbox/actions                 → pause/resume the AI, escalate
    GET  /api/inbox/quick-replies           → the tenant's canned replies
+   GET  /api/inbox/contact                 → contact + orders + pipeline stage
+   POST /api/inbox/contact                 → tags / note / stage
+   GET  /api/inbox/contacts                → search the whole contact book
+   GET  /api/inbox/commerce                → catalog + this chat's open cart
+   POST /api/inbox/commerce                → build the cart, create a pay link
    POST /api/inbox/suggest                 → AI-drafted reply for a thread
    GET  /api/inbox/templates               → approved templates for a thread's number
    POST /api/assist/draft                  → draft a public reply to a review/comment
@@ -110,7 +125,8 @@ icons/                16 / 48 / 128 px
 src/
   api.js                  thin API client (whoami, addLead, inbox, draft)
   wa.js                   pure helpers (phone parse, wa.me link, QR url)
-  channels.js             channel labels + plain-language 24h-window wording
+  channels.js             channel labels + plain-language messaging-window wording
+  format.js               money, cart and product-message formatting
   background.js           service worker — context menu, shortcut, API calls
   popup.html/.css/.js     toolbar capture form + quick actions + Inbox launcher
   options.html/…          connection + capture defaults

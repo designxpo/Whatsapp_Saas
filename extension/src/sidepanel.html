@@ -31,10 +31,11 @@
     <!-- Inbox -->
     <section id="listView">
       <div class="filters">
-        <!-- Chats vs comments, as in the portal -->
-        <div class="views" role="tablist" aria-label="Chats or comments">
+        <!-- Chats vs comments, as in the portal — plus the whole contact book -->
+        <div class="views" role="tablist" aria-label="Chats, comments or contacts">
           <button id="viewChats" class="viewtab" type="button" role="tab" aria-selected="true">Chats <span class="n" id="nChats"></span></button>
           <button id="viewComments" class="viewtab" type="button" role="tab" aria-selected="false">Comments <span class="n" id="nComments"></span></button>
+          <button id="viewContacts" class="viewtab" type="button" role="tab" aria-selected="false">Contacts</button>
         </div>
 
         <input id="search" class="search" type="search" placeholder="Search name or number" autocomplete="off" />
@@ -68,6 +69,39 @@
         <a id="openThreadPortal" class="tool" href="#" target="_blank" rel="noreferrer">Open in portal ↗</a>
       </div>
 
+      <!-- Who am I talking to: history, value and pipeline position -->
+      <details id="ctxCard" class="ctx">
+        <summary>
+          <span id="ctxLine" class="ctxline">Loading contact…</span>
+          <span class="ctxmore" aria-hidden="true">Details</span>
+        </summary>
+        <div class="ctxbody">
+          <p id="ctxOrders" class="ctxrow"></p>
+          <p id="ctxLast" class="ctxrow"></p>
+
+          <div class="ctxfield">
+            <label class="flabel" for="ctxStage">Pipeline stage</label>
+            <select id="ctxStage"><option value="">Not in the pipeline</option></select>
+          </div>
+
+          <div class="ctxfield">
+            <span class="flabel">Tags</span>
+            <div id="ctxTags" class="taglist"></div>
+            <div class="tagadd">
+              <input id="ctxTagInput" placeholder="Add a tag" autocomplete="off" />
+              <button id="ctxTagAdd" class="tool" type="button">Add</button>
+            </div>
+          </div>
+
+          <div class="ctxfield">
+            <label class="flabel" for="ctxNote">Private note</label>
+            <textarea id="ctxNote" rows="2" placeholder="Only your team sees this"></textarea>
+            <button id="ctxNoteSave" class="tool" type="button">Save note</button>
+          </div>
+          <p id="ctxMsg" class="fhint" role="status" aria-live="polite" hidden></p>
+        </div>
+      </details>
+
       <div id="tStatus" class="statusbar">
         <span id="tStatusLabel" class="statuslabel"></span>
         <span id="tStatusHint" class="statushint"></span>
@@ -82,6 +116,23 @@
           <input id="tplParams" placeholder="Values, comma-separated" hidden />
           <small id="tplHint" class="fhint" hidden></small>
         </div>
+
+        <!-- Sell in the chat: find a product, send it, take payment -->
+        <details id="sellCard" class="sell">
+          <summary>
+            <span>Send a product or payment link</span>
+            <span id="cartLine" class="cartline"></span>
+          </summary>
+          <div class="sellbody">
+            <input id="prodSearch" class="search" type="search" placeholder="Search your catalog" autocomplete="off" />
+            <ul id="prodList" class="prodlist"></ul>
+            <p id="sellMsg" class="fhint" role="status" aria-live="polite" hidden></p>
+            <div class="sellbtns">
+              <button id="sendPayLink" class="tool" type="button">Send payment link</button>
+              <button id="clearCart" class="tool" type="button">Clear cart</button>
+            </div>
+          </div>
+        </details>
 
         <div id="textRow" class="fieldrow">
           <div id="quickRow" class="quickrow" hidden></div>
