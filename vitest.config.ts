@@ -8,6 +8,8 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    // The browser extension ships plain ES modules (no build step); its pure
+    // helpers are unit-tested here alongside the app's.
+    include: ["src/**/*.test.ts", "extension/**/*.test.ts"],
   },
 });

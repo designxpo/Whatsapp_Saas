@@ -18,15 +18,18 @@ const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 // Best-effort parse of a free-text selection into {name, phone, email}.
 // Human-in-the-loop: we only ever propose — the user confirms before sending.
 export function parseSelection(text) {
-  const raw = String(text ?? "").replace(/\s+/g, " ").trim();
-  const email = raw.match(EMAIL_RE)?.[0] ?? "";
-  const phoneMatch = raw.match(PHONE_RE)?.[0] ?? "";
+  const src = String(text ?? "");
+  const flat = src.replace(/\s+/g, " ").trim();
+  const email = flat.match(EMAIL_RE)?.[0] ?? "";
+  const phoneMatch = flat.match(PHONE_RE)?.[0] ?? "";
   const phone = phoneMatch ? normalizePhone(phoneMatch).digits : "";
-  // Name guess: the first line / chunk with letters that isn't the email or phone.
+  // Name guess: the first line/field made mostly of letters. Split the ORIGINAL
+  // text — collapsing newlines first would merge "Priya Sharma" into the same
+  // chunk as her phone number, and the chunk is then rejected for containing one.
   let name = "";
-  for (const piece of raw.split(/[\n,|·•]| - /)) {
-    const p = piece.trim();
-    if (!p || p === email) continue;
+  for (const piece of src.split(/[\n\r,|·•]|\s-\s/)) {
+    const p = piece.replace(/\s+/g, " ").trim();
+    if (!p || p === email || p.includes("@")) continue;
     const letters = p.replace(/[^a-zA-ZÀ-ɏ]/g, "");
     if (letters.length >= 2 && letters.length / p.length > 0.5 && !PHONE_RE.test(p)) {
       name = p.length > 60 ? p.slice(0, 60) : p;
@@ -50,12 +53,27 @@ export function qrImageUrl(data, size = 240) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${s}x${s}&margin=8&data=${encodeURIComponent(data)}`;
 }
 
+// Known platforms, matched on DOMAIN BOUNDARIES. Anchoring matters: a loose
+// substring test labels dropbox.com / xero.com as "twitter" (they contain "x"),
+// which would quietly corrupt the source tags the portal reports on.
+// Order matters — maps.google is checked before plain google.
+const KNOWN_SOURCES = [
+  [/(^|\.)linkedin\./, "linkedin"],
+  [/(^|\.)instagram\./, "instagram"],
+  [/(^|\.)(facebook|fb)\./, "facebook"],
+  [/(^|\.)(twitter|x)\.com$/, "twitter"],
+  [/(^|\.)(youtube\.|youtu\.be$)/, "youtube"],
+  [/^maps\.google\./, "google-maps"],
+  [/(^|\.)google\./, "google"],
+];
+
 // Turn a hostname into a short, tag-safe source label, e.g. "in.linkedin.com" → "linkedin".
 export function sourceLabel(hostname) {
   const h = String(hostname ?? "").toLowerCase().replace(/^www\./, "");
-  const known = ["linkedin", "instagram", "facebook", "twitter", "x.com", "youtube", "maps.google", "google"];
-  const hit = known.find(k => h.includes(k.replace(".com", "")));
-  if (hit) return hit.replace("maps.google", "google-maps").replace("x.com", "twitter");
-  const core = h.split(".").slice(-2, -1)[0] || h;
-  return core;
+  for (const [re, label] of KNOWN_SOURCES) if (re.test(h)) return label;
+  // Otherwise the registrable-ish name: "shop.example.co.uk" → "example".
+  const parts = h.split(".").filter(Boolean);
+  if (parts.length < 2) return h;
+  const tld2 = ["co", "com", "net", "org", "gov", "ac"].includes(parts[parts.length - 2]);
+  return parts[parts.length - (tld2 ? 3 : 2)] || h;
 }

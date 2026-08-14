@@ -840,6 +840,22 @@ export function dynamicUrlButtonIndexes(tpl: Pick<WaTemplate, "components">): nu
   }, []);
 }
 
+/**
+ * How many BODY values a template needs at send time.
+ *
+ * bodyParams fills {{1}}..{{n}} POSITIONALLY, so what a caller must supply is
+ * the HIGHEST index referenced — not the count of distinct placeholders. A body
+ * that only says {{2}} still needs two entries, and "{{1}} {{ 1 }}" needs one.
+ */
+export function bodyParamCount(tpl: Pick<WaTemplate, "components">): number {
+  const body = tpl.components?.find(c => c.type?.toUpperCase() === "BODY")?.text ?? "";
+  let max = 0;
+  for (const token of body.match(/\{\{\s*\d+\s*\}\}/g) ?? []) {
+    max = Math.max(max, Number(token.replace(/\D/g, "")));
+  }
+  return max;
+}
+
 // Builds the `{type:"button", sub_type:"url", …}` components Meta expects for
 // dynamic URL buttons. Entries that are null/blank are skipped, so a caller can
 // pass a sparse array keyed by button index.
