@@ -1,8 +1,16 @@
 @import url("tokens.css");
 
+/* Chrome renders a popup at most 600px tall and clips the rest — the footer and
+   half of "Add to Talko" fell off that edge. So the popup is a column: header and
+   footer are pinned, and only the middle scrolls. The content below is also
+   compact enough to fit inside 600px without scrolling in the common case. */
+html { height: auto; }
 body {
   width: 340px;
   margin: 0;
+  max-height: 584px;
+  display: flex;
+  flex-direction: column;
   font: 13px/1.45 var(--sans);
   color: var(--text);
   background: var(--bg);
@@ -11,19 +19,20 @@ body {
 .bar {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 9px 12px; background: var(--surface); border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: .1px; min-width: 0; }
 .brand span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .brand img { border-radius: 5px; display: block; flex: 0 0 auto; }
 
-main { padding: 12px; }
+main { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; }
 
 /* Connection state reads as a strip, not a chip — it's the first thing to check. */
 .statusrow {
-  width: 100%; text-align: left; font: inherit; font-size: 12px; font-weight: 600;
+  width: 100%; text-align: left; font: inherit; font-size: 11.5px; font-weight: 600;
   color: var(--muted); background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--r-control);
-  padding: 8px 10px; cursor: pointer; margin-bottom: 10px;
+  padding: 7px 10px; cursor: pointer; margin-bottom: 10px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .statusrow:hover { border-color: var(--brand); }
@@ -32,27 +41,29 @@ main { padding: 12px; }
 .statusrow.bad { color: var(--bad); background: var(--bad-bg); border-color: transparent; }
 
 /* ── Page actions ─────────────────────────────────────────────────────────── */
-.actions { display: flex; flex-direction: column; gap: 7px; margin-bottom: 14px; }
+/* Two tiles side by side, icon over label: half the height of stacked rows, and
+   the one hint line below covers both without repeating a subtitle each. */
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
 .action {
-  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  width: 100%; text-align: left;
   font: inherit; color: var(--text); background: var(--surface);
   border: 1px solid var(--border); border-radius: var(--r-control);
-  padding: 9px 11px; cursor: pointer;
+  padding: 9px 10px; cursor: pointer;
 }
 .action:hover { border-color: var(--brand); background: var(--brand-50); }
 .action:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .action:disabled { opacity: .6; cursor: progress; }
 .aicon {
-  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 8px;
+  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 15px; line-height: 1; color: var(--on-brand); background: var(--brand);
+  font-size: 14px; line-height: 1; color: var(--on-brand); background: var(--brand);
 }
-.atext { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.atext strong { font-weight: 650; font-size: 12.5px; }
-.atext small { color: var(--muted); font-size: 11px; }
+.alabel { font-weight: 650; font-size: 12.5px; }
+.actionhint { color: var(--muted); font-size: 11px; margin: 0 0 12px; }
 
 /* ── Lead form ────────────────────────────────────────────────────────────── */
-.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .field > span { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .field em { font-style: normal; font-weight: 500; color: var(--muted); text-transform: none; opacity: .8; }
 .field input {
@@ -62,10 +73,10 @@ main { padding: 12px; }
 .field input:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; border-color: var(--brand); }
 .hint { color: var(--muted); font-size: 11px; }
 
-.check { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 12px; font-size: 12px; color: var(--muted); }
+.check { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 10px; font-size: 12px; color: var(--muted); }
 .check input { margin-top: 1px; accent-color: var(--brand); }
 
-.source { font-family: var(--mono); font-size: 10.5px; color: var(--muted); word-break: break-all; margin: 0 0 10px; }
+.source { font-family: var(--mono); font-size: 10.5px; color: var(--muted); word-break: break-all; margin: 0 0 8px; }
 
 .primary {
   width: 100%; font: inherit; font-weight: 650; color: var(--on-brand);
@@ -80,7 +91,7 @@ main { padding: 12px; }
 .result.bad { background: var(--bad-bg); color: var(--bad); }
 .result.info { background: var(--bg); color: var(--muted); }
 
-.quick { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.quick { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .quick h2 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0 0 8px; }
 .quickrow { display: flex; gap: 8px; }
 .ghost {
@@ -107,7 +118,7 @@ summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 
 .scanlist {
   list-style: none; margin: 8px 0; padding: 0;
-  max-height: 246px; overflow-y: auto;
+  max-height: 214px; overflow-y: auto;
   border: 1px solid var(--border); border-radius: var(--r-control); background: var(--surface);
 }
 .scanlist:empty { display: none; }
@@ -136,7 +147,18 @@ summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .scanfoot .ghost { flex: 0 0 auto; }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
-.foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface); }
+/* Holds everything that must stay reachable: the result line, the primary
+   action, then the two destinations. */
+.foot {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 9px 12px; border-top: 1px solid var(--border);
+  background: var(--surface); flex: 0 0 auto;
+  /* Content scrolls UNDER this bar, so lift it — otherwise a field sliced by the
+     scroll edge reads as a rendering glitch rather than as "there's more". */
+  box-shadow: 0 -8px 14px -10px var(--shadow);
+}
+.foot .result { margin: 0; }
+.footrow { display: flex; gap: 8px; }
 .footbtn {
   flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   font: inherit; font-size: 12.5px; font-weight: 650; color: var(--text);

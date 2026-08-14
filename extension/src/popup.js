@@ -10,7 +10,7 @@ const els = {
   submit: $("submit"), result: $("result"), quick: $("quick"),
   openWa: $("openWa"), copyWa: $("copyWa"), qr: $("qr"),
   grab: $("grab"), inbox: $("inbox"), opts: $("opts"), form: $("lead"),
-  themeSlot: $("themeSlot"), actions: $("actions"), scan: $("scan"),
+  themeSlot: $("themeSlot"), actions: $("actions"), actionHint: $("actionHint"), scan: $("scan"),
   scanPanel: $("scanPanel"), scanBack: $("scanBack"), scanCount: $("scanCount"),
   scanNote: $("scanNote"), scanList: $("scanList"), scanConsent: $("scanConsent"),
   scanToggleAll: $("scanToggleAll"), scanImport: $("scanImport"), scanMsg: $("scanMsg"),
@@ -150,7 +150,13 @@ function showScan(on) {
   els.scanPanel.hidden = !on;
   els.form.hidden = on;
   els.actions.hidden = on;
+  els.actionHint.hidden = on;
+  // The scan panel carries its own "Add N to Talko", so the pinned lead-form
+  // button stands down — two primaries would be two different actions.
+  els.submit.hidden = on;
   if (on) els.quick.hidden = true; else updateQuickActions();
+  // The popup's middle is the only scroller now — start a new view at the top.
+  document.querySelector("main")?.scrollTo({ top: 0 });
 }
 
 function checkedRows() {

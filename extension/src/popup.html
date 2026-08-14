@@ -20,21 +20,16 @@
 
     <!-- Page actions: both fill the form below, so they sit above it. -->
     <div class="actions" id="actions">
-      <button id="grab" class="action" type="button">
+      <button id="grab" class="action" type="button" title="Read the text you highlighted on this page">
         <span class="aicon" aria-hidden="true">⇱</span>
-        <span class="atext">
-          <strong>Grab selection</strong>
-          <small>Read the text you highlighted</small>
-        </span>
+        <span class="alabel">Grab selection</span>
       </button>
-      <button id="scan" class="action" type="button">
+      <button id="scan" class="action" type="button" title="Find every name, number and email on this page">
         <span class="aicon" aria-hidden="true">⌕</span>
-        <span class="atext">
-          <strong>Scan page</strong>
-          <small>Find every contact on this page</small>
-        </span>
+        <span class="alabel">Scan page</span>
       </button>
     </div>
+    <p class="actionhint" id="actionHint">Grab uses the text you highlighted · Scan finds every contact on the page.</p>
 
     <form id="lead" autocomplete="off">
       <label class="field">
@@ -64,9 +59,6 @@
       </label>
 
       <p class="source" id="source" hidden></p>
-
-      <button id="submit" class="primary" type="submit">Add to Talko</button>
-      <p id="result" class="result" role="status" aria-live="polite" hidden></p>
     </form>
 
     <section class="quick" id="quick" hidden>
@@ -108,9 +100,15 @@
     </section>
   </main>
 
+  <!-- Pinned: the primary action and the two destinations must never need a
+       scroll. `form="lead"` keeps the button submitting the form above it. -->
   <footer class="foot">
-    <button id="inbox" class="footbtn" type="button"><span aria-hidden="true">☰</span> Inbox</button>
-    <button id="opts" class="footbtn" type="button"><span aria-hidden="true">⚙</span> Settings</button>
+    <p id="result" class="result" role="status" aria-live="polite" hidden></p>
+    <button id="submit" class="primary" type="submit" form="lead">Add to Talko</button>
+    <div class="footrow">
+      <button id="inbox" class="footbtn" type="button"><span aria-hidden="true">☰</span> Inbox</button>
+      <button id="opts" class="footbtn" type="button"><span aria-hidden="true">⚙</span> Settings</button>
+    </div>
   </footer>
 
   <script type="module" src="popup.js"></script>
