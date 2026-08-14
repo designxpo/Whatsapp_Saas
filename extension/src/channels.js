@@ -27,10 +27,23 @@ export function channelMeta(platform) {
   return BY_ID.get(id) ?? { id, label: id.charAt(0).toUpperCase() + id.slice(1), short: id.slice(0, 3).toUpperCase() };
 }
 
-// Only WhatsApp can be replied to from the extension today (Cloud API). The rest
-// are shown read-only, and the composer says so rather than failing on send.
-export function isReplyable(platform) {
+// Every channel can be replied to from the extension — each goes out through its
+// own API (WhatsApp Cloud, Instagram, Facebook Pages) or, for web chat, straight
+// into the thread the visitor's widget polls.
+export function isReplyable() {
+  return true;
+}
+
+// A template is the only way to reopen a closed conversation, and it exists on
+// WhatsApp alone. On Instagram/Facebook a closed window means waiting for the
+// customer; web chat has no window at all.
+export function supportsTemplates(platform) {
   return channelMeta(platform).id === "whatsapp";
+}
+
+// Web chat has no messaging window — the visitor's widget just polls the thread.
+export function hasWindow(platform) {
+  return channelMeta(platform).id !== "webchat";
 }
 
 /**
@@ -56,20 +69,26 @@ export function relativeTime(iso, nowMs = Date.now()) {
  *
  * @param {{ platform?: string | null, windowOpen?: boolean, windowClosesAt?: string | null, lastInboundAt?: string | null }} [conv]
  * @param {number} [nowMs]
- * @returns {{ state: "open" | "closed" | "none" | "other", label: string, hint: string }}
+ * @returns {{ state: "open" | "closed" | "none", label: string, hint: string }}
  */
 export function windowStatus({ platform = "whatsapp", windowOpen = false, windowClosesAt = null, lastInboundAt = null } = {}, nowMs = Date.now()) {
-  if (!isReplyable(platform)) {
-    const { label } = channelMeta(platform);
-    // "Web chat" already ends in the noun — don't say "Web chat chat".
-    const noun = /chat$/i.test(label) ? label : `${label} chat`;
-    return { state: "other", label: noun, hint: `Reply to this ${noun} in the Talko portal.` };
+  const { label } = channelMeta(platform);
+
+  // Web chat: no window, so a reply is always allowed.
+  if (!hasWindow(platform)) {
+    return { state: "open", label: "Can reply", hint: "Web chat has no time limit — your reply appears in the visitor's chat window." };
   }
+
+  const templates = supportsTemplates(platform);
   if (!lastInboundAt) {
-    return { state: "none", label: "Template needed", hint: "This contact hasn't messaged you, so only an approved template can start the chat." };
+    return templates
+      ? { state: "none", label: "Template needed", hint: "This contact hasn't messaged you, so only an approved template can start the chat." }
+      : { state: "none", label: "Waiting on them", hint: `${label} doesn't allow starting a chat — they have to message you first.` };
   }
   if (!windowOpen) {
-    return { state: "closed", label: "Template needed", hint: "It's been over 24 hours since they messaged, so WhatsApp only allows an approved template." };
+    return templates
+      ? { state: "closed", label: "Template needed", hint: "It's been over 24 hours since they messaged, so WhatsApp only allows an approved template." }
+      : { state: "closed", label: "Waiting on them", hint: `It's been over 24 hours, and ${label} has no template option — they need to message again before you can reply.` };
   }
   const msLeft = Math.max(0, new Date(windowClosesAt ?? new Date(lastInboundAt).getTime() + 24 * 3600 * 1000).getTime() - nowMs);
   const mins = Math.floor(msLeft / 60000);

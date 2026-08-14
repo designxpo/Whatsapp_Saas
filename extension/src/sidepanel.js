@@ -2,7 +2,7 @@ import {
   getSettings, listInbox, getThread, sendReply, suggestReply,
   listTemplates, listQuickReplies, setBot, setStatus,
 } from "./api.js";
-import { CHANNELS, STATUS_FILTERS, channelMeta, isReplyable, relativeTime, windowStatus } from "./channels.js";
+import { CHANNELS, STATUS_FILTERS, channelMeta, supportsTemplates, relativeTime, windowStatus } from "./channels.js";
 
 const $ = (id) => document.getElementById(id);
 const el = {
@@ -16,11 +16,10 @@ const el = {
   tChannel: $("tChannel"), tPhone: $("tPhone"), tEscalated: $("tEscalated"),
   botToggle: $("botToggle"), escalate: $("escalate"), openThreadPortal: $("openThreadPortal"),
   tStatus: $("tStatus"), tStatusLabel: $("tStatusLabel"), tStatusHint: $("tStatusHint"),
-  messages: $("messages"), composer: $("composer"),
+  messages: $("messages"),
   templateRow: $("templateRow"), tplName: $("tplName"), tplParams: $("tplParams"), tplHint: $("tplHint"),
   textRow: $("textRow"), quickRow: $("quickRow"), draft: $("draft"),
   suggest: $("suggest"), send: $("send"), composerMsg: $("composerMsg"),
-  readonlyNote: $("readonlyNote"), readonlyText: $("readonlyText"), readonlyLink: $("readonlyLink"),
 };
 
 const q = { view: "chats", platform: null, status: "all", q: "" };
@@ -213,7 +212,6 @@ async function openThread(c) {
   el.tplParams.value = "";
   const portalUrl = `${baseUrl}/admin?tab=livechat`;
   el.openThreadPortal.href = portalUrl;
-  el.readonlyLink.href = portalUrl;
   syncTools();
   applyComposerMode(current);
   showView("thread");
@@ -252,28 +250,32 @@ function syncTools() {
   el.escalate.className = `tool${escalated ? "" : " danger"}`;
 }
 
-// One place decides what the composer allows, so the wording and the controls
-// can never disagree about whether a template is required.
+// One place decides what the composer allows, so the wording and the controls can
+// never disagree. Three cases, driven by the channel:
+//   open                     → free-form reply (every channel)
+//   closed + WhatsApp        → an approved template is the only way back in
+//   closed + Instagram/FB    → nothing to send; they must message again
 function applyComposerMode(c) {
   const st = windowStatus(c);
   el.tStatus.className = `statusbar ${st.state}`;
   el.tStatusLabel.textContent = st.label;
   el.tStatusHint.textContent = st.hint;
 
-  const replyable = isReplyable(c.platform);
-  el.composer.hidden = !replyable;
-  el.readonlyNote.hidden = replyable;
-  if (!replyable) {
-    el.readonlyText.textContent = `${c.meta?.label ?? "This"} messages are sent from the portal, so this chat is read-only here.`;
-    return;
-  }
+  const closed = st.state !== "open";
+  const needsTemplate = closed && supportsTemplates(c.platform);
+  const blocked = closed && !needsTemplate;
 
-  const needsTemplate = st.state !== "open";
   el.templateRow.hidden = !needsTemplate;
   el.textRow.hidden = needsTemplate;
-  el.suggest.disabled = needsTemplate;
+  el.draft.disabled = blocked;
+  el.draft.placeholder = blocked ? "You can reply once they message again" : "Write a reply…";
+  el.suggest.disabled = blocked;
+  el.send.disabled = blocked;
   el.send.textContent = needsTemplate ? "Send template" : "Send";
-  if (needsTemplate) loadTemplates(); else renderQuickReplies();
+
+  if (needsTemplate) loadTemplates();
+  else if (!blocked) renderQuickReplies();
+  else el.quickRow.hidden = true;
 }
 
 async function loadTemplates() {

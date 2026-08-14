@@ -28,10 +28,11 @@ draft-reply overlay) from the product plan.
 | Feature | How | Where it lands in the portal |
 | --- | --- | --- |
 | **Needs-reply badge** | The toolbar icon shows a count of conversations waiting for a reply, refreshed every few minutes | reads `/api/inbox?needsReply=1` |
-| **Inbox side-panel** | Popup → **Inbox** → recent conversations, filter *Needs reply only* | reads your live conversations |
-| **Split by source channel** | Tabs for **All / WhatsApp / Instagram / Messenger / Website**, each with a live count; every row also carries a channel badge on its avatar | reads `/api/inbox?platform=…` |
-| **Reply from the panel** | Open a thread → type (or **✨ Draft with AI**) → **Send** | logged on the thread as an agent reply; pauses the bot |
-| **Window-aware sending** | Free-form inside the 24h window; a picker of your **approved templates** (with value prompts) when it's closed | respects Meta's messaging policy |
+| **Inbox side-panel** | Popup → **Inbox** → your conversations, with the portal's own filters: **Chats / Comments**, status (All / Needs reply / Escalated / Human) and search by name or number | reads your live conversations |
+| **Split by source channel** | Tabs for **All / WhatsApp / Instagram / Facebook / Web chat** (the portal's own labels), each with a live count; every row also carries a channel badge on its avatar | reads `/api/inbox?platform=…` |
+| **Thread controls** | Pause or resume the AI, **Escalate** / Mark active, one-tap **quick replies**, Open in portal | same actions as the portal's Live Chat |
+| **Reply from the panel** | Open a thread → type (or **✨ Draft with AI**) → **Send**. Works on **WhatsApp, Instagram, Facebook and web chat** — each goes out through its own official API | logged on the thread as an agent reply; pauses the bot |
+| **Window-aware sending** | Free-form inside the 24h window. WhatsApp additionally offers a picker of your **approved templates** when it's closed; Instagram/Facebook have no template option, so the panel says to wait for the customer; web chat has no window at all | respects each platform's messaging policy |
 | **Draft-reply overlay** | On YouTube / Google Business, highlight a comment/review → **✨ Draft reply** → copies an AI draft grounded only in that text | you paste & post it yourself |
 
 Everything is **human-in-the-loop**: nothing is captured, drafted, or sent
@@ -88,7 +89,9 @@ No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
    POST /api/events                        → web_capture record (source_url)
    GET  /api/inbox                         → recent conversations
    GET  /api/inbox/thread                  → one thread's messages
-   POST /api/inbox/reply                   → send a WhatsApp reply (window/template aware)
+   POST /api/inbox/reply                   → send a reply on the chat's own channel
+   POST /api/inbox/actions                 → pause/resume the AI, escalate
+   GET  /api/inbox/quick-replies           → the tenant's canned replies
    POST /api/inbox/suggest                 → AI-drafted reply for a thread
    GET  /api/inbox/templates               → approved templates for a thread's number
    POST /api/assist/draft                  → draft a public reply to a review/comment
@@ -117,9 +120,10 @@ src/
 
 ## Compliance notes
 
-- **WhatsApp:** sending stays on the official Cloud API via your backend, inside
-  the 24-hour window or with approved templates, honouring opt-outs. The
-  extension only *links* to `wa.me`; it never sends on your behalf.
+- **Messaging:** every send goes through the official API for that channel via
+  your backend — WhatsApp Cloud API, Instagram Messaging, Facebook Pages — inside
+  each platform's 24-hour window, with approved templates where WhatsApp requires
+  them, honouring opt-outs. No unofficial clients and no browser automation.
 - **LinkedIn / other sites:** the extension only reads text you highlight
   yourself. No connect/message automation, no bulk scraping — that's what keeps
   accounts safe (and is required for the Chrome Web Store).

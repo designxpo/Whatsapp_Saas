@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { CHANNELS, STATUS_FILTERS, channelMeta, isReplyable, relativeTime, windowStatus } from "../channels.js";
+import { CHANNELS, STATUS_FILTERS, channelMeta, supportsTemplates, hasWindow, relativeTime, windowStatus } from "../channels.js";
 
 // These strings are what an agent reads before deciding how to answer. A wrong
 // channel label sends them to the wrong place; a wrong window state makes them
@@ -43,11 +43,21 @@ describe("STATUS_FILTERS", () => {
   });
 });
 
-describe("isReplyable", () => {
-  it("allows WhatsApp only — the extension sends via the Cloud API", () => {
-    expect(isReplyable("whatsapp")).toBe(true);
-    expect(isReplyable(undefined)).toBe(true);
-    for (const p of ["instagram", "messenger", "webchat"]) expect(isReplyable(p)).toBe(false);
+describe("supportsTemplates", () => {
+  // A template is the only way to reopen a closed chat, and only WhatsApp has
+  // them. Getting this wrong would offer a template picker on a channel where
+  // the send is guaranteed to fail.
+  it("is WhatsApp-only", () => {
+    expect(supportsTemplates("whatsapp")).toBe(true);
+    expect(supportsTemplates(undefined)).toBe(true);
+    for (const p of ["instagram", "messenger", "webchat"]) expect(supportsTemplates(p)).toBe(false);
+  });
+});
+
+describe("hasWindow", () => {
+  it("applies the 24h window everywhere except web chat", () => {
+    for (const p of ["whatsapp", "instagram", "messenger"]) expect(hasWindow(p)).toBe(true);
+    expect(hasWindow("webchat")).toBe(false);
   });
 });
 
@@ -101,19 +111,38 @@ describe("windowStatus", () => {
     expect(s.hint).toMatch(/hasn't messaged/);
   });
 
-  it("points non-WhatsApp chats at the portal instead of offering a send", () => {
+  it("lets an agent reply on Instagram inside its own 24h window", () => {
     const s = windowStatus({ platform: "instagram", windowOpen: true, lastInboundAt: ago(HOUR) }, NOW);
-    expect(s.state).toBe("other");
-    expect(s.label).toBe("Instagram chat");
-    expect(s.hint).toMatch(/portal/);
+    expect(s.state).toBe("open");
+    expect(s.label).toBe("Can reply · 23h left");
   });
 
-  it("uses the portal's channel wording, without doubling the noun", () => {
-    expect(windowStatus({ platform: "messenger", lastInboundAt: ago(HOUR) }, NOW).label).toBe("Facebook chat");
-    // "Web chat" already ends in "chat" — never "Web chat chat".
-    const web = windowStatus({ platform: "webchat", lastInboundAt: ago(HOUR) }, NOW);
-    expect(web.label).toBe("Web chat");
-    expect(web.hint).toBe("Reply to this Web chat in the Talko portal.");
+  // Instagram/Facebook have no template escape hatch, so a closed window means
+  // waiting — never "Template needed", which would send them to a dead end.
+  it("says to wait, not to use a template, on a closed Instagram chat", () => {
+    const s = windowStatus({ platform: "instagram", windowOpen: false, lastInboundAt: ago(48 * HOUR) }, NOW);
+    expect(s.state).toBe("closed");
+    expect(s.label).toBe("Waiting on them");
+    expect(s.hint).toMatch(/Instagram has no template option/);
+  });
+
+  it("says the same for Facebook, and for a contact who never messaged", () => {
+    expect(windowStatus({ platform: "messenger", windowOpen: false, lastInboundAt: ago(48 * HOUR) }, NOW).label).toBe("Waiting on them");
+    const cold = windowStatus({ platform: "messenger", lastInboundAt: null }, NOW);
+    expect(cold.state).toBe("none");
+    expect(cold.hint).toMatch(/Facebook doesn't allow starting a chat/);
+  });
+
+  it("treats web chat as always repliable — it has no messaging window", () => {
+    for (const conv of [
+      { platform: "webchat", windowOpen: false, lastInboundAt: ago(90 * 24 * HOUR) },
+      { platform: "webchat", lastInboundAt: null },
+    ]) {
+      const s = windowStatus(conv, NOW);
+      expect(s.state).toBe("open");
+      expect(s.label).toBe("Can reply");
+      expect(s.hint).toMatch(/no time limit/);
+    }
   });
 
   it("treats an empty conversation object as needing a template, never as sendable", () => {
