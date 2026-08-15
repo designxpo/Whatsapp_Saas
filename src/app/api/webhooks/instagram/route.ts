@@ -338,12 +338,20 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (rule.replyOnly) {
     const publicReply = pickPublicReply(rule);
     if (publicReply) {
-      const res = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const }; });
+      // replyToComment RETURNS { ok:false } on a rate cap / moderation block /
+      // Graph error instead of throwing, so carry a reason on the thrown path too
+      // and both failure shapes can be reported the same way.
+      const res = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
         // Watch this thread so a follow-up reply escalates to the AI.
         await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
+      } else {
+        // A reply-only rule sends no DM, so a failed public reply means the
+        // commenter got NOTHING — surface it in the thread, not just the logs.
+        console.warn("[ig webhook] reply-only public reply blocked:", res.error);
+        await logSendFailure(conv.id, channel.id, res.error || "unknown error", tid);
       }
     }
     return;
@@ -358,7 +366,13 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   } else {
     sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule));
   }
-  if (!sent.ok) { console.warn("[ig webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+  if (!sent.ok) {
+    // The commenter gets nothing — record it in the thread like the AI path does,
+    // so the portal shows WHY instead of the DM vanishing into the logs.
+    console.warn("[ig webhook] comment DM blocked:", sent.blockedBy, sent.error);
+    await logSendFailure(conv.id, channel.id, sent.error || "unknown error", tid);
+    return;
+  }
 
   // Mirror the automated DM into the portal thread so the team sees what was sent.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${dmBody}`, source: "bot", tenantId: tid, channelId: channel.id });
@@ -369,9 +383,12 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // identical reply (identical automated replies are an IG spam/ban signal).
   const publicReply = pickPublicReply(rule);
   if (publicReply) {
-    const pr = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] public reply", e); return { ok: false as const }; });
-    // Watch this thread so a follow-up reply escalates to the AI.
+    const pr = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
+    // Watch this thread so a follow-up reply escalates to the AI. The DM already
+    // landed (mirrored above), so no "not delivered" note here — only the public
+    // reply is missing, and with it this thread's AI-takeover watch.
     if (pr.ok) await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
+    else console.warn("[ig webhook] public reply blocked:", pr.error);
   }
 }
 
@@ -402,7 +419,12 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
   const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
   if (!r.reply || r.escalate) return;
   const sent = await replyToComment(creds, watch.rootCommentId, r.reply);
-  if (!sent.ok) { console.warn("[ig webhook] ai thread reply blocked:", sent.error); return; }
+  if (!sent.ok) {
+    // The follow-up got no answer — say why in the thread, like the AI DM path does.
+    console.warn("[ig webhook] ai thread reply blocked:", sent.error);
+    await logSendFailure(conv.id, channel.id, sent.error || "unknown error", tid);
+    return;
+  }
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
   // Continue the thread: a reply to the AI's reply (or another follow-up) keeps going, one level deeper.
   await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
@@ -448,7 +470,12 @@ async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string
     await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${rule.dmMessage}`, source: "bot", tenantId: tid, channelId: channel.id }).catch(() => {});
     await touchOutbound(conv.id, rule.dmMessage).catch(() => {});
     await clearFollowGate(igsid, tid); await bumpRuleMatch(rule.id, rule.matchCount, tid);
-  } else console.warn("[ig webhook] reward blocked:", sent.blockedBy, sent.error);
+  } else {
+    // They did the follow and got nothing — the gate stays set so they can retry,
+    // but the thread must say why the reward never arrived.
+    console.warn("[ig webhook] reward blocked:", sent.blockedBy, sent.error);
+    await logSendFailure(conv.id, channel.id, sent.error || "unknown error", tid);
+  }
 }
 
 function rewardButtons(rule: IgCommentRule): IgButton[] {

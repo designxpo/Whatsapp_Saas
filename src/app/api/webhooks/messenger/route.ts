@@ -305,11 +305,19 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   if (rule.replyOnly) {
     const publicReply = pickPublicReply(rule);
     if (publicReply) {
-      const res = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] reply-only public reply", e); return { ok: false as const }; });
+      // replyToFbComment RETURNS { ok:false } on a rate cap / moderation block /
+      // Graph error instead of throwing, so carry a reason on the thrown path too
+      // and both failure shapes can be reported the same way.
+      const res = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
         await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
+      } else {
+        // A reply-only rule sends no DM, so a failed public reply means the
+        // commenter got NOTHING — surface it in the thread, not just the logs.
+        console.warn("[fb webhook] reply-only public reply blocked:", res.error);
+        await logSendFailure(conv.id, channel.id, res.error || "unknown error", tid);
       }
     }
     if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
@@ -320,7 +328,13 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const btnList = rule.buttons?.length ? rule.buttons : (rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : []);
   const buttons: FbButton[] = btnList.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) }));
   const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons);
-  if (!sent.ok) { console.warn("[fb webhook] comment DM blocked:", sent.blockedBy, sent.error); return; }
+  if (!sent.ok) {
+    // The commenter gets nothing — record it in the thread like the AI path does,
+    // so the portal shows WHY instead of the DM vanishing into the logs.
+    console.warn("[fb webhook] comment DM blocked:", sent.blockedBy, sent.error);
+    await logSendFailure(conv.id, channel.id, sent.error || "unknown error", tid);
+    return;
+  }
 
   // Mirror the automated DM into the portal thread so the team sees what was sent.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${rule.dmMessage}`, source: "bot", tenantId: tid, channelId: channel.id });
@@ -330,8 +344,11 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // Public reply: rotate a random variant so replies are never identical.
   const publicReply = pickPublicReply(rule);
   if (publicReply) {
-    const pr = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] public reply", e); return { ok: false as const }; });
+    const pr = await replyToFbComment(creds, commentId, publicReply).catch(e => { console.error("[fb webhook] public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
+    // The DM already landed (mirrored above), so no "not delivered" note here —
+    // only the public reply is missing, and with it this thread's AI-takeover watch.
     if (pr.ok) await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
+    else console.warn("[fb webhook] public reply blocked:", pr.error);
   }
   if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
 }
@@ -357,7 +374,12 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
   const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
   if (!r.reply || r.escalate) return;
   const sent = await replyToFbComment(creds, watch.rootCommentId, r.reply);
-  if (!sent.ok) { console.warn("[fb webhook] ai thread reply blocked:", sent.error); return; }
+  if (!sent.ok) {
+    // The follow-up got no answer — say why in the thread, like the AI DM path does.
+    console.warn("[fb webhook] ai thread reply blocked:", sent.error);
+    await logSendFailure(conv.id, channel.id, sent.error || "unknown error", tid);
+    return;
+  }
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
   await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
 }
