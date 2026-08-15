@@ -7,7 +7,7 @@ import { Container, Glow } from "../../_components/ui";
 import { CtaBand } from "../../_components/sections";
 import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
-import { PageFaq, SourceList } from "../../_components/seo";
+import { PageFaq, SourceList, KeyTakeaway } from "../../_components/seo";
 import { POSTS, type PostBlock } from "../../_content/site";
 import { SITE_URL } from "@/lib/siteurl";
 
@@ -109,6 +109,11 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
+          {!!post.keyTakeaway?.length && (
+            <KeyTakeaway updated={Number.isFinite(parsedMod) ? new Date(parsedMod).toISOString().slice(0, 10) : undefined}>
+              {post.keyTakeaway.map((line, i) => <p key={i}>{renderInline(line)}</p>)}
+            </KeyTakeaway>
+          )}
         </Container>
       </section>
 

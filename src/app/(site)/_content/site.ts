@@ -175,18 +175,26 @@ export type Post = {
   body: PostBlock[];
   faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
   sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
+  keyTakeaway?: string[];                                  // "In short" — rendered with KeyTakeaway
 };
 export const POSTS: Post[] = [
   {
     slug: "automate-google-review-replies",
-    title: "How to Automate Google Review Replies Without Sounding Like a Bot",
-    excerpt: "Most businesses either reply to every Google review by hand or not at all. A rating-based framework for automating replies with AI — without sounding like a template.",
+    title: "Automate Google Review Replies Without Sounding Fake",
+    excerpt: "Reply to every Google review fast, in your own voice — a rating-based AI framework so automated replies never read like a generic template.",
     date: "August 15, 2026", category: "Playbook", readTime: "9 min read",
+    // "In short" — the bottom-line answer + who it's for, rendered right under
+    // the H1 via KeyTakeaway. Answer-engine extraction and human skimmers both
+    // read this before anything else, so it has to stand alone.
+    keyTakeaway: [
+      "The bottom line: automate replies to reviews at or above a rating you trust (4★+ works well), route anything below that to a human for approval, and always ground the reply in what the review actually says — not just its star count.",
+      "This is for local and multi-location businesses getting enough reviews that answering every one by hand no longer scales.",
+    ],
     body: [
       p("Most local businesses either answer every Google review by hand, late at night, in a hurry — or don't answer at all. Neither holds up once you're getting a dozen reviews a week across two or three locations. AI can close that gap, but done carelessly it produces exactly the kind of generic, corporate-sounding reply that damages trust rather than building it. Here's how to automate review replies well: what to hand to AI, what to still write yourself, and how to keep every drafted reply sounding like an actual person read the review."),
 
       h2("Why ignoring reviews costs more than a bad look"),
-      p("It's tempting to treat review replies as optional PR. The data says otherwise. In BrightLocal's Local Consumer Review Survey, 89% of consumers read a business's responses to reviews, and 42% say they're unlikely to use a business that never responds at all. Consumers also expect speed: 81% want a reply within a week, and expectations keep tightening every year the survey runs."),
+      p("It costs real customers, not just a bad impression. In BrightLocal's Local Consumer Review Survey, 89% of consumers read a business's responses to reviews, and 42% say they're unlikely to use a business that never responds at all. Consumers also expect speed: 81% want a reply within a week, and expectations keep tightening every year the survey runs."),
       p("So a review with no reply isn't neutral — it's a small, visible signal that nobody's home. Multiply that by every review your competitors down the street are answering, and the gap compounds."),
 
       h2("Reviews are a ranking signal, not just a trust signal"),
@@ -209,10 +217,11 @@ export const POSTS: Post[] = [
       ]),
 
       h2("How much should actually run on autopilot"),
-      p("Full auto-post on every reply is rarely the right default, and full manual review of every reply doesn't scale. The middle ground that works in practice is a star-based approval threshold: replies above a rating you're comfortable with (say, 4 stars and up) can post automatically, while anything at or below that threshold gets drafted for a human to read and approve before it goes live. That one rule protects you from the one scenario that actually matters — a factual claim in a public, permanent reply that turns out to be wrong — while still clearing the bulk of your review volume without anyone typing a word."),
+      p("A star-based approval threshold, not full auto-post and not full manual review — neither extreme holds up in practice. Replies above a rating you're comfortable with (say, 4 stars and up) can post automatically, while anything at or below that threshold gets drafted for a human to read and approve before it goes live. That one rule protects you from the one scenario that actually matters — a factual claim in a public, permanent reply that turns out to be wrong — while still clearing the bulk of your review volume without anyone typing a word."),
       p("If you manage more than one location, the same threshold should apply everywhere, so the tone and judgment calls don't drift between whoever's running each site."),
 
       h2("What actually makes an AI reply sound human"),
+      p("Grounding it in the review's real details, not the star count alone. In practice that comes down to a handful of habits:"),
       list([
         "It references specifics from the review — the product, the person, the detail — not just the star count.",
         "It roughly matches the reviewer's own tone: a short, casual review earns a short, casual reply; a detailed, considered one earns a bit more substance back.",
