@@ -28,8 +28,12 @@
         <span class="aicon" aria-hidden="true">⌕</span>
         <span class="alabel">Scan page</span>
       </button>
+      <button id="findLeads" class="action" type="button" title="Bonus: find high-intent posts and comments on this page — a prospecting helper, separate from Talko's contacts and channels">
+        <span class="aicon" aria-hidden="true">◎</span>
+        <span class="alabel">Find leads</span>
+      </button>
     </div>
-    <p class="actionhint" id="actionHint">Grab uses the text you highlighted · Scan finds every contact on the page.</p>
+    <p class="actionhint" id="actionHint">Grab uses the text you highlighted · Scan finds every contact on the page · Find leads is a bonus prospecting helper for other platforms — nothing it finds is saved to Talko.</p>
 
     <form id="lead" autocomplete="off">
       <label class="field">
@@ -97,6 +101,21 @@
         <button id="scanImport" class="primary" type="button" disabled>Add to Talko</button>
       </div>
       <p id="scanMsg" class="result" role="status" aria-live="polite" hidden></p>
+    </section>
+
+    <!-- Signal results — high-intent posts/comments found on this page. Every
+         row is a proposal: nothing is saved anywhere, and a drafted opener is
+         copy-only, never auto-sent. -->
+    <section id="signalsPanel" class="scan" hidden>
+      <div class="scanhead">
+        <button id="signalsBack" class="backbtn" type="button">← Back</button>
+        <strong id="signalsCount" class="scancount"></strong>
+      </div>
+      <p id="signalsNote" class="hint"></p>
+
+      <ul id="signalsList" class="siglist"></ul>
+
+      <p id="signalsMsg" class="result" role="status" aria-live="polite" hidden></p>
     </section>
   </main>
 

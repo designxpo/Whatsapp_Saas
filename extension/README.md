@@ -53,6 +53,27 @@ without a click.
 
 ---
 
+## Bonus: find leads elsewhere (not a Talko channel)
+
+Everything above stays inside Talko's actual domain: official APIs (WhatsApp
+Cloud API, Instagram Messaging, Facebook Pages), an inbox, a CRM. **Find leads**
+is a separate, smaller thing bolted onto the same popup — a prospecting helper
+for platforms Talko doesn't and can't integrate with.
+
+| Feature | How | Where it lands |
+| --- | --- | --- |
+| **Find leads** | Popup → **Find leads** → every high-intent post/comment on the page you're looking at (Reddit, X, LinkedIn, Discord, or any other page) — someone asking for a recommendation, complaining about a tool, comparing options, asking about pricing → **✨ Draft opener** writes a short, grounded DM opener to copy | Nowhere in Talko. Paste the opener into that platform's own DM composer yourself |
+
+Why it's kept separate: Talko has no official messaging API for Reddit, X,
+LinkedIn or Discord DMs, so a reply there can never appear in Talko's inbox,
+and (since a Talko contact requires a phone number) a social handle can't be
+saved as one either. This feature only helps you *find* and *start* a
+conversation elsewhere — once someone replies, that's a conversation on their
+platform, not a Talko one. If you get their number from it, use **Grab
+selection** or the manual capture form to bring them into Talko properly.
+
+---
+
 ## Install (unpacked, for testing)
 
 1. Open `chrome://extensions`.
@@ -66,6 +87,13 @@ without a click.
 The key is stored only in your browser (`chrome.storage.sync`) and sent only to
 your workspace over HTTPS.
 
+**Plan requirement:** Copilot's connect step and everything in Phase 2/3 below
+(the Inbox side-panel, AI drafts, Find leads) need a **Creator Pro, Growth, or
+Scale** plan — Creator and Starter don't include it, and **Test connection**
+will show *Upgrade required* instead of connecting. Basic capture (**Grab
+selection** / **Scan page** → Contacts) isn't gated and works on every plan,
+since it shares `/api/contacts` with the general Developer API.
+
 ---
 
 ## Permissions — and why each is needed
@@ -76,7 +104,7 @@ Minimal by design (this list is what a Chrome Web Store reviewer will see):
 | --- | --- |
 | `storage` | Save your API key and capture defaults locally |
 | `contextMenus` | The right-click "Add to Talko" item |
-| `activeTab` + `scripting` | Read the current tab **when you invoke the extension**: the text you highlighted (Grab selection), or its visible text once, to list the contact details on it (Scan page). Only on your click, only the tab in front of you, never in the background |
+| `activeTab` + `scripting` | Read the current tab **when you invoke the extension**: the text you highlighted (Grab selection), its visible text once to list the contact details on it (Scan page), or its visible posts/comments once to find high-intent ones (Find leads). Only on your click, only the tab in front of you, never in the background |
 | `notifications` | Confirm "Lead added" after a right-click / keyboard capture |
 | `sidePanel` | The inbox side-panel |
 | `alarms` | Poll every few minutes for conversations that need a reply (the toolbar count) |
@@ -114,6 +142,7 @@ No `tabs` history, no `webRequest`, no cookies, no third-party hosts.
    POST /api/inbox/suggest                 → AI-drafted reply for a thread
    GET  /api/inbox/templates               → approved templates for a thread's number
    POST /api/assist/draft                  → draft a public reply to a review/comment
+   POST /api/assist/outreach               → draft a private DM opener for a found lead
         ▼
  Your Talko portal (Contacts, Conversations, Automations, Activity)
 ```
@@ -130,6 +159,7 @@ src/
   api.js                  thin API client (whoami, addLead/addLeads, inbox, draft)
   wa.js                   pure helpers (phone parse, wa.me link, QR url)
   scan.js                 pure page-scan parser (candidates → reviewable contacts)
+  signals.js              pure intent-signal scorer (candidates → high-intent leads)
   theme.js                light / dark / system, shared by every surface
   tokens.css              the one palette + the theme contract
   channels.js             channel labels + plain-language messaging-window wording
@@ -147,12 +177,15 @@ src/
   your backend — WhatsApp Cloud API, Instagram Messaging, Facebook Pages — inside
   each platform's 24-hour window, with approved templates where WhatsApp requires
   them, honouring opt-outs. No unofficial clients and no browser automation.
-- **Reading pages:** two moments only, both started by the tenant — the text
-  they highlight, and one pass over the visible text of the current tab when they
-  press **Scan page**. Results are *proposals*: they stay in the popup and only
-  ticked rows are saved. Nothing is crawled, no other tab is touched, nothing runs
-  in the background, and no site is ever automated (no auto-connect, no
-  auto-message) — that's what keeps accounts safe and the listing reviewable.
+- **Reading pages:** three moments only, all started by the tenant — the text
+  they highlight, one pass over the visible text of the current tab when they
+  press **Scan page**, and one pass over the visible posts/comments on the
+  current tab when they press **Find leads**. Results are *proposals*: they stay
+  in the popup, and a drafted opener is copy-only — never sent, never posted,
+  never auto-connected to anyone. Nothing is crawled, no other tab is touched,
+  nothing runs in the background, and no site is ever automated (no
+  auto-connect, no auto-message, no auto-DM) — that's what keeps accounts safe
+  and the listing reviewable.
 - **Data:** the tenant stays the data controller; captured leads go only to that
   tenant's Talko workspace. A lead is stored *not opted-in* unless you tick the
   consent box, and only opted-in contacts enter marketing broadcasts.

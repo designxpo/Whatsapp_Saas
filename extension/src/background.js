@@ -2,7 +2,7 @@
 // the popup message us; we call the backend (host_permission bypasses CORS here)
 // and report back. Nothing here automates any third-party site.
 
-import { addLead, addLeads, whoami, draftReply, listInbox } from "./api.js";
+import { addLead, addLeads, whoami, draftReply, draftOutreach, listInbox } from "./api.js";
 import { parseSelection } from "./wa.js";
 
 const MENU_ID = "talko-capture-selection";
@@ -132,6 +132,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           break;
         case "DRAFT_REPLY":
           sendResponse(await draftReply(msg.payload || {}));
+          break;
+        case "DRAFT_OUTREACH":
+          sendResponse(await draftOutreach(msg.payload || {}));
           break;
         default:
           sendResponse({ ok: false, error: `Unknown message type: ${msg?.type}` });

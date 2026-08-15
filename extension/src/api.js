@@ -228,3 +228,11 @@ export function listTemplates({ conversationId } = {}) {
 export function draftReply({ text, kind = "review", author, rating } = {}) {
   return apiFetch("/api/assist/draft", { method: "POST", body: { text, kind, author, rating } });
 }
+
+// ── Find leads (page signal scan) ────────────────────────────────────────────
+
+// Draft a short private-DM opener for a flagged signal. Grounded only in
+// `text` — never a pitch, never auto-sent. The tenant copies it themselves.
+export function draftOutreach({ text, author, platform, category } = {}) {
+  return apiFetch("/api/assist/outreach", { method: "POST", body: { text, author, platform, category } });
+}

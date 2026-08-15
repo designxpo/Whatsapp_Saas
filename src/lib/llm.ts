@@ -829,6 +829,49 @@ export async function generateReviewReply(input: ReviewReplyInput, tenantId = "0
   return reply;
 }
 
+// ── Outreach opener ────────────────────────────────────────────────────────────
+// A SHORT private-DM opener for a lead the tenant found themselves (e.g. via the
+// browser extension's "Find leads" page scan on Reddit/X/LinkedIn/Discord). This
+// is the first line of a cold DM, not a public reply — grounded only in the
+// post's own text, never a pitch. Uses the tenant's own chat provider; throws
+// AiKeyMissingError if unconfigured.
+export interface OutreachOpenerInput {
+  text: string;               // the post/comment that flagged as a signal
+  author?: string;
+  platform?: string;          // "reddit" | "x" | "linkedin" | "discord" | "web"
+  category?: string;          // e.g. "recommendation-ask", "pain-point" — see extension/src/signals.js
+}
+
+export async function generateOutreachOpener(input: OutreachOpenerInput, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+  const ai = await resolveTenantAi(tenantId);
+  const instruction =
+    `Write the OPENING line(s) of a private DM (1-2 sentences, under 40 words) to someone who posted this ` +
+    `on ${input.platform || "a social platform"}.\n\n` +
+    `Rules:\n` +
+    `- Ground ONLY in what they actually wrote. NEVER invent facts, shared history, or familiarity with them.\n` +
+    `- Reference the SPECIFIC thing they said — not a generic "saw your post" opener.\n` +
+    `- This is a cold DM opener, not a sales pitch: no product name, no link, no "check out", no discount, no CTA to buy.\n` +
+    `- End with a genuine, low-pressure question or offer to help — something that invites a reply.\n` +
+    `- Sound like a real person who read their post, not a template. No hashtags, no emoji.\n` +
+    `Return ONLY the opener text — no preamble, no quotes around it.`;
+
+  const ctx =
+    `Platform: ${input.platform || "(unspecified)"}\n` +
+    `Author: ${input.author?.trim() || "(unknown)"}\n` +
+    `What they posted: ${(input.text || "").trim()}`;
+
+  const res = await runChat({
+    provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+    system: "You write short, specific, non-salesy opening lines for cold outreach DMs. You never invent facts and never pitch a product in the opener. You output ONLY the opener text.",
+    turns: [{ role: "user", text: `${instruction}\n\n--- POST ---\n${ctx}` }],
+    maxTokens: 200,
+  });
+  const opener = (res.text ?? "").trim().replace(/^["']|["']$/g, "").trim();
+  const verdict = await moderateText(opener, { tenantId, surface: "dm_reply" });
+  if (!verdict.allowed) throw new Error(`outreach opener blocked by safety filter (${verdict.reason})`);
+  return opener;
+}
+
 // ── Executive brief ───────────────────────────────────────────────────────────
 // A CEO-level read of the whole platform from its metrics (this week vs last).
 // Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
