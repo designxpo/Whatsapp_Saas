@@ -492,11 +492,15 @@ function UsageCard() {
   const [u, setU] = useState<{ usage: { contacts: number; messages: number; channels: number; seats: number }; limits: { contacts: number; messages_per_month: number; channels: number; team_seats: number }; plan: string; status: string; trialEndsAt: string | null; yt?: { used: number; limit: number; hasChannel: boolean } } | null>(null);
   useEffect(() => { fetch("/api/admin/usage").then(r => r.json()).then(d => { if (!d.error) setU(d); }).catch(() => {}); }, []);
   if (!u) return null;
-  const rows: [string, number, number][] = [
-    ["Contacts", u.usage.contacts, u.limits.contacts],
-    ["Messages this month", u.usage.messages, u.limits.messages_per_month],
-    ["Channels", u.usage.channels, u.limits.channels],
-    ["Team seats", u.usage.seats, u.limits.team_seats],
+  // [label, used, limit, what actually stops at the cap]. The consequences are
+  // the real enforcement points, not a guess: contacts/channels/seats go through
+  // enforceLimit on their own routes, and the message cap is only ever checked
+  // when sending a broadcast — AI replies and Live Chat keep running past it.
+  const rows: [string, number, number, string][] = [
+    ["Contacts", u.usage.contacts, u.limits.contacts, "importing more contacts is blocked"],
+    ["Messages this month", u.usage.messages, u.limits.messages_per_month, "broadcasts stop sending until the month resets"],
+    ["Channels", u.usage.channels, u.limits.channels, "you can't connect another number or account"],
+    ["Team seats", u.usage.seats, u.limits.team_seats, "you can't invite another teammate"],
   ];
   const trialLeft = u.trialEndsAt ? Math.max(0, Math.ceil((new Date(u.trialEndsAt).getTime() - Date.now()) / 86400000)) : null;
   // YouTube AI replies is a DAILY meter (separate from the monthly limits above),
@@ -514,13 +518,15 @@ function UsageCard() {
         <a href="/admin/billing" className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">Manage plan</a>
       </div>
       <div className="space-y-2.5">
-        {rows.map(([label, used, limit]) => {
+        {rows.map(([label, used, limit, consequence]) => {
           const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
           const near = limit > 0 && used / limit >= 0.8;
           return (
             <div key={label}>
               <div className="flex justify-between text-[11px] mb-0.5"><span className="text-ink-500">{label}</span><span className={`font-mono ${near ? "text-amber-600 font-bold" : "text-ink-400"}`}>{used.toLocaleString()} / {limit > 0 ? limit.toLocaleString() : "∞"}</span></div>
               <div className="h-1.5 rounded-full bg-canvas overflow-hidden"><div className={`h-full rounded-full ${pct >= 100 ? "bg-red-500" : near ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${limit > 0 ? pct : 4}%` }} /></div>
+              {/* Say what running out actually costs — the bar alone doesn't. */}
+              {near && <p className="mt-1 text-[11px] text-amber-600">{pct >= 100 ? `Limit reached — ${consequence}.` : `Nearly full — at 100%, ${consequence}.`} <a href="/admin/billing" className="font-bold underline hover:text-amber-700">Upgrade for more</a></p>}
             </div>
           );
         })}
