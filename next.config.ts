@@ -28,6 +28,12 @@ const SECURITY_HEADERS = [
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), interest-cohort=()" },
+  // Makes explicit what's already the default with no header at all (index,
+  // follow) — an SEO audit tool flagging its absence isn't wrong that being
+  // explicit is better practice, just misleading if read as "this page is
+  // blocked." robots.txt (src/app/robots.ts) is what actually keeps /admin,
+  // /api etc. out of the index; this header doesn't change that.
+  { key: "X-Robots-Tag", value: "index, follow" },
 ];
 
 const nextConfig: NextConfig = {

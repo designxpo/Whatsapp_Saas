@@ -13,6 +13,10 @@ export const metadata: Metadata = {
   title: "WhatsApp, Instagram & YouTube Chat Automation with AI",
   description:
     "Turn WhatsApp, Instagram, YouTube and Google review chats into customers with AI replies, broadcasts and checkout — all in one inbox. Free 14-day trial.",
+  // Explicit index/follow for every marketing page. Scoped to this layout (not
+  // the root one) so it never reaches the authenticated app under a different
+  // route group — those stay un-indexed via robots.txt, not this flag.
+  robots: { index: true, follow: true },
 };
 
 // Dogfooding: the marketing site runs Talko AI's own website-chat widget,
