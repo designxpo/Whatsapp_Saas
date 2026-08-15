@@ -94,9 +94,10 @@ export async function notifyPaymentFailed(tenant: Tenant, inv: FailedPayment): P
  */
 export async function notifyServiceSuspended(tenant: Tenant, subscriptionId: string): Promise<boolean> {
   if (!tenant.ownerEmail) return false;
-  // Suspension is one transition, not a repeating attempt — a single key per
-  // subscription. The dedup prune is what lets a later, genuinely new lapse
-  // send again.
+  // Belt-and-braces against a webhook redelivery inside the dedup window. The
+  // real guard is in the caller, which only calls this on the transition INTO
+  // suspended — this key alone couldn't do it, because pruneEphemeral drops
+  // dedup rows after 48h.
   if (!(await claimWebhookEvent(`dunning:suspended:${subscriptionId}`))) return false;
 
   const { html, text } = renderEmail({

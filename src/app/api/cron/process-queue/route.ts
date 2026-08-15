@@ -154,16 +154,6 @@ export async function POST(req: Request) {
       try { crmSessions = await flushCrmSessions(100, startedAt + DEADLINE); } catch (e) { console.error("[cron] crmsessions", e); }
     }
 
-    // Integration deliveries — replay webhook / Slack / Teams / HubSpot /
-    // Pipedrive events whose delivery failed retriably (endpoint 5xx, rate
-    // limit, network), re-sending the SAME envelope so a receiver that dedupes
-    // on X-Alabs-Delivery sees one event. All tenants; shares wa_crm_sync with
-    // the CRM queue (kind 'integration').
-    let integrationDeliveries = { replayed: 0, deferred: 0, dead: 0 };
-    if (Date.now() - startedAt < DEADLINE) {
-      try { integrationDeliveries = await drainIntegrationDeliveries(50, startedAt + DEADLINE); } catch (e) { console.error("[cron] integrationdeliveries", e); }
-    }
-
     // YouTube comment automation — poll connected channels for new comments and
     // apply rules (public reply + moderation) / AI answers. No-ops until a
     // YouTube channel is connected and the OAuth client is configured.
@@ -202,6 +192,21 @@ export async function POST(req: Request) {
     let escalationSweeps = { tenants: 0, reset: 0 };
     if (Date.now() - startedAt < DEADLINE) {
       try { escalationSweeps = await drainEscalationSweeps(); } catch (e) { console.error("[cron] escalationsweeps", e); }
+    }
+
+    // Integration deliveries — replay webhook / Slack / Teams / HubSpot /
+    // Pipedrive events whose delivery failed retriably (endpoint 5xx, rate
+    // limit, network), re-sending the SAME envelope so a receiver that dedupes
+    // on X-Alabs-Delivery sees one event. All tenants; shares wa_crm_sync with
+    // the CRM queue (kind 'integration').
+    //
+    // Runs LAST of the drains on purpose: each replay is a real outbound HTTP
+    // call with a 6s timeout, so a tenant whose endpoint hangs would otherwise
+    // burn the tick's deadline and starve everything below it. Batch is small
+    // for the same reason — the queue drains across ticks, not within one.
+    let integrationDeliveries = { replayed: 0, deferred: 0, dead: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try { integrationDeliveries = await drainIntegrationDeliveries(20, startedAt + DEADLINE); } catch (e) { console.error("[cron] integrationdeliveries", e); }
     }
 
     // Housekeeping: prune expired dedup + login-throttle rows (unbounded growth).

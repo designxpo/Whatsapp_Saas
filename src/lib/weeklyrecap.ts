@@ -19,6 +19,7 @@ import { sendEmail } from "./email";
 import { renderEmail, type EmailStat } from "./emailtemplate";
 import { unsubscribeUrl, isUnsubscribed } from "./emailprefs";
 import { SITE_URL } from "./siteurl";
+import { SEND_FAILURE_PREFIX } from "./store";
 
 interface Week { key: string; startISO: string; endISO: string }
 
@@ -51,10 +52,11 @@ function weekLabel(w: Week): string {
   return `${fmt(start)} – ${fmt(lastDay, true)}`;
 }
 
-async function countSince(table: string, tenantId: string, startISO: string, endISO: string, eq: Record<string, unknown> = {}): Promise<number> {
+async function countSince(table: string, tenantId: string, startISO: string, endISO: string, eq: Record<string, unknown> = {}, excludeBodyPrefix?: string): Promise<number> {
   let q = db().from(table).select("*", { count: "exact", head: true })
     .eq("tenant_id", tenantId).gte("created_at", startISO).lt("created_at", endISO);
   for (const [k, v] of Object.entries(eq)) q = q.eq(k, v);
+  if (excludeBodyPrefix) q = q.not("body", "like", `${excludeBodyPrefix}%`);
   const { count } = await q;
   return count ?? 0;
 }
@@ -64,7 +66,10 @@ interface Counts { conversations: number; aiReplies: number; leads: number }
 async function countWeek(tenantId: string, w: Week): Promise<Counts> {
   const [conversations, aiReplies, leads] = await Promise.all([
     countSince("wa_conversations", tenantId, w.startISO, w.endISO),
-    countSince("wa_conv_messages", tenantId, w.startISO, w.endISO, { source: "bot" }),
+    // Exclude delivery-failure notes: they're source:"bot" too, and counting them
+    // would both inflate this number and mask the zero-AI-replies alarm below —
+    // the one signal that catches a workspace where nothing is getting through.
+    countSince("wa_conv_messages", tenantId, w.startISO, w.endISO, { source: "bot" }, SEND_FAILURE_PREFIX),
     countSince("contacts", tenantId, w.startISO, w.endISO),
   ]);
   return { conversations, aiReplies, leads };

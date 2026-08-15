@@ -381,7 +381,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
                   <input className={`${inp} flex-1`} placeholder={i === 0 ? "{name} — fills each contact's first name" : `Value for {{${i + 1}}}`} value={v} onChange={e => setVar(i, e.target.value)} />
                 </div>
               ))}
-              <p className="text-[11px] text-slate-400">Tip: <b>{"{name}"}</b> is replaced with each recipient&apos;s first name. For anything else on the contact, use the same tokens as chatbot flows — <code className="bg-slate-100 px-1 rounded">{"{{city}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{email}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{fullname}}"}</code> or any collected attribute. Unknown tokens send as empty.</p>
+              <p className="text-[11px] text-slate-400">Tip: <b>{"{name}"}</b> is replaced with each recipient&apos;s first name. For anything else on the contact, use the same tokens as chatbot flows — <code className="bg-slate-100 px-1 rounded">{"{{city}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{email}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{fullname}}"}</code> or any collected attribute. A token a contact has no value for sends as empty, and Meta rejects empty template parameters — so only use tokens every contact in the audience actually has.</p>
             </div>
           )
         ) : (

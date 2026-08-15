@@ -46,6 +46,13 @@ async function syncSubscription(sub: Stripe.Subscription): Promise<void> {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer?.id;
   if (customerId) await setStripeIds(tenantId, { customerId });
 
+  // Read the prior state BEFORE the write: the suspension email must fire on the
+  // transition into suspended, not on every event that finds us already there.
+  // The webhook dedup key can't carry this on its own — pruneEphemeral deletes
+  // dedup rows after 48h, so a subscription sitting in `unpaid` would otherwise
+  // re-announce itself every couple of days.
+  const before = sub.status === "unpaid" ? await getTenant(tenantId).catch(() => null) : null;
+
   await applySubscription(tenantId, {
     plan: plan?.key,
     paymentStatus: payment,
@@ -60,10 +67,7 @@ async function syncSubscription(sub: Stripe.Subscription): Promise<void> {
   // it. Gated on the literal `unpaid` status, NOT on the mapped tenant status:
   // `incomplete` maps to suspended too, but that's a brand-new checkout waiting
   // on 3-D Secure, not a lapsed account.
-  if (sub.status === "unpaid") {
-    const t = await getTenant(tenantId);
-    if (t) await notifyServiceSuspended(t, sub.id);
-  }
+  if (before && before.status !== "suspended") await notifyServiceSuspended(before, sub.id);
 }
 
 export async function POST(req: Request) {
@@ -114,11 +118,15 @@ export async function POST(req: Request) {
         const customerId = typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
         if (customerId) {
           const t = await getTenantByStripeCustomer(customerId);
+          // A first invoice failing is a checkout that never completed (3-D Secure,
+          // a declined first charge) — not a working subscription that lapsed, so
+          // the "nothing has switched off yet" email would be nonsense there.
+          const firstInvoice = inv.billing_reason === "subscription_create";
           if (t) {
             await applySubscription(t.id, { paymentStatus: "past_due" });
             // …then actually tell them. The in-portal banner only appears on the
             // next login, and not at all while enforce_entitlements is off.
-            await notifyPaymentFailed(t, {
+            if (!firstInvoice) await notifyPaymentFailed(t, {
               invoiceId: inv.id,
               attempt: inv.attempt_count,
               amountCents: inv.amount_due,

@@ -188,7 +188,7 @@ export function buildWebhookRequest(opts: {
 const RETRIABLE_DELIVERY_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
 export function isRetriableDelivery(kind: IntegrationKind, err: unknown): boolean {
   const m = errorMessage(err);
-  if (/no url|invalid url|only http|host is not allowed|private or reserved|too many redirects/i.test(m)) return false;
+  if (/no url|invalid url|only http|host is not allowed|private or reserved|too many redirects|did not resolve|enotfound/i.test(m)) return false;
   const status = Number(m.match(/HTTP (\d{3})/)?.[1] ?? 0);
   if (!status) return true;                                              // network / abort / timeout
   if (CRM_KINDS.includes(kind) && (status === 401 || status === 403)) return true;

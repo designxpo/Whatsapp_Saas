@@ -513,7 +513,10 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
           if (hasCommerce && commerce && phone && COMMERCE_FN_NAMES.has(c.name)) {
             const r = await executeCommerceTool(c.name, c.args, phone, tenantId, commerce);
             if (r.payUrl) payLinks.push(r.payUrl);
-            toolFacts.push(r.status);
+            // Quoted spans are the model's OWN argument echoed back (e.g. the
+            // no-match branch's `No item matches "<query>"`), so blank them —
+            // otherwise a number the model invented would ground itself.
+            toolFacts.push(r.status.replace(/"[^"]*"/g, '""'));
             executed.push(c.name);
             results.push({ id: c.id, name: c.name, status: r.status });
             continue;

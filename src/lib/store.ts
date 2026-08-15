@@ -954,10 +954,18 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
 // rate cap, Meta API error, …) and would otherwise vanish silently — the lead
 // sees nothing, and no error surfaces anywhere in the portal. Post it as a
 // visible note in the conversation instead, so an admin can see WHY.
+// The prefix every failure note carries. Exported because these rows live in
+// wa_conv_messages as source:"bot" (migration 0002 CHECKs source into
+// inbound|bot|agent, so they can't have a source of their own) and would
+// otherwise be counted as AI replies sent — inflating usage and, worse,
+// hiding the weekly recap's "you got zero AI replies" alarm behind a pile of
+// delivery failures.
+export const SEND_FAILURE_PREFIX = "⚠️ Reply not delivered:";
+
 export async function logSendFailure(conversationId: string, channelId: string | null | undefined, reason: string, tenantId?: string): Promise<void> {
   await appendConvMessage({
     conversationId, role: "assistant",
-    body: `⚠️ Reply not delivered: ${reason}`,
+    body: `${SEND_FAILURE_PREFIX} ${reason}`,
     source: "bot", channelId: channelId ?? undefined, tenantId,
   }).catch(() => undefined);
 }

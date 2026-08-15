@@ -269,6 +269,7 @@ function OrdersView() {
   // a one-click status flip — it needs the reference from the brand's dashboard.
   const [refundFor, setRefundFor] = useState<string | null>(null);
   const [refundRef, setRefundRef] = useState("");
+  const [refundAmt, setRefundAmt] = useState("");   // blank = the full order total
 
   const load = useCallback(() => {
     const qs = new URLSearchParams();
@@ -278,12 +279,12 @@ function OrdersView() {
   }, [filter, search]);
   useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t); }, [load, search]);
 
-  async function move(o: Order, to: OrderStatus, ref?: string) {
+  async function move(o: Order, to: OrderStatus, ref?: string, amountCents?: number) {
     setBusy(o.id); setMsg(null);
     try {
-      const d = await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: o.id, status: to, refundRef: ref }) }).then(r => r.json());
+      const d = await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: o.id, status: to, refundRef: ref, refundAmountCents: amountCents }) }).then(r => r.json());
       if (d.error) setMsg({ ok: false, text: d.error });
-      else { setMsg({ ok: true, text: `Order #${o.id.slice(0, 8)} → ${STATUS_LABEL[to]}.` }); setRefundFor(null); setRefundRef(""); load(); }
+      else { setMsg({ ok: true, text: `Order #${o.id.slice(0, 8)} → ${STATUS_LABEL[to]}.` }); setRefundFor(null); setRefundRef(""); setRefundAmt(""); load(); }
     } catch { setMsg({ ok: false, text: "Connection error." }); }
     finally { setBusy(null); }
   }
@@ -363,7 +364,7 @@ function OrdersView() {
                     <div className="space-y-1.5">
                       <div className="flex flex-wrap items-center gap-1.5">
                         {NEXT_ACTIONS[o.status].map(a => (
-                          <button key={a.to} onClick={() => a.to === "refunded" ? setRefundFor(refundFor === o.id ? null : o.id) : move(o, a.to)} disabled={busy === o.id}
+                          <button key={a.to} onClick={() => a.to === "refunded" ? (setRefundFor(refundFor === o.id ? null : o.id), setRefundRef(""), setRefundAmt("")) : move(o, a.to)} disabled={busy === o.id}
                             className={`px-2.5 py-1 rounded-control text-[11px] font-bold disabled:opacity-60 ${a.primary ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-600 hover:bg-white"}`}>
                             {busy === o.id ? "…" : a.label}
                           </button>
@@ -371,10 +372,11 @@ function OrdersView() {
                       </div>
                       {refundFor === o.id && (
                         <div className="rounded-control border border-rose-200 bg-rose-50/60 p-2 space-y-1.5">
-                          <p className="text-[11px] text-rose-800 leading-snug">Refund {money(o.totalCents, o.currency)} in your {o.provider === "stripe" ? "Stripe" : o.provider === "razorpay" ? "Razorpay" : "payment"} dashboard first — we never move money for you. Then paste the refund reference so this order can be reconciled.</p>
+                          <p className="text-[11px] text-rose-800 leading-snug">Refund {money(o.totalCents, o.currency)} in your {o.provider === "stripe" ? "Stripe" : o.provider === "razorpay" ? "Razorpay" : "payment"} dashboard first — we never move money for you. Then paste the refund reference so this order can be reconciled. Leave the amount blank for a full refund.</p>
                           <div className="flex flex-wrap items-center gap-1.5">
                             <input className={`${inp} w-56`} placeholder="Refund reference (rfnd_… / re_… / UTR)" value={refundRef} onChange={e => setRefundRef(e.target.value)} />
-                            <button onClick={() => move(o, "refunded", refundRef.trim())} disabled={busy === o.id || !refundRef.trim()}
+                            <input className={`${inp} w-32`} inputMode="decimal" placeholder={`Amount (${(o.totalCents / 100).toLocaleString()})`} value={refundAmt} onChange={e => setRefundAmt(e.target.value)} />
+                            <button onClick={() => move(o, "refunded", refundRef.trim(), refundAmt.trim() ? Math.round(parseFloat(refundAmt) * 100) : undefined)} disabled={busy === o.id || !refundRef.trim()}
                               className="px-2.5 py-1 rounded-control text-[11px] font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50">
                               {busy === o.id ? "…" : "Record refund"}
                             </button>

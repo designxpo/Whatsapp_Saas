@@ -6,6 +6,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { getTenant } from "./tenants";
 import { getPlan, type PlanLimits } from "./plans";
+import { SEND_FAILURE_PREFIX } from "./store";
 
 export type Resource = "contacts" | "conversations" | "messages" | "channels" | "seats";
 const UNLIMITED: PlanLimits = { contacts: 0, conversations_per_month: 0, messages_per_month: 0, channels: 0, team_seats: 0, yt_comment_replies_per_day: 0 };
@@ -31,7 +32,9 @@ export async function getTenantUsage(tenantId: string): Promise<Usage> {
   const [contacts, sendLog, convOut, channels, seats, convCount] = await Promise.all([
     db().from("contacts").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     db().from("wa_send_log").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("sent_at", since).in("status", ["sent", "delivered", "read"]),
-    db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since).in("source", ["bot", "agent"]),
+    // A "Reply not delivered" note is a failure record, not a sent message —
+    // billing it would let blocked automations eat the plan's message quota.
+    db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since).in("source", ["bot", "agent"]).not("body", "like", `${SEND_FAILURE_PREFIX}%`),
     db().from("wa_channels").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     db().from("wa_users").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     // Billing unit: distinct conversations with any message this month (RPC from 0059).
