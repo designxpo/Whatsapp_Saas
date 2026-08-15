@@ -329,6 +329,31 @@ export async function getContactByPhone(phone: string, tenantId = DEFAULT_TENANT
   return data ? mapContact(data as Record<string, unknown>) : null;
 }
 
+// Profile + attributes for a batch of numbers, keyed by digits-only phone. One
+// query per 500 recipients instead of one per recipient — broadcast
+// personalization runs inside the send loop, so an N+1 here would be a blast-
+// sized N+1. Numbers with no contact row simply have no entry.
+export async function contactVarsByPhones(
+  phones: string[],
+  tenantId = DEFAULT_TENANT_ID,
+): Promise<Map<string, { name: string; email: string | null; attributes: Record<string, string> }>> {
+  const out = new Map<string, { name: string; email: string | null; attributes: Record<string, string> }>();
+  const keys = [...new Set(phones.map(digits).filter(Boolean))];
+  const CHUNK = 500;   // keeps the `in` list (and the URL PostgREST builds from it) sane
+  for (let i = 0; i < keys.length; i += CHUNK) {
+    const { data } = await db().from("contacts").select("phone, name, email, attributes")
+      .eq("tenant_id", tenantId).in("phone", keys.slice(i, i + CHUNK));
+    for (const r of data ?? []) {
+      out.set(r.phone as string, {
+        name: (r.name as string) ?? "",
+        email: (r.email as string | null) ?? null,
+        attributes: (r.attributes as Record<string, string>) ?? {},
+      });
+    }
+  }
+  return out;
+}
+
 // Loose phone lookup: matches country-code variants of the SAME person (a lead
 // stored as WhatsApp's 919876543210 found from an LSQ webhook's 9876543210 and
 // vice versa). Exact match wins; else the suffix-related candidate with the

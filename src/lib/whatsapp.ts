@@ -1,4 +1,5 @@
-import { insertLog, optoutSet } from "./store";
+import { insertLog, optoutSet, contactVarsByPhones } from "./store";
+import { fillVars, flattenForTemplate } from "./mergefields";
 import { getTrackedUrls, mintLinks } from "./links";
 import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
@@ -105,6 +106,16 @@ export async function sendCampaign(params: {
   // URL buttons pointing at {SITE}/r/{{1}} — each recipient gets a unique code.
   const trackedUrls = await getTrackedUrls(params.templateName, params.tenantId).catch(() => []);
 
+  // Rich personalization. {name} stays exactly what it always was (first name,
+  // the documented broadcast token); {{token}} additionally resolves against the
+  // contact's real profile — {{city}}, {{email}}, any collected attribute — using
+  // the same resolver chatbot flows use, so there's one syntax to learn. The
+  // batched read only happens when a {{token}} is actually present.
+  const needsMergeFields = params.variables.some(v => v.includes("{{"));
+  const contactVars = needsMergeFields
+    ? await contactVarsByPhones(params.recipients.map(r => r.phone), params.tenantId).catch(() => new Map())
+    : new Map();
+
   for (let i = 0; i < params.recipients.length; i++) {
     const r = params.recipients[i];
     const digitsPhone = (r.phone || "").replace(/\D/g, "");
@@ -115,8 +126,15 @@ export async function sendCampaign(params: {
       continue;
     }
 
-    // Substitute {name} per recipient.
-    const vars = params.variables.map(v => v.replace(/\{name\}/gi, firstName(r.fullName)));
+    // Substitute {name} per recipient, then any {{token}} merge fields. A value
+    // with no {{ is returned untouched — the legacy path stays byte-for-byte the
+    // same, whitespace included.
+    const cv = contactVars.get(digitsPhone);
+    const vars = params.variables.map(v => {
+      const named = v.replace(/\{name\}/gi, firstName(r.fullName));
+      if (!named.includes("{{")) return named;
+      return flattenForTemplate(fillVars(named, { name: cv?.name || r.fullName, phone: digitsPhone, email: cv?.email ?? null, attributes: cv?.attributes ?? {} }));
+    });
     const components: unknown[] = [];
     if (params.headerImageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: params.headerImageUrl } }] });
     if (vars.length) components.push({ type: "body", parameters: vars.map(t => ({ type: "text", text: t })) });
@@ -206,7 +224,15 @@ export async function sendTemplateTest(params: {
 }): Promise<{ id?: string; error?: string }> {
   const { token, phoneId } = getCreds(params.channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
-  const vars = params.variables.map(v => v.replace(/\{name\}/gi, firstName(params.name ?? "") || "there"));
+  // A test send must preview the real thing, merge fields included.
+  const testPhone = (params.phone || "").replace(/\D/g, "");
+  const testVars = await contactVarsByPhones([params.phone], params.tenantId).catch(() => new Map());
+  const tcv = testVars.get(testPhone);
+  const vars = params.variables.map(v => {
+    const named = v.replace(/\{name\}/gi, firstName(params.name ?? "") || "there");
+    if (!named.includes("{{")) return named;
+    return flattenForTemplate(fillVars(named, { name: tcv?.name || params.name || "", phone: testPhone, email: tcv?.email ?? null, attributes: tcv?.attributes ?? {} }));
+  });
   const components: unknown[] = [];
   if (params.headerImageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: params.headerImageUrl } }] });
   if (vars.length) components.push({ type: "body", parameters: vars.map(t => ({ type: "text", text: t })) });
