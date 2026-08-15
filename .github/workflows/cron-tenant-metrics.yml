@@ -1,0 +1,55 @@
+# Owner-console fleet metrics sweep — recomputes the least-recently-refreshed
+# tenant_metrics rows (channel health, KB, integrations, activity, utilisation)
+# so the owner console can answer fleet questions with indexed queries instead of
+# fanning out ~10 round-trips per tenant inside a request.
+#
+# Separate from cron-process-queue on purpose: that workflow drains messages and
+# is already deadline-saturated, and message delivery must always win the budget.
+#
+# Nothing customer-facing depends on this. If it stops, the console's derived
+# numbers go stale and the UI says "as of <time>"; money and trial queues read
+# the tenants table live and stay correct regardless.
+#
+# Setup (repo → Settings → Secrets and variables → Actions):
+#   secret   CRON_SECRET       — same value as the portal's CRON_SECRET env var
+#   variable CRON_URL          — the existing .../api/cron/process-queue URL; the
+#                                metrics URL is derived from it
+#   variable CRON_METRICS_URL  — optional explicit override
+
+name: cron-tenant-metrics
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # slower than the queue drain — staleness here is cheap
+  workflow_dispatch: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Refresh tenant metrics
+        env:
+          URL: ${{ vars.CRON_METRICS_URL }}
+          BASE_URL: ${{ vars.CRON_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set"
+            exit 1
+          fi
+          # Derive from CRON_URL so there's one URL to keep pointed at the right
+          # deployment (see the deployment note: prod is app.thetalko.in only).
+          if [ -z "$URL" ]; then
+            URL="${BASE_URL%/api/cron/process-queue}/api/cron/tenant-metrics"
+          fi
+          if [ -z "$BASE_URL" ] && [ -z "${{ vars.CRON_METRICS_URL }}" ]; then
+            echo "::error::Set CRON_URL (or CRON_METRICS_URL) to your deployment"
+            exit 1
+          fi
+          echo "Sweeping $URL"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -m 290 --retry 1 --retry-delay 10 \
+            -X POST "$URL" -H "Authorization: Bearer $SECRET")
+          echo "HTTP $code"
+          cat /tmp/resp.json
+          [ "$code" = "200" ] || { echo "::error::metrics sweep returned $code"; exit 1; }

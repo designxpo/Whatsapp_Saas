@@ -35,9 +35,25 @@ export async function listPlans(): Promise<Plan[]> {
   return (data ?? []).map(r => mapPlan(r as Record<string, unknown>));
 }
 
+// Plans change about as often as pricing does, but getPlan is on the hot path of
+// every entitlement resolution — so an owner list of N tenants used to issue N
+// identical point-reads. Short TTL: long enough to collapse a request's fan-out,
+// short enough that an owner editing a plan sees it within seconds.
+const PLAN_TTL_MS = 30_000;
+const planCache = new Map<string, { at: number; plan: Plan | null }>();
+
+/** Called by savePlan so an edit is never served stale from this process. */
+export function invalidatePlanCache(key?: string): void {
+  if (key) planCache.delete(key); else planCache.clear();
+}
+
 export async function getPlan(key: string): Promise<Plan | null> {
+  const hit = planCache.get(key);
+  if (hit && Date.now() - hit.at < PLAN_TTL_MS) return hit.plan;
   const { data } = await db().from("wa_plans").select("*").eq("key", key).maybeSingle();
-  return data ? mapPlan(data as Record<string, unknown>) : null;
+  const plan = data ? mapPlan(data as Record<string, unknown>) : null;
+  planCache.set(key, { at: Date.now(), plan });
+  return plan;
 }
 
 // Reverse lookup used by the Stripe webhook: Price id → our plan.
@@ -55,9 +71,11 @@ export async function savePlan(p: Partial<Plan> & { key: string; name: string })
   };
   const { data, error } = await db().from("wa_plans").upsert(row, { onConflict: "key" }).select().single();
   if (error) throw error;
+  invalidatePlanCache(row.key);
   return mapPlan(data as Record<string, unknown>);
 }
 
 export async function deletePlan(id: string): Promise<void> {
   await db().from("wa_plans").delete().eq("id", id);
+  invalidatePlanCache();   // id, not key, in hand — drop the lot
 }

@@ -143,7 +143,19 @@ export async function recordChannelQuality(match: { wabaId?: string | null; phon
     if (match.phoneNumberId) q = q.eq("phone_number_id", match.phoneNumberId);
     else if (match.wabaId) q = q.eq("waba_id", match.wabaId);
     else return;
-    await q;
+    // Return the affected rows so the owner console's denormalised copy can be
+    // patched in the same breath. A number going RED means sends are ALREADY
+    // being throttled — waiting for the metrics rotation to notice would be the
+    // one staleness that actually costs the tenant money.
+    const { data } = await q.select("tenant_id");
+    const tenantIds = new Set(((data ?? []) as { tenant_id: string | null }[]).map(r => r.tenant_id).filter(Boolean) as string[]);
+    if (tenantIds.size) {
+      const { touchQualityMetrics } = await import("./ownermetrics");
+      await Promise.all([...tenantIds].map(id => touchQualityMetrics(id, {
+        quality: rating ?? undefined, health: health ?? undefined,
+        marketingPaused: bad ? true : healthy ? false : undefined,
+      })));
+    }
   } catch (e) { console.error("[channels] recordChannelQuality", e); }
 }
 
