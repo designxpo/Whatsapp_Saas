@@ -2,9 +2,10 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
 import { verifyWebhook } from "@/lib/stripe";
-import { applySubscription, setStripeIds, getTenantByStripeCustomer, type PaymentStatus, type TenantStatus } from "@/lib/tenants";
+import { applySubscription, setStripeIds, getTenant, getTenantByStripeCustomer, type PaymentStatus, type TenantStatus } from "@/lib/tenants";
 import { getPlanByStripePrice } from "@/lib/plans";
 import { markOrderPaid } from "@/lib/commerce";
+import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,15 @@ async function syncSubscription(sub: Stripe.Subscription): Promise<void> {
     currentPeriodEnd: periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : undefined,
     subscriptionId: sub.id,
   });
+
+  // Stripe has exhausted its retries — say so, instead of letting them discover
+  // it. Gated on the literal `unpaid` status, NOT on the mapped tenant status:
+  // `incomplete` maps to suspended too, but that's a brand-new checkout waiting
+  // on 3-D Secure, not a lapsed account.
+  if (sub.status === "unpaid") {
+    const t = await getTenant(tenantId);
+    if (t) await notifyServiceSuspended(t, sub.id);
+  }
 }
 
 export async function POST(req: Request) {
@@ -104,7 +114,19 @@ export async function POST(req: Request) {
         const customerId = typeof inv.customer === "string" ? inv.customer : inv.customer?.id;
         if (customerId) {
           const t = await getTenantByStripeCustomer(customerId);
-          if (t) await applySubscription(t.id, { paymentStatus: "past_due" });
+          if (t) {
+            await applySubscription(t.id, { paymentStatus: "past_due" });
+            // …then actually tell them. The in-portal banner only appears on the
+            // next login, and not at all while enforce_entitlements is off.
+            await notifyPaymentFailed(t, {
+              invoiceId: inv.id,
+              attempt: inv.attempt_count,
+              amountCents: inv.amount_due,
+              currency: inv.currency,
+              nextAttemptISO: inv.next_payment_attempt ? new Date(inv.next_payment_attempt * 1000).toISOString() : null,
+              invoiceUrl: inv.hosted_invoice_url ?? null,
+            });
+          }
         }
         break;
       }
