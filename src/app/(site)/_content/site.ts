@@ -155,22 +155,108 @@ export const GLOSSARY: GlossaryTerm[] = [
   { term: "Comment automation", definition: "A rule that turns a public comment on Instagram, Facebook or YouTube into an automatic reply, a private DM, or a moderation action." },
 ];
 
+// A post body is a small set of typed blocks — mirrors `LegalBlock` above.
+// Plain strings can't carry real H2/H3 structure or lists, and both matter for
+// how a long-form post actually ranks and gets scanned. `text` in "p" and list
+// items supports one inline form, `[label](/path)`, parsed by the post page —
+// enough for internal links without pulling in a Markdown renderer.
+export type PostBlock =
+  | { type: "p"; text: string }
+  | { type: "h2"; text: string }
+  | { type: "h3"; text: string }
+  | { type: "list"; items: string[] };
+const p = (text: string): PostBlock => ({ type: "p", text });
+const h2 = (text: string): PostBlock => ({ type: "h2", text });
+const list = (items: string[]): PostBlock => ({ type: "list", items });
+
 export type Post = {
   slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
   dateModified?: string;   // freshness signal; falls back to `date` when unset
-  body: string[];
+  body: PostBlock[];
+  faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
+  sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
 };
 export const POSTS: Post[] = [
+  {
+    slug: "automate-google-review-replies",
+    title: "How to Automate Google Review Replies Without Sounding Like a Bot",
+    excerpt: "Most businesses either reply to every Google review by hand or not at all. A rating-based framework for automating replies with AI — without sounding like a template.",
+    date: "August 15, 2026", category: "Playbook", readTime: "9 min read",
+    body: [
+      p("Most local businesses either answer every Google review by hand, late at night, in a hurry — or don't answer at all. Neither holds up once you're getting a dozen reviews a week across two or three locations. AI can close that gap, but done carelessly it produces exactly the kind of generic, corporate-sounding reply that damages trust rather than building it. Here's how to automate review replies well: what to hand to AI, what to still write yourself, and how to keep every drafted reply sounding like an actual person read the review."),
+
+      h2("Why ignoring reviews costs more than a bad look"),
+      p("It's tempting to treat review replies as optional PR. The data says otherwise. In BrightLocal's Local Consumer Review Survey, 89% of consumers read a business's responses to reviews, and 42% say they're unlikely to use a business that never responds at all. Consumers also expect speed: 81% want a reply within a week, and expectations keep tightening every year the survey runs."),
+      p("So a review with no reply isn't neutral — it's a small, visible signal that nobody's home. Multiply that by every review your competitors down the street are answering, and the gap compounds."),
+
+      h2("Reviews are a ranking signal, not just a trust signal"),
+      p("Google's own Business Profile guidance recommends replying to every review, and treats the reply as part of the profile — it appears publicly under your name, labelled \"Response from the owner.\" Google doesn't publish the exact weighting of any single factor in local ranking, but independent local-SEO research consistently finds a correlation between how consistently a business responds and how it performs in the Local Pack, alongside proximity and review volume. Whichever way that causation runs, showing up and replying is the one part of it fully within your control."),
+
+      h2("Why the manual approach breaks down"),
+      p("The math is unforgiving at scale. Forty reviews a month across three locations is nearly 1,500 a year — each one deserving a reply that actually reads the review, not a copy-paste line. In practice, the reviews that need the most care are exactly the ones that sit unanswered longest: a rushed owner will happily bang out \"Thanks so much!\" on a 5-star review, but a 2-star complaint takes real thought to answer well, so it waits. And it's the 2-star reply, sitting unanswered for a week, that a prospective customer reads right before deciding whether to book."),
+
+      h2("The trap: AI replies that sound like AI replies"),
+      p("This is where automation usually goes wrong. Point a generic AI tool at your reviews and it defaults to safe, forgettable phrasing — \"Thank you for your feedback, we value all our customers\" — that could be pasted under any review, for any business, on any day. BrightLocal's survey found that 50% of consumers are put off specifically by generic or templated review responses. A bot-sounding reply doesn't just fail to help; it actively signals that nobody read what the customer actually wrote."),
+      p("The fix isn't to avoid AI — it's to ground it. A good reply references the specific thing the reviewer mentioned: the product they bought, the staff member they named, the wait time they complained about. That single detail is the difference between a reply that reads as personal and one that reads as auto-generated, and it's exactly what a well-built tool should extract from the review text before drafting anything."),
+
+      h2("A rating-based reply framework that actually works"),
+      p("The tone that lands on a 5-star review is entirely wrong for a 1-star one, which is exactly why one blanket template collapses under real use. A simple framework, branched by rating:"),
+      list([
+        "5★ — thank them by name and echo back the specific detail they praised. A light, non-pushy invite to return works well here.",
+        "4★ — thank them, then acknowledge the specific gap they noted without getting defensive about it. Note that it's being looked at.",
+        "3★ — lead with empathy, skip the excuses, give one concrete next step, and invite them to continue the conversation privately.",
+        "1–2★ — empathy first, own anything factual without arguing the point publicly, and move to a phone number or email immediately. Never share the customer's personal details in the public reply, and never get defensive in public — the reply is being read by everyone who hasn't decided yet, not just the reviewer.",
+      ]),
+
+      h2("How much should actually run on autopilot"),
+      p("Full auto-post on every reply is rarely the right default, and full manual review of every reply doesn't scale. The middle ground that works in practice is a star-based approval threshold: replies above a rating you're comfortable with (say, 4 stars and up) can post automatically, while anything at or below that threshold gets drafted for a human to read and approve before it goes live. That one rule protects you from the one scenario that actually matters — a factual claim in a public, permanent reply that turns out to be wrong — while still clearing the bulk of your review volume without anyone typing a word."),
+      p("If you manage more than one location, the same threshold should apply everywhere, so the tone and judgment calls don't drift between whoever's running each site."),
+
+      h2("What actually makes an AI reply sound human"),
+      list([
+        "It references specifics from the review — the product, the person, the detail — not just the star count.",
+        "It roughly matches the reviewer's own tone: a short, casual review earns a short, casual reply; a detailed, considered one earns a bit more substance back.",
+        "It avoids the stock phrases readers have learned to skim past — \"we take this very seriously,\" \"your feedback is important to us.\" If a phrase could sit under any review from any business, cut it.",
+        "It replies in the language the review was written in, not a default that assumes every customer writes in English.",
+        "It stays short. Two to four sentences beats a paragraph almost every time — a long reply reads as defensive, not thorough.",
+      ]),
+
+      h2("A checklist for choosing review-reply automation"),
+      p("Whether you build this in-house or buy it, the same list separates a tool that actually works from one that just spams the same reply under everything:"),
+      list([
+        "Branches by star rating — not one template applied everywhere.",
+        "Supports a draft-and-approve mode, not only full auto-post.",
+        "Grounds every reply in the review's actual text, not just its rating.",
+        "Covers every location from one place, so tone stays consistent across a multi-location business.",
+        "Replies in the customer's own language.",
+        "Doesn't lock reviews away in a separate tool — reviews are one more conversation with a customer you may already be talking to on WhatsApp, Instagram or your website, and treating it that way keeps your voice consistent everywhere.",
+      ]),
+
+      p("Reviews are a conversation, the same as a WhatsApp message or an Instagram DM — just a public one. The businesses that handle every channel with the same care (fast, specific, and unmistakably human) are the ones customers keep choosing, and, as far as the evidence points, the ones Google keeps showing. Talko AI treats Google reviews as one more channel in the same inbox as WhatsApp, Instagram, Messenger and YouTube, with exactly this kind of rating-based approval threshold built in — see [how AI review replies work](/features) or [compare plans](/pricing)."),
+    ],
+    faqs: [
+      { q: "Is it against Google's rules to use AI to reply to reviews?", a: "No. Google's own guidance for owner responses focuses on being personal, professional and timely — it doesn't require that a human typed every word. What Google does prohibit is fake reviews and incentivized reviews, not automated replies to real ones. That said, keep a human reviewing anything below a comfortable star threshold, since a wrong factual claim in a public reply can't be quietly taken back." },
+      { q: "Should I reply to every review, even short 5-star ones with no comment?", a: "Yes, if you can keep it up. Most consumers read a business's responses, and profiles that reply consistently — not just to complaints — read as more attentive. A short, genuine \"Thanks, Priya!\" costs almost nothing and keeps your response rate high." },
+      { q: "What's the single biggest mistake businesses make with negative reviews?", a: "Arguing publicly, or getting defensive. The reply is read by every future customer deciding whether to book, not just the person who left the review — so acknowledge what's true, skip the excuses, and take the details offline." },
+      { q: "How fast does a reply actually need to go out?", a: "Consumer surveys put the expectation at within a week, but same-day (24–48 hours) has become the practical standard for businesses that treat reviews as a real channel rather than an afterthought." },
+      { q: "Can one team manage replies across multiple locations?", a: "That's precisely where automation earns its keep — a single rating-based approval rule, applied consistently across every location, replaces a dozen managers each replying (or not replying) in their own voice." },
+    ],
+    sources: [
+      { label: "Manage customer reviews — Google Business Profile Help", href: "https://support.google.com/business/answer/3474050?hl=en", note: "Google's own guidance on replying to reviews" },
+      { label: "Local Consumer Review Survey — BrightLocal", href: "https://www.brightlocal.com/research/local-consumer-review-survey/", note: "Consumer behaviour data on reading and reacting to review responses" },
+      { label: "Local Search Ranking Factors report — Whitespark", href: "https://whitespark.ca/local-search-ranking-factors/", note: "Annual survey of local-SEO practitioners on what correlates with Local Pack ranking" },
+    ],
+  },
   {
     slug: "whatsapp-automation-guide",
     title: "How automation is transforming customer messaging",
     excerpt: "WhatsApp and Instagram are now the front door to your business. Here's how automation turns them into your best sales channel.",
     date: "June 12, 2026", category: "Playbook", readTime: "6 min read",
     body: [
-      "Messaging has quietly become the primary way customers reach brands. The average person opens a WhatsApp message within minutes — a response rate email and ads can only dream of. Yet most businesses still treat chat as an afterthought, answering manually, slowly, and only during office hours.",
-      "Automation changes the economics. With grounded AI replies, the moment a customer asks a question — about pricing, availability, or your return policy — they get an accurate answer instantly, in your brand's voice, at any hour. The conversations that genuinely need a human are escalated cleanly, so your team spends time where it matters.",
-      "The compounding wins come from the layers on top: broadcasts that re-engage past customers, drip sequences that nurture leads, and flows that qualify and book without a single human touch. Done well, a single conversation becomes a repeatable, measurable funnel.",
-      "The key is doing it within the rules. Official APIs, opt-in respected, no cold outreach, and a clear escalation path. That's the difference between a channel that scales and one that gets your number blocked.",
+      p("Messaging has quietly become the primary way customers reach brands. The average person opens a WhatsApp message within minutes — a response rate email and ads can only dream of. Yet most businesses still treat chat as an afterthought, answering manually, slowly, and only during office hours."),
+      p("Automation changes the economics. With grounded AI replies, the moment a customer asks a question — about pricing, availability, or your return policy — they get an accurate answer instantly, in your brand's voice, at any hour. The conversations that genuinely need a human are escalated cleanly, so your team spends time where it matters."),
+      p("The compounding wins come from the layers on top: broadcasts that re-engage past customers, drip sequences that nurture leads, and flows that qualify and book without a single human touch. Done well, a single conversation becomes a repeatable, measurable funnel."),
+      p("The key is doing it within the rules. Official APIs, opt-in respected, no cold outreach, and a clear escalation path. That's the difference between a channel that scales and one that gets your number blocked."),
     ],
   },
   {
@@ -179,9 +265,9 @@ export const POSTS: Post[] = [
     excerpt: "Predictable costs, full model control, and no lock-in. Here's the thinking behind per-account AI keys.",
     date: "June 5, 2026", category: "Product", readTime: "4 min read",
     body: [
-      "Most platforms bundle AI into an opaque per-message fee. It feels simple until volume grows and the bill becomes impossible to predict — or you're stuck on a model you didn't choose.",
-      "We took the opposite approach. You add your own Gemini, OpenAI or Anthropic key, and Talko AI uses it for your replies. Usage is billed directly to your provider account, so you see exactly what you spend and can pick the model that fits your budget and quality bar.",
-      "It also means no lock-in. Switch models or providers whenever you like — your flows, knowledge base and inbox stay exactly the same. Your key is encrypted at rest and never leaves our vault.",
+      p("Most platforms bundle AI into an opaque per-message fee. It feels simple until volume grows and the bill becomes impossible to predict — or you're stuck on a model you didn't choose."),
+      p("We took the opposite approach. You add your own Gemini, OpenAI or Anthropic key, and Talko AI uses it for your replies. Usage is billed directly to your provider account, so you see exactly what you spend and can pick the model that fits your budget and quality bar."),
+      p("It also means no lock-in. Switch models or providers whenever you like — your flows, knowledge base and inbox stay exactly the same. Your key is encrypted at rest and never leaves our vault."),
     ],
   },
   {
@@ -190,9 +276,9 @@ export const POSTS: Post[] = [
     excerpt: "A practical guide to automating Instagram messaging without breaking Meta's rules.",
     date: "May 28, 2026", category: "Compliance", readTime: "5 min read",
     body: [
-      "Instagram is a goldmine for conversational commerce — but Meta's rules are strict, and ignoring them is the fastest way to lose access. The good news: the rules are sensible, and you can automate aggressively while staying fully compliant.",
-      "The core constraints are simple. You can reply to anyone who messaged you within a 24-hour window. You can turn a comment into a single private reply when someone comments on your post. What you cannot do is send cold DMs to people who never interacted with you.",
-      "Talko AI enforces these guardrails in code — the 24-hour window, comment-to-DM as a single message, per-account pacing, and opt-out handling are all built in. You get the automation upside without the risk of a ban.",
+      p("Instagram is a goldmine for conversational commerce — but Meta's rules are strict, and ignoring them is the fastest way to lose access. The good news: the rules are sensible, and you can automate aggressively while staying fully compliant."),
+      p("The core constraints are simple. You can reply to anyone who messaged you within a 24-hour window. You can turn a comment into a single private reply when someone comments on your post. What you cannot do is send cold DMs to people who never interacted with you."),
+      p("Talko AI enforces these guardrails in code — the 24-hour window, comment-to-DM as a single message, per-account pacing, and opt-out handling are all built in. You get the automation upside without the risk of a ban."),
     ],
   },
 ];

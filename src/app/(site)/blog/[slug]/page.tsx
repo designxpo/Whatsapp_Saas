@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -6,11 +7,54 @@ import { Container, Glow } from "../../_components/ui";
 import { CtaBand } from "../../_components/sections";
 import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
-import { POSTS } from "../../_content/site";
+import { PageFaq, SourceList } from "../../_components/seo";
+import { POSTS, type PostBlock } from "../../_content/site";
 import { SITE_URL } from "@/lib/siteurl";
 
 export function generateStaticParams() {
   return POSTS.map(p => ({ slug: p.slug }));
+}
+
+// The only inline formatting a post body supports: `[label](/path)`, so an
+// internal link can live in plain data without pulling in a Markdown renderer.
+// Anything that isn't that exact pattern renders as plain text, untouched.
+const INLINE_LINK = /\[([^\]]+)\]\((\/[^)]+)\)/g;
+function renderInline(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  INLINE_LINK.lastIndex = 0;
+  while ((m = INLINE_LINK.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(<Link key={m.index} href={m[2]} className="font-semibold text-[#0783fd] hover:underline">{m[1]}</Link>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
+  // The first paragraph carries the lede treatment (larger, darker text);
+  // every block after it uses body copy — matches the pre-existing style.
+  let seenFirstP = false;
+  return (
+    <>
+      {blocks.map((b, i) => {
+        if (b.type === "h2") return <h2 key={i} className="!mt-10 text-xl font-extrabold text-slate-900">{renderInline(b.text)}</h2>;
+        if (b.type === "h3") return <h3 key={i} className="text-base font-bold text-slate-900">{renderInline(b.text)}</h3>;
+        if (b.type === "list") {
+          return (
+            <ul key={i} className="list-disc space-y-2 pl-5 marker:text-[#0783fd]">
+              {b.items.map((item, j) => <li key={j} className="leading-relaxed text-slate-500">{renderInline(item)}</li>)}
+            </ul>
+          );
+        }
+        const isLede = !seenFirstP;
+        seenFirstP = true;
+        return <p key={i} className={isLede ? "text-lg leading-relaxed text-slate-700" : "leading-relaxed text-slate-500"}>{renderInline(b.text)}</p>;
+      })}
+    </>
+  );
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -70,10 +114,15 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
       <Container className="py-12">
         <article className="mx-auto max-w-2xl space-y-6">
-          {post.body.map((para, i) => (
-            <p key={i} className={i === 0 ? "text-lg leading-relaxed text-slate-700" : "leading-relaxed text-slate-500"}>{para}</p>
-          ))}
+          <BlockRenderer blocks={post.body} />
         </article>
+
+        {(post.faqs?.length || post.sources?.length) ? (
+          <div className="mx-auto mt-16 max-w-2xl border-t border-slate-200 pt-10">
+            {!!post.faqs?.length && <PageFaq items={post.faqs} path={`/blog/${post.slug}`} id={`faq-${post.slug}`} />}
+            {!!post.sources?.length && <SourceList items={post.sources} className={post.faqs?.length ? "mt-14" : ""} />}
+          </div>
+        ) : null}
 
         {more.length > 0 && (
           <div className="mx-auto mt-16 max-w-2xl border-t border-slate-200 pt-10">
