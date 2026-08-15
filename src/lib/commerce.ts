@@ -25,7 +25,7 @@ export const ORDER_CONFIRM_LANG = "en_US";
 export const ORDER_CONFIRM_BODY = "✅ Your order *#{{1}}* is confirmed! We've received your payment of {{2}}. Thank you for shopping with us — we'll be in touch with the details shortly.";
 export const ORDER_CONFIRM_EXAMPLES = ["A1B2C3D4", "INR 499.00"];
 export type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled" | "refunded";
-export interface Order { id: string; phone: string; items: CartItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; createdAt: string }
+export interface Order { id: string; phone: string; items: CartItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; providerPaymentId: string | null; paidAt: string | null; refundedAt: string | null; refundRef: string | null; refundAmountCents: number | null; refundNote: string | null; createdAt: string }
 export interface Product { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null }
 
 function mapProduct(r: Record<string, unknown>): Product {
@@ -232,6 +232,14 @@ export async function markOrderPaid(m: {
     .eq("id", orderId).eq("status", "pending").select("id").maybeSingle();
   if (!updated) return { ok: true, orderId, alreadyPaid: true };   // lost the race → already handled
 
+  // The gateway payment id (pay_… / pi_…) — the id a refund is actually issued
+  // against, and the audit link between this row and the provider dashboard.
+  // Written AFTER the guarded transition, best-effort: a not-yet-applied 0105
+  // must never block a confirmed payment.
+  if (m.providerPaymentId) {
+    await db().from("wa_orders").update({ provider_payment_id: m.providerPaymentId }).eq("id", orderId).then(() => {}, () => {});
+  }
+
   if (order.cart_id) await db().from("wa_carts").update({ status: "ordered" }).eq("id", order.cart_id as string).then(() => {}, () => {});
 
   // Notify the brand + fan out to connected integrations (Slack/Sheets/Zapier).
@@ -290,7 +298,12 @@ function mapOrder(r: Record<string, unknown>): Order {
     status: (r.status as OrderStatus) ?? "pending",
     paymentRef: (r.payment_ref as string | null) ?? null,
     provider: (r.provider as string | null) ?? null,
+    providerPaymentId: (r.provider_payment_id as string | null) ?? null,
     paidAt: (r.paid_at as string | null) ?? null,
+    refundedAt: (r.refunded_at as string | null) ?? null,
+    refundRef: (r.refund_ref as string | null) ?? null,
+    refundAmountCents: (r.refund_amount_cents as number | null) ?? null,
+    refundNote: (r.refund_note as string | null) ?? null,
     createdAt: r.created_at as string,
   };
 }
@@ -326,6 +339,8 @@ export async function getOrderStats(tenantId = DEFAULT_TENANT_ID): Promise<{ cou
 // (cancelled/refunded) can't be moved out of; a refund is only meaningful once
 // money landed. Marking 'paid' here is manual reconciliation (COD / offline) —
 // it does NOT re-run the pay-webhook side effects (no duplicate confirmation).
+// 'refunded' is a RECORD of a refund the brand issued in their own gateway
+// dashboard — we never call a refund API — so it demands a reference.
 const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pending:   ["paid", "cancelled"],
   paid:      ["fulfilled", "refunded", "cancelled"],
@@ -334,7 +349,12 @@ const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   refunded:  [],
 };
 
-export async function updateOrderStatus(orderId: string, next: OrderStatus, tenantId = DEFAULT_TENANT_ID): Promise<{ ok: boolean; error?: string; order?: Order }> {
+// What the admin must supply when recording a refund. `ref` is the gateway's
+// refund id (rfnd_… / re_…) or a bank UTR — without it the flag can never be
+// reconciled against the money, which is the whole point of recording it.
+export interface RefundRecord { ref: string; amountCents?: number; note?: string }
+
+export async function updateOrderStatus(orderId: string, next: OrderStatus, tenantId = DEFAULT_TENANT_ID, refund?: RefundRecord): Promise<{ ok: boolean; error?: string; order?: Order }> {
   const { data: row } = await db().from("wa_orders").select("*").eq("tenant_id", tenantId).eq("id", orderId).maybeSingle();
   if (!row) return { ok: false, error: "Order not found." };
   const current = ((row as Record<string, unknown>).status as OrderStatus) ?? "pending";
@@ -343,11 +363,38 @@ export async function updateOrderStatus(orderId: string, next: OrderStatus, tena
 
   const patch: Record<string, unknown> = { status: next };
   if (next === "paid" && !(row as Record<string, unknown>).paid_at) { patch.paid_at = new Date().toISOString(); patch.provider = ((row as Record<string, unknown>).provider as string) ?? "manual"; }
-  const { data: updated, error } = await db().from("wa_orders").update(patch).eq("tenant_id", tenantId).eq("id", orderId).select("*").maybeSingle();
+  // A refund carries its gateway reference. The money moved in the brand's own
+  // dashboard, so this reference is the ONLY thing tying the row to it.
+  const refundRef = (refund?.ref ?? "").trim();
+  const refundCents = Math.max(0, Math.round(refund?.amountCents ?? ((row as Record<string, unknown>).total_cents as number) ?? 0));
+  if (next === "refunded") {
+    if (!refundRef) return { ok: false, error: "Refund the customer in your payment dashboard first, then paste its refund reference (rfnd_… / re_… / UTR) here so this order can be reconciled." };
+    patch.refunded_at = new Date().toISOString();
+    patch.refund_ref = refundRef.slice(0, 120);
+    patch.refund_amount_cents = refundCents;
+    if (refund?.note?.trim()) patch.refund_note = refund.note.trim().slice(0, 300);
+  }
+  const run = (p: Record<string, unknown>) => db().from("wa_orders").update(p).eq("tenant_id", tenantId).eq("id", orderId).select("*").maybeSingle();
+  let { data: updated, error } = await run(patch);
+  // Graceful degradation when migration 0105 (refund columns) isn't applied yet:
+  // the status still moves, only the recorded reference is lost.
+  if (error && /refund_|provider_payment_id|column/i.test(error.message ?? "")) {
+    const { refunded_at: _a, refund_ref: _b, refund_amount_cents: _c, refund_note: _d, ...bare } = patch;
+    ({ data: updated, error } = await run(bare));
+  }
   if (error || !updated) return { ok: false, error: error?.message ?? "Update failed." };
   // Keep the cart in sync when the order is voided.
   if ((next === "cancelled" || next === "refunded") && (row as Record<string, unknown>).cart_id) {
     await db().from("wa_carts").update({ status: "abandoned" }).eq("id", (row as Record<string, unknown>).cart_id as string).then(() => {}, () => {});
+  }
+  // Money going back out is as reportable as money coming in — tell the same
+  // integrations that heard order.created / order.paid, so an accounting or CRM
+  // sync doesn't keep a stale paid record. Best-effort, like the others.
+  if (next === "refunded") {
+    void emitEvent(tenantId, "order.refunded", {
+      orderId, phone: (row as Record<string, unknown>).phone, totalCents: ((row as Record<string, unknown>).total_cents as number) ?? 0,
+      refundedCents: refundCents, refundRef, provider: ((row as Record<string, unknown>).provider as string | null) ?? null,
+    });
   }
   return { ok: true, order: mapOrder(updated as Record<string, unknown>) };
 }

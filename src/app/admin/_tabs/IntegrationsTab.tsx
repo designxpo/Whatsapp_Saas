@@ -18,6 +18,8 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "conversation.escalated", label: "Chat handed to a human" },
   { key: "order.created", label: "Order placed" },
   { key: "contact.optout", label: "Contact opted out" },
+  { key: "order.paid", label: "Order paid" },
+  { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
 const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };

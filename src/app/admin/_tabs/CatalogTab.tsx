@@ -170,7 +170,7 @@ function CatalogTab() {
 // ── Orders (in-chat checkout) ─────────────────────────────────────────────────
 type OrderStatus = "pending" | "paid" | "fulfilled" | "cancelled" | "refunded";
 type OrderItem = { productId: string; name: string; qty: number; priceCents: number };
-type Order = { id: string; phone: string; items: OrderItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; createdAt: string };
+type Order = { id: string; phone: string; items: OrderItem[]; totalCents: number; currency: string; status: OrderStatus; paymentRef: string | null; provider: string | null; paidAt: string | null; refundedAt: string | null; refundRef: string | null; refundAmountCents: number | null; createdAt: string };
 type Stats = { counts: Record<OrderStatus, number>; total: number; revenueCents: number };
 
 const STATUS_STYLE: Record<OrderStatus, string> = {
@@ -265,6 +265,10 @@ function OrdersView() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Refund is a two-step action on purpose: we don't move money, so it can't be
+  // a one-click status flip — it needs the reference from the brand's dashboard.
+  const [refundFor, setRefundFor] = useState<string | null>(null);
+  const [refundRef, setRefundRef] = useState("");
 
   const load = useCallback(() => {
     const qs = new URLSearchParams();
@@ -274,12 +278,12 @@ function OrdersView() {
   }, [filter, search]);
   useEffect(() => { const t = setTimeout(load, search ? 300 : 0); return () => clearTimeout(t); }, [load, search]);
 
-  async function move(o: Order, to: OrderStatus) {
+  async function move(o: Order, to: OrderStatus, ref?: string) {
     setBusy(o.id); setMsg(null);
     try {
-      const d = await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: o.id, status: to }) }).then(r => r.json());
+      const d = await fetch("/api/admin/orders", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: o.id, status: to, refundRef: ref }) }).then(r => r.json());
       if (d.error) setMsg({ ok: false, text: d.error });
-      else { setMsg({ ok: true, text: `Order #${o.id.slice(0, 8)} → ${STATUS_LABEL[to]}.` }); load(); }
+      else { setMsg({ ok: true, text: `Order #${o.id.slice(0, 8)} → ${STATUS_LABEL[to]}.` }); setRefundFor(null); setRefundRef(""); load(); }
     } catch { setMsg({ ok: false, text: "Connection error." }); }
     finally { setBusy(null); }
   }
@@ -354,14 +358,30 @@ function OrdersView() {
                     </div>
                   </div>
                   {(o.paymentRef || o.paidAt) && <p className="text-[10px] text-ink-400">{o.paidAt ? `Paid ${new Date(o.paidAt).toLocaleString()}` : "Not paid yet"}{o.paymentRef ? ` · ref ${o.paymentRef}` : ""}</p>}
+                  {o.refundedAt && <p className="text-[10px] text-rose-600">Refunded {new Date(o.refundedAt).toLocaleString()}{o.refundAmountCents != null ? ` · ${money(o.refundAmountCents, o.currency)}` : ""}{o.refundRef ? ` · ref ${o.refundRef}` : ""}</p>}
                   {NEXT_ACTIONS[o.status].length > 0 ? (
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {NEXT_ACTIONS[o.status].map(a => (
-                        <button key={a.to} onClick={() => move(o, a.to)} disabled={busy === o.id}
-                          className={`px-2.5 py-1 rounded-control text-[11px] font-bold disabled:opacity-60 ${a.primary ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-600 hover:bg-white"}`}>
-                          {busy === o.id ? "…" : a.label}
-                        </button>
-                      ))}
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {NEXT_ACTIONS[o.status].map(a => (
+                          <button key={a.to} onClick={() => a.to === "refunded" ? setRefundFor(refundFor === o.id ? null : o.id) : move(o, a.to)} disabled={busy === o.id}
+                            className={`px-2.5 py-1 rounded-control text-[11px] font-bold disabled:opacity-60 ${a.primary ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-600 hover:bg-white"}`}>
+                            {busy === o.id ? "…" : a.label}
+                          </button>
+                        ))}
+                      </div>
+                      {refundFor === o.id && (
+                        <div className="rounded-control border border-rose-200 bg-rose-50/60 p-2 space-y-1.5">
+                          <p className="text-[11px] text-rose-800 leading-snug">Refund {money(o.totalCents, o.currency)} in your {o.provider === "stripe" ? "Stripe" : o.provider === "razorpay" ? "Razorpay" : "payment"} dashboard first — we never move money for you. Then paste the refund reference so this order can be reconciled.</p>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <input className={`${inp} w-56`} placeholder="Refund reference (rfnd_… / re_… / UTR)" value={refundRef} onChange={e => setRefundRef(e.target.value)} />
+                            <button onClick={() => move(o, "refunded", refundRef.trim())} disabled={busy === o.id || !refundRef.trim()}
+                              className="px-2.5 py-1 rounded-control text-[11px] font-bold bg-rose-600 hover:bg-rose-500 text-white disabled:opacity-50">
+                              {busy === o.id ? "…" : "Record refund"}
+                            </button>
+                            <button onClick={() => { setRefundFor(null); setRefundRef(""); }} className="px-2.5 py-1 rounded-control text-[11px] font-bold border border-line text-ink-600 hover:bg-white">Cancel</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : <p className="text-[10px] text-ink-400">This order is closed — no further actions.</p>}
                 </div>
@@ -370,7 +390,7 @@ function OrdersView() {
           );
         })}
       </div>
-      <p className="text-[10px] text-ink-400">Refund marks the order as refunded here for your records — issue the actual refund in your Razorpay/Stripe dashboard. “Mark paid” is for offline/COD reconciliation and doesn&apos;t re-send the customer a confirmation.</p>
+      <p className="text-[10px] text-ink-400">Refund records a refund you issued in your own Razorpay/Stripe dashboard — we never move money for you, so it asks for the gateway&apos;s refund reference and keeps it against the order. “Mark paid” is for offline/COD reconciliation and doesn&apos;t re-send the customer a confirmation.</p>
     </div>
   );
 }

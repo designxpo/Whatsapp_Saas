@@ -28,16 +28,21 @@ export async function GET(req: Request) {
 }
 
 // PATCH — move an order's status (fulfil / cancel / refund / mark paid).
+// A refund also carries the gateway reference the admin pasted in; we record it,
+// we never issue the refund ourselves.
 export async function PATCH(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  let b: { id?: string; status?: string };
+  let b: { id?: string; status?: string; refundRef?: string; refundAmountCents?: number; refundNote?: string };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!b.id || !STATUSES.includes(b.status as OrderStatus)) return NextResponse.json({ error: "id and a valid status are required." }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const res = await updateOrderStatus(b.id, b.status as OrderStatus, tid);
+    const ref = b.refundRef?.trim();
+    const res = await updateOrderStatus(b.id, b.status as OrderStatus, tid, ref
+      ? { ref, amountCents: typeof b.refundAmountCents === "number" ? b.refundAmountCents : undefined, note: b.refundNote }
+      : undefined);
     if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
-    logActivity(await currentUser(), "order.status", `${b.id.slice(0, 8)} → ${b.status}`);
+    logActivity(await currentUser(), "order.status", `${b.id.slice(0, 8)} → ${b.status}${ref ? ` (ref ${ref})` : ""}`);
     return NextResponse.json({ success: true, order: res.order });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
