@@ -58,45 +58,61 @@ function applyFilters<T extends { eq: (c: string, v: unknown) => T }>(q: T, filt
 
 export async function GET(req: Request) {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
-  const url = new URL(req.url);
-  const p = url.searchParams;
+  const p = new URL(req.url).searchParams;
   const now = new Date();
 
-  try {
-    const queue = p.get("queue");
-    const health = p.get("health");
+  const queue = p.get("queue");
+  const health = p.get("health");
+  const sortKey = p.get("sort") ?? "newest";
+  const sort = SORTS[sortKey] ?? SORTS.newest;
+  const limit = clampLimit(p.get("limit"));
+  const cursor = sortKey === "newest" ? decodeCursor(p.get("cursor")) : null;
+  const search = searchExpr(p.get("q") ?? "");
+  const derived = !!(queue && isQueueKey(queue) && queueNeedsMetrics(queue)) || !!health;
+
+  // withMetrics=false is the degraded shape used before 0106 is applied: the
+  // fleet list still works, just without the derived columns. Building the query
+  // in a function (rather than inline) is what makes that retry possible.
+  const build = (withMetrics: boolean) => {
     // An inner join is required whenever a filter touches the embedded row —
     // otherwise PostgREST filters the embed and still returns the parent.
-    const needsInner = (queue && isQueueKey(queue) && queueNeedsMetrics(queue)) || !!health;
-    const embed = needsInner ? "tenant_metrics!inner(*)" : "tenant_metrics(*)";
+    const embed = derived ? "tenant_metrics!inner(*)" : "tenant_metrics(*)";
+    let q = db().from("tenants").select(withMetrics ? `${COLS},${embed}` : COLS);
 
-    let q = db().from("tenants").select(`${COLS},${embed}`);
+    if (withMetrics && queue && isQueueKey(queue)) q = applyFilters(q, queueFilters(queue, now));
+    // Without the metrics table the LIVE queues still work — they read columns
+    // on `tenants` — so only the derived ones are dropped.
+    else if (!withMetrics && queue && isQueueKey(queue) && !queueNeedsMetrics(queue)) q = applyFilters(q, queueFilters(queue, now));
 
-    if (queue && isQueueKey(queue)) q = applyFilters(q, queueFilters(queue, now));
     for (const [param, col] of [["status", "status"], ["plan", "plan"], ["payment", "payment_status"]] as const) {
       const v = p.get(param);
       if (v) q = q.eq(col, v);
     }
-    if (health) q = q.eq("tenant_metrics.health", health);
-
-    const search = searchExpr(p.get("q") ?? "");
+    if (withMetrics && health) q = q.eq("tenant_metrics.health", health);
     if (search) q = q.or(search);
 
     // Keyset beats offset here: page 500 of an offset scan makes Postgres walk
     // and discard 25,000 rows. Only the default (newest-first) ordering is
     // keyset-able, so the other sorts fall back to a bounded first page.
-    const sortKey = p.get("sort") ?? "newest";
-    const sort = SORTS[sortKey] ?? SORTS.newest;
-    const limit = clampLimit(p.get("limit"));
-    const cursor = sortKey === "newest" ? decodeCursor(p.get("cursor")) : null;
     if (cursor) q = q.or(cursorExpr(cursor));
-
     q = q.order(sort.col, { ascending: sort.asc, nullsFirst: false });
     if (sort.col !== "id") q = q.order("id", { ascending: false });   // stable tiebreaker
     // One extra row is the cheapest possible "is there a next page?".
-    q = q.limit(limit + 1);
+    return q.limit(limit + 1);
+  };
 
-    const { data, error } = await q;
+  try {
+    let degraded = false;
+    let { data, error } = await build(true);
+
+    // 0106 is applied by hand, so there is a real window where tenant_metrics
+    // doesn't exist yet. An operator should still be able to run the business in
+    // that window — fall back to the plain tenant list rather than showing them
+    // an error page over a database that is otherwise perfectly healthy.
+    if (error && /tenant_metrics|relationship|schema cache/i.test(error.message ?? "")) {
+      degraded = true;
+      ({ data, error } = await build(false));
+    }
     if (error) throw error;
 
     // The select string is built at runtime, so supabase-js's literal-type parser
@@ -112,16 +128,15 @@ export async function GET(req: Request) {
       nextCursor: hasMore && last && sortKey === "newest"
         ? encodeCursor({ createdAt: last.created_at as string, id: last.id as string })
         : null,
+      // The UI turns this into a banner rather than an error, and hides the
+      // derived columns while it's set.
+      degraded: degraded || undefined,
+      degradedReason: degraded
+        ? "Fleet metrics aren't set up yet — apply migration 0106_owner_console.sql, then let the tenant-metrics cron run once. Health, usage and the delivery queues stay empty until then."
+        : undefined,
     });
   } catch (err) {
-    // A missing tenant_metrics table (0106 not applied) lands here — say so
-    // plainly rather than rendering an empty fleet as if it were the truth.
-    const msg = errorMessage(err);
-    return NextResponse.json({
-      error: /tenant_metrics|relation|column/i.test(msg)
-        ? `${msg} — apply migration 0106_owner_console.sql`
-        : msg,
-    }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 

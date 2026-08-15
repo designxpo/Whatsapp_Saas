@@ -47,6 +47,10 @@ export default function TodayPage() {
   useEffect(() => { load(); }, [load]);
 
   const byKey = new Map((d?.queues ?? []).map(q => [q.queue, q]));
+  // owner_queue_counts() ships in 0106, so before that migration the queues are
+  // UNKNOWN, not empty. Saying "nothing needs you" there would be a lie an
+  // operator could act on.
+  const notSetUp = !!d && d.queues.length === 0;
   const total = (d?.queues ?? []).reduce((s, q) => s + q.count, 0);
   const critical = QUEUES.filter(q => q.severity === "critical").reduce((s, q) => s + (byKey.get(q.key)?.count ?? 0), 0);
 
@@ -57,6 +61,7 @@ export default function TodayPage() {
           <h1 className="text-xl font-extrabold text-brand-dark">Today</h1>
           <p className="text-sm text-ink-600">
             {loading ? "Checking the fleet…"
+              : notSetUp ? "Work queues aren't available yet — finish the setup below."
               : critical > 0 ? `${compact(critical)} account${critical === 1 ? "" : "s"} need attention now.`
               : total > 0 ? "Nothing urgent. A few things are worth a look."
               : "Nothing needs you."}
@@ -92,7 +97,23 @@ export default function TodayPage() {
 
       {loading && !d && <div className="flex justify-center py-16"><Spinner /></div>}
 
-      {d && total === 0 && (
+      {notSetUp && (
+        <Panel>
+          <div className="text-center py-10 px-6">
+            <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+            <p className="text-base font-extrabold text-ink-900">Two steps left to switch the queues on</p>
+            <ol className="text-[13px] text-ink-600 mt-2 max-w-md mx-auto leading-relaxed text-left list-decimal pl-5 space-y-1">
+              <li>Apply <code className="font-mono text-ink-900">supabase/migrations/0106_owner_console.sql</code> to production.</li>
+              <li>Let the <code className="font-mono text-ink-900">cron-tenant-metrics</code> job run once — it sweeps every 15 minutes.</li>
+            </ol>
+            <p className="text-[12px] text-ink-400 mt-3 max-w-md mx-auto">
+              Everything else works meanwhile: the tenant list, search, billing edits and impersonation are all unaffected.
+            </p>
+          </div>
+        </Panel>
+      )}
+
+      {d && !notSetUp && total === 0 && (
         <Panel>
           <div className="text-center py-10">
             <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-3" />

@@ -66,6 +66,7 @@ function TenantsInner() {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [confirmCfg, setConfirmCfg] = useState<ConfirmCfg | null>(null);
   const [plans, setPlans] = useState<string[]>([]);
+  const [degraded, setDegraded] = useState<string | null>(null);
 
   const debouncedQ = useDebounced(q, 300);
   const latest = useLatest();
@@ -92,6 +93,7 @@ function TenantsInner() {
       if (!latest.isCurrent(seq)) return;
       if (!r.ok || d.error) { setErr(d.error || `Couldn't load (HTTP ${r.status})`); return; }
       setErr(null);
+      setDegraded(d.degraded ? (d.degradedReason ?? "Fleet metrics aren't available yet.") : null);
       setRows(prev => nextCursor ? [...prev, ...(d.tenants ?? [])] : (d.tenants ?? []));
       setCursor(d.nextCursor ?? null);
       setHasMore(!!d.hasMore);
@@ -163,6 +165,12 @@ function TenantsInner() {
         {picked.size > 0 && (
           <BulkBar count={picked.size} plans={plans} ids={[...picked]}
             onDone={() => { setPicked(new Set()); load(); }} setConfirm={setConfirmCfg} />
+        )}
+
+        {degraded && (
+          <div className="m-3 bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5 text-[13px] text-amber-800 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{degraded}</span>
+          </div>
         )}
 
         {err && (

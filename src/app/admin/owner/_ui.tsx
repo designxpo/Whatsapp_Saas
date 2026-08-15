@@ -10,7 +10,7 @@
 // 700/800 are used elsewhere in the app but were never defined, so they silently
 // emit no colour — nothing here uses them.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X, Loader2, Search, Check } from "lucide-react";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -298,11 +298,19 @@ export function useDebounced<T>(value: T, ms = 300): T {
   return v;
 }
 
-/** Ignore a stale response that arrives after a newer one — classic search race. */
+/**
+ * Ignore a stale response that arrives after a newer one — classic search race.
+ *
+ * The returned object MUST be referentially stable: callers put it in a
+ * useCallback/useEffect dependency array, and a fresh object per render makes
+ * the loader re-created every render, which re-fires the effect, which sets
+ * state, which renders again — a request storm whose responses are then all
+ * "stale" by the time they land, so the spinner never clears.
+ */
 export function useLatest() {
   const seq = useRef(0);
-  return {
+  return useMemo(() => ({
     next: () => ++seq.current,
     isCurrent: (n: number) => n === seq.current,
-  };
+  }), []);
 }
