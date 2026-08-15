@@ -475,7 +475,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     const file = e.target.files?.[0];
     e.target.value = "";                       // allow re-picking the same file
     if (!file) return;
-    const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : "document";
+    const kind = file.type.startsWith("image/") ? "image" : file.type.startsWith("video/") ? "video" : file.type.startsWith("audio/") ? "audio" : "document";
     setUploading(true); setActError("");
     try {
       const fd = new FormData(); fd.append("file", file);
@@ -688,7 +688,8 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             <textarea className={`${inp} flex-1 resize-none`} rows={2} placeholder="Type a reply… (type / for quick replies, ⌘↵ to send)" value={reply}
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
               onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendReply(); }} />
-            <input ref={fileRef} type="file" accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
+            {/* mp3/m4a only for audio — WhatsApp accepts aac/amr/mpeg/mp4/ogg-opus, not wav. */}
+            <input ref={fileRef} type="file" accept="image/*,video/*,audio/mpeg,audio/mp4,.mp3,.m4a,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
             {/* All composer tools live in one menu so the reply box stays roomy. */}
             <div className="relative">
               <button onClick={() => setShowTools(s => !s)} title="Reply tools" className={`px-2.5 py-2 rounded-control border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-400 hover:bg-canvas"}`}>
@@ -704,7 +705,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                       { icon: <Sparkles className="w-4 h-4" />, label: "Rewrite my draft", on: () => setShowAssist(s => !s) },
                       { icon: <span className="text-base leading-none">⊞</span>, label: "Add reply buttons", on: () => setShowButtons(s => !s) },
                       ...(conv?.platform === "whatsapp" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
-                      { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo or file", on: () => fileRef.current?.click() },
+                      { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo, file or voice note", on: () => fileRef.current?.click() },
                     ].map(t => (
                       <button key={t.label} onClick={() => { setShowTools(false); t.on(); }} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-ink-600 hover:bg-canvas text-left">
                         <span className="text-ink-400 w-4 flex justify-center">{t.icon}</span> {t.label}

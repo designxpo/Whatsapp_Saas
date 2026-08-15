@@ -49,7 +49,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
@@ -156,14 +156,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // the byte-level check entirely. Screen it here rather than trust it.
       const url = (body.url ?? "").trim();
       const kind = body.kind;
-      if (!url || (kind !== "image" && kind !== "video" && kind !== "document")) {
-        return NextResponse.json({ error: "url and a valid kind (image|video|document) are required" }, { status: 400 });
+      if (!url || (kind !== "image" && kind !== "video" && kind !== "document" && kind !== "audio")) {
+        return NextResponse.json({ error: "url and a valid kind (image|video|document|audio) are required" }, { status: 400 });
       }
       if (kind === "image" && !(await moderateImageUrl(url, { tenantId: tid, surface: "upload" })).allowed) {
         return NextResponse.json({ error: "This image was blocked by the content safety filter." }, { status: 400 });
       }
       const caption = (body.caption ?? "").trim();
-      const mediaType = (body.mediaType ?? "").trim() || (kind === "image" ? "image/*" : kind === "video" ? "video/*" : "application/octet-stream");
+      const mediaType = (body.mediaType ?? "").trim() || (kind === "image" ? "image/*" : kind === "video" ? "video/*" : kind === "audio" ? "audio/*" : "application/octet-stream");
       const logged = caption || `[${kind}]`;
 
       let messageId: string | undefined;
@@ -195,6 +195,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         const sent = await sendMedia(conv.phone, kind, url, caption || undefined, channel);
         if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
         messageId = sent.id;
+        // WhatsApp drops captions on audio — send the agent's text as its own
+        // message so it isn't silently lost.
+        if (caption && kind === "audio") await sendText(conv.phone, caption, channel).catch(() => undefined);
         void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null, mediaUrl: url, mediaType });
