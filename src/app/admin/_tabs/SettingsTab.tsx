@@ -1939,11 +1939,18 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
               Chatbot flows, welcome/away messages and human agents keep working when it&apos;s off.
             </p>
           </div>
-          {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+          {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : isAdmin ? (
             <button onClick={toggleAi} disabled={saving}
               className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
               {aiOn ? "ON" : "OFF"}
             </button>
+          ) : (
+            /* Members can see the switch but not flip it — the API rejects it
+               ("Only admins can toggle the AI switch"), and the old optimistic
+               button showed the new state over that 403. */
+            <span title="Only an admin can change this" className={`px-3 py-1.5 rounded-full text-xs font-bold ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {aiOn ? "ON" : "OFF"}
+            </span>
           )}
         </div>
         {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}

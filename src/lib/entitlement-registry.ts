@@ -78,6 +78,30 @@ export function tabAllowed(tab: string, ent: Entitlements | null | undefined): b
   return ent.features[feat] === true;
 }
 
+// Admin tab key → the minimum ROLE that can use it (absent = any signed-in
+// member). Derived from the API guards behind each tab, not from intuition: a
+// tab is admin-only ONLY when its primary GET is requireRoleAdmin, so a member
+// would stare at a permanently empty screen whose every button 403s. Tabs that
+// merely restrict *some* writes stay open — Settings and Meta Ads already hide
+// their admin-only cards internally, and members legitimately broadcast, edit
+// templates, build flows and answer chats.
+export const TAB_MIN_ROLE: Record<string, "admin"> = {
+  sequences: "admin",      // GET /api/admin/sequences
+  catalog: "admin",        // GET /api/admin/products + /api/admin/orders
+  growth: "admin",         // GET /api/admin/growth
+  integrations: "admin",   // GET /api/admin/integrations
+  youtube: "admin",        // GET /api/admin/yt-channels
+};
+
+// Convenience: may this role open the tab? An unknown role (still loading) is
+// allowed so the nav never flickers items away mid-load — same rule tabAllowed
+// uses for a not-yet-resolved entitlements object. The platform owner's session
+// carries role "admin" (auth.ts), so the owner is never gated here.
+export function tabRoleAllowed(tab: string, role: string | null | undefined): boolean {
+  if (!role) return true;
+  return TAB_MIN_ROLE[tab] !== "admin" || role === "admin";
+}
+
 // ── Account / billing state ───────────────────────────────────────────────────
 // Derives whether the workspace is in good standing. Read-only soft block: when
 // not active, mutating actions are paused (data is never deleted) and a banner

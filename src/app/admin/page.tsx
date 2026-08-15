@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
-import { type Entitlements, tabAllowed, accountState } from "@/lib/entitlement-registry";
+import { type Entitlements, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
@@ -190,6 +190,12 @@ export default function Admin() {
   // fall back to Home so a hidden feature can never render.
   useEffect(() => { if (ent && !tabAllowed(tab, ent)) setTab("home"); }, [ent, tab]);
 
+  // A member who deep-links (?tab=growth) or follows an old bookmark to an
+  // admin-only tab gets an explanation instead of an empty list — the tab's own
+  // API would just 403 into a blank screen. Only evaluated once /api/admin/me
+  // has answered, so it never flashes for an admin.
+  const roleBlocked = !!me && !tabRoleAllowed(tab, me.role);
+
   const impersonating = !!me?.isPlatformOwner && !!me?.tenantId && me.tenantId !== DEFAULT_TENANT_ID;
   async function exitImpersonation() {
     await fetch("/api/owner/impersonate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reset: true }) }).catch(() => {});
@@ -230,7 +236,7 @@ export default function Admin() {
             entirely (when entitlement enforcement is on; otherwise all show). */}
         <nav className="flex-1 px-3 py-2 overflow-y-auto">
           {NAV_GROUPS.map(g => {
-            const items = g.items.filter(n => tabAllowed(n.key, ent));
+            const items = g.items.filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role));
             if (!items.length) return null;
             return (
             <div key={g.group} className="mb-4">
@@ -317,6 +323,7 @@ export default function Admin() {
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">
+          {roleBlocked ? <AdminOnlyTab title={TAB_TITLES[tab]} goTo={goTo} /> : <>
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
           {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
@@ -343,9 +350,23 @@ export default function Admin() {
           {tab === "setup" && <SetupTab goTo={goTo} />}
           {tab === "integrations" && <IntegrationsTab goTo={goTo} />}
           {tab === "settings" && <SettingsTab goTo={goTo} />}
+          </>}
         </main>
       </div>
-      {showTour && <Walkthrough goTo={goTo} onDone={() => setShowTour(false)} />}
+      {showTour && <Walkthrough goTo={goTo} role={me?.role} onDone={() => setShowTour(false)} />}
+    </div>
+  );
+}
+
+// Shown when a member opens an admin-only tab by URL. A read-only explanation
+// with a way out — never a blank screen and never a silent redirect.
+function AdminOnlyTab({ title, goTo }: { title: string; goTo: GoTo }) {
+  return (
+    <div className="max-w-md mx-auto mt-16 text-center space-y-3">
+      <div className="w-11 h-11 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center mx-auto"><ShieldCheck className="w-5 h-5" /></div>
+      <h2 className="text-lg font-extrabold text-ink-900">{title} is admin-only</h2>
+      <p className="text-sm text-ink-500">Your account is a <b>Member</b>, so this section is hidden. Ask a workspace admin to set it up for you — or to change your role in Settings &rarr; Team.</p>
+      <button onClick={() => goTo("home")} className={`${btnPrimary} mx-auto`}>Back to Home</button>
     </div>
   );
 }
@@ -360,15 +381,18 @@ const TOUR_STEPS: { title: string; body: string; tab?: Tab }[] = [
   { title: "Automate follow-ups", body: "Use Sequences for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.", tab: "sequences" },
   { title: "You're all set", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
 ];
-function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => void }) {
+function Walkthrough({ goTo, role, onDone }: { goTo: (t: Tab) => void; role?: string; onDone: () => void }) {
   const [i, setI] = useState(0);
-  const step = TOUR_STEPS[i];
+  // A member's tour skips any step that would land on an admin-only tab, so the
+  // walkthrough can never dead-end on the "admin-only" panel.
+  const steps = TOUR_STEPS.filter(st => tabRoleAllowed(st.tab ?? "home", role));
+  const step = steps[i];
   const finish = async () => { await fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {}); onDone(); };
-  const next = () => { const s = TOUR_STEPS[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= TOUR_STEPS.length) finish(); else setI(i + 1); };
+  const next = () => { const s = steps[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= steps.length) finish(); else setI(i + 1); };
   return (
     <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 u-fade-in">
       <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4 u-scale-in">
-        <div className="flex gap-1.5">{TOUR_STEPS.map((_, j) => <div key={j} className={`h-1.5 flex-1 rounded-full ${j <= i ? "bg-brand-700" : "bg-line"}`} />)}</div>
+        <div className="flex gap-1.5">{steps.map((_, j) => <div key={j} className={`h-1.5 flex-1 rounded-full ${j <= i ? "bg-brand-700" : "bg-line"}`} />)}</div>
         <div>
           <h3 className="text-lg font-extrabold text-ink-900">{step.title}</h3>
           <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{step.body}</p>
@@ -376,8 +400,8 @@ function Walkthrough({ goTo, onDone }: { goTo: (t: Tab) => void; onDone: () => v
         <div className="flex items-center justify-between pt-1">
           <button onClick={finish} className="text-xs font-semibold text-ink-400 hover:text-ink-700">Skip tour</button>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-ink-400">{i + 1} / {TOUR_STEPS.length}</span>
-            <button onClick={next} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{i + 1 >= TOUR_STEPS.length ? "Get started" : "Next"}</button>
+            <span className="text-[11px] text-ink-400">{i + 1} / {steps.length}</span>
+            <button onClick={next} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{i + 1 >= steps.length ? "Get started" : "Next"}</button>
           </div>
         </div>
       </div>
