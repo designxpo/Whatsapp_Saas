@@ -10,6 +10,7 @@ import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
 import { drainAiFollowups } from "@/lib/followups";
 import { drainCrmSync, crmSyncStats, flushCrmSessions } from "@/lib/leadsquared";
 import { drainAbandonedCarts } from "@/lib/commerce";
+import { drainIntegrationDeliveries } from "@/lib/integrations";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
 import { purgeOldAdChats } from "@/lib/adchats";
@@ -153,6 +154,16 @@ export async function POST(req: Request) {
       try { crmSessions = await flushCrmSessions(100, startedAt + DEADLINE); } catch (e) { console.error("[cron] crmsessions", e); }
     }
 
+    // Integration deliveries — replay webhook / Slack / Teams / HubSpot /
+    // Pipedrive events whose delivery failed retriably (endpoint 5xx, rate
+    // limit, network), re-sending the SAME envelope so a receiver that dedupes
+    // on X-Alabs-Delivery sees one event. All tenants; shares wa_crm_sync with
+    // the CRM queue (kind 'integration').
+    let integrationDeliveries = { replayed: 0, deferred: 0, dead: 0 };
+    if (Date.now() - startedAt < DEADLINE) {
+      try { integrationDeliveries = await drainIntegrationDeliveries(50, startedAt + DEADLINE); } catch (e) { console.error("[cron] integrationdeliveries", e); }
+    }
+
     // YouTube comment automation — poll connected channels for new comments and
     // apply rules (public reply + moderation) / AI answers. No-ops until a
     // YouTube channel is connected and the OAuth client is configured.
@@ -201,7 +212,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, escalationSweeps, kbSync, crmSync, crmSessions, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, escalationSweeps, kbSync, crmSync, crmSessions, integrationDeliveries, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

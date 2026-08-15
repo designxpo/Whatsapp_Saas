@@ -179,6 +179,22 @@ export function buildWebhookRequest(opts: {
   return { body, headers };
 }
 
+// Is a failed delivery worth retrying? Network/timeout/rate-limit/5xx are
+// transient; a 4xx is the tenant's endpoint saying "no" for good (and means a
+// chat destination never posted the message, so a replay can't double-post).
+// CRM kinds also retry 401/403 — their token is re-pastable and their deliver()
+// is idempotent (search-then-create), so fixing the key drains the backlog.
+// A missing/blocked URL is configuration, never transient.
+const RETRIABLE_DELIVERY_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
+export function isRetriableDelivery(kind: IntegrationKind, err: unknown): boolean {
+  const m = errorMessage(err);
+  if (/no url|invalid url|only http|host is not allowed|private or reserved|too many redirects/i.test(m)) return false;
+  const status = Number(m.match(/HTTP (\d{3})/)?.[1] ?? 0);
+  if (!status) return true;                                              // network / abort / timeout
+  if (CRM_KINDS.includes(kind) && (status === 401 || status === 403)) return true;
+  return RETRIABLE_DELIVERY_HTTP.has(status);
+}
+
 // Split a free-text name into first/last for CRM contact records.
 export function splitName(name: string | undefined): { first: string; last: string } {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
@@ -846,12 +862,133 @@ export async function emitEvent(
         // Only write on recovery; always stamp last_event_at (cheap visibility).
         await setStatus(i.id, tenantId, "connected", i.status === "connected" ? i.statusDetail : null, true);
       } catch (err) {
-        await setStatus(i.id, tenantId, "error", `Last delivery failed: ${errorMessage(err)}`.slice(0, 300), true);
+        const detail = errorMessage(err);
+        const retriable = isRetriableDelivery(i.kind, err);
+        await setStatus(i.id, tenantId, "error", `Last delivery failed: ${detail}${retriable ? " — queued for retry" : ""}`.slice(0, 300), true);
+        // Park transient failures so the cron replays the SAME envelope instead
+        // of losing the lead; a 4xx is permanent, so it stays a plain red card.
+        if (retriable) await enqueueDelivery(tenantId, i.id, envelope, detail);
       }
     }));
   } catch (err) {
     console.error("[integrations] emit failed:", errorMessage(err));
   }
+}
+
+// ── Delivery retry queue (wa_crm_sync, 0077) ──────────────────────────────────
+// A blip (endpoint 502, HubSpot 429, a killed serverless invocation) used to
+// lose the event forever — emitEvent only reddened the card. Retriable failures
+// now park in the SAME queue LeadSquared uses, under kind 'integration' with the
+// integration id + the EXACT envelope as payload; the per-minute cron replays
+// with backoff, deletes on success, dead-letters after the cap. Re-sending the
+// stored envelope keeps X-Alabs-Delivery and the HMAC identical, so a receiver
+// that dedupes on the delivery id sees one event, not two.
+
+const DELIVERY_MAX_ATTEMPTS = 6;
+const DELIVERY_BACKOFF_MIN = [1, 5, 15, 60, 180, 360];   // minutes by attempt #
+const DELIVERY_QUEUE_CAP = 1000;                          // per tenant — a dead endpoint must not flood the table
+
+interface QueuedDelivery { integrationId: string; envelope: EventEnvelope }
+type DeliveryResult = { ok: true } | { ok: false; retriable: boolean; error: string };
+
+// Park one failed delivery. Swallows DB errors (a missing table must never break
+// message handling) but says why, loudly.
+async function enqueueDelivery(tenantId: string, integrationId: string, envelope: EventEnvelope, error: string): Promise<void> {
+  try {
+    const { count } = await tdb(tenantId).from("wa_crm_sync")
+      .select("id", { count: "exact", head: true }).eq("kind", "integration").eq("status", "pending");
+    if ((count ?? 0) >= DELIVERY_QUEUE_CAP) {
+      console.error(`[integrations] delivery queue full (${count}) — dropping ${envelope.event} for ${integrationId}`);
+      return;
+    }
+    const payload: QueuedDelivery = { integrationId, envelope };
+    const { error: dbErr } = await tdb(tenantId).from("wa_crm_sync").insert({
+      kind: "integration", payload,
+      last_error: error.slice(0, 500),
+      next_attempt_at: new Date(Date.now() + 60_000).toISOString(),
+    });
+    if (dbErr) throw dbErr;
+  } catch (err) {
+    console.error(`[integrations] could not queue delivery (migration 0077 applied?): ${errorMessage(err)}`);
+  }
+}
+
+// One replay attempt. A connection deleted / paused / unsubscribed since queuing
+// is a clean drop (the tenant no longer wants it); a lookup that ERRORS is
+// retriable — a DB blip must not destroy the backlog.
+async function replayDelivery(tenantId: string, p: QueuedDelivery): Promise<DeliveryResult> {
+  const { data, error } = await tdb(tenantId).from("wa_integrations").select("*").eq("id", p.integrationId).maybeSingle();
+  if (error) return { ok: false, retriable: true, error: `integration lookup failed: ${error.message}` };
+  if (!data) return { ok: true };
+  const i = mapRow(data as unknown as Record<string, unknown>);
+  const connector = CONNECTORS[i.kind];
+  if (!i.active || !i.events.includes(p.envelope.event) || !connector?.deliver) return { ok: true };
+  try {
+    await connector.deliver(i, await getSecret(i.id, tenantId), p.envelope);
+    await setStatus(i.id, tenantId, "connected", null, true);
+    return { ok: true };
+  } catch (err) {
+    const detail = errorMessage(err);
+    const retriable = isRetriableDelivery(i.kind, err);
+    await setStatus(i.id, tenantId, "error", `Last delivery failed: ${detail}${retriable ? " — queued for retry" : ""}`.slice(0, 300), true);
+    return { ok: false, retriable, error: detail };
+  }
+}
+
+// Replay due delivery rows across ALL tenants. Soft-claims each row (CAS on
+// next_attempt_at, exactly like drainCrmSync) so overlapping cron ticks can't
+// double-post, and stops at the tick's deadline. Prunes dead rows after 14 days.
+export async function drainIntegrationDeliveries(limit = 50, deadlineAt?: number): Promise<{ replayed: number; deferred: number; dead: number }> {
+  let replayed = 0, deferred = 0, dead = 0;
+  try {
+    const { data, error } = await db().from("wa_crm_sync")
+      .select("*").eq("kind", "integration").eq("status", "pending").lte("next_attempt_at", new Date().toISOString())
+      .order("next_attempt_at").limit(limit);
+    if (error) throw error;
+
+    for (const row of (data ?? []) as unknown as { id: string; tenant_id: string; payload: QueuedDelivery; attempts: number; next_attempt_at: string }[]) {
+      if (deadlineAt && Date.now() > deadlineAt) break;
+      // Soft claim — only the tick that still sees the exact next_attempt_at wins.
+      const lease = new Date(Date.now() + 5 * 60_000).toISOString();
+      const claimed = await db().from("wa_crm_sync")
+        .update({ next_attempt_at: lease })
+        .eq("id", row.id).eq("status", "pending").eq("next_attempt_at", row.next_attempt_at)
+        .select("id");
+      if (!claimed.data?.length) continue;
+
+      const r = await replayDelivery(row.tenant_id, row.payload)
+        .catch((err): DeliveryResult => ({ ok: false, retriable: true, error: errorMessage(err) }));
+
+      if (r.ok) {
+        const del = await db().from("wa_crm_sync").delete().eq("id", row.id);
+        // A failed delete leaves the row leased → it replays in ~5 min → a
+        // duplicate delivery. Log it so duplicates are explainable.
+        if (del.error) console.error(`[integrations] delivery replayed but delete failed (row ${row.id} will duplicate): ${del.error.message}`);
+        replayed++;
+        continue;
+      }
+      const attempts = (row.attempts ?? 0) + 1;
+      if (attempts >= DELIVERY_MAX_ATTEMPTS || !r.retriable) {
+        await db().from("wa_crm_sync").update({ status: "dead", attempts, last_error: r.error.slice(0, 500) }).eq("id", row.id);
+        console.error(`[integrations] delivery dead-lettered after ${attempts} attempt(s): ${r.error}`);
+        dead++;
+      } else {
+        const mins = DELIVERY_BACKOFF_MIN[Math.min(attempts, DELIVERY_BACKOFF_MIN.length - 1)];
+        await db().from("wa_crm_sync").update({
+          attempts, last_error: r.error.slice(0, 500),
+          next_attempt_at: new Date(Date.now() + mins * 60_000).toISOString(),
+        }).eq("id", row.id);
+        deferred++;
+      }
+    }
+
+    // Housekeeping: dead rows are kept 14 days for inspection, then pruned.
+    await db().from("wa_crm_sync").delete().eq("kind", "integration").eq("status", "dead")
+      .lt("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString());
+  } catch (err) {
+    console.error("[integrations] drainIntegrationDeliveries failed:", errorMessage(err));
+  }
+  return { replayed, deferred, dead };
 }
 
 // DB-only rollup for the platform-owner health view (no network). Returns the

@@ -782,8 +782,8 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
   let replayed = 0, deferred = 0, dead = 0;
   try {
     const { data, error } = await db().from("wa_crm_sync")
-      .select("*").eq("status", "pending").lte("next_attempt_at", new Date().toISOString())
-      .order("next_attempt_at").limit(limit);
+      .select("*").in("kind", ["wa", "chat"]).eq("status", "pending").lte("next_attempt_at", new Date().toISOString())
+      .order("next_attempt_at").limit(limit);   // kind filter: integrations park their own deliveries here (kind 'integration')
     if (error) throw error;
 
     for (const row of (data ?? []) as { id: string; kind: string; payload: unknown; attempts: number; next_attempt_at: string }[]) {
@@ -832,7 +832,7 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
     }
 
     // Housekeeping: dead rows are kept 14 days for inspection, then pruned.
-    await db().from("wa_crm_sync").delete().eq("status", "dead")
+    await db().from("wa_crm_sync").delete().in("kind", ["wa", "chat"]).eq("status", "dead")
       .lt("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString());
   } catch (err) {
     console.error("[leadsquared] drainCrmSync failed:", errorMessage(err));
@@ -902,7 +902,7 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
 export async function crmSyncStats(tenantId?: string): Promise<{ pending: number; dead: number; broken?: string }> {
   try {
     const base = () => {
-      let q = db().from("wa_crm_sync").select("id", { count: "exact", head: true });
+      let q = db().from("wa_crm_sync").select("id", { count: "exact", head: true }).in("kind", ["wa", "chat"]);   // LSQ rows only — the table is shared
       if (tenantId) q = q.eq("tenant_id", tenantId);
       return q;
     };
