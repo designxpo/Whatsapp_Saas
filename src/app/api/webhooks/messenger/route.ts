@@ -283,6 +283,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
     await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+    await touchInbound(conv.id, `[comment] ${text}`);   // bump so the thread sorts to the top of Live Chat
     await aiRespond(channel, conv, text, commentId);
     return;
   }
@@ -296,6 +297,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const conv = await getOrCreateConversation(fromId, fromName, channel.id, "messenger", tid);
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+  await touchInbound(conv.id, `[comment] ${text}`);   // bump so the thread sorts to the top of Live Chat
 
   const creds = credsOf(channel);
 
@@ -346,6 +348,7 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
   await setConversationComment(conv.id, true);
   if (!conv.botEnabled) return;   // a human is handling this thread
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${fu.text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+  await touchInbound(conv.id, `[comment] ${fu.text}`);   // bump so the thread sorts to the top of Live Chat
   const history = [
     { role: "user" as const, body: watch.originalText, mediaUrl: null, mediaType: null },
     { role: "assistant" as const, body: watch.replyText, mediaUrl: null, mediaType: null },
