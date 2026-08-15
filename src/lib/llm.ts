@@ -486,6 +486,10 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     // Pay-link URLs minted by the checkout tool this turn — whitelisted past the
     // grounding firewall (which otherwise strips any link not in the RAG context).
     const payLinks: string[] = [];
+    // Same problem, prices: the catalog/cart figures the commerce tools handed the
+    // model came from OUR tables, so they're grounded by definition — but the
+    // firewall only trusts the RAG context and would defer the whole sentence.
+    const toolFacts: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       // Ample token headroom so a heavy thinking pass (which counts against the
@@ -509,6 +513,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
           if (hasCommerce && commerce && phone && COMMERCE_FN_NAMES.has(c.name)) {
             const r = await executeCommerceTool(c.name, c.args, phone, tenantId, commerce);
             if (r.payUrl) payLinks.push(r.payUrl);
+            toolFacts.push(r.status);
             executed.push(c.name);
             results.push({ id: c.id, name: c.name, status: r.status });
             continue;
@@ -530,7 +535,11 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       // context or the approved contact config — else rewrite/strip/defer it.
       // A freshly minted pay link is legitimately not in the RAG context — add it
       // to the allow-set so the firewall keeps it (its domain becomes grounded).
-      const guardContext = payLinks.length ? `${context}\nPayment links: ${payLinks.join(" ")}` : context;
+      // The commerce tools' own output joins it for the same reason: those prices
+      // are read straight from the tenant's catalog and cart, so a reply quoting
+      // them was otherwise deferred to "our team will share the exact fees".
+      let guardContext = payLinks.length ? `${context}\nPayment links: ${payLinks.join(" ")}` : context;
+      if (toolFacts.length) guardContext += `\nFrom our catalog and cart:\n${toolFacts.join("\n")}`;
       const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context: guardContext, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
       const text = guarded.text;
       if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));

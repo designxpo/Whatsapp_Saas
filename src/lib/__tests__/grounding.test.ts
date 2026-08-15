@@ -122,3 +122,32 @@ describe("sanitizeOutbound — composed persona + grounding chokepoint", () => {
     expect(sanitizeOutbound("Hi there! 👋 How can I help you today?", { context: "" }).text).toBe("Hi there! 👋 How can I help you today?");
   });
 });
+
+// Live bug: the commerce tools read prices straight from the tenant's own
+// catalog/cart tables, but the firewall's allow-set was built from the RAG
+// context alone — so "That's INR 1299.00" was deleted and the customer got
+// "our team will share the exact fees" instead of the real price. llm.ts now
+// folds each commerce tool's status line into the guard context, exactly as it
+// already did for freshly minted pay links.
+describe("GroundingFirewall — commerce tool output is grounded (the vanishing-price bug)", () => {
+  const REPLY = "The Vitamin C Glow Serum is INR 1299.00.";
+
+  it("defers a catalog price that reaches it with no supporting context", () => {
+    const r = enforceGrounding(REPLY, "");
+    expect(r.text).not.toContain("1299");
+    expect(r.actions.some(a => a.cls === "CURRENCY")).toBe(true);
+  });
+
+  it("keeps it once the tool's own status line is in the guard context", () => {
+    const toolStatus = "• Vitamin C Glow Serum — INR 1299.00";
+    const r = enforceGrounding(REPLY, `\nFrom our catalog and cart:\n${toolStatus}`);
+    expect(r.text).toContain("INR 1299.00");
+    expect(r.actions.some(a => a.cls === "CURRENCY")).toBe(false);
+  });
+
+  it("still defers a price the tools never quoted, on the same turn", () => {
+    const toolStatus = "• Vitamin C Glow Serum — INR 1299.00";
+    const r = enforceGrounding("Shipping is INR 250.00 extra.", `\nFrom our catalog and cart:\n${toolStatus}`);
+    expect(r.text).not.toContain("250");
+  });
+});
