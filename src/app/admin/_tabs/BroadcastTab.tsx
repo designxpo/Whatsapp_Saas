@@ -4,6 +4,7 @@
 // (Automations), and the BroadcastRail. Extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
 import { Check, Copy, FlaskConical, Globe, Image as ImageIcon, Loader2, Plus, Send, Trash2, Zap, X } from "lucide-react";
+import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics } from "../_shared";
 
 const TIER_LABELS: Record<string, string> = {
@@ -212,9 +213,12 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         key: audMode === "attribute" ? attrKey.trim() : undefined,
         value: audMode === "attribute" ? attrValue.trim() : undefined,
       };
-      const res = await fetch("/api/admin/broadcast", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const d = await res.json();
-      if (!res.ok || !d.success) setError(d.error || "Failed"); else setResult(d.message);
+      // A stale deploy answers with Next's HTML 404, so res.json() used to throw
+      // and the cause surfaced as "Connection error". adminFetch names it instead.
+      const r = await adminFetch<{ success?: boolean; message?: string; error?: string }>("/api/admin/broadcast", { method: "POST", body });
+      if (!r.ok) setError(r.error);
+      else if (!r.data.success) setError(r.data.error || "Failed");
+      else setResult(r.data.message ?? null);
     } catch { setError("Connection error"); }
     finally { setSending(false); }
   }
@@ -229,17 +233,17 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     if (phone.replace(/\D/g, "").length < 10) { setTestMsg({ ok: false, text: "Enter a number with country code, e.g. 919876543210" }); return; }
     setTesting(true);
     try {
-      const res = await fetch("/api/admin/broadcast/test", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const r = await adminFetch<{ success?: boolean; error?: string }>("/api/admin/broadcast/test", {
+        method: "POST",
+        body: {
           phone: phone.trim(), name: rest.join(",").trim() || undefined,
           templateName: templateName.trim(), languageCode: languageCode.trim() || "en_US",
           variables: variables.split(/\r?\n/).map(v => v.trim()).filter(Boolean),
           headerImageUrl: headerImageUrl.trim() || null, channelId,
-        }),
+        },
       });
-      const d = await res.json();
-      setTestMsg(res.ok && d.success ? { ok: true, text: `Test sent to ${phone.trim()} — check the phone.` } : { ok: false, text: d.error || "Test send failed" });
+      if (!r.ok) setTestMsg({ ok: false, text: r.error });
+      else setTestMsg(r.data.success ? { ok: true, text: `Test sent to ${phone.trim()} — check the phone.` } : { ok: false, text: r.data.error || "Test send failed" });
     } catch { setTestMsg({ ok: false, text: "Connection error" }); }
     finally { setTesting(false); }
   }

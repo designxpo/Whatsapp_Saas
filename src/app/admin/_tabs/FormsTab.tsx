@@ -4,6 +4,7 @@
 // from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
+import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
@@ -57,7 +58,14 @@ type FormResp = { id: string; phone: string; formId: string | null; status: stri
 function FormResponsesPanel() {
   const [responses, setResponses] = useState<FormResp[]>([]);
   const [open, setOpen] = useState(false);
-  const load = useCallback(() => { fetch("/api/admin/form-responses").then(r => r.json()).then(d => setResponses(d.responses ?? [])).catch(() => {}); }, []);
+  const [err, setErr] = useState<string | null>(null);
+  // A swallowed load rendered as "No form responses yet." — indistinguishable
+  // from a form nobody filled in. Say which one it actually is.
+  const load = useCallback(async () => {
+    const r = await adminFetch<{ responses?: FormResp[] }>("/api/admin/form-responses");
+    if (!r.ok) { setErr(r.error); return; }
+    setErr(null); setResponses(r.data.responses ?? []);
+  }, []);
   useEffect(() => { if (open) load(); }, [open, load]);
   const submitted = responses.filter(r => r.status === "submitted").length;
   const abandoned = responses.filter(r => r.status === "abandoned").length;
@@ -68,7 +76,7 @@ function FormResponsesPanel() {
         <span className="text-sm font-bold text-ink-900 flex items-center gap-2"><ClipboardList className="w-4 h-4 text-brand-700" /> Form responses</span>
         <span className="text-[11px] text-ink-400">{submitted} submitted · {abandoned} abandoned · {open ? "hide" : "show"}</span>
       </button>
-      {open && (responses.length ? (
+      {open && (err ? <p className="text-xs text-red-600">Couldn&apos;t load form responses — {err}</p> : responses.length ? (
         <div className="space-y-1.5 max-h-96 overflow-y-auto">
           {responses.map(r => (
             <div key={r.id} className="border border-line rounded-control px-3 py-2">
@@ -224,8 +232,11 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
 
   async function remove(f: WaFormRow) {
-    if (!confirm(`${f.status === "PUBLISHED" ? "Deprecate" : "Delete"} form "${f.name}"?`)) return;
-    await fetch("/api/admin/waforms", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, channelId }) });
+    const verb = f.status === "PUBLISHED" ? "Deprecate" : "Delete";
+    if (!confirm(`${verb} form "${f.name}"?`)) return;
+    setMsg(null);
+    const r = await adminFetch("/api/admin/waforms", { method: "DELETE", body: { id: f.id, channelId } });
+    if (!r.ok) { setMsg(`${verb} failed — ${r.error}`); return; }
     load();
   }
 

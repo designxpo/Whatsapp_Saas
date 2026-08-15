@@ -2,19 +2,36 @@
 
 // Opt-outs tab (+ its sidebar rail) — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
+import { adminFetch } from "@/lib/adminfetch";
 import { inp, RailCard, StatRow } from "../_shared";
 
+type Optout = { phone: string; reason: string | null; createdAt?: string };
+
 function OptoutsTab() {
-  const [list, setList] = useState<{ phone: string; reason: string | null; createdAt?: string }[]>([]);
+  const [list, setList] = useState<Optout[]>([]);
   const [phone, setPhone] = useState("");
   const [search, setSearch] = useState("");
-  const load = useCallback(() => { fetch("/api/admin/optouts").then(r => r.json()).then(d => setList(d.optouts ?? [])).catch(() => {}); }, []);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const r = await adminFetch<{ optouts?: Optout[] }>("/api/admin/optouts");
+    if (!r.ok) { setErr(`Couldn't load the opt-out list — ${r.error}`); return; }
+    setErr(null); setList(r.data.optouts ?? []);
+  }, []);
   useEffect(() => { load(); }, [load]);
-  async function add() { if (!phone.trim()) return; await fetch("/api/admin/optouts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: phone.trim(), reason: "added by team" }) }); setPhone(""); load(); }
+  // A suppress that fails silently keeps broadcasting to someone who asked to
+  // stop — the one failure here that costs the number its quality rating. Say
+  // so, and keep the typed number so it can be retried.
+  async function add() {
+    if (!phone.trim()) return;
+    const r = await adminFetch("/api/admin/optouts", { method: "POST", body: { phone: phone.trim(), reason: "added by team" } });
+    if (!r.ok) { setErr(`Couldn't suppress ${phone.trim()} — ${r.error}`); return; }
+    setErr(null); setPhone(""); load();
+  }
   async function remove(p: string) {
     if (!confirm(`Remove ${p} from the opt-out list? They will start receiving broadcasts again.`)) return;
-    await fetch("/api/admin/optouts", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: p }) });
-    load();
+    const r = await adminFetch("/api/admin/optouts", { method: "DELETE", body: { phone: p } });
+    if (!r.ok) { setErr(`Couldn't remove ${p} — ${r.error}`); return; }
+    setErr(null); load();
   }
   const visible = list.filter(o => !search.trim() || o.phone.includes(search.replace(/\D/g, "")));
   return (
@@ -24,6 +41,7 @@ function OptoutsTab() {
         <h2 className="text-xl font-extrabold text-brand-dark">Opt-outs</h2>
         <p className="text-sm text-slate-500">Numbers that asked to stop hearing from you. Every broadcast, auto-send, and AI reply skips them automatically.</p>
       </div>
+      {err && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{err}</div>}
       <div className="flex gap-2">
         <input className={`${inp} flex-1`} placeholder="Number to suppress — e.g. 919876543210" value={phone} onChange={e => setPhone(e.target.value)} onKeyDown={e => { if (e.key === "Enter") add(); }} />
         <button onClick={add} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold">Add</button>
