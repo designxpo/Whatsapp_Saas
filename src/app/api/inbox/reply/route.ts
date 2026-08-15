@@ -10,6 +10,7 @@ import { sendIgMessage } from "@/lib/instagram";
 import { sendFbMessage } from "@/lib/messenger";
 import { credsFor, getChannel } from "@/lib/channels";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
 
   let body: {
     conversationId?: string; phone?: string; name?: string; message?: string;

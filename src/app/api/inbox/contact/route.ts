@@ -4,6 +4,7 @@ import { getConversation, getContactByPhone, getContactByPhoneLoose, updateConta
 import { listOrders } from "@/lib/commerce";
 import { listStages, getContactStage, moveContact, applyStageEffects } from "@/lib/pipeline";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,7 @@ async function resolveContact(tenantId: string, conversationId: string | null, p
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   const sp = new URL(req.url).searchParams;
 
   try {
@@ -72,6 +74,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   let body: { conversationId?: string; phone?: string; action?: string; tags?: string[]; note?: string; stageId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

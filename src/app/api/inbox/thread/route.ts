@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { getConversation, getConversationByPhone, getConvHistory, getContactByPhone } from "@/lib/store";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   const url = new URL(req.url);
   const convId = url.searchParams.get("conversationId");
   const phone = (url.searchParams.get("phone") ?? "").replace(/\D/g, "");

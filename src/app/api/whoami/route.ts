@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { getTenant } from "@/lib/tenants";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/whoami — a tiny, side-effect-free identity check for API-key clients
-// (the browser extension, integrations, scripts). Confirms a key is valid and
-// tells the caller which workspace it belongs to, so a tool can show "Connected
-// to <workspace>" instead of guessing. Auth: Authorization: Bearer <ak_live_… key>.
+// GET /api/whoami — a tiny, side-effect-free identity check for the browser
+// extension (this is its connect/"Test connection" step). Confirms a key is
+// valid and tells the caller which workspace it belongs to, so the popup can
+// show "Connected to <workspace>" instead of guessing. Gated on the "extension"
+// feature — Creator/Starter plans don't include Copilot.
+// Auth: Authorization: Bearer <ak_live_… key>.
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   // Best-effort friendly name; a valid key still returns ok even if the lookup fails.
   const tenant = await getTenant(tenantId).catch(() => null);
   return NextResponse.json({

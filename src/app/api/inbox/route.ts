@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { listConversations, type Conversation, type ConvPlatform } from "@/lib/store";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ const matchesStatus = (c: Conversation, f: StatusFilter) =>
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   const sp = new URL(req.url).searchParams;
   const limit = Math.min(100, Math.max(1, Number(sp.get("limit")) || 50));
   const view = sp.get("view") === "comments" ? "comments" : "chats";

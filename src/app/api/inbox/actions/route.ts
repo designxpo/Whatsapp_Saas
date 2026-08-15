@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { getConversation, setBotEnabled, setConversationStatus } from "@/lib/store";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   let body: { conversationId?: string; action?: string; enabled?: boolean; status?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.conversationId) return NextResponse.json({ error: "conversationId required" }, { status: 400 });

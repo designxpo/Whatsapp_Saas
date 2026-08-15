@@ -3,6 +3,7 @@ import { apiKeyTenant } from "@/lib/apiauth";
 import { getConversation } from "@/lib/store";
 import { credsFor, listChannels } from "@/lib/channels";
 import { fetchTemplates, bodyParamCount } from "@/lib/whatsapp";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,7 @@ async function waCreds(conversationId: string | null, tenantId: string) {
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   try {
     const channel = await waCreds(new URL(req.url).searchParams.get("conversationId"), tenantId);
     if (!channel) return NextResponse.json({ templates: [], notice: "Connect a WhatsApp number first." });

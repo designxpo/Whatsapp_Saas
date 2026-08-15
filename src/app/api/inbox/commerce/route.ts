@@ -3,6 +3,7 @@ import { apiKeyTenant } from "@/lib/apiauth";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, getProduct, type CartItem } from "@/lib/commerce";
 import { getConversation } from "@/lib/store";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ async function orderPhone(tenantId: string, conversationId?: string | null, phon
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   const sp = new URL(req.url).searchParams;
   const q = (sp.get("q") ?? "").trim().toLowerCase();
 
@@ -63,6 +65,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   let body: { conversationId?: string; phone?: string; action?: string; items?: { productId: string; qty?: number }[] };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

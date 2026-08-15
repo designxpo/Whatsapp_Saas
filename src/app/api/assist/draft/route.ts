@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { generateReviewReply } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60; // LLM call
@@ -16,6 +17,7 @@ export const maxDuration = 60; // LLM call
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
   let body: { text?: string; author?: string; kind?: string; rating?: number; businessName?: string; tone?: string; signature?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
