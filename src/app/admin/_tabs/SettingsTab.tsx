@@ -1224,19 +1224,19 @@ export function MessengerCard() {
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
-  // Connect a Page via Facebook Login — grants pages_manage_engagement (public
-  // comment replies) + pages_messaging etc., and stores the Page's OWN token, so
-  // the token can never be missing a scope the way a hand-pasted one can. When the
-  // login exposes more than one Page, we re-run it with the chosen pageId (a fresh
+  // Connect a Page via Facebook Login for Business (config_id-based, same
+  // mechanism as WhatsApp/Instagram) — the permission bundle lives in the Meta
+  // dashboard config, not here, and stores the Page's OWN token. When the login
+  // exposes more than one Page, we re-run it with the chosen pageId (a fresh
   // code, no re-consent) so Page tokens never reach the browser.
   async function connectWithFacebook(pageId?: string) {
     if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`); return; }
     setBusy(true); setMsg(null);
     try {
-      const { token } = await launchFacebookSignup();
+      const { code } = await launchFacebookSignup();
       const res = await fetch("/api/admin/onboarding/messenger", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userToken: token, pageId }),
+        body: JSON.stringify({ code, pageId }),
       });
       const d = await res.json();
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }

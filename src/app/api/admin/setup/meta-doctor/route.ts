@@ -85,6 +85,20 @@ export async function GET(req: Request) {
     });
   }
 
+  // 2b. Facebook Page (Messenger) embedded signup — config-based, same shape as WA/IG.
+  {
+    const names = ["NEXT_PUBLIC_META_APP_ID", "NEXT_PUBLIC_META_MESSENGER_CONFIG_ID", "META_APP_ID", "META_APP_SECRET"];
+    const missing = names.filter(n => bad(env(n)));
+    checks.push({
+      key: "messenger_signup", title: "Facebook Page “Connect with Facebook” (embedded signup)",
+      status: missing.length ? "error" : "ok",
+      detail: describe(names),
+      hint: missing.length
+        ? `Fill: ${missing.join(", ")} (same redeploy rule for NEXT_PUBLIC_*). Needs its own "Facebook Login for Business" configuration in the Meta dashboard, same as WhatsApp/Instagram.`
+        : undefined,
+    });
+  }
+
   // 3. Live app-credential validation.
   checks.push(await checkAppCredentials());
 

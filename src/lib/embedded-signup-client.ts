@@ -8,19 +8,14 @@
 //   NEXT_PUBLIC_META_APP_ID
 //   NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID   (WhatsApp config)
 //   NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID         (Instagram config)
+//   NEXT_PUBLIC_META_MESSENGER_CONFIG_ID         (Facebook Page config)
 //   NEXT_PUBLIC_META_GRAPH_VERSION               (optional, defaults v22.0)
 
 const GRAPH_VERSION = process.env.NEXT_PUBLIC_META_GRAPH_VERSION || "v22.0";
 const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
-// Facebook Login for the Messenger (Page) channel uses plain scope-based login —
-// only the app id is required (no separate "Login for Business" config to create).
-// Kept to permissions the app actually has: pages_read_user_content is omitted
-// (not enabled on the app → Meta rejects the whole dialog as "Invalid Scopes";
-// comment text arrives in the webhook payload, so it isn't needed). Reply/like/hide
-// use pages_manage_engagement; DMs use pages_messaging.
-const FB_PAGE_SCOPES = "pages_show_list,pages_messaging,pages_manage_engagement,pages_read_engagement";
+const FB_CONFIG_ID = process.env.NEXT_PUBLIC_META_MESSENGER_CONFIG_ID;
 
 interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
 interface FbBusinessLoginOptions {
@@ -29,10 +24,9 @@ interface FbBusinessLoginOptions {
   override_default_response_type: boolean;
   extras?: Record<string, unknown>;
 }
-interface FbClassicLoginOptions { scope: string; return_scopes?: boolean }
 interface FbSdk {
   init(opts: { appId: string; autoLogAppEvents?: boolean; xfbml?: boolean; version: string }): void;
-  login(cb: (r: FbLoginResponse) => void, opts: FbBusinessLoginOptions | FbClassicLoginOptions): void;
+  login(cb: (r: FbLoginResponse) => void, opts: FbBusinessLoginOptions): void;
 }
 declare global {
   interface Window { FB?: FbSdk; fbAsyncInit?: () => void }
@@ -40,8 +34,7 @@ declare global {
 
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
-// Facebook Page login needs only the app id (plain scope-based login).
-export const facebookSignupReady = () => !!APP_ID;
+export const facebookSignupReady = () => !!APP_ID && !!FB_CONFIG_ID;
 
 // Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
 // the client bundle at build time, so fixing them requires a redeploy).
@@ -50,7 +43,7 @@ export const whatsappSignupMissing = (): string[] =>
 export const instagramSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
 export const facebookSignupMissing = (): string[] =>
-  [!APP_ID && "NEXT_PUBLIC_META_APP_ID"].filter(Boolean) as string[];
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_MESSENGER_CONFIG_ID"].filter(Boolean) as string[];
 
 // Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
 // buttons even before the Meta Tech Provider app is configured, so the operator
@@ -168,17 +161,23 @@ export async function launchInstagramSignup(): Promise<{ code: string }> {
   });
 }
 
-// Facebook Login for the Messenger (Page) channel → { token }. Plain scope-based
-// login (only the app id is needed) returns a short-lived USER access token; the
-// onboarding route exchanges it for a long-lived one and derives the Page tokens.
-// Re-invoked (no re-consent) when the user picks among multiple Pages.
-export async function launchFacebookSignup(): Promise<{ token: string }> {
+// Facebook Login for Business (Messenger Page channel) → { code }. The Page(s)
+// are resolved server-side from the exchanged token (see the onboarding route),
+// same as Instagram. Re-invoked (no re-consent) when the user picks among
+// multiple Pages — a Login-for-Business code is single-use, so a fresh popup
+// call mints a fresh one, exactly like WhatsApp's "coex" retry already does.
+export async function launchFacebookSignup(): Promise<{ code: string }> {
   await loadSdk();
+  if (!FB_CONFIG_ID) throw new Error("Facebook Page sign-up is not configured yet");
   return new Promise((resolve, reject) => {
     window.FB!.login((response) => {
-      const token = response?.authResponse?.accessToken;
-      if (!token) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
-      resolve({ token });
-    }, { scope: FB_PAGE_SCOPES, return_scopes: true });
+      const code = response?.authResponse?.code;
+      if (!code) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
+      resolve({ code });
+    }, {
+      config_id: FB_CONFIG_ID,
+      response_type: "code",
+      override_default_response_type: true,
+    });
   });
 }

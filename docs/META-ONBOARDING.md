@@ -123,11 +123,20 @@ In **App Review → Permissions and Features**, request **Advanced Access** for:
 
 **Pages / Messenger**
 - [ ] `pages_messaging`
-- [ ] `pages_manage_engagement`
 - [ ] `pages_read_engagement`
 - [ ] `pages_show_list`
 - [ ] `pages_manage_metadata`
 - [ ] `business_management`
+- [ ] `pages_read_user_content` — needed for comment-to-DM (private reply to a
+      comment). Not yet approved for public use as of this writing; the
+      Messenger Login config should ship WITHOUT it until Meta approves it
+      (see the App Review submission notes below), or every tenant's connect
+      flow breaks the same way an earlier unapproved scope did.
+- [ ] `pages_manage_engagement` — powers public comment replies + auto-like.
+      **Parked**: not currently requested in the Messenger Login config (not
+      approved, and the feature is deprioritized for now). Add back to the
+      config once approved, if the feature is revived — no code change
+      needed, the scope list lives in the Meta config, not in this repo.
 
 For each, provide: a clear use-case description, the screen recording of the connect
 flow, and step-by-step reviewer instructions (test login → click "Connect with
@@ -153,7 +162,14 @@ These produce the `config_id`s the front-end popup uses.
    - In **Facebook Login for Business → Configurations**, create a configuration that
      requests the Instagram + Pages permissions from Step 4.
    - Copy its **Configuration ID** → `NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID`.
-3. In **Facebook Login for Business → Settings**, add to **Allowed Domains for the
+3. **Messenger (Facebook Page) config**
+   - In **Facebook Login for Business → Configurations**, create a configuration
+     requesting `pages_show_list`, `pages_messaging`, `pages_read_engagement` (and
+     `pages_manage_metadata`, needed for the webhook feed-field subscription).
+     Only include `pages_read_user_content` once it's genuinely Approved in App
+     Review — see the note in Step 4.
+   - Copy its **Configuration ID** → `NEXT_PUBLIC_META_MESSENGER_CONFIG_ID`.
+4. In **Facebook Login for Business → Settings**, add to **Allowed Domains for the
    JavaScript SDK:** `https://app.thetalko.in`.
 
 ---
@@ -173,13 +189,15 @@ Preview if you want it there too), then **redeploy**.
 | `NEXT_PUBLIC_META_APP_ID` | App ID (same as above) | **public** |
 | `NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID` | WhatsApp config ID (Step 5) | **public** |
 | `NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID` | Instagram config ID (Step 5) | **public** |
+| `NEXT_PUBLIC_META_MESSENGER_CONFIG_ID` | Messenger config ID (Step 5) | **public** |
 | `META_GRAPH_VERSION` | `v22.0` (optional; default) | server |
 | `NEXT_PUBLIC_META_GRAPH_VERSION` | `v22.0` (optional; default) | **public** |
 
 The moment `NEXT_PUBLIC_META_APP_ID` + the config IDs are present, the
 "Connect with Facebook" buttons appear (gated by `whatsappSignupReady()` /
-`instagramSignupReady()` in `src/lib/embedded-signup-client.ts`). The
-`NEXT_PUBLIC_*` ones are baked at build time, so **redeploy** after adding them.
+`instagramSignupReady()` / `facebookSignupReady()` in
+`src/lib/embedded-signup-client.ts`). The `NEXT_PUBLIC_*` ones are baked at
+build time, so **redeploy** after adding them.
 
 ---
 
@@ -275,6 +293,7 @@ META_GRAPH_VERSION=v22.0
 NEXT_PUBLIC_META_APP_ID=
 NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID=
 NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID=
+NEXT_PUBLIC_META_MESSENGER_CONFIG_ID=
 NEXT_PUBLIC_META_GRAPH_VERSION=v22.0
 ```
 
