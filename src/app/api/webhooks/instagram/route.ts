@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
-import { getChannelByIgId, getChannelById, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
+import { getChannelByIgId, getChannelById, repairIgChannelId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, logSendFailure, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { generateReply } from "@/lib/llm";
@@ -70,7 +70,12 @@ export async function POST(req: Request) {
     });
     for (const entry of body.entry ?? []) {
       // entry.id is the IG professional account id → resolves the tenant's channel.
-      const channel = await getChannelByIgId(String(entry.id ?? ""));
+      const igId = String(entry.id ?? "");
+      // A miss is usually a channel stored under the app-scoped id rather than
+      // the professional-account id. Try to repair it from the token before
+      // giving up, so an already-connected account starts working on its next
+      // message instead of needing someone to notice and reconnect.
+      const channel = (await getChannelByIgId(igId)) ?? (await repairIgChannelId(igId));
       if (!channel || !channel.active) {
         console.warn(`[ig webhook] received events for IG account ${entry.id} but no ACTIVE Instagram channel matches that account id — check the Instagram channel in the portal (and that its token hasn't expired).`);
         continue;

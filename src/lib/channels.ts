@@ -724,6 +724,37 @@ export async function resolveIgAccountId(igToken: string): Promise<{ id?: string
   }
 }
 
+// Self-repair for channels saved with the APP-SCOPED id instead of the
+// Instagram professional account id (see resolveIgAccountId). Those rows can
+// never match an inbound webhook, so the account looks connected and silently
+// receives nothing — and the tenant has no way to know a reconnect would fix it.
+//
+// Called ONLY when a webhook found no channel, and only against rows whose id
+// clearly isn't an IGID (those all begin 1784...). That bounds it to the handful
+// of genuinely-broken rows and makes it self-terminating: once repaired, there
+// is nothing left for it to consider.
+export async function repairIgChannelId(webhookIgId: string): Promise<Channel | null> {
+  if (!webhookIgId) return null;
+  try {
+    const { data } = await db().from("wa_channels").select("*")
+      .eq("kind", "instagram").eq("active", true)
+      .not("ig_user_id", "like", "1784%").limit(25);
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const ch = mapChannel(row);
+      if (!ch.token) continue;
+      const live = await resolveIgAccountId(ch.token);
+      if (live.id !== webhookIgId) continue;
+      const { error } = await db().from("wa_channels").update({ ig_user_id: webhookIgId }).eq("id", ch.id);
+      if (error) { console.error("[ig repair] could not rewrite ig_user_id", { channelId: ch.id, error: error.message }); return null; }
+      console.log("[ig repair] channel id corrected", { channelId: ch.id, tenantId: ch.tenantId, from: ch.igUserId, to: webhookIgId });
+      return { ...ch, igUserId: webhookIgId };
+    }
+  } catch (err) {
+    console.error("[ig repair] failed", err);
+  }
+  return null;
+}
+
 // Instagram flavour of the same requirement (Instagram-login API): the IG
 // professional account itself must be subscribed to the app for DM/comment
 // webhooks to flow.
