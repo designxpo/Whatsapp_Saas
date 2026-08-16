@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, subscribeWaba, registerPhone } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, subscribeWaba, registerPhone, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
 import { saveChannel, listWhatsappChannelsStrict, type Channel } from "@/lib/channels";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// Tagged so one tenant attempt is enough to tell which step failed, from logs.
+const TAG = "[wa-onboarding]";
 
 // POST — finish Meta Embedded Signup for the current tenant.
 // Body: { code, wabaId, phoneNumberId, name, coex?, mode? } from the FB.login
@@ -48,11 +51,25 @@ export async function POST(req: Request) {
 
   // 1. code → business access token
   const ex = await exchangeSignupCode(code);
-  if (!ex.ok || !ex.token) return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+  if (!ex.ok || !ex.token) {
+    console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
+    return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+  }
+
+  // 1b. What Meta ACTUALLY granted this tenant. Logged every time: this is the
+  // one line that separates "the tenant's setup is wrong" from "our app was
+  // never approved to grant them anything", and Meta's success screen looks
+  // identical in both cases.
+  const scopes = await grantedScopes(ex.token);
+  console.log(TAG, "granted scopes", { tenantId, scopes: scopes ?? "(probe failed)" });
 
   // 2. subscribe our app to this WABA (inbound → our webhook)
   const sub = await subscribeWaba(wabaId, ex.token);
-  if (!sub.ok) return NextResponse.json({ error: `Connected but webhook subscribe failed: ${sub.error}` }, { status: 502 });
+  if (!sub.ok) {
+    const noGrant = noGrantMessage(scopes, "whatsapp_business_", "WhatsApp");
+    console.error(TAG, "waba subscribe failed", { tenantId, wabaId, error: sub.error, noGrant: !!noGrant });
+    return NextResponse.json({ error: noGrant ?? `Connected but webhook subscribe failed: ${sub.error}` }, { status: 502 });
+  }
 
   // 2b. Cloud API registration — NEW non-coex numbers only (see header note; a
   // reconnect was registered on first connect). Best-effort: some Embedded

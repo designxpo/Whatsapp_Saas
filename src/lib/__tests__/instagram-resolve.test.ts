@@ -11,7 +11,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // returns zero Pages, which needs a different fix from "the Page has no
 // Instagram account linked".
 
-import { resolveInstagramAsset } from "../embeddedsignup";
+import { resolveInstagramAsset, noGrantMessage } from "../embeddedsignup";
 
 const fetchMock = vi.fn();
 beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
@@ -125,5 +125,33 @@ describe("resolveInstagramAsset", () => {
   it("never calls Meta without a token", async () => {
     expect(await resolveInstagramAsset("")).toEqual({ ok: false, error: "Missing token" });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── noGrantMessage — shared by all three Meta connect flows ──────────────────
+// Meta shows an identical "connected" screen whether or not it granted the
+// permissions the flow asked for. Before App Review, only users holding a role
+// on the app get a grant; everyone else gets consent UI and nothing. That is the
+// whole of "it works for my account but not for tenants".
+describe("noGrantMessage", () => {
+  it("says nothing when the family was granted", () => {
+    expect(noGrantMessage(["instagram_basic", "pages_show_list"], "instagram_", "Instagram")).toBeNull();
+    expect(noGrantMessage(["whatsapp_business_management"], "whatsapp_business_", "WhatsApp")).toBeNull();
+  });
+
+  it("names it as ours, not the tenant's, when nothing in the family was granted", () => {
+    const m = noGrantMessage(["pages_show_list"], "instagram_", "Instagram");
+    expect(m).toMatch(/granted no Instagram permission/i);
+    expect(m).toMatch(/not something you can change on your side/i);
+  });
+
+  // "We couldn't check" must never become an accusation about our own config.
+  it("stays silent when the permission probe failed", () => {
+    expect(noGrantMessage(null, "instagram_", "Instagram")).toBeNull();
+  });
+
+  it("does not match a family by coincidence of substring", () => {
+    // "manage_pages_x" contains "pages_" but does not START the family.
+    expect(noGrantMessage(["manage_pages_x"], "pages_", "Facebook Page")).not.toBeNull();
   });
 });

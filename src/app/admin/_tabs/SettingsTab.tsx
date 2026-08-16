@@ -4,7 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
+import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
@@ -1314,6 +1314,17 @@ export function MessengerCard() {
           <button onClick={() => { setForm({ ...EMPTY_FB_PAGE }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add Page</button>
         </div>
       </div>
+
+      {/* Same bug Instagram had: `msg` was only rendered inside {form && …}, and
+          "Connect with Facebook" opens no form — so every failure of the one-click
+          path was written into a branch React never mounted, leaving the tenant
+          with Meta's own success screen and an empty card. */}
+      {msg && !form && (
+        <div className="rounded-control border border-red-200 bg-red-50 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700 leading-snug">{msg}</p>
+        </div>
+      )}
 
       {pagePick && (
         <div className="rounded-control border border-line bg-canvas p-3 space-y-2">

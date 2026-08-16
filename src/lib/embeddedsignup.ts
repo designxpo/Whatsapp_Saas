@@ -110,6 +110,22 @@ async function grantedIgScopes(token: string): Promise<string[] | null> {
   return all === null ? null : all.filter(p => p.startsWith("instagram_"));
 }
 
+// Meta shows the SAME "connected" success screen whether or not it granted the
+// permissions the flow asked for. Until a permission clears App Review it is
+// granted only to users holding a role on the app (admin / developer / tester);
+// for everyone else Meta shows the consent UI, returns a valid token, and grants
+// nothing. That is precisely why a flow can work for the operator's own Meta
+// account and fail for every tenant.
+//
+// Returns the sentence to show, or null when there is nothing to say — either
+// something in this family WAS granted, or the probe failed and we refuse to
+// guess. Never blames the tenant, because this is never the tenant's to fix.
+export function noGrantMessage(scopes: string[] | null, prefix: string, channel: string): string | null {
+  if (scopes === null) return null;                               // couldn't check — say nothing
+  if (scopes.some(s => s.startsWith(prefix))) return null;        // granted — a different problem
+  return `Meta finished the connection but granted no ${channel} permission, so there's nothing we can set up. That's our Meta app's review status or configuration — not something you can change on your side. Please send this message to support; “Add manually” still works meanwhile.`;
+}
+
 // Resolve the Instagram business account + Page from a freshly-exchanged token.
 // The Instagram Embedded Signup returns only a `code`; we derive the asset ids
 // server-side (/me/accounts → page → Instagram account) so the frontend never

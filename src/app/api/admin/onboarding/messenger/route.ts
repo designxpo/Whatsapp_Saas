@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, resolveFacebookPages } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, resolveFacebookPages, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
@@ -9,6 +9,9 @@ import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+// Tagged so one tenant attempt is enough to tell which step failed, from logs.
+const TAG = "[fb-onboarding]";
 
 const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` : "••••");
 
@@ -35,8 +38,19 @@ export async function POST(req: Request) {
   if (!ex.ok || !ex.token) return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
   const token = ex.token;
 
+  // What Meta ACTUALLY granted this tenant — logged every time, because "works
+  // for my account, not for tenants" is decided here and nowhere else.
+  const scopes = await grantedScopes(token);
+  console.log(TAG, "granted scopes", { tenantId, scopes: scopes ?? "(probe failed)" });
+
   const res = await resolveFacebookPages(token);
-  if (!res.ok || !res.pages?.length) return NextResponse.json({ error: res.error || "No Facebook Page found" }, { status: 502 });
+  if (!res.ok || !res.pages?.length) {
+    // "No Page found" and "we were granted no Page permission" are the same
+    // response from Graph and need opposite fixes — one is theirs, one is ours.
+    const noGrant = noGrantMessage(scopes, "pages_", "Facebook Page");
+    console.error(TAG, "page resolve failed", { tenantId, error: res.error, noGrant: !!noGrant });
+    return NextResponse.json({ error: noGrant ?? res.error ?? "No Facebook Page found" }, { status: 502 });
+  }
 
   // Choose the Page: the one the caller picked, or the only one — else ask the
   // admin to pick (they'll re-run the login for a fresh code with the pageId).
@@ -63,6 +77,7 @@ export async function POST(req: Request) {
       webhook,
     });
   } catch (e) {
+    console.error(TAG, "channel save failed", { tenantId, pageId: chosen.id, error: e });
     return NextResponse.json({ error: errorMessage(e) }, { status: 500 });
   }
 }
