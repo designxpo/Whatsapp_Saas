@@ -78,7 +78,15 @@ function InstagramManager() {
   const loadRules = useCallback(() => { fetch("/api/admin/ig-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
-    const d = await fetch("/api/admin/channels").then(r => r.json()).catch(() => ({ channels: [] }));
+    // The channels endpoint answers 200 with an empty list and a `notice` when
+    // the read itself fails, and listChannels swallows query errors the same
+    // way. Both render as "No Instagram accounts connected yet", which is the
+    // one thing a connected-but-unreadable account must NOT look like — so a
+    // failed read is reported instead of being mistaken for an empty one.
+    const d = await fetch("/api/admin/channels")
+      .then(r => r.json())
+      .catch(() => ({ channels: [], notice: "Couldn't reach the server." }));
+    if (d.notice) setMsg(`Couldn't load your connected accounts: ${d.notice}`);
     setChannels((d.channels ?? []).filter((c: ChannelRow) => c.kind === "instagram"));
   }, []);
   useEffect(() => { load(); }, [load]);
