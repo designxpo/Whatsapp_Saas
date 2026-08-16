@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, resolveFacebookPages, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, exchangeForLongLivedToken, resolveFacebookPages, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp, findMessengerChannelId } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
@@ -38,8 +38,20 @@ export async function POST(req: Request) {
   if (!body.code) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
 
   const ex = await exchangeSignupCode(body.code);
-  if (!ex.ok || !ex.token) return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
-  const token = ex.token;
+  if (!ex.ok || !ex.token) {
+    console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
+    return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+  }
+  // A Page token inherits the lifetime of the USER token it was derived from, so
+  // this has to happen BEFORE /me/accounts — afterwards is too late, the Page
+  // tokens are already minted. exchangeForLongLivedToken was written for exactly
+  // this ("which is what a stored Messenger channel needs", per its own comment)
+  // and then never wired in, so every Page connected through the popup was stored
+  // with a token that expires. Best-effort: a no-op for a system-user token, and
+  // a failure here must never block a connect that would otherwise work.
+  const long = await exchangeForLongLivedToken(ex.token).catch(() => ({ ok: false } as const));
+  const token = ("token" in long && long.ok && long.token) ? long.token : ex.token;
+  if (!("token" in long && long.ok)) console.warn(TAG, "long-lived upgrade skipped", { tenantId });
 
   // What Meta ACTUALLY granted this tenant — logged every time, because "works
   // for my account, not for tenants" is decided here and nowhere else.
