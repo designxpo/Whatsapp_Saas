@@ -381,6 +381,29 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
 
 // Save an Instagram channel (no phone/WABA; IG account id + page instead).
 // Token is encrypted at rest and the row is scoped to the tenant.
+// Reconnecting a channel must UPDATE the existing row, never insert a second one.
+// Two rows sharing a page_id / ig_user_id do not merely waste a plan slot: the
+// inbound lookups (getChannelByPageId, getChannelByIgId) use .maybeSingle(),
+// which ERRORS on multiple matches — so the webhook stops resolving the channel
+// and every DM for that account is silently dropped. A tenant who clicked
+// "Connect" twice ended up with an account that looked connected and could never
+// receive anything.
+async function existingChannelId(tenantId: string, kind: string, column: string, value: string): Promise<string | undefined> {
+  if (!value) return undefined;
+  const { data } = await db().from("wa_channels").select("id")
+    .eq("tenant_id", tenantId).eq("kind", kind).eq(column, value).limit(1);
+  return (data ?? [])[0]?.id as string | undefined;
+}
+
+/** Does this workspace already have this Page/account? Lets a route skip the
+ *  plan's channel cap on a RECONNECT, which adds no channel. */
+export async function findMessengerChannelId(tenantId: string, pageId: string) {
+  return existingChannelId(tenantId, "messenger", "page_id", pageId.trim());
+}
+export async function findInstagramChannelId(tenantId: string, igUserId: string) {
+  return existingChannelId(tenantId, "instagram", "ig_user_id", igUserId.trim());
+}
+
 export async function saveInstagramChannel(input: {
   id?: string; tenantId?: string; name: string; igUserId: string; pageId?: string | null;
   token: string; agentId?: string | null; kbTag?: string | null; commentAi?: boolean; active?: boolean; isDefault?: boolean;
@@ -405,8 +428,10 @@ export async function saveInstagramChannel(input: {
     is_default: input.isDefault ?? false,
   };
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
-  const runSave = (r: Record<string, unknown>) => input.id
-    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+  // No explicit id → still update in place if this account is already connected.
+  const targetId = input.id ?? await existingChannelId(tenantId, "instagram", "ig_user_id", row.ig_user_id);
+  const runSave = (r: Record<string, unknown>) => targetId
+    ? db().from("wa_channels").update(r).eq("id", targetId).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(r).select().single();
   let res = await runSave(row);
   // Tolerate a pre-0085 DB (comment_ai column absent) — retry once without it so
@@ -443,8 +468,10 @@ export async function saveMessengerChannel(input: {
     is_default: input.isDefault ?? false,
   };
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
-  const q = input.id
-    ? db().from("wa_channels").update(row).eq("id", input.id).eq("tenant_id", tenantId).select().single()
+  // No explicit id → still update in place if this Page is already connected.
+  const targetId = input.id ?? await existingChannelId(tenantId, "messenger", "page_id", row.page_id);
+  const q = targetId
+    ? db().from("wa_channels").update(row).eq("id", targetId).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(row).select().single();
   const { data, error } = await q;
   if (error) throw error;
@@ -481,8 +508,10 @@ export async function saveYoutubeChannel(input: {
   if (tok) row.access_token = encryptSecret(tok);
   else if (!input.id) row.access_token = "";   // access_token is NOT NULL
   if (row.is_default) await db().from("wa_channels").update({ is_default: false }).eq("tenant_id", tenantId).eq("is_default", true);
-  const runSave = (r: Record<string, unknown>) => input.id
-    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+  // Reconnecting the same YouTube channel updates it in place.
+  const targetId = input.id ?? await existingChannelId(tenantId, "youtube", "yt_channel_id", String(row.yt_channel_id ?? ""));
+  const runSave = (r: Record<string, unknown>) => targetId
+    ? db().from("wa_channels").update(r).eq("id", targetId).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(r).select().single();
   let res = await runSave(row);
   // Tolerate a pre-0093 DB (yt_channel_id / comment_ai absent) — strip and retry

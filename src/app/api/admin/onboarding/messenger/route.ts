@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { exchangeSignupCode, resolveFacebookPages, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
-import { saveMessengerChannel, subscribePageToApp } from "@/lib/channels";
+import { saveMessengerChannel, subscribePageToApp, findMessengerChannelId } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
 import { logActivity } from "@/lib/team";
@@ -28,7 +28,10 @@ const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` 
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  { const gate = await guardFeature(tenantId, "ch_messenger"); if (gate) return gate; }
+  // A plan without ch_messenger refuses here, before any Meta round-trip. Logged
+  // because the tenant only sees "not in your plan" and support needs to know
+  // which workspace and plan produced it.
+  { const gate = await guardFeature(tenantId, "ch_messenger"); if (gate) { console.error(TAG, "blocked by plan (ch_messenger)", { tenantId }); return gate; } }
 
   let body: { code?: string; pageId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -60,8 +63,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ needsPageChoice: true, pages: res.pages.map(p => ({ id: p.id, name: p.name })) });
   }
 
-  try { await enforceLimit(tenantId, "channels"); }
-  catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
+  // Reconnecting an already-connected Page adds no channel, so it must not be
+  // refused by the plan's channel cap — and a tenant who retried a few times
+  // used to burn their whole allowance on duplicates of the same Page.
+  const reconnecting = !!(await findMessengerChannelId(tenantId, chosen.id).catch(() => undefined));
+  if (!reconnecting) {
+    try { await enforceLimit(tenantId, "channels"); }
+    catch (e) {
+      // Logged because this refusal arrives AFTER the tenant has been through
+      // Meta's popup and picked a Page — it reads as "it just didn't work".
+      console.error(TAG, "channel cap reached", { tenantId, pageId: chosen.id, error: errorMessage(e) });
+      return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 });
+    }
+  }
 
   try {
     const saved = await saveMessengerChannel({

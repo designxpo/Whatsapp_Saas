@@ -2,7 +2,7 @@ import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth
 import { guardFeature } from "@/lib/feature-guard";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
-import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp } from "@/lib/channels";
+import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp, findInstagramChannelId } from "@/lib/channels";
 import { igRedirectUri, verifyState, exchangeIgCode, igLongLivedToken } from "@/lib/iglogin";
 import { popupHtml } from "../start/route";
 
@@ -44,9 +44,6 @@ export async function GET(req: Request) {
     return html({ ok: false, error: `That connect link is no longer valid (${st.reason}). Start again from the Instagram page.` });
   }
 
-  try { await enforceLimit(tenantId, "channels"); }
-  catch (e) { return html({ ok: false, error: errorMessage(e) }); }
-
   const short = await exchangeIgCode(code, igRedirectUri(req.url));
   if (!short.ok || !short.token) {
     console.error(TAG, "code exchange failed", { tenantId, error: short.error });
@@ -70,6 +67,13 @@ export async function GET(req: Request) {
   if (!live.id) {
     console.error(TAG, "account resolve failed", { tenantId, error: live.error });
     return html({ ok: false, error: `Connected, but Instagram wouldn't tell us which account it was (${live.error}). Nothing was saved.` });
+  }
+
+  // Reconnecting the same account adds no channel — only a genuinely new one
+  // counts against the plan's cap.
+  if (!(await findInstagramChannelId(tenantId, live.id).catch(() => undefined))) {
+    try { await enforceLimit(tenantId, "channels"); }
+    catch (e) { console.error(TAG, "channel cap reached", { tenantId, igUserId: live.id }); return html({ ok: false, error: errorMessage(e) }); }
   }
 
   try {
