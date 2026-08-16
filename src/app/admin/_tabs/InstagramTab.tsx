@@ -137,6 +137,9 @@ function InstagramManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Connection failed");
+      // Saved, but Meta wouldn't subscribe the account — DMs and comments will
+      // never arrive. Same warning the manual path already gives.
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't turn on message delivery: ${d.webhook.detail}. DMs and comments won't arrive until that's fixed.`); setForm(null); load(); }
       else { setForm(null); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }

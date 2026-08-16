@@ -86,32 +86,71 @@ export async function subscribeWaba(wabaId: string, token: string): Promise<{ ok
   }
 }
 
+// Which Instagram scopes the token was ACTUALLY granted. Graph does not error
+// when you ask for a field the token has no permission for — it silently omits
+// the field. So a Page whose Instagram account we simply aren't allowed to see
+// is byte-identical to a Page with no Instagram account, and the tenant gets
+// sent to relink a Page that was never the problem. Returns NULL when the probe
+// itself failed — "we couldn't check" must never be mistaken for "we checked and
+// nothing was granted", since only the latter justifies blaming our own config.
+async function grantedIgScopes(token: string): Promise<string[] | null> {
+  try {
+    const r = await fetch(`${GRAPH}/me/permissions`, { headers: { Authorization: `Bearer ${token}` } });
+    const j = await r.json();
+    if (!r.ok) return null;
+    return ((j.data ?? []) as { permission?: string; status?: string }[])
+      .filter(p => p.status === "granted" && p.permission?.startsWith("instagram_"))
+      .map(p => p.permission as string);
+  } catch { return null; }
+}
+
 // Resolve the Instagram business account + Page from a freshly-exchanged token.
 // The Instagram Embedded Signup returns only a `code`; we derive the asset ids
-// server-side (/me/accounts → page → instagram_business_account) so the frontend
-// never has to ask the tenant for ids.
+// server-side (/me/accounts → page → Instagram account) so the frontend never
+// has to ask the tenant for ids.
 export async function resolveInstagramAsset(token: string): Promise<{ ok: boolean; igUserId?: string; pageId?: string; error?: string }> {
   if (!token) return { ok: false, error: "Missing token" };
   try {
     const url = new URL(`${GRAPH}/me/accounts`);
-    url.searchParams.set("fields", "id,name,instagram_business_account{id}");
+    // A Page carries its Instagram account under TWO different fields, and which
+    // one is populated depends on how the account was attached:
+    //   instagram_business_account — linked through Meta Business settings
+    //   connected_instagram_account — connected from the Instagram app itself
+    // Reading only the first is why a genuinely-connected account reported back
+    // as "no Instagram professional account linked to it".
+    url.searchParams.set("fields", "id,name,instagram_business_account{id},connected_instagram_account{id}");
     // Default page size is 25 — a portfolio with more Pages than that could hide
     // the one carrying the Instagram account behind the first page of results.
     url.searchParams.set("limit", "100");
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const j = await r.json();
     if (!r.ok) return { ok: false, error: j.error?.message || `Account lookup failed (${r.status})` };
-    const pages: { id: string; name?: string; instagram_business_account?: { id: string } }[] = j.data ?? [];
-    const withIg = pages.find(p => p.instagram_business_account?.id);
-    if (withIg) return { ok: true, igUserId: withIg.instagram_business_account!.id, pageId: withIg.id };
-    // The two ways this fails look identical to the tenant but need opposite
-    // fixes, and the old single message named the wrong one half the time. The
-    // popup lets you skip the Page step, and skipping it lands here with ZERO
-    // Pages — Meta still shows its own "connected" success screen, so without a
-    // precise message the tenant has no way to know what went wrong.
+    type Page = { id: string; name?: string; instagram_business_account?: { id: string }; connected_instagram_account?: { id: string } };
+    const pages: Page[] = j.data ?? [];
+    const igOf = (p: Page) => p.instagram_business_account?.id || p.connected_instagram_account?.id;
+    const withIg = pages.find(igOf);
+    if (withIg) return { ok: true, igUserId: igOf(withIg)!, pageId: withIg.id };
+
+    // Three ways this fails, all of which used to read as one message that named
+    // the wrong fix at least two thirds of the time.
+
+    // 1. The popup lets you skip the Page step, and skipping it lands here with
+    //    ZERO Pages — while Meta still shows its own "connected" success screen.
     if (!pages.length) {
       return { ok: false, error: "Meta didn't share a Facebook Page with us, so we can't find your Instagram account — Talko reaches Instagram through the Page it's linked to. Run Connect again and, on the Page step, tick the Page your Instagram account is linked to instead of skipping it. (No Page at all? Link one in Instagram → Settings → Account type and tools, or use “Add manually”.)" };
     }
+
+    // 2. Pages came back, but the token was never granted an Instagram scope, so
+    //    Graph omitted the Instagram fields entirely. NOT the tenant's Page — our
+    //    Meta app's Embedded Signup configuration is missing the permission, and
+    //    no amount of relinking on their side will change the answer. Say so, and
+    //    say whose job it is.
+    const scopes = await grantedIgScopes(token);
+    if (scopes !== null && scopes.length === 0) {
+      return { ok: false, error: "Meta shared your Facebook Page but granted us no Instagram permission, so we can't read the account behind it. This is a setting on our side, not yours — please send this message to support and use “Add manually” meanwhile." };
+    }
+
+    // 3. Genuinely no Instagram account on any shared Page.
     const names = pages.map(p => p.name || p.id).slice(0, 3).join(", ");
     return { ok: false, error: `None of the Facebook Pages you shared (${names}${pages.length > 3 ? `, +${pages.length - 3} more` : ""}) has an Instagram professional account linked to it. Link your Instagram account to the Page in Meta Business settings, then run Connect again — or use “Add manually” if you already have the Instagram account id and token.` };
   } catch (e) {

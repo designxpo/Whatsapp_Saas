@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { exchangeSignupCode, resolveInstagramAsset } from "@/lib/embeddedsignup";
-import { saveInstagramChannel } from "@/lib/channels";
+import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp } from "@/lib/channels";
 import { guardFeature } from "@/lib/feature-guard";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
@@ -56,18 +56,44 @@ export async function POST(req: Request) {
     pageId = asset.pageId ?? null;
   }
 
+  // Prove the token works against the API we actually SEND with before storing
+  // it. Embedded Signup runs on Facebook Login (graph.facebook.com), while this
+  // product's Instagram runtime is Instagram Login (graph.instagram.com) — see
+  // lib/instagram.ts. The two token families are not interchangeable, so a token
+  // that resolved a Page fine can still be unusable for DMs. Saving it anyway
+  // produces the worst outcome available: a channel that reads as connected and
+  // can neither send nor receive. Fail here instead, and name the reason.
+  const live = await resolveIgAccountId(ex.token);
+  if (!live.id) {
+    console.error(TAG, "token rejected by the Instagram API", { tenantId, igUserId, error: live.error });
+    return NextResponse.json({
+      error: `Meta connected the account, but the token it gave us isn't accepted by the Instagram messaging API (${live.error || "no account returned"}). Nothing was saved — a channel stored now could never send or receive. Use “Add manually” with an Instagram access token, and send this message to support.`,
+    }, { status: 502 });
+  }
+  // Trust Graph's own answer over the Page-derived id: inbound webhooks match on
+  // this id EXACTLY, so a mismatch silently drops every DM while sends still work.
+  if (live.id !== igUserId) {
+    console.warn(TAG, "account id corrected", { tenantId, from: igUserId, to: live.id });
+    igUserId = live.id;
+  }
+
   try {
     const channel = await saveInstagramChannel({
       tenantId,
-      name: body.name?.trim() || `Instagram ${igUserId}`,
+      name: body.name?.trim() || (live.username ? `@${live.username}` : `Instagram ${igUserId}`),
       igUserId,
       pageId,
       token: ex.token,
       isDefault: false,
     });
-    console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, pageId: channel.pageId });
+    // The manual route has always done this; without it Meta delivers no DM or
+    // comment events for a freshly added account, so the channel would look
+    // connected and stay silent.
+    const webhook = await subscribeIgToApp(channel.igUserId ?? igUserId, ex.token);
+    console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, pageId: channel.pageId, webhook: webhook.ok || webhook.detail });
     return NextResponse.json({
       success: true,
+      webhook,
       channel: { id: channel.id, name: channel.name, igUserId: channel.igUserId, pageId: channel.pageId },
     });
   } catch (e) {
