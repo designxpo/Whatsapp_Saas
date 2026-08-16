@@ -2,7 +2,7 @@
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
+import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { launchInstagramSignup, instagramSignupReady, instagramSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
@@ -192,6 +192,19 @@ function InstagramManager() {
         </div>
       </div>
 
+      {/* Both forms render `msg` inside themselves, which meant a failure from
+          "Connect with Facebook" — which opens NO form — was written into a
+          branch that isn't mounted. The tenant finished the Meta popup, got
+          Meta's own success screen, and this tab just kept saying "No Instagram
+          accounts connected yet" with no reason given. Show it here whenever no
+          form owns it. */}
+      {msg && !form && !ruleForm && (
+        <div className="bg-red-50 border border-red-200 rounded-control px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-red-700 leading-snug">{msg}</p>
+        </div>
+      )}
+
       {channels.map(c => (
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
@@ -234,7 +247,18 @@ function InstagramManager() {
           {msg && <p className="text-xs text-red-500">{msg}</p>}
         </div>
       )}
-      {!channels.length && !form && <p className="text-xs text-ink-400">No Instagram accounts connected yet.</p>}
+      {!channels.length && !form && (
+        <div className="text-xs text-ink-400 space-y-1">
+          <p>No Instagram accounts connected yet.</p>
+          {/* Said BEFORE the popup opens, because the popup itself lets you skip
+              the Page step and gives no hint that skipping breaks the connection. */}
+          {instagramSignupReady() && (
+            <p className="text-[11px]">
+              When the Meta window asks which Facebook Page to share, pick the Page your Instagram account is linked to — don&apos;t skip it. That Page is how Talko finds the account.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Comment-to-DM automation (multiple rules, per-post, follow-gate) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">

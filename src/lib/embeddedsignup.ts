@@ -94,14 +94,26 @@ export async function resolveInstagramAsset(token: string): Promise<{ ok: boolea
   if (!token) return { ok: false, error: "Missing token" };
   try {
     const url = new URL(`${GRAPH}/me/accounts`);
-    url.searchParams.set("fields", "id,instagram_business_account{id}");
+    url.searchParams.set("fields", "id,name,instagram_business_account{id}");
+    // Default page size is 25 — a portfolio with more Pages than that could hide
+    // the one carrying the Instagram account behind the first page of results.
+    url.searchParams.set("limit", "100");
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     const j = await r.json();
     if (!r.ok) return { ok: false, error: j.error?.message || `Account lookup failed (${r.status})` };
-    const pages: { id: string; instagram_business_account?: { id: string } }[] = j.data ?? [];
+    const pages: { id: string; name?: string; instagram_business_account?: { id: string } }[] = j.data ?? [];
     const withIg = pages.find(p => p.instagram_business_account?.id);
-    if (!withIg) return { ok: false, error: "No Instagram professional account is linked to your Facebook Page" };
-    return { ok: true, igUserId: withIg.instagram_business_account!.id, pageId: withIg.id };
+    if (withIg) return { ok: true, igUserId: withIg.instagram_business_account!.id, pageId: withIg.id };
+    // The two ways this fails look identical to the tenant but need opposite
+    // fixes, and the old single message named the wrong one half the time. The
+    // popup lets you skip the Page step, and skipping it lands here with ZERO
+    // Pages — Meta still shows its own "connected" success screen, so without a
+    // precise message the tenant has no way to know what went wrong.
+    if (!pages.length) {
+      return { ok: false, error: "Meta didn't share a Facebook Page with us, so we can't find your Instagram account — Talko reaches Instagram through the Page it's linked to. Run Connect again and, on the Page step, tick the Page your Instagram account is linked to instead of skipping it. (No Page at all? Link one in Instagram → Settings → Account type and tools, or use “Add manually”.)" };
+    }
+    const names = pages.map(p => p.name || p.id).slice(0, 3).join(", ");
+    return { ok: false, error: `None of the Facebook Pages you shared (${names}${pages.length > 3 ? `, +${pages.length - 3} more` : ""}) has an Instagram professional account linked to it. Link your Instagram account to the Page in Meta Business settings, then run Connect again — or use “Add manually” if you already have the Instagram account id and token.` };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Instagram asset lookup error" };
   }
