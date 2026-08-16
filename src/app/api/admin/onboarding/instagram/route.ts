@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, resolveInstagramAsset } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, resolveInstagramAsset, grantedScopes } from "@/lib/embeddedsignup";
 import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp } from "@/lib/channels";
 import { guardFeature } from "@/lib/feature-guard";
 import { enforceLimit } from "@/lib/usage";
@@ -41,6 +41,15 @@ export async function POST(req: Request) {
     console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
     return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
   }
+
+  // What Meta ACTUALLY granted this tenant, logged on every attempt. Until a
+  // permission clears App Review, Meta grants it to users who hold a role on the
+  // app (admin/developer/tester) and silently grants nothing to everyone else —
+  // same success screen either way. That is the exact shape of "it works for my
+  // account but not for tenants", and this line is what settles it instead of
+  // leaving us to infer it from a missing field.
+  const scopes = await grantedScopes(ex.token);
+  console.log(TAG, "granted scopes", { tenantId, scopes: scopes ?? "(probe failed)" });
 
   // Embedded Signup returns only a code; resolve the IG account + Page from the
   // token server-side unless the caller (manual/admin form) supplied them.

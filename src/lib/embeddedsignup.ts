@@ -93,15 +93,21 @@ export async function subscribeWaba(wabaId: string, token: string): Promise<{ ok
 // sent to relink a Page that was never the problem. Returns NULL when the probe
 // itself failed — "we couldn't check" must never be mistaken for "we checked and
 // nothing was granted", since only the latter justifies blaming our own config.
-async function grantedIgScopes(token: string): Promise<string[] | null> {
+export async function grantedScopes(token: string): Promise<string[] | null> {
   try {
     const r = await fetch(`${GRAPH}/me/permissions`, { headers: { Authorization: `Bearer ${token}` } });
     const j = await r.json();
     if (!r.ok) return null;
     return ((j.data ?? []) as { permission?: string; status?: string }[])
-      .filter(p => p.status === "granted" && p.permission?.startsWith("instagram_"))
-      .map(p => p.permission as string);
+      .filter(p => p.status === "granted" && p.permission)
+      .map(p => p.permission as string)
+      .sort();
   } catch { return null; }
+}
+
+async function grantedIgScopes(token: string): Promise<string[] | null> {
+  const all = await grantedScopes(token);
+  return all === null ? null : all.filter(p => p.startsWith("instagram_"));
 }
 
 // Resolve the Instagram business account + Page from a freshly-exchanged token.
