@@ -5,7 +5,6 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
-import { launchInstagramSignup, instagramSignupReady, instagramSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
@@ -127,26 +126,35 @@ function InstagramManager() {
     load();
   }
 
-  async function connectWithMeta() {
-    if (!instagramSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${instagramSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`); return; }
-    setBusy(true); setMsg(null);
-    try {
-      const { code } = await launchInstagramSignup();
-      const res = await fetch("/api/admin/onboarding/instagram", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Connection failed");
-      // Saved, but Meta wouldn't subscribe the account — DMs and comments will
-      // never arrive. Same warning the manual path already gives.
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't turn on message delivery: ${d.webhook.detail}. DMs and comments won't arrive until that's fixed.`); setForm(null); load(); }
-      // Partial success: DMs are live, comments are not. Worth saying out loud —
-      // otherwise the tenant builds comment rules that can never fire.
-      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
-      else { setForm(null); load(); }
-    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
-    finally { setBusy(false); }
+  // Instagram uses Business Login for Instagram — a redirect flow, not FB.login().
+  // Meta's Instagram permissions (instagram_business_*) cannot even be selected
+  // in a Facebook Login for Business configuration, so the old popup granted
+  // tenants nothing while still showing Meta's success screen. The popup now
+  // opens our own /start route, which redirects to instagram.com and comes back
+  // through /callback; the callback page posts the outcome here and closes.
+  function connectWithMeta() {
+    setMsg(null);
+    const w = window.open("/api/admin/onboarding/instagram/start", "talko-ig-login", "width=620,height=760,menubar=no,toolbar=no");
+    if (!w) { setMsg("Your browser blocked the Instagram window. Allow pop-ups for this site and try again."); return; }
+    setBusy(true);
+
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;                     // only our own callback page
+      const d = e.data as { source?: string; ok?: boolean; error?: string; detail?: string } | null;
+      if (!d || d.source !== "talko-ig-login") return;
+      cleanup();
+      if (d.ok) { setMsg(d.detail ?? null); setForm(null); load(); }
+      else setMsg(d.error || "Couldn't connect Instagram.");
+    };
+    // The popup can also be closed by hand, which sends no message — without
+    // this the button would spin forever.
+    const poll = window.setInterval(() => { if (w.closed) { cleanup(); load(); } }, 700);
+    function cleanup() {
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(poll);
+      setBusy(false);
+    }
+    window.addEventListener("message", onMessage);
   }
 
   async function saveRule() {
@@ -195,14 +203,9 @@ function InstagramManager() {
           <p className="text-xs text-slate-500 mt-0.5">Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {(instagramSignupReady() || metaPreview()) && (
-            <div className="flex items-center gap-1.5">
-              <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-[#0783fd] hover:bg-[#0668d6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
-                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect with Facebook
-              </button>
-              {!instagramSignupReady() && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">Preview</span>}
-            </div>
-          )}
+          <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-gradient-to-r from-[#C13584] to-[#F56040] hover:opacity-90 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Instagram className="w-3.5 h-3.5" />} Connect Instagram
+          </button>
           <button onClick={() => { setForm({ ...EMPTY_IG }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>
       </div>
@@ -267,11 +270,9 @@ function InstagramManager() {
           <p>No Instagram accounts connected yet.</p>
           {/* Said BEFORE the popup opens: the window offers several things to
               share and gives no hint which ones we actually need. */}
-          {instagramSignupReady() && (
-            <p className="text-[11px]">
-              In the Meta window, tick your <b>Instagram account</b> — and the Facebook Page it&apos;s linked to, if you&apos;re asked for one.
-            </p>
-          )}
+          <p className="text-[11px]">
+            <b>Connect Instagram</b> signs you in on instagram.com and asks for message access — no Facebook Page needed.
+          </p>
         </div>
       )}
 
