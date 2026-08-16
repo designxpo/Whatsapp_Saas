@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
+import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { searchTargeting, geocodePlaces } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,9 @@ export async function GET(req: Request) {
   const q = (url.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json({ results: [] });
 
+  // Place search is OpenStreetMap, not Meta — no tenant token involved.
   if (kindRaw === "place") return NextResponse.json({ results: await geocodePlaces(q) });
   const kind = kindRaw === "interest" ? "interest" : kindRaw === "locale" ? "locale" : "geo";
-  return NextResponse.json({ results: await searchTargeting(kind, q) });
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  return NextResponse.json({ results: await searchTargeting(kind, q, tid) });
 }

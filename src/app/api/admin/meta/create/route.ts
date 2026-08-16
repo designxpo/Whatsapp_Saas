@@ -60,6 +60,7 @@ export async function POST(req: Request) {
   }
 
   const r = await createCtwaCampaign({
+    tenantId: tid,
     accountId, pageId,
     campaignId: body.campaignId?.trim() || null,
     name: body.name.trim(),

@@ -11,9 +11,9 @@ export async function GET() {
   const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ audiences: [], pixels: [], leadForms: [] });
   const [audiences, pixels, leadForms] = await Promise.all([
-    listCustomAudiences(accountId).catch(() => []),
-    listPixels(accountId).catch(() => []),
-    pageId ? listLeadForms(pageId).catch(() => []) : Promise.resolve([]),
+    listCustomAudiences(accountId, tid).catch(() => []),
+    listPixels(accountId, tid).catch(() => []),
+    pageId ? listLeadForms(pageId, tid).catch(() => []) : Promise.resolve([]),
   ]);
   return NextResponse.json({ audiences, pixels, leadForms });
 }

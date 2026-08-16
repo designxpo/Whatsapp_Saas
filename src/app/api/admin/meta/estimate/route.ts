@@ -25,6 +25,7 @@ export async function POST(req: Request) {
   if (!body.targeting) return NextResponse.json({ error: "No targeting" }, { status: 400 });
 
   const r = await estimateAudience({
+    tenantId: tid,
     accountId, pageId: pageId ?? "",
     objective: body.objective ?? "OUTCOME_ENGAGEMENT",
     conversionLocation: body.conversionLocation ?? "WHATSAPP",

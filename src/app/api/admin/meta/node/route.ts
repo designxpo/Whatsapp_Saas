@@ -17,10 +17,10 @@ export async function GET(req: Request) {
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const tz = await getAccountTimezone(await getAdsAccountId(tid)).catch(() => undefined);
+  const tz = await getAccountTimezone(await getAdsAccountId(tid), tid).catch(() => undefined);
   const [node, children] = await Promise.all([
-    getNodeInsights(id, level, preset, tz),
-    getNodeChildren(level, id, preset, tz),
+    getNodeInsights(id, level, preset, tz, tid),
+    getNodeChildren(level, id, preset, tz, tid),
   ]);
   if (!node.ok) return NextResponse.json({ error: node.error }, { status: 502 });
   return NextResponse.json({ node: node.node, adsets: children.adsets, ads: children.ads });

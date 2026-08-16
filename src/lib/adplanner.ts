@@ -156,7 +156,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
   // drafted audiences against Meta's actual interest catalogue + reach.
   const accountId = await getAdsAccountId(tenantId).catch(() => "");
   const pageId = accountId ? await getAdsPageId(tenantId).catch(() => "") : "";
-  const pre = accountId ? await gatherGrounding(accountId).catch(() => ({ pastWins: "", customAudiences: [] as { id: string; name: string; count: number | null }[] })) : { pastWins: "", customAudiences: [] };
+  const pre = accountId ? await gatherGrounding(accountId, tenantId).catch(() => ({ pastWins: "", customAudiences: [] as { id: string; name: string; count: number | null }[] })) : { pastWins: "", customAudiences: [] };
   const audienceLine = pre.customAudiences.length
     ? `This account has these saved/custom audiences you MAY recommend retargeting in a tip (do not invent others): ${pre.customAudiences.map(a => a.name).slice(0, 8).join(", ")}.`
     : "";
@@ -241,7 +241,7 @@ export async function planAdCampaign(brief: AdBrief, tenantId: string = DEFAULT_
     // reach, and let the model broaden any that come back too narrow (one pass).
     // Best-effort — if no account is connected or Meta errors, adSets pass through.
     adSets = await groundPlanAudiences(adSets, {
-      ai, accountId, pageId, countries,
+      ai, accountId, pageId, countries, tenantId,
       conversionLocation: goal.conversionLocation, objective: goal.objective, optimizationGoal: goal.optimizationGoal,
       websiteUrl: brief.websiteUrl,
     });
@@ -270,6 +270,7 @@ async function groundPlanAudiences(
   ctx: {
     ai: Awaited<ReturnType<typeof resolveTenantAi>>;
     accountId: string;
+    tenantId: string;
     pageId: string;
     countries: string[];
     conversionLocation: EstimateCtx["conversionLocation"];
@@ -280,7 +281,7 @@ async function groundPlanAudiences(
 ): Promise<AdSetPlan[]> {
   if (!ctx.accountId) return adSets;
   const estimateCtx: EstimateCtx = {
-    accountId: ctx.accountId, countries: ctx.countries,
+    accountId: ctx.accountId, tenantId: ctx.tenantId, countries: ctx.countries,
     conversionLocation: ctx.conversionLocation, objective: ctx.objective,
     optimizationGoal: ctx.optimizationGoal, pageId: ctx.pageId, websiteUrl: ctx.websiteUrl,
   };

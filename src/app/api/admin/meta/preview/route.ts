@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const adId = new URL(req.url).searchParams.get("adId");
   if (!adId) return NextResponse.json({ error: "adId required" }, { status: 400 });
-  const r = await adPreview(adId);
+  const r = await adPreview(adId, (await currentTenantId()) ?? DEFAULT_TENANT_ID);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
   return NextResponse.json({ html: r.html });
 }
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
   if (!body.creative) return NextResponse.json({ error: "No creative" }, { status: 400 });
 
   const r = await generateAdPreviews({
-    accountId, pageId,
+    accountId, pageId, tenantId: tid,
     objective: body.objective ?? "OUTCOME_ENGAGEMENT",
     conversionLocation: body.conversionLocation ?? "WHATSAPP",
     websiteUrl: body.websiteUrl ?? null,

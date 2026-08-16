@@ -6,7 +6,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // (regenerate it with ads_management + ads_read added). The ad account id is
 // portal-configurable (wa_settings key "ads_account", env fallback).
 
-import { getTenantSetting, setTenantSetting } from "./store";
+import { getTenantSetting, setTenantSetting, getTenantSecret, setTenantSecret } from "./store";
 import { db } from "./supabase";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -22,13 +22,42 @@ export async function setAdsAccountId(accountId: string, tenantId = DEFAULT_TENA
   await setTenantSetting(tenantId, "ads_account", { accountId: accountId.replace(/^act_/, "").trim() });
 }
 
-function adsToken(): string | undefined {
-  return process.env.META_ADS_ACCESS_TOKEN || process.env.META_WA_ACCESS_TOKEN;
+// The ad ACCOUNT has always been per-tenant; the TOKEN was not. Every tenant's
+// Meta calls were signed with the operator's own env token, which has no role on
+// their ad account — so Meta answered, correctly:
+//   (#200) Ad account owner has NOT grant ads_management or ads_read permission
+// and no amount of work inside the tenant's own Business Manager could fix it.
+// A tenant's own token wins; the env vars stay as the fallback so the operator's
+// own account (and any single-tenant deployment) keeps working untouched.
+const TOKEN_SECRET = "ads_token";
+// Shown to a tenant, so it names the action THEY can take — not an env var only
+// the platform operator can set.
+const NO_TOKEN = "No Meta access token saved for this workspace — paste a token with ads_read + ads_management in the Meta Ads setup steps.";
+
+export async function getAdsToken(tenantId = DEFAULT_TENANT_ID): Promise<string | undefined> {
+  const own = (await getTenantSecret(tenantId, TOKEN_SECRET).catch(() => null))?.trim();
+  return own || process.env.META_ADS_ACCESS_TOKEN || process.env.META_WA_ACCESS_TOKEN || undefined;
 }
 
-async function graphGet(path: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
-  const token = adsToken();
-  if (!token) return { ok: false, error: "No Meta access token configured" };
+export async function setAdsToken(token: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  await setTenantSecret(tenantId, TOKEN_SECRET, token.trim());
+}
+
+// Masked status for the UI — never returns the token itself. `own` distinguishes
+// "this tenant pasted a token" from "falling back to the platform env token",
+// which is the difference between a connection that can work and one that can't.
+export async function getAdsTokenStatus(tenantId = DEFAULT_TENANT_ID): Promise<{ own: boolean; hint: string | null }> {
+  const own = (await getTenantSecret(tenantId, TOKEN_SECRET).catch(() => null))?.trim();
+  return { own: !!own, hint: own ? `${own.slice(0, 6)}…${own.slice(-4)}` : null };
+}
+
+async function adsToken(tenantId: string): Promise<string | undefined> {
+  return getAdsToken(tenantId);
+}
+
+async function graphGet(tenantId: string, path: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
+  const token = await adsToken(tenantId);
+  if (!token) return { ok: false, error: NO_TOKEN };
   const qs = new URLSearchParams(params).toString();
   try {
     const r = await fetch(`${GRAPH}/${path}${qs ? `?${qs}` : ""}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
@@ -40,9 +69,9 @@ async function graphGet(path: string, params: Record<string, string> = {}): Prom
   }
 }
 
-async function graphPost(path: string, params: Record<string, string>): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
-  const token = adsToken();
-  if (!token) return { ok: false, error: "No Meta access token configured" };
+async function graphPost(tenantId: string, path: string, params: Record<string, string>): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
+  const token = await adsToken(tenantId);
+  if (!token) return { ok: false, error: NO_TOKEN };
   try {
     const r = await fetch(`${GRAPH}/${path}`, {
       method: "POST",
@@ -165,21 +194,21 @@ function dateFilter(preset: DatePreset, tz?: string): string {
   return `time_range({'since':'${since}','until':'${until}'})`;
 }
 
-export async function getAdAccount(accountId: string): Promise<{ ok: boolean; account?: AdAccountInfo; error?: string }> {
-  const r = await graphGet(`act_${accountId}`, { fields: "name,currency,account_status,timezone_name" });
+export async function getAdAccount(accountId: string, tenantId: string): Promise<{ ok: boolean; account?: AdAccountInfo; error?: string }> {
+  const r = await graphGet(tenantId, `act_${accountId}`, { fields: "name,currency,account_status,timezone_name" });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
   return { ok: true, account: { name: r.data.name as string, currency: r.data.currency as string, status: r.data.account_status as number, timezoneName: (r.data.timezone_name as string) || undefined } };
 }
 
 // The account's reporting timezone (e.g. "Asia/Kolkata") — used to anchor the
 // insight date windows so "today" matches the account, not the UTC server clock.
-export async function getAccountTimezone(accountId: string): Promise<string | undefined> {
-  const r = await graphGet(`act_${accountId}`, { fields: "timezone_name" });
+export async function getAccountTimezone(accountId: string, tenantId: string): Promise<string | undefined> {
+  const r = await graphGet(tenantId, `act_${accountId}`, { fields: "timezone_name" });
   return (r.data?.timezone_name as string) || undefined;
 }
 
-export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; campaigns: AdCampaign[]; error?: string }> {
-  const r = await graphGet(`act_${accountId}/campaigns`, {
+export async function listAdCampaigns(accountId: string, preset: DatePreset, tz: string | undefined, tenantId: string): Promise<{ ok: boolean; campaigns: AdCampaign[]; error?: string }> {
+  const r = await graphGet(tenantId, `act_${accountId}/campaigns`, {
     fields: `name,effective_status,objective,daily_budget,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "50",
   });
@@ -210,21 +239,21 @@ export async function listAdCampaigns(accountId: string, preset: DatePreset, tz?
   return { ok: true, campaigns };
 }
 
-export async function setCampaignStatus(campaignId: string, status: "ACTIVE" | "PAUSED"): Promise<{ ok: boolean; error?: string }> {
-  return graphPost(campaignId, { status });
+export async function setCampaignStatus(campaignId: string, status: "ACTIVE" | "PAUSED", tenantId: string): Promise<{ ok: boolean; error?: string }> {
+  return graphPost(tenantId, campaignId, { status });
 }
 
-export async function setCampaignDailyBudget(campaignId: string, dailyBudgetMajor: number): Promise<{ ok: boolean; error?: string }> {
-  return graphPost(campaignId, { daily_budget: String(Math.round(dailyBudgetMajor * 100)) });
+export async function setCampaignDailyBudget(campaignId: string, dailyBudgetMajor: number, tenantId: string): Promise<{ ok: boolean; error?: string }> {
+  return graphPost(tenantId, campaignId, { daily_budget: String(Math.round(dailyBudgetMajor * 100)) });
 }
 
 // Campaigns, ad sets, and ads all accept the same field updates — one helper.
-export async function renameNode(nodeId: string, name: string): Promise<{ ok: boolean; error?: string }> {
-  return graphPost(nodeId, { name });
+export async function renameNode(nodeId: string, name: string, tenantId: string): Promise<{ ok: boolean; error?: string }> {
+  return graphPost(tenantId, nodeId, { name });
 }
 
-export async function duplicateCampaign(campaignId: string): Promise<{ ok: boolean; error?: string }> {
-  return graphPost(`${campaignId}/copies`, { deep_copy: "true", status_option: "PAUSED" });
+export async function duplicateCampaign(campaignId: string, tenantId: string): Promise<{ ok: boolean; error?: string }> {
+  return graphPost(tenantId, `${campaignId}/copies`, { deep_copy: "true", status_option: "PAUSED" });
 }
 
 // ── Drill-down: ad sets and ads inside a campaign ─────────────────────────────
@@ -243,8 +272,8 @@ function insightsOf(row: Record<string, unknown>, resultHint = "") {
 export interface AdSetRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; dailyBudget: number | null; optimizationGoal: string; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }
 export interface AdRow { id: string; name: string; effectiveStatus: string; delivery: Delivery; thumbnailUrl: string | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }
 
-export async function listAdSets(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
-  const r = await graphGet(`${campaignId}/adsets`, {
+export async function listAdSets(campaignId: string, preset: DatePreset, tz: string | undefined, tenantId: string): Promise<{ ok: boolean; adsets: AdSetRow[]; error?: string }> {
+  const r = await graphGet(tenantId, `${campaignId}/adsets`, {
     fields: `name,effective_status,learning_stage_info,daily_budget,optimization_goal,insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "50",
   });
@@ -261,10 +290,10 @@ export async function listAdSets(campaignId: string, preset: DatePreset, tz?: st
   };
 }
 
-export async function listAds(campaignId: string, preset: DatePreset, tz?: string): Promise<{ ok: boolean; ads: AdRow[]; error?: string }> {
+export async function listAds(campaignId: string, preset: DatePreset, tz: string | undefined, tenantId: string): Promise<{ ok: boolean; ads: AdRow[]; error?: string }> {
   // An ad's delivery follows its ad set's learning phase, so pull the parent
   // ad set's learning_stage_info alongside the ad's own effective_status.
-  const r = await graphGet(`${campaignId}/ads`, {
+  const r = await graphGet(tenantId, `${campaignId}/ads`, {
     fields: `name,effective_status,adset{learning_stage_info},creative{thumbnail_url},insights.${dateFilter(preset, tz)}{spend,impressions,clicks,ctr,cpc,actions}`,
     limit: "100",
   });
@@ -309,9 +338,9 @@ const INSIGHT_FIELDS = "spend,impressions,reach,frequency,clicks,unique_clicks,i
 
 function num(v: unknown): number { return Number(v ?? 0) || 0; }
 
-export async function getNodeInsights(nodeId: string, level: NodeInsights["level"], preset: DatePreset, tz?: string): Promise<{ ok: boolean; node?: NodeInsights; error?: string }> {
+export async function getNodeInsights(nodeId: string, level: NodeInsights["level"], preset: DatePreset, tz: string | undefined, tenantId: string): Promise<{ ok: boolean; node?: NodeInsights; error?: string }> {
   const extra = level === "campaign" ? ",objective,daily_budget" : level === "adset" ? ",daily_budget,optimization_goal,learning_stage_info" : ",creative{thumbnail_url},adset{learning_stage_info}";
-  const r = await graphGet(nodeId, { fields: `name,effective_status${extra},insights.${dateFilter(preset, tz)}{${INSIGHT_FIELDS}}` });
+  const r = await graphGet(tenantId, nodeId, { fields: `name,effective_status${extra},insights.${dateFilter(preset, tz)}{${INSIGHT_FIELDS}}` });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
   const d = r.data;
   const learning = level === "adset" ? learnStatus(d) : level === "ad" ? learnStatus((d.adset as Record<string, unknown>) ?? {}) : undefined;
@@ -347,33 +376,33 @@ export async function getNodeInsights(nodeId: string, level: NodeInsights["level
 
 // Children cards for a detail view: a campaign shows its ad sets + ads; an ad
 // set shows its ads. Meta's /{id}/ads edge works for both campaign and ad set.
-export async function getNodeChildren(level: NodeInsights["level"], id: string, preset: DatePreset, tz?: string): Promise<{ adsets: AdSetRow[]; ads: AdRow[] }> {
+export async function getNodeChildren(level: NodeInsights["level"], id: string, preset: DatePreset, tz: string | undefined, tenantId: string): Promise<{ adsets: AdSetRow[]; ads: AdRow[] }> {
   if (level === "campaign") {
-    const [s, a] = await Promise.all([listAdSets(id, preset, tz), listAds(id, preset, tz)]);
+    const [s, a] = await Promise.all([listAdSets(id, preset, tz, tenantId), listAds(id, preset, tz, tenantId)]);
     return { adsets: s.adsets, ads: a.ads };
   }
   if (level === "adset") {
-    const a = await listAds(id, preset, tz);
+    const a = await listAds(id, preset, tz, tenantId);
     return { adsets: [], ads: a.ads };
   }
   return { adsets: [], ads: [] };
 }
 
 // Maps ad id → campaign id, for attributing our CTWA leads to campaigns.
-export async function adCampaignIndex(accountId: string): Promise<Map<string, string>> {
-  const r = await graphGet(`act_${accountId}/ads`, { fields: "campaign_id", limit: "500" });
+export async function adCampaignIndex(accountId: string, tenantId: string): Promise<Map<string, string>> {
+  const r = await graphGet(tenantId, `act_${accountId}/ads`, { fields: "campaign_id", limit: "500" });
   const map = new Map<string, string>();
   for (const a of ((r.data?.data as Record<string, unknown>[]) ?? [])) map.set(a.id as string, a.campaign_id as string);
   return map;
 }
 
 // ── Targeting search (live, as the user types in the wizard) ──────────────────
-export async function searchTargeting(kind: "geo" | "interest" | "locale", q: string): Promise<{ key: string; name: string; type?: string; audience?: number; context?: string }[]> {
+export async function searchTargeting(kind: "geo" | "interest" | "locale", q: string, tenantId: string): Promise<{ key: string; name: string; type?: string; audience?: number; context?: string }[]> {
   const params: Record<string, string> =
     kind === "geo" ? { type: "adgeolocation", q, location_types: JSON.stringify(["country", "region", "geo_market", "city", "subcity", "neighborhood", "metro_area", "zip"]), limit: "15" }
     : kind === "locale" ? { type: "adlocale", q, limit: "8" }
     : { type: "adinterest", q, limit: "8" };
-  const r = await graphGet("search", params);
+  const r = await graphGet(tenantId, "search", params);
   return (((r.data?.data as Record<string, unknown>[]) ?? [])).map(x => {
     // Parent hierarchy disambiguates same-named areas (e.g. many "Saket"s).
     const ctx = kind === "geo"
@@ -414,20 +443,20 @@ export async function geocodePlaces(q: string): Promise<{ name: string; context:
 }
 
 // The campaign an ad belongs to — used to resolve campaign-level flow triggers.
-export async function getAdCampaignId(adId: string): Promise<string | null> {
-  const r = await graphGet(adId, { fields: "campaign_id" });
+export async function getAdCampaignId(adId: string, tenantId: string): Promise<string | null> {
+  const r = await graphGet(tenantId, adId, { fields: "campaign_id" });
   return r.ok ? ((r.data?.campaign_id as string) ?? null) : null;
 }
 
 // Conversion pixels/datasets on the account — for website-conversion optimisation.
-export async function listPixels(accountId: string): Promise<{ id: string; name: string }[]> {
-  const r = await graphGet(`act_${accountId}/adspixels`, { fields: "id,name", limit: "50" });
+export async function listPixels(accountId: string, tenantId: string): Promise<{ id: string; name: string }[]> {
+  const r = await graphGet(tenantId, `act_${accountId}/adspixels`, { fields: "id,name", limit: "50" });
   return (((r.data?.data as Record<string, unknown>[]) ?? [])).map(p => ({ id: p.id as string, name: (p.name as string) || (p.id as string) }));
 }
 
 // Existing instant lead forms on the Page — for the lead-form conversion location.
-export async function listLeadForms(pageId: string): Promise<{ id: string; name: string; status: string }[]> {
-  const r = await graphGet(`${pageId}/leadgen_forms`, { fields: "id,name,status", limit: "100" });
+export async function listLeadForms(pageId: string, tenantId: string): Promise<{ id: string; name: string; status: string }[]> {
+  const r = await graphGet(tenantId, `${pageId}/leadgen_forms`, { fields: "id,name,status", limit: "100" });
   return (((r.data?.data as Record<string, unknown>[]) ?? [])).map(f => ({ id: f.id as string, name: f.name as string, status: (f.status as string) ?? "" }));
 }
 
@@ -462,7 +491,7 @@ export async function fetchLeadgen(leadgenId: string, pageToken: string): Promis
 
 // Create a Meta Instant Form on the Page. `fields` are standard question types
 // (FULL_NAME, EMAIL, PHONE, CITY, …). Returns the new form id.
-export async function createLeadForm(pageId: string, spec: {
+export async function createLeadForm(pageId: string, tenantId: string, spec: {
   name: string; fields: string[]; privacyUrl: string; privacyLinkText?: string;
   thankYouTitle?: string; thankYouBody?: string; locale?: string;
 }): Promise<{ ok: boolean; id?: string; error?: string }> {
@@ -478,14 +507,14 @@ export async function createLeadForm(pageId: string, spec: {
       button_type: "VIEW_WEBSITE", website_url: spec.privacyUrl, button_text: "Done",
     }),
   };
-  const r = await graphPost(`${pageId}/leadgen_forms`, params);
+  const r = await graphPost(tenantId, `${pageId}/leadgen_forms`, params);
   if (!r.ok) return { ok: false, error: r.error };
   return { ok: true, id: (r.data?.id as string) ?? undefined };
 }
 
 // Saved/custom audiences on the account — for include/exclude (retargeting & suppression).
-export async function listCustomAudiences(accountId: string): Promise<{ id: string; name: string; count: number | null }[]> {
-  const r = await graphGet(`act_${accountId}/customaudiences`, { fields: "id,name,approximate_count_lower_bound", limit: "100" });
+export async function listCustomAudiences(accountId: string, tenantId: string): Promise<{ id: string; name: string; count: number | null }[]> {
+  const r = await graphGet(tenantId, `act_${accountId}/customaudiences`, { fields: "id,name,approximate_count_lower_bound", limit: "100" });
   return (((r.data?.data as Record<string, unknown>[]) ?? [])).map(a => ({
     id: a.id as string, name: a.name as string,
     count: a.approximate_count_lower_bound != null ? Number(a.approximate_count_lower_bound) : null,
@@ -493,9 +522,9 @@ export async function listCustomAudiences(accountId: string): Promise<{ id: stri
 }
 
 // ── Image upload → image_hash for creatives ───────────────────────────────────
-export async function uploadAdImage(accountId: string, bytes: ArrayBuffer, filename: string): Promise<{ ok: boolean; hash?: string; error?: string }> {
-  const token = adsToken();
-  if (!token) return { ok: false, error: "No Meta access token configured" };
+export async function uploadAdImage(accountId: string, bytes: ArrayBuffer, filename: string, tenantId: string): Promise<{ ok: boolean; hash?: string; error?: string }> {
+  const token = await adsToken(tenantId);
+  if (!token) return { ok: false, error: NO_TOKEN };
   try {
     const fd = new FormData();
     fd.append("source", new Blob([bytes]), filename || "ad.jpg");
@@ -511,10 +540,10 @@ export async function uploadAdImage(accountId: string, bytes: ArrayBuffer, filen
 }
 
 // Resolve uploaded image hashes back to Meta-hosted URLs (for draft previews).
-export async function getAdImageUrls(accountId: string, hashes: string[]): Promise<Record<string, string>> {
+export async function getAdImageUrls(accountId: string, hashes: string[], tenantId: string): Promise<Record<string, string>> {
   const clean = hashes.filter(Boolean);
   if (!clean.length) return {};
-  const r = await graphGet(`act_${accountId}/adimages`, { hashes: JSON.stringify(clean), fields: "hash,url,permalink_url" });
+  const r = await graphGet(tenantId, `act_${accountId}/adimages`, { hashes: JSON.stringify(clean), fields: "hash,url,permalink_url" });
   const out: Record<string, string> = {};
   for (const img of ((r.data?.data as Record<string, unknown>[]) ?? [])) {
     const h = img.hash as string; const u = (img.url ?? img.permalink_url) as string | undefined;
@@ -524,15 +553,15 @@ export async function getAdImageUrls(accountId: string, hashes: string[]): Promi
 }
 
 // Resolve an uploaded video to its thumbnail (for draft previews).
-export async function getAdVideoThumb(videoId: string): Promise<string | null> {
-  const r = await graphGet(videoId, { fields: "picture" });
+export async function getAdVideoThumb(videoId: string, tenantId: string): Promise<string | null> {
+  const r = await graphGet(tenantId, videoId, { fields: "picture" });
   return r.ok ? ((r.data?.picture as string) ?? null) : null;
 }
 
 // ── Video upload → video_id for video creatives ──────────────────────────────
-export async function uploadAdVideo(accountId: string, bytes: ArrayBuffer, filename: string): Promise<{ ok: boolean; videoId?: string; error?: string }> {
-  const token = adsToken();
-  if (!token) return { ok: false, error: "No Meta access token configured" };
+export async function uploadAdVideo(accountId: string, bytes: ArrayBuffer, filename: string, tenantId: string): Promise<{ ok: boolean; videoId?: string; error?: string }> {
+  const token = await adsToken(tenantId);
+  if (!token) return { ok: false, error: NO_TOKEN };
   try {
     const fd = new FormData();
     fd.append("source", new Blob([bytes]), filename || "ad.mp4");
@@ -546,8 +575,8 @@ export async function uploadAdVideo(accountId: string, bytes: ArrayBuffer, filen
 }
 
 // ── Ad preview (Meta-rendered iframe HTML) ────────────────────────────────────
-export async function adPreview(adId: string): Promise<{ ok: boolean; html?: string; error?: string }> {
-  const r = await graphGet(`${adId}/previews`, { ad_format: "MOBILE_FEED_STANDARD" });
+export async function adPreview(adId: string, tenantId: string): Promise<{ ok: boolean; html?: string; error?: string }> {
+  const r = await graphGet(tenantId, `${adId}/previews`, { ad_format: "MOBILE_FEED_STANDARD" });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
   const body = ((r.data.data as Record<string, unknown>[]) ?? [])[0]?.body as string | undefined;
   return body ? { ok: true, html: body } : { ok: false, error: "No preview available" };
@@ -570,6 +599,7 @@ const OBJECTIVE_OPT_GOAL: Record<AdObjective, string> = {
 
 export interface CtwaInput {
   accountId: string;
+  tenantId: string;          // whose Meta token signs these writes
   pageId: string;
   campaignId?: string | null;          // set → add an ad set to this EXISTING campaign (skip campaign creation)
   name: string;
@@ -671,11 +701,12 @@ function buildTargetingSpec(input: TargetingInput): Record<string, unknown> {
 }
 
 // ── Audience size estimate — Meta's delivery_estimate from a targeting spec. ──
-export type AudienceEstimateInput = TargetingInput & { accountId: string } & Pick<CtwaInput, "conversionLocation" | "websiteUrl" | "pixelId" | "conversionEvent" | "leadFormId" | "ctaType" | "pageId" | "objective" | "optimizationGoal">;
+export type AudienceEstimateInput = TargetingInput & { accountId: string; tenantId: string } & Pick<CtwaInput, "conversionLocation" | "websiteUrl" | "pixelId" | "conversionEvent" | "leadFormId" | "ctaType" | "pageId" | "objective" | "optimizationGoal">;
 export async function estimateAudience(input: AudienceEstimateInput): Promise<{ ok: boolean; lower?: number; upper?: number; ready?: boolean; error?: string }> {
+  const tenantId = input.tenantId;
   const targetingSpec = buildTargetingSpec(input);
   const { optimizationGoal } = resolveCtwaDestination(input);
-  const r = await graphGet(`act_${input.accountId}/delivery_estimate`, {
+  const r = await graphGet(tenantId, `act_${input.accountId}/delivery_estimate`, {
     optimization_goal: optimizationGoal,
     targeting_spec: JSON.stringify(targetingSpec),
   });
@@ -792,8 +823,9 @@ export const PREVIEW_FORMATS: { key: string; label: string; adFormat: string }[]
   { key: "fb_right",  label: "Facebook Right Col", adFormat: "RIGHT_COLUMN_STANDARD" },
 ];
 
-export type PreviewInput = DestinationInput & { accountId: string; creative: CtwaInput["creative"] };
+export type PreviewInput = DestinationInput & { accountId: string; tenantId: string; creative: CtwaInput["creative"] };
 export async function generateAdPreviews(input: PreviewInput): Promise<{ ok: boolean; previews?: { key: string; label: string; html: string }[]; error?: string }> {
+  const tenantId = input.tenantId;
   const { link, callToAction } = resolveCtwaDestination(input);
   const storySpec = buildCreativeStorySpec(input.pageId, input.creative, link, callToAction);
   const creativeParam = JSON.stringify({
@@ -801,7 +833,7 @@ export async function generateAdPreviews(input: PreviewInput): Promise<{ ok: boo
     ...(input.creative.urlTags ? { url_tags: input.creative.urlTags } : {}),
   });
   const results = await Promise.all(PREVIEW_FORMATS.map(async f => {
-    const r = await graphPost(`act_${input.accountId}/generatepreviews`, { creative: creativeParam, ad_format: f.adFormat });
+    const r = await graphPost(tenantId, `act_${input.accountId}/generatepreviews`, { creative: creativeParam, ad_format: f.adFormat });
     const body = ((r.data?.data as Record<string, unknown>[]) ?? [])[0]?.body as string | undefined;
     return { key: f.key, label: f.label, html: body ?? null };
   }));
@@ -811,6 +843,7 @@ export async function generateAdPreviews(input: PreviewInput): Promise<{ ok: boo
 }
 
 export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolean; campaignId?: string; adSetId?: string; adId?: string; adIds?: string[]; error?: string; stage?: string }> {
+  const tenantId = input.tenantId;
   const status = input.activate ? "ACTIVE" : "PAUSED";
   const minor = (major: number) => String(Math.round(major * 100));
   const budgetField = input.budgetType === "lifetime" ? "lifetime_budget" : "daily_budget";
@@ -823,7 +856,7 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
     // the budget itself and rejects a per-ad-set budget. This makes the result correct
     // regardless of the caller's budgetLevel toggle.
     campaignId = input.campaignId;
-    const c = await graphGet(campaignId, { fields: "daily_budget,lifetime_budget" });
+    const c = await graphGet(tenantId, campaignId, { fields: "daily_budget,lifetime_budget" });
     if (!c.ok) return { ok: false, error: c.error, stage: "campaign" };
     const cd = (c.data ?? {}) as Record<string, unknown>;
     cbo = Number(cd.daily_budget ?? 0) > 0 || Number(cd.lifetime_budget ?? 0) > 0;
@@ -841,7 +874,7 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
       // false = each ad set keeps its own budget (standard ABO, no sharing).
       campParams.is_adset_budget_sharing_enabled = "false";
     }
-    const camp = await graphPost(`act_${input.accountId}/campaigns`, campParams);
+    const camp = await graphPost(tenantId, `act_${input.accountId}/campaigns`, campParams);
     if (!camp.ok) return { ok: false, error: camp.error, stage: "campaign" };
     campaignId = camp.data?.id as string;
   }
@@ -872,7 +905,7 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
     if (input.startTime) adsetParams.start_time = input.startTime;
     if (input.endTime) adsetParams.end_time = input.endTime;
   }
-  const adset = await graphPost(`act_${input.accountId}/adsets`, adsetParams);
+  const adset = await graphPost(tenantId, `act_${input.accountId}/adsets`, adsetParams);
   if (!adset.ok) return { ok: false, campaignId, error: adset.error, stage: "ad set" };
   const adSetId = adset.data?.id as string;
 
@@ -893,15 +926,15 @@ export async function createCtwaCampaign(input: CtwaInput): Promise<{ ok: boolea
     // Advantage+ creative — let Meta auto-adapt the creative to each placement/
     // format and apply AI enhancements (brightness, text variations, templates…).
     if (input.advantageCreative) creativeParams.degrees_of_freedom_spec = JSON.stringify({ creative_features_spec: { standard_enhancements: { enroll_status: "OPT_IN" } } });
-    let creative = await graphPost(`act_${input.accountId}/adcreatives`, creativeParams);
+    let creative = await graphPost(tenantId, `act_${input.accountId}/adcreatives`, creativeParams);
     // Some accounts/placements reject the enhancement spec — retry once without it
     // rather than failing the whole ad.
     if (!creative.ok && input.advantageCreative) {
       delete creativeParams.degrees_of_freedom_spec;
-      creative = await graphPost(`act_${input.accountId}/adcreatives`, creativeParams);
+      creative = await graphPost(tenantId, `act_${input.accountId}/adcreatives`, creativeParams);
     }
     if (!creative.ok) return { ok: false, campaignId, adSetId, adId: adIds[0], adIds, error: creative.error, stage: `creative${suffix}` };
-    const ad = await graphPost(`act_${input.accountId}/ads`, {
+    const ad = await graphPost(tenantId, `act_${input.accountId}/ads`, {
       name: `${input.name} — ad${suffix}`, adset_id: adSetId, status,
       creative: JSON.stringify({ creative_id: creative.data?.id as string }),
     });

@@ -14,6 +14,7 @@ type AdsData = {
   connected: boolean;
   accountId: string;
   pageId: string;
+  token?: { own: boolean; hint: string | null };
   account: { name: string; currency: string; status: number } | null;
   error: string | null;
   campaigns: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }[];
@@ -56,6 +57,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "paused">("all");
   const [detail, setDetail] = useState<{ level: "campaign" | "adset" | "ad"; id: string; name: string } | null>(null);
   const [pageInput, setPageInput] = useState("");
+  const [tokenInput, setTokenInput] = useState("");
   const [blocked, setBlocked] = useState(false);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
 
@@ -85,6 +87,23 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
       if (d.error && !d.success) setMsg(d.error);
       else if (!d.connected) setMsg(`Account saved — but Meta says: "${d.error}". Finish steps 2 and 3 below, then hit Retry.`);
       setAccountInput("");
+      load();
+    } catch { setBlocked(true); }
+    finally { setBusy(""); }
+  }
+
+  // Each workspace signs its own Meta calls. Without this the platform's env
+  // token was used for every tenant, and Meta answered (#200) "Ad account owner
+  // has NOT grant ads_management or ads_read permission" — a wall the tenant had
+  // no way through, because the token was never theirs to fix.
+  async function saveToken() {
+    if (!tokenInput.trim()) return;
+    setBusy("token"); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/meta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: tokenInput.trim() }) }).then(r => r.json());
+      if (d.error && !d.success) setMsg(d.error);
+      else if (d.success && !d.connected && d.error) setMsg(`Token saved — but Meta still says: "${d.error}". Check that this system user has Full control of the ad account (step 2).`);
+      setTokenInput("");
       load();
     } catch { setBlocked(true); }
     finally { setBusy(""); }
@@ -222,14 +241,23 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">2</div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-ink-900">Give the system user access to the ad account</p>
-              <p className="text-xs text-slate-500">Business settings → Users → System users → <b>whatsapp-api</b> → Assign assets → <b>Ad accounts</b> → pick your account → Full control.</p>
+              <p className="text-xs text-slate-500">In <b>your own</b> Meta Business settings → Users → System users → pick (or add) a system user → Assign assets → <b>Ad accounts</b> → your account → <b>Full control</b>.</p>
             </div>
           </div>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">3</div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-ink-900">Add ads permissions to the token</p>
-              <p className="text-xs text-slate-500">Generate a new token for <b>whatsapp-api</b> with <code className="bg-canvas px-1 rounded">ads_read</code> + <code className="bg-canvas px-1 rounded">ads_management</code> added to the existing WhatsApp scopes, then update <code className="bg-canvas px-1 rounded">META_WA_ACCESS_TOKEN</code> in Vercel and redeploy.</p>
+            <div className="flex-1 space-y-2">
+              <p className="text-sm font-semibold text-ink-900">Paste that system user&apos;s access token</p>
+              <p className="text-xs text-slate-500">Same screen → <b>Generate new token</b>, tick <code className="bg-canvas px-1 rounded">ads_read</code> and <code className="bg-canvas px-1 rounded">ads_management</code>, and paste the token here. It is encrypted and used only for this workspace&apos;s ads.</p>
+              <div className="flex gap-2">
+                <input className={`${inp} flex-1 font-mono`} type="password" autoComplete="off" placeholder={data.token?.own ? `Saved: ${data.token.hint} — paste a new one to replace it` : "EAAG…"} value={tokenInput} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveToken(); }} />
+                <button onClick={saveToken} disabled={busy === "token" || !tokenInput.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
+                  {busy === "token" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save token"}
+                </button>
+              </div>
+              {data.token && !data.token.own && (
+                <p className="text-[11px] text-amber-700">No token saved for this workspace yet — until you add one, Meta will reject these calls with &ldquo;Ad account owner has NOT grant ads_management or ads_read permission&rdquo; no matter what you change in Business settings.</p>
+              )}
             </div>
           </div>
         </section>

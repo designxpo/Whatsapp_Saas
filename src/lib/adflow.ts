@@ -36,7 +36,7 @@ export async function removeFlowTrigger(scope: FlowTriggerScope, refId: string, 
 async function campaignForAd(adId: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
   const { data } = await db().from("wa_ad_campaign_map").select("campaign_id").eq("tenant_id", tenantId).eq("ad_id", adId).maybeSingle();
   if (data?.campaign_id) return data.campaign_id as string;
-  const campaignId = await getAdCampaignId(adId).catch(() => null);
+  const campaignId = await getAdCampaignId(adId, tenantId).catch(() => null);
   if (campaignId) await db().from("wa_ad_campaign_map").upsert({ tenant_id: tenantId, ad_id: adId, campaign_id: campaignId }).then(() => undefined, () => undefined);
   return campaignId;
 }

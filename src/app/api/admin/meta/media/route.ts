@@ -12,13 +12,14 @@ export const maxDuration = 120;
 // hash/video_id persist, so we fetch Meta's hosted URLs to re-render the preview.
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const accountId = await getAdsAccountId((await currentTenantId()) ?? DEFAULT_TENANT_ID);
+  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const accountId = await getAdsAccountId(tenantId);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   const url = new URL(req.url);
   const videoId = url.searchParams.get("videoId");
-  if (videoId) return NextResponse.json({ thumb: await getAdVideoThumb(videoId).catch(() => null) });
+  if (videoId) return NextResponse.json({ thumb: await getAdVideoThumb(videoId, tenantId).catch(() => null) });
   const hashes = (url.searchParams.get("hashes") ?? "").split(",").map(s => s.trim()).filter(Boolean);
-  return NextResponse.json({ urls: await getAdImageUrls(accountId, hashes).catch(() => ({})) });
+  return NextResponse.json({ urls: await getAdImageUrls(accountId, hashes, tenantId).catch(() => ({})) });
 }
 
 // POST multipart { file } — upload media to the ad account.
@@ -44,11 +45,11 @@ export async function POST(req: Request) {
 
   const isVideo = file.type.startsWith("video/") || /\.(mp4|mov|m4v|webm)$/i.test(file.name);
   if (isVideo) {
-    const r = await uploadAdVideo(accountId, await file.arrayBuffer(), file.name);
+    const r = await uploadAdVideo(accountId, await file.arrayBuffer(), file.name, tenantId);
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
     return NextResponse.json({ success: true, videoId: r.videoId });
   }
-  const r = await uploadAdImage(accountId, await file.arrayBuffer(), file.name);
+  const r = await uploadAdImage(accountId, await file.arrayBuffer(), file.name, tenantId);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
   return NextResponse.json({ success: true, imageHash: r.hash });
 }

@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   const allowed = new Set(["FULL_NAME", "FIRST_NAME", "LAST_NAME", "EMAIL", "PHONE", "CITY", "STATE", "COUNTRY", "ZIP", "JOB_TITLE", "COMPANY_NAME"]);
   const fields = (Array.isArray(body.fields) ? body.fields.filter(f => allowed.has(f)) : []);
 
-  const r = await createLeadForm(pageId, {
+  const r = await createLeadForm(pageId, tid, {
     name: body.name.trim(),
     fields: fields.length ? fields : ["FULL_NAME", "EMAIL", "PHONE"],
     privacyUrl: body.privacyUrl!.trim(),

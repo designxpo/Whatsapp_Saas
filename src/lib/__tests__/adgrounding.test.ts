@@ -49,7 +49,7 @@ function makeDeps(over: Partial<GroundingDeps> = {}): GroundingDeps {
   } as unknown as GroundingDeps;
 }
 
-const CTX: EstimateCtx = { accountId: "act1", countries: ["IN"], conversionLocation: "WHATSAPP", objective: "OUTCOME_ENGAGEMENT" as EstimateCtx["objective"] };
+const CTX: EstimateCtx = { accountId: "act1", tenantId: "t1", countries: ["IN"], conversionLocation: "WHATSAPP", objective: "OUTCOME_ENGAGEMENT" as EstimateCtx["objective"] };
 const aud = (interestKeywords: string[], over: Partial<AdSetAudience> = {}): AdSetAudience => ({ ageMin: 18, ageMax: 65, genders: [], interestKeywords, ...over });
 
 beforeEach(() => {
@@ -144,7 +144,7 @@ describe("gatherGrounding", () => {
       ] })),
       listCustomAudiences: vi.fn(async () => [{ id: "ca1", name: "Past buyers", count: 1200 }]),
     });
-    const pre = await gatherGrounding("act1", deps);
+    const pre = await gatherGrounding("act1", "t1", deps);
     expect(pre.pastWins).toContain("Diwali WA");
     expect(pre.pastWins).not.toContain("Dead Ad");     // zero-spend campaign excluded
     expect(pre.customAudiences).toEqual([{ id: "ca1", name: "Past buyers", count: 1200 }]);
@@ -152,7 +152,7 @@ describe("gatherGrounding", () => {
 
   it("no account → empty grounding, no Meta calls", async () => {
     const deps = makeDeps();
-    const pre = await gatherGrounding(null, deps);
+    const pre = await gatherGrounding(null, "t1", deps);
     expect(pre).toEqual({ pastWins: "", customAudiences: [] });
     expect(deps.listAdCampaigns).not.toHaveBeenCalled();
   });

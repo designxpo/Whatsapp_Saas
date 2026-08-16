@@ -14,7 +14,7 @@ export async function GET(req: Request) {
   if (!campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
 
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const tz = await getAccountTimezone(await getAdsAccountId(tid)).catch(() => undefined);
-  const [sets, ads] = await Promise.all([listAdSets(campaignId, preset, tz), listAds(campaignId, preset, tz)]);
+  const tz = await getAccountTimezone(await getAdsAccountId(tid), tid).catch(() => undefined);
+  const [sets, ads] = await Promise.all([listAdSets(campaignId, preset, tz, tid), listAds(campaignId, preset, tz, tid)]);
   return NextResponse.json({ adsets: sets.adsets, ads: ads.ads, error: sets.error ?? ads.error ?? null });
 }

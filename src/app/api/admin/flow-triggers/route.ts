@@ -11,17 +11,17 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const url = new URL(req.url);
   const adsForCampaign = url.searchParams.get("ads");
+  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   if (adsForCampaign) {
-    const r = await listAds(adsForCampaign, "last_30d");
+    const r = await listAds(adsForCampaign, "last_30d", undefined, tenantId);
     return NextResponse.json({ ads: r.ads.map(a => ({ id: a.id, name: a.name })) });
   }
   const flowId = url.searchParams.get("flowId");
   if (!flowId) return NextResponse.json({ error: "flowId required" }, { status: 400 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-  const accountId = await getAdsAccountId(tid);
+  const accountId = await getAdsAccountId(tenantId);
   const [triggers, campRes] = await Promise.all([
     listFlowTriggers(flowId),
-    accountId ? listAdCampaigns(accountId, "last_30d") : Promise.resolve({ ok: true, campaigns: [] }),
+    accountId ? listAdCampaigns(accountId, "last_30d", undefined, tenantId) : Promise.resolve({ ok: true, campaigns: [] }),
   ]);
   return NextResponse.json({ triggers, campaigns: campRes.campaigns.map(c => ({ id: c.id, name: c.name })) });
 }

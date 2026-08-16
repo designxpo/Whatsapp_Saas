@@ -76,7 +76,7 @@ export async function deleteAdRule(id: string, tenantId = DEFAULT_TENANT_ID): Pr
 
 // Per-campaign lead counts from our attribution (ad_id attrs → campaign).
 async function leadsByCampaign(accountId: string, tenantId: string): Promise<Map<string, number>> {
-  const [attribution, index] = await Promise.all([adAttribution(tenantId), adCampaignIndex(accountId)]);
+  const [attribution, index] = await Promise.all([adAttribution(tenantId), adCampaignIndex(accountId, tenantId)]);
   const map = new Map<string, number>();
   for (const a of attribution) {
     const cid = index.get(a.adId);
@@ -128,7 +128,7 @@ async function drainAdRulesForTenant(tenantId: string): Promise<{ checked: numbe
   // One insights fetch per distinct window, shared across rules.
   const byWindow = new Map<DatePreset, AdCampaign[]>();
   for (const preset of new Set(rules.map(r => r.windowPreset))) {
-    const r = await listAdCampaigns(accountId, preset);
+    const r = await listAdCampaigns(accountId, preset, undefined, tenantId);
     if (r.ok) byWindow.set(preset, r.campaigns);
   }
   const needsLeads = rules.some(r => r.metric === "leads" || r.metric === "cost_per_lead");
@@ -148,7 +148,7 @@ async function drainAdRulesForTenant(tenantId: string): Promise<{ checked: numbe
       if (!match) continue;
       const detail = `${c.name}: ${rule.metric} ${v === Number.POSITIVE_INFINITY ? "∞ (spend with 0 leads)" : Math.round(v * 100) / 100} ${rule.op === "gt" ? ">" : "<"} ${rule.threshold}`;
       if (rule.action === "pause") {
-        const res = await setCampaignStatus(c.id, "PAUSED");
+        const res = await setCampaignStatus(c.id, "PAUSED", tenantId);
         if (res.ok) { hits.push(`paused — ${detail}`); logActivity(SYSTEM_ACTOR, "ads.pause", `${rule.name}: ${detail}`); }
       } else {
         hits.push(`alert — ${detail}`);

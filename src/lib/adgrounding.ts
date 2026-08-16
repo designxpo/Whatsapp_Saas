@@ -61,12 +61,13 @@ const fmtInt = (n: number) => n.toLocaleString("en-US");
 // copywriter can echo what worked and suggest retargeting an existing audience.
 export async function gatherGrounding(
   accountId: string | null,
+  tenantId: string,
   deps: GroundingDeps = realDeps,
 ): Promise<PreGrounding> {
   if (!accountId) return { pastWins: "", customAudiences: [] };
   const [camps, cas] = await Promise.all([
-    deps.listAdCampaigns(accountId, "last_30d").catch(() => ({ ok: false, campaigns: [] as Awaited<ReturnType<typeof listAdCampaigns>>["campaigns"] })),
-    deps.listCustomAudiences(accountId).catch(() => [] as Awaited<ReturnType<typeof listCustomAudiences>>),
+    deps.listAdCampaigns(accountId, "last_30d", undefined, tenantId).catch(() => ({ ok: false, campaigns: [] as Awaited<ReturnType<typeof listAdCampaigns>>["campaigns"] })),
+    deps.listCustomAudiences(accountId, tenantId).catch(() => [] as Awaited<ReturnType<typeof listCustomAudiences>>),
   ]);
 
   let pastWins = "";
@@ -102,6 +103,7 @@ export interface GroundedAudience {
 // Estimate needs the campaign's destination so Meta picks the right optimisation.
 export interface EstimateCtx {
   accountId: string;
+  tenantId: string;          // whose Meta token signs the estimate calls
   countries: string[];
   conversionLocation: "WHATSAPP" | "MESSENGER" | "WEBSITE";
   objective: AdObjective;
@@ -113,6 +115,7 @@ export interface EstimateCtx {
 // Resolve free-text interest keywords → real Meta interest {id,name}, deduped.
 async function resolveInterests(
   keywords: string[],
+  tenantId: string,
   deps: GroundingDeps,
 ): Promise<{ interests: { id: string; name: string }[]; unresolved: string[] }> {
   const interests: { id: string; name: string }[] = [];
@@ -121,7 +124,7 @@ async function resolveInterests(
   for (const kw of keywords.map(k => k.trim()).filter(Boolean)) {
     if (interests.length >= MAX_INTERESTS) break;
     let hits: Awaited<ReturnType<typeof searchTargeting>> = [];
-    try { hits = await deps.searchTargeting("interest", kw); } catch { hits = []; }
+    try { hits = await deps.searchTargeting("interest", kw, tenantId); } catch { hits = []; }
     // Prefer an exact (case-insensitive) name match, else the top suggestion.
     const best = hits.find(h => h.name.toLowerCase() === kw.toLowerCase()) ?? hits[0];
     if (best && !seen.has(best.key)) {
@@ -143,6 +146,7 @@ async function estimateReach(
   try {
     const r = await deps.estimateAudience({
       accountId: ctx.accountId,
+      tenantId: ctx.tenantId,
       conversionLocation: ctx.conversionLocation,
       objective: ctx.objective,
       optimizationGoal: ctx.optimizationGoal,
@@ -169,7 +173,7 @@ export async function groundAudience(
   ctx: EstimateCtx,
   deps: GroundingDeps = realDeps,
 ): Promise<GroundedAudience> {
-  const { interests, unresolved } = await resolveInterests(a.interestKeywords, deps);
+  const { interests, unresolved } = await resolveInterests(a.interestKeywords, ctx.tenantId, deps);
   const { lower, upper } = await estimateReach(interests, a, ctx, deps);
   return { interests, unresolved, reachLower: lower, reachUpper: upper, reachStatus: reachStatusOf(lower, upper) };
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { setCampaignStatus, setCampaignDailyBudget, renameNode, duplicateCampaign } from "@/lib/ads";
 import { logActivity } from "@/lib/team";
 
@@ -14,12 +14,14 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
 
+  // Campaign writes are signed with THIS workspace's Meta token.
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   let r: { ok: boolean; error?: string };
-  if (body.action === "pause") r = await setCampaignStatus(body.campaignId, "PAUSED");
-  else if (body.action === "resume") r = await setCampaignStatus(body.campaignId, "ACTIVE");
-  else if (body.action === "budget" && typeof body.dailyBudget === "number" && body.dailyBudget > 0) r = await setCampaignDailyBudget(body.campaignId, body.dailyBudget);
-  else if (body.action === "rename" && body.name?.trim()) r = await renameNode(body.campaignId, body.name.trim());
-  else if (body.action === "duplicate") r = await duplicateCampaign(body.campaignId);
+  if (body.action === "pause") r = await setCampaignStatus(body.campaignId, "PAUSED", tid);
+  else if (body.action === "resume") r = await setCampaignStatus(body.campaignId, "ACTIVE", tid);
+  else if (body.action === "budget" && typeof body.dailyBudget === "number" && body.dailyBudget > 0) r = await setCampaignDailyBudget(body.campaignId, body.dailyBudget, tid);
+  else if (body.action === "rename" && body.name?.trim()) r = await renameNode(body.campaignId, body.name.trim(), tid);
+  else if (body.action === "duplicate") r = await duplicateCampaign(body.campaignId, tid);
   else return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });

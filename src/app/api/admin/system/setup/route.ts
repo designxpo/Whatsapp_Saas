@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-import { isPlatformOwner } from "@/lib/auth";
+import { isPlatformOwner, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { db } from "@/lib/supabase";
 import { getAdsAccountId, getAdsPageId, getAdAccount } from "@/lib/ads";
 
@@ -69,7 +69,7 @@ export async function GET() {
   const [accountId, pageId] = await Promise.all([getAdsAccountId(), getAdsPageId()]);
   let account = { ok: false, detail: "No ad account connected — add your account ID on the Meta Ads page." };
   if (accountId) {
-    const r = await getAdAccount(accountId).catch(() => ({ ok: false, error: "unreachable" }));
+    const r = await getAdAccount(accountId, DEFAULT_TENANT_ID).catch(() => ({ ok: false, error: "unreachable" }));
     account = r.ok ? { ok: true, detail: `Connected — ${("account" in r && r.account?.name) || `act_${accountId}`}` } : { ok: false, detail: `act_${accountId}: ${("error" in r && r.error) || "unreachable"}` };
   }
   const page = { ok: !!pageId, detail: pageId ? `Page ID ${pageId} saved` : "No Facebook Page ID — required for Click-to-WhatsApp ads." };
