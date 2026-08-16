@@ -16,6 +16,7 @@ const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
 const FB_CONFIG_ID = process.env.NEXT_PUBLIC_META_MESSENGER_CONFIG_ID;
+const ADS_CONFIG_ID = process.env.NEXT_PUBLIC_META_ADS_CONFIG_ID;
 
 interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
 interface FbBusinessLoginOptions {
@@ -35,6 +36,7 @@ declare global {
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
 export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
 export const facebookSignupReady = () => !!APP_ID && !!FB_CONFIG_ID;
+export const adsSignupReady = () => !!APP_ID && !!ADS_CONFIG_ID;
 
 // Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
 // the client bundle at build time, so fixing them requires a redeploy).
@@ -44,6 +46,8 @@ export const instagramSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
 export const facebookSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_MESSENGER_CONFIG_ID"].filter(Boolean) as string[];
+export const adsSignupMissing = (): string[] =>
+  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !ADS_CONFIG_ID && "NEXT_PUBLIC_META_ADS_CONFIG_ID"].filter(Boolean) as string[];
 
 // Preview mode (NEXT_PUBLIC_META_PREVIEW=1): render the "Connect with Facebook"
 // buttons even before the Meta Tech Provider app is configured, so the operator
@@ -179,5 +183,21 @@ export async function launchFacebookSignup(): Promise<{ code: string }> {
       response_type: "code",
       override_default_response_type: true,
     });
+  });
+}
+
+// Meta Ads → { code }. The ad account(s) the tenant shared are resolved
+// server-side from the exchanged token, exactly like the Messenger Page flow.
+// Re-invoked (no re-consent) when the tenant picks among several accounts — a
+// Login-for-Business code is single-use, so a fresh popup mints a fresh one.
+export async function launchAdsSignup(): Promise<{ code: string }> {
+  await loadSdk();
+  if (!ADS_CONFIG_ID) throw new Error("Meta Ads sign-in is not configured yet");
+  return new Promise((resolve, reject) => {
+    window.FB!.login((response) => {
+      const code = response?.authResponse?.code;
+      if (!code) return reject(new Error("Sign-in was cancelled, or no ad account access was granted"));
+      resolve({ code });
+    }, { config_id: ADS_CONFIG_ID, response_type: "code", override_default_response_type: true });
   });
 }

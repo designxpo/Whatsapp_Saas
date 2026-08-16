@@ -206,6 +206,36 @@ export async function resolveFacebookPages(
   }
 }
 
+// Ad accounts a freshly-exchanged token can act on. The ads_management /
+// ads_read permissions live in Facebook Login for Business (unlike the Instagram
+// ones), so a tenant CAN grant their ad account through the popup — there is no
+// reason to make them mint a system-user token by hand.
+export async function resolveAdAccounts(
+  userToken: string,
+): Promise<{ ok: boolean; accounts?: { id: string; name: string; currency?: string; status?: number }[]; error?: string }> {
+  if (!userToken) return { ok: false, error: "Missing token" };
+  try {
+    const url = new URL(`${GRAPH}/me/adaccounts`);
+    url.searchParams.set("fields", "account_id,name,currency,account_status");
+    url.searchParams.set("limit", "200");
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${userToken}` } });
+    const j = await r.json();
+    if (!r.ok) return { ok: false, error: j.error?.message || `Ad account lookup failed (${r.status})` };
+    const accounts = ((j.data as { account_id?: string; name?: string; currency?: string; account_status?: number }[] | undefined) ?? [])
+      .filter(a => a.account_id)
+      .map(a => ({ id: a.account_id as string, name: a.name || `act_${a.account_id}`, currency: a.currency, status: a.account_status }));
+    if (!accounts.length) {
+      // Same shape as everywhere else: "none shared" and "no permission to see
+      // them" are one response from Graph and need opposite fixes.
+      const noGrant = noGrantMessage(await grantedScopes(userToken), "ads_", "ads");
+      return { ok: false, error: noGrant ?? "Meta shared no ad account with us. Run Connect again and tick the ad account you want Talko to manage." };
+    }
+    return { ok: true, accounts };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Ad account lookup error" };
+  }
+}
+
 // Register the phone number on Cloud API (best-effort; some flows pre-register).
 export async function registerPhone(phoneNumberId: string, token: string, pin?: string): Promise<{ ok: boolean; error?: string }> {
   if (!phoneNumberId || !token) return { ok: false, error: "Missing phoneNumberId / token" };

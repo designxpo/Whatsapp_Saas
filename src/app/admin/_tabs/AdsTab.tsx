@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
 import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd, Sparkles, Target, FlaskConical, Bot, Compass, User, Minus } from "lucide-react";
+import { launchAdsSignup, adsSignupReady, adsSignupMissing } from "@/lib/embedded-signup-client";
 import { type Tab, inp, btnPrimary, railLoading, RailCard, StatRow } from "../_shared";
 import AiAdBuilder from "./AiAdBuilder";
 
@@ -58,6 +59,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [detail, setDetail] = useState<{ level: "campaign" | "adset" | "ad"; id: string; name: string } | null>(null);
   const [pageInput, setPageInput] = useState("");
   const [tokenInput, setTokenInput] = useState("");
+  const [acctPick, setAcctPick] = useState<{ id: string; name: string; currency?: string }[] | null>(null);
   const [blocked, setBlocked] = useState(false);
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
 
@@ -96,6 +98,28 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   // token was used for every tenant, and Meta answered (#200) "Ad account owner
   // has NOT grant ads_management or ads_read permission" — a wall the tenant had
   // no way through, because the token was never theirs to fix.
+  // One click, like WhatsApp and Messenger. ads_read / ads_management are
+  // Facebook Login permissions, so a Login-for-Business configuration carrying
+  // the Ad account asset lets the tenant grant their account in the popup —
+  // there was never a reason to make them mint a system-user token by hand.
+  async function connectWithMeta(accountId?: string) {
+    if (!adsSignupReady()) { setMsg(`One-click connect isn't switched on for this deployment yet — missing ${adsSignupMissing().join(" + ")}. Use the manual steps below meanwhile.`); return; }
+    setBusy("meta"); setMsg(null);
+    try {
+      const { code } = await launchAdsSignup();
+      const d = await fetch("/api/admin/onboarding/meta-ads", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, accountId }),
+      }).then(r => r.json());
+      if (d.needsAccountChoice) { setAcctPick(d.accounts ?? []); return; }
+      if (d.error && !d.success) { setMsg(d.error); return; }
+      if (d.success && !d.connected) { setMsg(`Connected, but Meta still refuses the account: "${d.error}". Check the ad account is one this login can manage.`); }
+      setAcctPick(null);
+      load();
+    } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
+    finally { setBusy(""); }
+  }
+
   async function saveToken() {
     if (!tokenInput.trim()) return;
     setBusy("token"); setMsg(null);
@@ -223,7 +247,32 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
         {msg && <div className="bg-amber-50 border border-amber-200 rounded-card px-4 py-3 text-sm text-amber-800">{msg}</div>}
 
         <section className="bg-white rounded-card border border-line p-5 space-y-4">
-          <p className="text-xs font-bold text-slate-400 uppercase">Connect your ad account — 3 steps, one time</p>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase">Connect your ad account</p>
+              <p className="text-xs text-slate-500 mt-0.5">Sign in with Meta and pick the ad account — nothing to copy or paste.</p>
+            </div>
+            <button onClick={() => connectWithMeta()} disabled={busy === "meta"}
+              className="px-4 py-2 rounded-lg bg-[#0783fd] hover:bg-[#0668d6] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-60 shrink-0">
+              {busy === "meta" ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Connect with Meta
+            </button>
+          </div>
+
+          {acctPick && (
+            <div className="rounded-control border border-line bg-canvas p-3 space-y-2">
+              <p className="text-xs font-bold text-ink-700">Which ad account should Talko manage?</p>
+              <div className="flex flex-wrap gap-2">
+                {acctPick.map(a => (
+                  <button key={a.id} onClick={() => connectWithMeta(a.id)} disabled={busy === "meta"}
+                    className="px-3 py-1.5 rounded-control bg-white border border-line hover:border-[#0783fd] hover:bg-brand-50 text-ink-700 text-xs font-bold disabled:opacity-60">
+                    {a.name}{a.currency ? ` · ${a.currency}` : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-xs font-bold text-slate-400 uppercase pt-1 border-t border-line">Or set it up by hand — 3 steps, one time</p>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-brand-700 text-white text-xs font-bold flex items-center justify-center shrink-0">1</div>
             <div className="flex-1 space-y-2">
