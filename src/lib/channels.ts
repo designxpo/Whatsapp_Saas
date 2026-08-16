@@ -729,26 +729,35 @@ export async function resolveIgAccountId(igToken: string): Promise<{ id?: string
 // never match an inbound webhook, so the account looks connected and silently
 // receives nothing — and the tenant has no way to know a reconnect would fix it.
 //
-// Called ONLY when a webhook found no channel, and only against rows whose id
-// clearly isn't an IGID (those all begin 1784...). That bounds it to the handful
-// of genuinely-broken rows and makes it self-terminating: once repaired, there
-// is nothing left for it to consider.
+// Called ONLY when a webhook found no channel, and capped at 25 candidates, so
+// it costs nothing on the normal path and is self-terminating: a repaired row
+// matches the incoming id directly and never reaches this again.
 export async function repairIgChannelId(webhookIgId: string): Promise<Channel | null> {
   if (!webhookIgId) return null;
+  const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
   try {
+    // Any active Instagram row that ISN'T already the incoming id is a candidate.
     const { data } = await db().from("wa_channels").select("*")
       .eq("kind", "instagram").eq("active", true)
-      .not("ig_user_id", "like", "1784%").limit(25);
+      .neq("ig_user_id", webhookIgId).limit(25);
     for (const row of (data ?? []) as Record<string, unknown>[]) {
       const ch = mapChannel(row);
       if (!ch.token) continue;
-      const live = await resolveIgAccountId(ch.token);
-      if (live.id !== webhookIgId) continue;
+      // Ask whether THIS token can read THAT account. A direct authorization
+      // test, not a comparison of ids — which matters because the whole bug is
+      // that we cannot be sure which id /me hands back, and an earlier version of
+      // this repair identified the channel with the very call that was wrong.
+      // Graph answers 200 only for the account the token belongs to.
+      const probe = await fetch(`${GRAPH}/${encodeURIComponent(webhookIgId)}?fields=id,username&access_token=${encodeURIComponent(ch.token)}`)
+        .then(r => r.json().catch(() => null) as Promise<{ id?: string; error?: unknown } | null>)
+        .catch(() => null);
+      if (!probe?.id) continue;
       const { error } = await db().from("wa_channels").update({ ig_user_id: webhookIgId }).eq("id", ch.id);
       if (error) { console.error("[ig repair] could not rewrite ig_user_id", { channelId: ch.id, error: error.message }); return null; }
       console.log("[ig repair] channel id corrected", { channelId: ch.id, tenantId: ch.tenantId, from: ch.igUserId, to: webhookIgId });
       return { ...ch, igUserId: webhookIgId };
     }
+    console.warn("[ig repair] no stored Instagram token can read account", webhookIgId, "— candidates checked:", (data ?? []).length);
   } catch (err) {
     console.error("[ig repair] failed", err);
   }
