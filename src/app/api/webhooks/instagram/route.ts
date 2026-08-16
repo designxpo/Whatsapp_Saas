@@ -44,11 +44,30 @@ export async function POST(req: Request) {
   const sig = req.headers.get("x-hub-signature-256");
   const igSecret = process.env.META_INSTAGRAM_APP_SECRET;
   if (!((igSecret && verifyMetaSignature(raw, sig, igSecret)) || verifyMetaSignature(raw, sig, process.env.META_APP_SECRET))) {
+    // This 401 used to be silent, which is the worst possible place for silence:
+    // Meta keeps delivering, we keep rejecting, and in the portal it looks like
+    // the account simply never receives a message. The usual cause is
+    // META_INSTAGRAM_APP_SECRET missing in the deployment — the Instagram-login
+    // app is a SEPARATE Meta app from the Facebook one and signs with its own
+    // secret, so the fallback cannot match.
+    console.error("[ig webhook] SIGNATURE REJECTED — event dropped", {
+      hasSignatureHeader: !!sig,
+      igSecretConfigured: !!igSecret,
+      fbSecretConfigured: !!process.env.META_APP_SECRET,
+      hint: !igSecret ? "META_INSTAGRAM_APP_SECRET is not set in this deployment" : "signature matched neither secret — check it is the Instagram app secret",
+    });
     return new NextResponse("Invalid signature", { status: 401 });
   }
 
   try {
     const body = JSON.parse(raw);
+    console.log("[ig webhook] received", {
+      entries: (body.entry ?? []).map((e: Record<string, unknown>) => ({
+        igAccountId: String(e.id ?? ""),
+        messaging: Array.isArray(e.messaging) ? e.messaging.length : 0,
+        changes: Array.isArray(e.changes) ? e.changes.length : 0,
+      })),
+    });
     for (const entry of body.entry ?? []) {
       // entry.id is the IG professional account id → resolves the tenant's channel.
       const channel = await getChannelByIgId(String(entry.id ?? ""));
