@@ -59,6 +59,10 @@ export async function POST(req: Request) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
 
+  // Echoed in the response so routing can be verified with one signed request
+  // instead of correlating a log line by hand. Safe to expose: the endpoint is
+  // signature-gated, so only a caller holding the app secret ever sees it.
+  const routed: { igAccountId: string; matched: boolean; repaired: boolean }[] = [];
   try {
     const body = JSON.parse(raw);
     console.log("[ig webhook] received", {
@@ -75,7 +79,9 @@ export async function POST(req: Request) {
       // the professional-account id. Try to repair it from the token before
       // giving up, so an already-connected account starts working on its next
       // message instead of needing someone to notice and reconnect.
-      const channel = (await getChannelByIgId(igId)) ?? (await repairIgChannelId(igId));
+      const direct = await getChannelByIgId(igId);
+      const channel = direct ?? (await repairIgChannelId(igId));
+      routed.push({ igAccountId: igId, matched: !!(channel && channel.active), repaired: !direct && !!channel });
       if (!channel || !channel.active) {
         console.warn(`[ig webhook] received events for IG account ${entry.id} but no ACTIVE Instagram channel matches that account id — check the Instagram channel in the portal (and that its token hasn't expired).`);
         continue;
@@ -98,7 +104,7 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("[ig webhook] parse error:", err);
   }
-  return NextResponse.json({ received: true });
+  return NextResponse.json({ received: true, routed });
 }
 
 function credsOf(channel: Channel): IgCreds {
