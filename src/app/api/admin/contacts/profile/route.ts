@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, currentUser, currentTenantId } from "@/lib/auth";
-import { getContactByPhone, updateContactProfile } from "@/lib/store";
+import { getContactByPhone, updateContactProfile, renameLeadConversations } from "@/lib/store";
 import { db } from "@/lib/supabase";
 import { logActivity } from "@/lib/team";
 
@@ -118,6 +118,17 @@ export async function PATCH(req: Request) {
   const digits = (body.phone ?? "").replace(/\D/g, "");
   if (!digits) return NextResponse.json({ error: "phone required" }, { status: 400 });
   await updateContactProfile(digits, { name: body.name, email: body.email, tags: body.tags, attributes: body.attributes }, tid);
+  // Live Chat titles each thread from the conversation's OWN name column, so
+  // updating only the contact left the inbox showing the name the chat first
+  // captured ("Debug Test") after Contacts had been corrected. A human edit is
+  // the most authoritative name we have — push it to every thread this lead owns.
+  // Best-effort: the contact edit already landed, so a failure here must not turn
+  // a successful save into an error — but it is logged and reported, never silent.
+  let renamed = 0;
+  if (typeof body.name === "string" && body.name.trim()) {
+    try { renamed = await renameLeadConversations(digits, body.name, tid); }
+    catch (err) { console.error("[contacts] conversation rename failed:", digits, err); }
+  }
   logActivity(await currentUser(), "contact.update", digits);
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, conversationsRenamed: renamed });
 }

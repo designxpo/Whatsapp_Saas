@@ -1628,6 +1628,28 @@ export async function setConversationName(phoneKey: string, name: string, tenant
   return !error;
 }
 
+// A HUMAN renamed the lead in Contacts. That outranks every automatic source, so
+// unlike setConversationName above it overwrites a real name — and it renames
+// EVERY conversation this person owns, not just the WhatsApp one. Web chat,
+// Instagram and Messenger threads are keyed by an opaque id and carry the number
+// in lead_phone, and Live Chat renders each conversation's OWN `name` column
+// (the inbox list never joins contacts, because an Instagram chat has no contact
+// row). Without this the Contacts table reads "Priyesh Mishra" while Live Chat
+// still reads whatever the chat first captured. Returns how many threads changed.
+export async function renameLeadConversations(phoneKey: string, name: string, tenantId = DEFAULT_TENANT_ID): Promise<number> {
+  const key = digits(phoneKey);                     // digits-only, so it is safe to interpolate into .or()
+  const n = (name || "").trim().slice(0, 120);
+  // Clearing the contact name does NOT blank the threads — Live Chat would fall
+  // back to a bare phone number, which is worse than a stale name.
+  if (!key || !n) return 0;
+  const { data, error } = await db().from("wa_conversations")
+    .update({ name: n })
+    .eq("tenant_id", tenantId).or(`phone.eq.${key},lead_phone.eq.${key}`)
+    .select("id");
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}
+
 // A captured phone number lands the lead in Contacts. Web chat / Instagram /
 // Messenger conversations are keyed by opaque ids, so until now a visitor who
 // shared their number existed only on the conversation (lead_phone) — never as
