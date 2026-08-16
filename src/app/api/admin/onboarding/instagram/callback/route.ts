@@ -71,13 +71,22 @@ export async function GET(req: Request) {
 
   // Reconnecting the same account adds no channel — only a genuinely new one
   // counts against the plan's cap.
-  if (!(await findInstagramChannelId(tenantId, live.id).catch(() => undefined))) {
+  if (!(await findInstagramChannelId(tenantId, live.id).catch(() => undefined))
+      && !(live.appScopedId && await findInstagramChannelId(tenantId, live.appScopedId).catch(() => undefined))) {
     try { await enforceLimit(tenantId, "channels"); }
     catch (e) { console.error(TAG, "channel cap reached", { tenantId, igUserId: live.id }); return html({ ok: false, error: errorMessage(e) }); }
   }
 
+  // Repair in place: a channel saved before this bug holds the APP-SCOPED id, so
+  // matching on the (correct) webhook id would miss it and insert a second row,
+  // leaving the broken one behind to keep swallowing DMs.
+  const priorId = (await findInstagramChannelId(tenantId, live.id).catch(() => undefined))
+    ?? (live.appScopedId ? await findInstagramChannelId(tenantId, live.appScopedId).catch(() => undefined) : undefined);
+  if (priorId) console.log(TAG, "updating existing channel in place", { tenantId, channelId: priorId, igUserId: live.id });
+
   try {
     const channel = await saveInstagramChannel({
+      id: priorId,
       tenantId,
       name: live.username ? `@${live.username}` : `Instagram ${live.id}`,
       igUserId: live.id,

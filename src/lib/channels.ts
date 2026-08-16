@@ -701,12 +701,23 @@ export async function subscribePageToApp(pageId: string, pageToken: string): Pro
 // but getChannelByIgId does an exact match on inbound — so a stale/wrong id
 // here means every DM/comment silently fails to match and gets dropped. Ask
 // Graph directly instead of trusting hand-typed input.
-export async function resolveIgAccountId(igToken: string): Promise<{ id?: string; username?: string; error?: string }> {
+export async function resolveIgAccountId(igToken: string): Promise<{ id?: string; appScopedId?: string; username?: string; error?: string }> {
   try {
     const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
-    const res = await fetch(`${GRAPH}/me?fields=id,username&access_token=${encodeURIComponent(igToken)}`);
-    const data = (await res.json().catch(() => null)) as { id?: string; username?: string; error?: { message?: string } } | null;
-    if (res.ok && data?.id) return { id: data.id, username: data.username };
+    // /me returns TWO ids on the Instagram-login API and they are not the same:
+    //   id      — app-scoped, unique to this app+user pairing
+    //   user_id — the Instagram professional account id (the 17841… one)
+    // Inbound webhooks stamp entry.id with user_id, and getChannelByIgId matches
+    // it EXACTLY. Asking only for `id` stored the app-scoped one, so every DM
+    // arrived, found no channel, and was dropped with a warning — the account
+    // looked connected and stayed silent. Prefer user_id; keep the app-scoped id
+    // so a channel saved under the wrong one can be repaired in place.
+    const res = await fetch(`${GRAPH}/me?fields=user_id,id,username&access_token=${encodeURIComponent(igToken)}`);
+    const data = (await res.json().catch(() => null)) as { user_id?: string | number; id?: string; username?: string; error?: { message?: string } } | null;
+    const webhookId = data?.user_id != null ? String(data.user_id) : undefined;
+    if (res.ok && (webhookId || data?.id)) {
+      return { id: webhookId ?? (data!.id as string), appScopedId: data?.id, username: data?.username };
+    }
     return { error: data?.error?.message || `HTTP ${res.status}` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
