@@ -35,6 +35,16 @@ export const IG_SCOPES = (process.env.META_INSTAGRAM_SCOPES ||
   "instagram_business_basic,instagram_business_manage_messages,instagram_business_manage_comments")
   .split(",").map(s => s.trim()).filter(Boolean);
 
+// The permission that decides whether comment webhooks are ever delivered.
+// Worth naming: subscribing an account to the `comments` field SUCCEEDS without
+// it — /subscribed_apps happily reports ["messages","comments"] — and Meta then
+// silently delivers only messages. So the subscription is not evidence, and the
+// grant list Meta returns at token exchange is the only honest answer.
+export const IG_COMMENT_SCOPE = "instagram_business_manage_comments";
+
+// Where a channel's granted scopes are remembered (wa_settings, per tenant).
+export const igScopesKey = (channelId: string) => `ig_scopes:${channelId}`;
+
 export const igAppId = () => (process.env.META_INSTAGRAM_APP_ID || "").trim();
 const igAppSecret = () => (process.env.META_INSTAGRAM_APP_SECRET || "").trim();
 

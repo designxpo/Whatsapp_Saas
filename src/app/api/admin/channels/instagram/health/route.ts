@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listChannels, getChannel, resolveIgAccountId, igWebhookFields, subscribeIgToApp, type Channel } from "@/lib/channels";
+import { getTenantSetting } from "@/lib/store";
+import { IG_COMMENT_SCOPE, igScopesKey } from "@/lib/iglogin";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +41,15 @@ async function report(ch: Channel): Promise<Report> {
     return { ...base, messages: false, comments: false, fields: [], idMatches: false, status: "error", detail: "No access token is stored for this account — reconnect it.", error: "no token" };
   }
   // Both reads are independent; a slow one shouldn't serialise the other.
-  const [live, subs] = await Promise.all([resolveIgAccountId(ch.token), igWebhookFields(ch.igUserId ?? "", ch.token)]);
+  const [live, subs, scopes] = await Promise.all([
+    resolveIgAccountId(ch.token),
+    igWebhookFields(ch.igUserId ?? "", ch.token),
+    getTenantSetting<string[] | null>(ch.tenantId, igScopesKey(ch.id), null).catch(() => null),
+  ]);
+  // Recorded only for accounts connected through Business Login since we started
+  // storing it; an account added by pasting a token has none, and absence must
+  // read as "unknown", never as "not granted".
+  const commentScopeMissing = Array.isArray(scopes) && scopes.length > 0 && !scopes.includes(IG_COMMENT_SCOPE);
 
   if (live.error && !subs.ok) {
     return { ...base, messages: false, comments: false, fields: [], idMatches: false, status: "error",
@@ -65,6 +75,14 @@ async function report(ch: Channel): Promise<Report> {
   if (!subs.messages) {
     return { ...base, messages: false, comments: subs.comments, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "error",
       detail: "Meta isn't delivering anything for this account — no DMs and no comments. Try Recheck, then reconnect if it doesn't clear." };
+  }
+  // Checked BEFORE the subscription, because the subscription lies here: Meta
+  // accepts `comments` in subscribed_fields whether or not the permission was
+  // granted, and then delivers nothing. Only the grant list settles it, and
+  // re-subscribing cannot fix it — the account has to be authorised again.
+  if (commentScopeMissing) {
+    return { ...base, messages: true, comments: false, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "dms-only",
+      detail: "Instagram never granted comment access for this account, so comment webhooks are not delivered and no comment rule can fire — even though the subscription looks complete. Recheck won't help: disconnect it, connect again, and leave every permission switched on at Instagram's screen." };
   }
   if (!subs.comments) {
     return { ...base, messages: true, comments: false, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "dms-only",

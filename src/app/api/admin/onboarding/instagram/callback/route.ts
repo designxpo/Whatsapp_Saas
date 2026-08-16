@@ -3,7 +3,8 @@ import { guardFeature } from "@/lib/feature-guard";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
 import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp, findInstagramChannelId } from "@/lib/channels";
-import { igRedirectUri, verifyState, exchangeIgCode, igLongLivedToken } from "@/lib/iglogin";
+import { igRedirectUri, verifyState, exchangeIgCode, igLongLivedToken, IG_COMMENT_SCOPE, igScopesKey } from "@/lib/iglogin";
+import { setTenantSetting } from "@/lib/store";
 import { popupHtml } from "../start/route";
 
 export const dynamic = "force-dynamic";
@@ -97,10 +98,26 @@ export async function GET(req: Request) {
     // Without this Meta delivers no DM or comment events at all — the channel
     // would look connected and stay permanently silent.
     const webhook = await subscribeIgToApp(channel.igUserId ?? live.id, token);
-    console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, webhook: webhook.ok ? (webhook.degraded ? "degraded" : "full") : webhook.detail });
+
+    // Remember what Instagram actually granted. This used to be a log line and
+    // nothing more, which cost us: an account can subscribe to the `comments`
+    // field successfully while lacking the permission to receive it, so every
+    // later check agreed the account was healthy and comment rules still never
+    // fired. Persisted per channel so the health check can say so out loud.
+    const granted = short.permissions ?? null;
+    if (granted?.length) {
+      await setTenantSetting(tenantId, igScopesKey(channel.id), granted).catch(e => console.error(TAG, "could not store granted scopes", e));
+    }
+    // Undefined means Meta didn't report the list — unknown, not missing.
+    const commentsGranted = granted?.length ? granted.includes(IG_COMMENT_SCOPE) : null;
+    console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, granted, commentsGranted, webhook: webhook.ok ? (webhook.degraded ? "degraded" : "full") : webhook.detail });
 
     if (!webhook.ok) return html({ ok: true, warn: true, detail: `The account is saved, but Meta refused to switch on message delivery, so no DM will reach Talko yet: ${webhook.detail}` });
-    return html({ ok: true, warn: webhook.degraded, detail: webhook.degraded ? webhook.detail : `@${live.username ?? live.id} is connected and receiving.` });
+    if (webhook.degraded) return html({ ok: true, warn: true, detail: webhook.detail });
+    if (commentsGranted === false) {
+      return html({ ok: true, warn: true, detail: `@${live.username ?? live.id} is connected and DMs will arrive — but comment access wasn't granted, so comment-to-DM and comment-reply rules can never fire on this account. Connect it again and leave every permission switched on at Instagram's screen.` });
+    }
+    return html({ ok: true, detail: `@${live.username ?? live.id} is connected and receiving.` });
   } catch (e) {
     console.error(TAG, "channel save failed", { tenantId, igUserId: live.id, error: e });
     return html({ ok: false, error: errorMessage(e) });
