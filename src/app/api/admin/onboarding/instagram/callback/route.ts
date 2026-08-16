@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const TAG = "[ig-login]";
-const html = (r: { ok: boolean; error?: string; detail?: string }) =>
+const html = (r: { ok: boolean; warn?: boolean; error?: string; detail?: string }) =>
   new Response(popupHtml(r), { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
 
 // GET — where Instagram sends the tenant back after Business Login.
@@ -90,8 +90,8 @@ export async function GET(req: Request) {
     const webhook = await subscribeIgToApp(channel.igUserId ?? live.id, token);
     console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, webhook: webhook.ok ? (webhook.degraded ? "degraded" : "full") : webhook.detail });
 
-    if (!webhook.ok) return html({ ok: true, detail: `Saved @${live.username ?? live.id}, but Meta wouldn't turn on message delivery: ${webhook.detail}` });
-    return html({ ok: true, detail: webhook.degraded ? webhook.detail : `@${live.username ?? live.id} is connected and receiving.` });
+    if (!webhook.ok) return html({ ok: true, warn: true, detail: `The account is saved, but Meta refused to switch on message delivery, so no DM will reach Talko yet: ${webhook.detail}` });
+    return html({ ok: true, warn: webhook.degraded, detail: webhook.degraded ? webhook.detail : `@${live.username ?? live.id} is connected and receiving.` });
   } catch (e) {
     console.error(TAG, "channel save failed", { tenantId, igUserId: live.id, error: e });
     return html({ ok: false, error: errorMessage(e) });

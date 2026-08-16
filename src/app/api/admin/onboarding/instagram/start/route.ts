@@ -40,10 +40,16 @@ function fail(message: string): Response {
   });
 }
 
-export function popupHtml(result: { ok: boolean; error?: string; detail?: string }): string {
+// Three states, not two. "Saved, but Meta refused message delivery" was
+// rendering under a green "Instagram connected" heading — so a channel that can
+// never receive a DM looked exactly like one that works, and the warning read as
+// a footnote to good news. A half-connection has to look like a half-connection.
+export function popupHtml(result: { ok: boolean; warn?: boolean; error?: string; detail?: string }): string {
   const json = JSON.stringify({ source: "talko-ig-login", ...result });
   const safe = (s: string) => s.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
-  const heading = result.ok ? "Instagram connected" : "Couldn’t connect Instagram";
+  const heading = !result.ok ? "Couldn’t connect Instagram"
+    : result.warn ? "Connected — but not receiving yet"
+    : "Instagram connected";
   const body = result.ok ? (result.detail ?? "You can close this window.") : (result.error ?? "Something went wrong.");
   return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${safe(heading)}</title>
@@ -55,10 +61,11 @@ export function popupHtml(result: { ok: boolean; error?: string; detail?: string
   h1{font-size:17px;margin:0 0 8px;font-weight:700}
   p{margin:0;color:#5B6167;font-size:14px}
   .bad h1{color:#A32A22}
+  .warn h1{color:#8A5B0C}
 </style>
-<div class="card ${result.ok ? "" : "bad"}"><h1>${safe(heading)}</h1><p>${safe(body)}</p></div>
+<div class="card ${!result.ok ? "bad" : result.warn ? "warn" : ""}"><h1>${safe(heading)}</h1><p>${safe(body)}</p></div>
 <script>
   try { window.opener && window.opener.postMessage(${json}, window.location.origin); } catch (e) {}
-  setTimeout(function(){ try { window.close(); } catch (e) {} }, ${result.ok ? 900 : 6000});
+  setTimeout(function(){ try { window.close(); } catch (e) {} }, ${result.ok && !result.warn ? 900 : 12000});
 </script>`;
 }
