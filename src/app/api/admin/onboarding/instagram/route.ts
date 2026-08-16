@@ -42,39 +42,56 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
   }
 
-  // What Meta ACTUALLY granted this tenant, logged on every attempt. Until a
-  // permission clears App Review, Meta grants it to users who hold a role on the
-  // app (admin/developer/tester) and silently grants nothing to everyone else —
-  // same success screen either way. That is the exact shape of "it works for my
-  // account but not for tenants", and this line is what settles it instead of
-  // leaving us to infer it from a missing field.
+  // What Meta granted this tenant, logged on every attempt — the one line that
+  // separates a tenant-side setup problem from an app-side permission problem.
   const scopes = await grantedScopes(ex.token);
   console.log(TAG, "granted scopes", { tenantId, scopes: scopes ?? "(probe failed)" });
 
-  // Embedded Signup returns only a code; resolve the IG account + Page from the
-  // token server-side unless the caller (manual/admin form) supplied them.
+  // Resolve the account with the Instagram API this app is actually APPROVED for.
+  //
+  // There are two Instagram APIs and they use different permission families and
+  // different hosts:
+  //   Instagram Login   instagram_business_* → graph.instagram.com/me
+  //   Facebook Login    instagram_basic      → graph.facebook.com Page{instagram_business_account}
+  // This app holds instagram_business_basic + instagram_business_manage_messages
+  // and does NOT hold instagram_basic — and lib/instagram.ts already sends on
+  // graph.instagram.com for exactly that reason. But onboarding only ever tried
+  // the Page route, so Graph returned the Page with the Instagram field omitted
+  // (it omits fields a token can't see rather than erroring), which reads as
+  // "this Page has no Instagram account linked" — a dead end no tenant could
+  // clear, because their Page was never the problem.
+  //
+  // So try the approved API first, and keep the Page route as the fallback for a
+  // deployment still on Facebook Login.
   let igUserId = body.igUserId?.trim();
   let pageId = body.pageId?.trim() || null;
+  let username: string | undefined;
+
   if (!igUserId) {
-    const asset = await resolveInstagramAsset(ex.token);
-    if (!asset.ok || !asset.igUserId) {
-      console.error(TAG, "asset resolve failed", { tenantId, error: asset.error });
-      return NextResponse.json({ error: asset.error || "Could not resolve Instagram account" }, { status: 502 });
+    const direct = await resolveIgAccountId(ex.token);
+    if (direct.id) {
+      igUserId = direct.id;
+      username = direct.username;
+      console.log(TAG, "resolved via Instagram Login", { tenantId, igUserId, username });
+    } else {
+      const asset = await resolveInstagramAsset(ex.token);
+      if (!asset.ok || !asset.igUserId) {
+        console.error(TAG, "asset resolve failed on both APIs", { tenantId, instagramLogin: direct.error, facebookLogin: asset.error });
+        return NextResponse.json({ error: asset.error || direct.error || "Could not resolve Instagram account" }, { status: 502 });
+      }
+      igUserId = asset.igUserId;
+      pageId = asset.pageId ?? null;
+      console.log(TAG, "resolved via Facebook Page", { tenantId, igUserId, pageId });
     }
-    igUserId = asset.igUserId;
-    pageId = asset.pageId ?? null;
   }
 
-  // Prove the token works against the API we actually SEND with before storing
-  // it. Embedded Signup runs on Facebook Login (graph.facebook.com), while this
-  // product's Instagram runtime is Instagram Login (graph.instagram.com) — see
-  // lib/instagram.ts. The two token families are not interchangeable, so a token
-  // that resolved a Page fine can still be unusable for DMs. Saving it anyway
-  // produces the worst outcome available: a channel that reads as connected and
-  // can neither send nor receive. Fail here instead, and name the reason.
-  const live = await resolveIgAccountId(ex.token);
+  // Whatever route found the id, the token still has to be one the messaging API
+  // accepts — storing a channel that can neither send nor receive is the worst
+  // outcome available, so prove it before saving. (Free when we came from the
+  // Instagram Login branch, which is the same call.)
+  const live = username ? { id: igUserId, username } : await resolveIgAccountId(ex.token);
   if (!live.id) {
-    console.error(TAG, "token rejected by the Instagram API", { tenantId, igUserId, error: live.error });
+    console.error(TAG, "token rejected by the Instagram messaging API", { tenantId, igUserId, error: live.error });
     return NextResponse.json({
       error: `Meta connected the account, but the token it gave us isn't accepted by the Instagram messaging API (${live.error || "no account returned"}). Nothing was saved — a channel stored now could never send or receive. Use “Add manually” with an Instagram access token, and send this message to support.`,
     }, { status: 502 });
@@ -85,11 +102,12 @@ export async function POST(req: Request) {
     console.warn(TAG, "account id corrected", { tenantId, from: igUserId, to: live.id });
     igUserId = live.id;
   }
+  username = live.username ?? username;
 
   try {
     const channel = await saveInstagramChannel({
       tenantId,
-      name: body.name?.trim() || (live.username ? `@${live.username}` : `Instagram ${igUserId}`),
+      name: body.name?.trim() || (username ? `@${username}` : `Instagram ${igUserId}`),
       igUserId,
       pageId,
       token: ex.token,

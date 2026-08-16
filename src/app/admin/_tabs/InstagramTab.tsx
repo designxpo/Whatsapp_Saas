@@ -261,11 +261,11 @@ function InstagramManager() {
       {!channels.length && !form && (
         <div className="text-xs text-ink-400 space-y-1">
           <p>No Instagram accounts connected yet.</p>
-          {/* Said BEFORE the popup opens, because the popup itself lets you skip
-              the Page step and gives no hint that skipping breaks the connection. */}
+          {/* Said BEFORE the popup opens: the window offers several things to
+              share and gives no hint which ones we actually need. */}
           {instagramSignupReady() && (
             <p className="text-[11px]">
-              When the Meta window asks which Facebook Page to share, pick the Page your Instagram account is linked to — don&apos;t skip it. That Page is how Talko finds the account.
+              In the Meta window, tick your <b>Instagram account</b> — and the Facebook Page it&apos;s linked to, if you&apos;re asked for one.
             </p>
           )}
         </div>
