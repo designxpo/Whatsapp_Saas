@@ -92,4 +92,36 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
     expect(system).toMatch(/Do NOT address them by any name/i);
     expect(system).not.toContain("use EXACTLY");
   });
+
+  // The bug this guards, seen in production: Gemini bills thinking tokens against
+  // maxOutputTokens, so a 160-token nudge was spent reasoning and the leftover
+  // shipped to the customer as a mid-word fragment ("Maa Kali ke mand"). The
+  // gateway now reserves thinking room separately AND reports finishReason, and a
+  // truncated nudge is trimmed to whole sentences or dropped.
+  it("drops a truncated nudge that has no complete sentence, rather than send a fragment", async () => {
+    runChat.mockResolvedValue({ text: "Maa Kali ke mand", toolCalls: [], truncated: true });
+    expect(await composeFollowup(TRANSCRIPT)).toBeNull();
+  });
+
+  it("keeps the complete sentences of a truncated nudge and drops the cut tail", async () => {
+    runChat.mockResolvedValue({ text: "Hope the course details helped! Did you want me to sha", toolCalls: [], truncated: true });
+    const r = await composeFollowup(TRANSCRIPT);
+    expect(r?.text).toBe("Hope the course details helped!");
+  });
+
+  it("leaves a complete nudge untouched when the model stopped naturally", async () => {
+    runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [], truncated: false });
+    const r = await composeFollowup(TRANSCRIPT);
+    expect(r?.text).toBe("Just checking in — any questions?");
+  });
+
+  // Regression guard for the other half of the fix: the nudge budget must be the
+  // budget for the ANSWER. If a future edit re-tightens it, thinking starves the
+  // reply again — and this is the only call site where that is customer-visible.
+  it("asks for enough answer tokens that a short nudge cannot be cut off", async () => {
+    runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
+    await composeFollowup(TRANSCRIPT);
+    const { maxTokens } = runChat.mock.calls[0][0] as { maxTokens: number };
+    expect(maxTokens).toBeGreaterThanOrEqual(160);
+  });
 });

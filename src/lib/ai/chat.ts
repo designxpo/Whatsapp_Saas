@@ -7,7 +7,7 @@
 // tool-calling loop lives in `llm.ts` and is provider-agnostic: it appends the
 // assistant's tool calls + the tool results to `turns` and calls `runChat` again.
 
-import { GoogleGenAI, Type, type Content, type Part } from "@google/genai";
+import { GoogleGenAI, Type, FinishReason, type Content, type Part } from "@google/genai";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 
@@ -42,6 +42,26 @@ const GEMINI_THINKING_BUDGET = (() => {
   const raw = process.env.GEMINI_CHAT_THINKING_BUDGET?.trim();
   const n = raw ? Number(raw) : -1;
   return Number.isFinite(n) ? n : -1;
+})();
+
+// Gemini bills THINKING tokens against `maxOutputTokens`: the reasoning the model
+// does before it writes comes out of the SAME budget as the answer. So a caller's
+// `maxTokens` — which on OpenAI and Anthropic means "room for the answer" — was
+// partly spent thinking, and once thinking ate the lot the reply came back cut
+// mid-word with finishReason=MAX_TOKENS. That is how a 160-token follow-up nudge
+// reached a customer as "Maa Kali ke mand". generateReply papered over it locally
+// by asking for 2048; every other call site (nudges, persona rewrites, the city
+// classifier) did not, and no caller should have to know this.
+//
+// So reserve thinking room ON TOP of the caller's budget, here, once — `maxTokens`
+// then means the same thing on all three providers. A fixed budget reserves
+// exactly itself (it is a hard cap); dynamic (-1) reserves this ceiling.
+const GEMINI_THINKING_RESERVE = (() => {
+  if (GEMINI_THINKING_BUDGET === 0) return 0;                     // thinking off — nothing to reserve
+  if (GEMINI_THINKING_BUDGET > 0) return GEMINI_THINKING_BUDGET;  // hard-capped — reserve exactly that
+  const raw = process.env.GEMINI_CHAT_THINKING_RESERVE?.trim();
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1024;
 })();
 
 // A single tool the model may call (mirrors an AI Hub function).
@@ -82,6 +102,10 @@ export interface RunChatOpts {
 export interface ChatResult {
   text: string;          // assistant text ("" when it only called tools)
   toolCalls: ToolCall[]; // empty when the model produced a final answer
+  // The provider stopped at the token ceiling instead of at a natural end, so
+  // `text` can break off mid-word. Any caller that shows this to a customer must
+  // trim it to whole sentences or drop it — never ship the fragment.
+  truncated?: boolean;
 }
 
 // ── client caches (per apiKey) ───────────────────────────────────────────────
@@ -174,7 +198,9 @@ function runGemini(opts: RunChatOpts): Promise<ChatResult> {
     contents,
     config: {
       systemInstruction: opts.system,
-      maxOutputTokens: opts.maxTokens ?? 1024,
+      // The caller's budget is for the ANSWER; thinking gets its own room on top
+      // (see GEMINI_THINKING_RESERVE) so reasoning can never truncate the reply.
+      maxOutputTokens: (opts.maxTokens ?? 1024) + GEMINI_THINKING_RESERVE,
       // Dynamic thinking by default — the model reasons only when the message needs
       // it. Tunable via GEMINI_CHAT_THINKING_BUDGET (0 = off, for lowest latency).
       thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
@@ -185,6 +211,7 @@ function runGemini(opts: RunChatOpts): Promise<ChatResult> {
     toolCalls: (res.functionCalls ?? []).map((c, i) => ({
       id: `gem_${i}`, name: c.name ?? "", args: (c.args ?? {}) as Record<string, unknown>,
     })),
+    truncated: res.candidates?.[0]?.finishReason === FinishReason.MAX_TOKENS,
   }));
 }
 
@@ -229,6 +256,7 @@ async function runOpenAI(opts: RunChatOpts): Promise<ChatResult> {
   const msg = res.choices[0]?.message;
   return {
     text: (msg?.content ?? "").trim(),
+    truncated: res.choices[0]?.finish_reason === "length",
     toolCalls: (msg?.tool_calls ?? []).flatMap((tc, i) => {
       if (tc.type !== "function") return [];
       let args: Record<string, unknown> = {};
@@ -289,7 +317,7 @@ async function runAnthropic(opts: RunChatOpts): Promise<ChatResult> {
     if (block.type === "text") text += block.text;
     else if (block.type === "tool_use") toolCalls.push({ id: block.id, name: block.name, args: (block.input ?? {}) as Record<string, unknown> });
   }
-  return { text: text.trim(), toolCalls };
+  return { text: text.trim(), toolCalls, truncated: res.stop_reason === "max_tokens" };
 }
 
 // Lightweight validation call used when a tenant saves a key.

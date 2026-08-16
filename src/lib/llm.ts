@@ -80,6 +80,22 @@ function isLowStakes(text: string): boolean {
   return t.length <= 6 && !/[A-Za-z]{3,}/.test(t) && !HANDOFF_RE.test(t);
 }
 
+// A generation that stopped at the token ceiling ends mid-word ("…Maa Kali ke
+// mand"). Walk back to the last sentence terminator and keep only whole
+// sentences, so a customer never receives a fragment. Returns "" when not even
+// one sentence completed — the caller then falls back or sends nothing.
+// Devanagari danda and a newline both count as ends: replies here are routinely
+// Hindi/Hinglish, and a truncated bullet list ends its last complete line.
+function completeSentences(text: string): string {
+  const t = (text ?? "").trim();
+  if (!t) return "";
+  const cut = Math.max(
+    t.lastIndexOf("."), t.lastIndexOf("!"), t.lastIndexOf("?"),
+    t.lastIndexOf("।"), t.lastIndexOf("\n"),
+  );
+  return cut < 0 ? "" : t.slice(0, cut + 1).trim();
+}
+
 // AI Hub functions → normalized chat tools (provider-agnostic).
 function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
   if (fns.length === 0) return undefined;
@@ -492,9 +508,10 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     const toolFacts: string[] = [];
 
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
-      // Ample token headroom so a heavy thinking pass (which counts against the
-      // output budget on thinking models) can never starve and truncate the visible
-      // reply mid-sentence. Replies stay short via the prompt + firewall. Tune with
+      // Room for the ANSWER. A thinking pass no longer competes with it — the chat
+      // gateway reserves thinking tokens on top of this budget — but a genuinely
+      // long answer can still reach the ceiling, which `res.truncated` catches
+      // below. Replies stay short via the prompt + firewall. Tune with
       // GEMINI_CHAT_MAX_TOKENS.
       const maxTokens = Math.max(512, parseInt(process.env.GEMINI_CHAT_MAX_TOKENS ?? "", 10) || 2048);
       const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens, timeoutMs: sawMedia ? 60000 : undefined });
@@ -543,7 +560,11 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       // them was otherwise deferred to "our team will share the exact fees".
       let guardContext = payLinks.length ? `${context}\nPayment links: ${payLinks.join(" ")}` : context;
       if (toolFacts.length) guardContext += `\nFrom our catalog and cart:\n${toolFacts.join("\n")}`;
-      const guarded = sanitizeOutbound((res.text ?? "").trim(), { agentName: agent?.name, context: guardContext, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
+      // A reply that stopped at the ceiling ends mid-word — trim it to whole
+      // sentences first. If nothing completed this lands on the `!text` fallback
+      // below, which is the right outcome: a soft prompt beats half a sentence.
+      const answerText = res.truncated ? completeSentences(res.text ?? "") : (res.text ?? "").trim();
+      const guarded = sanitizeOutbound(answerText, { agentName: agent?.name, context: guardContext, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
       const text = guarded.text;
       if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));
       // Only an explicit escalate token hands off to a human. An empty model
@@ -648,8 +669,16 @@ export async function composeFollowup(
       maxTokens: 160,
     });
   } catch { return null; }   // no key / busy / unavailable — skip this nudge, never block the cron
-  const raw = (res.text ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+  let raw = (res.text ?? "").trim().replace(/^["']+|["']+$/g, "").trim();
+  // A nudge that stopped at the ceiling is a fragment. Keep whole sentences only;
+  // if none completed, send NOTHING — the caller releases its claim and a later
+  // tick retries, which beats poking a quiet lead with half a word.
+  if (res.truncated) raw = completeSentences(raw);
   if (raw.length < 2) return null;
+  // Thinking now has its own budget, so the answer ceiling is far above the 1–2
+  // sentences this prompt asks for. Keep a runaway nudge from going out at full
+  // length — but only trim back to a sentence end, never mid-word.
+  if (raw.length > 600) { const short = completeSentences(raw.slice(0, 600)); if (short) raw = short; }
   // Grounding firewall: the transcript is the ONLY allowed source of facts, so any
   // invented specific is stripped/deferred exactly as on the live reply path. This
   // also scrubs any accidental self-introduction by name.
@@ -691,7 +720,11 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     // Sanitize against the ORIGINAL factual answer as the allow-set: the persona
     // rewrite must not introduce an email/number/duration that wasn't in the
     // curated source (a tone pass occasionally invents a contact line).
-    const toned = sanitizeOutbound(res.text || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
+    // A rewrite that stopped at the ceiling would replace a complete factual
+    // answer with half a sentence — keep whole sentences, and when none survived
+    // fall through to the curated answer, exactly as an empty rewrite already did.
+    const rewritten = res.truncated ? completeSentences(res.text ?? "") : (res.text ?? "");
+    const toned = sanitizeOutbound(rewritten || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
     // This is a SECOND model generation, steered by the tenant's own persona and
     // constraints text — so its output needs screening independently of
     // generateReply's. Falling back to the curated `answer` (rather than failing
