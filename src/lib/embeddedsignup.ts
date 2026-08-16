@@ -37,6 +37,11 @@ export async function exchangeSignupCode(code: string): Promise<ExchangeResult> 
     const r = await fetch(url, { method: "GET" });
     const j = await r.json();
     if (!r.ok || !j.access_token) {
+      // Meta's message alone is often ambiguous — "Error validating verification
+      // code" covers a reused code, an expired one, and a redirect_uri mismatch,
+      // which need different fixes. Log the whole error object so the subcode and
+      // fbtrace_id are available when only the tenant-facing sentence surfaces.
+      console.error("[meta-oauth] code exchange failed", JSON.stringify(j.error ?? { status: r.status }));
       return { ok: false, error: j.error?.message || `Token exchange failed (${r.status})` };
     }
     return { ok: true, token: j.access_token as string };

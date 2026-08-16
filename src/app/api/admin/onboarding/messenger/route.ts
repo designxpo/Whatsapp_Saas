@@ -6,12 +6,40 @@ import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
+import { getTenantSecret, setTenantSecret } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Tagged so one tenant attempt is enough to tell which step failed, from logs.
 const TAG = "[fb-onboarding]";
+
+// A Login-for-Business code is SINGLE USE. Picking a Page used to re-run
+// FB.login for a second code, and the SDK hands back a cached authResponse
+// carrying the code that was already spent — which Meta rejects with "Error
+// validating verification code. Please make sure your redirect_uri is identical
+// to the one you used in the OAuth dialog request", a message that sends you
+// hunting a redirect_uri problem that does not exist.
+//
+// So the token from the FIRST exchange is parked here for the length of the
+// choice, and the pick spends no code at all. Encrypted at rest like any other
+// Meta token, and short-lived because it is a live credential for the tenant's
+// Pages.
+const PENDING = "fb_pending_login";
+const PENDING_TTL_MS = 10 * 60_000;
+
+async function parkToken(tenantId: string, token: string) {
+  await setTenantSecret(tenantId, PENDING, JSON.stringify({ token, at: Date.now() }));
+}
+async function takeParkedToken(tenantId: string): Promise<string | null> {
+  const raw = await getTenantSecret(tenantId, PENDING).catch(() => null);
+  if (!raw) return null;
+  try {
+    const { token, at } = JSON.parse(raw) as { token?: string; at?: number };
+    if (!token || !at || Date.now() - at > PENDING_TTL_MS) return null;
+    return token;
+  } catch { return null; }
+}
 
 const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` : "••••");
 
@@ -35,9 +63,16 @@ export async function POST(req: Request) {
 
   let body: { code?: string; pageId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  if (!body.code) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
 
-  const ex = await exchangeSignupCode(body.code);
+  // Second leg of a Page choice: no new code, reuse the parked token.
+  const parked = body.pageId && !body.code ? await takeParkedToken(tenantId) : null;
+  if (body.pageId && !body.code && !parked) {
+    return NextResponse.json({ error: "That Page choice expired. Click Connect with Facebook again." }, { status: 400 });
+  }
+  if (!body.code && !parked) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
+
+  const ex = parked ? { ok: true as const, token: parked, error: undefined }
+                    : await exchangeSignupCode(body.code!);
   if (!ex.ok || !ex.token) {
     console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
     return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
@@ -72,6 +107,8 @@ export async function POST(req: Request) {
   const pageId = body.pageId?.trim();
   const chosen = pageId ? res.pages.find(p => p.id === pageId) : (res.pages.length === 1 ? res.pages[0] : null);
   if (!chosen) {
+    // Park the token so the pick costs no second login (see PENDING above).
+    await parkToken(tenantId, token).catch(e => console.error(TAG, "could not park token", { tenantId, e }));
     return NextResponse.json({ needsPageChoice: true, pages: res.pages.map(p => ({ id: p.id, name: p.name })) });
   }
 
@@ -96,6 +133,7 @@ export async function POST(req: Request) {
     // Subscribe the Page to the app — without this Meta delivers no message/feed
     // events (the exact reason a portal-added Page "didn't work").
     const webhook = await subscribePageToApp(saved.pageId ?? chosen.id, chosen.token);
+    await setTenantSecret(tenantId, PENDING, "").catch(() => {});   // spent — do not leave a live token parked
     logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) via Facebook login — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
     return NextResponse.json({
       success: true,
