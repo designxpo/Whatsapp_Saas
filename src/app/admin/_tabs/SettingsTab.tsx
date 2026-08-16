@@ -1227,6 +1227,7 @@ export function MessengerCard() {
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -1248,6 +1249,8 @@ export function MessengerCard() {
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }
       else if (!res.ok) setMsg(d.error || "Connection failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`); setPagePick(null); load(); }
+      // Partial success: Page DMs are live, comment events are not.
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setPagePick(null); load(); }
       else { setPagePick(null); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }

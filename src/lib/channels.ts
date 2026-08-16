@@ -639,14 +639,26 @@ export async function resolvePageId(pageToken: string): Promise<{ id?: string; n
 // skip this, so a freshly added Facebook Page stored its creds but never
 // received a single event ("added it but it didn't work"). Called on every
 // Messenger channel save; idempotent (re-subscribing is a no-op for Meta).
-export async function subscribePageToApp(pageId: string, pageToken: string): Promise<{ ok: boolean; detail: string }> {
-  try {
-    const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
-    const fields = "messages,messaging_postbacks,messaging_optins,message_deliveries,feed";
+export async function subscribePageToApp(pageId: string, pageToken: string): Promise<{ ok: boolean; detail: string; degraded?: boolean }> {
+  const GRAPH = `https://graph.facebook.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+  const MESSAGING = "messages,messaging_postbacks,messaging_optins,message_deliveries";
+  const attempt = async (fields: string) => {
     const res = await fetch(`${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(pageToken)}`, { method: "POST" });
     const data = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string } } | null;
-    if (res.ok && data?.success) return { ok: true, detail: "Page subscribed to the app's webhooks." };
-    return { ok: false, detail: data?.error?.message || `HTTP ${res.status}` };
+    return { ok: res.ok && !!data?.success, detail: data?.error?.message || `HTTP ${res.status}` };
+  };
+  try {
+    // `feed` (comment events) needs pages_read_user_content, which is a SEPARATE
+    // App Review from the messaging permissions. Meta rejects the whole
+    // subscription when one field isn't permitted — so asking for everything at
+    // once took DMs down over a comments permission the tenant may not have yet.
+    const full = await attempt(`${MESSAGING},feed`);
+    if (full.ok) return { ok: true, detail: "Page subscribed to messages and comments." };
+    const messaging = await attempt(MESSAGING);
+    if (messaging.ok) {
+      return { ok: true, degraded: true, detail: `Messenger DMs are on. Comment events are not — Meta refused the "feed" field (${full.detail}); that needs pages_read_user_content approved.` };
+    }
+    return { ok: false, detail: full.detail };
   } catch (err) {
     return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }
@@ -675,13 +687,26 @@ export async function resolveIgAccountId(igToken: string): Promise<{ id?: string
 // Instagram flavour of the same requirement (Instagram-login API): the IG
 // professional account itself must be subscribed to the app for DM/comment
 // webhooks to flow.
-export async function subscribeIgToApp(igUserId: string, igToken: string): Promise<{ ok: boolean; detail: string }> {
-  try {
-    const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
-    const res = await fetch(`${GRAPH}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent("messages,comments")}&access_token=${encodeURIComponent(igToken)}`, { method: "POST" });
+export async function subscribeIgToApp(igUserId: string, igToken: string): Promise<{ ok: boolean; detail: string; degraded?: boolean }> {
+  const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+  const attempt = async (fields: string) => {
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(igToken)}`, { method: "POST" });
     const data = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string } } | null;
-    if (res.ok && data?.success) return { ok: true, detail: "Instagram account subscribed to the app's webhooks." };
-    return { ok: false, detail: data?.error?.message || `HTTP ${res.status}` };
+    return { ok: res.ok && !!data?.success, detail: data?.error?.message || `HTTP ${res.status}` };
+  };
+  try {
+    // `comments` needs instagram_business_manage_comments — a separate App
+    // Review from instagram_business_manage_messages. Meta rejects the whole
+    // subscription if one field isn't permitted, so requesting both at once
+    // meant a missing comments permission silently cost the tenant their DMs
+    // too. Fall back to messages alone: DMs work now, comments when it clears.
+    const full = await attempt("messages,comments");
+    if (full.ok) return { ok: true, detail: "Instagram account subscribed to messages and comments." };
+    const messages = await attempt("messages");
+    if (messages.ok) {
+      return { ok: true, degraded: true, detail: `Instagram DMs are on. Comment automations are not — Meta refused the "comments" field (${full.detail}); that needs instagram_business_manage_comments approved.` };
+    }
+    return { ok: false, detail: full.detail };
   } catch (err) {
     return { ok: false, detail: err instanceof Error ? err.message : String(err) };
   }

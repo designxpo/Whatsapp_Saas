@@ -116,6 +116,7 @@ function InstagramManager() {
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this account: ${d.webhook.detail}. DMs won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -140,6 +141,9 @@ function InstagramManager() {
       // Saved, but Meta wouldn't subscribe the account — DMs and comments will
       // never arrive. Same warning the manual path already gives.
       else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't turn on message delivery: ${d.webhook.detail}. DMs and comments won't arrive until that's fixed.`); setForm(null); load(); }
+      // Partial success: DMs are live, comments are not. Worth saying out loud —
+      // otherwise the tenant builds comment rules that can never fire.
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
       else { setForm(null); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }
