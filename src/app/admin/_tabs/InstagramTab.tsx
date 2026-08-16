@@ -43,7 +43,24 @@ type CommentRule = {
   replyOnly: boolean; requireFollow: boolean; followPrompt: string; matchCount?: number;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
+// Live delivery state read back from Meta (see api/admin/channels/instagram/health).
+// "Connected" and "receiving comments" are different things, and the gap between
+// them is exactly where comment rules go to die unnoticed.
+type IgHealth = {
+  id: string; name: string; igUserId: string | null; active: boolean;
+  messages: boolean; comments: boolean; fields: string[]; idMatches: boolean; liveId?: string;
+  status: "ok" | "dms-only" | "wrong-id" | "error"; detail: string;
+};
 const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, requireFollow: false, followPrompt: "" };
+
+// One glance at whether Meta is actually delivering. "Connected" was doing this
+// job before and couldn't: it stayed green whether comments were flowing or not.
+function DeliveryChip({ h }: { h: IgHealth }) {
+  const look = h.status === "ok" ? { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "DMs + comments" }
+    : h.status === "dms-only" ? { cls: "bg-amber-50 text-amber-700 border-amber-200", label: "DMs only" }
+    : { cls: "bg-red-50 text-red-700 border-red-200", label: "Not receiving" };
+  return <span title={h.detail} className={`shrink-0 px-2 py-0.5 rounded-full border text-[10px] font-bold ${look.cls}`}>{look.label}</span>;
+}
 
 // Rules from the API may arrive with the new `buttons` array or only the legacy
 // single button — normalize to an array so the editor is uniform.
@@ -74,7 +91,16 @@ function InstagramManager() {
   // Which mode the "New…" flow is creating (carried through the account picker).
   const [pendingReplyOnly, setPendingReplyOnly] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
+  // Delivery state per account, read back from Meta rather than assumed.
+  const [health, setHealth] = useState<Record<string, IgHealth>>({});
+  const [rechecking, setRechecking] = useState<string | null>(null);
   const loadRules = useCallback(() => { fetch("/api/admin/ig-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
+  const loadHealth = useCallback(() => {
+    fetch("/api/admin/channels/instagram/health")
+      .then(r => r.json())
+      .then(d => setHealth(Object.fromEntries(((d.accounts ?? []) as IgHealth[]).map(a => [a.id, a]))))
+      .catch(() => {});   // a failed check must never look like a failed account
+  }, []);
 
   const load = useCallback(async () => {
     // The channels endpoint answers 200 with an empty list and a `notice` when
@@ -92,6 +118,9 @@ function InstagramManager() {
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   useEffect(() => { loadRules(); }, [loadRules]);
+  // Re-read whenever the account list changes — connecting, editing or removing
+  // an account all change what Meta will deliver.
+  useEffect(() => { if (channels.length) loadHealth(); }, [channels, loadHealth]);
   // Load the post grid for the account the rule editor targets. `null` when the
   // editor is closed; only changes on open or account switch (not keystrokes).
   const editorChannel = ruleForm ? (ruleForm.channelId ?? "") : null;
@@ -124,6 +153,25 @@ function InstagramManager() {
     if (!confirm("Disconnect this Instagram account? Its conversations stay.")) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
+  }
+
+  // Ask Meta to subscribe this account again, then read back what it will
+  // actually deliver. The connect-time attempt is one try at one moment — if
+  // Meta refused comments then (a permission still in review, a transient
+  // refusal), this is the only way to recover without disconnecting.
+  async function recheck(id: string) {
+    setRechecking(id); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/channels/instagram/health", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Couldn't check this account."); return; }
+      const a = d.account as IgHealth;
+      setHealth(h => ({ ...h, [a.id]: a }));
+      if (a.status !== "ok") setMsg(a.detail);
+    } catch { setMsg("Couldn't reach the server to check this account."); }
+    finally { setRechecking(null); }
   }
 
   // Instagram uses Business Login for Instagram — a redirect flow, not FB.login().
@@ -195,6 +243,9 @@ function InstagramManager() {
     loadRules();
   }
 
+  // Accounts receiving DMs but not comments — every comment rule on them is dead.
+  const commentsBlocked = channels.map(c => health[c.id]).filter((h): h is IgHealth => !!h && h.status === "dms-only");
+
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
@@ -223,18 +274,30 @@ function InstagramManager() {
         </div>
       )}
 
-      {channels.map(c => (
-        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
-          <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">ig {c.igUserId}{c.pageId ? ` · page ${c.pageId}` : ""} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+      {channels.map(c => {
+        const h = health[c.id];
+        return (
+        <div key={c.id} className="border border-line rounded-control px-3 py-2.5 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+              <p className="text-[11px] text-ink-400 font-mono truncate">ig {c.igUserId}{c.pageId ? ` · page ${c.pageId}` : ""} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
+            </div>
+            {h && <DeliveryChip h={h} />}
+            <button onClick={() => recheck(c.id)} disabled={rechecking === c.id} title="Ask Meta again what this account can receive, and re-subscribe it"
+              className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0 disabled:opacity-60">
+              {rechecking === c.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Recheck"}
+            </button>
+            <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
+              className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+            <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, igUserId: c.igUserId ?? "", pageId: c.pageId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
-            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+          {h && h.status !== "ok" && (
+            <p className={`text-[11px] leading-snug rounded-control px-2.5 py-1.5 ${h.status === "dms-only" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>{h.detail}</p>
+          )}
         </div>
-      ))}
+      );})}
 
       {form && (
         <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
@@ -283,6 +346,19 @@ function InstagramManager() {
           <button onClick={() => { setMsg(null); setPendingReplyOnly(false); if (channels.length > 1) { setRuleForm(null); setPickAccount(true); } else { setPickAccount(false); setRuleForm({ ...BLANK_RULE, replyOnly: false, channelId: channels[0]?.id ?? null }); } }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New rule</button>
         </div>
         <p className="text-[11px] text-ink-400">When someone comments, send them ONE private DM (Meta allows a single reply per comment). Target a specific post or all posts, gate by keyword, attach a link button, and optionally require a follow first.</p>
+
+        {/* A rule on an account Meta isn't sending comments for is a rule that
+            can never run. That used to be invisible: the account said
+            "connected", the rule said "on", and nothing ever happened. */}
+        {commentsBlocked.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5 flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-amber-800 leading-snug">
+              <p><b>Instagram isn&apos;t sending comments for {commentsBlocked.map(a => a.name).join(", ")}.</b> DMs arrive fine, so the account looks healthy — but no rule below can run on {commentsBlocked.length > 1 ? "these accounts" : "this account"}.</p>
+              <p className="mt-1">Press <b>Recheck</b> next to {commentsBlocked.length > 1 ? "each account" : "the account"} above. If it stays amber, reconnect it and leave every permission ticked on Instagram&apos;s consent screen.</p>
+            </div>
+          </div>
+        )}
 
         {rules.filter(r => !r.replyOnly).map(r => {
           const post = posts.find(p => p.id === r.postId);

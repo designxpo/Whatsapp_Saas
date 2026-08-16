@@ -792,6 +792,40 @@ export async function subscribeIgToApp(igUserId: string, igToken: string): Promi
   }
 }
 
+// What Meta will actually DELIVER to this account, read back from Meta rather
+// than assumed from what we asked for at connect time.
+//
+// subscribeIgToApp runs once, when the account is connected, and its result is
+// written to a log line nobody reads. So an account that came back "DMs only"
+// stays that way for good: every comment rule the tenant writes afterwards is
+// dead on arrival, the portal says "connected", and nothing anywhere says why.
+// This is the read that makes that state visible — and, paired with the repair
+// route, fixable without disconnecting the account.
+export interface IgWebhookState {
+  ok: boolean;
+  fields: string[];
+  messages: boolean;
+  comments: boolean;
+  error?: string;
+}
+
+export async function igWebhookFields(igUserId: string, igToken: string): Promise<IgWebhookState> {
+  const none = (error: string): IgWebhookState => ({ ok: false, fields: [], messages: false, comments: false, error });
+  if (!igUserId || !igToken) return none("This account has no Instagram id or token stored.");
+  const GRAPH = `https://graph.instagram.com/${process.env.META_GRAPH_VERSION || "v22.0"}`;
+  try {
+    const res = await fetch(`${GRAPH}/${encodeURIComponent(igUserId)}/subscribed_apps?access_token=${encodeURIComponent(igToken)}`, { cache: "no-store" });
+    const data = (await res.json().catch(() => null)) as { data?: { subscribed_fields?: string[] }[]; error?: { message?: string } } | null;
+    if (!res.ok) return none(data?.error?.message || `HTTP ${res.status}`);
+    // Meta returns one entry per subscribed app; ours is the only one that can
+    // appear under our own token, but flatten rather than assume [0].
+    const fields = (data?.data ?? []).flatMap(d => d.subscribed_fields ?? []).map(String);
+    return { ok: true, fields, messages: fields.includes("messages"), comments: fields.includes("comments") };
+  } catch (err) {
+    return none(err instanceof Error ? err.message : String(err));
+  }
+}
+
 export async function deleteChannel(id: string, tenantId?: string): Promise<void> {
   let q = db().from("wa_channels").delete().eq("id", id);
   if (tenantId) q = q.eq("tenant_id", tenantId);
