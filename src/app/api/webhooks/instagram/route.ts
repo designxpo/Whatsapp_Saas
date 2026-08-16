@@ -249,7 +249,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // DM-triggered AI replies in the DM. (Rule-based comment-to-DM is separate and
   // intentionally DMs — handled in handleComment.)
   const deliver = async (msg: string): Promise<boolean> => {
-    const r = commentId ? await replyToComment(creds, commentId, msg) : await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
+    const r = commentId ? await replyToComment(creds, commentId, msg, tid) : await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
     if (!r.ok) {
       console.warn("[ig webhook] ai reply blocked:", "blockedBy" in r ? r.blockedBy : undefined, r.error);
       await logSendFailure(conv.id, channel.id, r.error || "unknown error", tid);
@@ -371,7 +371,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       // replyToComment RETURNS { ok:false } on a rate cap / moderation block /
       // Graph error instead of throwing, so carry a reason on the thrown path too
       // and both failure shapes can be reported the same way.
-      const res = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
+      const res = await replyToComment(creds, commentId, publicReply, tid).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
@@ -391,10 +391,10 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const dmBody = followGate ? followPromptText(rule) : rule.dmMessage;
   let sent;
   if (followGate) {
-    sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule));
+    sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule), tid);
     if (sent.ok) await setFollowGate(fromId, rule.id, channel.id, tid);
   } else {
-    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule));
+    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule), tid);
   }
   if (!sent.ok) {
     // The commenter gets nothing — record it in the thread like the AI path does,
@@ -413,7 +413,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // identical reply (identical automated replies are an IG spam/ban signal).
   const publicReply = pickPublicReply(rule);
   if (publicReply) {
-    const pr = await replyToComment(creds, commentId, publicReply).catch(e => { console.error("[ig webhook] public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
+    const pr = await replyToComment(creds, commentId, publicReply, tid).catch(e => { console.error("[ig webhook] public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
     // Watch this thread so a follow-up reply escalates to the AI. The DM already
     // landed (mirrored above), so no "not delivered" note here — only the public
     // reply is missing, and with it this thread's AI-takeover watch.
@@ -448,7 +448,7 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
   ].filter(h => h.body);
   const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
   if (!r.reply || r.escalate) return;
-  const sent = await replyToComment(creds, watch.rootCommentId, r.reply);
+  const sent = await replyToComment(creds, watch.rootCommentId, r.reply, tid);
   if (!sent.ok) {
     // The follow-up got no answer — say why in the thread, like the AI DM path does.
     console.warn("[ig webhook] ai thread reply blocked:", sent.error);

@@ -243,10 +243,20 @@ export async function matchCommentRule(text: string, mediaId: string | null, ten
 }
 
 // Idempotency guard: true the first time a comment is seen, false on redeliveries.
+//
+// Every failure still returns false, because firing a rule twice is worse than
+// not firing it — but a duplicate key and a broken table are not the same event
+// and used to be indistinguishable. A missing migration, an RLS change or a
+// transient outage looked exactly like "already handled": the automation just
+// stopped, with no row, no log line and nothing for anyone to find.
 export async function claimComment(commentId: string, ruleId: string | null, tenantId: string): Promise<boolean> {
   const { error } = await db().from("wa_ig_comment_log").insert({ comment_id: commentId, rule_id: ruleId, tenant_id: tenantId });
-  if (error) return false;
-  return true;
+  if (!error) return true;
+  // 23505 = unique violation on comment_id, i.e. a Meta redelivery. Expected.
+  if (error.code !== "23505") {
+    console.error("[ig comments] could not claim comment — automation skipped for it", { commentId, tenantId, code: error.code, error: error.message });
+  }
+  return false;
 }
 
 export async function bumpRuleMatch(id: string, current: number, tenantId: string): Promise<void> {
