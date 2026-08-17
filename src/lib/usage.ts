@@ -35,7 +35,12 @@ export async function getTenantUsage(tenantId: string): Promise<Usage> {
     // A "Reply not delivered" note is a failure record, not a sent message —
     // billing it would let blocked automations eat the plan's message quota.
     db().from("wa_conv_messages").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since).in("source", ["bot", "agent"]).not("body", "like", `${SEND_FAILURE_PREFIX}%`),
-    db().from("wa_channels").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
+    // ACTIVE channels only. A switched-off channel sends and receives nothing,
+    // so charging a plan slot for it is wrong twice over: it overstates usage in
+    // the billing view, and it can lock a tenant out of the cap entirely — an
+    // abandoned OAuth connect leaves an inactive placeholder behind, and a
+    // trial with two slots could be told to upgrade while running one channel.
+    db().from("wa_channels").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("active", true),
     db().from("wa_users").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
     // Billing unit: distinct conversations with any message this month (RPC from 0059).
     db().rpc("tenant_active_conversations", { p_tenant: tenantId, p_since: since }),

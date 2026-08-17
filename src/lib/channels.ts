@@ -564,13 +564,28 @@ export async function saveGoogleReviewsChannel(input: {
     name: input.name.trim(),
     active: input.active ?? true,
   };
+  // Reuse the tenant's un-located placeholder instead of inserting another one.
+  //
+  // The Google callback saves with no id, so EVERY trip through the OAuth screen
+  // created a fresh "Google Business Profile (pick a location)" row. Abandoning
+  // the location picker — which is easy, it's a second step — left the row
+  // behind. One workspace had accumulated eight. That was not merely untidy:
+  // the plan's channel cap counted them, so a tenant could exhaust their whole
+  // allowance on abandoned connects and then be told to upgrade. The other save
+  // functions have de-duped via existingChannelId all along; this one never did.
+  let targetId = input.id;
+  if (!targetId) {
+    const { data } = await db().from("wa_channels").select("id")
+      .eq("tenant_id", tenantId).eq("kind", "google_reviews").is("google_location_id", null).limit(1);
+    targetId = (data ?? [])[0]?.id as string | undefined;   // absent on a pre-0094 DB → plain insert, as before
+  }
   const tok = (input.token ?? "").trim();
   if (tok) row.access_token = encryptSecret(tok);
-  else if (!input.id) row.access_token = "";   // access_token is NOT NULL
+  else if (!targetId) row.access_token = "";   // access_token is NOT NULL
   if (input.googleAccountId !== undefined) row.google_account_id = input.googleAccountId;
   if (input.googleLocationId !== undefined) row.google_location_id = input.googleLocationId;
-  const runSave = (r: Record<string, unknown>) => input.id
-    ? db().from("wa_channels").update(r).eq("id", input.id!).eq("tenant_id", tenantId).select().single()
+  const runSave = (r: Record<string, unknown>) => targetId
+    ? db().from("wa_channels").update(r).eq("id", targetId).eq("tenant_id", tenantId).select().single()
     : db().from("wa_channels").insert(r).select().single();
   let res = await runSave(row);
   // Tolerate a pre-0094 DB (google_account_id/google_location_id absent).
