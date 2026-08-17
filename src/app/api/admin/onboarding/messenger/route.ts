@@ -75,7 +75,11 @@ export async function POST(req: Request) {
                     : await exchangeSignupCode(body.code!);
   if (!ex.ok || !ex.token) {
     console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
-    return NextResponse.json({ error: ex.error || "Token exchange failed" }, { status: 502 });
+    // Meta's own code/subcode/trace goes to the tenant too. Without it this
+    // failure is a sentence with three possible causes and no way to tell which,
+    // which is exactly how the last one cost a day chasing a redirect_uri that
+    // this flow does not even use.
+    return NextResponse.json({ error: ex.error || "Token exchange failed", diagnostic: ex.diagnostic }, { status: 502 });
   }
   // A Page token inherits the lifetime of the USER token it was derived from, so
   // this has to happen BEFORE /me/accounts — afterwards is too late, the Page

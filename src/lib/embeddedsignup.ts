@@ -19,6 +19,28 @@ export interface ExchangeResult {
   ok: boolean;
   token?: string;
   error?: string;
+  /** Meta's own error code / subcode / trace, surfaced so a failure is diagnosable
+   *  from the tenant's screen instead of only from a log line nobody can read. */
+  diagnostic?: { code?: number; subcode?: number; trace?: string; raw?: string };
+}
+
+// Meta answers THREE different problems with one sentence:
+//   "Error validating verification code. Please make sure your redirect_uri is
+//    identical to the one you used in the OAuth dialog request"
+// namely a reused code, an expired code, and a genuine redirect_uri mismatch.
+//
+// In the FB.login() flow there IS no redirect_uri — we deliberately send none,
+// because the JS SDK has no redirect. So passing Meta's wording straight through
+// sends the tenant (and whoever they ask) hunting a setting that this flow does
+// not use. Say what can actually be wrong here instead.
+export function describeOauthError(err: { message?: string; code?: number; error_subcode?: number } | null | undefined): string {
+  const msg = err?.message ?? "";
+  if (err?.code === 100 && /verification code|redirect_uri/i.test(msg)) {
+    return "Facebook wouldn't accept the login code. These codes are single-use and expire within minutes, so this is almost always a code that was already spent or left too long — click Connect with Facebook again and complete the window without pausing. " +
+      "If it repeats every time, the app's Facebook Login for Business settings need this site listed under \"Allowed Domains for the JavaScript SDK\" (and app.thetalko.in under App Domains).";
+  }
+  if (err?.code === 190) return "Facebook rejected the credentials for this app. Check META_APP_ID and META_APP_SECRET.";
+  return msg || "Facebook wouldn't complete the connection.";
 }
 
 // Exchange the Embedded Signup authorization code for a business access token.
@@ -42,7 +64,11 @@ export async function exchangeSignupCode(code: string): Promise<ExchangeResult> 
       // which need different fixes. Log the whole error object so the subcode and
       // fbtrace_id are available when only the tenant-facing sentence surfaces.
       console.error("[meta-oauth] code exchange failed", JSON.stringify(j.error ?? { status: r.status }));
-      return { ok: false, error: j.error?.message || `Token exchange failed (${r.status})` };
+      return {
+        ok: false,
+        error: describeOauthError(j.error) || `Token exchange failed (${r.status})`,
+        diagnostic: { code: j.error?.code, subcode: j.error?.error_subcode, trace: j.error?.fbtrace_id, raw: j.error?.message },
+      };
     }
     return { ok: true, token: j.access_token as string };
   } catch (e) {

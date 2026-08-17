@@ -1251,7 +1251,9 @@ export function MessengerCard() {
       });
       const d = await res.json();
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }
-      else if (!res.ok) setMsg(d.error || "Connection failed");
+      // Show Meta's own code/subcode/trace alongside the explanation — it is the
+      // difference between "try again" and knowing which of three causes it was.
+      else if (!res.ok) setMsg([d.error || "Connection failed", d.diagnostic?.code ? `(Meta code ${d.diagnostic.code}${d.diagnostic.subcode ? `/${d.diagnostic.subcode}` : ""}${d.diagnostic.trace ? `, trace ${d.diagnostic.trace}` : ""})` : ""].filter(Boolean).join(" "));
       else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`); setPagePick(null); load(); }
       // Partial success: Page DMs are live, comment events are not.
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setPagePick(null); load(); }
