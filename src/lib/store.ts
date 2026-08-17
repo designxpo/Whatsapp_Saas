@@ -797,7 +797,14 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     // conversation at a different account there would bleed the wrong (often the
     // global-default) persona/KB into the thread. Keep those anchored to the
     // account the conversation began on.
-    if (channelId && row.channel_id !== channelId && platform === "whatsapp") patch.channel_id = channelId;
+    //
+    // Except when it's null: a conversation with no channel at all isn't
+    // "anchored" to anything, it's orphaned — usually because the id-resolution
+    // miss/repair cycle around a reconnect created it before the current channel
+    // row existed. There's no wrong account to protect against here, and leaving
+    // it null forever silently drops that account out of persona/KB scoping and
+    // any per-channel automation on every later inbound. Backfill it once.
+    if (channelId && row.channel_id !== channelId && (platform === "whatsapp" || !row.channel_id)) patch.channel_id = channelId;
     if (Object.keys(patch).length) {
       const { error } = await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("phone", p);
       if (!error) Object.assign(row, patch);
