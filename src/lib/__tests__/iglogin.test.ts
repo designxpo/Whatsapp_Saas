@@ -177,7 +177,9 @@ describe("long-lived exchange", () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ access_token: "IGQ-long", expires_in: 5183944 }) });
     vi.stubGlobal("fetch", fetchMock);
     const { igLongLivedToken } = await load();
-    expect(await igLongLivedToken("IGQ-short")).toEqual({ ok: true, token: "IGQ-long" });
+    // expires_in is carried through now — the refresh sweep reports how much
+    // life a renewed token has, and Meta's own number is the only honest source.
+    expect(await igLongLivedToken("IGQ-short")).toEqual({ ok: true, token: "IGQ-long", expiresIn: 5183944 });
     const u = new URL(String(fetchMock.mock.calls[0][0]));
     expect(u.origin).toBe("https://graph.instagram.com");
     expect(u.searchParams.get("grant_type")).toBe("ig_exchange_token");

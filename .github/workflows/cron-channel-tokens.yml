@@ -1,0 +1,58 @@
+# Instagram token keep-alive.
+#
+# A long-lived Instagram token lasts 60 days and nothing used to renew them, so
+# every connected Instagram account was on a two-month fuse: the token quietly
+# expires, inbound stops, sends fail with an OAuth error, and the portal still
+# shows the account as connected. Expiry produces no event, so there is nothing
+# for a tenant — or for us — to notice.
+#
+# This sweep refreshes any token older than 25 days, which Meta answers with a
+# fresh 60-day one. That leaves a month of slack, so a missed run, an Actions
+# outage or a few days of downtime cost nothing.
+#
+# Daily is deliberate. Refreshing more often buys nothing (each refresh resets
+# the same 60 days) and the sweep is idempotent, so a doubled run is harmless.
+#
+# Setup (repo → Settings → Secrets and variables → Actions):
+#   secret   CRON_SECRET      — same value as the portal's CRON_SECRET env var
+#   variable CRON_URL         — the existing .../api/cron/process-queue URL; the
+#                               token URL is derived from it
+#   variable CRON_TOKENS_URL  — optional explicit override
+
+name: cron-channel-tokens
+
+on:
+  schedule:
+    - cron: "40 3 * * *"   # daily, off the hour so it doesn't pile onto other sweeps
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Refresh channel tokens
+        env:
+          URL: ${{ vars.CRON_TOKENS_URL }}
+          BASE_URL: ${{ vars.CRON_URL }}
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::CRON_SECRET repo secret is not set"
+            exit 1
+          fi
+          # Derive from CRON_URL so there's one URL to keep pointed at the right
+          # deployment (see the deployment note: prod is app.thetalko.in only).
+          if [ -z "$URL" ]; then
+            URL="${BASE_URL%/api/cron/process-queue}/api/cron/channel-tokens"
+          fi
+          if [ -z "$BASE_URL" ] && [ -z "${{ vars.CRON_TOKENS_URL }}" ]; then
+            echo "::error::Set CRON_URL (or CRON_TOKENS_URL) to your deployment"
+            exit 1
+          fi
+          echo "Refreshing via $URL"
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -m 290 --retry 1 --retry-delay 10 \
+            -X POST "$URL" -H "Authorization: Bearer $SECRET")
+          echo "HTTP $code"
+          cat /tmp/resp.json
+          [ "$code" = "200" ] || { echo "::error::token refresh returned $code"; exit 1; }

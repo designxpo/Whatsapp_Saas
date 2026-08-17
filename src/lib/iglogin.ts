@@ -113,7 +113,7 @@ export function igAuthorizeUrl(redirectUri: string, state: string): string {
   return u.toString();
 }
 
-export interface IgTokenResult { ok: boolean; token?: string; userId?: string; permissions?: string[]; error?: string }
+export interface IgTokenResult { ok: boolean; token?: string; userId?: string; permissions?: string[]; expiresIn?: number; error?: string }
 
 /** Authorization code → SHORT-lived Instagram user token (about an hour). */
 export async function exchangeIgCode(code: string, redirectUri: string): Promise<IgTokenResult> {
@@ -157,10 +157,42 @@ export async function igLongLivedToken(shortToken: string): Promise<IgTokenResul
     u.searchParams.set("client_secret", igAppSecret());
     u.searchParams.set("access_token", shortToken);
     const r = await fetch(u, { cache: "no-store" });
-    const j = await r.json().catch(() => null) as { access_token?: string; error?: { message?: string } } | null;
+    const j = await r.json().catch(() => null) as { access_token?: string; expires_in?: number; error?: { message?: string } } | null;
     if (!r.ok || !j?.access_token) return { ok: false, error: j?.error?.message || `Long-lived exchange failed (${r.status})` };
-    return { ok: true, token: j.access_token };
+    return { ok: true, token: j.access_token, expiresIn: j.expires_in };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Long-lived exchange error" };
   }
 }
+
+/**
+ * Extend a long-lived token by another 60 days.
+ *
+ * This is not an optimisation, it is the difference between an Instagram
+ * channel that keeps working and one that stops dead about two months after it
+ * was connected. A long-lived Instagram token lasts 60 days and nothing about
+ * its death is visible: the row still says connected, sends start failing with
+ * an OAuth error nobody reads, and inbound simply stops. Meta's own answer is
+ * this endpoint — call it on a schedule and the token never expires.
+ *
+ * Meta requires the token to be at least 24 hours old and not yet expired, so
+ * a freshly connected account is refused for its first day. That is fine: the
+ * sweep runs daily and will pick it up long before day 60.
+ */
+export async function refreshIgToken(longLivedToken: string): Promise<IgTokenResult> {
+  if (!longLivedToken) return { ok: false, error: "No token to refresh" };
+  try {
+    const u = new URL(`${GRAPH}/refresh_access_token`);
+    u.searchParams.set("grant_type", "ig_refresh_token");
+    u.searchParams.set("access_token", longLivedToken);
+    const r = await fetch(u, { cache: "no-store" });
+    const j = await r.json().catch(() => null) as { access_token?: string; expires_in?: number; error?: { message?: string } } | null;
+    if (!r.ok || !j?.access_token) return { ok: false, error: j?.error?.message || `Token refresh failed (${r.status})` };
+    return { ok: true, token: j.access_token, expiresIn: j.expires_in };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Token refresh error" };
+  }
+}
+
+/** Where a channel's last successful token refresh is remembered (wa_settings). */
+export const igTokenRefreshedKey = (channelId: string) => `ig_token_refreshed_at:${channelId}`;

@@ -91,6 +91,15 @@ export async function subscribeWaba(wabaId: string, token: string): Promise<{ ok
   }
 }
 
+// The Page permission that decides whether comment (`feed`) events are ever
+// delivered — the Facebook twin of instagram_business_manage_comments. Named
+// here for the same reason: a Page can be subscribed to `feed` without it, so
+// the subscription is not proof that anything will arrive.
+export const FB_COMMENT_SCOPE = "pages_read_user_content";
+
+/** Where a Page channel's granted scopes are remembered (wa_settings). */
+export const fbScopesKey = (channelId: string) => `fb_scopes:${channelId}`;
+
 // Which Instagram scopes the token was ACTUALLY granted. Graph does not error
 // when you ask for a field the token has no permission for — it silently omits
 // the field. So a Page whose Instagram account we simply aren't allowed to see

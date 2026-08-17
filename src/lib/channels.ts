@@ -206,22 +206,53 @@ export async function getChannel(id: string, tenantId?: string): Promise<Channel
   } catch { return null; }
 }
 
+// Every inbound lookup goes through here, and the reason is a bug that took out
+// whole workspaces without leaving a mark.
+//
+// These used .maybeSingle(), which ERRORS when more than one row matches. The
+// error was swallowed into `null`, the webhook concluded no channel existed,
+// and the event was dropped — for EVERY workspace holding that account, from
+// then on, with nothing anywhere to explain it. The save paths stop duplicates
+// inside one workspace (existingChannelId), but nothing stops two different
+// workspaces from connecting the same Page/account — an agency and its client
+// is the ordinary case — and nothing stopped a deactivated leftover row from
+// sitting next to a live one and killing it.
+//
+// So: never fail on a second row. Prefer an active channel, then the newest,
+// and say plainly in the logs that a conflict exists — one workspace losing
+// events is a problem someone must resolve, but silence is not the way to
+// report it.
+async function routeByColumn(column: string, value: string, kind?: string): Promise<Channel | null> {
+  try {
+    let q = db().from("wa_channels").select("*").eq(column, value);
+    if (kind) q = q.eq("kind", kind);
+    const { data, error } = await q.limit(10);
+    if (error) { console.error("[channels] inbound lookup failed", { column, value, error: error.message }); return null; }
+    const rows = (data ?? []).map(r => mapChannel(r as Record<string, unknown>));
+    if (!rows.length) return null;
+    if (rows.length > 1) {
+      console.warn("[channels] MORE THAN ONE channel matches this inbound event — routing to the newest active one; the rest will never receive it", {
+        column, value, kind: kind ?? null,
+        matches: rows.map(r => ({ channelId: r.id, tenantId: r.tenantId, active: r.active })),
+      });
+    }
+    // Active beats inactive; newer beats older. Deterministic either way, so the
+    // same account never flips between workspaces from one event to the next.
+    rows.sort((a, b) => (Number(b.active) - Number(a.active)) || String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")));
+    return rows[0];
+  } catch { return null; }
+}
+
 // Inbound routing: Meta puts the receiving number's phone_number_id in every webhook.
 export async function getChannelByPhoneNumberId(phoneNumberId: string): Promise<Channel | null> {
   if (!phoneNumberId) return null;
-  try {
-    const { data } = await db().from("wa_channels").select("*").eq("phone_number_id", phoneNumberId).maybeSingle();
-    return data ? mapChannel(data as Record<string, unknown>) : null;
-  } catch { return null; }
+  return routeByColumn("phone_number_id", phoneNumberId);
 }
 
 // Inbound IG routing: the webhook entry id is the IG professional account id.
 export async function getChannelByIgId(igUserId: string): Promise<Channel | null> {
   if (!igUserId) return null;
-  try {
-    const { data } = await db().from("wa_channels").select("*").eq("ig_user_id", igUserId).maybeSingle();
-    return data ? mapChannel(data as Record<string, unknown>) : null;
-  } catch { return null; }
+  return routeByColumn("ig_user_id", igUserId, "instagram");
 }
 
 // Resolve a channel by its own id. Used to re-anchor an inbound to the account a
@@ -242,29 +273,20 @@ export async function getChannelById(id: string): Promise<Channel | null> {
 // linked Page (IG channels also store page_id).
 export async function getChannelByPageId(pageId: string): Promise<Channel | null> {
   if (!pageId) return null;
-  try {
-    const { data } = await db().from("wa_channels").select("*").eq("page_id", pageId).eq("kind", "messenger").maybeSingle();
-    return data ? mapChannel(data as Record<string, unknown>) : null;
-  } catch { return null; }
+  return routeByColumn("page_id", pageId, "messenger");
 }
 
 // Inbound web-chat routing: the widget carries its public site key.
 export async function getChannelBySiteKey(siteKey: string): Promise<Channel | null> {
   if (!siteKey) return null;
-  try {
-    const { data } = await db().from("wa_channels").select("*").eq("site_key", siteKey).eq("kind", "webchat").maybeSingle();
-    return data ? mapChannel(data as Record<string, unknown>) : null;
-  } catch { return null; }
+  return routeByColumn("site_key", siteKey, "webchat");
 }
 
 // Inbound YouTube routing (poll-based): match a connected channel by its YouTube
 // channel id. Filtered by kind so it never collides with another channel type.
 export async function getChannelByYtId(ytChannelId: string): Promise<Channel | null> {
   if (!ytChannelId) return null;
-  try {
-    const { data } = await db().from("wa_channels").select("*").eq("yt_channel_id", ytChannelId).eq("kind", "youtube").maybeSingle();
-    return data ? mapChannel(data as Record<string, unknown>) : null;
-  } catch { return null; }
+  return routeByColumn("yt_channel_id", ytChannelId, "youtube");
 }
 
 // The channel used when a send doesn't specify one: the explicit default, else
@@ -824,6 +846,14 @@ export async function igWebhookFields(igUserId: string, igToken: string): Promis
   } catch (err) {
     return none(err instanceof Error ? err.message : String(err));
   }
+}
+
+// Swap a channel's stored token, leaving everything else alone. Used by the
+// token-refresh sweep, which must not have to reconstruct a whole save payload
+// (and risk clobbering a field) just to write one column.
+export async function updateChannelToken(id: string, token: string): Promise<void> {
+  const { error } = await db().from("wa_channels").update({ access_token: encryptSecret(token.trim()) }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function deleteChannel(id: string, tenantId?: string): Promise<void> {

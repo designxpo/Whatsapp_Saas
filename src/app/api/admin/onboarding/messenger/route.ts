@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { exchangeSignupCode, exchangeForLongLivedToken, resolveFacebookPages, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
+import { exchangeSignupCode, exchangeForLongLivedToken, resolveFacebookPages, grantedScopes, noGrantMessage, FB_COMMENT_SCOPE, fbScopesKey } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp, findMessengerChannelId } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
-import { getTenantSecret, setTenantSecret } from "@/lib/store";
+import { getTenantSecret, setTenantSecret, setTenantSetting } from "@/lib/store";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -134,11 +134,26 @@ export async function POST(req: Request) {
     // events (the exact reason a portal-added Page "didn't work").
     const webhook = await subscribePageToApp(saved.pageId ?? chosen.id, chosen.token);
     await setTenantSecret(tenantId, PENDING, "").catch(() => {});   // spent — do not leave a live token parked
-    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) via Facebook login — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}`);
+
+    // Remember what Meta granted, and let a missing comment permission be said
+    // out loud instead of discovered when a comment rule never fires. Same trap
+    // as Instagram: a Page can carry the `feed` subscription without the
+    // permission that makes Meta deliver it, so the subscription proves nothing
+    // and only the grant list settles it.
+    if (scopes?.length) {
+      await setTenantSetting(tenantId, fbScopesKey(saved.id), scopes).catch(e => console.error(TAG, "could not store granted scopes", e));
+    }
+    // Null scopes mean the probe failed — unknown, never "not granted".
+    const commentsGranted = scopes?.length ? scopes.includes(FB_COMMENT_SCOPE) : null;
+    const reported = (webhook.ok && !webhook.degraded && commentsGranted === false)
+      ? { ...webhook, degraded: true, detail: `${saved.name} is connected and Messenger DMs will arrive — but comment access wasn't granted, so comment-to-DM and comment-reply rules can never fire on this Page. Connect it again and leave every permission switched on.` }
+      : webhook;
+
+    logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) via Facebook login — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}${commentsGranted === false ? " — no comment permission granted" : ""}`);
     return NextResponse.json({
       success: true,
       channel: { id: saved.id, name: saved.name, pageId: saved.pageId, token: mask(saved.token) },
-      webhook,
+      webhook: reported,
     });
   } catch (e) {
     console.error(TAG, "channel save failed", { tenantId, pageId: chosen.id, error: e });
