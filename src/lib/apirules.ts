@@ -2,7 +2,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { createCampaign, getContactByPhone, dailySentCount, type Contact } from "./store";
 import { sendCampaign, fetchTemplates, dynamicUrlButtonIndexes } from "./whatsapp";
-import { credsFor } from "./channels";
+import { credsFor, getChannel } from "./channels";
 import { getTrackedUrls } from "./links";
 import { getDailyCap } from "./quota";
 
@@ -135,7 +135,10 @@ async function assertButtonParamsValid(input: { templateName: string; languageCo
   const params = input.buttonUrlParams ?? [];
   let tpl;
   try {
-    const channel = await credsFor(input.channelId ?? null);
+    // tenantId MUST be passed here — omitting it let credsFor resolve ANY
+    // tenant's channel row (decrypted access token included) and read that
+    // tenant's template list while merely validating this one's rule.
+    const channel = await credsFor(input.channelId ?? null, tenantId);
     const all = await fetchTemplates(channel);
     tpl = all.find(t => t.name === input.templateName && (!input.languageCode || t.language === input.languageCode))
       ?? all.find(t => t.name === input.templateName);
@@ -150,6 +153,15 @@ async function assertButtonParamsValid(input: { templateName: string; languageCo
 }
 
 export async function saveRule(input: Partial<ApiRule> & { name: string; eventKey: string; templateName: string }, tenantId = DEFAULT_TENANT_ID): Promise<ApiRule> {
+  // A client-supplied channelId must belong to the caller's tenant — otherwise
+  // it is persisted on the rule and later used (drainRuleSends) to send through
+  // another tenant's WhatsApp number with that tenant's own decrypted Meta
+  // token: cross-tenant credential abuse, mis-billing, and the reply lands in
+  // the wrong workspace's inbox. Same guard as broadcast.ts's channelId check.
+  if (input.channelId) {
+    const owned = await getChannel(input.channelId, tenantId);
+    if (!owned) throw new RuleConfigError("Channel not found.");
+  }
   await assertButtonParamsValid(input, tenantId);
 
   // Each rule owns a hidden campaign so its sends get funnel + click analytics.
@@ -409,7 +421,12 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
         recipients: [{ phone: row.phone as string, fullName: (row.recipient_name as string) ?? "" }],
         headerImageUrl: rule.headerImageUrl,
         buttonUrlParams: (row.button_url_params as string[]) ?? [],
-        channel: await credsFor(rule.channelId),
+        // tenantId MUST be passed — this is the actual send, so omitting it
+        // here is the live version of the save-time hole above: it would
+        // resolve and spend ANY tenant's decrypted Meta token, not just a rule
+        // saved before the save-time guard existed. Belt-and-suspenders: a
+        // channel can also be deleted/reassigned after a rule is saved.
+        channel: await credsFor(rule.channelId, rule.tenantId),
         tenantId: rule.tenantId,
       });
       if (r.sentCount > 0) { headroomByTenant.set(rule.tenantId, (headroomByTenant.get(rule.tenantId) ?? 1) - 1); await finish("sent"); out.sent++; }
