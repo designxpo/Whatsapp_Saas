@@ -100,6 +100,60 @@ export const FB_COMMENT_SCOPE = "pages_read_user_content";
 /** Where a Page channel's granted scopes are remembered (wa_settings). */
 export const fbScopesKey = (channelId: string) => `fb_scopes:${channelId}`;
 
+// What Meta thinks of a Page token, live.
+//
+// Unlike Instagram-login tokens — which no debug endpoint will accept, forcing
+// us to store the grant list captured at connect — a Facebook Page token can be
+// inspected at any time. That is strictly better than a stored snapshot: it
+// reflects a permission the tenant revoked yesterday, which a snapshot never
+// would. Returns null when the probe itself fails, so "couldn't check" is never
+// mistaken for "checked and found nothing".
+export interface FbTokenInfo {
+  valid: boolean;
+  type: string | null;          // "PAGE" for a real Page token; "USER" means a wrong token was stored
+  expiresAt: number;            // unix seconds; 0 = never expires (what a Page token should be)
+  scopes: string[];
+  profileId: string | null;     // the Page this token belongs to
+  error?: string;
+}
+
+export async function fbTokenInfo(token: string): Promise<FbTokenInfo | null> {
+  const appId = process.env.META_APP_ID, appSecret = process.env.META_APP_SECRET;
+  if (!token || !appId || !appSecret) return null;
+  try {
+    const u = new URL(`${GRAPH}/debug_token`);
+    u.searchParams.set("input_token", token);
+    u.searchParams.set("access_token", `${appId}|${appSecret}`);
+    const r = await fetch(u, { cache: "no-store" });
+    const j = await r.json().catch(() => null) as { data?: Record<string, unknown>; error?: { message?: string } } | null;
+    if (!r.ok || !j?.data) return null;
+    const d = j.data;
+    return {
+      valid: d.is_valid === true,
+      type: typeof d.type === "string" ? d.type : null,
+      expiresAt: typeof d.expires_at === "number" ? d.expires_at : 0,
+      scopes: Array.isArray(d.scopes) ? (d.scopes as string[]) : [],
+      profileId: d.profile_id != null ? String(d.profile_id) : null,
+      error: typeof (d.error as { message?: string })?.message === "string" ? (d.error as { message?: string }).message : undefined,
+    };
+  } catch { return null; }
+}
+
+/** Which webhook fields this Page is subscribed to, for OUR app specifically. */
+export async function pageSubscribedFields(pageId: string, pageToken: string): Promise<{ ok: boolean; fields: string[]; error?: string }> {
+  if (!pageId || !pageToken) return { ok: false, fields: [], error: "Missing Page id or token" };
+  try {
+    const r = await fetch(`${GRAPH}/${encodeURIComponent(pageId)}/subscribed_apps?access_token=${encodeURIComponent(pageToken)}`, { cache: "no-store" });
+    const j = await r.json().catch(() => null) as { data?: { id?: string; subscribed_fields?: string[] }[]; error?: { message?: string } } | null;
+    if (!r.ok) return { ok: false, fields: [], error: j?.error?.message || `HTTP ${r.status}` };
+    // Only OUR app's subscription counts — a Page may have several apps on it.
+    const mine = (j?.data ?? []).find(a => a.id === process.env.META_APP_ID) ?? (j?.data ?? [])[0];
+    return { ok: true, fields: (mine?.subscribed_fields ?? []).map(String) };
+  } catch (e) {
+    return { ok: false, fields: [], error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 // Which Instagram scopes the token was ACTUALLY granted. Graph does not error
 // when you ask for a field the token has no permission for — it silently omits
 // the field. So a Page whose Instagram account we simply aren't allowed to see
