@@ -212,6 +212,38 @@ export function jsonToText(raw: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// ── "Did we actually extract anything?" ──────────────────────────────────────
+// A scanned PDF — a photo of a page, with no text layer — extracts to nothing
+// but the page separators the parser emits. That still chunks to ONE non-empty
+// chunk, so a `chunks.length === 0` guard waves it through, and the document is
+// stored, embedded and shown to the tenant as "ready".
+//
+// Found live: a tenant's entire knowledge base was one 53-character chunk
+// reading "[bolt knowledge base.pdf] -- 1 of 2 -- -- 2 of 2 --". Their portal
+// said ready, their AI answered every question ungrounded, and nothing in the
+// product could have told them. Count real characters, not chunks.
+const PAGE_MARKER = /^[\s>|]*-{1,3}\s*\d+\s+of\s+\d+\s*-{1,3}[\s>|]*$/gim;
+
+/** Letters and digits left once page furniture and whitespace are removed. */
+export function readableCharCount(text: string): number {
+  return (text || "").replace(PAGE_MARKER, " ").replace(/[^\p{L}\p{N}]+/gu, "").length;
+}
+
+// Deliberately low. The point is to separate "a document" from "no text at all",
+// not to judge whether a short document is worth keeping — a tenant may legitimately
+// upload a twenty-word price list.
+const MIN_READABLE_CHARS = 25;
+
+export function hasUsableText(text: string): boolean {
+  return readableCharCount(text) >= MIN_READABLE_CHARS;
+}
+
+// Says what went wrong AND what to do about it — "No extractable text found" left
+// a tenant staring at a PDF that opens perfectly well on their screen.
+export const NO_TEXT_ERROR =
+  "No readable text in this file — it looks like a scan or images of pages rather than a text document. " +
+  "Run it through OCR, export a text-based PDF, or paste the content in directly.";
+
 // ── Chunking: heading-aware paragraph windows (~1000 chars) with overlap ──────
 const TARGET = 1000;     // chars per chunk
 const OVERLAP = 150;     // chars carried into the next chunk for context continuity
@@ -338,8 +370,10 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
   try {
     const text = await extractText(sourceType, payload);
     const chunks = chunkText(text);
-    if (chunks.length === 0) {
-      await setDocStatus(docId, "failed", { error: "No extractable text found", chunkCount: 0 }, tenantId);
+    // Both conditions matter: no chunks at all, and chunks carrying no actual
+    // words (a scanned PDF yields page markers, which chunk to exactly one).
+    if (chunks.length === 0 || !hasUsableText(text)) {
+      await setDocStatus(docId, "failed", { error: NO_TEXT_ERROR, chunkCount: 0 }, tenantId);
       return;
     }
     const doc = await getDocument(docId, tenantId).catch(() => null);   // for the "[title › section]" header
@@ -371,8 +405,8 @@ export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unc
       return "unchanged";
     }
     const chunks = chunkText(text);
-    if (chunks.length === 0) {
-      await setDocStatus(doc.id, "failed", { error: "No extractable text found", chunkCount: 0 }, tid);
+    if (chunks.length === 0 || !hasUsableText(text)) {
+      await setDocStatus(doc.id, "failed", { error: NO_TEXT_ERROR, chunkCount: 0 }, tid);
       return "failed";
     }
     const contents = headeredChunks(doc.title, chunks);
@@ -414,8 +448,8 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
       return "failed";
     }
     const chunks = chunkText(text);
-    if (chunks.length === 0) {
-      await setDocStatus(doc.id, "failed", { error: "No extractable text found", chunkCount: 0 }, tid);
+    if (chunks.length === 0 || !hasUsableText(text)) {
+      await setDocStatus(doc.id, "failed", { error: NO_TEXT_ERROR, chunkCount: 0 }, tid);
       return "failed";
     }
     const contents = headeredChunks(doc.title, chunks);

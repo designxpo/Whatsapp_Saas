@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listChannels, getChannel, resolveIgAccountId, igWebhookFields, subscribeIgToApp, type Channel } from "@/lib/channels";
-import { getTenantSetting } from "@/lib/store";
+import { getTenantSetting, hasCommentConversation } from "@/lib/store";
 import { IG_COMMENT_SCOPE, igScopesKey } from "@/lib/iglogin";
 import { logActivity } from "@/lib/team";
 
@@ -30,7 +30,7 @@ interface Report {
   fields: string[];
   idMatches: boolean;
   liveId?: string;
-  status: "ok" | "dms-only" | "wrong-id" | "error";
+  status: "ok" | "unverified" | "dms-only" | "wrong-id" | "error";
   detail: string;
   error?: string;
 }
@@ -41,15 +41,17 @@ async function report(ch: Channel): Promise<Report> {
     return { ...base, messages: false, comments: false, fields: [], idMatches: false, status: "error", detail: "No access token is stored for this account — reconnect it.", error: "no token" };
   }
   // Both reads are independent; a slow one shouldn't serialise the other.
-  const [live, subs, scopes] = await Promise.all([
+  const [live, subs, scopes, commentsProven] = await Promise.all([
     resolveIgAccountId(ch.token),
     igWebhookFields(ch.igUserId ?? "", ch.token),
     getTenantSetting<string[] | null>(ch.tenantId, igScopesKey(ch.id), null).catch(() => null),
+    hasCommentConversation(ch.id, ch.tenantId).catch(() => false),
   ]);
   // Recorded only for accounts connected through Business Login since we started
   // storing it; an account added by pasting a token has none, and absence must
   // read as "unknown", never as "not granted".
-  const commentScopeMissing = Array.isArray(scopes) && scopes.length > 0 && !scopes.includes(IG_COMMENT_SCOPE);
+  const scopesKnown = Array.isArray(scopes) && scopes.length > 0;
+  const commentScopeMissing = scopesKnown && !scopes.includes(IG_COMMENT_SCOPE);
 
   if (live.error && !subs.ok) {
     return { ...base, messages: false, comments: false, fields: [], idMatches: false, status: "error",
@@ -88,8 +90,17 @@ async function report(ch: Channel): Promise<Report> {
     return { ...base, messages: true, comments: false, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "dms-only",
       detail: "DMs arrive, comments don't — so comment-to-DM and comment-reply rules on this account can never fire. Recheck to retry; if it stays off, Instagram hasn't granted comment access and the account needs reconnecting with every permission ticked." };
   }
+  // The subscription says comments are on. That is only PROOF when we either
+  // recorded the grant at connect, or have actually handled a comment for this
+  // channel. Without one of those this check would print a confident green line
+  // for an account that has never received a comment in its life — which is the
+  // precise failure it was built to catch, reproduced by the checker itself.
+  if (!scopesKnown && !commentsProven) {
+    return { ...base, messages: true, comments: true, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "unverified",
+      detail: "DMs are arriving. Comments are subscribed, but Meta accepts that subscription even when comment access was never granted, and this account was connected before Talko started recording permissions — so it is not proof. No comment has reached this account yet. Reconnect it once to confirm, or post a test comment from another account." };
+  }
   return { ...base, messages: true, comments: true, fields: subs.fields, idMatches: true, liveId: canonicalId, status: "ok",
-    detail: "Receiving DMs and comments." };
+    detail: commentsProven ? "Receiving DMs, and comments have been received on this account." : "Receiving DMs and comments." };
 }
 
 export async function GET() {

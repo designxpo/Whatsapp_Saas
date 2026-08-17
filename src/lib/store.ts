@@ -734,6 +734,20 @@ export async function setConversationComment(conversationId: string, isComment: 
   await db().from("wa_conversations").update({ is_comment: isComment }).eq("id", conversationId).then(() => {}, () => {});
 }
 
+// Has a comment ever actually been delivered for this channel?
+//
+// Evidence, not inference. Meta accepts a `comments` webhook subscription even
+// when the permission behind it was never granted, then delivers nothing — so
+// the subscription cannot be used to tell a working account from a broken one.
+// A comment-originated conversation, on the other hand, could only exist if a
+// real comment event arrived and was handled.
+export async function hasCommentConversation(channelId: string, tenantId: string): Promise<boolean> {
+  const { data, error } = await db().from("wa_conversations").select("id")
+    .eq("channel_id", channelId).eq("tenant_id", tenantId).eq("is_comment", true).limit(1);
+  if (error) return false;   // pre-0039 (no column) → simply no evidence either way
+  return (data ?? []).length > 0;
+}
+
 // Agent opened the chat → mark it read (no longer awaiting our reply).
 export async function markConversationRead(conversationId: string): Promise<void> {
   await db().from("wa_conversations").update({ needs_reply: false }).eq("id", conversationId).then(() => {}, () => {});

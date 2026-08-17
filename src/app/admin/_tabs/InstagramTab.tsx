@@ -49,7 +49,7 @@ type IgPost = { id: string; caption: string; permalink: string; thumbnail: strin
 type IgHealth = {
   id: string; name: string; igUserId: string | null; active: boolean;
   messages: boolean; comments: boolean; fields: string[]; idMatches: boolean; liveId?: string;
-  status: "ok" | "dms-only" | "wrong-id" | "error"; detail: string;
+  status: "ok" | "unverified" | "dms-only" | "wrong-id" | "error"; detail: string;
 };
 const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, requireFollow: false, followPrompt: "" };
 
@@ -57,6 +57,9 @@ const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, post
 // job before and couldn't: it stayed green whether comments were flowing or not.
 function DeliveryChip({ h }: { h: IgHealth }) {
   const look = h.status === "ok" ? { cls: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "DMs + comments" }
+    // Not green and not red: DMs demonstrably work, comments are merely unproven.
+    // Calling that "Not receiving" would be as wrong as calling it healthy.
+    : h.status === "unverified" ? { cls: "bg-sky-50 text-sky-700 border-sky-200", label: "Comments unverified" }
     : h.status === "dms-only" ? { cls: "bg-amber-50 text-amber-700 border-amber-200", label: "DMs only" }
     : { cls: "bg-red-50 text-red-700 border-red-200", label: "Not receiving" };
   return <span title={h.detail} className={`shrink-0 px-2 py-0.5 rounded-full border text-[10px] font-bold ${look.cls}`}>{look.label}</span>;
@@ -245,6 +248,10 @@ function InstagramManager() {
 
   // Accounts receiving DMs but not comments — every comment rule on them is dead.
   const commentsBlocked = channels.map(c => health[c.id]).filter((h): h is IgHealth => !!h && h.status === "dms-only");
+  // Unproven is not the same as broken, so it gets its own, softer line — but it
+  // still has to appear next to the rules, because that is where a tenant is
+  // sitting when they wonder why nothing fired.
+  const commentsUnproven = channels.map(c => health[c.id]).filter((h): h is IgHealth => !!h && h.status === "unverified");
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -294,7 +301,7 @@ function InstagramManager() {
             <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
           {h && h.status !== "ok" && (
-            <p className={`text-[11px] leading-snug rounded-control px-2.5 py-1.5 ${h.status === "dms-only" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>{h.detail}</p>
+            <p className={`text-[11px] leading-snug rounded-control px-2.5 py-1.5 ${h.status === "unverified" ? "bg-sky-50 text-sky-800" : h.status === "dms-only" ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"}`}>{h.detail}</p>
           )}
         </div>
       );})}
@@ -350,6 +357,14 @@ function InstagramManager() {
         {/* A rule on an account Meta isn't sending comments for is a rule that
             can never run. That used to be invisible: the account said
             "connected", the rule said "on", and nothing ever happened. */}
+        {commentsUnproven.length > 0 && commentsBlocked.length === 0 && (
+          <div className="bg-sky-50 border border-sky-200 rounded-control px-3 py-2.5 flex items-start gap-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-sky-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-sky-800 leading-snug">
+              <b>Comment delivery is unconfirmed on {commentsUnproven.map(a => a.name).join(", ")}.</b> DMs are arriving, and Instagram lists comments as subscribed — but it accepts that subscription even when comment access was never granted, and no comment has reached {commentsUnproven.length > 1 ? "these accounts" : "this account"} yet. Post a test comment from another account, or reconnect once to confirm.
+            </p>
+          </div>
+        )}
         {commentsBlocked.length > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5 flex items-start gap-2">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
