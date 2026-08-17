@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
   const cookieState = req.cookies.get(STATE_COOKIE)?.value;
 
   if (err) return back("gr_error=denied");
+  // A missing/mismatched state most often means the connect link sat open past
+  // its cookie's life, or was opened in a different browser/session than the
+  // one that started it — say that, not the unhelpful "something went wrong".
   if (!code || !state || !cookieState || state !== cookieState) return back("gr_error=state_mismatch");
 
   try {
@@ -46,8 +49,14 @@ export async function GET(req: NextRequest) {
         client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET as string,
       }),
     });
-    const tokenJson = (await tokenRes.json().catch(() => null)) as { access_token?: string; refresh_token?: string } | null;
-    if (!tokenRes.ok || !tokenJson?.access_token) return back("gr_error=exchange_failed");
+    const tokenJson = (await tokenRes.json().catch(() => null)) as { access_token?: string; refresh_token?: string; error?: string } | null;
+    if (!tokenRes.ok || !tokenJson?.access_token) {
+      // Same distinction as the YouTube callback: invalid_grant is a spent or
+      // stale code (tenant retries cleanly); anything else is our deployment's
+      // OAuth client being misconfigured, which no tenant action can fix.
+      console.error("[google-reviews-oauth] token exchange failed", { tenantId, error: tokenJson?.error, status: tokenRes.status });
+      return back(tokenJson?.error === "invalid_grant" ? "gr_error=code_expired" : "gr_error=exchange_failed");
+    }
     if (!tokenJson.refresh_token) return back("gr_error=no_refresh_token");
 
     const channel = await saveGoogleReviewsChannel({
@@ -55,7 +64,8 @@ export async function GET(req: NextRequest) {
       token: tokenJson.refresh_token, active: false,
     });
     return back(`gr=pick&channelId=${encodeURIComponent(channel.id)}`);
-  } catch {
+  } catch (e) {
+    console.error("[google-reviews-oauth] connect failed after Google succeeded", e);
     return back("gr_error=save_failed");
   }
 }

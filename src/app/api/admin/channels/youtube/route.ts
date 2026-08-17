@@ -4,7 +4,7 @@ import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } fro
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, describeChannelSaveError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +42,6 @@ export async function POST(req: Request) {
     logActivity(await currentUser(), "channel.save", `${saved.name} (YouTube ${saved.ytChannelId})`);
     return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) } });
   } catch (err) {
-    return NextResponse.json({ error: `${errorMessage(err)} — make sure migration 0093_youtube_comments.sql is applied` }, { status: 500 });
+    return NextResponse.json({ error: describeChannelSaveError(err, "migration 0093_youtube_comments.sql") }, { status: 500 });
   }
 }

@@ -4,7 +4,7 @@ import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } fro
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
-import { errorMessage } from "@/lib/errors";
+import { errorMessage, describeChannelSaveError } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +34,6 @@ export async function POST(req: Request) {
     logActivity(await currentUser(), "channel.save", `web chat: ${saved.name}`);
     return NextResponse.json({ success: true, channel: saved });
   } catch (err) {
-    return NextResponse.json({ error: `${errorMessage(err)} — make sure migrations 0054_webchat_channel.sql and 0070_channel_kb.sql are applied` }, { status: 500 });
+    return NextResponse.json({ error: describeChannelSaveError(err, "migrations 0054_webchat_channel.sql and 0070_channel_kb.sql") }, { status: 500 });
   }
 }

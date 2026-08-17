@@ -55,12 +55,13 @@ const YT_ERROR_MESSAGES: Record<string, string> = {
   not_in_plan: "YouTube automation isn't included in your current plan — upgrade to unlock it.",
   not_configured: "YouTube isn't configured on this deployment yet (Google OAuth pending) — add a channel manually below once it's set up, or ask your platform admin.",
   denied: "Google sign-in was cancelled.",
-  state_mismatch: "Something went wrong verifying the request — please try connecting again.",
-  exchange_failed: "Google didn't return a valid token — please try connecting again.",
+  state_mismatch: "This connect link expired or was opened in a different browser or tab than the one that started it — a privacy extension may have blocked a cookie. Click Connect again and complete it in the same tab without navigating away.",
+  code_expired: "That sign-in link was already used or took too long to complete — click Connect and finish it in one go.",
+  exchange_failed: "This deployment's Google sign-in isn't configured correctly, so Google refused the connection — this isn't something you can fix from here. Contact support and mention \"YouTube exchange_failed\".",
   no_refresh_token: "Google didn't grant offline access. Visit myaccount.google.com/permissions, remove Talko AI's access, then try connecting again.",
   channel_lookup_failed: "Connected to Google, but couldn't find a YouTube channel on that account.",
   channel_limit: "Your plan's channel limit is reached — remove a channel or upgrade to connect another.",
-  save_failed: "Something went wrong saving the channel — please try again.",
+  save_failed: "Google connected successfully, but saving the channel failed on our side (a temporary hiccup, not a problem with your Google account). Nothing was lost on Google's end — click Connect again.",
 };
 
 function YoutubeManager() {

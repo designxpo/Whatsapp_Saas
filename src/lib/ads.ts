@@ -55,6 +55,36 @@ async function adsToken(tenantId: string): Promise<string | undefined> {
   return getAdsToken(tenantId);
 }
 
+// A tenant reading "Meta says: (#200) Ad account owner has NOT grant..." learns
+// nothing actionable — the same wording covers a permission never granted, a
+// dev-mode app blocked from a non-tester's account, an expired token, and a
+// disabled ad account, each of which needs a completely different fix. Map the
+// codes Meta actually returns here to the one sentence that names the real
+// cause and what to do about it; fall back to Meta's own wording, clearly
+// labelled as unfiltered, only when the shape is one we haven't seen yet.
+export function describeAdsGraphError(err: { message?: string; code?: number; error_subcode?: number } | undefined, status: number): string {
+  const msg = err?.message ?? "";
+  if (err?.code === 200 || /NOT grant ads_management|NOT grant ads_read/i.test(msg)) {
+    return "Meta connected, but this login (or system user) hasn't been given a role on that ad account. In Business Manager → Ad accounts → this account → People, add it with at least Analyst access — Full control if you also want to change budgets from here.";
+  }
+  if (err?.code === 190) {
+    return "This connection's Meta access token has expired or was revoked. Reconnect via Connect with Facebook, or paste a fresh system-user token.";
+  }
+  if (err?.code === 100 && /does not exist|Unsupported get request/i.test(msg)) {
+    return "Meta doesn't recognise this ad account id. Double-check it — it should be the numeric id from Ads Manager, without the \"act_\" prefix.";
+  }
+  if (err?.code === 100) {
+    return "This app doesn't have Standard Access to the Marketing API yet, so Meta limits it to accounts held by the app's own admins/testers. Ask your Meta Business admin to submit for Advanced Access, or add this ad account's owner as an app tester meanwhile.";
+  }
+  if (err?.code === 17 || err?.code === 613 || status === 429) {
+    return "Meta is rate-limiting this app right now — wait a few minutes and try again.";
+  }
+  if (status === 401 || status === 403) {
+    return "Meta refused this request — the access token is invalid or lacks permission for this ad account. Reconnect to fix it.";
+  }
+  return msg ? `Meta said (not yet translated): ${msg}` : `Meta request failed (HTTP ${status}).`;
+}
+
 async function graphGet(tenantId: string, path: string, params: Record<string, string> = {}): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
   const token = await adsToken(tenantId);
   if (!token) return { ok: false, error: NO_TOKEN };
@@ -62,7 +92,7 @@ async function graphGet(tenantId: string, path: string, params: Record<string, s
   try {
     const r = await fetch(`${GRAPH}/${path}${qs ? `?${qs}` : ""}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
     const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!r.ok) return { ok: false, error: ((d?.error as Record<string, unknown>)?.message as string) || `HTTP ${r.status}` };
+    if (!r.ok) return { ok: false, error: describeAdsGraphError(d?.error as { message?: string; code?: number; error_subcode?: number } | undefined, r.status) };
     return { ok: true, data: d };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -79,7 +109,14 @@ async function graphPost(tenantId: string, path: string, params: Record<string, 
       body: new URLSearchParams(params).toString(),
     });
     const d = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!r.ok) return { ok: false, error: (((d?.error as Record<string, unknown>)?.error_user_msg as string)) || ((d?.error as Record<string, unknown>)?.message as string) || `HTTP ${r.status}` };
+    if (!r.ok) {
+      const e = d?.error as { message?: string; code?: number; error_subcode?: number; error_user_msg?: string } | undefined;
+      // Meta's own error_user_msg IS already tenant-facing (it's the sentence
+      // Meta itself wrote for end users) — prefer it over our generic mapping
+      // when present, same as before; only fall through to the code map for
+      // errors Meta didn't write user copy for.
+      return { ok: false, error: e?.error_user_msg || describeAdsGraphError(e, r.status) };
+    }
     return { ok: true, data: d };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -95,7 +132,23 @@ export async function setAdsPageId(pageId: string, tenantId = DEFAULT_TENANT_ID)
   await setTenantSetting(tenantId, "ads_page", { pageId: pageId.trim() });
 }
 
-export interface AdAccountInfo { name: string; currency: string; status: number; timezoneName?: string }
+export interface AdAccountInfo { name: string; currency: string; status: number; statusLabel: string; timezoneName?: string }
+
+// Meta's account_status codes (Marketing API reference) — the UI was showing a
+// bare "status 2" for anything not Active, which tells a tenant nothing about
+// whether the fix is theirs (add a payment method) or Meta's (wait for review).
+const ACCOUNT_STATUS_LABEL: Record<number, string> = {
+  1: "Active",
+  2: "Disabled by Meta — usually a policy violation or billing issue. Resolve it in Ads Manager; nothing here can fix it.",
+  3: "Unsettled — an unpaid balance is blocking this account. Settle it in Ads Manager billing.",
+  7: "Pending risk review — Meta is reviewing this account; campaigns are paused until it clears.",
+  9: "In grace period — a payment failed. Update the payment method in Ads Manager before it's disabled.",
+  100: "Pending closure.",
+  101: "Closed.",
+};
+export function accountStatusLabel(status: number): string {
+  return ACCOUNT_STATUS_LABEL[status] ?? `Status ${status} (unrecognised) — check this account directly in Ads Manager.`;
+}
 
 // Meta's "Delivery" column. The raw effective_status only says ACTIVE/PAUSED;
 // the Learning vs Active distinction lives in the ad SET's learning_stage_info.
@@ -197,7 +250,8 @@ function dateFilter(preset: DatePreset, tz?: string): string {
 export async function getAdAccount(accountId: string, tenantId: string): Promise<{ ok: boolean; account?: AdAccountInfo; error?: string }> {
   const r = await graphGet(tenantId, `act_${accountId}`, { fields: "name,currency,account_status,timezone_name" });
   if (!r.ok || !r.data) return { ok: false, error: r.error };
-  return { ok: true, account: { name: r.data.name as string, currency: r.data.currency as string, status: r.data.account_status as number, timezoneName: (r.data.timezone_name as string) || undefined } };
+  const status = r.data.account_status as number;
+  return { ok: true, account: { name: r.data.name as string, currency: r.data.currency as string, status, statusLabel: accountStatusLabel(status), timezoneName: (r.data.timezone_name as string) || undefined } };
 }
 
 // The account's reporting timezone (e.g. "Asia/Kolkata") — used to anchor the

@@ -35,6 +35,10 @@ export async function GET(req: NextRequest) {
   const cookieState = req.cookies.get(STATE_COOKIE)?.value;
 
   if (err) return back("yt_error=denied");
+  // A missing/mismatched state most often means the connect link sat open past
+  // its cookie's life, or was opened in a different browser/session than the
+  // one that started it (a copy-pasted link, or a privacy extension stripping
+  // the cookie) — say that, rather than the unhelpful "something went wrong".
   if (!code || !state || !cookieState || state !== cookieState) return back("yt_error=state_mismatch");
 
   try {
@@ -49,8 +53,17 @@ export async function GET(req: NextRequest) {
         client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET as string,
       }),
     });
-    const tokenJson = (await tokenRes.json().catch(() => null)) as { access_token?: string; refresh_token?: string } | null;
-    if (!tokenRes.ok || !tokenJson?.access_token) return back("yt_error=exchange_failed");
+    const tokenJson = (await tokenRes.json().catch(() => null)) as { access_token?: string; refresh_token?: string; error?: string } | null;
+    if (!tokenRes.ok || !tokenJson?.access_token) {
+      // invalid_grant = the code was already used or the window ran out — a
+      // tenant action (double-click, back button, waited too long) and worth
+      // telling them to just retry cleanly. Anything else (invalid_client,
+      // unauthorized_client) is OUR deployment's OAuth client being
+      // misconfigured — that is never something the tenant can fix, so it
+      // must not read as if it were.
+      console.error("[youtube-oauth] token exchange failed", { tenantId, error: tokenJson?.error, status: tokenRes.status });
+      return back(tokenJson?.error === "invalid_grant" ? "yt_error=code_expired" : "yt_error=exchange_failed");
+    }
     // prompt=consent should always reissue one, but Google can occasionally omit
     // it — fail loudly rather than saving a channel that can never auto-refresh.
     if (!tokenJson.refresh_token) return back("yt_error=no_refresh_token");
@@ -88,7 +101,13 @@ export async function GET(req: NextRequest) {
     });
     logActivity(await currentUser(), "channel.save", `YouTube "${channel.title || channel.id}" connected`);
     return back("yt=connected");
-  } catch {
+  } catch (e) {
+    // The catch swallowed the actual reason (DB outage, a bad column, a
+    // genuinely thrown error deep in resolveChannelsForToken) and told every
+    // tenant "something went wrong" regardless of what happened on Google's
+    // side. Google's own token exchange already succeeded by the time we can
+    // land here, so the tenant needs to know THAT much at least.
+    console.error("[youtube-oauth] connect failed after Google succeeded", e);
     return back("yt_error=save_failed");
   }
 }

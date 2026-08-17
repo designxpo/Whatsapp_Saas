@@ -16,7 +16,7 @@ type AdsData = {
   accountId: string;
   pageId: string;
   token?: { own: boolean; hint: string | null };
-  account: { name: string; currency: string; status: number } | null;
+  account: { name: string; currency: string; status: number; statusLabel: string } | null;
   error: string | null;
   campaigns: { id: string; name: string; effectiveStatus: string; delivery?: Delivery; objective: string; dailyBudget: number | null; spend: number; impressions: number; clicks: number; ctr: number; cpc: number; conversations: number; results: number; resultLabel: string }[];
   attribution: { adId: string; headline: string; contacts: number; leads: number }[];
@@ -338,7 +338,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> Meta Ads</h2>
-          {data?.account && <p className="text-sm text-slate-500">{data.account.name} · {data.account.currency} · {data.account.status === 1 ? <span className="text-brand-700 font-semibold">● active</span> : <span className="text-amber-600 font-semibold">status {data.account.status}</span>}</p>}
+          {data?.account && <p className="text-sm text-slate-500">{data.account.name} · {data.account.currency} · {data.account.status === 1 ? <span className="text-brand-700 font-semibold">● active</span> : <span className="text-amber-600 font-semibold" title={data.account.statusLabel}>{data.account.statusLabel}</span>}</p>}
         </div>
         <div className="flex gap-2 items-center">
           {([["today", "Today"], ["last_7d", "7 days"], ["last_30d", "30 days"]] as ["today" | "last_7d" | "last_30d", string][]).map(([k, label]) => (

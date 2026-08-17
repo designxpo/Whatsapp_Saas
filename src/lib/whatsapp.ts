@@ -606,6 +606,24 @@ export interface BusinessProfile {
 const WA_VERTICALS = ["UNDEFINED","OTHER","AUTO","BEAUTY","APPAREL","EDU","ENTERTAIN","EVENT_PLAN","FINANCE","GROCERY","GOVT","HOTEL","HEALTH","NONPROFIT","PROF_SERVICES","RETAIL","TRAVEL","RESTAURANT","NOT_A_BIZ"] as const;
 export const WA_PROFILE_VERTICALS: readonly string[] = WA_VERTICALS;
 
+// This endpoint's errors were reaching the tenant as Meta's raw sentence —
+// "(#100) Invalid parameter" says nothing about WHICH field, and "(#10)" reads
+// as a generic permission error when the real fix is reconnecting the number.
+// The client already caps every field's length before sending, so a (#100)
+// here is essentially always something Meta itself rejected (bad characters,
+// a vertical value it doesn't recognise), not a length problem.
+export function describeProfileError(e: { message?: string; code?: number; error_user_msg?: string; error_data?: { details?: string } } | undefined, status: number): string {
+  if (e?.error_user_msg) return e.error_user_msg;   // Meta's own tenant-facing wording, when it wrote one
+  const msg = e?.message ?? e?.error_data?.details ?? "";
+  if (e?.code === 10 || status === 401 || status === 403) {
+    return "This number's access token doesn't have permission to manage its business profile — reconnect the number so Talko can request the right permission.";
+  }
+  if (e?.code === 100) {
+    return `Meta rejected one of these fields as invalid (${msg || "no further detail given"}) — check for unusual characters or an unsupported industry, then try again.`;
+  }
+  return msg || `Meta request failed (HTTP ${status}).`;
+}
+
 export async function getBusinessProfile(channel?: ChannelCreds): Promise<{ profile?: BusinessProfile; error?: string }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
@@ -615,7 +633,7 @@ export async function getBusinessProfile(channel?: ChannelCreds): Promise<{ prof
       headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) return { error: j?.error?.message || `Fetch failed (HTTP ${r.status})` };
+    if (!r.ok) return { error: describeProfileError(j?.error, r.status) };
     const p = (j.data?.[0] ?? {}) as Record<string, unknown>;
     return { profile: {
       about: (p.about as string) ?? "",
@@ -662,10 +680,7 @@ export async function updateBusinessProfile(fields: BusinessProfile, channel?: C
     });
     const j = await r.json().catch(() => ({}));
     const e = j?.error;
-    if (!r.ok || e) {
-      const detail = e?.error_user_msg || e?.error_data?.details || e?.message || `Update failed (HTTP ${r.status})`;
-      return { success: false, error: detail };
-    }
+    if (!r.ok || e) return { success: false, error: describeProfileError(e, r.status) };
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };
@@ -685,7 +700,13 @@ export async function setProfilePicture(file: { bytes: ArrayBuffer; mime: string
       body: JSON.stringify({ messaging_product: "whatsapp", profile_picture_handle: up.handle }),
     });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok || j?.error) return { success: false, error: j?.error?.message || `Set photo failed (HTTP ${r.status})` };
+    if (!r.ok || j?.error) {
+      const e = j?.error;
+      const base = describeProfileError(e, r.status);
+      // A photo failure specifically is almost always the format, not permission.
+      const hint = e?.code === 100 ? " Meta rejected this photo — use a square JPEG or PNG under 5MB." : "";
+      return { success: false, error: base + hint };
+    }
     return { success: true };
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : String(err) };

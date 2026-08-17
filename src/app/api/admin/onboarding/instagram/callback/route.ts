@@ -28,12 +28,22 @@ export async function GET(req: Request) {
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state") ?? "";
 
-  // The tenant declined, or Instagram refused the request outright — a scope the
-  // app isn't approved for lands here, so pass Meta's own words through.
-  const denied = url.searchParams.get("error_description") || url.searchParams.get("error");
+  // The tenant declining and Instagram refusing outright (e.g. a scope this
+  // app isn't approved for) both land here, and used to read identically to
+  // the tenant — "Instagram didn't complete the connection: <Meta's sentence>"
+  // either way, so there was no way to tell "I clicked cancel, no big deal"
+  // from "this deployment is broken and only support can fix it."
+  const errorCode = url.searchParams.get("error");
+  const denied = url.searchParams.get("error_description") || errorCode;
   if (denied) {
-    console.error(TAG, "authorize declined", { tenantId, denied });
-    return html({ ok: false, error: `Instagram didn't complete the connection: ${denied}` });
+    console.error(TAG, "authorize declined", { tenantId, errorCode, denied });
+    if (errorCode === "access_denied") {
+      return html({ ok: false, error: "You cancelled the Instagram sign-in — click Connect Instagram again and approve every requested permission." });
+    }
+    if (errorCode === "invalid_scope") {
+      return html({ ok: false, error: "This deployment is requesting an Instagram permission that isn't available yet — that's a configuration issue on our side, not something you can fix. Please contact support and mention \"Instagram invalid_scope\"." });
+    }
+    return html({ ok: false, error: `Instagram refused the connection (${denied}). If this keeps happening, contact support with this exact message.` });
   }
   if (!code) return html({ ok: false, error: "Instagram sent us back without an authorization code. Please try again." });
 
