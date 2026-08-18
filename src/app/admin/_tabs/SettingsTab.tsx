@@ -5,7 +5,7 @@
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
-import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab } from "../_shared";
+import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab, DEFAULT_TENANT_ID } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 
@@ -1197,6 +1197,11 @@ export function MessengerCard() {
   const [pickAccount, setPickAccount] = useState(false);
   const [pendingReplyOnly, setPendingReplyOnly] = useState(false);
   const [ruleBusy, setRuleBusy] = useState(false);
+  // Same gate as Instagram's comment automation: Facebook comment-to-DM/reply
+  // needs Advanced Access on pages_manage_engagement-family permissions, still
+  // pending Meta App Review — Meta only honors it today for accounts with a
+  // role on the app. Hidden from real tenants until that review clears.
+  const [canUseComments, setCanUseComments] = useState(false);
   const loadRules = useCallback(() => { fetch("/api/admin/fb-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
 
   const load = useCallback(async () => {
@@ -1205,6 +1210,11 @@ export function MessengerCard() {
   }, []);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadRules(); }, [loadRules]);
+  useEffect(() => {
+    fetch("/api/admin/me").then(r => r.json())
+      .then(d => { const u = d?.user; setCanUseComments(!!u?.isPlatformOwner && (!u?.tenantId || u.tenantId === DEFAULT_TENANT_ID)); })
+      .catch(() => setCanUseComments(false));
+  }, []);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   // Load the post grid for the Page the rule editor is targeting (only when the
@@ -1390,6 +1400,21 @@ export function MessengerCard() {
       )}
       {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet — add one above to auto-reply to Page messages.</p>}
 
+      {/* Comment-to-DM + comment-reply automation both need Advanced Access on
+          pages_manage_engagement-family permissions, pending Meta App Review —
+          Meta only honors it today for accounts with a role on the app, not
+          real tenant Pages. Shown as "coming soon" everywhere except the
+          owner's own (non-impersonated) session until that review clears. */}
+      {!canUseComments ? (
+        <div className="border-t border-line pt-3 mt-1">
+          <div className="rounded-card border border-dashed border-line bg-canvas px-4 py-6 text-center">
+            <MessageCircle className="w-5 h-5 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-bold text-slate-500">Comment automation — coming soon</p>
+            <p className="text-xs text-ink-400 mt-1 max-w-sm mx-auto">Turning post comments into DMs or automatic public replies is finishing a Meta review and isn&apos;t available yet. Page DMs and AI auto-replies work normally in the meantime.</p>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Comment-to-DM automation (multiple rules + per-post targeting) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
@@ -1565,6 +1590,8 @@ export function MessengerCard() {
           </div>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }

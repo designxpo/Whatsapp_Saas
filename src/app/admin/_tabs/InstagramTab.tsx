@@ -3,7 +3,7 @@
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
-import { inp, type ChannelRow } from "../_shared";
+import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 
 // Dedicated Instagram section (its own nav tab).
@@ -97,6 +97,13 @@ function InstagramManager() {
   // Delivery state per account, read back from Meta rather than assumed.
   const [health, setHealth] = useState<Record<string, IgHealth>>({});
   const [rechecking, setRechecking] = useState<string | null>(null);
+  // Comment automation needs instagram_business_manage_comments at Advanced
+  // Access, which is still pending Meta App Review — Meta only honors that
+  // permission today for accounts with a role on the app (the owner's own),
+  // so showing the feature to a real tenant would be a control that silently
+  // never does anything. Gated to the owner's own session (not impersonating
+  // a tenant) until the review clears.
+  const [canUseComments, setCanUseComments] = useState(false);
   const loadRules = useCallback(() => { fetch("/api/admin/ig-comment-rules").then(r => r.json()).then(d => setRules(d.rules ?? [])).catch(() => {}); }, []);
   const loadHealth = useCallback(() => {
     fetch("/api/admin/channels/instagram/health")
@@ -118,6 +125,11 @@ function InstagramManager() {
     setChannels((d.channels ?? []).filter((c: ChannelRow) => c.kind === "instagram"));
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/admin/me").then(r => r.json())
+      .then(d => { const u = d?.user; setCanUseComments(!!u?.isPlatformOwner && (!u?.tenantId || u.tenantId === DEFAULT_TENANT_ID)); })
+      .catch(() => setCanUseComments(false));
+  }, []);
   useEffect(() => { fetch("/api/admin/ai/agents").then(r => r.json()).then(d => setAgents((d.agents ?? []).map((a: { id: string; name: string }) => ({ id: a.id, name: a.name })))).catch(() => {}); }, []);
   useEffect(() => { fetchKbTags().then(setKbTags); }, []);
   useEffect(() => { loadRules(); }, [loadRules]);
@@ -346,6 +358,21 @@ function InstagramManager() {
         </div>
       )}
 
+      {/* Comment-to-DM + comment-reply automation both need Advanced Access on
+          instagram_business_manage_comments, which is pending Meta App Review —
+          Meta only honors the permission today for accounts with a role on the
+          app, not real tenant accounts. Shown as "coming soon" everywhere except
+          the owner's own (non-impersonated) session until that review clears. */}
+      {!canUseComments ? (
+        <div className="border-t border-line pt-3 mt-1">
+          <div className="rounded-card border border-dashed border-line bg-canvas px-4 py-6 text-center">
+            <MessageCircle className="w-5 h-5 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-bold text-slate-500">Comment automation — coming soon</p>
+            <p className="text-xs text-ink-400 mt-1 max-w-sm mx-auto">Turning post comments into DMs or automatic public replies is finishing a Meta review and isn&apos;t available yet. DMs and AI auto-replies work normally in the meantime.</p>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Comment-to-DM automation (multiple rules, per-post, follow-gate) */}
       <div className="border-t border-line pt-3 mt-1 space-y-3">
         <div className="flex items-center justify-between">
@@ -552,6 +579,8 @@ function InstagramManager() {
           </div>
         )}
       </div>
+      </>
+      )}
     </section>
   );
 }
