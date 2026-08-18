@@ -16,6 +16,13 @@ import type { FeatureKey } from "./entitlement-registry";
 import { errorMessage } from "./errors";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
+// Instagram API with Instagram Login issues tokens that only work against
+// graph.instagram.com — calling graph.facebook.com with one of these tokens
+// fails regardless of validity, and Meta's error for that mismatch reads
+// identically to a real expired-token error, so a perfectly live Instagram
+// connection reported as "invalid or expired" here for every tenant using
+// Instagram Login (the connect flow this app actually uses).
+const IG_GRAPH = `https://${process.env.META_IG_GRAPH_HOST || "graph.instagram.com"}/${process.env.META_GRAPH_VERSION || "v22.0"}`;
 
 export type StepStatus = "ok" | "warn" | "todo" | "error";
 export interface SetupStep {
@@ -73,7 +80,7 @@ async function verifyWhatsApp(ch: Channel): Promise<{ ok: boolean; detail: strin
 async function verifyInstagram(ch: Channel): Promise<{ ok: boolean; detail: string }> {
   if (!ch.token || !ch.igUserId) return { ok: false, detail: "Missing the access token or Instagram account ID — re-enter them in Settings." };
   try {
-    const res = await fetch(`${GRAPH}/${ch.igUserId}?fields=username,name`, {
+    const res = await fetch(`${IG_GRAPH}/${ch.igUserId}?fields=username,name`, {
       headers: { Authorization: `Bearer ${ch.token}` }, signal: AbortSignal.timeout(8000),
     });
     const data = await res.json().catch(() => ({} as Record<string, unknown>));
