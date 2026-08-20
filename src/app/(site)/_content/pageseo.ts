@@ -13,6 +13,7 @@
 import type { FaqItem } from "./schema";
 import type { Source } from "../_components/seo";
 import { TIERS, CREATOR_TIERS, ANNUAL_DISCOUNT } from "./site";
+import { EXTENSION_STORE_URL } from "./schema";
 
 // Prices quoted in prose are derived from the same TIERS the pricing table
 // renders. Written by hand, an earlier draft of this file said business plans
@@ -52,6 +53,7 @@ const SRC = {
   gemini: { label: "Google — Gemini API pricing", href: "https://ai.google.dev/pricing", note: "one of the provider keys you can bring" },
   openai: { label: "OpenAI — API pricing", href: "https://openai.com/api/pricing/", note: "another supported provider key" },
   anthropic: { label: "Anthropic — pricing", href: "https://www.anthropic.com/pricing", note: "another supported provider key" },
+  chromeStore: { label: "Talko Copilot — Chrome Web Store listing", href: EXTENSION_STORE_URL, note: "the official install page, permissions and reviews" },
 } satisfies Record<string, Source>;
 
 // ── /features ───────────────────────────────────────────────────────────────
@@ -332,4 +334,34 @@ export const CONTACT_SEO: PageSeo = {
     },
   ],
   sources: [SRC.whatsapp, SRC.whatsappPolicy, SRC.gbp],
+};
+
+// ── /extension ──────────────────────────────────────────────────────────────
+
+export const EXTENSION_SEO: PageSeo = {
+  updated: "2026-08-20",
+  published: "2026-08-20",
+  faqs: [
+    {
+      q: "Is the Talko Copilot Chrome extension free?",
+      a: "Yes, the extension itself is free to install. It's a side-panel window into your existing Talko AI account — you'll need an active Talko AI plan (including the free 14-day trial) to send messages, since that's where WhatsApp, Instagram and Messenger are actually connected.",
+    },
+    {
+      q: "What can I do from the extension that I can't do in the Talko AI web app?",
+      a: "The extension's specific advantage is working alongside whatever page you're already on: highlight a name, email or phone number on any webpage and add it to Talko as a lead without switching tabs, or open the side panel to reply to a customer while you're looking at their order on a different site. Everything else — the unified inbox, catalog search, payment links, AI-drafted replies — mirrors the web app.",
+    },
+    {
+      q: "Does the extension read or scrape data from the pages I visit?",
+      a: "No. Talko Copilot only acts on a webpage when you explicitly highlight text to capture as a lead — it does not scan, scrape or automatically read page content in the background, and every message it sends or receives goes through WhatsApp's, Instagram's and Facebook's own official APIs, never browser automation.",
+    },
+    {
+      q: "Which browsers does it support?",
+      a: "Talko Copilot is published on the Chrome Web Store and works in Chrome and any Chromium-based browser that supports Chrome extensions (Edge, Brave, Arc). It is not currently available for Firefox or Safari.",
+    },
+    {
+      q: "Will a reply I send from the extension still respect WhatsApp's 24-hour window?",
+      a: "Yes. The extension enforces the same rules as the Talko AI web app — outside WhatsApp's 24-hour customer service window, you can only send an approved template, not a free-form message. The side panel tells you which one applies before you send.",
+    },
+  ],
+  sources: [SRC.chromeStore, SRC.whatsapp, SRC.whatsappPolicy, SRC.instagram, SRC.messenger],
 };

@@ -14,6 +14,11 @@ import { TIERS, CREATOR_TIERS, type Tier } from "./site";
 export const ORG_ID = `${SITE_URL}/#organization`;
 export const WEBSITE_ID = `${SITE_URL}/#website`;
 export const SOFTWARE_ID = `${SITE_URL}/#software`;
+export const EXTENSION_ID = `${SITE_URL}/#chrome-extension`;
+
+// The Chrome Web Store listing URL, defined once here so the page, the
+// install button and this schema's `downloadUrl` can never drift out of sync.
+export const EXTENSION_STORE_URL = "https://chromewebstore.google.com/detail/dhlfadjphcdnpibjfmapkeibagacmcmk";
 
 const LOGO_URL = `${SITE_URL}/brand/talkopng.png`;
 
@@ -118,6 +123,38 @@ export const softwareSchema = {
     offerCount: paidOffers.length,
     offers: paidOffers,
   },
+};
+
+// The Chrome extension is a separate installable artifact from the web app
+// above, so it gets its OWN SoftwareApplication node with applicationCategory
+// "BrowserExtension" — the type Google and AI answer engines specifically
+// look for when someone asks "is there a Talko AI Chrome extension" or
+// "Chrome extension for WhatsApp/Instagram DMs from Gmail". Folding it into
+// softwareSchema instead would blur "web app" and "browser extension" into
+// one category and lose that match.
+export const extensionSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "@id": EXTENSION_ID,
+  name: "Talko Copilot",
+  applicationCategory: "BrowserExtension",
+  operatingSystem: "Chrome",
+  url: `${SITE_URL}/extension`,
+  installUrl: EXTENSION_STORE_URL,
+  downloadUrl: EXTENSION_STORE_URL,
+  image: LOGO_URL,
+  description: `Capture leads from any webpage into Talko AI and reply on ${CHANNELS} from a Chrome side panel — customer history, product catalog and AI-drafted replies, without leaving the page you're on.`,
+  publisher: { "@id": ORG_ID },
+  isPartOf: { "@id": SOFTWARE_ID },
+  offers: { "@type": "Offer", price: "0", priceCurrency: "INR" },
+  featureList: [
+    "Unified WhatsApp, Instagram, Facebook and website chat inbox in a side panel",
+    "Customer lookup — order history, lifetime spend, lead source",
+    "Product catalog search with payment link generation",
+    "Capture leads from any webpage into Talko AI",
+    "AI-drafted replies grounded in your knowledge base",
+    "Official API integration only — no scraping or browser automation",
+  ],
 };
 
 export type PageSchemaOptions = {

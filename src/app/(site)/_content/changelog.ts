@@ -9,6 +9,13 @@ export type ChangelogDay = { date: string; title: string; entries: ChangeEntry[]
 
 export const CHANGELOG: ChangelogDay[] = [
   {
+    date: "2026-08-20",
+    title: "Talko Copilot Chrome extension",
+    entries: [
+      { tag: "New", text: "Talko Copilot — a free Chrome extension that puts your WhatsApp, Instagram, Messenger and web-chat inbox in a side panel on any tab, with customer lookup, catalog search, payment links, AI-drafted replies, and one-click lead capture from any webpage. Find it on the Chrome Web Store or from the new Extension page." },
+    ],
+  },
+  {
     date: "2026-08-02",
     title: "Self-serve setup guides",
     entries: [
