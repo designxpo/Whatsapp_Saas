@@ -10,6 +10,7 @@ export const NAV: { label: string; href: string }[] = [
   { label: "Features", href: "/features" },
   { label: "Industries", href: "/industries" },
   { label: "Pricing", href: "/pricing" },
+  { label: "Affiliate Program", href: "/affiliate" },
   { label: "About", href: "/about" },
 ];
 
