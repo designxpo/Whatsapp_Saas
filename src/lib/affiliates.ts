@@ -170,10 +170,15 @@ export async function recordAffiliateCommission(tenantId: string, p: {
   if (!affiliate || affiliate.status !== "active") return;
 
   const commissionCents = Math.round((p.amountCents * affiliate.commissionPct) / 100);
+  // Idempotency key: period_start must identify the BILLING CYCLE, not "when
+  // we happened to process this" — Stripe redelivers webhooks, and each
+  // redelivery must land on the same row, not a new one. currentPeriodEnd is
+  // the one value Stripe gives us that's fixed for a cycle and only advances
+  // on the next renewal, so it doubles as the cycle's start-of-record here.
   const { error } = await db().from("wa_affiliate_commissions").insert({
     affiliate_id: affiliateId, tenant_id: tenantId,
     stripe_subscription_id: p.subscriptionId ?? null,
-    period_start: new Date().toISOString(), period_end: p.currentPeriodEnd ?? null,
+    period_start: p.currentPeriodEnd ?? null, period_end: p.currentPeriodEnd ?? null,
     plan: p.plan ?? "unknown", amount_cents: p.amountCents,
     commission_pct: affiliate.commissionPct, commission_cents: commissionCents,
   });
