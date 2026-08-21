@@ -365,3 +365,37 @@ export const EXTENSION_SEO: PageSeo = {
   ],
   sources: [SRC.chromeStore, SRC.whatsapp, SRC.whatsappPolicy, SRC.instagram, SRC.messenger],
 };
+
+// ── /affiliate ──────────────────────────────────────────────────────────────
+
+export const AFFILIATE_SEO: PageSeo = {
+  updated: "2026-08-21",
+  published: "2026-08-21",
+  faqs: [
+    {
+      q: "What is the Talko AI Affiliate Program?",
+      a: "It's a referral program open to anyone — you don't need a Talko AI account of your own. You get a unique referral link; when a business signs up through it and later pays for a subscription, you earn a percentage of that payment as commission.",
+    },
+    {
+      q: "How much commission do I earn?",
+      a: "20% of the subscription payment made by each business you refer, for as long as they stay a paying customer — not a one-time payout. If someone you referred is on a ₹4,999/month plan, you earn ₹999.80 every month they remain subscribed.",
+    },
+    {
+      q: "Is the commission recurring or a one-time payment?",
+      a: "Recurring. Most referral programs pay once on the first sale; Talko AI's pays on every subscription renewal for as long as the referred business keeps paying — so the income compounds as your referrals grow.",
+    },
+    {
+      q: "Do I need to already be a Talko AI customer to join?",
+      a: "No. Enrollment is completely separate from having a Talko AI account — anyone can join the affiliate program and start sharing a referral link, whether or not they use Talko AI themselves.",
+    },
+    {
+      q: "How and when do I get paid?",
+      a: "Commission is tracked automatically in your affiliate dashboard as soon as a referred business's payment goes through. Payouts are currently handled manually — the Talko AI team pays out your balance directly and marks it as paid in the system, so it always shows an accurate running total.",
+    },
+    {
+      q: "How do I track who I've referred and what I've earned?",
+      a: "Your affiliate dashboard shows every business that signed up through your link, which ones converted to a paying plan, and a full commission ledger broken down by pending and paid amounts.",
+    },
+  ],
+  sources: [SRC.whatsapp, SRC.instagram, SRC.messenger],
+};

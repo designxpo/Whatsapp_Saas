@@ -157,6 +157,27 @@ export const extensionSchema = {
   ],
 };
 
+// The affiliate program as its own entity — disambiguates "Talko AI affiliate
+// program" from the product itself, and gives an AI answer engine a concrete
+// thing to point at (name, provider, reward) rather than inferring one from
+// prose. Offer.itemOffered names the earning mechanism directly.
+export const AFFILIATE_PROGRAM_ID = `${SITE_URL}/#affiliate-program`;
+export const affiliateProgramSchema = {
+  "@context": "https://schema.org",
+  "@type": "Offer",
+  "@id": AFFILIATE_PROGRAM_ID,
+  name: "Talko AI Affiliate Program",
+  url: `${SITE_URL}/affiliate`,
+  description: "Earn a 20% recurring commission on every subscription payment made by a business you refer to Talko AI, for as long as they stay a paying customer. Open to anyone — no Talko AI account required.",
+  seller: { "@id": ORG_ID },
+  itemOffered: {
+    "@type": "Service",
+    name: "Talko AI referral commission",
+    serviceType: "Affiliate marketing program",
+    provider: { "@id": ORG_ID },
+  },
+};
+
 export type PageSchemaOptions = {
   /** Site-relative path, e.g. "/pricing". Used for `url` and the node `@id`s. */
   path: string;
