@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { db } from "@/lib/supabase";
 import { createPendingToken, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
 import { getFlag } from "@/lib/flags";
@@ -68,6 +69,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    // Affiliate attribution: the middleware stamped this from an earlier
+    // `?ref=CODE` page load (up to 30 days ago). An invalid/unknown code is
+    // validated later, at account-creation time — never blocks signup here.
+    const referralCode = (await cookies()).get("talko_ref")?.value;
     const pending = await createPendingToken({
       // The pending token is a SIGNED (not encrypted) JWT that rides in a cookie,
       // so its payload is publicly decodable. Never carry the raw password there —
@@ -75,7 +80,7 @@ export async function POST(req: Request) {
       company, ownerName, ownerEmail, password: encryptSecret(password),
       ownerPhone: body.ownerPhone?.trim(), industry: body.industry?.trim(),
       teamSize: body.teamSize?.trim(), useCase: body.useCase?.trim(), expectedVolume: body.expectedVolume?.trim(),
-      termsVersion: LEGAL_VERSION,
+      termsVersion: LEGAL_VERSION, referralCode,
     }, PENDING_SIGNUP_PURPOSE, "15m");
     const res = NextResponse.json({ pending: true, email: ownerEmail });
     res.cookies.set(PENDING_SIGNUP_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 900 });

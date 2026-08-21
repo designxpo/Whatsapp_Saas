@@ -10,6 +10,7 @@ import { errorMessage } from "@/lib/errors";
 interface PendingSignup {
   company: string; ownerName: string; ownerEmail: string; password: string;
   ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; termsVersion?: string;
+  referralCode?: string;
 }
 
 // POST — completes the signup-OTP challenge started by /api/signup. Only on a

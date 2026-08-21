@@ -125,6 +125,15 @@ export async function applySubscription(tenantId: string, p: {
   if (p.subscriptionId !== undefined) row.stripe_subscription_id = p.subscriptionId;
   if (p.status !== undefined) row.status = p.status;
   await db().from("tenants").update(row).eq("id", tenantId);
+
+  // An active charge on a referred tenant earns its affiliate a commission.
+  // No-ops immediately for the vast majority of tenants (no referrer).
+  if (p.paymentStatus === "active" && p.amountCents) {
+    const { recordAffiliateCommission } = await import("./affiliates");
+    await recordAffiliateCommission(tenantId, {
+      amountCents: p.amountCents, plan: p.plan, subscriptionId: p.subscriptionId, currentPeriodEnd: p.currentPeriodEnd,
+    }).catch(err => console.error(JSON.stringify({ at: "applySubscription.affiliateCommission", tenantId, error: err instanceof Error ? err.message : String(err) })));
+  }
 }
 
 // Platform metrics for the owner dashboard.
@@ -185,7 +194,7 @@ export async function platformAnalytics(): Promise<{
 export async function createTenantFromSignup(p: {
   company: string; ownerName: string; ownerEmail: string; password: string;
   ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; source?: string;
-  termsVersion?: string;
+  termsVersion?: string; referralCode?: string;
 }): Promise<{ tenantId: string; email: string }> {
   const email = p.ownerEmail.trim().toLowerCase();
   // Reject if the email already has an account.
@@ -216,9 +225,17 @@ export async function createTenantFromSignup(p: {
   // keeps working before those migrations are applied (the audit log below is
   // the durable consent record either way).
   const acceptedAt = new Date().toISOString();
-  const optional = { grandfathered: false, terms_accepted_at: p.termsVersion ? acceptedAt : null, terms_version: p.termsVersion ?? null };
+  // An invalid/unknown/suspended referral code silently resolves to no
+  // attribution — a bad or stale referral link must never block signup.
+  const referredByAffiliateId = p.referralCode
+    ? (await (await import("./affiliates")).getActiveAffiliateByCode(p.referralCode))?.id ?? null
+    : null;
+  const optional = {
+    grandfathered: false, terms_accepted_at: p.termsVersion ? acceptedAt : null, terms_version: p.termsVersion ?? null,
+    referred_by_affiliate_id: referredByAffiliateId,
+  };
   let ins = await db().from("tenants").insert({ ...baseRow, ...optional }).select("id").single();
-  if (ins.error && /grandfathered|terms_accepted_at|terms_version/i.test(ins.error.message ?? "")) {
+  if (ins.error && /grandfathered|terms_accepted_at|terms_version|referred_by_affiliate_id/i.test(ins.error.message ?? "")) {
     ins = await db().from("tenants").insert(baseRow).select("id").single();
   }
   if (ins.error) throw ins.error;

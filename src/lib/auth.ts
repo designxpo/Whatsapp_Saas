@@ -82,6 +82,40 @@ export async function verifyPendingToken<T = Record<string, unknown>>(token: str
   }
 }
 
+// ── Affiliate sessions ─────────────────────────────────────────────────────
+// Deliberately separate from SESSION_COOKIE/SessionUser: an affiliate need
+// not have (or ever create) a Talko tenant, so this is its own cookie, its
+// own JWT purpose, and its own payload shape — it can never be confused with,
+// or escalated into, a tenant-admin session.
+export const AFFILIATE_SESSION_COOKIE = "wa_affiliate_session";
+const AFFILIATE_SESSION_PURPOSE = "affiliate_session";
+
+export interface AffiliateSessionUser { affiliateId: string; email: string; name: string }
+
+export async function createAffiliateSession(a: AffiliateSessionUser): Promise<string> {
+  return new SignJWT({ sub: a.affiliateId, email: a.email, name: a.name, purpose: AFFILIATE_SESSION_PURPOSE })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("30d")
+    .sign(secret());
+}
+
+export async function verifyAffiliateSession(token: string | undefined): Promise<AffiliateSessionUser | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret());
+    if (payload.purpose !== AFFILIATE_SESSION_PURPOSE || typeof payload.sub !== "string") return null;
+    return { affiliateId: payload.sub, email: typeof payload.email === "string" ? payload.email : "", name: typeof payload.name === "string" ? payload.name : "" };
+  } catch {
+    return null;
+  }
+}
+
+export const currentAffiliate = cache(async (): Promise<AffiliateSessionUser | null> => {
+  const token = (await cookies()).get(AFFILIATE_SESSION_COOKIE)?.value;
+  return verifyAffiliateSession(token);
+});
+
 export async function verifySession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   try {

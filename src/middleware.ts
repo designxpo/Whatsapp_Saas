@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 const COOKIE = "wa_admin_session";
+const AFFILIATE_COOKIE = "wa_affiliate_session";
 
 // ── Host split: marketing site vs app portal on one deployment ───────────────
 // Both hosts point at this single Vercel project. Set these to the bare
@@ -21,6 +22,10 @@ function isPortalPage(pathname: string): boolean {
     || pathname.startsWith("/support")
     || pathname.startsWith("/crm");
 }
+
+// /affiliate* is deliberately NOT a portal page — affiliates share their
+// enrollment/login links publicly, so those pages (and the dashboard) must
+// resolve on BOTH the marketing and app host, unlike /login and /signup.
 
 // Machine/public paths that must resolve on BOTH hosts, never host-blocked:
 // all APIs (Meta webhooks, the embeddable web-chat widget, the bearer-token
@@ -42,6 +47,22 @@ async function valid(token: string | undefined): Promise<boolean> {
   try {
     await jwtVerify(token, new TextEncoder().encode(s));
     return true;
+  } catch {
+    return false;
+  }
+}
+
+// Same secret/algorithm as valid(), but also checks the `purpose` claim so a
+// tenant-admin session token (which has no `purpose` claim) can never pass as
+// an affiliate session here — this is a coarse pre-filter; verifyAffiliateSession
+// in auth.ts does the real check the route/page relies on.
+async function validAffiliate(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const s = process.env.ADMIN_JWT_SECRET;
+  if (!s || s.length < 32) return false;
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
+    return payload.purpose === "affiliate_session";
   } catch {
     return false;
   }
@@ -75,8 +96,21 @@ function noStore(res: NextResponse): NextResponse {
   return res;
 }
 
+// Affiliate attribution: a `?ref=CODE` on any page load is captured into a
+// 30-day cookie, later read once by /api/signup so a signup completed days or
+// weeks after the click still gets attributed. Stamped onto every response
+// this middleware returns (not just one branch) since Next has no single
+// exit point here — see the multiple early returns below.
+const REF_COOKIE = "talko_ref";
+const REF_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
+function withRef(res: NextResponse, ref: string | null): NextResponse {
+  if (ref) res.cookies.set(REF_COOKIE, ref.slice(0, 40), { maxAge: REF_COOKIE_MAX_AGE, path: "/", sameSite: "lax" });
+  return res;
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const ref = req.nextUrl.searchParams.get("ref");
   const token = req.cookies.get(COOKIE)?.value;
   const ok = await valid(token);
 
@@ -93,10 +127,11 @@ export async function middleware(req: NextRequest) {
       if (pathname === "/") {
         const url = req.nextUrl.clone();
         url.pathname = ok ? "/admin" : "/login";
-        return noStore(NextResponse.redirect(url));
+        return withRef(noStore(NextResponse.redirect(url)), ref);
       }
-      // Marketing pages don't exist on the app host.
-      if (!isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
+      // Marketing pages don't exist on the app host — except /affiliate*,
+      // which must resolve on both hosts (see the note above isPortalPage).
+      if (!isPortalPage(pathname) && !pathname.startsWith("/affiliate")) return new NextResponse("Not found", { status: 404 });
     } else {
       // Marketing host. /login and /signup are the PUBLIC entry points the
       // marketing CTAs (header, footer, hero, pricing) link to — redirect those
@@ -104,7 +139,7 @@ export async function middleware(req: NextRequest) {
       // Query strings (e.g. ?plan=growth, ?next=) are preserved.
       if (pathname === "/login" || pathname === "/signup") {
         const url = new URL(`https://${APP_HOST}${pathname}${req.nextUrl.search}`);
-        return NextResponse.redirect(url);
+        return withRef(NextResponse.redirect(url), ref);
       }
       // Deeper portal pages don't exist on the marketing host.
       if (isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
@@ -126,6 +161,20 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Affiliate APIs: signup/login are unauthenticated (no ambient cookie grants
+  // anything, so no CSRF exposure). logout always succeeds (nothing to protect
+  // by blocking it) but still needs the CSRF check; me/referrals are read-only
+  // account data and get the full CSRF + auth gate against the affiliate session.
+  if (pathname.startsWith("/api/affiliate/logout")) {
+    if (csrfBlocked(req)) return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
+    return NextResponse.next();
+  }
+  if (pathname.startsWith("/api/affiliate/me") || pathname.startsWith("/api/affiliate/referrals")) {
+    if (csrfBlocked(req)) return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
+    if (!(await validAffiliate(req.cookies.get(AFFILIATE_COOKIE)?.value))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.next();
+  }
+
   // Sign-in page: already authenticated → bounce to the dashboard (handles the
   // Back button landing on a cached login form). Always no-store so Back forces
   // a revalidation through this check instead of replaying a cached page.
@@ -133,9 +182,21 @@ export async function middleware(req: NextRequest) {
     if (ok) {
       const url = req.nextUrl.clone();
       url.pathname = "/admin";
-      return noStore(NextResponse.redirect(url));
+      return withRef(noStore(NextResponse.redirect(url)), ref);
     }
-    return noStore(NextResponse.next());
+    return withRef(noStore(NextResponse.next()), ref);
+  }
+
+  // Affiliate dashboard → its own session cookie, separate from the tenant-
+  // admin session — an affiliate need not have (or ever create) a Talko tenant.
+  if (pathname.startsWith("/affiliate/dashboard")) {
+    const affiliateToken = req.cookies.get(AFFILIATE_COOKIE)?.value;
+    if (!(await validAffiliate(affiliateToken))) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/affiliate/login";
+      return withRef(noStore(NextResponse.redirect(url)), ref);
+    }
+    return withRef(noStore(NextResponse.next()), ref);
   }
 
   // Admin pages → must be authenticated, and must never be cached so Back/Forward
@@ -147,11 +208,11 @@ export async function middleware(req: NextRequest) {
       // Preserve the destination so login can land the user back where they
       // were heading (the login page only honors same-origin relative paths).
       url.search = pathname !== "/admin" ? `?next=${encodeURIComponent(pathname)}` : "";
-      return noStore(NextResponse.redirect(url));
+      return withRef(noStore(NextResponse.redirect(url)), ref);
     }
-    return noStore(NextResponse.next());
+    return withRef(noStore(NextResponse.next()), ref);
   }
-  return NextResponse.next();
+  return withRef(NextResponse.next(), ref);
 }
 
 // Run on every request EXCEPT Next internals and static files (anything with a
