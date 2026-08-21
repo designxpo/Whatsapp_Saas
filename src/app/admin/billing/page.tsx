@@ -11,7 +11,7 @@ declare global {
 }
 
 type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
-type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean };
+type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean; totalChargedCents: number };
 type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean };
 
 const money = (c: number, cur: string) => `${cur === "INR" ? "₹" : cur + " "}${(c / 100).toLocaleString()}`;
@@ -79,7 +79,7 @@ export default function BillingPage() {
         key: d.razorpayKeyId,
         subscription_id: d.subscriptionId,
         name: "Talko AI",
-        description: `${planName} subscription`,
+        description: `${planName} subscription (incl. GST & payment fees)`,
         handler: async (resp: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
           try {
             const v = await fetch("/api/admin/billing/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(resp) });
@@ -168,6 +168,9 @@ export default function BillingPage() {
               <div key={p.key} className={`bg-white rounded-card border p-5 flex flex-col ${isCurrent ? "border-brand-700 ring-1 ring-brand-700/20" : "border-line"}`}>
                 <p className="text-sm font-extrabold text-ink-900">{p.name}</p>
                 <p className="text-2xl font-extrabold text-ink-900 mt-1">{p.priceCents === 0 ? "Free" : money(p.priceCents, p.currency)}<span className="text-xs font-medium text-ink-400">{p.priceCents ? `/${p.interval}` : ""}</span></p>
+                {p.priceCents > 0 && (
+                  <p className="text-[11px] text-ink-400 mt-0.5">+ 18% GST &amp; payment fees — {money(p.totalChargedCents, p.currency)} charged at checkout</p>
+                )}
                 <ul className="mt-3 space-y-1.5 text-xs text-ink-600">
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {lim(p.limits.contacts)} contacts</li>
                   <li className="flex gap-1.5"><Check className="w-3.5 h-3.5 text-brand-600 shrink-0" /> {p.limits.conversations_per_month != null ? `${lim(p.limits.conversations_per_month)} conversations/mo` : `${lim(p.limits.messages_per_month)} messages/mo`}</li>

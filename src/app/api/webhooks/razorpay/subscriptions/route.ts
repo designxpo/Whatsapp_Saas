@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { verifyRazorpayWebhook } from "@/lib/razorpay";
 import { applySubscription, getTenantByRazorpaySubscription, getTenant, type PaymentStatus, type TenantStatus } from "@/lib/tenants";
+import { getPlan } from "@/lib/plans";
+import { computeChargeBreakdown } from "@/lib/billing-tax";
+import { recordBillingEvent, recordActualGatewayFee } from "@/lib/billing-events";
 import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
+import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +38,12 @@ function mapStatus(event: string): { payment: PaymentStatus; tenant: TenantStatu
 interface RzpWebhookBody {
   event: string;
   payload?: {
-    subscription?: { entity?: { id?: string; current_end?: number; paid_count?: number } };
-    payment?: { entity?: { id?: string; amount?: number; currency?: string } };
+    subscription?: { entity?: { id?: string; current_end?: number; paid_count?: number; notes?: Record<string, string> } };
+    // fee/tax are Razorpay's ACTUAL gateway fee and the GST on that fee for
+    // this specific payment (in paise) — only present once the charge is
+    // fully processed, distinct from the checkout-time ESTIMATE this route
+    // otherwise relies on (see src/lib/billing-tax.ts).
+    payment?: { entity?: { id?: string; amount?: number; currency?: string; fee?: number; tax?: number } };
   };
 }
 
@@ -70,6 +78,16 @@ export async function POST(req: Request) {
     // there. Same reasoning as the Stripe webhook's `before` read.
     const before = event.event === "subscription.halted" ? await getTenant(tenant.id).catch(() => null) : null;
 
+    // Recompute the GST/gateway-fee breakdown from the tenant's CURRENT plan
+    // (not from Razorpay's reported amount) so every renewal's breakdown
+    // matches what checkout originally recorded, exactly as the verify route
+    // does for the first payment — the plan's base price is the one number
+    // both sides agree on, avoiding rounding drift.
+    const planKey = event.payload?.subscription?.entity?.notes?.plan ?? tenant.plan;
+    const plan = planKey ? await getPlan(planKey) : null;
+    const isCharge = event.event === "subscription.charged";
+    const breakdown = isCharge ? computeChargeBreakdown(plan?.priceCents ?? pay?.amount ?? 0) : null;
+
     await applySubscription(tenant.id, {
       paymentStatus: payment,
       status: tenantStatus,
@@ -77,9 +95,22 @@ export async function POST(req: Request) {
       provider: "razorpay",
       currentPeriodEnd: currentEndUnix ? new Date(currentEndUnix * 1000).toISOString() : undefined,
       // Only a real charge carries an amount; authenticated/updated events don't.
-      amountCents: event.event === "subscription.charged" && typeof pay?.amount === "number" ? pay.amount : undefined,
+      amountCents: breakdown?.totalChargedCents,
+      baseAmountCents: breakdown?.baseAmountCents, taxCents: breakdown?.taxCents, gatewayFeeEstimateCents: breakdown?.gatewayFeeEstimateCents,
       currency: pay?.currency ? pay.currency.toUpperCase() : undefined,
     });
+
+    if (isCharge && breakdown) {
+      await recordBillingEvent(tenant.id, {
+        provider: "razorpay", providerPaymentId: pay?.id, currency: pay?.currency?.toUpperCase() ?? "INR", breakdown,
+      }).catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordBillingEvent", tenantId: tenant.id, error: errorMessage(err) })));
+      // The REAL fee Razorpay took on this specific payment, replacing the
+      // checkout-time estimate for accurate net-revenue reporting.
+      if (pay?.id && typeof pay.fee === "number") {
+        await recordActualGatewayFee(pay.id, pay.fee, pay.tax ?? 0)
+          .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordActualGatewayFee", tenantId: tenant.id, error: errorMessage(err) })));
+      }
+    }
 
     if (event.event === "subscription.pending" && pay?.id) {
       await notifyPaymentFailed(tenant, {

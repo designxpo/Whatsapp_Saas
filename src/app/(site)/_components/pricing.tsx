@@ -45,7 +45,7 @@ export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tie
               <p className="mt-1 text-xs text-slate-500">{t.tagline}</p>
               <div className="mt-5 flex items-end gap-1">
                 <span className="text-4xl font-extrabold text-slate-900">{monthlyEq == null ? t.customLabel : inr(monthlyEq)}</span>
-                {monthlyEq != null && <span className="pb-1 text-sm text-slate-500">/mo</span>}
+                {monthlyEq != null && <span className="pb-1 text-sm text-slate-500">/mo + GST</span>}
               </div>
               <p className="mt-1 h-4 text-[11px] text-[#0783fd]">{annual && monthlyEq != null ? `Billed annually · ${inr(monthlyEq * 12)}/yr` : " "}</p>
               <Button href={t.href} variant={t.highlighted ? "primary" : "ghost"} className="mt-5 w-full">{t.cta}</Button>

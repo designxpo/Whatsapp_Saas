@@ -19,6 +19,7 @@ import type { Tenant } from "./tenants";
 import type { Plan } from "./plans";
 import { setRazorpayPlanId } from "./plans";
 import { setRazorpayIds } from "./tenants";
+import { computeChargeBreakdown } from "./billing-tax";
 
 // Large but finite — Razorpay's Subscription API requires total_count and has
 // no indefinite-billing flag; ~100 years of monthly cycles is the documented
@@ -53,13 +54,20 @@ async function rzp<T>(path: string, init?: RequestInit): Promise<T> {
 // immutable once created, so this never re-syncs price changes onto an
 // existing Razorpay Plan — a price change on our side needs a new plan.key
 // (or a manual reset of razorpay_plan_id) to take effect on the Razorpay side.
+//
+// The amount charged is the GST- and gateway-fee-inclusive TOTAL, not
+// plan.priceCents directly — wa_plans.price_cents is the GST-exclusive base
+// price; computeChargeBreakdown() adds 18% GST and an estimated gateway-fee
+// gross-up on top (see src/lib/billing-tax.ts). Baked in once at Plan
+// creation, same as the price itself.
 export async function getOrCreateRazorpayPlan(plan: Plan): Promise<string> {
   if (plan.razorpayPlanId) return plan.razorpayPlanId;
+  const { totalChargedCents } = computeChargeBreakdown(plan.priceCents);
   const created = await rzp<{ id: string }>("/plans", {
     method: "POST",
     body: JSON.stringify({
       period: "monthly", interval: 1,
-      item: { name: `Talko AI — ${plan.name}`, amount: plan.priceCents, currency: plan.currency },
+      item: { name: `Talko AI — ${plan.name}`, amount: totalChargedCents, currency: plan.currency },
       notes: { plan_key: plan.key },
     }),
   });

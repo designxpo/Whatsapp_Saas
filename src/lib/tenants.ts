@@ -23,6 +23,9 @@ export interface Tenant {
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
   razorpayCustomerId: string | null; razorpaySubscriptionId: string | null;
   paymentProvider: PaymentProvider | null;
+  // Breakdown of amountCents when GST/gateway-fee gross-up applies — null
+  // until the tenant's first Razorpay checkout (see src/lib/billing-tax.ts).
+  baseAmountCents: number | null; taxCents: number | null; gatewayFeeEstimateCents: number | null;
 }
 
 const DEFAULT_FEATURES: TenantFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
@@ -48,6 +51,9 @@ function mapTenant(r: Record<string, unknown>): Tenant {
     razorpayCustomerId: (r.razorpay_customer_id as string | null) ?? null,
     razorpaySubscriptionId: (r.razorpay_subscription_id as string | null) ?? null,
     paymentProvider: (r.payment_provider as PaymentProvider | null) ?? null,
+    baseAmountCents: (r.base_amount_cents as number | null) ?? null,
+    taxCents: (r.tax_cents as number | null) ?? null,
+    gatewayFeeEstimateCents: (r.gateway_fee_estimate_cents as number | null) ?? null,
   };
 }
 
@@ -139,11 +145,21 @@ export async function applySubscription(tenantId: string, p: {
   plan?: string; paymentStatus: PaymentStatus; amountCents?: number; currency?: string;
   currentPeriodEnd?: string | null; subscriptionId?: string | null; status?: TenantStatus;
   provider?: PaymentProvider;   // defaults to "stripe" — the only caller before Razorpay existed
+  // Breakdown of amountCents when it includes GST/gateway-fee gross-up (see
+  // src/lib/billing-tax.ts). baseAmountCents (GST/fee-EXCLUSIVE) is what
+  // affiliate commission is computed on — an affiliate earns a % of actual
+  // subscription revenue, not of tax collected on the government's behalf or
+  // the fee Razorpay takes. Omit both when amountCents already IS the base
+  // (e.g. no tax/fee model applies, such as Stripe's pre-GST checkout).
+  baseAmountCents?: number; taxCents?: number; gatewayFeeEstimateCents?: number;
 }): Promise<void> {
   const provider = p.provider ?? "stripe";
   const row: Record<string, unknown> = { payment_status: p.paymentStatus };
   if (p.plan !== undefined) row.plan = p.plan;
   if (p.amountCents !== undefined) row.amount_cents = p.amountCents;
+  if (p.baseAmountCents !== undefined) row.base_amount_cents = p.baseAmountCents;
+  if (p.taxCents !== undefined) row.tax_cents = p.taxCents;
+  if (p.gatewayFeeEstimateCents !== undefined) row.gateway_fee_estimate_cents = p.gatewayFeeEstimateCents;
   if (p.currency !== undefined) row.currency = p.currency;
   if (p.currentPeriodEnd !== undefined) row.current_period_end = p.currentPeriodEnd;
   if (p.subscriptionId !== undefined) row[provider === "razorpay" ? "razorpay_subscription_id" : "stripe_subscription_id"] = p.subscriptionId;
@@ -151,12 +167,16 @@ export async function applySubscription(tenantId: string, p: {
   if (p.provider !== undefined) row.payment_provider = p.provider;
   await db().from("tenants").update(row).eq("id", tenantId);
 
-  // An active charge on a referred tenant earns its affiliate a commission.
+  // An active charge on a referred tenant earns its affiliate a commission,
+  // computed on the BASE price only — never on GST or the gateway-fee
+  // estimate. Falls back to amountCents when no breakdown was given (e.g.
+  // Stripe, or any charge with no tax/fee model), preserving prior behavior.
   // No-ops immediately for the vast majority of tenants (no referrer).
-  if (p.paymentStatus === "active" && p.amountCents) {
+  const commissionBaseCents = p.baseAmountCents ?? p.amountCents;
+  if (p.paymentStatus === "active" && commissionBaseCents) {
     const { recordAffiliateCommission } = await import("./affiliates");
     await recordAffiliateCommission(tenantId, {
-      amountCents: p.amountCents, plan: p.plan, subscriptionId: p.subscriptionId, currentPeriodEnd: p.currentPeriodEnd,
+      amountCents: commissionBaseCents, plan: p.plan, subscriptionId: p.subscriptionId, currentPeriodEnd: p.currentPeriodEnd,
     }).catch(err => console.error(JSON.stringify({ at: "applySubscription.affiliateCommission", tenantId, error: err instanceof Error ? err.message : String(err) })));
   }
 }

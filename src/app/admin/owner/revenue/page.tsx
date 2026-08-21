@@ -21,6 +21,7 @@ type Payload = {
   revenueByPlan: { plan: string; tenants: number; mrrCents: number }[];
   funnel: { signups: number; trialing: number; paid: number; lapsed: number };
   churn: { pastDue: number; cancelled: number; trialLapsed: number };
+  gatewayFees: { chargedCents: number; feesCents: number; netCents: number };
   arpuCents: number;
   error?: string;
 };
@@ -81,6 +82,8 @@ export default function RevenuePage() {
             <MetricTile label="Trial → paid" value={`${conv}%`} sub={`${compact(d.funnel.paid)} of ${compact(d.funnel.signups)} signups`} />
             <MetricTile label="At risk" value={compact(totalChurnRisk)} tone={totalChurnRisk > 0 ? "warn" : undefined}
               sub="past due + lapsed trials" onClick={() => router.push("/admin/owner/tenants?queue=payment_failed")} />
+            <MetricTile label={`Net of gateway fees · ${days}d`} value={money(d.gatewayFees.netCents)}
+              sub={d.gatewayFees.chargedCents > 0 ? `${money(d.gatewayFees.feesCents)} in fees on ${money(d.gatewayFees.chargedCents)} charged` : "No charges in this window"} />
           </div>
 
           <Panel title={`Signups · last ${days} days`}>

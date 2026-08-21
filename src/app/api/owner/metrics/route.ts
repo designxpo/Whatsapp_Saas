@@ -16,12 +16,13 @@ export async function GET(req: Request) {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
   const days = Math.min(Math.max(Number(new URL(req.url).searchParams.get("days")) || 90, 7), 365);
   try {
-    const [stats, plans, signups, funnel, churn] = await Promise.all([
+    const [stats, plans, signups, funnel, churn, gatewayFees] = await Promise.all([
       platformStatsFast(),
       planMix(),
       signupsByDay(days),
       conversionFunnel(),
       churnBuckets(),
+      gatewayFeesInWindow(days),
     ]);
 
     // Revenue per plan tells you where the money actually is — a plan with a
@@ -42,6 +43,7 @@ export async function GET(req: Request) {
       revenueByPlan: [...revenueByPlan.values()].sort((a, b) => b.mrrCents - a.mrrCents),
       funnel,
       churn,
+      gatewayFees,
       arpuCents: stats.active > 0 ? Math.round(stats.mrrCents / stats.active) : 0,
     });
   } catch (err) {
@@ -65,6 +67,29 @@ async function conversionFunnel(): Promise<{ signups: number; trialing: number; 
     count(d => d.from("tenants").select("id", { count: "exact", head: true }).in("payment_status", ["past_due", "cancelled"])),
   ]);
   return { signups, trialing, paid, lapsed };
+}
+
+/**
+ * What Razorpay actually took vs. the checkout-time ESTIMATE, over the window.
+ * Real fee/tax is only known once a subscription.charged webhook reports it
+ * (src/app/api/webhooks/razorpay/subscriptions/route.ts) — rows still waiting
+ * on that fall back to their estimate, so "net" is always a real number, never
+ * partially null.
+ */
+async function gatewayFeesInWindow(days: number): Promise<{ chargedCents: number; feesCents: number; netCents: number }> {
+  const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const { data } = await db().from("wa_billing_events")
+    .select("total_charged_cents, gateway_fee_estimate_cents, gateway_fee_actual_cents, gateway_tax_actual_cents")
+    .gte("created_at", since);
+  const rows = (data ?? []) as { total_charged_cents: number; gateway_fee_estimate_cents: number; gateway_fee_actual_cents: number | null; gateway_tax_actual_cents: number | null }[];
+  let chargedCents = 0, feesCents = 0;
+  for (const r of rows) {
+    chargedCents += r.total_charged_cents;
+    feesCents += r.gateway_fee_actual_cents != null
+      ? r.gateway_fee_actual_cents + (r.gateway_tax_actual_cents ?? 0)
+      : r.gateway_fee_estimate_cents;
+  }
+  return { chargedCents, feesCents, netCents: chargedCents - feesCents };
 }
 
 /** Where accounts are leaking: past due, cancelled, or a trial that ran out unpaid. */

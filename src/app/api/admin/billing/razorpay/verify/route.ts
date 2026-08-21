@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getTenant, applySubscription } from "@/lib/tenants";
 import { verifySubscriptionSignature, getSubscriptionDetail } from "@/lib/razorpay";
+import { getPlan } from "@/lib/plans";
+import { computeChargeBreakdown } from "@/lib/billing-tax";
+import { recordBillingEvent } from "@/lib/billing-events";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -34,15 +37,24 @@ export async function POST(req: Request) {
     if (tenant.razorpaySubscriptionId !== subscriptionId) {
       return NextResponse.json({ error: "Subscription does not belong to this account" }, { status: 400 });
     }
-    // Read the plan/amount back from Razorpay itself — the client only sends
+    // Read the plan/period back from Razorpay itself — the client only sends
     // the three signature-check fields, so this is the authoritative source
     // for what was actually purchased (not something the client could spoof).
     const detail = await getSubscriptionDetail(subscriptionId);
+    // Recompute the GST/gateway-fee breakdown from the PLAN's base price
+    // rather than reverse-engineering it from Razorpay's total — the base
+    // price is the one number both sides agree on exactly, so this avoids any
+    // rounding drift between what Razorpay charged and what gets recorded.
+    const plan = detail.planKey ? await getPlan(detail.planKey) : null;
+    const breakdown = computeChargeBreakdown(plan?.priceCents ?? detail.amountCents);
     await applySubscription(tid, {
       paymentStatus: "active", status: "active", subscriptionId, provider: "razorpay",
-      plan: detail.planKey ?? undefined, amountCents: detail.amountCents, currency: detail.currency,
+      plan: detail.planKey ?? undefined, amountCents: breakdown.totalChargedCents, currency: detail.currency,
       currentPeriodEnd: detail.currentPeriodEnd,
+      baseAmountCents: breakdown.baseAmountCents, taxCents: breakdown.taxCents, gatewayFeeEstimateCents: breakdown.gatewayFeeEstimateCents,
     });
+    await recordBillingEvent(tid, { provider: "razorpay", providerPaymentId: paymentId, currency: detail.currency, breakdown })
+      .catch(err => console.error(JSON.stringify({ at: "billing.razorpay.verify.recordBillingEvent", tid, error: errorMessage(err) })));
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

@@ -4,6 +4,7 @@ import { getTenant } from "@/lib/tenants";
 import { listPlans } from "@/lib/plans";
 import { stripeConfigured } from "@/lib/stripe";
 import { razorpayConfigured } from "@/lib/razorpay";
+import { computeChargeBreakdown } from "@/lib/billing-tax";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,10 @@ export async function GET() {
         // via Razorpay as soon as the platform-wide keys are set, with no
         // per-plan setup step.
         purchasableViaRazorpay: razorpayConfigured(),
+        // GST + estimated gateway-fee gross-up on top of the advertised base
+        // price — computed here so the page never duplicates this math
+        // client-side (src/lib/billing-tax.ts is the single source of truth).
+        totalChargedCents: computeChargeBreakdown(p.priceCents).totalChargedCents,
       })),
     });
   } catch (err) {
