@@ -3,6 +3,7 @@ import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getTenant } from "@/lib/tenants";
 import { listPlans } from "@/lib/plans";
 import { stripeConfigured } from "@/lib/stripe";
+import { razorpayConfigured } from "@/lib/razorpay";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,7 @@ export async function GET() {
     const plans = (await listPlans()).filter(p => p.active);
     return NextResponse.json({
       stripeConfigured: stripeConfigured(),
+      razorpayConfigured: razorpayConfigured(),
       current: tenant ? {
         plan: tenant.plan,
         paymentStatus: tenant.paymentStatus,
@@ -22,12 +24,18 @@ export async function GET() {
         currency: tenant.currency,
         trialEndsAt: tenant.trialEndsAt,
         currentPeriodEnd: tenant.currentPeriodEnd,
-        hasSubscription: !!tenant.stripeSubscriptionId,
+        hasSubscription: !!tenant.stripeSubscriptionId || !!tenant.razorpaySubscriptionId,
         hasCustomer: !!tenant.stripeCustomerId,
       } : null,
       plans: plans.map(p => ({
         key: p.key, name: p.name, priceCents: p.priceCents, currency: p.currency, interval: p.interval,
         limits: p.limits, features: p.features, purchasable: !!p.stripePriceId,
+        // Unlike Stripe (where a price id must be configured per-plan up
+        // front), a Razorpay Plan is created lazily on first checkout attempt
+        // (getOrCreateRazorpayPlan()) — so every active plan is purchasable
+        // via Razorpay as soon as the platform-wide keys are set, with no
+        // per-plan setup step.
+        purchasableViaRazorpay: razorpayConfigured(),
       })),
     });
   } catch (err) {

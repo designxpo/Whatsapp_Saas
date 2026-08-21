@@ -11,6 +11,8 @@ export type TenantStatus = "active" | "trialing" | "suspended" | "cancelled";
 // plan defaults by the entitlement resolver (canonical keys: FEATURE_KEYS).
 export type TenantFeatures = Record<string, boolean>;
 
+export type PaymentProvider = "stripe" | "razorpay";
+
 export interface Tenant {
   id: string; name: string; slug: string; status: TenantStatus; plan: string;
   company: string | null; ownerName: string | null; ownerEmail: string | null; ownerPhone: string | null;
@@ -19,6 +21,8 @@ export interface Tenant {
   amountCents: number; currency: string; notes: string | null;
   features: TenantFeatures; grandfathered: boolean; onboarded: boolean; createdAt: string;
   stripeCustomerId: string | null; stripeSubscriptionId: string | null;
+  razorpayCustomerId: string | null; razorpaySubscriptionId: string | null;
+  paymentProvider: PaymentProvider | null;
 }
 
 const DEFAULT_FEATURES: TenantFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
@@ -41,6 +45,9 @@ function mapTenant(r: Record<string, unknown>): Tenant {
     onboarded: (r.onboarded as boolean) ?? false, createdAt: r.created_at as string,
     stripeCustomerId: (r.stripe_customer_id as string | null) ?? null,
     stripeSubscriptionId: (r.stripe_subscription_id as string | null) ?? null,
+    razorpayCustomerId: (r.razorpay_customer_id as string | null) ?? null,
+    razorpaySubscriptionId: (r.razorpay_subscription_id as string | null) ?? null,
+    paymentProvider: (r.payment_provider as PaymentProvider | null) ?? null,
   };
 }
 
@@ -111,19 +118,37 @@ export async function getTenantByStripeSubscription(subscriptionId: string): Pro
   return data ? mapTenant(data as Record<string, unknown>) : null;
 }
 
+// ── Razorpay billing sync ─────────────────────────────────────────────────────
+// Mirrors setStripeIds()/getTenantByStripeSubscription() above — Razorpay is a
+// second, independent payment provider, not a replacement for Stripe's code.
+export async function setRazorpayIds(tenantId: string, ids: { customerId?: string; subscriptionId?: string | null }): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (ids.customerId !== undefined) row.razorpay_customer_id = ids.customerId;
+  if (ids.subscriptionId !== undefined) row.razorpay_subscription_id = ids.subscriptionId;
+  if (Object.keys(row).length) await db().from("tenants").update(row).eq("id", tenantId);
+}
+
+export async function getTenantByRazorpaySubscription(subscriptionId: string): Promise<Tenant | null> {
+  const { data } = await db().from("tenants").select("*").eq("razorpay_subscription_id", subscriptionId).maybeSingle();
+  return data ? mapTenant(data as Record<string, unknown>) : null;
+}
+
 // Apply a Stripe subscription state to a tenant (called by the webhook). Maps
 // Stripe's status → our payment_status, sets plan/price/period from the sub.
 export async function applySubscription(tenantId: string, p: {
   plan?: string; paymentStatus: PaymentStatus; amountCents?: number; currency?: string;
   currentPeriodEnd?: string | null; subscriptionId?: string | null; status?: TenantStatus;
+  provider?: PaymentProvider;   // defaults to "stripe" — the only caller before Razorpay existed
 }): Promise<void> {
+  const provider = p.provider ?? "stripe";
   const row: Record<string, unknown> = { payment_status: p.paymentStatus };
   if (p.plan !== undefined) row.plan = p.plan;
   if (p.amountCents !== undefined) row.amount_cents = p.amountCents;
   if (p.currency !== undefined) row.currency = p.currency;
   if (p.currentPeriodEnd !== undefined) row.current_period_end = p.currentPeriodEnd;
-  if (p.subscriptionId !== undefined) row.stripe_subscription_id = p.subscriptionId;
+  if (p.subscriptionId !== undefined) row[provider === "razorpay" ? "razorpay_subscription_id" : "stripe_subscription_id"] = p.subscriptionId;
   if (p.status !== undefined) row.status = p.status;
+  if (p.provider !== undefined) row.payment_provider = p.provider;
   await db().from("tenants").update(row).eq("id", tenantId);
 
   // An active charge on a referred tenant earns its affiliate a commission.

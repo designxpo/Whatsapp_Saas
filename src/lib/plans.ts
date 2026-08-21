@@ -10,7 +10,8 @@ export type PlanFeatures = Record<string, boolean>;
 export interface Plan {
   id: string; key: string; name: string; priceCents: number; currency: string; interval: string;
   limits: PlanLimits; features: PlanFeatures; sort: number; active: boolean;
-  stripePriceId: string | null;   // Stripe Price this plan maps to (null → not purchasable via Stripe)
+  stripePriceId: string | null;     // Stripe Price this plan maps to (null → not purchasable via Stripe)
+  razorpayPlanId: string | null;    // Razorpay Plan this maps to (null → not purchasable via Razorpay yet)
 }
 
 // yt_comment_replies_per_day: 0 = "use the platform default" (YT_REPLY_DAILY_CAP),
@@ -27,6 +28,7 @@ function mapPlan(r: Record<string, unknown>): Plan {
     features: { ...DEF_FEATURES, ...((r.features as PlanFeatures) ?? {}) },
     sort: (r.sort as number) ?? 0, active: (r.active as boolean) ?? true,
     stripePriceId: (r.stripe_price_id as string | null) ?? null,
+    razorpayPlanId: (r.razorpay_plan_id as string | null) ?? null,
   };
 }
 
@@ -78,4 +80,13 @@ export async function savePlan(p: Partial<Plan> & { key: string; name: string })
 export async function deletePlan(id: string): Promise<void> {
   await db().from("wa_plans").delete().eq("id", id);
   invalidatePlanCache();   // id, not key, in hand — drop the lot
+}
+
+// Lazily persist a plan's Razorpay Plan id the first time it's purchased —
+// a targeted update rather than routing through savePlan()'s full upsert,
+// since this fires mid-checkout and only ever needs to set one column.
+export async function setRazorpayPlanId(key: string, razorpayPlanId: string): Promise<void> {
+  const { error } = await db().from("wa_plans").update({ razorpay_plan_id: razorpayPlanId }).eq("key", key);
+  if (error) throw error;
+  invalidatePlanCache(key);
 }

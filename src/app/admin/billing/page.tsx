@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Script from "next/script";
 import { Loader2, CreditCard, Check, X, ArrowLeft, ExternalLink } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
 
+declare global {
+  interface Window { Razorpay: new (options: Record<string, unknown>) => { open: () => void }; }
+}
+
 type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
-type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean };
+type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean };
 type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean };
 
 const money = (c: number, cur: string) => `${cur === "INR" ? "₹" : cur + " "}${(c / 100).toLocaleString()}`;
@@ -21,6 +26,7 @@ const STATUS_STYLE: Record<string, string> = {
 export default function BillingPage() {
   const router = useRouter();
   const [stripeOn, setStripeOn] = useState(true);
+  const [razorpayOn, setRazorpayOn] = useState(false);
   const [current, setCurrent] = useState<Current | null>(null);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -33,6 +39,7 @@ export default function BillingPage() {
     try {
       const d = await fetch("/api/admin/billing").then(r => r.json());
       setStripeOn(d.stripeConfigured !== false);
+      setRazorpayOn(d.razorpayConfigured === true);
       setCurrent(d.current ?? null);
       setPlans(d.plans ?? []);
     } catch { setMsg("Could not load billing."); }
@@ -54,6 +61,41 @@ export default function BillingPage() {
       if (!res.ok) { setMsg(d.error || "Could not start checkout"); return; }
       window.location.href = d.url;
     } finally { setBusy(null); }
+  }
+
+  // Razorpay Subscriptions checkout — opens checkout.js's in-page MODAL
+  // (unlike Stripe's hosted-page redirect above), so this stays on /admin/billing
+  // throughout: create the subscription, open the modal, verify the payment
+  // in its `handler`, then reload this page's own data instead of navigating.
+  async function checkoutRazorpay(planKey: string, planName: string) {
+    setBusy(planKey); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/billing/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey }) });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Could not start checkout"); setBusy(null); return; }
+      if (typeof window.Razorpay !== "function") { setMsg("Payment could not load — please refresh and try again."); setBusy(null); return; }
+
+      const rzp = new window.Razorpay({
+        key: d.razorpayKeyId,
+        subscription_id: d.subscriptionId,
+        name: "Talko AI",
+        description: `${planName} subscription`,
+        handler: async (resp: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
+          try {
+            const v = await fetch("/api/admin/billing/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(resp) });
+            const vd = await v.json();
+            if (!v.ok) { setMsg(vd.error || "Payment could not be verified"); return; }
+            setBanner("Subscription active — thanks!");
+            await load();
+          } finally { setBusy(null); }
+        },
+        modal: { ondismiss: () => setBusy(null) },   // user closed the modal without paying
+        theme: { color: "#0783fd" },
+      });
+      rzp.open();
+    } catch {
+      setMsg("Could not start checkout"); setBusy(null);
+    }
   }
 
   // Team-managed billing (no self-serve Stripe): record an upgrade request the
@@ -93,7 +135,7 @@ export default function BillingPage() {
 
         {banner && <div className="bg-brand-50 text-brand-800 text-sm rounded-card px-4 py-3">{banner}</div>}
         {msg && <div className="bg-red-50 text-red-700 text-sm rounded-card px-4 py-3">{msg}</div>}
-        {!stripeOn && <div className="bg-amber-50 text-amber-800 text-sm rounded-card px-4 py-3">Online payments aren&apos;t enabled yet — billing is managed by our team. Pick a plan below and tap <b>Request</b>; we&apos;ll switch you over and confirm.</div>}
+        {!stripeOn && !razorpayOn && <div className="bg-amber-50 text-amber-800 text-sm rounded-card px-4 py-3">Online payments aren&apos;t enabled yet — billing is managed by our team. Pick a plan below and tap <b>Request</b>; we&apos;ll switch you over and confirm.</div>}
 
         {/* Current subscription */}
         {current && (
@@ -154,6 +196,10 @@ export default function BillingPage() {
                     <button onClick={() => checkout(p.key)} disabled={busy === p.key} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5">
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
                     </button>
+                  ) : razorpayOn && p.purchasableViaRazorpay ? (
+                    <button onClick={() => checkoutRazorpay(p.key, p.name)} disabled={busy === p.key} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                      {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
+                    </button>
                   ) : requested.has(p.key) ? (
                     <span className="flex items-center justify-center gap-1 text-center text-xs font-bold text-emerald-600 py-2"><Check className="w-3.5 h-3.5" /> Requested</span>
                   ) : (
@@ -167,8 +213,13 @@ export default function BillingPage() {
           })}
         </div>
 
-        <p className="text-[11px] text-ink-400 text-center">Secure payments by Stripe. Cancel anytime from Manage billing.</p>
+        <p className="text-[11px] text-ink-400 text-center">
+          {stripeOn && razorpayOn ? "Secure payments by Stripe and Razorpay."
+            : razorpayOn ? "Secure payments by Razorpay."
+            : "Secure payments by Stripe."} Cancel anytime from Manage billing.
+        </p>
       </div>
+      {razorpayOn && <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />}
     </div>
   );
 }
