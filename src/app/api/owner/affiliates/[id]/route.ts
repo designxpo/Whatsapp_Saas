@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { isPlatformOwner } from "@/lib/auth";
-import { getAffiliate, listReferredTenants, listCommissions } from "@/lib/affiliates";
+import { isPlatformOwner, currentUser } from "@/lib/auth";
+import { getAffiliate, listReferredTenants, listCommissions, updateAffiliate } from "@/lib/affiliates";
+import { ownerAudit } from "@/lib/tenants";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -17,5 +18,28 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ affiliate, referrals, commissions });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  }
+}
+
+// PATCH — edit an affiliate's commission rate and/or status. Only affects
+// commission recorded from this point forward; past ledger rows keep the
+// rate they were actually earned at.
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  const { id } = await params;
+  let body: { commissionPct?: number; status?: "active" | "suspended" };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+
+  try {
+    const affiliate = await updateAffiliate(id, body);
+    const actor = (await currentUser())?.email ?? "owner";
+    const changes = [
+      body.commissionPct !== undefined ? `commission → ${body.commissionPct}%` : null,
+      body.status !== undefined ? `status → ${body.status}` : null,
+    ].filter(Boolean).join(", ");
+    await ownerAudit(actor, "affiliate.update", null, `Affiliate ${affiliate.email}: ${changes}`);
+    return NextResponse.json({ success: true, affiliate });
+  } catch (err) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
   }
 }

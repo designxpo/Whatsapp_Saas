@@ -73,6 +73,23 @@ export async function getActiveAffiliateByCode(code: string): Promise<Affiliate 
   return data ? mapAffiliate(data as Record<string, unknown>) : null;
 }
 
+// Owner-portal edit — commission rate and/or status. A rate change only
+// affects commission recorded AFTER this point: every existing ledger row
+// already has its own commission_pct stamped at the time it was earned, so
+// past commission never silently changes when the rate does.
+export async function updateAffiliate(id: string, p: { commissionPct?: number; status?: Affiliate["status"] }): Promise<Affiliate> {
+  const row: Record<string, unknown> = {};
+  if (p.commissionPct !== undefined) {
+    if (!Number.isFinite(p.commissionPct) || p.commissionPct < 0 || p.commissionPct > 100) throw new Error("Commission rate must be between 0 and 100");
+    row.commission_pct = p.commissionPct;
+  }
+  if (p.status !== undefined) row.status = p.status;
+  if (!Object.keys(row).length) throw new Error("Nothing to update");
+  const { data, error } = await db().from("wa_affiliates").update(row).eq("id", id).select("*").single();
+  if (error) throw error;
+  return mapAffiliate(data as Record<string, unknown>);
+}
+
 export interface ReferredTenant { tenantId: string; company: string | null; plan: string; paymentStatus: string; createdAt: string }
 
 export async function listReferredTenants(affiliateId: string): Promise<ReferredTenant[]> {

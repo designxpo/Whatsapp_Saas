@@ -5,8 +5,8 @@
 // commission rows as paid (payout itself happens off-platform, manually).
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Check } from "lucide-react";
-import { Drawer, Badge, Panel, Spinner, Table, Th, Td, money, ago, PAYMENT_TONE, type Tone } from "../_ui";
+import { Loader2, Check, Pencil, X } from "lucide-react";
+import { Drawer, Badge, Panel, Spinner, Table, Th, Td, money, ago, PAYMENT_TONE, STATUS_TONE, type Tone } from "../_ui";
 
 type Detail = {
   affiliate: { id: string; name: string; email: string; phone: string | null; code: string; commissionPct: number; status: string; payoutMethod: string | null; createdAt: string };
@@ -22,6 +22,10 @@ export function AffiliateDrawer({ id, onClose, onChanged }: { id: string; onClos
   const [err, setErr] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [editingRate, setEditingRate] = useState(false);
+  const [rateDraft, setRateDraft] = useState("");
+  const [rateBusy, setRateBusy] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(false);
 
   const load = useCallback(async () => {
     setD(null); setErr(null); setSelected(new Set());
@@ -52,10 +56,60 @@ export function AffiliateDrawer({ id, onClose, onChanged }: { id: string; onClos
     finally { setBusy(false); }
   }
 
+  async function patchAffiliate(body: { commissionPct?: number; status?: "active" | "suspended" }) {
+    const r = await fetch(`/api/owner/affiliates/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const j = await r.json();
+    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+    await load(); onChanged();
+  }
+
+  async function saveRate() {
+    const pct = Number(rateDraft);
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) { setErr("Enter a rate between 0 and 100."); return; }
+    setRateBusy(true); setErr(null);
+    try { await patchAffiliate({ commissionPct: pct }); setEditingRate(false); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Couldn't update the commission rate."); }
+    finally { setRateBusy(false); }
+  }
+
+  async function toggleStatus() {
+    if (!d) return;
+    setStatusBusy(true); setErr(null);
+    try { await patchAffiliate({ status: d.affiliate.status === "active" ? "suspended" : "active" }); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Couldn't update the affiliate's status."); }
+    finally { setStatusBusy(false); }
+  }
+
   const a = d?.affiliate;
   return (
     <Drawer open onClose={onClose} title={a?.name ?? "Loading…"} subtitle={a && (
-      <span>{a.email} · code <code className="bg-canvas border border-line rounded px-1">{a.code}</code> · {a.commissionPct}% commission</span>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span>{a.email} · code <code className="bg-canvas border border-line rounded px-1">{a.code}</code></span>
+        {editingRate ? (
+          <span className="flex items-center gap-1">
+            <input autoFocus type="number" min={0} max={100} step={0.01} value={rateDraft} onChange={e => setRateDraft(e.target.value)}
+              className="w-16 border border-line rounded-control px-1.5 py-0.5 text-xs bg-white text-ink-900" />
+            <span className="text-[11px]">%</span>
+            <button onClick={saveRate} disabled={rateBusy} className="p-1 rounded-control hover:bg-canvas text-emerald-600 disabled:opacity-60">
+              {rateBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+            </button>
+            <button onClick={() => setEditingRate(false)} disabled={rateBusy} className="p-1 rounded-control hover:bg-canvas text-ink-600"><X className="w-3.5 h-3.5" /></button>
+          </span>
+        ) : (
+          <button onClick={() => { setRateDraft(String(a.commissionPct)); setEditingRate(true); }}
+            className="flex items-center gap-1 text-brand-700 hover:underline">
+            {a.commissionPct}% commission <Pencil className="w-3 h-3" />
+          </button>
+        )}
+        <Badge tone={STATUS_TONE[a.status] ?? "muted"}>{a.status}</Badge>
+        <button onClick={toggleStatus} disabled={statusBusy}
+          className="text-[11px] font-bold text-ink-600 hover:text-brand-700 disabled:opacity-60 flex items-center gap-1">
+          {statusBusy && <Loader2 className="w-3 h-3 animate-spin" />}
+          {a.status === "active" ? "Suspend" : "Reactivate"}
+        </button>
+      </div>
     )}>
       {err && <div className="bg-red-50 border border-red-200 rounded-card px-3 py-2 text-[13px] text-red-700">{err}</div>}
       {!d && !err && <div className="flex justify-center py-10"><Spinner /></div>}
