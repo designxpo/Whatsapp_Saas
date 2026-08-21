@@ -102,6 +102,28 @@ export async function createSubscription(tenant: Tenant, plan: Plan): Promise<Cr
   return { subscriptionId: sub.id, shortUrl: sub.short_url };
 }
 
+export interface RazorpaySubscriptionDetail {
+  planKey: string | null; amountCents: number; currency: string; currentPeriodEnd: string | null;
+}
+
+// Read back a subscription's actual plan/amount/period from Razorpay itself —
+// the authoritative record of what was purchased, rather than trusting
+// whatever the client happened to send. Used by the post-checkout verify
+// route, which only receives Razorpay's three signature-check fields and has
+// no other way to know which plan the customer just bought.
+export async function getSubscriptionDetail(subscriptionId: string): Promise<RazorpaySubscriptionDetail> {
+  const sub = await rzp<{
+    notes?: Record<string, string>; current_end?: number;
+    plan?: { item?: { amount?: number; currency?: string }; notes?: Record<string, string> };
+  }>(`/subscriptions/${subscriptionId}`);
+  return {
+    planKey: sub.notes?.plan ?? sub.plan?.notes?.plan_key ?? null,
+    amountCents: sub.plan?.item?.amount ?? 0,
+    currency: sub.plan?.item?.currency ?? "INR",
+    currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null,
+  };
+}
+
 // Post-checkout signature check. NOTE the field order: payment_id first, then
 // subscription_id — this is the subscription-checkout formula, distinct from
 // Standard Checkout's order_id-first formula used elsewhere in this codebase

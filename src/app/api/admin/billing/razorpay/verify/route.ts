@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { getTenant, applySubscription } from "@/lib/tenants";
-import { verifySubscriptionSignature } from "@/lib/razorpay";
+import { verifySubscriptionSignature, getSubscriptionDetail } from "@/lib/razorpay";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,15 @@ export async function POST(req: Request) {
     if (tenant.razorpaySubscriptionId !== subscriptionId) {
       return NextResponse.json({ error: "Subscription does not belong to this account" }, { status: 400 });
     }
-    await applySubscription(tid, { paymentStatus: "active", status: "active", subscriptionId, provider: "razorpay" });
+    // Read the plan/amount back from Razorpay itself — the client only sends
+    // the three signature-check fields, so this is the authoritative source
+    // for what was actually purchased (not something the client could spoof).
+    const detail = await getSubscriptionDetail(subscriptionId);
+    await applySubscription(tid, {
+      paymentStatus: "active", status: "active", subscriptionId, provider: "razorpay",
+      plan: detail.planKey ?? undefined, amountCents: detail.amountCents, currency: detail.currency,
+      currentPeriodEnd: detail.currentPeriodEnd,
+    });
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
