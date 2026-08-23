@@ -37,10 +37,12 @@ export async function GET() {
         // via Razorpay as soon as the platform-wide keys are set, with no
         // per-plan setup step.
         purchasableViaRazorpay: razorpayConfigured(),
-        // GST + estimated gateway-fee gross-up on top of the advertised base
-        // price — computed here so the page never duplicates this math
-        // client-side (src/lib/billing-tax.ts is the single source of truth).
-        totalChargedCents: computeChargeBreakdown(p.priceCents).totalChargedCents,
+        // Full GST + estimated gateway-fee breakdown — Razorpay's own checkout
+        // modal only ever shows one total, so the itemized breakdown has to be
+        // rendered on THIS page, before checkout opens. Computed here so the
+        // page never duplicates this math client-side (src/lib/billing-tax.ts
+        // is the single source of truth).
+        ...computeChargeBreakdown(p.priceCents),
       })),
     });
   } catch (err) {

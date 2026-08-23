@@ -4,6 +4,7 @@ import { applySubscription, getTenantByRazorpaySubscription, getTenant, type Pay
 import { getPlan } from "@/lib/plans";
 import { computeChargeBreakdown } from "@/lib/billing-tax";
 import { recordBillingEvent, recordActualGatewayFee } from "@/lib/billing-events";
+import { sendInvoiceEmail } from "@/lib/invoice-email";
 import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
 import { errorMessage } from "@/lib/errors";
 
@@ -42,8 +43,11 @@ interface RzpWebhookBody {
     // fee/tax are Razorpay's ACTUAL gateway fee and the GST on that fee for
     // this specific payment (in paise) — only present once the charge is
     // fully processed, distinct from the checkout-time ESTIMATE this route
-    // otherwise relies on (see src/lib/billing-tax.ts).
-    payment?: { entity?: { id?: string; amount?: number; currency?: string; fee?: number; tax?: number } };
+    // otherwise relies on (see src/lib/billing-tax.ts). `method` is the
+    // instrument the customer actually paid with ("card", "upi",
+    // "netbanking"…), which a Rule 46 document has to name and which this
+    // payload is the only place we ever learn it from.
+    payment?: { entity?: { id?: string; amount?: number; currency?: string; fee?: number; tax?: number; method?: string } };
   };
 }
 
@@ -101,14 +105,30 @@ export async function POST(req: Request) {
     });
 
     if (isCharge && breakdown) {
-      await recordBillingEvent(tenant.id, {
+      const billingEventId = await recordBillingEvent(tenant.id, {
         provider: "razorpay", providerPaymentId: pay?.id, currency: pay?.currency?.toUpperCase() ?? "INR", breakdown,
+        paymentMethod: pay?.method ?? null,
       }).catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordBillingEvent", tenantId: tenant.id, error: errorMessage(err) })));
       // The REAL fee Razorpay took on this specific payment, replacing the
       // checkout-time estimate for accurate net-revenue reporting.
       if (pay?.id && typeof pay.fee === "number") {
         await recordActualGatewayFee(pay.id, pay.fee, pay.tax ?? 0)
           .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordActualGatewayFee", tenantId: tenant.id, error: errorMessage(err) })));
+      }
+      // The receipt goes out LAST, and strictly after the actual fee is on the
+      // row: issuing a document stamps a permanent, consecutively-numbered
+      // invoice from whatever that row says at that instant, so any number
+      // written afterwards is one the customer's copy will never show. Awaited
+      // for the same reason — firing it off unawaited would race the update
+      // above and sometimes state the estimate instead of the real fee.
+      //
+      // Best-effort like the two writes above, and the isolation matters most
+      // here: this charge has ALREADY been taken, so an SMTP hiccup must not
+      // surface as a non-200 that makes Razorpay retry a completed payment.
+      // Re-delivery is safe regardless — issuing is idempotent per charge.
+      if (billingEventId) {
+        await sendInvoiceEmail(billingEventId)
+          .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.sendInvoiceEmail", tenantId: tenant.id, error: errorMessage(err) })));
       }
     }
 

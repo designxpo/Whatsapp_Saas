@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 import { Button, GRADIENTS } from "./ui";
 import { Reveal } from "./motion";
 import { TIERS, ANNUAL_DISCOUNT, type Tier } from "../_content/site";
+import { allInclusiveRupees } from "@/lib/billing-tax";
 
 function inr(n: number) { return `₹${n.toLocaleString("en-IN")}`; }
 
@@ -34,7 +35,14 @@ export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tie
 
       <div className={`mt-10 grid gap-6 ${cols}`}>
         {tiers.map((t, ti) => {
-          const monthlyEq = t.priceMonthly == null ? null : Math.round(t.priceMonthly * (annual ? 1 - ANNUAL_DISCOUNT : 1));
+          // Quote what is actually charged, not a base price with conditions
+          // attached. There is no tax or fee added at checkout (see
+          // src/lib/billing-tax.ts — the company is not GST-registered, so a
+          // "+ GST" qualifier here would be advertising a tax we may not
+          // collect), which means the advertised figure has to be the final one.
+          const monthlyEq = t.priceMonthly == null
+            ? null
+            : allInclusiveRupees(Math.round(t.priceMonthly * (annual ? 1 - ANNUAL_DISCOUNT : 1)));
           return (
             <Reveal key={t.name} delay={ti * 100} className="h-full">
             <div
@@ -45,7 +53,7 @@ export function PricingTiers({ tiers = TIERS, showToggle = true }: { tiers?: Tie
               <p className="mt-1 text-xs text-slate-500">{t.tagline}</p>
               <div className="mt-5 flex items-end gap-1">
                 <span className="text-4xl font-extrabold text-slate-900">{monthlyEq == null ? t.customLabel : inr(monthlyEq)}</span>
-                {monthlyEq != null && <span className="pb-1 text-sm text-slate-500">/mo + GST</span>}
+                {monthlyEq != null && <span className="pb-1 text-sm text-slate-500">/mo</span>}
               </div>
               <p className="mt-1 h-4 text-[11px] text-[#0783fd]">{annual && monthlyEq != null ? `Billed annually · ${inr(monthlyEq * 12)}/yr` : " "}</p>
               <Button href={t.href} variant={t.highlighted ? "primary" : "ghost"} className="mt-5 w-full">{t.cta}</Button>

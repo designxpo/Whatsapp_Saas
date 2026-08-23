@@ -33,6 +33,10 @@ const PAGE_BG = "#f1f5f9";
 const CARD_BG = "#ffffff";
 const HAIRLINE = "#e2e8f0";
 const PANEL_BG = "#f8fafc";
+// Reserved for "this already succeeded" — the receipt check disc and the total
+// actually charged. Deliberately NOT the brand blue: on a payment document the
+// one figure the reader is looking for should not compete with the CTA.
+const SUCCESS = "#16a34a";
 
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
 
@@ -61,22 +65,75 @@ export interface EmailCta {
   href: string;
 }
 
+/** One `label … value` row. Used for the identity block on a receipt/invoice. */
+export interface EmailMetaRow {
+  label: string;
+  value: string;
+}
+
+/**
+ * One priced row on a receipt/invoice. `amount` is pre-formatted by the caller
+ * (this module has no currency knowledge) and rendered right-aligned so a
+ * column of amounts lines up — see the tabular-figure note on the renderer.
+ */
+export interface EmailLineItem {
+  label: string;
+  amount: string;
+  /** Renders the row in full ink rather than body grey — for a subtotal. */
+  strong?: boolean;
+}
+
 export interface EmailOptions {
   /** Inbox preview line. Say something the subject doesn't — never repeat it. */
   preheader: string;
   heading: string;
   /** Lead paragraphs, plain text. Rendered in order above the stats/CTA. */
   paragraphs: string[];
+  /**
+   * Centres the heading and lead paragraphs. Correct for a document-style mail
+   * (a receipt announcing an outcome); wrong for a normal lifecycle email,
+   * where a centred wall of prose is harder to read. Defaults to left.
+   */
+  headerAlign?: "left" | "center";
+  /** Green check disc above the heading — an outcome already happened. */
+  successMark?: boolean;
   stats?: EmailStat[];
+  /**
+   * `label … value` identity rows (invoice number, customer, payment method,
+   * date). Rendered as a real two-column table so the values align.
+   */
+  metaRows?: EmailMetaRow[];
+  /**
+   * A one-time code, rendered large and letter-spaced in its own panel.
+   * `caption` sits under it in small muted type (e.g. an expiry note).
+   */
+  codeBlock?: { code: string; caption?: string };
   /** One takeaway drawn from the numbers — the reason to keep reading. */
   highlight?: string;
   /** Numbered next steps. Rendered as a real ordered list in the text part. */
   steps?: string[];
-  cta: EmailCta;
+  /** Priced rows. Pair with `total` for the emphasised final row. */
+  lineItems?: EmailLineItem[];
+  /** The emphasised total row closing a `lineItems` table. */
+  total?: EmailLineItem;
+  /**
+   * Optional. A code-delivery email has no honest button target — the whole
+   * point is that the recipient types the code back into the tab they already
+   * have open — so a CTA is not forced on every email.
+   */
+  cta?: EmailCta;
   /** Lower-commitment second action. Rendered as a plain link under the button. */
   secondary?: EmailCta;
+  /** Small print below the divider — statutory notes, document caveats. */
+  disclaimer?: string;
   /** "You're getting this because…" — required; recipients ask, and it cuts spam reports. */
   footerReason: string;
+  /**
+   * Supplier postal address, one line per entry, in the outer footer. A GST
+   * tax invoice must carry the supplier's registered address; it also reads as
+   * a legitimacy signal on any transactional mail.
+   */
+  addressLines?: string[];
   /** Omit for one-off transactional mail that has nothing to unsubscribe from. */
   unsubscribeHref?: string;
 }
@@ -113,6 +170,67 @@ function statCells(stats: EmailStat[]): string {
                   <td width="12" style="font-size:0;line-height:0;">&nbsp;</td>`);
 }
 
+// A filled disc with a check glyph, not an SVG or an image: SVG is unsupported
+// in Outlook and a hosted PNG is blocked by default for unknown senders, which
+// would leave a broken-image box at the top of a receipt. A border-radius on a
+// table cell degrades to a square in the few clients that ignore it — still a
+// green mark, never a hole in the layout.
+function successDisc(): string {
+  return `
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
+                <tr>
+                  <td width="46" height="46" align="center" valign="middle" bgcolor="${SUCCESS}" style="width:46px;height:46px;background-color:${SUCCESS};border-radius:23px;font-family:${FONT};font-size:24px;line-height:24px;font-weight:700;color:#ffffff;">&#10003;</td>
+                </tr>
+              </table>`;
+}
+
+// `label … value` rows. Two real columns so every value starts at the same x —
+// a receipt where "Invoice #" and "Date of payment" disagree on where their
+// values begin reads as unfinished.
+function metaRowsTable(rows: EmailMetaRow[]): string {
+  return rows.map(r => `<tr>
+                        <td class="t-muted" valign="top" style="padding:0 0 10px;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">${escapeHtml(r.label)}<br>
+                          <span class="t-ink" style="font-family:${FONT};font-size:14px;line-height:21px;font-weight:700;color:${INK};">${escapeHtml(r.value)}</span>
+                        </td>
+                      </tr>`).join("\n                      ");
+}
+
+// Priced rows + an emphasised total. Amounts are right-aligned and asked for
+// tabular figures so the decimal points stack; right-alignment is what actually
+// carries it, since `font-variant-numeric` is widely ignored in email.
+function lineItemsTable(items: EmailLineItem[], total?: EmailLineItem): string {
+  const NUMS = "font-variant-numeric:tabular-nums;";
+  const rows = items.map(i => `<tr>
+                        <td class="${i.strong ? "t-ink" : "t-body"}" style="padding:9px 0;font-family:${FONT};font-size:14px;line-height:21px;color:${i.strong ? INK : BODY_TEXT};${i.strong ? "font-weight:700;" : ""}">${escapeHtml(i.label)}</td>
+                        <td class="${i.strong ? "t-ink" : "t-body"}" align="right" style="padding:9px 0;font-family:${FONT};font-size:14px;line-height:21px;${NUMS}color:${i.strong ? INK : BODY_TEXT};${i.strong ? "font-weight:700;" : ""}">${escapeHtml(i.amount)}</td>
+                      </tr>`).join("\n                      ");
+  if (!total) return rows;
+  return `${rows}
+                      <tr>
+                        <td colspan="2" style="padding:0;"><div class="hairline" style="border-top:1px solid ${HAIRLINE};font-size:0;line-height:0;">&nbsp;</div></td>
+                      </tr>
+                      <tr>
+                        <td class="t-ink" style="padding:14px 0 0;font-family:${FONT};font-size:16px;line-height:22px;font-weight:800;color:${INK};">${escapeHtml(total.label)}</td>
+                        <td align="right" style="padding:14px 0 0;font-family:${FONT};font-size:19px;line-height:24px;font-weight:800;${NUMS}color:${SUCCESS};">${escapeHtml(total.amount)}</td>
+                      </tr>`;
+}
+
+// The code itself is the payload, so it gets the largest type in the email and
+// enough letter-spacing to be read a character at a time. A trailing space
+// offsets the letter-spacing applied to the final glyph, which otherwise pushes
+// the string visually left of centre.
+function codePanel(code: string, caption?: string): string {
+  return `
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="panel" bgcolor="${PANEL_BG}" style="background-color:${PANEL_BG};border-radius:12px;">
+                      <tr>
+                        <td align="center" style="padding:22px 18px ${caption ? "14px" : "22px"};">
+                          <div class="t-ink" style="font-family:${FONT};font-size:36px;line-height:42px;font-weight:800;letter-spacing:10px;color:${INK};">${escapeHtml(code)}&#8203;</div>
+                          ${caption ? `<div class="t-muted" style="font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};padding-top:8px;">${escapeHtml(caption)}</div>` : ""}
+                        </td>
+                      </tr>
+                    </table>`;
+}
+
 // The horizontal lockup (540×138, ≈3.913:1) — the same asset the site header
 // uses, NOT brand/talkopng.png, which is the 2:1 padded mark meant for
 // schema.org and renders visibly squashed at wordmark proportions.
@@ -121,6 +239,7 @@ const LOGO_H = 34;
 
 export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; text: string } {
   const logo = `${siteUrl}/brand/talko-logo.png`;
+  const hAlign = o.headerAlign === "center" ? "center" : "left";
 
   const html = `<!doctype html>
 <html lang="en" style="margin:0;padding:0;">
@@ -188,17 +307,31 @@ export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; t
             <td class="card" bgcolor="${CARD_BG}" style="background-color:${CARD_BG};border-radius:16px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
 
+                ${o.successMark ? `<tr>
+                  <td class="pad" align="center" style="padding:34px 36px 0;">
+${successDisc()}
+                  </td>
+                </tr>` : ""}
+
                 <tr>
-                  <td class="pad" style="padding:34px 36px 0;">
+                  <td class="pad" align="${hAlign}" style="padding:${o.successMark ? "18px" : "34px"} 36px 0;">
                     <h1 class="h1 t-ink" style="margin:0;font-family:${FONT};font-size:27px;line-height:33px;font-weight:800;color:${INK};">${escapeHtml(o.heading)}</h1>
                   </td>
                 </tr>
 
                 ${o.paragraphs.map(p => `<tr>
-                  <td class="pad" style="padding:14px 36px 0;">
+                  <td class="pad" align="${hAlign}" style="padding:14px 36px 0;">
                     <p class="t-body" style="margin:0;font-family:${FONT};font-size:15px;line-height:23px;color:${BODY_TEXT};">${escapeHtml(p)}</p>
                   </td>
                 </tr>`).join("\n                ")}
+
+                ${o.metaRows?.length ? `<tr>
+                  <td class="pad" style="padding:26px 36px 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      ${metaRowsTable(o.metaRows)}
+                    </table>
+                  </td>
+                </tr>` : ""}
 
                 ${o.stats?.length ? `<tr>
                   <td class="pad" style="padding:24px 36px 0;">
@@ -206,6 +339,12 @@ export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; t
                       <tr>${statCells(o.stats).replace(/<td width="12"/g, `<td class="gap" width="12"`)}
                       </tr>
                     </table>
+                  </td>
+                </tr>` : ""}
+
+                ${o.codeBlock ? `<tr>
+                  <td class="pad" style="padding:24px 36px 0;">
+${codePanel(o.codeBlock.code, o.codeBlock.caption)}
                   </td>
                 </tr>` : ""}
 
@@ -224,6 +363,15 @@ export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; t
                   </td>
                 </tr>` : ""}
 
+                ${o.lineItems?.length ? `<tr>
+                  <td class="pad" style="padding:22px 36px 0;">
+                    <div class="hairline" style="border-top:1px solid ${HAIRLINE};font-size:0;line-height:0;">&nbsp;</div>
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="padding-top:6px;">
+                      ${lineItemsTable(o.lineItems, o.total)}
+                    </table>
+                  </td>
+                </tr>` : ""}
+
                 ${o.highlight ? `<tr>
                   <td class="pad" style="padding:22px 36px 0;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" class="panel" bgcolor="${PANEL_BG}" style="background-color:${PANEL_BG};border-radius:12px;">
@@ -234,11 +382,11 @@ export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; t
                   </td>
                 </tr>` : ""}
 
-                <tr>
+                ${o.cta ? `<tr>
                   <td class="pad" align="center" style="padding:28px 36px 0;">
 ${button(o.cta, siteUrl)}
                   </td>
-                </tr>
+                </tr>` : ""}
 
                 ${o.secondary ? `<tr>
                   <td class="pad" align="center" style="padding:14px 36px 0;">
@@ -247,6 +395,12 @@ ${button(o.cta, siteUrl)}
                 </tr>` : ""}
 
                 <tr><td class="pad" style="padding:34px 36px 0;"><div class="hairline" style="border-top:1px solid ${HAIRLINE};font-size:0;line-height:0;">&nbsp;</div></td></tr>
+
+                ${o.disclaimer ? `<tr>
+                  <td class="pad" style="padding:16px 36px 0;">
+                    <p class="t-muted" style="margin:0;font-family:${FONT};font-size:11px;line-height:17px;color:${MUTED};">${escapeHtml(o.disclaimer)}</p>
+                  </td>
+                </tr>` : ""}
 
                 <tr>
                   <td class="pad" style="padding:16px 36px 30px;">
@@ -262,6 +416,7 @@ ${button(o.cta, siteUrl)}
             <td align="center" style="padding:20px 24px 8px;">
               <p class="t-muted" style="margin:0;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
                 Talko AI by PM Technologies<br>
+                ${o.addressLines?.length ? `${o.addressLines.map(escapeHtml).join("<br>")}<br>` : ""}
                 <a href="${escapeHtml(siteUrl)}/guides" style="color:${MUTED};text-decoration:underline;">Guides</a> &nbsp;·&nbsp;
                 <a href="${escapeHtml(siteUrl)}/status" style="color:${MUTED};text-decoration:underline;">Status</a> &nbsp;·&nbsp;
                 <a href="${escapeHtml(siteUrl)}/contact" style="color:${MUTED};text-decoration:underline;">Contact</a>${o.unsubscribeHref ? ` &nbsp;·&nbsp;
@@ -282,18 +437,40 @@ ${button(o.cta, siteUrl)}
   // button, which is the one thing the text part most needs to carry.
   const lines: string[] = [o.heading, ""];
   for (const p of o.paragraphs) lines.push(p, "");
+  if (o.metaRows?.length) {
+    for (const r of o.metaRows) lines.push(`${r.label}: ${r.value}`);
+    lines.push("");
+  }
   if (o.stats?.length) {
     for (const s of o.stats) lines.push(`  ${s.value} — ${s.label}${s.delta ? ` (${s.delta})` : ""}`);
+    lines.push("");
+  }
+  if (o.codeBlock) {
+    lines.push(`  ${o.codeBlock.code}`);
+    if (o.codeBlock.caption) lines.push(`  ${o.codeBlock.caption}`);
     lines.push("");
   }
   if (o.steps?.length) {
     o.steps.forEach((s, i) => lines.push(`  ${i + 1}. ${s}`));
     lines.push("");
   }
+  if (o.lineItems?.length) {
+    // Pad the labels to a common width so the amounts form a column in a
+    // monospaced reader — the plain-text part of a receipt is the one people
+    // paste into a spreadsheet.
+    const all = o.total ? [...o.lineItems, o.total] : o.lineItems;
+    const w = Math.max(...all.map(i => i.label.length));
+    for (const i of o.lineItems) lines.push(`  ${i.label.padEnd(w)}  ${i.amount}`);
+    if (o.total) lines.push(`  ${"-".repeat(w + 2 + o.total.amount.length)}`, `  ${o.total.label.padEnd(w)}  ${o.total.amount}`);
+    lines.push("");
+  }
   if (o.highlight) lines.push(o.highlight, "");
-  lines.push(`${o.cta.label}: ${absolute(o.cta.href, siteUrl)}`);
+  if (o.cta) lines.push(`${o.cta.label}: ${absolute(o.cta.href, siteUrl)}`);
   if (o.secondary) lines.push(`${o.secondary.label}: ${absolute(o.secondary.href, siteUrl)}`);
-  lines.push("", "—", o.footerReason, "Talko AI by PM Technologies");
+  lines.push("", "—");
+  if (o.disclaimer) lines.push(o.disclaimer, "");
+  lines.push(o.footerReason, "Talko AI by PM Technologies");
+  if (o.addressLines?.length) lines.push(...o.addressLines);
   if (o.unsubscribeHref) lines.push(`Unsubscribe: ${o.unsubscribeHref}`);
 
   return { html, text: lines.join("\n") };

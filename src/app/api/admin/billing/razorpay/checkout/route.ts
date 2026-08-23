@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
-import { getTenant, ownerAudit } from "@/lib/tenants";
+import { getTenant, ownerAudit, hasBillingIdentity } from "@/lib/tenants";
 import { getPlan } from "@/lib/plans";
 import { razorpayConfigured, createSubscription } from "@/lib/razorpay";
 import { errorMessage } from "@/lib/errors";
@@ -23,6 +23,17 @@ export async function POST(req: Request) {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
+
+    // Enforced HERE, not only in the billing page's form. The charge is the
+    // point at which we become obliged to issue a document naming the recipient
+    // and their place of supply, and the state code is what decides whether the
+    // tax is IGST or CGST+SGST — collecting it afterwards means an invoice that
+    // cannot be completed. A client-side gate alone would be bypassed by a
+    // direct POST or a tab left open from before the form existed.
+    if (!hasBillingIdentity(tenant)) {
+      return NextResponse.json({ error: "Add your GST billing details before subscribing — we need them to issue a valid invoice for this payment.", needsBillingDetails: true }, { status: 400 });
+    }
+
     const plan = await getPlan(body.planKey.trim());
     if (!plan) return NextResponse.json({ error: "Plan not found" }, { status: 404 });
 

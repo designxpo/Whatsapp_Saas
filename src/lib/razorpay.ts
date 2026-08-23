@@ -21,10 +21,35 @@ import { setRazorpayPlanId } from "./plans";
 import { setRazorpayIds } from "./tenants";
 import { computeChargeBreakdown } from "./billing-tax";
 
-// Large but finite — Razorpay's Subscription API requires total_count and has
-// no indefinite-billing flag; ~100 years of monthly cycles is the documented
-// workaround for what is, in practice, "keep billing until cancelled."
-const INDEFINITE_CYCLES = 1200;
+// Razorpay's Subscription API requires total_count and has no indefinite-billing
+// flag, so this stands in for "keep billing until cancelled".
+//
+// 360 = exactly 30 years of monthly cycles, which is the only value that is safe
+// under every ceiling that applies:
+//   • NPCI/UPI/OC 123/2021-22 (3 Nov 2021), item 1: "The PSPs of the Merchants
+//     and Aggregators are advised to create the Recurring Mandates with a
+//     maximum validity of 30 years." This is the strictest limit anywhere, and
+//     it governs the UPI Autopay leg — the one that renders a mandate QR.
+//   • NPCI/NACH/OC No.012/2023-24 (effective 1 Apr 2024) caps NACH mandates at
+//     40 years from issuance.
+//   • Razorpay's own docs, which CONTRADICT THEMSELVES: the Subscriptions FAQ
+//     and the create-subscription API reference both say "maximum duration of
+//     100 years", while the subscription-links page says "a maximum of 30
+//     years" and then prints the monthly formula as "(12 * 30)/1 = 1200".
+//     That arithmetic is wrong — 12 × 30 is 360, and 1200 months is 100 years.
+//     360 is what that formula should produce, so it is defensible under either
+//     reading and needs no resolution of the contradiction.
+//
+// Do NOT raise this toward 1200: that implies a ~100-year mandate, past both
+// NPCI ceilings. 30 years of monthly billing is indistinguishable from "forever"
+// for a SaaS subscription.
+//
+// Note for anyone debugging a missing UPI QR at checkout: this is not a known
+// cause. Razorpay nowhere documents deriving UPI mandate validity from
+// total_count. Check whether UPI Autopay is enabled on the Razorpay account
+// first — it is an opt-in toggle, and that is the ordinary reason the QR fails
+// to render.
+const INDEFINITE_CYCLES = 360;
 
 export function razorpayConfigured(): boolean {
   return !!process.env.RAZORPAY_KEY_ID && !!process.env.RAZORPAY_KEY_SECRET;
@@ -55,11 +80,12 @@ async function rzp<T>(path: string, init?: RequestInit): Promise<T> {
 // existing Razorpay Plan — a price change on our side needs a new plan.key
 // (or a manual reset of razorpay_plan_id) to take effect on the Razorpay side.
 //
-// The amount charged is the GST- and gateway-fee-inclusive TOTAL, not
-// plan.priceCents directly — wa_plans.price_cents is the GST-exclusive base
-// price; computeChargeBreakdown() adds 18% GST and an estimated gateway-fee
-// gross-up on top (see src/lib/billing-tax.ts). Baked in once at Plan
-// creation, same as the price itself.
+// The amount charged is the ALL-INCLUSIVE total, not plan.priceCents directly:
+// wa_plans.price_cents is the base, and computeChargeBreakdown() grosses it up
+// so Razorpay's cut comes out of the markup rather than the base. NO GST is
+// added — the company has no GSTIN (see src/lib/billing-tax.ts). Baked in once
+// at Plan creation, same as the price itself, which is exactly why a pricing
+// change requires minting a new Plan.
 export async function getOrCreateRazorpayPlan(plan: Plan): Promise<string> {
   if (plan.razorpayPlanId) return plan.razorpayPlanId;
   const { totalChargedCents } = computeChargeBreakdown(plan.priceCents);

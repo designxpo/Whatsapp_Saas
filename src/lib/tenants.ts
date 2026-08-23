@@ -26,6 +26,11 @@ export interface Tenant {
   // Breakdown of amountCents when GST/gateway-fee gross-up applies — null
   // until the tenant's first Razorpay checkout (see src/lib/billing-tax.ts).
   baseAmountCents: number | null; taxCents: number | null; gatewayFeeEstimateCents: number | null;
+  // Who the tenant is on a tax invoice. Collected at checkout, not signup, so
+  // all null for anyone who has never paid. billingStateCode is the GST state
+  // code that decides CGST+SGST (intra-state) vs IGST (inter-state).
+  gstin: string | null; billingLegalName: string | null; billingAddress: string | null;
+  billingState: string | null; billingStateCode: string | null; billingCountry: string | null;
 }
 
 const DEFAULT_FEATURES: TenantFeatures = { whatsapp: true, instagram: true, sequences: true, commerce: true, growth: true, ai_autoreply: true, ads: true };
@@ -54,6 +59,12 @@ function mapTenant(r: Record<string, unknown>): Tenant {
     baseAmountCents: (r.base_amount_cents as number | null) ?? null,
     taxCents: (r.tax_cents as number | null) ?? null,
     gatewayFeeEstimateCents: (r.gateway_fee_estimate_cents as number | null) ?? null,
+    gstin: (r.gstin as string | null) ?? null,
+    billingLegalName: (r.billing_legal_name as string | null) ?? null,
+    billingAddress: (r.billing_address as string | null) ?? null,
+    billingState: (r.billing_state as string | null) ?? null,
+    billingStateCode: (r.billing_state_code as string | null) ?? null,
+    billingCountry: (r.billing_country as string | null) ?? null,
   };
 }
 
@@ -137,6 +148,40 @@ export async function setRazorpayIds(tenantId: string, ids: { customerId?: strin
 export async function getTenantByRazorpaySubscription(subscriptionId: string): Promise<Tenant | null> {
   const { data } = await db().from("tenants").select("*").eq("razorpay_subscription_id", subscriptionId).maybeSingle();
   return data ? mapTenant(data as Record<string, unknown>) : null;
+}
+
+// ── GST billing identity ──────────────────────────────────────────────────────
+// The recipient block on a tax invoice. Kept separate from applySubscription()
+// because it changes on the customer's timescale (they correct an address, add
+// a GSTIN), not the subscription's — and an already-issued invoice must keep
+// whatever was recorded when it was issued, so callers snapshot these onto the
+// wa_billing_events row rather than joining back to the tenant later.
+export async function setBillingDetails(tenantId: string, p: {
+  gstin?: string | null; billingLegalName?: string | null; billingAddress?: string | null;
+  billingState?: string | null; billingStateCode?: string | null; billingCountry?: string | null;
+}): Promise<void> {
+  const row: Record<string, unknown> = {};
+  if (p.gstin !== undefined) row.gstin = p.gstin;
+  if (p.billingLegalName !== undefined) row.billing_legal_name = p.billingLegalName;
+  if (p.billingAddress !== undefined) row.billing_address = p.billingAddress;
+  if (p.billingState !== undefined) row.billing_state = p.billingState;
+  if (p.billingStateCode !== undefined) row.billing_state_code = p.billingStateCode;
+  if (p.billingCountry !== undefined) row.billing_country = p.billingCountry;
+  if (!Object.keys(row).length) return;
+  const { error } = await db().from("tenants").update(row).eq("id", tenantId);
+  if (error) throw error;
+}
+
+// Enough recorded to name this tenant as the recipient on an invoice. GSTIN is
+// deliberately NOT required: an unregistered customer is a perfectly legal
+// recipient. (No GST is charged today in any case — we have no GSTIN of our own,
+// so no input tax credit arises on either side; the field is collected for the
+// documents we'll issue once we register.) A missing state code is different: it
+// decides CGST+SGST vs IGST, so without it a tax invoice can't be computed.
+export function hasBillingIdentity(t: Tenant): boolean {
+  // `||` not `??` — a blank legal name from a half-filled form should still fall
+  // back to the company name rather than count as "recorded".
+  return Boolean((t.billingLegalName || t.company) && t.billingAddress && t.billingStateCode);
 }
 
 // Apply a Stripe subscription state to a tenant (called by the webhook). Maps
