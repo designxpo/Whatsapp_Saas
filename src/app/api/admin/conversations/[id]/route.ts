@@ -1,5 +1,5 @@
 export const maxDuration = 60;   // the "suggest" action runs an LLM call — must outlast the default
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound,
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
@@ -92,11 +92,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
         messageId = sent.messageId;
         // Mirror to LeadSquared by a known phone (shared in chat) or @handle.
-        void (async () => {
+        // after(), not a bare `void` — see the note on the WhatsApp push below.
+        after(async () => {
           const handle = conv.name && conv.name.startsWith("@") ? conv.name : null;
           const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, tid).catch(() => null))?.attributes);
           if (phone || handle) await pushIgActivity({ igUserId: conv.phone, handle, phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
-        })();
+        });
       } else if (conv.platform === "messenger") {
         const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
         if (!ch?.pageId || !ch?.token) return NextResponse.json({ error: "Facebook Page not connected for this chat" }, { status: 502 });
@@ -122,7 +123,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           : await sendText(conv.phone, text, channel);
         if (sent.error) return NextResponse.json({ error: sent.error }, { status: 502 });
         messageId = sent.id;
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
+        // after(), NOT a bare `void`: an un-awaited promise is dropped when the
+        // serverless instance freezes on response, so an agent reply reached the
+        // customer and Live Chat but intermittently never reached LeadSquared.
+        after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid }));
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
@@ -201,7 +205,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         // WhatsApp drops captions on audio — send the agent's text as its own
         // message so it isn't silently lost.
         if (caption && kind === "audio") await sendText(conv.phone, caption, channel).catch(() => undefined);
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
+        after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid }));
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null, mediaUrl: url, mediaType });
       await touchOutbound(id, caption || `[${kind} sent]`);
@@ -223,7 +227,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Show the resolved text in the thread when the UI supplies a preview,
       // else fall back to the template name.
       const logged = (body.preview ?? "").trim() || `[template: ${templateName}]`;
-      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid });
+      after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid }));
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
@@ -259,13 +263,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       const sent = await sendTemplateSingle(conv.phone, canned.templateName, canned.language, params, channel, canned.headerImageUrl);
       if (sent.error) {
-        void pushWaActivity({ phone: conv.phone, direction: "outbound", body: `⚠ "${canned.label}" template not sent: ${sent.error}`, via: "agent", tenantId: tid });
+        after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: `⚠ "${canned.label}" template not sent: ${sent.error}`, via: "agent", tenantId: tid }));
         return NextResponse.json({ error: sent.error }, { status: 502 });
       }
       const logged = `[${canned.label}]`;
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
-      void pushWaActivity({ phone: conv.phone, direction: "outbound", body: `Sent "${canned.label}"`, via: "agent", tenantId: tid });
+      after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: `Sent "${canned.label}"`, via: "agent", tenantId: tid }));
       // Stage change is best-effort but never silent: the response + audit log
       // say whether the CRM actually moved.
       let stageSet = false;

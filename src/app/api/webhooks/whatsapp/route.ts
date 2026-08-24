@@ -122,7 +122,11 @@ async function handleEcho(value: Record<string, unknown>, e: Record<string, unkn
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body, metaId: id, source: "agent", tenantId: tid, channelId: channel?.id ?? null });
   await touchOutbound(conv.id, body);
   if (conv.botEnabled) await setBotEnabled(conv.id, false);  // human takeover from the phone app
-  void pushWaActivity({ phone: to, direction: "outbound", body, via: "agent", tenantId: tid });
+  // after(), NOT a bare `void`: this is the LAST work in the request, so an
+  // un-awaited promise gets dropped when the serverless instance freezes on
+  // response — the counselor's phone-app reply then reaches Live Chat but never
+  // LeadSquared. Same reason the inbound path below uses after().
+  after(() => pushWaActivity({ phone: to, direction: "outbound", body, via: "agent", tenantId: tid }));
   console.log(JSON.stringify({ tag: "wa_echo", tenant: tid, phone: `…${to.slice(-4)}`, channel: channel?.name ?? "primary" }));
 }
 
