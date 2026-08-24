@@ -66,7 +66,15 @@ describe("getOrCreateConversation — channel_id backfill for non-WhatsApp platf
     expect(conv.channelId).toBe("channel-original");
   });
 
-  it("still follows the customer across numbers for WhatsApp, unchanged", async () => {
+  // WhatsApp used to be the one platform that DID follow the customer to their
+  // last number, on the reasoning that a tenant's numbers are interchangeable
+  // brand lines. That is no longer true, and this assertion is inverted from
+  // what it originally checked: with coexistence a tenant runs one number per
+  // counselor, so those numbers are personal identities — following the customer
+  // sent one counselor's manual reply out through another counselor's number.
+  // WhatsApp is now anchored like every other platform; only a deliberate
+  // reassign moves ownership. See conv-owner-sticky.test.ts for the full contract.
+  it("does NOT re-point a WhatsApp conversation that already has a DIFFERENT channel_id", async () => {
     vi.resetModules();
     const { db, updates } = makeDbStub({ id: "conv-3", tenant_id: TENANT, phone: "919876543210", platform: "whatsapp", channel_id: "old-number", name: "" });
     vi.doMock("../supabase", () => ({ db }));
@@ -78,7 +86,23 @@ describe("getOrCreateConversation — channel_id backfill for non-WhatsApp platf
     const conv = await getOrCreateConversation("919876543210", "Asha", "new-number", "whatsapp", TENANT);
 
     const channelPatch = updates.find(u => "channel_id" in u.patch);
-    expect(channelPatch?.patch.channel_id).toBe("new-number");
-    expect(conv.channelId).toBe("new-number");
+    expect(channelPatch).toBeUndefined();
+    expect(conv.channelId).toBe("old-number");
+  });
+
+  it("still backfills a NULL channel_id on a WhatsApp conversation (orphaned row)", async () => {
+    vi.resetModules();
+    const { db, updates } = makeDbStub({ id: "conv-4", tenant_id: TENANT, phone: "919876543211", platform: "whatsapp", channel_id: null, name: "" });
+    vi.doMock("../supabase", () => ({ db }));
+    vi.doMock("../tenantdb", () => ({ tdb: () => ({}) }));
+    vi.doMock("../crypto", () => ({ encryptSecret: (v: string) => v, readSecret: (v: string) => v }));
+    vi.doMock("../moderation", () => ({ assertTextAllowed: async () => {} }));
+    const { getOrCreateConversation } = await import("../store");
+
+    const conv = await getOrCreateConversation("919876543211", "Asha", "first-number", "whatsapp", TENANT);
+
+    const channelPatch = updates.find(u => "channel_id" in u.patch);
+    expect(channelPatch?.patch.channel_id).toBe("first-number");
+    expect(conv.channelId).toBe("first-number");
   });
 });

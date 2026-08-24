@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound,
   setConversationStatus, setBotEnabled, setConvLabels, assignConversation,
-  setConversationAgent, markConversationRead, getContactByPhone, type ConvStatus,
+  setConversationAgent, markConversationRead, getContactByPhone,
+  getOwnerHistory, reassignConversationChannel, type ConvStatus,
 } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction } from "@/lib/whatsapp";
@@ -35,9 +36,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const conversation = await getConversation(id, tid);
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
     const messages = await getConvHistory(id, 200, tid);
+    // Ownership trail — where the lead came from and who has had it since.
+    const ownerHistory = await getOwnerHistory(id, tid);
     // Opening the chat marks it read (clears the "awaiting your reply" flag).
     if (conversation.needsReply) { await markConversationRead(id); conversation.needsReply = false; }
-    return NextResponse.json({ conversation, messages });
+    return NextResponse.json({ conversation, messages, ownerHistory });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -49,7 +52,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string; channelId?: string; reason?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
@@ -287,6 +290,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     if (body.action === "assign") {
       await assignConversation(id, body.assignedTo ?? null);
+      return NextResponse.json({ success: true });
+    }
+    // Hand the lead to another number/account. Ownership is otherwise sticky
+    // (see getOrCreateConversation) — this is the only thing that moves it, so
+    // it's explicit, attributed and logged to the ownership trail.
+    if (body.action === "reassignChannel") {
+      const channelId = (body.channelId ?? "").trim();
+      if (!channelId) return NextResponse.json({ error: "channelId required" }, { status: 400 });
+      // Tenant-scoped lookup: never let one tenant point a conversation at
+      // another tenant's number.
+      const target = await getChannel(channelId, tid);
+      if (!target) return NextResponse.json({ error: "That number is no longer available" }, { status: 400 });
+      if (channelId === conv.channelId) return NextResponse.json({ success: true });   // already the owner — no-op
+      const who = await currentUser();
+      await reassignConversationChannel(id, channelId, who?.name || who?.email || "admin", body.reason ?? null, tid);
+      logActivity(who, "conversation.reassign", `${conv.name || conv.phone} → ${target.name}`);
       return NextResponse.json({ success: true });
     }
     if (body.action === "agent") {

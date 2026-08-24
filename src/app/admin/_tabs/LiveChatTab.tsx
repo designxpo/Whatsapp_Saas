@@ -4,12 +4,18 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus } from "lucide-react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, History, ArrowRight } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
+// One step in a lead's ownership trail (which number owned it, and who moved it).
+type OwnerHistoryRow = { id: string; channelId: string | null; changedBy: string; reason: string | null; createdAt: string };
+// "20 Aug, 6:21 am" — compact absolute stamp for the ownership trail, where the
+// actual date matters more than "3d ago".
+const stampShort = (iso: string) =>
+  new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 // WhatsApp's own default quick-react set.
 const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
@@ -367,6 +373,14 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const threadChannels = useChannelList();
   const channelName = (cid?: string | null) => threadChannels.find(c => c.id === cid)?.name ?? null;
   const multiChannelThread = new Set(messages.map(m => m.channelId).filter(Boolean)).size > 1;
+  // Ownership trail: where the lead came from and who has held it since.
+  const [ownerHistory, setOwnerHistory] = useState<OwnerHistoryRow[]>([]);
+  // The customer is free to message any of our numbers, but ownership is sticky
+  // — so flag it when their latest message landed somewhere other than the
+  // owner, since that's where a reply would NOT go.
+  const lastChannelMsg = [...messages].reverse().find(m => m.channelId);
+  const offOwnerChannel = conv?.channelId && lastChannelMsg?.channelId && lastChannelMsg.channelId !== conv.channelId
+    ? lastChannelMsg.channelId : null;
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [showButtons, setShowButtons] = useState(false);
@@ -393,7 +407,7 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const prevCount = useRef(0);
 
   const load = useCallback(() => {
-    fetch(`/api/admin/conversations/${id}`).then(r => r.json()).then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); }).catch(() => {});
+    fetch(`/api/admin/conversations/${id}`).then(r => r.json()).then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); setOwnerHistory(d.ownerHistory ?? []); }).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
   // Live thread: poll every 4s so inbound messages, AI replies, and flow
@@ -790,6 +804,64 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                   </select>
                 </div>
               )}
+
+              {/* ── Lead journey: which number owns this lead, and its trail ──
+                  Ownership is sticky: the customer can message any of our
+                  numbers/accounts, but replies always leave from the owner below
+                  until someone deliberately hands the lead over. */}
+              {(() => {
+                const owners = threadChannels.filter(c => c.active && (c.kind ?? "whatsapp") === (conv.platform ?? "whatsapp"));
+                if (owners.length < 2 && !ownerHistory.length) return null;   // single-number workspace — nothing to show
+                const firstTouch = ownerHistory[0];
+                return (
+                  <div>
+                    <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Lead journey</p>
+
+                    {offOwnerChannel && (
+                      <div className="mb-2 rounded-control border border-amber-200 bg-amber-50 px-2.5 py-2">
+                        <p className="text-[11px] text-amber-900 leading-relaxed">
+                          <AlertTriangle className="w-3 h-3 inline -mt-0.5 mr-1" />
+                          Their latest message came in on <b>{channelName(offOwnerChannel) ?? "another number"}</b>, but replies still go out from <b>{channelName(conv.channelId) ?? "the owner"}</b>.
+                        </p>
+                        <button
+                          disabled={busy}
+                          onClick={() => act({ action: "reassignChannel", channelId: offOwnerChannel, reason: "Customer moved to this number" })}
+                          className="mt-1.5 px-2 py-1 rounded-control bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold disabled:opacity-60">
+                          Hand over to {channelName(offOwnerChannel) ?? "that number"}
+                        </button>
+                      </div>
+                    )}
+
+                    <label className="text-[11px] text-ink-400">Replies go out from</label>
+                    <select
+                      disabled={busy}
+                      className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs focus:outline-none bg-white mt-0.5"
+                      value={conv.channelId ?? ""}
+                      onChange={e => e.target.value && act({ action: "reassignChannel", channelId: e.target.value, reason: "Reassigned from Live Chat" })}
+                    >
+                      {!conv.channelId && <option value="">— not set —</option>}
+                      {owners.map(c => <option key={c.id} value={c.id}>{c.name}{c.coex ? " (app+API)" : ""}</option>)}
+                    </select>
+
+                    {firstTouch && (
+                      <p className="text-[11px] text-ink-400 mt-2">
+                        Came in via <span className="font-semibold text-ink-600">{channelName(firstTouch.channelId) ?? "unknown number"}</span> · {stampShort(firstTouch.createdAt)}
+                      </p>
+                    )}
+                    {ownerHistory.length > 1 && (
+                      <div className="mt-1.5 border-l border-line pl-2.5 space-y-1">
+                        {ownerHistory.slice(1).map(h => (
+                          <p key={h.id} className="text-[11px] text-ink-400 leading-snug">
+                            <ArrowRight className="w-3 h-3 inline -mt-0.5 mr-0.5" />
+                            <span className="font-semibold text-ink-600">{channelName(h.channelId) ?? "unknown number"}</span>
+                            {h.changedBy !== "system" && <> by {h.changedBy}</>} · {stampShort(h.createdAt)}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
 

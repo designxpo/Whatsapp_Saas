@@ -787,16 +787,21 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     const row = existing.data as Record<string, unknown>;
     const patch: Record<string, unknown> = {};
     if (name && name.trim() && !row.name) patch.name = name.trim();
-    // Follow the customer: channel_id tracks the number/account they LAST wrote
-    // to, so manual replies, templates and the Live Chat badge use the number
-    // the customer is actually talking to (they can message any of our numbers).
+    // OWNERSHIP IS STICKY, on every platform. channel_id is the number/account
+    // that OWNS this lead — the one a portal reply/template leaves from
+    // (credsFor(conv.channelId)) — NOT "the number they last wrote to".
     //
-    // WhatsApp ONLY: a tenant has one brand across many numbers, so following the
-    // customer to their last number is right. IG/Messenger/web-chat channels are
-    // DISTINCT accounts, each with its own persona + KB — re-pointing a live
-    // conversation at a different account there would bleed the wrong (often the
-    // global-default) persona/KB into the thread. Keep those anchored to the
-    // account the conversation began on.
+    // IG/Messenger/web-chat were always anchored: those are DISTINCT accounts,
+    // each with its own persona + KB, so re-pointing a live conversation at a
+    // different one would bleed the wrong (often global-default) persona/KB into
+    // the thread. WhatsApp used to follow the customer instead, on the reasoning
+    // that a tenant's numbers are interchangeable brand lines. That breaks the
+    // moment a tenant runs coexistence with one number per counselor: the numbers
+    // are personal identities, so a manual reply went out through whichever
+    // counselor the customer had messaged LAST, not the one actually typing it.
+    // A customer may still message any number — each message keeps recording its
+    // own true channel on wa_conv_messages — but only a deliberate reassign
+    // (reassignConversationChannel) moves ownership.
     //
     // Except when it's null: a conversation with no channel at all isn't
     // "anchored" to anything, it's orphaned — usually because the id-resolution
@@ -804,10 +809,13 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     // row existed. There's no wrong account to protect against here, and leaving
     // it null forever silently drops that account out of persona/KB scoping and
     // any per-channel automation on every later inbound. Backfill it once.
-    if (channelId && row.channel_id !== channelId && (platform === "whatsapp" || !row.channel_id)) patch.channel_id = channelId;
+    if (channelId && !row.channel_id) patch.channel_id = channelId;
     if (Object.keys(patch).length) {
       const { error } = await db().from("wa_conversations").update(patch).eq("tenant_id", tenantId).eq("phone", p);
-      if (!error) Object.assign(row, patch);
+      if (!error) {
+        Object.assign(row, patch);
+        if (patch.channel_id) void logOwnerChange(row.id as string, channelId!, "system", "First known number for this lead", tenantId);
+      }
     }
     return mapConversation(row);
   }
@@ -821,7 +829,62 @@ export async function getOrCreateConversation(phone: string, name?: string, chan
     const retry = await db().from("wa_conversations").select("*").eq("tenant_id", tenantId).eq("phone", p).single();
     return mapConversation(retry.data as Record<string, unknown>);
   }
-  return mapConversation(ins.data as Record<string, unknown>);
+  const created = mapConversation(ins.data as Record<string, unknown>);
+  // Open the ownership trail with the first-touch number, so the detail panel
+  // can always say where the lead came from.
+  if (created.channelId) void logOwnerChange(created.id, created.channelId, "system", "First contact", tenantId);
+  return created;
+}
+
+export interface OwnerHistoryEntry {
+  id: string;
+  channelId: string | null;
+  changedBy: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+// Append to a conversation's ownership trail. Best-effort and isolated: a
+// pre-migration tenant DB (table absent) must never break an inbound webhook or
+// a reply, so this swallows its own errors.
+export async function logOwnerChange(conversationId: string, channelId: string | null, changedBy: string, reason?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  // try/catch, not just a rejected-promise handler: callers fire this with
+  // `void` on the inbound path, so anything thrown here (rather than returned as
+  // a Supabase error) would surface as an unhandled rejection.
+  try {
+    await db().from("wa_conversation_owner_history")
+      .insert({ tenant_id: tenantId, conversation_id: conversationId, channel_id: channelId, changed_by: changedBy || "system", reason: reason ?? null })
+      .then(() => {}, () => {});
+  } catch { /* trail is diagnostic — never break a message for it */ }
+}
+
+// A conversation's ownership trail, oldest first. Returns [] when the table
+// isn't there yet (migration 0111 not applied) so the panel just renders empty.
+export async function getOwnerHistory(conversationId: string, tenantId = DEFAULT_TENANT_ID): Promise<OwnerHistoryEntry[]> {
+  // Never let a missing table (code deployed ahead of migration 0111) take the
+  // whole Live Chat thread down with it — the trail is supplementary.
+  try {
+    const { data, error } = await db().from("wa_conversation_owner_history")
+      .select("id,channel_id,changed_by,reason,created_at")
+      .eq("tenant_id", tenantId).eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+    if (error) return [];
+    return (data ?? []).map(r => ({
+      id: r.id as string,
+      channelId: (r.channel_id as string | null) ?? null,
+      changedBy: (r.changed_by as string) ?? "system",
+      reason: (r.reason as string | null) ?? null,
+      createdAt: r.created_at as string,
+    }));
+  } catch { return []; }
+}
+
+// Deliberately hand this lead to another number/counselor. The ONLY thing that
+// moves ownership — inbound messages and coexistence echoes never do.
+export async function reassignConversationChannel(id: string, channelId: string, changedBy: string, reason?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+  const { error } = await db().from("wa_conversations").update({ channel_id: channelId }).eq("tenant_id", tenantId).eq("id", id);
+  if (error) throw error;
+  await logOwnerChange(id, channelId, changedBy, reason ?? null, tenantId);
 }
 
 // Read-only lookup by phone — used by the CRM panel, which must not create
