@@ -91,7 +91,7 @@ function Flow({ uc }: { uc: UseCase }) {
             <div key={s.title} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2.5 text-center" style={{ width: SUB_W, minHeight: SUB_H }}>
               <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={s.icon} className="h-3 w-3" /></span>
               <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{s.title}</div>
-              <div className="text-[9px] leading-tight text-slate-400">{s.sub}</div>
+              <div className="text-[10px] leading-tight text-slate-500">{s.sub}</div>
             </div>
           ))}
         </div>
@@ -105,8 +105,8 @@ function Flow({ uc }: { uc: UseCase }) {
           <path d={`M${SPLIT_W - 8} ${B1 - 5} L${SPLIT_W} ${B1} L${SPLIT_W - 8} ${B1 + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
           <path d={`M${SPLIT_W - 8} ${B2 - 5} L${SPLIT_W} ${B2} L${SPLIT_W - 8} ${B2 + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
         </svg>
-        <span className="absolute rounded-full bg-[#0783fd]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#0783fd]" style={{ left: 16, top: B1 - 22 }}>{uc.branches[0].label}</span>
-        <span className="absolute rounded-full bg-[#0783fd]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#0783fd]" style={{ left: 14, top: B2 - 22 }}>{uc.branches[1].label}</span>
+        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/20" style={{ left: 16, top: B1 - 22 }}>{uc.branches[0].label}</span>
+        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/20" style={{ left: 14, top: B2 - 22 }}>{uc.branches[1].label}</span>
       </div>
 
       {/* Outcomes */}
@@ -154,12 +154,12 @@ export function FlowShowcase() {
                 key={u.key}
                 onClick={() => setActive(i)}
                 aria-pressed={on}
-                className={`group relative rounded-2xl border px-4 py-3.5 text-left transition-colors ${on ? "border-[#0783fd]/30 bg-[#0783fd]/[0.06]" : "border-transparent hover:bg-slate-50"}`}
+                className={`group relative rounded-2xl border px-4 py-3.5 text-left transition-colors ${on ? "border-[#0783fd]/30 bg-[#0783fd]/[0.06]" : "border-slate-200 bg-white hover:border-[#0783fd]/30 hover:bg-slate-50"}`}
               >
                 <span className={`absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-brand-600 to-brand-900 transition-opacity ${on ? "opacity-100" : "opacity-0"}`} />
                 <div className={`flex items-center justify-between gap-2 text-sm font-bold ${on ? "text-[#0783fd]" : "text-slate-900"}`}>
                   {u.tab}
-                  {on && <ArrowRight className="h-4 w-4 shrink-0" />}
+                  <ArrowRight aria-hidden className={`h-4 w-4 shrink-0 transition-opacity ${on ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`} />
                 </div>
                 <div className="mt-0.5 text-xs leading-snug text-slate-500">{u.problem}</div>
               </button>

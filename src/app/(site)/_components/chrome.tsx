@@ -48,7 +48,7 @@ export function SiteNav() {
         </div>
         <div className="hidden items-center gap-3 md:flex">
           <Link href="/login" className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#0783fd]">Log in</Link>
-          <Link href="/signup" className={`rounded-full ${GRADIENTS.brand} px-4 py-1.5 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(106,92,255,0.8)] transition-opacity hover:opacity-90`}>Start free trial</Link>
+          <Link href="/signup" className={`rounded-full ${GRADIENTS.brand} px-4 py-1.5 text-sm font-bold text-white shadow-[0_8px_24px_-10px_rgba(106,92,255,0.8)] transition-opacity hover:opacity-90`}>Start free trial</Link>
         </div>
         <button onClick={() => setOpen(v => !v)} className="md:hidden text-slate-700" aria-label="Toggle menu">
           {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}

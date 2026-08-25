@@ -73,7 +73,7 @@ export function ProductTour() {
   return (
     <div>
       {/* Screen switcher — honest toggle buttons (aria-pressed), not a half ARIA tab widget */}
-      <div role="group" aria-label="Product screens" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0">
+      <div role="group" aria-label="Product screens" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-2 sm:mx-0 sm:flex-wrap sm:justify-start sm:px-0">
         {SCREENS.map(s => {
           const on = s.key === active.key;
           return (
@@ -109,7 +109,7 @@ export function ProductTour() {
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(7,131,253,0.22),0_8px_24px_-12px_rgba(0,0,0,0.10)]">
             <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
-              <span className="mx-auto max-w-[60%] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] font-medium text-slate-400">app.talko.ai / {active.key === "inbox" ? "live-chat" : active.key}</span>
+              <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.talko.ai / {active.key === "inbox" ? "live-chat" : active.key}</span>
             </div>
             <div className="relative aspect-[1600/910] w-full bg-white">
               {SCREENS.map((s, i) => (

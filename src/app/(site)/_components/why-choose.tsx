@@ -50,7 +50,7 @@ export function WhyChoose() {
               <div className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_30px_70px_-30px_rgba(124,92,255,0.35),0_10px_28px_-14px_rgba(0,0,0,0.12)]">
                 <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
                   <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
-                  <span className="mx-auto max-w-[60%] truncate rounded-md border border-slate-200 bg-white px-3 py-1 text-center text-[11px] font-medium text-slate-400">app.talko.ai / live-chat</span>
+                  <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.talko.ai / live-chat</span>
                 </div>
                 <div className="relative aspect-[1600/910] w-full bg-white">
                   <Image src="/tour/inbox.png" alt="Talko AI unified inbox answering a customer from the knowledge base" fill sizes="(min-width: 1024px) 560px, 100vw" className="object-contain" />

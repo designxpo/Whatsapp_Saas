@@ -279,7 +279,7 @@ export function ComparisonTable() {
             </thead>
             <tbody>
               {COMPARE_ROWS.map((row, ri) => (
-                <tr key={row.feature} className={ri % 2 ? "bg-slate-50/60" : "bg-white"}>
+                <tr key={row.feature} className={`transition-colors hover:bg-[#0783fd]/[0.04] ${ri % 2 ? "bg-slate-100/70" : "bg-white"}`}>
                   <th scope="row" className="px-4 py-3 text-left text-[12.5px] font-medium leading-snug text-slate-700">{row.feature}</th>
                   {row.values.map((v, ci) => (
                     <td key={ci} className={`px-2 py-3 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}><CompareCell value={v} /></td>

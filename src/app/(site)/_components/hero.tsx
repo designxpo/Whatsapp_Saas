@@ -117,7 +117,7 @@ export function Hero() {
           <Parallax speed={-34} className="relative mx-auto mt-12 max-w-md">
             <div className="animate-floaty rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
               <div className="flex items-center justify-between px-2 pb-2 pt-1">
-                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Live in your inbox</span>
+                <span className="text-xs font-semibold text-slate-500">Live in your inbox</span>
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#2f9e6e]">
                   <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2f9e6e] opacity-60" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2f9e6e]" /></span>
                   Auto-replied by AI
@@ -136,7 +136,7 @@ export function Hero() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] text-slate-900"><span className="font-bold">{a.name}</span> <span className="text-slate-500">{a.action}</span></p>
-                      <p className="flex items-center gap-1 truncate text-[11px] text-slate-400"><Check className="h-3 w-3 text-[#0783fd]" /> {a.meta}</p>
+                      <p className="flex items-center gap-1 truncate text-xs text-slate-500"><Check className="h-3 w-3 text-[#0783fd]" /> {a.meta}</p>
                     </div>
                   </div>
                 ))}

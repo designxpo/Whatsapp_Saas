@@ -120,7 +120,7 @@ export function AgentCanvas() {
                     <div key={a.id} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2 text-center">
                       <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={a.icon} className="h-3 w-3" /></span>
                       <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{a.title}</div>
-                      <div className="text-[9px] leading-tight text-slate-400">{a.sub}</div>
+                      <div className="text-[10px] leading-tight text-slate-500">{a.sub}</div>
                     </div>
                   ))}
                 </div>
