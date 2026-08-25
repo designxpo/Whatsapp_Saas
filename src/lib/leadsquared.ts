@@ -160,7 +160,10 @@ export async function lsqConfigured(tenantId: string = DEFAULT_TENANT_ID): Promi
 // flow into 12+ tiny timeline entries.
 const SESSION_GAP_MS = Math.max(1, parseInt(process.env.LSQ_SESSION_GAP_MINUTES ?? "10", 10)) * 60_000;
 const SESSION_NOTE_CAP = 8000;
-const SESSION_MAX_ATTEMPTS = 5;
+// A buffered session holds real customer messages that exist NOWHERE in the CRM
+// yet, so a failing flush must never throw them away — it backs off instead and
+// keeps the row until it lands. Minutes by attempt number, then hourly-ish.
+const SESSION_BACKOFF_MIN = [5, 15, 60, 180, 360, 720, 1440];
 
 // Read-only connectivity check for the Setup wizard. RetrieveLeadByPhoneNumber
 // with a dummy number NEVER creates data — a 200 (even empty) means the keys +
@@ -170,7 +173,16 @@ export async function verifyLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<{
   if (!c) return { ok: false, detail: "LeadSquared isn't set up for this workspace yet — add your keys in Settings." };
   try {
     const res = await fetch(`${c.host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&phone=${encodeURIComponent("+10000000000")}`, { signal: AbortSignal.timeout(8000) });
-    if (res.ok) return { ok: true, detail: "Connected — your LeadSquared keys work." };
+    if (res.ok) {
+      // Reading is not writing: LSQ serves lead lookups happily while rejecting
+      // every activity Create (e.g. the custom activity type was deactivated so
+      // the event code no longer resolves).
+      const { held, lastError } = await crmSessionStats(tenantId);
+      if (held > 0 && lastError) {
+        return { ok: false, detail: `Connected, but timeline pushes are FAILING — ${held} conversation(s) buffered and unsent. LeadSquared says: ${lastError}` };
+      }
+      return { ok: true, detail: "Connected — your LeadSquared keys work." };
+    }
     if (res.status === 401 || res.status === 403) return { ok: false, detail: "LeadSquared rejected the keys — double-check your Access Key and Secret Key." };
     return { ok: false, detail: `LeadSquared returned HTTP ${res.status} — check the API host region (e.g. https://api-in21.leadsquared.com).` };
   } catch {
@@ -591,6 +603,15 @@ type PushResult = { ok: true; skipped?: true } | { ok: false; retriable: boolean
 // 400/404 are permanent (bad payload / deleted lead) — retrying can't help.
 const RETRIABLE_HTTP = new Set([401, 403, 408, 429, 500, 502, 503, 504]);
 
+// LeadSquared does NOT use HTTP status to separate "our fault" from "your input
+// is wrong": a rejected ActivityEvent comes back as HTTP 500 with an MXException
+// body, and some rejections come back as HTTP 200 with {"Status":"Failed"}. Read
+// as success-or-retry, that is how deactivating a tenant's custom activity type
+// silently destroyed a day of conversations on the internal build.
+function lsqRejectedInput(body: string): boolean {
+  return /IsMXException|MXInvalidActivityException|Invalid event code|invalid or empty|"Status"\s*:\s*"(Failed|Error)"/i.test(body);
+}
+
 async function postActivity(c: LsqCreds, leadId: string, note: string): Promise<PushResult> {
   try {
     const res = await fetch(`${c.host}/v2/ProspectActivity.svc/Create?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}`, {
@@ -599,9 +620,11 @@ async function postActivity(c: LsqCreds, leadId: string, note: string): Promise<
       body: JSON.stringify({ RelatedProspectId: leadId, ActivityEvent: c.activityCode, ActivityNote: note }),
       signal: AbortSignal.timeout(8000),
     });
-    if (res.ok) return { ok: true };
     const detail = (await res.text().catch(() => "")).slice(0, 200);
-    return { ok: false, retriable: RETRIABLE_HTTP.has(res.status), error: `HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${detail}` };
+    // A 2xx is only a real success if LSQ didn't put a failure in the body.
+    if (res.ok && !lsqRejectedInput(detail)) return { ok: true };
+    const retriable = res.ok ? false : RETRIABLE_HTTP.has(res.status) && !lsqRejectedInput(detail);
+    return { ok: false, retriable, error: `HTTP ${res.status} (lead ${leadId}, event ${c.activityCode}): ${detail}` };
   } catch (err) {
     return { ok: false, retriable: true, error: errorMessage(err) };   // network — always retriable
   }
@@ -852,6 +875,12 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
 // tenants like drainCrmSync — each row resolves its own tenant's LSQ creds.
 export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promise<{ flushed: number; deferred: number }> {
   let flushed = 0, deferred = 0;
+  const perTenant = new Map<string, { flushed: number; deferred: number; lastError: string }>();
+  const tally = (tid: string, key: "flushed" | "deferred", err = "") => {
+    const t = perTenant.get(tid) ?? { flushed: 0, deferred: 0, lastError: "" };
+    t[key]++; if (err) t.lastError = err;
+    perTenant.set(tid, t);
+  };
   try {
     const cutoff = new Date(Date.now() - SESSION_GAP_MS).toISOString();
     const { data, error } = await db().from("wa_crm_session")
@@ -870,7 +899,7 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
       // blip) — leave it leased; it retries on a later tick like drainCrmSync
       // treats the same ambiguity.
       const c = await resolveLsq(row.tenant_id);
-      if (!c) { deferred++; continue; }
+      if (!c) { deferred++; tally(row.tenant_id, "deferred"); continue; }
 
       let note = row.lines.join("\n");
       if (note.length > SESSION_NOTE_CAP) note = "…[earlier messages truncated]…\n" + note.slice(-SESSION_NOTE_CAP);
@@ -880,22 +909,57 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
         const del = await db().from("wa_crm_session").delete().eq("id", row.id).eq("last_message_at", lease);
         if (del.error) console.error(`[leadsquared] session flush posted but delete failed (row ${row.id} may duplicate): ${del.error.message}`);
         flushed++;
+        tally(row.tenant_id, "flushed");
         continue;
       }
+      // HOLD, never delete. Deleting on failure is what turned a deactivated
+      // LeadSquared activity type into silent data loss: every push failed, the
+      // cap was reached, and a day of real conversations was dropped while the
+      // connectivity check still read green. Held rows cost nothing and
+      // re-flush by themselves the moment the tenant's CRM side is fixed.
       const attempts = (row.attempts ?? 0) + 1;
-      if (attempts >= SESSION_MAX_ATTEMPTS || !r.retriable) {
-        console.error(`[leadsquared] session flush dropped after ${attempts} attempt(s): ${r.error}`);
-        await db().from("wa_crm_session").delete().eq("id", row.id).eq("last_message_at", lease);
-      } else {
-        console.error(`[leadsquared] session flush deferred (attempt ${attempts}): ${r.error}`);
-        await db().from("wa_crm_session").update({ attempts, last_message_at: lease }).eq("id", row.id).eq("last_message_at", lease);
-      }
+      // A permanent rejection means LeadSquared is refusing the request itself
+      // (bad/deactivated event code), which only a human fixing that tenant's
+      // CRM config can clear — hold at the slowest tier rather than re-asking
+      // every few minutes. Transient faults keep the gentle ramp.
+      const tier = r.retriable ? Math.min(attempts - 1, SESSION_BACKOFF_MIN.length - 1) : SESSION_BACKOFF_MIN.length - 1;
+      const nextAt = new Date(Date.now() + SESSION_BACKOFF_MIN[tier] * 60_000).toISOString();
+      console.error(`[leadsquared] session flush held (attempt ${attempts}, retrying in ${SESSION_BACKOFF_MIN[tier]}m): ${r.error}`);
+      await db().from("wa_crm_session").update({ attempts, last_message_at: nextAt }).eq("id", row.id).eq("last_message_at", lease);
       deferred++;
+      tally(row.tenant_id, "deferred", r.error ?? "unknown error");
     }
   } catch (err) {
     console.error("[leadsquared] flushCrmSessions failed:", errorMessage(err));
   }
+  for (const [tid, t] of perTenant) await recordSessionFlushHealth(tid, t);
   return { flushed, deferred };
+}
+
+// Write-path health, per tenant. verifyLsq only proves we can READ from
+// LeadSquared, which is why it stayed green through a total write outage.
+// Persist the last flush result so the status surface can say that pushes are
+// failing, and why. Best-effort: a settings write must never break the flush.
+async function recordSessionFlushHealth(tenantId: string, t: { flushed: number; deferred: number; lastError: string }): Promise<void> {
+  try {
+    await db().from("wa_settings").upsert({
+      tenant_id: tenantId, key: "crm_session_flush_health",
+      value: { at: new Date().toISOString(), flushed: t.flushed, deferred: t.deferred, lastError: t.lastError.slice(0, 400) },
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "tenant_id,key" });
+  } catch { /* diagnostic only */ }
+}
+
+// How many of this tenant's buffered sessions are stuck, and why.
+export async function crmSessionStats(tenantId: string = DEFAULT_TENANT_ID): Promise<{ held: number; lastError: string }> {
+  try {
+    const [{ count }, { data }] = await Promise.all([
+      db().from("wa_crm_session").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gt("attempts", 0),
+      db().from("wa_settings").select("value").eq("tenant_id", tenantId).eq("key", "crm_session_flush_health").maybeSingle(),
+    ]);
+    const v = (data?.value ?? {}) as { lastError?: string };
+    return { held: count ?? 0, lastError: v.lastError ?? "" };
+  } catch { return { held: 0, lastError: "" }; }
 }
 
 // Queue health: how much is waiting / dead (optionally for one tenant).
