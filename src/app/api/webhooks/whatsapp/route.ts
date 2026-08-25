@@ -16,6 +16,7 @@ import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequenc
 import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
 import { transcribeAudio } from "@/lib/voice";
+import { formAnswers, messageText } from "@/lib/wa-message";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
 import { getChannelByPhoneNumberId, recordChannelQuality, type Channel } from "@/lib/channels";
 import { DEFAULT_TENANT_ID } from "@/lib/auth";
@@ -48,50 +49,27 @@ export async function GET(req: Request) {
   return new NextResponse("Forbidden", { status: 403 });
 }
 
-// Parses a WhatsApp form (Flows) submission into { field: answer } pairs.
-function formAnswers(m: Record<string, unknown>): Record<string, string> | null {
-  const it = m.interactive as Record<string, unknown> | undefined;
-  const nfm = it?.nfm_reply as Record<string, unknown> | undefined;
-  if (!nfm?.response_json) return null;
-  try {
-    const resp = JSON.parse(nfm.response_json as string) as Record<string, unknown>;
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(resp)) {
-      if (k === "flow_token" || v === null || v === undefined) continue;
-      // Choice fields submit option ids like "1_Data_Science" — strip the index.
-      const clean = (s: string) => s.replace(/^\d+_/, "").replaceAll("_", " ");
-      out[k] = Array.isArray(v) ? v.map(x => clean(String(x))).join(", ") : clean(String(v));
-    }
-    return out;
-  } catch { return null; }
-}
+// Media kinds Meta delivers as a downloadable attachment id.
+const MEDIA_TYPES = ["image", "video", "document", "sticker", "audio"] as const;
 
-// Extracts readable text from a Meta inbound message object.
-function messageText(m: Record<string, unknown>): string {
+// Downloads an attachment from Meta and re-hosts it so Live Chat can show or
+// play it. Used by BOTH the inbound path and the coexistence echo path — a
+// counselor's photo or PDF sent from the WhatsApp Business App used to land as
+// a bare "[image message]"/"[document message]" with no file behind it.
+async function rehostMedia(m: Record<string, unknown>, channel?: Channel): Promise<{ url: string; mime: string } | null> {
   const type = m.type as string;
-  if (type === "text") return ((m.text as Record<string, unknown>)?.body as string) ?? "";
-  if (type === "button") return ((m.button as Record<string, unknown>)?.text as string) ?? "";
-  if (type === "order") {
-    const n = ((m.order as Record<string, unknown>)?.product_items as unknown[] | undefined)?.length ?? 0;
-    return `[cart] ${n} item${n === 1 ? "" : "s"}`;
+  if (!(MEDIA_TYPES as readonly string[]).includes(type)) return null;
+  const mediaId = (m[type] as Record<string, unknown> | undefined)?.id as string | undefined;
+  if (!mediaId) return null;
+  const media = await downloadMedia(mediaId, channel);
+  if (!media) {
+    console.warn(JSON.stringify({ tag: "media_download_failed", type, mediaId: !!mediaId }));
+    return null;
   }
-  if (type === "interactive") {
-    const it = m.interactive as Record<string, unknown>;
-    const answers = formAnswers(m);
-    if (answers) {
-      const lines = Object.entries(answers).map(([k, v]) => `${k.replaceAll("_", " ")}: ${v}`);
-      return `[form] ${lines.join(" · ") || "submitted"}`;
-    }
-    const br = (it?.button_reply ?? it?.list_reply) as Record<string, unknown> | undefined;
-    return (br?.title as string) ?? "";
-  }
-  // A tap-react on one of our messages — Meta omits "emoji" when the customer
-  // REMOVES their reaction, not just when they add one.
-  if (type === "reaction") {
-    const emoji = (m.reaction as Record<string, unknown> | undefined)?.emoji as string | undefined;
-    return emoji || "(removed a reaction)";
-  }
-  return `[${type} message]`;
+  const url = type === "audio"
+    ? await uploadAudio(media.data, media.mimeType)
+    : await uploadMedia(media.data, media.mimeType);
+  return url ? { url, mime: media.mimeType } : null;
 }
 
 // Coexistence (WhatsApp Business App on the same number): messages a counselor
@@ -118,8 +96,13 @@ async function handleEcho(value: Record<string, unknown>, e: Record<string, unkn
   const tid = channel?.tenantId ?? DEFAULT_TENANT_ID;
 
   const body = messageText(e).trim() || `[${(e.type as string) ?? "message"}]`;
+  // A counselor's photo / PDF / voice note sent from the phone app carries a
+  // media id like any inbound one. Without this it logged as a placeholder with
+  // no file behind it, so Live Chat showed "[document message]" and the
+  // counselor's own attachment was unrecoverable from the portal.
+  const media = await rehostMedia(e, channel);
   const conv = await getOrCreateConversation(to, "", channel?.id ?? null, "whatsapp", tid);
-  await appendConvMessage({ conversationId: conv.id, role: "assistant", body, metaId: id, source: "agent", tenantId: tid, channelId: channel?.id ?? null });
+  await appendConvMessage({ conversationId: conv.id, role: "assistant", body, metaId: id, source: "agent", tenantId: tid, channelId: channel?.id ?? null, mediaUrl: media?.url ?? null, mediaType: media?.mime ?? null });
   await touchOutbound(conv.id, body);
   if (conv.botEnabled) await setBotEnabled(conv.id, false);  // human takeover from the phone app
   // after(), NOT a bare `void`: this is the LAST work in the request, so an
@@ -175,8 +158,8 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
   // Inbound voice note → transcribe with the tenant's AI and treat the transcript
   // as the message, so flows, the AI and CRM sync all work exactly as for text.
-  // (messageText returns a "[audio message]" placeholder for audio, so key off
-  // the type — never the text, which is non-empty here.)
+  // (messageText returns a "🎤 Voice note" label for audio, so key off the
+  // type — never the text, which is non-empty here.)
   let voiceInbound = false;
   if (m.type === "audio") {
     const audioId = (m.audio as Record<string, unknown> | undefined)?.id as string | undefined;
@@ -206,18 +189,14 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // The customer's caption (if any) becomes the message text; otherwise the
   // "[image message]" placeholder is kept so the AI / list behave as before.
   if (!mediaUrl && (m.type === "image" || m.type === "video" || m.type === "document" || m.type === "sticker")) {
-    const node = m[m.type] as Record<string, unknown> | undefined;
-    const mediaId = node?.id as string | undefined;
-    const media = mediaId ? await downloadMedia(mediaId, channel) : null;
+    const media = await rehostMedia(m, channel);
     if (media) {
-      mediaUrl = await uploadMedia(media.data, media.mimeType);
-      if (mediaUrl) {
-        mediaType = media.mimeType;
-        const caption = (node?.caption as string)?.trim();
-        if (caption) text = caption;
-        console.log(JSON.stringify({ tag: "media_stored", from, type: m.type, mime: media.mimeType }));
-      }
+      mediaUrl = media.url;
+      mediaType = media.mime;
+      console.log(JSON.stringify({ tag: "media_stored", from, type: m.type, mime: media.mime }));
     }
+    // messageText already resolved the caption (and a document's filename), so
+    // `text` needs no second read of the node here.
   }
 
   // Opt-out keyword — suppress, confirm, and stop. Never invoke the bot.
