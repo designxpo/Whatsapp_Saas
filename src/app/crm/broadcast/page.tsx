@@ -1,4 +1,5 @@
 "use client";
+import { templatePlaceholders, paramCount } from "@/lib/template-params";
 
 // Embeddable "broadcast to a list" panel for the CRM (LeadSquared custom tab).
 // Open as: /crm/broadcast?token=<CRM_PANEL_TOKEN>[&phones=9199...,9198...]
@@ -37,7 +38,9 @@ function BroadcastPanel() {
 
   const selected = templates.find(t => t.name === tplName && t.language === tplLang);
   const body = selected?.components?.find(c => c.type === "BODY")?.text ?? "";
-  const varCount = selected ? new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
+  // Positional ({{1}}) OR named ({{customer_name}}) — see template-params.ts.
+  const varTokens = selected ? templatePlaceholders(body) : [];
+  const varCount = paramCount(varTokens);
 
   async function send() {
     setError(""); setResult("");

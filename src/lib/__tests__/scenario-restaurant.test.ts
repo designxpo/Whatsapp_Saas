@@ -248,6 +248,10 @@ const ROHAN = "919876543210"; // phones are digits-only in storage
 const CONV = "conv-rohan";
 
 // ── Graph API fetch stub (whatsapp.sendCampaign is REAL in this suite) ─────────
+// graphCalls holds MESSAGE SENDS only. The send path also GETs
+// /message_templates to learn whether the template takes positional or NAMED
+// parameters; counting that read as a send made "aborted after 5 failures" look
+// like 6 attempts.
 const graphCalls: { url: string; body: Record<string, any> }[] = [];
 const failPhones = new Set<string>();
 
@@ -328,6 +332,10 @@ beforeEach(() => {
   failPhones.clear();
   vi.stubGlobal("fetch", vi.fn(async (url: unknown, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : {};
+    // Template-definition lookup: answer it, but it is not a send.
+    if (String(url).includes("/message_templates")) {
+      return { ok: true, status: 200, json: async () => ({ data: [] }), text: async () => "" } as unknown as Response;
+    }
     graphCalls.push({ url: String(url), body });
     if (failPhones.has(String(body.to))) {
       return { ok: false, status: 400, json: async () => ({ error: { message: "(#131026) Message undeliverable" } }), text: async () => "" } as unknown as Response;

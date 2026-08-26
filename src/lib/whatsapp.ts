@@ -3,6 +3,7 @@ import { fillVars, flattenForTemplate } from "./mergefields";
 import { getTrackedUrls, mintLinks } from "./links";
 import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
+import { templatePlaceholders, bodyParameters } from "./template-params";
 import { moderateText, collectStrings } from "./moderation";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -77,6 +78,26 @@ export interface SendResult {
 
 // Sends a template to a batch of recipients, logging each to wa_send_log.
 // Skips opted-out numbers. Returns aggregate counts.
+// A template's body placeholders, needed to build the parameter payload.
+//
+// Meta declares one of two formats and they are not interchangeable: NAMED
+// wants { parameter_name, text } per value, POSITIONAL wants a bare ordered
+// array. Sending the wrong shape is (#132000) even when the COUNT is right.
+// Resolved from the live definition — one Graph call per send batch, not per
+// recipient — and an unreachable Meta yields no tokens, which keeps the
+// previous positional behaviour rather than blocking the send.
+async function templateTokens(name: string, language: string | undefined, channel?: ChannelCreds): Promise<string[]> {
+  try {
+    const list = await fetchTemplates(channel);
+    const found = list.find(t => t.name === name && (!language || t.language === language))
+      ?? list.find(t => t.name === name);
+    const body = (found?.components ?? []).find(c => c.type === "BODY");
+    return templatePlaceholders((body as { text?: string } | undefined)?.text);
+  } catch {
+    return [];
+  }
+}
+
 export async function sendCampaign(params: {
   campaignId: string;
   templateName: string;
@@ -115,6 +136,8 @@ export async function sendCampaign(params: {
   // Click tracking: templates submitted with "Enable click tracking" have their
   // URL buttons pointing at {SITE}/r/{{1}} — each recipient gets a unique code.
   const trackedUrls = await getTrackedUrls(params.templateName, params.tenantId).catch(() => []);
+  // Once per campaign, not per recipient.
+  const tplTokens = await templateTokens(params.templateName, params.languageCode, params.channel);
 
   // Rich personalization. {name} stays exactly what it always was (first name,
   // the documented broadcast token); {{token}} additionally resolves against the
@@ -147,7 +170,9 @@ export async function sendCampaign(params: {
     });
     const components: unknown[] = [];
     if (params.headerImageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: params.headerImageUrl } }] });
-    if (vars.length) components.push({ type: "body", parameters: vars.map(t => ({ type: "text", text: t })) });
+    // NAMED templates need each value tagged with its placeholder name.
+    const bodyParams = bodyParameters(vars, tplTokens);
+    if (bodyParams.length) components.push({ type: "body", parameters: bodyParams });
     if (trackedUrls.length) {
       // The template's URL button is dynamic ({SITE}/r/{{1}}), so Meta requires a
       // parameter either way — fall back to "0" (redirects to the site home) if
@@ -248,7 +273,10 @@ export async function sendTemplateTest(params: {
   });
   const components: unknown[] = [];
   if (params.headerImageUrl) components.push({ type: "header", parameters: [{ type: "image", image: { link: params.headerImageUrl } }] });
-  if (vars.length) components.push({ type: "body", parameters: vars.map(t => ({ type: "text", text: t })) });
+  // Resolved the same way as a real send — a test that renders differently from
+  // the broadcast it is testing is worse than no test.
+  const bodyParams = bodyParameters(vars, await templateTokens(params.templateName, params.languageCode, params.channel));
+  if (bodyParams.length) components.push({ type: "body", parameters: bodyParams });
   const trackedUrls = await getTrackedUrls(params.templateName, params.tenantId).catch(() => []);
   for (const t of trackedUrls) {
     components.push({ type: "button", sub_type: "url", index: String(t.index), parameters: [{ type: "text", text: "0" }] });
@@ -387,7 +415,12 @@ export async function sendTemplateSingle(phone: string, templateName: string, la
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const components: Record<string, unknown>[] = [];
   if (headerImageUrl?.trim()) components.push({ type: "header", parameters: [{ type: "image", image: { link: headerImageUrl.trim() } }] });
-  if (bodyParams.length) components.push({ type: "body", parameters: bodyParams.map(t => ({ type: "text", text: t })) });
+  // Only look up the format when there is something to substitute — most single
+  // sends (flow steps, notifications) pass no params and must not pay for it.
+  if (bodyParams.length) {
+    const params = bodyParameters(bodyParams, await templateTokens(templateName, languageCode, channel));
+    if (params.length) components.push({ type: "body", parameters: params });
+  }
   // Values for dynamic URL buttons (https://…/{{1}}), indexed by button position.
   if (buttonUrlParams?.length) components.push(...urlButtonComponents(buttonUrlParams));
   // The template BODY was approved by Meta, but its parameters are runtime

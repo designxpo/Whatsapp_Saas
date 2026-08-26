@@ -1,4 +1,5 @@
 "use client";
+import { templatePlaceholders, paramCount } from "@/lib/template-params";
 
 // Drag-and-drop chatbot flow builder (React Flow canvas).
 // Toolbox → drag a block onto the canvas → connect handles → Save. Test in the
@@ -489,7 +490,9 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
   useEffect(() => { loadTemplates().then(setTpls); }, []);
   const sel = tpls.find(t => t.name === str(data.templateName) && t.language === str(data.lang));
   const bodyText = sel?.components?.find(c => c.type === "BODY")?.text ?? "";
-  const varCount = sel ? new Set(Array.from(bodyText.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
+  // Positional ({{1}}) OR named ({{customer_name}}) — see template-params.ts.
+  const varTokens = sel ? templatePlaceholders(bodyText) : [];
+  const varCount = paramCount(varTokens);
   const needsImage = !!sel?.components?.some(c => c.type === "HEADER" && c.format === "IMAGE");
   // A carousel template (BODY + CAROUSEL) can't be sent like a standard one —
   // Meta needs each card's media at send time. Show the card editor instead.

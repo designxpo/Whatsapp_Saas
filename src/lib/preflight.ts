@@ -3,6 +3,8 @@
 // English BEFORE a send hits Meta. Used by broadcasts; the same checks back the
 // flow Template node and template builder so the rules stay consistent.
 
+import { templatePlaceholders, paramCount } from "./template-params";
+
 export interface TemplateLike {
   name?: string;
   status?: string;
@@ -44,12 +46,17 @@ export function templateIssues(
     return { blocking, warnings };
   }
 
-  // Body placeholders {{1}}..{{n}} must all be filled.
+  // Body placeholders must all be filled — positional ({{1}}..{{n}}) or NAMED
+  // ({{customer_name}}). Matching digits only meant a NAMED template validated
+  // as needing ZERO values, so preflight waved through the very send Meta then
+  // rejected with (#132000).
   const body = comps.find(c => c.type === "BODY")?.text ?? "";
-  const need = new Set(Array.from(body.matchAll(/\{\{(\d+)\}\}/g), m => Number(m[1])));
+  const tokens = templatePlaceholders(body);
+  const need = paramCount(tokens);
   const have = (supplied.bodyParams ?? []).filter(v => (v ?? "").trim()).length;
-  if (need.size > have) {
-    blocking.push(`${name} needs ${need.size} value${need.size === 1 ? "" : "s"} for its placeholder${need.size === 1 ? "" : "s"} ({{1}}…{{${need.size}}}) — you've filled ${have}.`);
+  if (need > have) {
+    const which = tokens.map(t => `{{${t}}}`).join(", ");
+    blocking.push(`${name} needs ${need} value${need === 1 ? "" : "s"} for its placeholder${need === 1 ? "" : "s"} (${which}) — you've filled ${have}.`);
   }
 
   // Media header needs its link.

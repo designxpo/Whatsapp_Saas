@@ -1,4 +1,5 @@
 "use client";
+import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
 
 // Broadcast tab — manual sends (BroadcastNow), API broadcasting rules, auto-sends
 // (Automations), and the BroadcastRail. Extracted from admin/page.tsx, lazy-loaded.
@@ -291,7 +292,12 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const headerFormat = comps.find(c => c.type === "HEADER")?.format ?? null;
   const needsImage = headerFormat === "IMAGE";
   const bodyPreview = comps.find(c => c.type === "BODY")?.text ?? "";
-  const varCount = selected ? new Set(Array.from(bodyPreview.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
+  // Placeholders may be positional ({{1}}) or NAMED ({{customer_name}}). Only
+  // digits were matched before, so a named template read as having no variables
+  // and the send went out with no body parameters — Meta answers (#132000).
+  const varTokens = selected ? templatePlaceholders(bodyPreview) : [];
+  const varCount = paramCount(varTokens);
+  const varLabel = (i: number) => isNamedFormat(varTokens) ? `{{${varTokens[i] ?? ""}}}` : `{{${i + 1}}}`;
   const varsArr = Array.from({ length: varCount }, (_, i) => variables.split(/\r?\n/)[i] ?? "");
   const setVar = (i: number, val: string) => setVariables(varsArr.map((v, j) => (j === i ? val : v)).join("\n"));
 
@@ -303,7 +309,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     setHeaderImageUrl("");                       // never carry a header into a template that lacks one
     const t = approved.find(x => x.name === n && x.language === l);
     const bt = t?.components?.find(c => c.type === "BODY")?.text ?? "";
-    const nVars = new Set(Array.from(bt.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size;
+    const nVars = paramCount(templatePlaceholders(bt));
     setVariables(Array.from({ length: nVars }, (_, i) => (i === 0 ? "{name}" : "")).join("\n"));
   }
 
@@ -432,8 +438,8 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="space-y-1.5">
               {varsArr.map((v, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs font-mono text-slate-400 w-12 shrink-0">{`{{${i + 1}}}`}</span>
-                  <input className={`${inp} flex-1`} placeholder={i === 0 ? "{name} — fills each contact's first name" : `Value for {{${i + 1}}}`} value={v} onChange={e => setVar(i, e.target.value)} />
+                  <span className="text-xs font-mono text-slate-400 max-w-[9rem] truncate shrink-0" title={varLabel(i)}>{varLabel(i)}</span>
+                  <input className={`${inp} flex-1`} placeholder={i === 0 ? "{name} — fills each contact's first name" : `Value for ${varLabel(i)}`} value={v} onChange={e => setVar(i, e.target.value)} />
                 </div>
               ))}
               <p className="text-[11px] text-slate-400">Tip: <b>{"{name}"}</b> is replaced with each recipient&apos;s first name. For anything else on the contact, use the same tokens as chatbot flows — <code className="bg-slate-100 px-1 rounded">{"{{city}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{email}}"}</code> <code className="bg-slate-100 px-1 rounded">{"{{fullname}}"}</code> or any collected attribute. A token a contact has no value for sends as empty, and Meta rejects empty template parameters — so only use tokens every contact in the audience actually has.</p>

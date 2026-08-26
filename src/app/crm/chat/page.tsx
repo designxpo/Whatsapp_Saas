@@ -1,4 +1,5 @@
 "use client";
+import { templatePlaceholders, paramCount } from "@/lib/template-params";
 
 // Embeddable WhatsApp chat panel for the CRM (LeadSquared custom tab / connector).
 // Open as: /crm/chat?phone=<lead phone>&token=<CRM_PANEL_TOKEN>&name=<lead name>&agent=<agent email>
@@ -80,7 +81,9 @@ function ChatPanel() {
 
   const selectedTpl = templates.find(t => t.name === tplName && t.language === tplLang);
   const tplBody = selectedTpl?.components?.find(c => c.type === "BODY")?.text ?? "";
-  const tplVarCount = selectedTpl ? new Set(Array.from(tplBody.matchAll(/\{\{(\d+)\}\}/g), m => m[1])).size : 0;
+  // Positional ({{1}}) OR named ({{customer_name}}) — see template-params.ts.
+  const tplVarTokens = selectedTpl ? templatePlaceholders(tplBody) : [];
+  const tplVarCount = paramCount(tplVarTokens);
 
   async function send() {
     const usingTemplate = !windowOpen;
