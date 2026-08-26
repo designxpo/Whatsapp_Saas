@@ -10,6 +10,12 @@
 # All cron work is idempotent (atomic claims), so delays/overlaps are safe.
 # If 1-minute precision is ever needed (e.g. tight flow reminders), point
 # cron-job.org at the same endpoint — both can run simultaneously.
+#
+# Do NOT add --retry here. The endpoint declares maxDuration 300, and curl
+# counts its OWN timeout as a transient error, so a retry fires while the
+# previous request is still draining the queue server-side. On the internal
+# build that turned one tick into four concurrent drains and put duplicate
+# marketing templates on real phones. The 5-minute schedule IS the retry.
 
 name: cron-process-queue
 
@@ -21,7 +27,7 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6      # must exceed the curl -m below, or the job kills a working drain
     steps:
       - name: Drain queue
         env:
@@ -38,7 +44,10 @@ jobs:
             echo "::error::CRON_URL repo variable is not set — point it at https://<your-saas-domain>/api/cron/process-queue (Settings → Secrets and variables → Actions → Variables)"
             exit 1
           fi
-          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -m 55 --retry 2 --retry-delay 5 \
+          # -m matches the route's maxDuration so a slow-but-working tick is
+          # never abandoned; --connect-timeout still fails fast if it is down.
+          code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" \
+            --connect-timeout 15 -m 290 \
             -X POST "$URL" -H "Authorization: Bearer $SECRET")
           echo "HTTP $code"
           cat /tmp/resp.json
