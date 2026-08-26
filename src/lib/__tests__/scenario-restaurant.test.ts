@@ -79,6 +79,7 @@ vi.mock("@/lib/supabase", () => {
       head: false,
       order: null as { col: string; asc: boolean } | null,
       limit: null as number | null,
+      range: null as { from: number; to: number } | null,
     };
     const matches = () => (tables[table] ?? []).filter(r => state.filters.every(f => f(r)));
     const stamp = (r: Row): Row => ({ id: `${table}-${++autoId}`, created_at: new Date().toISOString(), ...r });
@@ -119,6 +120,7 @@ vi.mock("@/lib/supabase", () => {
         });
       }
       if (state.limit != null) out = out.slice(0, state.limit);
+      if (state.range) out = out.slice(state.range.from, state.range.to + 1);
       if (state.head) return { data: null, error: null, count: out.length };
       return { data: state.single ? out[0] ?? null : out, error: null, count: out.length };
     }
@@ -152,8 +154,26 @@ vi.mock("@/lib/supabase", () => {
         if (op === "is" && val === null) state.filters.push(r => r[col] !== null && r[col] !== undefined);
         return api;
       },
+      // PostgREST or=(a,b,c) — OR-combined clauses, ANDed with everything else.
+      // Supports the forms this codebase issues: col.is.null, col.lt.<v>,
+      // col.eq.<v> and col.like.*<suffix>. A column absent from a stub row
+      // counts as null, which is how a nullable column reads before it is set.
+      or: (spec: string) => {
+        const clauses = spec.split(",").map(c => {
+          const [col, op, ...rest] = c.split(".");
+          const val = rest.join(".");
+          if (op === "is" && val === "null") return (r: Row) => r[col] == null;
+          if (op === "lt") return (r: Row) => r[col] != null && String(r[col]) < val;
+          if (op === "eq") return (r: Row) => String(r[col]) === val;
+          if (op === "like") { const suffix = val.replace(/^\*/, ""); return (r: Row) => typeof r[col] === "string" && (r[col] as string).endsWith(suffix); }
+          return () => false;
+        });
+        state.filters.push(r => clauses.some(f => f(r)));
+        return api;
+      },
       order: (col: string, opts?: { ascending?: boolean }) => { state.order = { col, asc: opts?.ascending ?? true }; return api; },
       limit: (n: number) => { state.limit = n; return api; },
+      range: (from: number, to: number) => { state.range = { from, to }; return api; },
       single: () => { state.single = true; return api; },
       maybeSingle: () => { state.single = true; return api; },
       insert: (row: unknown) => { state.op = "insert"; state.payload = row; return api; },

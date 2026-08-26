@@ -1,0 +1,9 @@
+id,title,severity,timestamp,file
+vuln-0005,next: Next.js: Denial of Service via crafted requests to App Router with Server Actions,HIGH,2026-08-08 09:29:06 UTC,vulnerabilities/vuln-0005.md
+vuln-0006,next: Next.js: Server-Side Request Forgery vulnerability,HIGH,2026-08-08 09:29:12 UTC,vulnerabilities/vuln-0006.md
+vuln-0007,next: Next.js: Server-Side Request Forgery via malicious host redirection in Server Actions,HIGH,2026-08-08 09:29:17 UTC,vulnerabilities/vuln-0007.md
+vuln-0001,Reflected XSS via Unsanitized URL in Live Chat Messages,MEDIUM,2026-08-08 09:23:09 UTC,vulnerabilities/vuln-0001.md
+vuln-0002,Hardcoded Secrets in Test Files,MEDIUM,2026-08-08 09:23:51 UTC,vulnerabilities/vuln-0002.md
+vuln-0003,nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customA ...,MEDIUM,2026-08-08 09:28:56 UTC,vulnerabilities/vuln-0003.md
+vuln-0004,nanoid (Nano ID) before 5.1.16 contains an infinite loop in the custom ...,MEDIUM,2026-08-08 09:29:01 UTC,vulnerabilities/vuln-0004.md
+vuln-0008,next: Next.js: Information disclosure via Server Action ID exposure,MEDIUM,2026-08-08 09:29:55 UTC,vulnerabilities/vuln-0008.md

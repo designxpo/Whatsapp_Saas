@@ -507,16 +507,73 @@ export async function enqueue(campaignId: string, recipients: { phone: string; f
   return data?.length ?? 0;
 }
 
+// A claim is honoured this long before another drain may take the row back.
+// Mirrors the interval inside claim_send_queue (migration 0044).
+const CLAIM_TTL_MS = 10 * 60_000;
+
 export async function claimPending(campaignId: string, limit: number): Promise<{ id: string; phone: string; fullName: string }[]> {
   // Atomic claim (migration 0044): FOR UPDATE SKIP LOCKED so concurrent
-  // workers/cron runs never grab the same rows. Falls back to a plain select if
-  // the RPC isn't deployed yet, so a missing migration never bricks sending.
+  // workers/cron runs never grab the same rows.
   const { data, error } = await db().rpc("claim_send_queue", { p_campaign: campaignId, p_limit: limit });
   if (!error && data) {
     return (data as Record<string, unknown>[]).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
   }
-  const { data: fb } = await db().from("wa_send_queue").select("id, phone, recipient_name").eq("campaign_id", campaignId).eq("status", "pending").order("created_at").limit(limit);
-  return (fb ?? []).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
+  // The fallback used to be a plain SELECT, on the reasoning that a missing
+  // migration should not brick sending. But rows stay 'pending' until markQueue
+  // runs AFTER the chunk has gone to Meta, so a bare read is not a claim: every
+  // overlapping drain re-sent the same people. The internal build ran on exactly
+  // that code and put 1,739 duplicate marketing templates on real phones.
+  //
+  // So the fallback claims too, using the same claimed_at marker. The UPDATE's
+  // own where clause is the claim — Postgres re-checks it after taking the row
+  // lock under READ COMMITTED, so of N concurrent drains exactly one wins a row.
+  const unclaimed = `claimed_at.is.null,claimed_at.lt.${new Date(Date.now() - CLAIM_TTL_MS).toISOString()}`;
+  const { data: cand } = await db().from("wa_send_queue")
+    .select("id").eq("campaign_id", campaignId).eq("status", "pending")
+    .or(unclaimed).order("created_at").limit(limit);
+  const ids = (cand ?? []).map(r => r.id as string);
+  if (ids.length === 0) return [];
+  const { data: won, error: claimErr } = await db().from("wa_send_queue")
+    .update({ claimed_at: new Date().toISOString() })
+    .in("id", ids).eq("status", "pending").or(unclaimed)
+    .select("id, phone, recipient_name");
+  // Pre-0044 there is no claimed_at column and this errors. Send nothing rather
+  // than fall back to an unclaimed read — a stalled queue is recoverable, a
+  // duplicated marketing blast is not.
+  if (claimErr) { console.error("[claimPending] no atomic claim available — run migration 0044", claimErr.message); return []; }
+  return (won ?? []).map(r => ({ id: r.id as string, phone: r.phone as string, fullName: (r.recipient_name as string) ?? "" }));
+}
+
+// Returns the subset of `phones` this campaign has ALREADY logged a send for,
+// as the very strings that were passed in, so the caller can filter its own
+// list without knowing that matching happens on the last 10 digits.
+//
+// Belt and braces behind the atomic claim: a queued broadcast sends each phone
+// once, so a claimed row already in the log is a duplicate by definition —
+// including the one case a claim cannot cover, a drain slow enough to outlive
+// CLAIM_TTL_MS and be reclaimed while still in flight. 'skipped' is excluded:
+// nothing was sent, so a later attempt (consent since granted) is legitimate.
+export async function phonesAlreadySent(campaignId: string, phones: string[], tenantId = DEFAULT_TENANT_ID): Promise<Set<string>> {
+  const out = new Set<string>();
+  if (phones.length === 0) return out;
+  const byKey = new Map<string, string[]>();
+  for (const p of phones) {
+    const k = last10(p);
+    if (!k) continue;
+    byKey.set(k, [...(byKey.get(k) ?? []), p]);
+  }
+  const keys = [...byKey.keys()];
+  for (let i = 0; i < keys.length; i += 200) {
+    const { data, error } = await db().from("wa_send_log")
+      .select("phone").eq("tenant_id", tenantId).eq("campaign_id", campaignId)
+      .in("status", ["sent", "delivered", "read", "failed"])
+      .or(keys.slice(i, i + 200).map(k => `phone.like.*${k}`).join(","));
+    if (error) return out;   // never let a lookup failure stall a real send
+    for (const r of data ?? []) {
+      for (const original of byKey.get(last10(r.phone as string)) ?? []) out.add(original);
+    }
+  }
+  return out;
 }
 
 export async function markQueue(ids: string[], status: "sent" | "failed" | "skipped"): Promise<void> {
@@ -533,9 +590,18 @@ export async function releaseQueueClaims(ids: string[]): Promise<void> {
   await db().from("wa_send_queue").update({ claimed_at: null }).in("id", ids).then(undefined, () => undefined);
 }
 
+// Work still SENDABLE: unclaimed, or claimed so long ago the claim has lapsed.
+// A chunk in flight is neither remaining nor lost — its rows land on their real
+// outcome the moment markQueue runs, and reappear here if that drain dies.
+// Falls back to the plain pending count on a pre-0044 schema.
 export async function countPending(campaignId: string): Promise<number> {
-  const { count } = await db().from("wa_send_queue").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("status", "pending");
-  return count ?? 0;
+  const q = db().from("wa_send_queue").select("*", { count: "exact", head: true })
+    .eq("campaign_id", campaignId).eq("status", "pending");
+  const { count, error } = await q.or(`claimed_at.is.null,claimed_at.lt.${new Date(Date.now() - CLAIM_TTL_MS).toISOString()}`);
+  if (!error) return count ?? 0;
+  const { count: plain } = await db().from("wa_send_queue").select("*", { count: "exact", head: true })
+    .eq("campaign_id", campaignId).eq("status", "pending");
+  return plain ?? 0;
 }
 
 export async function countQueueTotal(campaignId: string): Promise<number> {
@@ -594,15 +660,37 @@ export async function insertLog(entries: { campaignId: string; phone: string; re
   })));
 }
 
-export async function logCounts(campaignId: string): Promise<{ sent: number; failed: number; delivered: number; read: number }> {
-  const { data } = await db().from("wa_send_log").select("phone, status").eq("campaign_id", campaignId);
+// Furthest status each PERSON reached in one campaign, keyed by last-10 digits.
+//
+// Two failure modes lived here. The log was read with an unbounded select, which
+// PostgREST silently caps at max-rows — so a campaign with more log rows than
+// that undercounted badly (on the internal build a 670-person send reported
+// 427). And the log can hold several rows per person, from a retry or from a
+// non-atomic claim, so any caller that does not reduce to one row per person is
+// counting messages and calling them people. Paging fixes the first; sharing
+// this map is what keeps logCounts and campaignFunnel agreeing on the second.
+async function bestStatusPerPhone(campaignId: string): Promise<Map<string, string>> {
   const rank: Record<string, number> = { read: 4, delivered: 3, sent: 2, failed: 1, skipped: 0 };
   const best = new Map<string, string>();
-  for (const r of data ?? []) {
-    const k = last10(r.phone as string), s = r.status as string;
-    const cur = best.get(k);
-    if (cur === undefined || (rank[s] ?? -1) > (rank[cur] ?? -1)) best.set(k, s);
+  const PAGE = 1000;
+  // order() is required for range() to page deterministically.
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db().from("wa_send_log")
+      .select("phone, status").eq("campaign_id", campaignId)
+      .order("id").range(from, from + PAGE - 1);
+    if (error) break;
+    for (const r of data ?? []) {
+      const k = last10(r.phone as string), st = r.status as string;
+      const cur = best.get(k);
+      if (cur === undefined || (rank[st] ?? -1) > (rank[cur] ?? -1)) best.set(k, st);
+    }
+    if ((data?.length ?? 0) < PAGE) break;
   }
+  return best;
+}
+
+export async function logCounts(campaignId: string): Promise<{ sent: number; failed: number; delivered: number; read: number }> {
+  const best = await bestStatusPerPhone(campaignId);
   let sent = 0, failed = 0, delivered = 0, read = 0;
   for (const s of best.values()) {
     if (s === "read") { read++; delivered++; sent++; }
@@ -1805,14 +1893,21 @@ const SEGMENT_STATUS: Record<RetargetSegment, string> = {
   delivered_not_read: "delivered", sent_not_delivered: "sent", read: "read", failed: "failed",
 };
 
+// The delivery funnel, counted in PEOPLE.
+//
+// This counted log ROWS, one COUNT per status. With several rows per person that
+// inflates every tile and makes the detail page disagree with the campaign's own
+// stored sent_count and recipient total — on the internal build a send to 670
+// people read 1,431 in a workspace of 1,223 contacts. Reducing to one row per
+// person makes the funnel, logCounts and total_recipients three views of one
+// number.
 export async function campaignFunnel(campaignId: string): Promise<CampaignFunnel> {
   const f: CampaignFunnel = { total: 0, sent: 0, delivered: 0, read: 0, failed: 0, skipped: 0 };
-  // status column progresses sent → delivered → read, so each row counts once.
-  for (const s of ["sent", "delivered", "read", "failed", "skipped"] as const) {
-    const { count } = await db().from("wa_send_log").select("id", { count: "exact", head: true })
-      .eq("campaign_id", campaignId).eq("status", s);
-    f[s] = count ?? 0;
+  for (const s of (await bestStatusPerPhone(campaignId)).values()) {
+    if (s === "sent" || s === "delivered" || s === "read" || s === "failed" || s === "skipped") f[s]++;
   }
+  // Callers roll sent/delivered/read up cumulatively, so total must stay the sum
+  // of the exclusive buckets — which is now exactly the people reached.
   f.total = f.sent + f.delivered + f.read + f.failed + f.skipped;
   return f;
 }

@@ -1,0 +1,698 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Strix",
+          "informationUri": "https://strix.ai",
+          "rules": [
+            {
+              "id": "CWE-79",
+              "name": "Reflected XSS via Unsanitized URL in Live Chat Messages",
+              "shortDescription": {
+                "text": "Reflected XSS via Unsanitized URL in Live Chat Messages"
+              },
+              "fullDescription": {
+                "text": "The `linkify` function in `LiveChatTab.tsx` improperly sanitizes user-supplied URLs before inserting them into `<a>` tags within chat messages. This allows attackers to inject arbitrary HTML attributes, leading to reflected Cross-Site Scripting (XSS)."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "The `linkify` function in `LiveChatTab.tsx` improperly sanitizes user-supplied URLs before inserting them into `<a>` tags within chat messages. This allows attackers to inject arbitrary HTML attributes, leading to reflected Cross-Site Scripting (XSS).\n\nAn attacker can execute arbitrary JavaScript in the victim's browser, leading to session hijacking, data theft, or defacement.\n\n1. **Sanitize URL before use:** Before constructing an `<a>` tag, ensure that the URL `part` is properly HTML attribute encoded to prevent arbitrary attribute injection. Use a library like `dompurify` or a custom escaping function that specifically targets HTML attribute contexts.\n2. **Validate URL scheme:** Implement strict validation to allow only safe URL schemes (e.g., `http`, `https`, `mailto`) and reject any others, such as `javascript:`, `data:`, or `vbscript:`. While React handles `javascript:` in `href` by default, combining it with attribute injection can still pose risks.\n3. **Use React's built-in escaping for content:** For the text content of the `<a>` tag, ensure it is treated as plain text and not raw HTML, leveraging React's default escaping for JSX interpolated values.",
+                "markdown": "The `linkify` function in `LiveChatTab.tsx` improperly sanitizes user-supplied URLs before inserting them into `<a>` tags within chat messages. This allows attackers to inject arbitrary HTML attributes, leading to reflected Cross-Site Scripting (XSS).\n\nAn attacker can execute arbitrary JavaScript in the victim's browser, leading to session hijacking, data theft, or defacement.\n\n1. **Sanitize URL before use:** Before constructing an `<a>` tag, ensure that the URL `part` is properly HTML attribute encoded to prevent arbitrary attribute injection. Use a library like `dompurify` or a custom escaping function that specifically targets HTML attribute contexts.\n2. **Validate URL scheme:** Implement strict validation to allow only safe URL schemes (e.g., `http`, `https`, `mailto`) and reject any others, such as `javascript:`, `data:`, or `vbscript:`. While React handles `javascript:` in `href` by default, combining it with attribute injection can still pose risks.\n3. **Use React's built-in escaping for content:** For the text content of the `<a>` tag, ensure it is treated as plain text and not raw HTML, leveraging React's default escaping for JSX interpolated values."
+              },
+              "properties": {
+                "security-severity": "6.3",
+                "tags": [
+                  "security",
+                  "CWE-79",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/79.html"
+            },
+            {
+              "id": "CWE-798",
+              "name": "Hardcoded Secrets in Test Files",
+              "shortDescription": {
+                "text": "Hardcoded Secrets in Test Files"
+              },
+              "fullDescription": {
+                "text": "Several test files contain hardcoded secrets, such as 'test_app_secret', 'wanderly_signing_secret_2026', and 'skyline_signing_secret_2026'. While these are in test files, it is a security best practice to avoid hardcoding secrets even in non-production code."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Several test files contain hardcoded secrets, such as 'test_app_secret', 'wanderly_signing_secret_2026', and 'skyline_signing_secret_2026'. While these are in test files, it is a security best practice to avoid hardcoding secrets even in non-production code.\n\nPotential information disclosure and increased risk of accidental exposure of sensitive data if test files are ever exposed or mistakenly deployed to a production-like environment.\n\n1. Replace hardcoded secrets with references to environment variables or a dedicated secrets management system.\n2. Ensure that test configurations clearly separate sensitive data from the codebase.\n3. Implement a policy to disallow hardcoding of any secrets, even in test code.",
+                "markdown": "Several test files contain hardcoded secrets, such as 'test_app_secret', 'wanderly_signing_secret_2026', and 'skyline_signing_secret_2026'. While these are in test files, it is a security best practice to avoid hardcoding secrets even in non-production code.\n\nPotential information disclosure and increased risk of accidental exposure of sensitive data if test files are ever exposed or mistakenly deployed to a production-like environment.\n\n1. Replace hardcoded secrets with references to environment variables or a dedicated secrets management system.\n2. Ensure that test configurations clearly separate sensitive data from the codebase.\n3. Implement a policy to disallow hardcoding of any secrets, even in test code."
+              },
+              "properties": {
+                "security-severity": "5.3",
+                "tags": [
+                  "security",
+                  "CWE-798",
+                  "stride:S",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/798.html"
+            },
+            {
+              "id": "CWE-835",
+              "name": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customA ...",
+              "shortDescription": {
+                "text": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customA ..."
+              },
+              "fullDescription": {
+                "text": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customAlphabet and customRandom functions. When these functions are configured with a size of 0, the internal generation loop never satisfies its exit condition and spins indefinitely, hanging the calling thread. An application that passes an unvalidated, attacker-controlled size of 0 to these functions is exposed to a denial-of-service condition."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customAlphabet and customRandom functions. When these functions are configured with a size of 0, the internal generation loop never satisfies its exit condition and spins indefinitely, hanging the calling thread. An application that passes an unvalidated, attacker-controlled size of 0 to these functions is exposed to a denial-of-service condition.\n\nThe vulnerability in `nanoid` can lead to high impact.\n\nUpgrade `nanoid` to version `3.3.17, 5.1.6` or higher.",
+                "markdown": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customAlphabet and customRandom functions. When these functions are configured with a size of 0, the internal generation loop never satisfies its exit condition and spins indefinitely, hanging the calling thread. An application that passes an unvalidated, attacker-controlled size of 0 to these functions is exposed to a denial-of-service condition.\n\nThe vulnerability in `nanoid` can lead to high impact.\n\nUpgrade `nanoid` to version `3.3.17, 5.1.6` or higher."
+              },
+              "properties": {
+                "security-severity": "5.9",
+                "tags": [
+                  "security",
+                  "CWE-835",
+                  "CVE-2026-67213",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/835.html"
+            },
+            {
+              "id": "CWE-834",
+              "name": "next: Next.js: Denial of Service via crafted requests to App Router with Server Actions",
+              "shortDescription": {
+                "text": "next: Next.js: Denial of Service via crafted requests to App Router with Server Actions"
+              },
+              "fullDescription": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 13.0.0 through 15.5.20 and 16.0.0 through 16.2.10, crafted requests targeting Next.js applications using App Router with at least one Server Action can lead to excessive CPU usage blocking processing of further requests in the same process. This issue has been fixed in versions 15.5.21 and 16.2.11."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 13.0.0 through 15.5.20 and 16.0.0 through 16.2.10, crafted requests targeting Next.js applications using App Router with at least one Server Action can lead to excessive CPU usage blocking processing of further requests in the same process. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher.",
+                "markdown": "Next.js is a React framework for building full-stack web applications. In versions 13.0.0 through 15.5.20 and 16.0.0 through 16.2.10, crafted requests targeting Next.js applications using App Router with at least one Server Action can lead to excessive CPU usage blocking processing of further requests in the same process. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher."
+              },
+              "properties": {
+                "security-severity": "7.5",
+                "tags": [
+                  "security",
+                  "CWE-834",
+                  "CVE-2026-64641",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/834.html"
+            },
+            {
+              "id": "CWE-601",
+              "name": "next: Next.js: Server-Side Request Forgery vulnerability",
+              "shortDescription": {
+                "text": "next: Next.js: Server-Side Request Forgery vulnerability"
+              },
+              "fullDescription": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, a\n rewrites() or redirects() rule that builds its external destination hostname from request-controlled input can be pointed at an arbitrary hostname, regardless of the rule's hostname suffix. For a rewrite, Next.js proxies the request to that arbitrary host and serves the response from the application's origin, leading to Server-Side Request forgery. A redirects() rule configured this way is vulnerable to an Open Redirect. This issue has been fixed in versions 15.5.21 and 16.2.11."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, a\n rewrites() or redirects() rule that builds its external destination hostname from request-controlled input can be pointed at an arbitrary hostname, regardless of the rule's hostname suffix. For a rewrite, Next.js proxies the request to that arbitrary host and serves the response from the application's origin, leading to Server-Side Request forgery. A redirects() rule configured this way is vulnerable to an Open Redirect. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher.",
+                "markdown": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, a\n rewrites() or redirects() rule that builds its external destination hostname from request-controlled input can be pointed at an arbitrary hostname, regardless of the rule's hostname suffix. For a rewrite, Next.js proxies the request to that arbitrary host and serves the response from the application's origin, leading to Server-Side Request forgery. A redirects() rule configured this way is vulnerable to an Open Redirect. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher."
+              },
+              "properties": {
+                "security-severity": "8.2",
+                "tags": [
+                  "security",
+                  "CWE-601",
+                  "CVE-2026-64645",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/601.html"
+            },
+            {
+              "id": "CWE-918",
+              "name": "next: Next.js: Server-Side Request Forgery via malicious host redirection in Server Actions",
+              "shortDescription": {
+                "text": "next: Next.js: Server-Side Request Forgery via malicious host redirection in Server Actions"
+              },
+              "fullDescription": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 14.1.1 through 15.5.20 and 16.0.0 through 16.2.10, when a Server Action forwards or redirects a request, an attacker can cause the server to send that outbound request to a malicious host (Server-Side Request Forgery). This requires the attacker's request to control Host-associated headers. In some configurations, it's also possible to obtain internal values that weaken middleware/proxy authorization. Applications that use Server Actions are affected when the incoming host header is not fixed to a trusted value. This typically occurs on custom servers, or on deployments not behind a proxy that pins the host. Managed hosting pins the host upstream and is not affected; next start and standalone output do the same from version 14.2 onward. This issue has been fixed in versions 15.5.21 and 16.2.11."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "help": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 14.1.1 through 15.5.20 and 16.0.0 through 16.2.10, when a Server Action forwards or redirects a request, an attacker can cause the server to send that outbound request to a malicious host (Server-Side Request Forgery). This requires the attacker's request to control Host-associated headers. In some configurations, it's also possible to obtain internal values that weaken middleware/proxy authorization. Applications that use Server Actions are affected when the incoming host header is not fixed to a trusted value. This typically occurs on custom servers, or on deployments not behind a proxy that pins the host. Managed hosting pins the host upstream and is not affected; next start and standalone output do the same from version 14.2 onward. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher.",
+                "markdown": "Next.js is a React framework for building full-stack web applications. In versions 14.1.1 through 15.5.20 and 16.0.0 through 16.2.10, when a Server Action forwards or redirects a request, an attacker can cause the server to send that outbound request to a malicious host (Server-Side Request Forgery). This requires the attacker's request to control Host-associated headers. In some configurations, it's also possible to obtain internal values that weaken middleware/proxy authorization. Applications that use Server Actions are affected when the incoming host header is not fixed to a trusted value. This typically occurs on custom servers, or on deployments not behind a proxy that pins the host. Managed hosting pins the host upstream and is not affected; next start and standalone output do the same from version 14.2 onward. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to high impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher."
+              },
+              "properties": {
+                "security-severity": "8.2",
+                "tags": [
+                  "security",
+                  "CWE-918",
+                  "CVE-2026-64649",
+                  "stride:T",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/918.html"
+            },
+            {
+              "id": "CWE-201",
+              "name": "next: Next.js: Information disclosure via Server Action ID exposure",
+              "shortDescription": {
+                "text": "next: Next.js: Information disclosure via Server Action ID exposure"
+              },
+              "fullDescription": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, Next.js applications using App Router, Server Actions (use server) or use cache endpoints can be disclosed bypassing any authentication on the pages where these endpoints are usually used. Server Action IDs can be disclosed to unauthenticated users via publicly served client artifacts (for example, static chunks containing action references). Affected users are applications using App Router and Server Actions. By itself, this disclosure is typically a recon/enumeration primitive; however, it can increase risk when combined with other weaknesses. This issue has been fixed in versions 15.5.21 and 16.2.11."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "help": {
+                "text": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, Next.js applications using App Router, Server Actions (use server) or use cache endpoints can be disclosed bypassing any authentication on the pages where these endpoints are usually used. Server Action IDs can be disclosed to unauthenticated users via publicly served client artifacts (for example, static chunks containing action references). Affected users are applications using App Router and Server Actions. By itself, this disclosure is typically a recon/enumeration primitive; however, it can increase risk when combined with other weaknesses. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to medium impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher.",
+                "markdown": "Next.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, Next.js applications using App Router, Server Actions (use server) or use cache endpoints can be disclosed bypassing any authentication on the pages where these endpoints are usually used. Server Action IDs can be disclosed to unauthenticated users via publicly served client artifacts (for example, static chunks containing action references). Affected users are applications using App Router and Server Actions. By itself, this disclosure is typically a recon/enumeration primitive; however, it can increase risk when combined with other weaknesses. This issue has been fixed in versions 15.5.21 and 16.2.11.\n\nThe vulnerability in `next` can lead to medium impact.\n\nUpgrade `next` to version `15.5.21, 16.2.11` or higher."
+              },
+              "properties": {
+                "security-severity": "5.3",
+                "tags": [
+                  "security",
+                  "CWE-201",
+                  "CVE-2026-64643",
+                  "stride:I"
+                ]
+              },
+              "helpUri": "https://cwe.mitre.org/data/definitions/201.html"
+            }
+          ],
+          "version": "1.5.1"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "CWE-79",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {
+            "text": "Reflected XSS via Unsanitized URL in Live Chat Messages\n\nThe `linkify` function in `LiveChatTab.tsx` improperly sanitizes user-supplied URLs before inserting them into `<a>` tags within chat messages. This allows attackers to inject arbitrary HTML attributes, leading to reflected Cross-Site Scripting (XSS)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/admin/_tabs/LiveChatTab.tsx"
+                },
+                "region": {
+                  "startLine": 56,
+                  "endLine": 56,
+                  "snippet": {
+                    "text": "? <a key={i} href={part} target=\"_blank\" rel=\"noreferrer\" className=\"underline decoration-1 underline-offset-2 break-all hover:opacity-80\">{part}</a>"
+                  }
+                }
+              },
+              "message": {
+                "text": "Vulnerable `href` attribute construction"
+              }
+            },
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app/admin/_tabs/LiveChatTab.tsx"
+                },
+                "region": {
+                  "startLine": 6,
+                  "endLine": 6,
+                  "snippet": {
+                    "text": "import { useState, useEffect, useCallback, useRef, Fragment } from \"react\";"
+                  }
+                }
+              },
+              "message": {
+                "text": "Add `sanitizeUrl` and `encodeURIComponent` imports/definitions"
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/admin",
+                  "kind": "endpoint"
+                }
+              ]
+            }
+          ],
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "src/app/admin/_tabs/LiveChatTab.tsx"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 56,
+                        "endLine": 56
+                      },
+                      "insertedContent": {
+                        "text": "? <a key={i} href={sanitizeUrl(part)} target=\"_blank\" rel=\"noreferrer\" className=\"underline decoration-1 underline-offset-2 break-all hover:opacity-80\">{encodeURIComponent(part)}</a>"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "artifactLocation": {
+                    "uri": "src/app/admin/_tabs/LiveChatTab.tsx"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "startLine": 6,
+                        "endLine": 6
+                      },
+                      "insertedContent": {
+                        "text": "import { useState, useEffect, useCallback, useRef, Fragment } from \"react\";\nimport { sanitizeUrl } from \"@braintree/sanitize-url\"; // Or a similar URL sanitization library\n\n// Ensure encodeURIComponent is available for text content if needed, though React usually handles this.\n// For attribute values, a dedicated sanitization library is preferred."
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "1. **Sanitize URL before use:** Before constructing an `<a>` tag, ensure that the URL `part` is properly HTML attribute encoded to prevent arbitrary attribute injection. Use a library like `dompurify` or a custom escaping function that specifically targets HTML attribute contexts.\n2. **Validate URL scheme:** Implement strict validation to allow only safe URL schemes (e.g., `http`, `https`, `mailto`) and reject any others, such as `javascript:`, `data:`, or `vbscript:`. While React handles `javascript:` in `href` by default, combining it with attribute injection can still pose risks.\n3. **Use React's built-in escaping for content:** For the text content of the `<a>` tag, ensure it is treated as plain text and not raw HTML, leveraging React's default escaping for JSX interpolated values.",
+                "markdown": "1. **Sanitize URL before use:** Before constructing an `<a>` tag, ensure that the URL `part` is properly HTML attribute encoded to prevent arbitrary attribute injection. Use a library like `dompurify` or a custom escaping function that specifically targets HTML attribute contexts.\n2. **Validate URL scheme:** Implement strict validation to allow only safe URL schemes (e.g., `http`, `https`, `mailto`) and reject any others, such as `javascript:`, `data:`, or `vbscript:`. While React handles `javascript:` in `href` by default, combining it with attribute injection can still pose risks.\n3. **Use React's built-in escaping for content:** For the text content of the `<a>` tag, ensure it is treated as plain text and not raw HTML, leveraging React's default escaping for JSX interpolated values."
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "d7d50b91411e6ec333fcd6a620305ac7845f1d81d2b425c75f84dcd9cda6141b"
+          },
+          "properties": {
+            "security-severity": "6.3",
+            "strix_vuln_class_hash": "841d192a59e6812ef6a771cf84fa82963f628884ed58037aa16b7e6cdd3695f8",
+            "strix": {
+              "id": "vuln-0001",
+              "severity": "medium",
+              "cvss": 6.3,
+              "timestamp": "2026-08-08 09:23:09 UTC",
+              "target": "Live Chat Interface",
+              "endpoint": "/admin",
+              "cwe": "CWE-79",
+              "impact": "An attacker can execute arbitrary JavaScript in the victim's browser, leading to session hijacking, data theft, or defacement.",
+              "technical_analysis": "The `linkify` function identifies URL-like strings using a regex. If a substring matches, it is directly inserted into the `href` attribute and the text content of an `<a>` tag. An attacker can close the `href` attribute with a double quote and inject event handlers (e.g., `onmouseover`) or other malicious attributes. While React typically provides some level of escaping, direct attribute insertion from unsanitized user input in this manner can bypass default protections, especially with carefully crafted payloads that leverage embedded quotes.",
+              "remediation_steps": "1. **Sanitize URL before use:** Before constructing an `<a>` tag, ensure that the URL `part` is properly HTML attribute encoded to prevent arbitrary attribute injection. Use a library like `dompurify` or a custom escaping function that specifically targets HTML attribute contexts.\n2. **Validate URL scheme:** Implement strict validation to allow only safe URL schemes (e.g., `http`, `https`, `mailto`) and reject any others, such as `javascript:`, `data:`, or `vbscript:`. While React handles `javascript:` in `href` by default, combining it with attribute injection can still pose risks.\n3. **Use React's built-in escaping for content:** For the text content of the `<a>` tag, ensure it is treated as plain text and not raw HTML, leveraging React's default escaping for JSX interpolated values.",
+              "poc": {
+                "description": "1. An attacker sends a message containing a specially crafted URL-like payload.\n2. The `LiveChatTab` component receives and renders this message.\n3. The `linkify` function processes the payload, creating an `<a>` tag with injected attributes.\n4. When a victim views the message and interacts with the malicious link (e.g., by hovering over it), the injected JavaScript code executes.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-798",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "Hardcoded Secrets in Test Files\n\nSeveral test files contain hardcoded secrets, such as 'test_app_secret', 'wanderly_signing_secret_2026', and 'skyline_signing_secret_2026'. While these are in test files, it is a security best practice to avoid hardcoding secrets even in non-production code."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "988b5503f1724546925b4ae537ed4104f6e00269c6c327d67dcd81755e9e79f3"
+          },
+          "properties": {
+            "security-severity": "5.3",
+            "strix_vuln_class_hash": "d9bf580ac05cb1f20194c75648bd11d82bf36a648a918aa000ba084c1b9f17bd",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0002",
+              "severity": "medium",
+              "cvss": 5.3,
+              "timestamp": "2026-08-08 09:23:51 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cwe": "CWE-798",
+              "impact": "Potential information disclosure and increased risk of accidental exposure of sensitive data if test files are ever exposed or mistakenly deployed to a production-like environment.",
+              "technical_analysis": "The `rg` command revealed multiple instances of `secret` variables with hardcoded string values in various `*.test.ts` files. For example, `src/lib/__tests__/apiauth.test.ts` uses `const secret = \"test_app_secret\";`.",
+              "remediation_steps": "1. Replace hardcoded secrets with references to environment variables or a dedicated secrets management system.\n2. Ensure that test configurations clearly separate sensitive data from the codebase.\n3. Implement a policy to disallow hardcoding of any secrets, even in test code.",
+              "poc": {
+                "description": "1. Run `rg \"secret\" /workspace/alabs-connect-saas/ -g \"*test*\"` in the terminal.\n2. Observe the output showing files with hardcoded secret strings.",
+                "script_available": true
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-835",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "nanoid (Nano ID) before 5.1.6 contains an infinite loop in the customA ...\n\nnanoid (Nano ID) before 5.1.6 contains an infinite loop in the customAlphabet and customRandom functions. When these functions are configured with a size of 0, the internal generation loop never satisfies its exit condition and spins indefinitely, hanging the calling thread. An application that passes an unvalidated, attacker-controlled size of 0 to these functions is exposed to a denial-of-service condition."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "09e29b1c3f2d5a284f75334410939d72adf2e3ae2e000e8ef76e38b6fb77cfe6"
+          },
+          "properties": {
+            "security-severity": "5.9",
+            "strix_vuln_class_hash": "02e875b0299f3b388b0382654171584270558ed5eddcc13ada10b2457619897a",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0003",
+              "severity": "medium",
+              "cvss": 5.9,
+              "timestamp": "2026-08-08 09:28:56 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-67213",
+              "cwe": "CWE-835",
+              "impact": "The vulnerability in `nanoid` can lead to high impact.",
+              "remediation_steps": "Upgrade `nanoid` to version `3.3.17, 5.1.6` or higher.",
+              "dependency_metadata": {
+                "package_name": "nanoid",
+                "installed_version": "3.3.12",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "3.3.17, 5.1.6",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'nanoid' appears to be imported or required in the source code."
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-835",
+          "ruleIndex": 2,
+          "level": "warning",
+          "message": {
+            "text": "nanoid (Nano ID) before 5.1.16 contains an infinite loop in the custom ...\n\nnanoid (Nano ID) before 5.1.16 contains an infinite loop in the customAlphabet and nanoid functions of its non-secure module (nanoid/non-secure). When these functions are given a negative size, the loop counter is decremented from a negative value and never reaches its termination condition, spinning indefinitely and hanging the calling thread. An application that passes an unvalidated, attacker-controlled negative size to these functions is exposed to a denial-of-service condition."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "09e29b1c3f2d5a284f75334410939d72adf2e3ae2e000e8ef76e38b6fb77cfe6"
+          },
+          "properties": {
+            "security-severity": "5.9",
+            "strix_vuln_class_hash": "02e875b0299f3b388b0382654171584270558ed5eddcc13ada10b2457619897a",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0004",
+              "severity": "medium",
+              "cvss": 5.9,
+              "timestamp": "2026-08-08 09:29:01 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-67214",
+              "cwe": "CWE-835",
+              "impact": "The vulnerability in `nanoid` can lead to high impact.",
+              "remediation_steps": "Upgrade `nanoid` to version `3.3.16, 5.1.16` or higher.",
+              "dependency_metadata": {
+                "package_name": "nanoid",
+                "installed_version": "3.3.12",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "3.3.16, 5.1.16",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'nanoid' appears to be imported or required in the source code."
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-834",
+          "ruleIndex": 3,
+          "level": "error",
+          "message": {
+            "text": "next: Next.js: Denial of Service via crafted requests to App Router with Server Actions\n\nNext.js is a React framework for building full-stack web applications. In versions 13.0.0 through 15.5.20 and 16.0.0 through 16.2.10, crafted requests targeting Next.js applications using App Router with at least one Server Action can lead to excessive CPU usage blocking processing of further requests in the same process. This issue has been fixed in versions 15.5.21 and 16.2.11."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "0c40d6be679c361bb48b394d8fc6840754a7f4f72e059389ffc0729e86e0aed5"
+          },
+          "properties": {
+            "security-severity": "7.5",
+            "strix_vuln_class_hash": "660b1419a202b75fb54861776826152ff2e25f572d1e12707bfe6f5c714a3f16",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0005",
+              "severity": "high",
+              "cvss": 7.5,
+              "timestamp": "2026-08-08 09:29:06 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-64641",
+              "cwe": "CWE-834",
+              "impact": "The vulnerability in `next` can lead to high impact.",
+              "remediation_steps": "Upgrade `next` to version `15.5.21, 16.2.11` or higher.",
+              "dependency_metadata": {
+                "package_name": "next",
+                "installed_version": "15.5.19",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "15.5.21, 16.2.11",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'next' appears to be imported or required in the source code."
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-601",
+          "ruleIndex": 4,
+          "level": "error",
+          "message": {
+            "text": "next: Next.js: Server-Side Request Forgery vulnerability\n\nNext.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, a\n rewrites() or redirects() rule that builds its external destination hostname from request-controlled input can be pointed at an arbitrary hostname, regardless of the rule's hostname suffix. For a rewrite, Next.js proxies the request to that arbitrary host and serves the response from the application's origin, leading to Server-Side Request forgery. A redirects() rule configured this way is vulnerable to an Open Redirect. This issue has been fixed in versions 15.5.21 and 16.2.11."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "bf3a7d6cb54e2f5a3e1b09aba7109a432219ffa9af7fb8c52e33ed986fe9fbf8"
+          },
+          "properties": {
+            "security-severity": "8.2",
+            "strix_vuln_class_hash": "8bee1d4fd4e2b1da5623a0f2315259c37d2c6c8f000ba7facd55b97196fa94fb",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0006",
+              "severity": "high",
+              "cvss": 8.2,
+              "timestamp": "2026-08-08 09:29:12 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-64645",
+              "cwe": "CWE-601",
+              "impact": "The vulnerability in `next` can lead to high impact.",
+              "remediation_steps": "Upgrade `next` to version `15.5.21, 16.2.11` or higher.",
+              "dependency_metadata": {
+                "package_name": "next",
+                "installed_version": "15.5.19",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "15.5.21, 16.2.11",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'next' appears to be imported or required in the source code."
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-918",
+          "ruleIndex": 5,
+          "level": "error",
+          "message": {
+            "text": "next: Next.js: Server-Side Request Forgery via malicious host redirection in Server Actions\n\nNext.js is a React framework for building full-stack web applications. In versions 14.1.1 through 15.5.20 and 16.0.0 through 16.2.10, when a Server Action forwards or redirects a request, an attacker can cause the server to send that outbound request to a malicious host (Server-Side Request Forgery). This requires the attacker's request to control Host-associated headers. In some configurations, it's also possible to obtain internal values that weaken middleware/proxy authorization. Applications that use Server Actions are affected when the incoming host header is not fixed to a trusted value. This typically occurs on custom servers, or on deployments not behind a proxy that pins the host. Managed hosting pins the host upstream and is not affected; next start and standalone output do the same from version 14.2 onward. This issue has been fixed in versions 15.5.21 and 16.2.11."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "01595fcd3d882e43765a42bf05177d7383670ffbf92b364e4c9ae7c441b122df"
+          },
+          "properties": {
+            "security-severity": "8.2",
+            "strix_vuln_class_hash": "cdaef3e229e5ce3b51fd7172f80a2b5554d93d9c56443954f713e34330fd7f0b",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0007",
+              "severity": "high",
+              "cvss": 8.2,
+              "timestamp": "2026-08-08 09:29:17 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-64649",
+              "cwe": "CWE-918",
+              "impact": "The vulnerability in `next` can lead to high impact.",
+              "remediation_steps": "Upgrade `next` to version `15.5.21, 16.2.11` or higher.",
+              "dependency_metadata": {
+                "package_name": "next",
+                "installed_version": "15.5.19",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "15.5.21, 16.2.11",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'next' appears to be imported or required in the source code."
+              }
+            }
+          }
+        },
+        {
+          "ruleId": "CWE-201",
+          "ruleIndex": 6,
+          "level": "warning",
+          "message": {
+            "text": "next: Next.js: Information disclosure via Server Action ID exposure\n\nNext.js is a React framework for building full-stack web applications. In versions 12.0.0 through 15.5.20 and 16.0.0 through 16.2.10, Next.js applications using App Router, Server Actions (use server) or use cache endpoints can be disclosed bypassing any authentication on the pages where these endpoints are usually used. Server Action IDs can be disclosed to unauthenticated users via publicly served client artifacts (for example, static chunks containing action references). Affected users are applications using App Router and Server Actions. By itself, this disclosure is typically a recon/enumeration primitive; however, it can increase risk when combined with other weaknesses. This issue has been fixed in versions 15.5.21 and 16.2.11."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "SECURITY.md"
+                }
+              }
+            },
+            {
+              "logicalLocations": [
+                {
+                  "fullyQualifiedName": "/workspace/alabs-connect-saas",
+                  "kind": "resource"
+                }
+              ]
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "89b386a3aa20c65e9be669df7339b039fb67c015e8f6048817e25a4616c21fa3"
+          },
+          "properties": {
+            "security-severity": "5.3",
+            "strix_vuln_class_hash": "a99bbed6e8e35415d5eb84f9ffb31007b008ef13103233c89f021488083ba1ea",
+            "synthetic_location": true,
+            "strix": {
+              "id": "vuln-0008",
+              "severity": "medium",
+              "cvss": 5.3,
+              "timestamp": "2026-08-08 09:29:55 UTC",
+              "target": "/workspace/alabs-connect-saas",
+              "cve": "CVE-2026-64643",
+              "cwe": "CWE-201",
+              "impact": "The vulnerability in `next` can lead to medium impact.",
+              "remediation_steps": "Upgrade `next` to version `15.5.21, 16.2.11` or higher.",
+              "dependency_metadata": {
+                "package_name": "next",
+                "installed_version": "15.5.19",
+                "package_ecosystem": "npm",
+                "manifest_path": "package-lock.json",
+                "fixed_version": "15.5.21, 16.2.11",
+                "reachability": "imported",
+                "reachability_evidence": "Package 'next' appears to be imported or required in the source code."
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "syntheticLocationCount": 7
+      }
+    }
+  ]
+}

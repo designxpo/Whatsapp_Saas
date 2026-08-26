@@ -1,5 +1,5 @@
 import {
-  getCampaign, updateCampaign, enqueue, claimPending, markQueue, releaseQueueClaims, countPending, countQueueTotal,
+  getCampaign, updateCampaign, enqueue, claimPending, markQueue, releaseQueueClaims, phonesAlreadySent, countPending, countQueueTotal,
   logCounts, sentLast24h, recipientsForAudience, getDueScheduledSends, markScheduled, armFlow,
   type Campaign,
 } from "./store";
@@ -65,7 +65,18 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   const errs: string[] = [];
 
   if (claim > 0) {
-    const chunk = await claimPending(campaignId, claim);
+    const claimed = await claimPending(campaignId, claim);
+    // Second line of defence behind the atomic claim: never send to a phone this
+    // campaign has already logged a send for. One indexed lookup per chunk, and
+    // it covers the case the claim cannot — a drain slow enough to outlive its
+    // own claim and be reclaimed while still in flight.
+    const already = claimed.length ? await phonesAlreadySent(campaignId, claimed.map(c => c.phone), campaign.tenantId) : new Set<string>();
+    const chunk = claimed.filter(c => !already.has(c.phone));
+    const dupes = claimed.filter(c => already.has(c.phone));
+    if (dupes.length) {
+      console.warn(`[drain] ${campaignId}: skipped ${dupes.length} already-sent recipient(s)`);
+      await markQueue(dupes.map(c => c.id), "sent");   // retire, so they stop being re-claimed
+    }
     if (chunk.length > 0) {
       const r = await sendCampaign({
         campaignId,
