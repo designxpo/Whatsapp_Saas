@@ -3,7 +3,14 @@
 // Contacts: table + filters + CSV import/export, with the shared ContactProfile
 // drawer. Extracted from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useState, useEffect, useCallback } from "react";
-import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight } from "lucide-react";
+type AudienceBatch = { id: string; name: string; description: string | null; kind: "static" | "dynamic"; size: number; archivedAt: string | null };
+type BatchDetail = {
+  batch: AudienceBatch; size: number; noConsent: number | null; marketingReach: number | null;
+  members: { id: string; name: string; phone: string; optedIn: boolean; optInAt: string | null; addedAt: string | null }[];
+  memberTotal: number; offset: number; limit: number;
+};
+import { mapCsvRows, readTable, type ImportRow } from "@/lib/csv-import";
+import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { inp, type Tab, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 
@@ -21,82 +28,6 @@ const LEAD_SOURCES: [string, string][] = [
   ["import", "CSV import"], ["crm", "CRM"],
 ];
 
-// ── CSV upload + auto column mapping ──
-type ImportRow = { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> };
-
-// Minimal CSV parser — handles quoted fields and CRLF.
-function parseCsvText(text: string): string[][] {
-  const rows: string[][] = [];
-  let cur = "", row: string[] = [], inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQ) {
-      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
-      else cur += ch;
-    } else if (ch === '"') inQ = true;
-    else if (ch === ",") { row.push(cur); cur = ""; }
-    else if (ch === "\n" || ch === "\r") {
-      if (ch === "\r" && text[i + 1] === "\n") i++;
-      row.push(cur); cur = "";
-      if (row.some(c => c.trim() !== "")) rows.push(row);
-      row = [];
-    } else cur += ch;
-  }
-  row.push(cur);
-  if (row.some(c => c.trim() !== "")) rows.push(row);
-  return rows;
-}
-
-const CSV_COL: Record<string, string[]> = {
-  phone: ["phone", "mobile", "mobile number", "mobile_no", "whatsapp", "whatsapp number", "number", "contact", "contact number", "phone number", "msisdn"],
-  name: ["name", "full name", "fullname", "first name", "contact name", "customer name", "lead name"],
-  email: ["email", "e-mail", "email id", "email address"],
-  tags: ["tags", "tag", "labels", "label", "groups", "segment"],
-};
-const looksLikePhone = (s: string) => /^\+?\d[\d\s()-]{7,}$/.test(s.trim());
-
-// Auto-detects the header row and maps columns: known headers → fields, every
-// other headed column → a contact attribute. Headerless files fall back to
-// positional phone,name,tags.
-function mapCsvRows(cells: string[][]): { rows: ImportRow[]; mapping: string[] } {
-  if (!cells.length) return { rows: [], mapping: [] };
-  const head = cells[0].map(c => c.trim().toLowerCase());
-  const find = (names: string[]) => head.findIndex(h => names.includes(h));
-  let pi = find(CSV_COL.phone);
-  let ni = find(CSV_COL.name);
-  const ei = find(CSV_COL.email);
-  let ti = find(CSV_COL.tags);
-  const hasHeader = pi >= 0 || ni >= 0 || ei >= 0 || ti >= 0 || !looksLikePhone(cells[0][0] ?? "");
-  if (pi < 0) pi = 0;
-  if (!hasHeader) { if (ni < 0) ni = 1; if (ti < 0) ti = 2; }
-
-  const attrCols: { idx: number; key: string }[] = [];
-  if (hasHeader) {
-    cells[0].forEach((h, idx) => {
-      if (idx !== pi && idx !== ni && idx !== ei && idx !== ti && h.trim()) attrCols.push({ idx, key: h.trim() });
-    });
-  }
-  const dataRows = hasHeader ? cells.slice(1) : cells;
-  const rows: ImportRow[] = dataRows.map(r => {
-    const attributes: Record<string, string> = {};
-    for (const a of attrCols) { const v = (r[a.idx] ?? "").trim(); if (v) attributes[a.key] = v; }
-    return {
-      phone: (r[pi] ?? "").trim(),
-      name: ni >= 0 ? (r[ni] ?? "").trim() : "",
-      email: ei >= 0 ? ((r[ei] ?? "").trim() || undefined) : undefined,
-      tags: ti >= 0 ? (r[ti] ?? "").split(/[;|]/).map(t => t.trim()).filter(Boolean) : [],
-      ...(Object.keys(attributes).length ? { attributes } : {}),
-    };
-  }).filter(r => looksLikePhone(r.phone));
-  const mapping = [
-    `phone ← ${hasHeader ? `"${cells[0][pi]?.trim() || "column 1"}"` : "column 1"}`,
-    ni >= 0 ? `name ← ${hasHeader ? `"${cells[0][ni]?.trim()}"` : "column 2"}` : null,
-    ei >= 0 ? `email ← "${cells[0][ei]?.trim()}"` : null,
-    ti >= 0 ? `tags ← ${hasHeader ? `"${cells[0][ti]?.trim()}"` : "column 3"}` : null,
-    ...attrCols.map(a => `attribute "${a.key}"`),
-  ].filter(Boolean) as string[];
-  return { rows, mapping };
-}
 
 function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [profilePhone, setProfilePhone] = useState<string | null>(null);
@@ -117,7 +48,21 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [addPhone, setAddPhone] = useState("");
   const [addName, setAddName] = useState("");
   const [addTags, setAddTags] = useState("");
-  const [csvPreview, setCsvPreview] = useState<{ fileName: string; rows: ImportRow[]; mapping: string[]; skipped: number } | null>(null);
+  const [csvPreview, setCsvPreview] = useState<{ fileName: string; cells: string[][]; rows: ImportRow[]; mapping: string[]; skipped: number } | null>(null);
+  // Exports usually carry bare national numbers, which this API rejects as
+  // invalid E.164 — so the country code has to be applied, and visibly.
+  const [defaultCc, setDefaultCc] = useState("91");
+  const [skipBlocked, setSkipBlocked] = useState(true);
+  // Batches: named broadcast audiences (migration 0112).
+  const [batches, setBatches] = useState<AudienceBatch[]>([]);
+  const [showBatches, setShowBatches] = useState(false);
+  const [newBatchName, setNewBatchName] = useState("");
+  const [newBatchKind, setNewBatchKind] = useState<"static" | "dynamic">("static");
+  const [consentStats, setConsentStats] = useState<{ granted: number; missing: number } | null>(null);
+  const [openBatch, setOpenBatch] = useState<BatchDetail | null>(null);
+  const [batchOffset, setBatchOffset] = useState(0);
+  const [addQuery, setAddQuery] = useState("");
+  const [addHits, setAddHits] = useState<{ id: string; name: string; phone: string }[]>([]);
   const [adv, setAdv] = useState<AdvFilters>(EMPTY_ADV);          // draft (being edited)
   const [applied, setApplied] = useState<AdvFilters>(EMPTY_ADV);  // active (drives the query)
   const [importing, setImporting] = useState(false);
@@ -171,10 +116,10 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
     a.download = "contacts.csv"; a.click(); URL.revokeObjectURL(a.href);
   }
 
-  async function importRows(rows: ImportRow[], consent = true) {
+  async function importRows(rows: ImportRow[], consent = true, batchId?: string) {
     setImporting(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: rows, consent }) });
+      const res = await fetch("/api/admin/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: rows, consent, ...(batchId ? { batchId } : {}) }) });
       const d = await res.json();
       setMsg(res.ok
         ? `Imported ${d.inserted}, skipped ${d.skipped} (duplicates)${d.invalid ? `, ${d.invalid} invalid number${d.invalid === 1 ? "" : "s"}` : ""}.${consent ? "" : " Marked not-opted-in — excluded from broadcasts until they opt in."}`
@@ -190,16 +135,122 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
     if (ok) setShowAdd(false);
   }
 
+  const loadBatches = useCallback(() => {
+    fetch("/api/admin/batches").then(r => r.json()).then(d => {
+      setBatches(d.batches ?? []); setConsentStats(d.consent ?? null);
+    }).catch(() => {});
+  }, []);
+  useEffect(() => { loadBatches(); }, [loadBatches]);
+
+  // Re-derive the preview when the country code changes, so what is shown is
+  // always what would be stored.
+  useEffect(() => {
+    setCsvPreview(p => {
+      if (!p) return p;
+      const { rows, mapping } = mapCsvRows(p.cells, defaultCc);
+      return { ...p, rows, mapping };
+    });
+  }, [defaultCc]);
+
+  const openBatchDetail = useCallback(async (id: string, offset = 0) => {
+    const d = await fetch(`/api/admin/batches/${id}?offset=${offset}&limit=50`).then(r => r.json()).catch(() => null);
+    if (d?.batch) { setOpenBatch(d); setBatchOffset(offset); } else setMsg("Could not load that batch.");
+  }, []);
+
+  useEffect(() => {
+    const q = addQuery.trim();
+    if (!openBatch || q.length < 2) { setAddHits([]); return; }
+    const t = setTimeout(() => {
+      fetch(`/api/admin/contacts?search=${encodeURIComponent(q)}&limit=8`)
+        .then(r => r.json()).then(d => setAddHits(d.contacts ?? [])).catch(() => setAddHits([]));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [addQuery, openBatch]);
+
+  async function batchAction(id: string, body: Record<string, unknown>) {
+    const res = await fetch(`/api/admin/batches/${id}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    const d = await res.json();
+    if (!res.ok) { setMsg(d.error || "That didn't work."); return null; }
+    await openBatchDetail(id, batchOffset);
+    loadBatches();
+    return d;
+  }
+
+  async function createBatchNow() {
+    const name = newBatchName.trim();
+    if (!name) { setMsg("Give the batch a name."); return; }
+    const res = await fetch("/api/admin/batches", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, kind: newBatchKind }),
+    });
+    const d = await res.json();
+    if (!res.ok) { setMsg(d.error || "Could not create the batch"); return; }
+    setNewBatchName(""); setMsg(`Batch "${name}" created.`); loadBatches();
+  }
+
+  async function addSelectedToBatch(id: string) {
+    if (!selected.size) return;
+    const d = await batchAction(id, { action: "addMembers", contactIds: [...selected] });
+    if (d) {
+      setMsg(`Added ${d.added} of ${d.requested} to the batch${d.added < d.requested ? " (the rest were already in it)" : ""}.`);
+      setSelected(new Set());
+    }
+  }
+
+  // Create the batch if new, otherwise reuse the existing one — a 409 means
+  // "already exists", which for an import is success, not failure.
+  async function ensureBatch(name: string): Promise<string | null> {
+    const res = await fetch("/api/admin/batches", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, kind: "static" }),
+    });
+    if (res.ok) return (await res.json()).batch?.id ?? null;
+    const list = await fetch("/api/admin/batches").then(r => r.json()).catch(() => ({ batches: [] }));
+    return (list.batches ?? []).find((b: AudienceBatch) => b.name.toLowerCase() === name.toLowerCase())?.id ?? null;
+  }
+
+  // A file with a "Batch Name" column can span several batches, so import it in
+  // one group per batch rather than forcing one batch on the whole file.
+  async function importWithBatches(all: ImportRow[], consent: boolean) {
+    const usable = skipBlocked ? all.filter(r => !r.blocked) : all;
+    const heldBack = all.length - usable.length;
+    if (!usable.length) { setMsg("Every row in this file is marked blocked — nothing to import."); return false; }
+
+    const named = usable.filter(r => r.batchName);
+    if (!named.length) return importRows(usable, consent);
+
+    const groups = new Map<string, ImportRow[]>();
+    for (const r of usable) groups.set(r.batchName ?? "", [...(groups.get(r.batchName ?? "") ?? []), r]);
+    const notes: string[] = [];
+    let allOk = true;
+    for (const [name, group] of groups) {
+      const id = name ? await ensureBatch(name) : null;
+      allOk = (await importRows(group, consent, id ?? undefined)) && allOk;
+      notes.push(`${name || "no batch"}: ${group.length}`);
+    }
+    setMsg(`Imported ${usable.length} across ${groups.size} batch(es) — ${notes.join(", ")}.`
+      + (heldBack ? ` ${heldBack} blocked row(s) skipped.` : ""));
+    loadBatches();
+    return allOk;
+  }
+
   // CSV file picked — parse, auto-map columns, show the preview for confirmation.
   async function onCsvFile(f: File) {
     setMsg(null);
     try {
-      const cells = parseCsvText(await f.text());
-      const { rows, mapping } = mapCsvRows(cells);
+      const cells = await readTable(f);
+      const { rows, mapping } = mapCsvRows(cells, defaultCc);
       const dataCount = Math.max(0, cells.length - (rows.length === cells.length ? 0 : 1));
       if (!rows.length) { setMsg("No rows with a valid phone number found in this file."); setCsvPreview(null); return; }
-      setCsvPreview({ fileName: f.name, rows, mapping, skipped: Math.max(0, dataCount - rows.length) });
-    } catch { setMsg("Could not read that file — make sure it's a CSV."); }
+      setCsvPreview({ fileName: f.name, cells, rows, mapping, skipped: Math.max(0, dataCount - rows.length) });
+    } catch (err) {
+      // readTable explains .xls and non-zip cases specifically — keep that
+      // rather than replacing it with a generic "not a CSV".
+      setMsg(err instanceof Error ? err.message : "Could not read that file.");
+      setCsvPreview(null);
+    }
   }
 
   // Quick-range helpers for the filter chips.
@@ -237,10 +288,192 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
           className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-40">
           <Send className="w-4 h-4" /> BROADCAST{selected.size > 0 ? ` (${selected.size})` : ""}
         </button>
+        <select
+          className={`${toolbarBtn} ${selected.size ? "border-brand-dark text-brand-dark" : ""}`}
+          disabled={selected.size === 0} value=""
+          onChange={e => { if (e.target.value) addSelectedToBatch(e.target.value); }}
+          title={selected.size ? "Add the selected contacts to a batch" : "Select contacts first"}>
+          <option value="">{selected.size ? `Add ${selected.size} to batch…` : "Add to batch"}</option>
+          {batches.filter(b => b.kind === "static").map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+        <button onClick={() => setShowBatches(v => !v)} className={`${toolbarBtn} ${showBatches ? "border-brand-dark text-brand-dark" : ""}`}>
+          <Users className="w-4 h-4" /> Batches{batches.length ? ` (${batches.length})` : ""}
+        </button>
         <button onClick={() => { setShowAdd(v => !v); setShowImport(false); }} className={toolbarBtn}><Plus className="w-4 h-4" /> Add Contact</button>
         <button onClick={() => { setShowImport(v => !v); setShowAdd(false); }} className={toolbarBtn}><UploadCloud className="w-4 h-4" /> Import</button>
         <button onClick={exportCsv} className={toolbarBtn} title="Export selected (or current view) as CSV"><Download className="w-4 h-4" /> Export</button>
       </div>
+
+      {showBatches && (
+        <div className="bg-white rounded-card border border-line p-5 space-y-4">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-sm font-bold text-brand-dark">Batches</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                A named audience you can pick in Broadcast. <b>Static</b> holds the exact people you add —
+                so you can always see who a past broadcast went to. <b>Dynamic</b> re-runs a filter at send time.
+              </p>
+            </div>
+            {consentStats && (
+              /* Opt-in is enforced upstream: every broadcast resolves its
+                 audience with onlyOptedIn, so unconsented contacts are never
+                 queued. This shows how much of the base that leaves. */
+              <div className="text-xs text-slate-600 bg-slate-50 border border-line rounded-lg px-3 py-2 space-y-0.5">
+                <p><b className="text-brand-dark">{consentStats.granted.toLocaleString()}</b> opted in</p>
+                {consentStats.missing > 0 && <p className="text-amber-700"><b>{consentStats.missing.toLocaleString()}</b> not — excluded from broadcasts</p>}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-end gap-2 flex-wrap">
+            <input className={`${inp} w-64`} placeholder="New batch name (e.g. Aug weekend batch)"
+              value={newBatchName} onChange={e => setNewBatchName(e.target.value)} />
+            <select className={inp} value={newBatchKind} onChange={e => setNewBatchKind(e.target.value as "static" | "dynamic")}>
+              <option value="static">Static — the people I add</option>
+              <option value="dynamic">Dynamic — a live filter</option>
+            </select>
+            <button onClick={createBatchNow} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold">Create</button>
+          </div>
+
+          {batches.length === 0 ? (
+            <p className="text-xs text-slate-400">No batches yet. Create one, then tick contacts in the table and use <b>Add to batch</b>.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-500 text-left text-xs">
+                  <tr><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Contacts</th><th className="px-3 py-2"></th></tr>
+                </thead>
+                <tbody>
+                  {batches.map(b => (
+                    <tr key={b.id} className="border-t border-line">
+                      <td className="px-3 py-2">
+                        <button onClick={() => openBatchDetail(b.id)} className="font-semibold text-brand-dark hover:underline text-left">{b.name}</button>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{b.kind === "dynamic" ? "Live filter" : "Static"}</td>
+                      <td className="px-3 py-2">{b.size.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">
+                        <button onClick={() => openBatchDetail(b.id)} className="text-xs font-bold text-brand-700 hover:underline mr-3">View</button>
+                        <button onClick={async () => {
+                          if (openBatch?.batch.id === b.id) setOpenBatch(null);
+                          const res = await fetch(`/api/admin/batches/${b.id}`, {
+                            method: "POST", headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ action: "archive" }),
+                          });
+                          setMsg(res.ok ? `Archived "${b.name}".` : "Could not archive that batch");
+                          if (res.ok) loadBatches();
+                        }} className="text-xs font-bold text-slate-400 hover:text-red-600">Archive</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {openBatch && (() => {
+            const d = openBatch;
+            const isStatic = d.batch.kind === "static";
+            const from = d.memberTotal === 0 ? 0 : d.offset + 1;
+            const to = Math.min(d.offset + d.limit, d.memberTotal);
+            return (
+              <div className="border-t border-line pt-4 space-y-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-bold text-brand-dark">{d.batch.name}</p>
+                    <p className="text-[11px] text-slate-500">
+                      {isStatic ? "Static" : "Dynamic (live filter)"} · {d.size.toLocaleString()} contact{d.size === 1 ? "" : "s"}
+                      {d.noConsent !== null && d.noConsent > 0 && <> · <span className="text-amber-700">{d.noConsent.toLocaleString()} not opted in</span></>}
+                      {d.marketingReach !== null && <> · will reach <b>{d.marketingReach.toLocaleString()}</b></>}
+                    </p>
+                  </div>
+                  <button onClick={() => { setOpenBatch(null); setAddQuery(""); }} className="text-xs font-bold text-slate-400 hover:text-slate-600">Close</button>
+                </div>
+
+                {isStatic ? (
+                  <div className="space-y-1.5">
+                    <input className={`${inp} w-full`} placeholder="Add someone — search name or number (min 2 characters)"
+                      value={addQuery} onChange={e => setAddQuery(e.target.value)} />
+                    {addHits.length > 0 && (
+                      <div className="border border-line rounded-lg divide-y divide-slate-100 max-h-56 overflow-y-auto">
+                        {addHits.map(c => {
+                          const already = d.members.some(m => m.id === c.id);
+                          return (
+                            <div key={c.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="text-[13px] font-semibold text-brand-dark truncate">{c.name || "(no name)"}</p>
+                                <p className="text-[11px] text-slate-400 font-mono">{c.phone}</p>
+                              </div>
+                              <button disabled={already}
+                                onClick={async () => {
+                                  const r = await batchAction(d.batch.id, { action: "addMembers", contactIds: [c.id] });
+                                  if (r) { setMsg(r.added ? `Added ${c.name || c.phone}.` : `${c.name || c.phone} was already in this batch.`); setAddQuery(""); }
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold disabled:opacity-40 shrink-0">
+                                {already ? "In batch" : "Add"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {addQuery.trim().length >= 2 && addHits.length === 0 && (
+                      <p className="text-[11px] text-slate-400">No contact matches that. Import them first, then add.</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500 bg-slate-50 border border-line rounded-lg px-3 py-2">
+                    This batch is a live filter, so its people can&apos;t be added or removed one by one — change the filter instead.
+                  </p>
+                )}
+
+                {d.members.length === 0 ? (
+                  <p className="text-xs text-slate-400">No one in this batch yet.{isStatic ? " Search above, or tick contacts in the table and use Add to batch." : ""}</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-slate-500 text-left text-xs">
+                        <tr><th className="px-3 py-2">Name</th><th className="px-3 py-2">Number</th><th className="px-3 py-2">Opt-in</th>{isStatic && <th className="px-3 py-2"></th>}</tr>
+                      </thead>
+                      <tbody>
+                        {d.members.map(m => (
+                          <tr key={m.id} className="border-t border-line">
+                            <td className="px-3 py-2">{m.name || "(no name)"}</td>
+                            <td className="px-3 py-2 font-mono text-xs">{m.phone}</td>
+                            <td className="px-3 py-2 text-xs">
+                              {m.optedIn ? <span className="text-brand-700">● opted in</span>
+                                         : <span className="text-amber-700">● not opted in — excluded</span>}
+                            </td>
+                            {isStatic && (
+                              <td className="px-3 py-2 text-right">
+                                <button onClick={async () => {
+                                  const r = await batchAction(d.batch.id, { action: "removeMembers", contactIds: [m.id] });
+                                  if (r) setMsg(`Removed ${m.name || m.phone} from ${d.batch.name}.`);
+                                }} className="text-xs font-bold text-slate-400 hover:text-red-600">Remove</button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {d.memberTotal > d.limit && (
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span>{from.toLocaleString()}–{to.toLocaleString()} of {d.memberTotal.toLocaleString()}</span>
+                    <span className="flex gap-2">
+                      <button disabled={d.offset === 0} onClick={() => openBatchDetail(d.batch.id, Math.max(0, d.offset - d.limit))}
+                        className="font-bold text-brand-700 disabled:opacity-30">← Prev</button>
+                      <button disabled={to >= d.memberTotal} onClick={() => openBatchDetail(d.batch.id, d.offset + d.limit)}
+                        className="font-bold text-brand-700 disabled:opacity-30">Next →</button>
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+      )}
 
       {showFilter && (() => {
         const chip = "px-2.5 py-1.5 rounded-lg border border-line text-xs font-semibold text-slate-500 hover:bg-slate-50";
@@ -353,9 +586,9 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 onDragOver={e => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onCsvFile(f); }}>
                 <UploadCloud className="w-8 h-8 text-slate-300" />
-                <span className="text-sm font-semibold text-slate-500">Drop your CSV here or click to browse</span>
-                <span className="text-[11px] text-slate-400">We auto-detect phone, name, email & tags columns — every other column becomes a contact attribute</span>
-                <input type="file" accept=".csv,text/csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onCsvFile(f); e.target.value = ""; }} />
+                <span className="text-sm font-semibold text-slate-500">Drop an Excel or CSV file here, or click to browse</span>
+                <span className="text-[11px] text-slate-400">.xlsx, .csv, .tsv — we auto-detect the phone, name, email and batch columns; every other column becomes a contact attribute</span>
+                <input type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onCsvFile(f); e.target.value = ""; }} />
               </label>
               <p className="text-[11px] text-slate-400">Duplicates (by phone) are skipped. Tags inside a cell can be separated by <code className="bg-slate-100 px-1 rounded">;</code></p>
             </>
@@ -363,6 +596,31 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-bold text-brand-dark">{csvPreview.fileName} — {csvPreview.rows.length.toLocaleString()} contacts ready{csvPreview.skipped > 0 ? `, ${csvPreview.skipped} rows skipped (no valid phone)` : ""}</p>
+                {(() => {
+                  const found = [...new Set(csvPreview.rows.map(r => r.batchName).filter(Boolean))] as string[];
+                  const blocked = csvPreview.rows.filter(r => r.blocked).length;
+                  return (
+                    <div className="space-y-1">
+                      {found.length > 0 && (
+                        <p className="text-[12px] text-brand-700">
+                          Batch column detected — these will be created and filled automatically: <b>{found.join(", ")}</b>
+                        </p>
+                      )}
+                      {blocked > 0 && (
+                        <label className="flex items-center gap-2 text-[12px] text-amber-700">
+                          <input type="checkbox" checked={skipBlocked} onChange={e => setSkipBlocked(e.target.checked)} />
+                          Skip the <b>{blocked}</b> row(s) this file marks blocked
+                        </label>
+                      )}
+                      <div className="flex items-center gap-2 text-[12px] text-slate-600">
+                        <span>Country code for numbers without one</span>
+                        <input value={defaultCc} onChange={e => setDefaultCc(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                          className="w-16 px-2 py-1 rounded-lg border border-line text-[12px]" />
+                        <span className="text-slate-400">a bare 10-digit number is rejected as invalid without it</span>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <button onClick={() => setCsvPreview(null)} className="p-1.5 text-slate-400 hover:text-red-500"><X className="w-4 h-4" /></button>
               </div>
               <div className="flex gap-1.5 flex-wrap">
@@ -387,7 +645,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <input type="checkbox" checked={importConsent} onChange={e => setImportConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-brand-700" />
                 <span>These contacts <b className="text-brand-dark">opted in</b> to receive WhatsApp messages from us. Required to include them in broadcasts — sending to non-opted-in numbers is the top cause of Meta number bans. Leave unchecked to import them for 1:1 chats only.</span>
               </label>
-              <button onClick={() => importRows(csvPreview.rows, importConsent)} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
+              <button onClick={() => importWithBatches(csvPreview.rows, importConsent)} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
                 {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Import {csvPreview.rows.length.toLocaleString()} contacts
               </button>
             </div>

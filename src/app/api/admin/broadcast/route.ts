@@ -17,12 +17,17 @@ export async function GET(req: Request) {
   const tag = url.searchParams.get("tag");
   const key = url.searchParams.get("key");
   const value = url.searchParams.get("value");
-  if (mode !== "all" && mode !== "tag" && mode !== "attribute") return NextResponse.json({ count: 0 });
+  const batchId = url.searchParams.get("batchId");
+  if (mode !== "all" && mode !== "tag" && mode !== "attribute" && mode !== "batch") return NextResponse.json({ count: 0 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
     // Marketing audience → opted-in only, so the preview count matches the send.
-    const r = await recipientsForAudience({ mode, tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined }, tid, true);
-    return NextResponse.json({ count: r.length });
+    const args = { mode: mode as "all" | "tag" | "attribute" | "batch", tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined, batchId: batchId ?? undefined };
+    const r = await recipientsForAudience(args, tid, true);
+    // Also report the shortfall, so a batch of 500 that will really reach 200
+    // says so in the composer rather than in the delivery report afterwards.
+    const total = (await recipientsForAudience(args, tid, false)).length;
+    return NextResponse.json({ count: r.length, total, noConsent: Math.max(0, total - r.length) });
   } catch {
     return NextResponse.json({ count: 0 });
   }

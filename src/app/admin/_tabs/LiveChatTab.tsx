@@ -375,6 +375,11 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const multiChannelThread = new Set(messages.map(m => m.channelId).filter(Boolean)).size > 1;
   // Ownership trail: where the lead came from and who has held it since.
   const [ownerHistory, setOwnerHistory] = useState<OwnerHistoryRow[]>([]);
+  // Broadcast batches this lead is in, so an agent can add them to one straight
+  // from the chat instead of going hunting in Contacts.
+  const [leadBatches, setLeadBatches] = useState<{ id: string; name: string }[]>([]);
+  const [allBatches, setAllBatches] = useState<{ id: string; name: string; kind: string; size: number }[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
   // The customer is free to message any of our numbers, but ownership is sticky
   // — so flag it when their latest message landed somewhere other than the
   // owner, since that's where a reply would NOT go.
@@ -407,9 +412,28 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const prevCount = useRef(0);
 
   const load = useCallback(() => {
-    fetch(`/api/admin/conversations/${id}`).then(r => r.json()).then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); setOwnerHistory(d.ownerHistory ?? []); }).catch(() => {});
+    fetch(`/api/admin/conversations/${id}`).then(r => r.json()).then(d => { setConv(d.conversation ?? null); setMessages(d.messages ?? []); setOwnerHistory(d.ownerHistory ?? []); setLeadBatches(d.batches ?? []); }).catch(() => {});
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    fetch("/api/admin/batches").then(r => r.json()).then(d => setAllBatches(d.batches ?? [])).catch(() => {});
+  }, []);
+
+  async function leadBatchAction(action: "addToBatch" | "removeFromBatch", batchId: string, label: string) {
+    setBatchBusy(true); setActError("");
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, batchId }),
+      });
+      const d = await res.json();
+      if (!res.ok) { setActError(d.error || "That didn't work."); return; }
+      // The server owns the truth (and reports "already a member"), so re-read
+      // rather than guessing the new state here.
+      if (d.alreadyIn) setActError(`Already in ${label}.`);
+      load();
+    } finally { setBatchBusy(false); }
+  }
   // Live thread: poll every 4s so inbound messages, AI replies, and flow
   // sends appear without a manual refresh.
   useEffect(() => {
@@ -883,6 +907,43 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
               </div>
             );
           })()}
+
+          {/* Broadcast batches. The agent on a live chat is the person who knows
+              this lead belongs in "Aug weekend batch" — making them leave, find
+              the contact and tick a row is how it never gets done. */}
+          <div>
+            <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Batches</p>
+            {leadBatches.length > 0 && (
+              <div className="flex gap-1.5 flex-wrap mb-1.5">
+                {leadBatches.map(b => (
+                  <span key={b.id} className="pl-2 pr-1 py-0.5 rounded-full bg-brand-100 text-brand-700 text-[11px] font-semibold inline-flex items-center gap-1">
+                    {b.name}
+                    <button disabled={batchBusy} onClick={() => leadBatchAction("removeFromBatch", b.id, b.name)}
+                      title={`Remove from ${b.name}`}
+                      className="w-3.5 h-3.5 rounded-full hover:bg-black/10 leading-none disabled:opacity-40">×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {(() => {
+              // Only static batches — a dynamic one's membership is its filter,
+              // so adding one person would do nothing at send time.
+              const addable = allBatches.filter(b => b.kind === "static" && !leadBatches.some(x => x.id === b.id));
+              if (!allBatches.length) return <p className="text-[11px] text-ink-400">No batches yet — create one under Contacts › Batches.</p>;
+              if (!addable.length) return <p className="text-[11px] text-ink-400">In every batch available.</p>;
+              return (
+                <select disabled={batchBusy} value=""
+                  onChange={e => {
+                    const b = addable.find(x => x.id === e.target.value);
+                    if (b) leadBatchAction("addToBatch", b.id, b.name);
+                  }}
+                  className="w-full px-2 py-1.5 rounded-lg border border-line text-xs text-ink-600 disabled:opacity-50">
+                  <option value="">{batchBusy ? "Saving…" : "Add this lead to a batch…"}</option>
+                  {addable.map(b => <option key={b.id} value={b.id}>{b.name} · {b.size.toLocaleString()}</option>)}
+                </select>
+              );
+            })()}
+          </div>
 
           {contact && contact.tags.length > 0 && (
             <div>

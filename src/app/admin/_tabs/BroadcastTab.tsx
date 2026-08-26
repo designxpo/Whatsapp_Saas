@@ -107,7 +107,12 @@ function BroadcastTab({ goTo }: { goTo: (t: Tab) => void }) {
 }
 
 function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
-  const [audMode, setAudMode] = useState<"all" | "tag" | "attribute" | "recipients">("all");
+  const [audMode, setAudMode] = useState<"all" | "tag" | "attribute" | "batch" | "recipients">("all");
+  const [batches, setBatches] = useState<{ id: string; name: string; kind: string; size: number }[]>([]);
+  const [batchId, setBatchId] = useState("");
+  // How many of the audience are not opted in. Shown BEFORE sending, because
+  // "500 selected, 320 will receive it" is the number the sender needs.
+  const [noConsent, setNoConsent] = useState<number | null>(null);
   const [tag, setTag] = useState("");
   const [attrKey, setAttrKey] = useState("");
   const [attrValue, setAttrValue] = useState("");
@@ -161,9 +166,16 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     } catch { /* malformed payload — start blank */ }
   }, []);
   useEffect(() => {
-    if (audMode === "recipients") { setCount(null); return; }
-    fetch(`/api/admin/broadcast?mode=${audMode}&tag=${encodeURIComponent(tag)}&key=${encodeURIComponent(attrKey)}&value=${encodeURIComponent(attrValue)}`).then(r => r.json()).then(d => setCount(d.count ?? null)).catch(() => setCount(null));
-  }, [audMode, tag, attrKey, attrValue]);
+    if (audMode === "recipients") { setCount(null); setNoConsent(null); return; }
+    if (audMode === "batch" && !batchId) { setCount(null); setNoConsent(null); return; }
+    fetch(`/api/admin/broadcast?mode=${audMode}&tag=${encodeURIComponent(tag)}&key=${encodeURIComponent(attrKey)}&value=${encodeURIComponent(attrValue)}&batchId=${encodeURIComponent(batchId)}`)
+      .then(r => r.json())
+      .then(d => { setCount(d.count ?? null); setNoConsent(d.noConsent ?? null); })
+      .catch(() => { setCount(null); setNoConsent(null); });
+  }, [audMode, tag, attrKey, attrValue, batchId]);
+  useEffect(() => {
+    fetch("/api/admin/batches").then(r => r.json()).then(d => setBatches(d.batches ?? [])).catch(() => {});
+  }, []);
 
   function parseRecipients() {
     return recipientsText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(line => {
@@ -180,7 +192,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
     // scheduledFor with an explicit recipient list), and must be in the future.
     let scheduledFor: string | null = null;
     if (scheduleMode === "later") {
-      if (audMode === "recipients") { setError("Scheduling needs a saved audience (All / Tag / Attribute), not a pasted recipient list."); return; }
+      if (audMode === "recipients") { setError("Scheduling needs a saved audience (All / Batch / Tag / Attribute), not a pasted recipient list."); return; }
       const when = scheduledLocal ? new Date(scheduledLocal) : null;
       if (!when || isNaN(when.getTime()) || when.getTime() <= Date.now()) { setError("Pick a future date & time to schedule this broadcast."); return; }
       scheduledFor = when.toISOString();
@@ -212,6 +224,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         tag: audMode === "tag" ? tag.trim() : undefined,
         key: audMode === "attribute" ? attrKey.trim() : undefined,
         value: audMode === "attribute" ? attrValue.trim() : undefined,
+        batchId: audMode === "batch" ? batchId : undefined,
       };
       // A stale deploy answers with Next's HTML 404, so res.json() used to throw
       // and the cause surfaced as "Connection error". adminFetch names it instead.
@@ -325,12 +338,22 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase">Who</p>
         <div className="flex gap-2 flex-wrap">
-          {(["all", "tag", "attribute", "recipients"] as const).map(m => (
+          {(["all", "batch", "tag", "attribute", "recipients"] as const).map(m => (
             <button key={m} onClick={() => setAudMode(m)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${audMode === m ? "border-brand-dark bg-brand-700 text-white" : "border-line text-slate-600"}`}>
-              {m === "all" ? "All contacts" : m === "tag" ? "By tag" : m === "attribute" ? "By attribute" : "Paste list"}
+              {m === "all" ? "All contacts" : m === "batch" ? "Batch" : m === "tag" ? "By tag" : m === "attribute" ? "By attribute" : "Paste list"}
             </button>
           ))}
         </div>
+        {audMode === "batch" && (
+          <select className={`${inp} w-full`} value={batchId} onChange={e => setBatchId(e.target.value)}>
+            <option value="">{batches.length ? "Choose a batch…" : "No batches yet — create one in Contacts › Batches"}</option>
+            {batches.map(b => (
+              <option key={b.id} value={b.id}>
+                {b.name} · {b.size.toLocaleString()} {b.kind === "dynamic" ? "(live filter)" : "contacts"}
+              </option>
+            ))}
+          </select>
+        )}
         {audMode === "tag" && <input className={`${inp} w-full`} placeholder="tag (e.g. webinar-june)" value={tag} onChange={e => setTag(e.target.value)} />}
         {audMode === "attribute" && (
           <div className="grid grid-cols-2 gap-2">
@@ -340,7 +363,19 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         )}
         {audMode === "recipients"
           ? <textarea className={`${inp} w-full font-mono`} rows={4} placeholder={"919876543210, Asha\n919812345678, Ravi"} value={recipientsText} onChange={e => setRecipientsText(e.target.value)} />
-          : <p className="text-sm text-slate-600">{recipientCount === null ? "—" : <><b className="text-brand-dark">{recipientCount.toLocaleString()}</b> active contacts will receive this.</>}</p>}
+          : (
+            <div className="space-y-1">
+              <p className="text-sm text-slate-600">{recipientCount === null ? "—" : <><b className="text-brand-dark">{recipientCount.toLocaleString()}</b> contact{recipientCount === 1 ? "" : "s"} will receive this.</>}</p>
+              {/* Broadcasts resolve their audience with onlyOptedIn, so anyone
+                  without consent is never queued. Say how many that removes
+                  here rather than leaving the delivery report to explain it. */}
+              {!!noConsent && (
+                <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                  <b>{noConsent.toLocaleString()}</b> more {noConsent === 1 ? "is" : "are"} in this audience but not opted in, so {noConsent === 1 ? "it" : "they"} won&apos;t be sent to.
+                </p>
+              )}
+            </div>
+          )}
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

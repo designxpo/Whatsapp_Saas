@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { isLikelyValidE164, toDigits } from "@/lib/phone";
 import { errorMessage } from "@/lib/errors";
+import { addBatchMembers } from "@/lib/audience";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,13 @@ export async function GET(req: Request) {
 // Body: { contacts: [{ phone, name?, email?, tags?, attributes? }] }
 // Extra CSV columns arrive as attributes and land on contacts.attributes.
 export async function POST(req: Request) {
-  let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[]; consent?: boolean };
+  let body: {
+    contacts?: { phone: string; name?: string; email?: string; tags?: string[]; attributes?: Record<string, string> }[];
+    consent?: boolean;
+    /** Drop the whole import into this batch, so "upload a list and broadcast to
+     *  it" is one flow rather than an upload followed by hunting for the rows. */
+    batchId?: string;
+  };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const allRows = Array.isArray(body.contacts) ? body.contacts : [];
   if (allRows.length === 0) return NextResponse.json({ error: "contacts[] required" }, { status: 400 });
@@ -69,8 +76,18 @@ export async function POST(req: Request) {
         await fireTrigger({ trigger: "contact_added", triggerKey: null, contactId: c.id, phone: c.phone, name: c.name }, tid).catch(() => undefined);
       }
     }
+    let addedToBatch = 0;
+    if (body.batchId) {
+      const who = await currentUser();
+      const ids: string[] = [];
+      for (const r of rows) {
+        const c = await getContactByPhone(r.phone, tid);
+        if (c) ids.push(c.id);
+      }
+      addedToBatch = await addBatchMembers(body.batchId, ids, who?.name || who?.email || "admin", tid);
+    }
     logActivity(await currentUser(), "contacts.import", `${result.inserted} added, ${result.skipped} skipped, ${invalid} invalid`);
-    return NextResponse.json({ success: true, ...result, invalid });
+    return NextResponse.json({ success: true, ...result, invalid, addedToBatch });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

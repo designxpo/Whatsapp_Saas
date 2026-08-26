@@ -30,7 +30,7 @@ export interface Campaign {
   languageCode: string;
   variables: string[];
   headerImageUrl: string | null;
-  audience: { mode: "all" | "tag" | "recipients" | "attribute"; tag?: string; key?: string; value?: string } | null;
+  audience: { mode: "all" | "tag" | "recipients" | "attribute" | "batch"; tag?: string; key?: string; value?: string; batchId?: string } | null;
   status: CampaignStatus;
   totalRecipients: number;
   sentCount: number;
@@ -280,7 +280,19 @@ export async function listContacts(opts: {
 // Recipients for a broadcast audience (active contacts only). When onlyOptedIn
 // is set (the default for marketing broadcasts) non-consented contacts are
 // excluded — the proof-of-opt-in gate that keeps numbers off Meta's ban radar.
-export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute"; tag?: string; key?: string; value?: string }, tenantId = DEFAULT_TENANT_ID, onlyOptedIn = false): Promise<{ phone: string; fullName: string }[]> {
+export async function recipientsForAudience(audience: { mode: "all" | "tag" | "attribute" | "batch"; tag?: string; key?: string; value?: string; batchId?: string }, tenantId = DEFAULT_TENANT_ID, onlyOptedIn = false): Promise<{ phone: string; fullName: string }[]> {
+  // A named batch owns its own resolution (static membership, or a stored filter
+  // re-evaluated now) — see audience.ts. Imported lazily so store.ts and
+  // audience.ts don't form a cycle. The opt-in rule still applies afterwards:
+  // being in a batch is not consent.
+  if (audience.mode === "batch") {
+    if (!audience.batchId) throw new Error("Batch audience is missing a batch");
+    const { resolveBatch, consentMissing } = await import("./audience");
+    const all = await resolveBatch(audience.batchId, tenantId);
+    if (!onlyOptedIn) return all;
+    const missing = await consentMissing(all.map(r => r.phone), tenantId);
+    return all.filter(r => !missing.has(last10(r.phone)));
+  }
   let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active");
   if (onlyOptedIn) q = q.eq("opted_in", true);
   if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);

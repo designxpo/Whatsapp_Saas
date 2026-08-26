@@ -16,6 +16,7 @@ import { getCannedTemplates, resolveCannedParams } from "@/lib/canned";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
 import { logActivity } from "@/lib/team";
+import { contactIdForPhone, batchesForContact, addBatchMembers, removeBatchMembers, getBatch } from "@/lib/audience";
 import { errorMessage } from "@/lib/errors";
 import { moderateImageUrl } from "@/lib/moderation";
 
@@ -40,7 +41,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const ownerHistory = await getOwnerHistory(id, tid);
     // Opening the chat marks it read (clears the "awaiting your reply" flag).
     if (conversation.needsReply) { await markConversationRead(id); conversation.needsReply = false; }
-    return NextResponse.json({ conversation, messages, ownerHistory });
+    // Which broadcast batches this lead is in, so an agent can put a live chat
+    // straight into one. Best-effort: a missing contact row, or the batch tables
+    // not yet migrated, must not break opening a conversation.
+    const contactId = await contactIdForPhone(conversation.phone, tid).catch(() => null);
+    const batches = contactId ? await batchesForContact(contactId, tid).catch(() => []) : [];
+    return NextResponse.json({ conversation, messages, ownerHistory, contactId, batches });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -52,7 +58,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string; channelId?: string; reason?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string; channelId?: string; reason?: string; batchId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
@@ -299,6 +305,36 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     // Hand the lead to another number/account. Ownership is otherwise sticky
     // (see getOrCreateConversation) — this is the only thing that moves it, so
     // it's explicit, attributed and logged to the ownership trail.
+    // Add / remove this lead from a batch. Lives on the conversation route
+    // rather than the batches one because it is conversation-centric: the agent
+    // has a chat open, not a contact id, and the "no contact row" case needs an
+    // answer a person can act on.
+    if (body.action === "addToBatch" || body.action === "removeFromBatch") {
+      const batchId = (body.batchId ?? "").trim();
+      if (!batchId) return NextResponse.json({ error: "batchId required" }, { status: 400 });
+      const contactId = await contactIdForPhone(conv.phone, tid);
+      if (!contactId) {
+        return NextResponse.json({
+          error: "This chat has no contact record yet, so it can't join a batch. Add them under Contacts first.",
+        }, { status: 400 });
+      }
+      const batch = await getBatch(batchId, tid);
+      if (!batch) return NextResponse.json({ error: "That batch no longer exists" }, { status: 400 });
+      if (batch.kind !== "static") {
+        return NextResponse.json({ error: `"${batch.name}" is a live filter — people can't be added to it one by one.` }, { status: 400 });
+      }
+      const who = await currentUser();
+      const actor = who?.name || who?.email || "admin";
+      if (body.action === "addToBatch") {
+        const added = await addBatchMembers(batchId, [contactId], actor, tid);
+        logActivity(who, "batch.addFromChat", `${conv.name || conv.phone} → ${batch.name}`);
+        return NextResponse.json({ success: true, added, alreadyIn: added === 0 });
+      }
+      await removeBatchMembers(batchId, [contactId], tid);
+      logActivity(who, "batch.removeFromChat", `${conv.name || conv.phone} ✕ ${batch.name}`);
+      return NextResponse.json({ success: true });
+    }
+
     if (body.action === "reassignChannel") {
       const channelId = (body.channelId ?? "").trim();
       if (!channelId) return NextResponse.json({ error: "channelId required" }, { status: 400 });
