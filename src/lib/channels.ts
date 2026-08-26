@@ -714,15 +714,31 @@ export async function subscribePageToApp(pageId: string, pageToken: string): Pro
     return { ok: res.ok && !!data?.success, detail: data?.error?.message || `HTTP ${res.status}` };
   };
   try {
-    // `feed` (comment events) needs pages_read_user_content, which is a SEPARATE
-    // App Review from the messaging permissions. Meta rejects the whole
-    // subscription when one field isn't permitted — so asking for everything at
-    // once took DMs down over a comments permission the tenant may not have yet.
+    // Meta rejects the WHOLE subscription when one field isn't permitted, so the
+    // messaging fields are retried alone rather than letting a comments problem
+    // take DMs down with it.
+    //
+    // On permissions, stated as precisely as Meta actually documents them:
+    //   • SUBSCRIBING to Page webhooks is documented against
+    //     pages_manage_metadata ("a page admin with MODERATE privileges must
+    //     grant the app the pages_manage_metadata permission").
+    //   • ACTING on a comment is pages_manage_engagement — the only Graph calls
+    //     this codebase makes for comments are two writes,
+    //     POST /{comment}/comments and POST /{comment}/likes.
+    //   • pages_read_user_content is documented as "get user generated content
+    //     on your Page" / "delete comments posted by users on your Page".
+    //     Nothing here does either — comment text arrives in the webhook
+    //     payload, never fetched.
+    // What Meta does NOT document clearly is whether feed DELIVERY of
+    // user-generated comments additionally requires pages_read_user_content.
+    // Observed behaviour suggests a Page can be subscribed to `feed` and still
+    // receive nothing, so treat the subscription as necessary-not-sufficient and
+    // don't infer a permission answer from it either way.
     const full = await attempt(`${MESSAGING},feed`);
     if (full.ok) return { ok: true, detail: "Page subscribed to messages and comments." };
     const messaging = await attempt(MESSAGING);
     if (messaging.ok) {
-      return { ok: true, degraded: true, detail: `Messenger DMs are on. Comment events are not — Meta refused the "feed" field (${full.detail}); that needs pages_read_user_content approved.` };
+      return { ok: true, degraded: true, detail: `Messenger DMs are on. Comment events are not — Meta refused the "feed" field (${full.detail}). Check that the Page granted pages_manage_metadata; replying to comments additionally needs pages_manage_engagement with Advanced Access.` };
     }
     return { ok: false, detail: full.detail };
   } catch (err) {
