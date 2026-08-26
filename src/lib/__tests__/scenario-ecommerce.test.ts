@@ -67,6 +67,7 @@ vi.mock("@/lib/supabase", () => {
       head: false,
       order: null as { col: string; asc: boolean } | null,
       limit: null as number | null,
+      range: null as { from: number; to: number } | null,
     };
     const matches = () => (tables[table] ?? []).filter(r => state.filters.every(f => f(r)));
     function run(): { data: unknown; error: null; count: number | null } {
@@ -105,6 +106,7 @@ vi.mock("@/lib/supabase", () => {
         });
       }
       if (state.limit != null) out = out.slice(0, state.limit);
+      if (state.range) out = out.slice(state.range.from, state.range.to + 1);
       if (state.head) return { data: null, error: null, count: out.length };
       return { data: state.single ? out[0] ?? null : out, error: null, count: out.length };
     }
@@ -126,6 +128,8 @@ vi.mock("@/lib/supabase", () => {
       },
       order: (col: string, opts?: { ascending?: boolean }) => { state.order = { col, asc: opts?.ascending ?? true }; return api; },
       limit: (n: number) => { state.limit = n; return api; },
+      // Paged reads (audience resolution, the suppression list) select by range.
+      range: (from: number, to: number) => { state.range = { from, to }; return api; },
       single: () => { state.single = true; return api; },
       maybeSingle: () => { state.single = true; return api; },
       insert: (row: unknown) => { state.op = "insert"; state.payload = row; return api; },

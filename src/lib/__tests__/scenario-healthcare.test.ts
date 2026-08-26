@@ -72,6 +72,7 @@ vi.mock("@/lib/supabase", () => {
     const filters: ((r: Row) => boolean)[] = [];
     let sort: { col: string; asc: boolean } | null = null;
     let take: number | null = null;
+    let rng: { from: number; to: number } | null = null;
     let single = false;
     let wantCount = false;
     let headOnly = false;
@@ -91,6 +92,8 @@ vi.mock("@/lib/supabase", () => {
       not: () => api,
       order: (c: string, o?: { ascending?: boolean }) => { sort = { col: c, asc: o?.ascending !== false }; return api; },
       limit: (n: number) => { take = n; return api; },
+      // Paged reads (audience resolution, the suppression list) select by range.
+      range: (from: number, to: number) => { rng = { from, to }; return api; },
       single: () => { single = true; return api; },
       maybeSingle: () => { single = true; return api; },
       insert: (rows: Row | Row[]) => { op = "insert"; payload = [rows].flat(); return api; },
@@ -126,6 +129,7 @@ vi.mock("@/lib/supabase", () => {
           if (wantCount) count = r.length;
           if (sort) { const s = sort; r = [...r].sort((a, b) => cmp(a[s.col], b[s.col]) * (s.asc ? 1 : -1)); }
           if (take != null) r = r.slice(0, take);
+          if (rng) r = r.slice(rng.from, rng.to + 1);
           data = headOnly ? null : single ? r[0] ?? null : r;
         }
         return resolve({ data, error: null, count });

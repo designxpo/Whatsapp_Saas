@@ -1,4 +1,5 @@
 import { db } from "./supabase";
+import { pageAll } from "./pagedselect";
 import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
 import { DEFAULT_TENANT_ID } from "./tenant";
@@ -293,19 +294,19 @@ export async function recipientsForAudience(audience: { mode: "all" | "tag" | "a
     const missing = await consentMissing(all.map(r => r.phone), tenantId);
     return all.filter(r => !missing.has(last10(r.phone)));
   }
-  let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active");
-  if (onlyOptedIn) q = q.eq("opted_in", true);
-  if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);
-  if (audience.mode === "attribute" && audience.key) q = q.contains("attributes", { [audience.key]: audience.value ?? "" });
-  const AUDIENCE_LIMIT = 50000;
-  const { data, error } = await q.limit(AUDIENCE_LIMIT);
-  if (error) throw error;
-  // Surface silent truncation: a larger audience is capped here, so the caller
-  // would under-send without any signal. Log it (and it can be alerted on).
-  if ((data?.length ?? 0) >= AUDIENCE_LIMIT) {
-    console.warn(JSON.stringify({ tag: "audience_truncated", tenantId, limit: AUDIENCE_LIMIT, mode: audience.mode }));
-  }
-  return (data ?? []).map(r => ({ phone: r.phone as string, fullName: (r.name as string) ?? "" }));
+  // Paged. This asked for .limit(50000) and guarded with `rows >= 50000`, but
+  // PostgREST never returns more than db-max-rows (1,000) per request — so the
+  // guard could not fire and the audience was silently cut to the first 1,000
+  // contacts. order() is what makes range() paging sound; without it Postgres
+  // may repeat a row on one page and skip it on the next.
+  const rows = await pageAll<{ phone: string; name: string | null }>(() => {
+    let q = db().from("contacts").select("phone, name").eq("tenant_id", tenantId).eq("status", "active").order("id");
+    if (onlyOptedIn) q = q.eq("opted_in", true);
+    if (audience.mode === "tag" && audience.tag) q = q.contains("tags", [audience.tag]);
+    if (audience.mode === "attribute" && audience.key) q = q.contains("attributes", { [audience.key]: audience.value ?? "" });
+    return q;
+  }, { label: `audience:${audience.mode}` });
+  return rows.map(r => ({ phone: r.phone, fullName: r.name ?? "" }));
 }
 
 // Add one tag to a contact (no-op when missing or already tagged).
@@ -405,9 +406,16 @@ export async function listOptouts(tenantId = DEFAULT_TENANT_ID): Promise<{ phone
 
 // Opt-outs are per-tenant — a STOP for one business never suppresses sends for
 // another (separate WhatsApp numbers, separate consent).
+// The suppression list. Paged, because this is the one read where a short answer
+// is actively harmful: a truncated set means messaging people who asked us to
+// stop. It had no bound, so it would have started doing exactly that the moment
+// a tenant's list passed PostgREST's 1,000-row ceiling.
 export async function optoutSet(tenantId = DEFAULT_TENANT_ID): Promise<Set<string>> {
-  const { data } = await db().from("wa_optouts").select("phone").eq("tenant_id", tenantId);
-  return new Set((data ?? []).map(r => last10(r.phone as string)));
+  const rows = await pageAll<{ phone: string }>(
+    () => db().from("wa_optouts").select("phone").eq("tenant_id", tenantId).order("phone"),
+    { label: "optouts" },
+  ).catch(() => [] as { phone: string }[]);
+  return new Set(rows.map(r => last10(r.phone)));
 }
 
 // Single-number opt-out check (indexed on tenant_id, phone). Use this on the

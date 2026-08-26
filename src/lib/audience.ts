@@ -16,6 +16,7 @@
 // be a cycle.
 
 import { db } from "./supabase";
+import { pageAll } from "./pagedselect";
 import { DEFAULT_TENANT_ID } from "./tenant";
 
 const digits = (p: string) => (p || "").replace(/\D/g, "");
@@ -163,17 +164,17 @@ export async function addBatchMembersFromFilter(batchId: string, filter: BatchFi
 // resolution, add-from-filter and the count preview — so a batch can never
 // preview one number and send to another.
 async function contactsMatching(filter: BatchFilter, cols: string[], tenantId = DEFAULT_TENANT_ID): Promise<Record<string, unknown>[]> {
-  let q = db().from("contacts").select(cols.join(",")).eq("tenant_id", tenantId).eq("status", "active");
-  if (filter.tag) q = q.contains("tags", [filter.tag]);
-  if (filter.attributeKey) q = q.contains("attributes", { [filter.attributeKey]: filter.attributeValue ?? "" });
-  if (filter.source) q = q.eq("source", filter.source);
-  if (filter.stageId) q = q.eq("pipeline_stage_id", filter.stageId);
-  const { data, error } = await q.limit(AUDIENCE_LIMIT);
-  if (error) throw error;
-  if ((data?.length ?? 0) >= AUDIENCE_LIMIT) {
-    console.warn(JSON.stringify({ tag: "audience_truncated", tenantId, limit: AUDIENCE_LIMIT, source: "batch_filter" }));
-  }
-  return (data ?? []) as unknown as Record<string, unknown>[];
+  // Paged — see pagedselect.ts. .limit(AUDIENCE_LIMIT) never raised PostgREST's
+  // 1,000-row ceiling, so a dynamic batch over a large workspace resolved to its
+  // first 1,000 contacts and previewed that count as if it were the whole set.
+  return pageAll<Record<string, unknown>>(() => {
+    let q = db().from("contacts").select(cols.join(",")).eq("tenant_id", tenantId).eq("status", "active").order("id");
+    if (filter.tag) q = q.contains("tags", [filter.tag]);
+    if (filter.attributeKey) q = q.contains("attributes", { [filter.attributeKey]: filter.attributeValue ?? "" });
+    if (filter.source) q = q.eq("source", filter.source);
+    if (filter.stageId) q = q.eq("pipeline_stage_id", filter.stageId);
+    return q as unknown as { range: (a: number, b: number) => PromiseLike<{ data: Record<string, unknown>[] | null; error: unknown }> };
+  }, { cap: AUDIENCE_LIMIT, label: "batch_filter" });
 }
 
 // ── Resolution: batch → recipients ───────────────────────────────────────────
@@ -187,16 +188,18 @@ export async function resolveBatch(batchId: string, tenantId = DEFAULT_TENANT_ID
   }
   // Static: read membership, then the contacts behind it. Members whose contact
   // has since been deactivated are dropped here rather than sent to.
-  const { data, error } = await db().from("wa_batch_members")
-    .select("contact_id, contacts!inner(phone, name, status)")
-    .eq("tenant_id", tenantId).eq("batch_id", batchId)
-    .limit(AUDIENCE_LIMIT);
-  if (error) throw error;
-  if ((data?.length ?? 0) >= AUDIENCE_LIMIT) {
-    console.warn(JSON.stringify({ tag: "audience_truncated", tenantId, limit: AUDIENCE_LIMIT, source: "batch_members" }));
-  }
+  // Paged: a batch imported from a large CSV has more members than PostgREST
+  // returns in one response, and every one of them is a person deliberately put
+  // in this audience.
+  const data = await pageAll<{ contacts?: { phone?: string; name?: string; status?: string } }>(
+    () => db().from("wa_batch_members")
+      .select("contact_id, contacts!inner(phone, name, status)")
+      .eq("tenant_id", tenantId).eq("batch_id", batchId)
+      .order("contact_id") as unknown as { range: (a: number, b: number) => PromiseLike<{ data: { contacts?: { phone?: string; name?: string; status?: string } }[] | null; error: unknown }> },
+    { cap: AUDIENCE_LIMIT, label: "batch_members" },
+  );
   const out: Recipient[] = [];
-  for (const row of (data ?? []) as unknown as { contacts?: { phone?: string; name?: string; status?: string } }[]) {
+  for (const row of data) {
     const c = row.contacts;
     if (!c?.phone || c.status !== "active") continue;
     out.push({ phone: c.phone, fullName: c.name ?? "" });

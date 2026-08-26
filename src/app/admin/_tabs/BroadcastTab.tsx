@@ -260,7 +260,23 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         },
       });
       if (!r.ok) setTestMsg({ ok: false, text: r.error });
-      else setTestMsg(r.data.success ? { ok: true, text: `Test sent to ${phone.trim()} — check the phone.` } : { ok: false, text: r.data.error || "Test send failed" });
+      // Meta ACCEPTING a template is not Meta DELIVERING it. A marketing
+      // template is dropped per-recipient once that person has had too many
+      // ("healthy ecosystem engagement", error 131049), and the drop arrives by
+      // webhook seconds later. A test send records nothing, so there is no row
+      // for that webhook to update and the failure is invisible — "check the
+      // phone" on its own sends people hunting for a bug in the app.
+      // `selected` is declared below in the same component body; sendTest only
+      // ever runs after render, so it is initialised by then.
+      else if (r.data.success) {
+        const isMarketing = (selected?.category ?? "MARKETING").toUpperCase() === "MARKETING";
+        setTestMsg({
+          ok: true,
+          text: `Accepted by Meta — check the phone.${isMarketing
+            ? " If it doesn't arrive, Meta most likely capped it: a MARKETING template is dropped for a recipient who has had too many recently. A utility template to the same number is not capped."
+            : ""}`,
+        });
+      } else setTestMsg({ ok: false, text: r.data.error || "Test send failed" });
     } catch { setTestMsg({ ok: false, text: "Connection error" }); }
     finally { setTesting(false); }
   }
