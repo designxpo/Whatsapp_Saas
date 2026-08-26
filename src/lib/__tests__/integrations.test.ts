@@ -156,9 +156,28 @@ describe("scheduling helpers", () => {
     expect(slots[0].id).toBe("s0");
     expect(slots.every(s => s.label.length > 0)).toBe(true);
   });
+  it("parseCalcomSlots reads the Cal.com v2 shape ({data} keyed by date, `start`)", () => {
+    // v2 is what the connector actually talks to now: { status, data: { date: [{ start }] } }.
+    // v1's { slots: { date: [{ time }] } } is dead (HTTP 410) — the test above
+    // only stays to document that the parser still tolerates it.
+    const v2 = { status: "success", data: {
+      "2026-06-21": [{ start: "2026-06-21T09:00:00.000Z" }],
+      "2026-06-20": [{ start: "2026-06-20T10:00:00.000Z" }, { start: "2026-06-20T11:00:00.000Z" }],
+    } };
+    const slots = parseCalcomSlots(v2, "UTC");
+    expect(slots).toHaveLength(3);
+    expect(slots[0].iso).toBe("2026-06-20T10:00:00.000Z");   // sorted across dates
+    expect(slots.map(s => s.id)).toEqual(["s0", "s1", "s2"]);
+  });
+  it("parseCalcomSlots handles v2 format=range entries (start + end)", () => {
+    const ranged = { data: { "2026-06-20": [{ start: "2026-06-20T10:00:00.000Z", end: "2026-06-20T10:30:00.000Z" }] } };
+    expect(parseCalcomSlots(ranged, "UTC").map(s => s.iso)).toEqual(["2026-06-20T10:00:00.000Z"]);
+  });
   it("parseCalcomSlots tolerates empty / malformed input", () => {
     expect(parseCalcomSlots(null, "UTC")).toEqual([]);
     expect(parseCalcomSlots({ slots: {} }, "UTC")).toEqual([]);
+    expect(parseCalcomSlots({ data: {} }, "UTC")).toEqual([]);
+    expect(parseCalcomSlots({ data: { "2026-06-20": [{}] } }, "UTC")).toEqual([]);
   });
   it("matchSlot resolves an id or a 1-based position", () => {
     const ids = ["s0", "s1", "s2"];

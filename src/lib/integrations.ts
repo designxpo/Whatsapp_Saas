@@ -289,11 +289,18 @@ export function formatSlotLabel(iso: string, tz = "Asia/Kolkata"): string {
   } catch { return iso; }
 }
 
-// Flatten Cal.com's /slots response ({ slots: { date: [{ time }] } }) into a
-// sorted, capped list of bookable slots with stable ids (s0, s1, …).
+// Flatten Cal.com's slots response into a sorted, capped list of bookable slots
+// with stable ids (s0, s1, …).
+//
+// v2 returns { status, data: { "YYYY-MM-DD": [{ start }] } }; v1 returned
+// { slots: { "YYYY-MM-DD": [{ time }] } }. Both containers and both field names
+// are accepted: it costs two lines, and an external API that has already moved
+// its response shape once is worth being tolerant of. `start` also covers
+// v2's `format=range` variant, which adds `end` alongside it.
 export function parseCalcomSlots(json: unknown, tz = "Asia/Kolkata", limit = 8): Slot[] {
-  const bucket = (json as { slots?: Record<string, { time?: string }[]> })?.slots ?? {};
-  const isos = Object.values(bucket).flat().map(s => s?.time).filter((t): t is string => !!t);
+  const j = json as { data?: Record<string, { start?: string; time?: string }[]>; slots?: Record<string, { start?: string; time?: string }[]> } | null;
+  const bucket = j?.data ?? j?.slots ?? {};
+  const isos = Object.values(bucket).flat().map(s => s?.start ?? s?.time).filter((t): t is string => !!t);
   const sorted = [...new Set(isos)].sort();
   return sorted.slice(0, limit).map((iso, i) => ({ id: `s${i}`, iso, label: formatSlotLabel(iso, tz) }));
 }
@@ -666,15 +673,39 @@ const wooConnector: Connector = {
 // ── Cal.com — book meetings from a flow (API key + event type id) ─────────────
 // The flow "Book meeting" node uses calcomSlots()/calcomBook() below; the
 // connector itself only needs verify() for the Settings "Test" button.
-const CALCOM_API = "https://api.cal.com/v1";
+// v1 was DECOMMISSIONED by Cal.com — it answers every request with HTTP 410
+// ("API v1 has been decommissioned. Please migrate to API v2"), so this
+// connector could not work at all until it moved to v2.
+//
+// Three things changed, and all three matter:
+//   • Auth moved from a `?apiKey=` QUERY PARAM to an Authorization: Bearer
+//     header. Strictly better — the key no longer lands in URLs, access logs
+//     or proxy traces.
+//   • Every endpoint requires a `cal-api-version` header, and the value
+//     SELECTS THE ROUTE. Verified empirically: GET /v2/slots 404s without
+//     `2024-09-04`, while GET /v2/slots/available 404s *with* it. So the
+//     version is not decoration; sending the wrong one silently 404s.
+//   • Responses are wrapped as { status, data } instead of being bare.
+const CALCOM_API = "https://api.cal.com/v2";
+const CALCOM_VER_EVENT_TYPES = "2024-06-14";
+const CALCOM_VER_SLOTS = "2024-09-04";
+const CALCOM_VER_BOOKINGS = "2024-08-13";
+function calcomHeaders(secret: string, version: string): Record<string, string> {
+  return { Authorization: `Bearer ${secret}`, "cal-api-version": version, "Content-Type": "application/json" };
+}
 const calcomConnector: Connector = {
   async verify(i, secret) {
     if (!secret) return { ok: false, detail: "Paste your Cal.com API key first." };
     if (!String(i.config.eventTypeId ?? "").trim()) return { ok: false, detail: "Add the Event Type ID of the meeting you want customers to book." };
     try {
-      const res = await fetch(`${CALCOM_API}/event-types?apiKey=${encodeURIComponent(secret)}`, { signal: AbortSignal.timeout(8000) });
+      const res = await fetch(`${CALCOM_API}/event-types`, {
+        headers: calcomHeaders(secret, CALCOM_VER_EVENT_TYPES), signal: AbortSignal.timeout(8000),
+      });
       if (res.ok) return { ok: true, detail: "Connected — your Cal.com key works." };
-      if (res.status === 401) return { ok: false, detail: "Cal.com rejected the key — create an API key under Settings → Developer → API Keys." };
+      if (res.status === 401 || res.status === 403) return { ok: false, detail: "Cal.com rejected the key — create an API key under Settings → Developer → API keys." };
+      // A 410 here would mean Cal.com retired the version we pin above; say so
+      // plainly rather than blaming the tenant's key.
+      if (res.status === 410) return { ok: false, detail: "Cal.com has retired the API version this integration uses. Please report this — it needs a code update." };
       return { ok: false, detail: `Cal.com returned HTTP ${res.status}. Check the key and try again.` };
     } catch { return { ok: false, detail: "Couldn't reach Cal.com — check your connection and try again." }; }
   },
@@ -735,9 +766,16 @@ export async function calcomSlots(tenantId: string, opts: { days?: number; tz?: 
     if (!eventTypeId) return null;
     const start = new Date().toISOString();
     const end = new Date(Date.now() + (opts.days ?? 5) * 86400_000).toISOString();
-    const url = `${CALCOM_API}/slots?apiKey=${encodeURIComponent(found.secret)}&eventTypeId=${encodeURIComponent(eventTypeId)}&startTime=${encodeURIComponent(start)}&endTime=${encodeURIComponent(end)}&timeZone=${encodeURIComponent(tz)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return [];
+    // v2 renamed startTime/endTime to start/end. Wrong names here don't error —
+    // they just return nothing bookable, so they are easy to get wrong quietly.
+    const q = new URLSearchParams({ eventTypeId, start, end, timeZone: tz });
+    const res = await fetch(`${CALCOM_API}/slots?${q}`, {
+      headers: calcomHeaders(found.secret, CALCOM_VER_SLOTS), signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) {
+      console.error("[integrations] calcom slots HTTP", res.status, (await res.text().catch(() => "")).slice(0, 200));
+      return [];
+    }
     return parseCalcomSlots(await res.json().catch(() => null), tz);
   } catch (err) {
     console.error("[integrations] calcom slots failed:", errorMessage(err));
@@ -752,14 +790,22 @@ export async function calcomBook(tenantId: string, p: { startIso: string; name: 
     if (!found?.secret) return false;
     const eventTypeId = Number(found.integration.config.eventTypeId);
     if (!Number.isFinite(eventTypeId)) return false;
-    const res = await fetch(`${CALCOM_API}/bookings?apiKey=${encodeURIComponent(found.secret)}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(10000),
+    // v2 replaced v1's flat `responses` + top-level timeZone with a single
+    // `attendee` object; timeZone moved INSIDE it and is required there.
+    const res = await fetch(`${CALCOM_API}/bookings`, {
+      method: "POST", headers: calcomHeaders(found.secret, CALCOM_VER_BOOKINGS), signal: AbortSignal.timeout(10000),
       body: JSON.stringify({
-        eventTypeId, start: p.startIso,
-        responses: { name: p.name || "WhatsApp lead", email: p.email },
-        timeZone: p.tz || "Asia/Kolkata", language: "en", metadata: {},
+        start: p.startIso,
+        eventTypeId,
+        attendee: {
+          name: p.name || "WhatsApp lead",
+          email: p.email,
+          timeZone: p.tz || "Asia/Kolkata",
+          language: "en",
+        },
       }),
     });
+    if (!res.ok) console.error("[integrations] calcom book HTTP", res.status, (await res.text().catch(() => "")).slice(0, 200));
     return res.ok;
   } catch (err) {
     console.error("[integrations] calcom book failed:", errorMessage(err));
