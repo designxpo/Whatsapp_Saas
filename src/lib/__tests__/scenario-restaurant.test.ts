@@ -627,7 +627,7 @@ describe("Restaurant / food delivery — Spice Route Kitchen on Talko AI", () =>
       ], SPICE)).toBe(2);
 
       const r = await drainQueue(camp.id);
-      expect(r).toEqual({ sentNow: 0, queuedRemaining: 2, status: "sending" });
+      expect(r).toMatchObject({ sentNow: 0, queuedRemaining: 2, status: "sending", failedNow: 0, skippedNow: 0 });
       expect(graphCalls).toHaveLength(0);
       expect(tables["wa_send_queue"].every(q => q.status === "pending")).toBe(true);
       const row = tables["wa_campaigns"].find(c => c.id === camp.id)!;
@@ -641,7 +641,10 @@ describe("Restaurant / food delivery — Spice Route Kitchen on Talko AI", () =>
       await enqueue(camp.id, [{ phone: ROHAN, fullName: "Rohan Mehta" }, { phone: "919812345678", fullName: "Meera Iyer" }], SPICE);
 
       const r = await drainQueue(camp.id);
-      expect(r).toEqual({ sentNow: 0, queuedRemaining: 2, status: "sending" }); // stays "sending" so it auto-resumes
+      expect(r).toMatchObject({ sentNow: 0, queuedRemaining: 2, status: "sending" }); // stays "sending" so it auto-resumes
+      // The pause must be reportable, not just logged — otherwise the composer
+      // shows "Sent to 0 recipients." and the operator has no idea why.
+      expect(r.reason).toContain("number quality is RED");
       expect(mocks.getChannel).toHaveBeenCalledWith("chan-spice", SPICE);
       expect(graphCalls).toHaveLength(0);
       const row = tables["wa_campaigns"].find(c => c.id === camp.id)!;
@@ -660,7 +663,8 @@ describe("Restaurant / food delivery — Spice Route Kitchen on Talko AI", () =>
       const statuses = tables["wa_send_queue"].map(q => q.status);
       expect(statuses.filter(s => s === "failed")).toHaveLength(5);
       expect(statuses.filter(s => s === "pending")).toHaveLength(2); // released, not dropped
-      expect(r).toEqual({ sentNow: 0, queuedRemaining: 2, status: "sending" });
+      expect(r).toMatchObject({ sentNow: 0, queuedRemaining: 2, status: "sending", failedNow: 5 });
+      expect(r.reason).toBeTruthy();   // 5 Meta rejections must be reportable
       expect(tables["wa_send_log"].filter(l => l.status === "failed")).toHaveLength(5);
     }, 10000);
 
@@ -672,7 +676,8 @@ describe("Restaurant / food delivery — Spice Route Kitchen on Talko AI", () =>
       try {
         const camp = await createCampaign({ name: "No number yet", templateName: "welcome_offer", languageCode: "en", variables: [] }, SPICE);
         const r = await startSend(camp as Campaign, [{ phone: ROHAN, fullName: "Rohan Mehta" }]);
-        expect(r.message).toBe("WhatsApp credentials not configured.");
+        expect(r.message).toBe("WhatsApp credentials not configured for this number.");
+        expect(r.reason).toBe("WhatsApp credentials not configured for this number.");
         expect(r.enqueued).toBe(0);
         expect(tables["wa_send_queue"] ?? []).toHaveLength(0);
         expect(graphCalls).toHaveLength(0);

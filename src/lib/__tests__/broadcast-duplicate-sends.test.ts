@@ -12,8 +12,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // COMMITTED an UPDATE re-evaluates its WHERE clause after taking the row lock,
 // so a row a concurrent writer already claimed no longer matches and is skipped.
 
-interface QRow { id: string; campaign_id: string; phone: string; recipient_name: string; status: string; claimed_at: string | null; created_at: string }
-interface LRow { tenant_id: string; campaign_id: string; phone: string; status: string }
+interface QRow { id: string; campaign_id: string; phone: string; recipient_name: string; status: string; claimed_at: string | null; created_at: string; [k: string]: unknown }
+interface LRow { tenant_id: string; campaign_id: string; phone: string; status: string; [k: string]: unknown }
 
 const T = "00000000-0000-0000-0000-000000000001";
 

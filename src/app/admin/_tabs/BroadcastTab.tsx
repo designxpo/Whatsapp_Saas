@@ -229,9 +229,13 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       // A stale deploy answers with Next's HTML 404, so res.json() used to throw
       // and the cause surfaced as "Connection error". adminFetch names it instead.
       const r = await adminFetch<{ success?: boolean; message?: string; error?: string }>("/api/admin/broadcast", { method: "POST", body });
+      // error carries the real reason (Meta rejection, quality pause, opt-out
+      // shortfall, cap). Falling back to message matters: a failed send used to
+      // surface as the bland "Sent to 0 recipients." with the cause left in the
+      // log where nobody saw it.
       if (!r.ok) setError(r.error);
-      else if (!r.data.success) setError(r.data.error || "Failed");
-      else setResult(r.data.message ?? null);
+      else if (!r.data.success) setError(r.data.error || r.data.message || "Failed");
+      else setResult(r.data.error ? `${r.data.message ?? ""} — ${r.data.error}`.trim() : r.data.message ?? null);
     } catch { setError("Connection error"); }
     finally { setSending(false); }
   }

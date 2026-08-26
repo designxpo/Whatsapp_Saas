@@ -37,13 +37,20 @@ export function bucketQueueOutcomes(
   return { sentIds, failedIds, skippedIds, unattemptedIds, sentPhones };
 }
 
-export interface DrainResult { sentNow: number; queuedRemaining: number; status: Campaign["status"] }
+export interface DrainResult {
+  sentNow: number; queuedRemaining: number; status: Campaign["status"];
+  failedNow: number; skippedNow: number;
+  // The single most useful sentence about why this drain did not send more.
+  // Callers used to get sentNow only, so "nothing went out" and "everything
+  // went out" were indistinguishable from outside.
+  reason: string | null;
+}
 
 // Sends one chunk of a campaign's pending queue, respecting the daily cap, then
 // recomputes counters from the log.
 export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise<DrainResult> {
   const campaign = await getCampaign(campaignId);
-  if (!campaign) return { sentNow: 0, queuedRemaining: 0, status: "failed" };
+  if (!campaign) return { sentNow: 0, queuedRemaining: 0, status: "failed", failedNow: 0, skippedNow: 0, reason: "Campaign not found." };
 
   // Anti-ban gate: if this campaign's number is RED / FLAGGED (or admin-paused),
   // hold marketing sends. We keep status "sending" so it auto-resumes once Meta
@@ -52,8 +59,9 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   const ch = campaign.channelId ? await getChannel(campaign.channelId, campaign.tenantId) : null;
   if (ch && !isMarketingSendable(ch)) {
     const queued = await countPending(campaignId);
-    await updateCampaign(campaignId, { status: "sending", errorSummary: `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)` });
-    return { sentNow: 0, queuedRemaining: queued, status: "sending" };
+    const why = `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)`;
+    await updateCampaign(campaignId, { status: "sending", errorSummary: why });
+    return { sentNow: 0, queuedRemaining: queued, status: "sending", failedNow: 0, skippedNow: 0, reason: why };
   }
 
   // Cap against the SMALLER of the operator safety cap and the number's real Meta
@@ -61,8 +69,9 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   const cap = effectiveCap(ch);
   const headroom = Math.max(0, cap - (await sentLast24h(campaign.tenantId)));
   const claim = Math.min(maxToSend, headroom);
-  let sentNow = 0;
+  let sentNow = 0, failedNow = 0, skippedNow = 0;
   const errs: string[] = [];
+  const skipNotes: string[] = [];
 
   if (claim > 0) {
     const claimed = await claimPending(campaignId, claim);
@@ -101,7 +110,10 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
       // Bot on broadcast: arm only the recipients we actually delivered to.
       if (campaign.replyFlowId && sentPhones.length) await armFlow(sentPhones, campaign.replyFlowId, campaign.id, campaign.tenantId).catch(() => undefined);
       sentNow = r.sentCount;
+      failedNow = r.failedCount;
+      skippedNow = r.skippedCount;
       if (r.errors.length) errs.push(...r.errors);
+      if (r.skipReasons.length) skipNotes.push(...r.skipReasons);
     }
   }
 
@@ -113,9 +125,20 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
     counts.sent > 0 ? (counts.failed === 0 ? "sent" : "partial") :
     counts.failed > 0 ? "failed" : "sent";
 
+  // Held back but nothing technically wrong — still the answer to "why did it
+  // send to nobody?", so it must reach the caller, not just the log.
+  const skipNote = skipNotes.length ? `Skipped ${skipNotes.join(", ")}.` : null;
+  const failNote = counts.failed > 0 ? (errs.slice(0, 3).join(" | ") || `${counts.failed} failed`) : null;
+  const capLabel = cap === Number.POSITIVE_INFINITY ? "unlimited" : cap;
   const errorSummary = queuedRemaining > 0
-    ? (headroom <= 0 ? `24h send limit (${cap === Number.POSITIVE_INFINITY ? "unlimited" : cap}) reached — ${queuedRemaining} queued, resumes as the rolling window frees up.` : `${queuedRemaining} queued — sending in the background.`)
-    : (counts.failed > 0 ? (errs.slice(0, 3).join(" | ") || `${counts.failed} failed`) : null);
+    ? (headroom <= 0 ? `24h send limit (${capLabel}) reached — ${queuedRemaining} queued, resumes as the rolling window frees up.` : `${queuedRemaining} queued — sending in the background.`)
+    : (failNote ?? skipNote);
+
+  // What the caller shows a human. Prefer the hard failure, then the skips, then
+  // the cap — a Meta rejection is more actionable than a queue note.
+  const reason = failNote
+    ?? (sentNow === 0 && skipNote ? skipNote : null)
+    ?? (claim <= 0 && headroom <= 0 ? `24h send limit (${capLabel}) already reached — nothing sent.` : null);
 
   await updateCampaign(campaignId, {
     status, sentCount: counts.sent, failedCount: counts.failed,
@@ -123,25 +146,40 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
     sentAt: campaign.sentAt ?? new Date().toISOString(), errorSummary,
   });
 
-  return { sentNow, queuedRemaining, status };
+  return { sentNow, queuedRemaining, status, failedNow, skippedNow, reason };
 }
 
-export interface StartResult { enqueued: number; sentNow: number; queuedRemaining: number; status: Campaign["status"]; message: string }
+export interface StartResult {
+  enqueued: number; sentNow: number; queuedRemaining: number; status: Campaign["status"];
+  message: string;
+  failed: number; skipped: number; reason: string | null;
+}
 
 export async function startSend(campaign: Campaign, recipients: { phone: string; fullName: string }[]): Promise<StartResult> {
   const { token, phoneId } = getCreds((await credsFor(campaign.channelId, campaign.tenantId)) ?? (await explicitDefaultChannel(campaign.tenantId)));
-  if (!token || !phoneId) return { enqueued: 0, sentNow: 0, queuedRemaining: 0, status: campaign.status, message: "WhatsApp credentials not configured." };
+  if (!token || !phoneId) {
+    const why = "WhatsApp credentials not configured for this number.";
+    return { enqueued: 0, sentNow: 0, queuedRemaining: 0, status: campaign.status, message: why, failed: 0, skipped: 0, reason: why };
+  }
 
   const enqueued = await enqueue(campaign.id, recipients, campaign.tenantId);
-  if (enqueued === 0) return { enqueued: 0, sentNow: 0, queuedRemaining: await countPending(campaign.id), status: campaign.status, message: "No valid recipients." };
+  if (enqueued === 0) {
+    const why = "No valid recipients — every number was blank, malformed, or a duplicate.";
+    return { enqueued: 0, sentNow: 0, queuedRemaining: await countPending(campaign.id), status: campaign.status, message: why, failed: 0, skipped: 0, reason: why };
+  }
 
   await updateCampaign(campaign.id, { status: "sending", totalRecipients: recipients.length });
   const drain = await drainQueue(campaign.id);
   return {
     enqueued, sentNow: drain.sentNow, queuedRemaining: drain.queuedRemaining, status: drain.status,
+    failed: drain.failedNow, skipped: drain.skippedNow, reason: drain.reason,
     message: drain.queuedRemaining > 0
       ? `Queued ${enqueued} — ${drain.sentNow} sent now, ${drain.queuedRemaining} finishing in the background.`
-      : `Sent to ${drain.sentNow} recipient${drain.sentNow !== 1 ? "s" : ""}.`,
+      // "Sent to 0 recipients." on its own told nobody anything. If nothing went
+      // out, the message IS the reason.
+      : drain.sentNow === 0 && drain.reason
+        ? `Sent to nobody — ${drain.reason}`
+        : `Sent to ${drain.sentNow} recipient${drain.sentNow !== 1 ? "s" : ""}.`,
   };
 }
 

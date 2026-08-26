@@ -41,8 +41,13 @@ export interface BroadcastResult {
   status?: Campaign["status"] | "scheduled";
   totalRecipients?: number;
   sent?: number;
+  failed?: number;
+  skipped?: number;
   queuedRemaining?: number;
   message: string;
+  // Why nothing (or not everything) went out. Populated whenever there is a
+  // reason to give — callers should show this in preference to `message`.
+  error?: string;
 }
 
 export class BroadcastError extends Error {
@@ -133,5 +138,18 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
     channelId: input.channelId ?? null, replyFlowId: input.replyFlowId ?? null,
   }, tenantId);
   const r = await startSend(campaign, recipients);
-  return { success: true, campaignId: campaign.id, status: r.status, totalRecipients: recipients.length, sent: r.sentNow, queuedRemaining: r.queuedRemaining, message: r.message };
+  // A broadcast that reached NOBODY is not a success. Reporting success:true
+  // with "Sent to 0 recipients." is how a wrong-WABA template ((#132001)), a
+  // payment-blocked number (141006), a quality pause and an empty audience all
+  // came out looking identical, with the real reason left in the log.
+  const reachedNobody = r.sentNow === 0 && r.queuedRemaining === 0 && recipients.length > 0;
+  return {
+    success: !reachedNobody,
+    campaignId: campaign.id, status: r.status,
+    totalRecipients: recipients.length, sent: r.sentNow,
+    failed: r.failed, skipped: r.skipped,
+    queuedRemaining: r.queuedRemaining,
+    message: r.message,
+    ...(r.reason ? { error: r.reason } : {}),
+  };
 }
