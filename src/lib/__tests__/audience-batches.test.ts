@@ -51,6 +51,12 @@ function makeQuery(name: string, rows: Row[]) {
       filters.push(r => String(r[k] ?? "").endsWith(needle));
       return q;
     },
+    // PostgREST or() with like patterns: "phone.like.*123,phone.like.*456"
+    or(expr: string) {
+      const needles = expr.split(",").map(e => e.split(".like.*")[1]).filter(Boolean);
+      filters.push(r => needles.some(n => String(r.phone ?? "").endsWith(n)));
+      return q;
+    },
     async maybeSingle() {
       const hit = rows.filter(r => filters.every(f => f(r)))[0];
       return { data: hit ? { ...hit } : null, error: null };
@@ -325,6 +331,21 @@ describe("batches", () => {
     const missing = await consentMissing(["919000000001", "919000000002"]);
     expect(missing.has("9000000002")).toBe(true);
     expect(missing.has("9000000001")).toBe(false);
+  });
+
+  it("matches a TYPED number against the stored country-coded contact", async () => {
+    // A pasted recipient "8368872108" compared exactly against contacts.phone
+    // "918368872108" finds nothing and would be treated as not opted in, even
+    // though that contact consented — so the whole send reaches nobody.
+    contact("c1", "918368872108");
+    expect((await consentMissing(["8368872108"])).size).toBe(0);
+    expect((await consentMissing(["+91 83688 72108"])).size).toBe(0);
+  });
+
+  it("still reports a typed number whose contact has NOT opted in", async () => {
+    // The tolerant match must not become a blanket pass.
+    contact("c1", "918368872108", { opted_in: false });
+    expect((await consentMissing(["8368872108"])).has("8368872108")).toBe(true);
   });
 
   it("counts a number that isn't a contact at all as not opted in", async () => {

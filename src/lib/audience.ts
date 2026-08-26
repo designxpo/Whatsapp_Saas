@@ -292,9 +292,25 @@ export async function consentMissing(phones: string[], tenantId = DEFAULT_TENANT
 
   const consented = new Set<string>();
   const all = [...wanted.values()];
+  // Fast path: audience and batch recipients ARE contacts.phone values, so an
+  // exact match resolves practically all of them in one query per 500.
   for (let i = 0; i < all.length; i += 500) {
     const { data, error } = await db().from("contacts")
       .select("phone, opted_in").eq("tenant_id", tenantId).in("phone", all.slice(i, i + 500));
+    if (error) throw error;
+    for (const r of data ?? []) if (r.opted_in === true) consented.add(last10(r.phone as string));
+  }
+  // Tolerant pass over the rest. A TYPED number ("8368872108") is not equal to
+  // the stored country-coded row ("918368872108"), so exact-match-only would
+  // report a pasted recipient as not opted in even though they are. Match on the
+  // last 10 digits, like markOptedIn / isOptedOut already do. Usually runs on
+  // zero phones, so the extra queries only happen for hand-entered lists.
+  const unresolved = [...wanted.keys()].filter(k => !consented.has(k));
+  for (let i = 0; i < unresolved.length; i += 50) {
+    const chunk = unresolved.slice(i, i + 50);
+    const { data, error } = await db().from("contacts")
+      .select("phone, opted_in").eq("tenant_id", tenantId)
+      .or(chunk.map(k => `phone.like.*${k}`).join(","));
     if (error) throw error;
     for (const r of data ?? []) if (r.opted_in === true) consented.add(last10(r.phone as string));
   }
