@@ -4,6 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, matchChunksText, matchChunksTextByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
 import { safeFetch } from "./ssrf";
+import { resolveEmbedModel } from "./model-allowlist";
 
 
 // pdf-parse / mammoth / cheerio are loaded lazily inside the extract functions:
@@ -12,7 +13,11 @@ import { safeFetch } from "./ssrf";
 
 // Embedding dimension — MUST match the vector(768) column in 0003_kb.sql.
 export const EMBED_DIM = 768;
-const EMBED_MODEL = process.env.GEMINI_EMBED_MODEL || "gemini-embedding-001";
+// Allowlisted. This is the one place the PLATFORM Gemini key is spent (chat and
+// voice run on each tenant's own key via resolveTenantAi), and a wrong model
+// here returns vectors of a different dimension — silently corrupting kb_chunks
+// and every retrieval that reads them. See model-allowlist.ts.
+const EMBED_MODEL = resolveEmbedModel(process.env.GEMINI_EMBED_MODEL, "gemini-embedding-001", "env:GEMINI_EMBED_MODEL");
 
 let client: GoogleGenAI | null = null;
 function genai(): GoogleGenAI {
