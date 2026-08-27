@@ -37,7 +37,7 @@ export default function FeaturesPage() {
               matters: "feature" and "features" don't count as the same term. */}
           <SectionTitle level={1} eyebrow="Features" title="All the WhatsApp and Instagram automation features, in one platform"
             subtitle="From the first hello to repeat purchases — Talko AI automates the whole conversation across WhatsApp, Instagram, Messenger, YouTube and your website, and keeps your Google reviews answered." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko AI automates customer conversations on six channels from one place:</strong>{" "}
               WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a web-chat widget for your own site.

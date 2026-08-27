@@ -41,7 +41,7 @@ export default function ExtensionPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Chrome extension", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Free Chrome extension" title="Reply to customers without leaving the tab you're on"
             subtitle="Talko Copilot puts your WhatsApp, Instagram, Messenger and web-chat inbox in a Chrome side panel — plus one-click lead capture from any page you're browsing." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko Copilot is a free Chrome extension that puts your Talko AI inbox in a side panel, reachable from any tab.</strong>{" "}
               It shows customer order history and lifetime spend, searches your product catalog to send items with pricing, drafts AI replies grounded

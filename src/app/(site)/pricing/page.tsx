@@ -64,7 +64,7 @@ export default function PricingPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Pricing", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Pricing" title="Simple, transparent Talko AI pricing — plans from ₹999/mo"
             subtitle="Every plan includes a 14-day free trial. AI replies run on your own provider key, so usage costs stay yours and predictable." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Business plans run {BIZ_RANGE}; Creator plans, which are Instagram-first, run {CREATOR_RANGE}; Scale is quoted per account.</strong>{" "}
               Annual billing takes {ANNUAL_OFF} off any of them. Every plan starts with a 14-day free trial and no credit card.

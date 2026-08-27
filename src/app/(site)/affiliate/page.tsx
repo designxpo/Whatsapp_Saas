@@ -45,7 +45,7 @@ export default function AffiliatePage() {
             title="Refer businesses to Talko AI, earn recurring commission for as long as they stay"
             subtitle="Anyone can join the Talko AI Affiliate Program. Get a unique referral link, and earn 20% of every subscription payment made by a business you referred — every month, not just once." />
 
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">The Talko AI Affiliate Program pays a 20% recurring commission</strong> on
               every subscription payment made by a business you refer, for as long as that business stays a paying customer —

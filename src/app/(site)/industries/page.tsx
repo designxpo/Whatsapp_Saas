@@ -58,7 +58,7 @@ export default function IndustriesPage() {
             title="WhatsApp automation by industry — how businesses like yours run on Talko AI"
             subtitle="Six playbooks, one platform. The same building blocks — AI replies, chatbot flows, broadcasts, drips and payments — arranged for the way your industry actually sells and supports."
           />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">An industry playbook is a documented arrangement of the same platform, tuned to one kind of business.</strong>{" "}
               Talko AI has six: D2C and e-commerce, EdTech, healthcare, real estate, restaurants and travel. Each one uses the identical

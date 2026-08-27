@@ -74,7 +74,7 @@ export default function ContactPage() {
             <p className="mx-auto mt-4 max-w-xl text-base text-slate-500">
               Sales question, stuck on setup, or something else entirely — send it here and a real person replies, not a bot.
             </p>
-            <div className="mt-4 space-y-3 text-left text-sm leading-relaxed text-slate-500">
+            <div className="mt-6 space-y-3 text-center text-sm leading-relaxed text-slate-500">
               <p>
                 <strong className="font-semibold text-slate-900">Email info@thetalko.in or use the form below.</strong>{" "}
                 Sales and general enquiries get a reply within one business day; support is usually same-day during Indian business hours. Talko AI

@@ -52,7 +52,7 @@ export default function ChangelogPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Changelog", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Changelog" title="What's new, improved and fixed in Talko AI"
             subtitle="New channels, features and fixes, as they ship — in plain language, not commit messages." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">This page logs every customer-visible change to Talko AI, on the day it ships.</strong>{" "}
               Entries are tagged New, Improved or Fixed, and grouped by date with the most recent first. The latest release

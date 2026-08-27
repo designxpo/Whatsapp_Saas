@@ -71,7 +71,7 @@ export default function GuidesPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Guides", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Guides" title="Setup guides — connect every channel to Talko AI yourself, step by step"
             subtitle="Plain-language guides for connecting every channel and turning on automation — no developer needed. Most take five to ten minutes." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">You can set up Talko AI without a developer.</strong>{" "}
               Each guide below is a numbered walkthrough of one task — connecting a channel, grounding the AI, building a flow — with its own

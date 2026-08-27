@@ -32,7 +32,7 @@ export default function AboutPage() {
             <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">{ABOUT.title}</h1>
             <p className="mx-auto mt-5 max-w-2xl text-balance text-slate-600">{ABOUT.intro}</p>
           </div>
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko AI is a customer conversation platform, built and operated by PM Technologies.</strong>{" "}
               It brings WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat into one

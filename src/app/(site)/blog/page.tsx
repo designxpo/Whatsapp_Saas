@@ -83,7 +83,7 @@ export default function BlogPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Blog", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Blog" title="The Talko AI blog: WhatsApp and Instagram automation playbooks"
             subtitle="Playbooks, product updates and compliance guides to help you get more from every conversation." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">This blog covers how to automate customer messaging without breaking platform rules.</strong>{" "}
               Expect setup playbooks, channel deep-dives and compliance explainers for WhatsApp, Instagram, Facebook Messenger, YouTube comments,

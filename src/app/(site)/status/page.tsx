@@ -67,7 +67,7 @@ export default async function StatusPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Status", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Status" title="Talko AI system status — live engine health and incidents"
             subtitle="A live look at the engine behind every automated reply, broadcast and channel." />
-          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
+          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">This page reports one thing, measured directly: whether the background engine that runs every automated action has checked in recently.</strong>{" "}
               That engine wakes every five minutes, and records a heartbeat each time it finishes a pass. A pass completed within
