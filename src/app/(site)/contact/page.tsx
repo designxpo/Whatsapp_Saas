@@ -5,7 +5,7 @@ import { ContactForm } from "../_components/contact-form";
 import { LifeBuoy, Rocket, HelpCircle, CheckCircle2 } from "lucide-react";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { CONTACT_SEO } from "../_content/pageseo";
 
@@ -74,21 +74,22 @@ export default function ContactPage() {
             <p className="mx-auto mt-4 max-w-xl text-base text-slate-500">
               Sales question, stuck on setup, or something else entirely — send it here and a real person replies, not a bot.
             </p>
+            <div className="mt-4 space-y-3 text-left text-sm leading-relaxed text-slate-500">
+              <p>
+                <strong className="font-semibold text-slate-900">Email info@thetalko.in or use the form below.</strong>{" "}
+                Sales and general enquiries get a reply within one business day; support is usually same-day during Indian business hours. Talko AI
+                is built and operated by PM Technologies, and the people who answer are the ones who build the product.
+              </p>
+              <p>
+                Talko AI is a customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile
+                reviews and website chat — used by D2C and retail brands, service and local businesses, education and healthcare providers, agencies
+                and creators. If your question is &quot;something isn&apos;t working&quot;, the{" "}
+                <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> will
+                usually answer it faster than we can.
+              </p>
+              <LastUpdated iso={CONTACT_SEO.updated} />
+            </div>
           </div>
-          <KeyTakeaway updated={CONTACT_SEO.updated}>
-            <p>
-              <strong className="font-semibold text-slate-900">Email info@thetalko.in or use the form below.</strong>{" "}
-              Sales and general enquiries get a reply within one business day; support is usually same-day during Indian business hours. Talko AI
-              is built and operated by PM Technologies, and the people who answer are the ones who build the product.
-            </p>
-            <p>
-              Talko AI is a customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile
-              reviews and website chat — used by D2C and retail brands, service and local businesses, education and healthcare providers, agencies
-              and creators. If your question is &quot;something isn&apos;t working&quot;, the{" "}
-              <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> will
-              usually answer it faster than we can.
-            </p>
-          </KeyTakeaway>
         </Container>
       </section>
 

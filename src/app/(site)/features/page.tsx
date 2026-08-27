@@ -5,7 +5,7 @@ import { AgentCanvas } from "../_components/canvas";
 import { FlowShowcase } from "../_components/flowshowcase";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { FEATURES_SEO } from "../_content/pageseo";
 
@@ -37,7 +37,7 @@ export default function FeaturesPage() {
               matters: "feature" and "features" don't count as the same term. */}
           <SectionTitle level={1} eyebrow="Features" title="All the WhatsApp and Instagram automation features, in one platform"
             subtitle="From the first hello to repeat purchases — Talko AI automates the whole conversation across WhatsApp, Instagram, Messenger, YouTube and your website, and keeps your Google reviews answered." />
-          <KeyTakeaway updated={FEATURES_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko AI automates customer conversations on six channels from one place:</strong>{" "}
               WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a web-chat widget for your own site.
@@ -49,7 +49,8 @@ export default function FeaturesPage() {
               businesses booking appointments, education and healthcare providers answering the same questions all day, agencies running
               several client accounts, and creators buried in Instagram DMs. AI replies run on your own provider key, so usage costs stay yours.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={FEATURES_SEO.updated} />
+          </div>
         </Container>
       </section>
 

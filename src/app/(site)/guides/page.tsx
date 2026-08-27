@@ -5,7 +5,7 @@ import { Container, Glow, SectionTitle, Card } from "../_components/ui";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { GUIDES_SEO } from "../_content/pageseo";
 import { GUIDES, type Guide } from "../_content/guides";
@@ -71,7 +71,7 @@ export default function GuidesPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Guides", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Guides" title="Setup guides — connect every channel to Talko AI yourself, step by step"
             subtitle="Plain-language guides for connecting every channel and turning on automation — no developer needed. Most take five to ten minutes." />
-          <KeyTakeaway updated={GUIDES_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">You can set up Talko AI without a developer.</strong>{" "}
               Each guide below is a numbered walkthrough of one task — connecting a channel, grounding the AI, building a flow — with its own
@@ -83,7 +83,8 @@ export default function GuidesPage() {
               broken, the <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> is
               organised by symptom and will get you there faster.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={GUIDES_SEO.updated} />
+          </div>
         </Container>
       </section>
 

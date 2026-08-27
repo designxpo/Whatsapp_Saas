@@ -5,7 +5,7 @@ import { Container, Glow, SectionTitle } from "../_components/ui";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { BLOG_SEO } from "../_content/pageseo";
 import { POSTS } from "../_content/site";
@@ -83,7 +83,7 @@ export default function BlogPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Blog", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Blog" title="The Talko AI blog: WhatsApp and Instagram automation playbooks"
             subtitle="Playbooks, product updates and compliance guides to help you get more from every conversation." />
-          <KeyTakeaway updated={BLOG_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">This blog covers how to automate customer messaging without breaking platform rules.</strong>{" "}
               Expect setup playbooks, channel deep-dives and compliance explainers for WhatsApp, Instagram, Facebook Messenger, YouTube comments,
@@ -95,7 +95,8 @@ export default function BlogPage() {
               instead of context, see the <Link href="/guides" className="font-semibold text-[#0783fd] hover:underline">setup guides</Link>; for what
               shipped recently, the <Link href="/changelog" className="font-semibold text-[#0783fd] hover:underline">changelog</Link>.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={BLOG_SEO.updated} />
+          </div>
         </Container>
       </section>
 

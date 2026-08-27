@@ -5,7 +5,7 @@ import { Container, Glow, SectionTitle } from "../_components/ui";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { STATUS_SEO } from "../_content/pageseo";
 import { getPublicStatus, OPERATIONAL_MAX_MIN, type PublicStatusLevel } from "@/lib/publicstatus";
@@ -67,7 +67,7 @@ export default async function StatusPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Status", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Status" title="Talko AI system status — live engine health and incidents"
             subtitle="A live look at the engine behind every automated reply, broadcast and channel." />
-          <KeyTakeaway updated={STATUS_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">This page reports one thing, measured directly: whether the background engine that runs every automated action has checked in recently.</strong>{" "}
               That engine wakes every five minutes, and records a heartbeat each time it finishes a pass. A pass completed within
@@ -79,7 +79,8 @@ export default async function StatusPage() {
               WhatsApp&apos;s 24-hour customer service window. The{" "}
               <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> covers those by symptom.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={STATUS_SEO.updated} />
+          </div>
         </Container>
       </section>
 

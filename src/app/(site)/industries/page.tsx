@@ -5,7 +5,7 @@ import { CtaBand, StatsBand } from "../_components/sections";
 import { IndustrySections } from "../_components/industries";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { INDUSTRIES_SEO } from "../_content/pageseo";
 import { INDUSTRIES } from "../_content/industries";
@@ -58,7 +58,7 @@ export default function IndustriesPage() {
             title="WhatsApp automation by industry — how businesses like yours run on Talko AI"
             subtitle="Six playbooks, one platform. The same building blocks — AI replies, chatbot flows, broadcasts, drips and payments — arranged for the way your industry actually sells and supports."
           />
-          <KeyTakeaway updated={INDUSTRIES_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">An industry playbook is a documented arrangement of the same platform, tuned to one kind of business.</strong>{" "}
               Talko AI has six: D2C and e-commerce, EdTech, healthcare, real estate, restaurants and travel. Each one uses the identical
@@ -70,7 +70,8 @@ export default function IndustriesPage() {
               Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat. If your sector isn&apos;t one of the six,
               the nearest playbook is still a working starting point — most businesses adapt one rather than starting from nothing.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={INDUSTRIES_SEO.updated} />
+          </div>
         </Container>
       </section>
 

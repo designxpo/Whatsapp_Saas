@@ -175,7 +175,6 @@ export type Post = {
   body: PostBlock[];
   faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
   sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
-  keyTakeaway?: string[];                                  // "In short" — rendered with KeyTakeaway
 };
 export const POSTS: Post[] = [
   {
@@ -183,12 +182,9 @@ export const POSTS: Post[] = [
     title: "Comment-to-DM Automation on Instagram and Facebook: How It Actually Works",
     excerpt: "Turn post comments into private messages the compliant way — Meta's real rules on the 7-day window, one reply per comment, and why a comment is treated as an opt-in a cold DM never gets.",
     date: "August 27, 2026", category: "Growth", readTime: "8 min read",
-    keyTakeaway: [
-      "The bottom line: a comment on your post is Meta's one built-in exception to the no-cold-messaging rule — it lets you send exactly one private reply within 7 days, no prior conversation required. Built well, that turns every comment into a qualified lead in someone's DMs within seconds; built carelessly, it reads as spam and gets the Page restricted.",
-      "This is for any business running ads or organic posts on Instagram or Facebook that gets comments asking for price, availability, or \"how do I order\" — and is currently answering them by hand, hours later, if at all.",
-    ],
     body: [
       p("Someone comments \"price?\" under your Instagram post. Answer in the comments and the price is now public, next to every competitor who's watching. Say nothing and they've usually moved on within the hour. Comment-to-DM automation is the third option: the comment triggers one private message straight into their inbox, automatically, without breaking any rule Meta actually enforces. It's one of the highest-converting flows in messaging automation, and one of the easiest to get slightly wrong — so here's exactly how the mechanism works, what the real constraints are, and what separates a flow that converts from one that gets a Page flagged."),
+      p("The bottom line: a comment on your post is Meta's one built-in exception to the no-cold-messaging rule — it lets you send exactly one private reply within 7 days, no prior conversation required. Built well, that turns every comment into a qualified lead in someone's DMs within seconds; built carelessly, it reads as spam and gets the Page restricted. This is for any business running ads or organic posts on Instagram or Facebook that gets comments asking for price, availability, or \"how do I order\" — and is currently answering them by hand, hours later, if at all."),
 
       h2("The rule that makes this possible: a comment is an opt-in"),
       p("Meta's default position on messaging is strict: you cannot message someone who hasn't messaged you first. Meta calls the exception a Private Reply, and defines it precisely — a Page can send exactly one private message to someone who comments on its post, sendable within 7 days of the comment, with no requirement that the person messaged the Page first. The comment itself is treated as the opt-in."),
@@ -251,15 +247,13 @@ export const POSTS: Post[] = [
     title: "Automate Google Review Replies Without Sounding Fake",
     excerpt: "Reply to every Google review fast, in your own voice — a rating-based AI framework so automated replies never read like a generic template.",
     date: "August 15, 2026", category: "Playbook", readTime: "9 min read",
-    // "In short" — the bottom-line answer + who it's for, rendered right under
-    // the H1 via KeyTakeaway. Answer-engine extraction and human skimmers both
-    // read this before anything else, so it has to stand alone.
-    keyTakeaway: [
-      "The bottom line: automate replies to reviews at or above a rating you trust (4★+ works well), route anything below that to a human for approval, and always ground the reply in what the review actually says — not just its star count.",
-      "This is for local and multi-location businesses getting enough reviews that answering every one by hand no longer scales.",
-    ],
     body: [
       p("Most local businesses either answer every Google review by hand, late at night, in a hurry — or don't answer at all. Neither holds up once you're getting a dozen reviews a week across two or three locations. AI can close that gap, but done carelessly it produces exactly the kind of generic, corporate-sounding reply that damages trust rather than building it. Here's how to automate review replies well: what to hand to AI, what to still write yourself, and how to keep every drafted reply sounding like an actual person read the review."),
+      // The bottom-line answer + who it's for, right after the lede — the two
+      // sentences answer-engine extraction and a human skimming the page both
+      // read before anything else, so they stay this early even without a
+      // separate labeled callout to hold them.
+      p("The bottom line: automate replies to reviews at or above a rating you trust (4★+ works well), route anything below that to a human for approval, and always ground the reply in what the review actually says — not just its star count. This is for local and multi-location businesses getting enough reviews that answering every one by hand no longer scales."),
 
       h2("Why ignoring reviews costs more than a bad look"),
       p("It costs real customers, not just a bad impression. In BrightLocal's Local Consumer Review Survey, 89% of consumers read a business's responses to reviews, and 42% say they're unlikely to use a business that never responds at all. Consumers also expect speed: 81% want a reply within a week, and expectations keep tightening every year the survey runs."),

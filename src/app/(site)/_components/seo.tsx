@@ -1,7 +1,12 @@
 // Presentational building blocks for the things answer engines (Google AI
 // Overviews, ChatGPT, Perplexity) look for and ordinary marketing pages omit:
-// a bottom-line summary at the top, a real question→answer block, a visible
-// freshness date, and cited sources.
+// a real question→answer block, a visible freshness date, and cited sources.
+// The bottom-line "what is this" summary these used to accompany (KeyTakeaway)
+// is deliberately NOT a separate component any more — it now lives as the
+// page's own opening paragraph. A self-contained answer near the top of a page
+// is what answer-engine extraction rewards; a labeled callout box around it
+// was never the mechanism, so removing the box costs nothing as long as the
+// sentence itself stays early in the real copy.
 //
 // Each one renders visible content AND, where relevant, the matching JSON-LD —
 // bundled together on purpose. The alternative (schema in the page, copy in a
@@ -19,27 +24,6 @@ export function formatIsoDate(iso: string): string {
   return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-US", {
     day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
   });
-}
-
-// The bottom-line answer, above the fold. Answer engines quote the first
-// self-contained statement on a page, so this is the one block worth writing
-// as if it were the only thing that gets read: what this is, who it's for.
-// `text-left` is explicit because every page drops this directly under a
-// centred hero, and a centred paragraph of five lines is unreadable.
-export function KeyTakeaway({
-  label = "In short", updated, children,
-}: { label?: string; updated?: string; children: React.ReactNode }) {
-  return (
-    <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-slate-200 bg-slate-50/60 p-6 text-left">
-      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-      <div className="mt-2.5 space-y-2.5 text-sm leading-relaxed text-slate-600">{children}</div>
-      {updated && (
-        <div className="mt-4 border-t border-slate-200 pt-3">
-          <LastUpdated iso={updated} />
-        </div>
-      )}
-    </div>
-  );
 }
 
 // Visible freshness signal, paired with the `dateModified` in the page's

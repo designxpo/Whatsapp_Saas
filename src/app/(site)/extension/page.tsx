@@ -6,7 +6,7 @@ import { Reveal } from "../_components/motion";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema, extensionSchema, EXTENSION_STORE_URL } from "../_content/schema";
 import { EXTENSION_SEO } from "../_content/pageseo";
 
@@ -41,7 +41,7 @@ export default function ExtensionPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Chrome extension", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Free Chrome extension" title="Reply to customers without leaving the tab you're on"
             subtitle="Talko Copilot puts your WhatsApp, Instagram, Messenger and web-chat inbox in a Chrome side panel — plus one-click lead capture from any page you're browsing." />
-          <KeyTakeaway updated={EXTENSION_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko Copilot is a free Chrome extension that puts your Talko AI inbox in a side panel, reachable from any tab.</strong>{" "}
               It shows customer order history and lifetime spend, searches your product catalog to send items with pricing, drafts AI replies grounded
@@ -52,7 +52,8 @@ export default function ExtensionPage() {
               needs a reply. Every send goes through WhatsApp&apos;s, Instagram&apos;s and Facebook&apos;s own official APIs, the same rules (including WhatsApp&apos;s
               24-hour window) as the <Link href="/features" className="font-semibold text-[#0783fd] hover:underline">Talko AI web app</Link>.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={EXTENSION_SEO.updated} />
+          </div>
 
           <Reveal className="mx-auto mt-10 flex max-w-2xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer"

@@ -5,7 +5,7 @@ import { Testimonials, CtaBand } from "../_components/sections";
 import { PricingTiers } from "../_components/pricing";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { PRICING_SEO, BIZ_RANGE, CREATOR_RANGE, CREATOR_FLOOR, ANNUAL_OFF } from "../_content/pageseo";
 import { CREATOR_TIERS } from "../_content/site";
@@ -64,7 +64,7 @@ export default function PricingPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Pricing", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Pricing" title="Simple, transparent Talko AI pricing — plans from ₹999/mo"
             subtitle="Every plan includes a 14-day free trial. AI replies run on your own provider key, so usage costs stay yours and predictable." />
-          <KeyTakeaway updated={PRICING_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Business plans run {BIZ_RANGE}; Creator plans, which are Instagram-first, run {CREATOR_RANGE}; Scale is quoted per account.</strong>{" "}
               Annual billing takes {ANNUAL_OFF} off any of them. Every plan starts with a 14-day free trial and no credit card.
@@ -74,7 +74,8 @@ export default function PricingPage() {
               per-conversation WhatsApp fees, and your AI provider&apos;s usage on the Gemini, OpenAI or Anthropic key you bring. That is
               what &quot;transparent&quot; means here — you can see each line separately instead of one bundled number.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={PRICING_SEO.updated} />
+          </div>
         </Container>
       </section>
 

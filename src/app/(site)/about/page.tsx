@@ -4,7 +4,7 @@ import { StatsBand, CtaBand } from "../_components/sections";
 import { Reveal } from "../_components/motion";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { KeyTakeaway, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { ABOUT_SEO } from "../_content/pageseo";
 import { ABOUT } from "../_content/site";
@@ -32,7 +32,7 @@ export default function AboutPage() {
             <h1 className="mx-auto mt-6 max-w-3xl text-balance text-4xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-5xl">{ABOUT.title}</h1>
             <p className="mx-auto mt-5 max-w-2xl text-balance text-slate-600">{ABOUT.intro}</p>
           </div>
-          <KeyTakeaway updated={ABOUT_SEO.updated}>
+          <div className="mx-auto mt-4 max-w-2xl space-y-3 text-left text-sm leading-relaxed text-slate-500">
             <p>
               <strong className="font-semibold text-slate-900">Talko AI is a customer conversation platform, built and operated by PM Technologies.</strong>{" "}
               It brings WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat into one
@@ -43,7 +43,8 @@ export default function AboutPage() {
               businesses, education and healthcare providers, agencies and creators. Every channel runs on its owner&apos;s official API, and AI
               replies run on your own provider key, so your data and your costs both stay yours.
             </p>
-          </KeyTakeaway>
+            <LastUpdated iso={ABOUT_SEO.updated} />
+          </div>
         </Container>
       </section>
 

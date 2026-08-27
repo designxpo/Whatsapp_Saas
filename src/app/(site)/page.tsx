@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ChevronDown } from "lucide-react";
 import { Container, SectionTitle } from "./_components/ui";
 import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable, Glossary } from "./_components/sections";
 import { WhyChoose } from "./_components/why-choose";
@@ -68,27 +67,17 @@ export default function HomePage() {
       {/* Hero — orbit panel */}
       <Hero />
 
-      {/* Plain-language definition + key takeaway near the top of the page —
-          answers "what is Talko AI" directly for readers and answer engines,
-          instead of making them infer it from the hero's benefit-led copy.
-          Collapsed by default via native <details> so it doesn't compete with
-          the hero visually, while staying real, in-DOM, user-revealable
-          content — NOT display:none. That distinction matters: text a crawler
-          sees but no visitor can ever see is Google's textbook "hidden text"
-          spam pattern; a native disclosure widget any visitor can expand is a
-          normal, indexable UI pattern Google explicitly does not penalise. */}
-      <details className="group mx-auto max-w-2xl px-5 pb-6 text-center">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-700 [&::-webkit-details-marker]:hidden">
-          What is Talko AI?
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-open:rotate-180" />
-        </summary>
-        <p id="site-tldr" className="mt-3 text-left text-sm leading-relaxed text-slate-500">
-          <strong className="font-bold text-slate-700">In short:</strong> Talko AI is an AI-powered customer conversation
-          platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and
-          website chat. It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply,
-          qualify leads and sell across every channel — on their own AI key.
-        </p>
-      </details>
+      {/* Plain-language definition near the top of the page — answers "what is
+          Talko AI" directly for readers and answer engines, instead of making
+          them infer it from the hero's benefit-led copy. Ordinary flowing
+          copy, no boxed-off callout and no label: the sentence itself is the
+          answer, which is what answer-engine extraction actually rewards —
+          not the presence of a "summary" wrapper around it. */}
+      <p id="site-tldr" className="mx-auto max-w-2xl px-5 pb-6 text-center text-sm leading-relaxed text-slate-500">
+        Talko AI is an AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube
+        comments, Google Business Profile reviews and website chat. It&apos;s built for small businesses, D2C brands and
+        agencies that want one inbox to auto-reply, qualify leads and sell across every channel — on their own AI key.
+      </p>
 
       {/* Platform glimpse — leads the page with a look inside the product */}
       <PlatformGlimpse />
