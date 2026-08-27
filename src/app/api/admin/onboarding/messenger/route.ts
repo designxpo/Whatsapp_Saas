@@ -106,11 +106,27 @@ export async function POST(req: Request) {
 
   const res = await resolveFacebookPages(token);
   if (!res.ok || !res.pages?.length) {
-    // "No Page found" and "we were granted no Page permission" are the same
-    // response from Graph and need opposite fixes — one is theirs, one is ours.
+    // THREE different causes produce one empty /me/accounts, and they need
+    // opposite fixes — so name which one it is instead of asserting the tenant
+    // has no Page (they usually do, and being told otherwise is a dead end):
+    //   • no pages_* permission at all      → our Meta app's review/config
+    //   • pages_show_list missing           → same, narrower
+    //   • permissions fine, no Page attached → they clicked past "Choose the
+    //     Pages you want Talko.AI to access" without ticking one, and Facebook
+    //     will not re-ask while the grant stands
     const noGrant = noGrantMessage(scopes, "pages_", "Facebook Page");
-    console.error(TAG, "page resolve failed", { tenantId, error: res.error, noGrant: !!noGrant });
-    return NextResponse.json({ error: noGrant ?? res.error ?? "No Facebook Page found" }, { status: 502 });
+    const canList = scopes?.includes("pages_show_list");
+    console.error(TAG, "page resolve failed", {
+      tenantId, error: res.error, noGrant: !!noGrant, canList,
+      scopes: scopes ?? "(probe failed)",
+    });
+    const error = noGrant
+      ?? (scopes && !canList
+        ? "Facebook granted the connection but not permission to list your Pages, so we can't see which Page to set up. Remove Talko.AI under Facebook → Settings → Business integrations, then connect again and leave every permission enabled."
+        : scopes
+          ? "Facebook granted the permissions but attached no Page to them. On Meta's \"Choose the Pages you want Talko.AI to access\" step, tick the Page and continue — Facebook won't ask again while the current approval stands, so first remove Talko.AI under Facebook → Settings → Business integrations."
+          : res.error ?? "No Facebook Page found");
+    return NextResponse.json({ error, diagnostic: { scopes: scopes ?? undefined } }, { status: 502 });
   }
 
   // Choose the Page: the one the caller picked, or the only one — else ask the

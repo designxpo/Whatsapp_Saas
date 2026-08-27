@@ -1262,7 +1262,14 @@ export function MessengerCard() {
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }
       // Show Meta's own code/subcode/trace alongside the explanation — it is the
       // difference between "try again" and knowing which of three causes it was.
-      else if (!res.ok) setMsg([d.error || "Connection failed", d.diagnostic?.code ? `(Meta code ${d.diagnostic.code}${d.diagnostic.subcode ? `/${d.diagnostic.subcode}` : ""}${d.diagnostic.trace ? `, trace ${d.diagnostic.trace}` : ""})` : ""].filter(Boolean).join(" "));
+      else if (!res.ok) setMsg([
+        d.error || "Connection failed",
+        d.diagnostic?.code ? `(Meta code ${d.diagnostic.code}${d.diagnostic.subcode ? `/${d.diagnostic.subcode}` : ""}${d.diagnostic.trace ? `, trace ${d.diagnostic.trace}` : ""})` : "",
+        // What Meta actually granted. Without this, "no Page found" is a sentence
+        // with three causes and no way to tell which — and the logs keep only the
+        // error line, so support cannot see it either.
+        d.diagnostic?.scopes?.length ? `Granted: ${d.diagnostic.scopes.join(", ")}.` : "",
+      ].filter(Boolean).join(" "));
       else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`); setPagePick(null); load(); }
       // Partial success: Page DMs are live, comment events are not.
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setPagePick(null); load(); }
