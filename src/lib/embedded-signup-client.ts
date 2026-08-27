@@ -21,8 +21,11 @@ const ADS_CONFIG_ID = process.env.NEXT_PUBLIC_META_ADS_CONFIG_ID;
 interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
 interface FbBusinessLoginOptions {
   config_id: string;
-  response_type: "code";
-  override_default_response_type: boolean;
+  // Omit both to get the SDK's default response — a short-lived USER access
+  // token. Set them to ask for an authorization code instead, which only a
+  // "Business" login configuration can issue usefully (see launchFacebookSignup).
+  response_type?: "code";
+  override_default_response_type?: boolean;
   extras?: Record<string, unknown>;
 }
 interface FbSdk {
@@ -170,19 +173,35 @@ export async function launchInstagramSignup(): Promise<{ code: string }> {
 // same as Instagram. Re-invoked (no re-consent) when the user picks among
 // multiple Pages — a Login-for-Business code is single-use, so a fresh popup
 // call mints a fresh one, exactly like WhatsApp's "coex" retry already does.
-export async function launchFacebookSignup(): Promise<{ code: string }> {
+// Returns a short-lived USER access token, NOT an authorization code.
+//
+// The code flow could never work here, and the reason is worth writing down
+// because Meta's error names the wrong thing. The Messenger configuration is a
+// "General" login variation (Meta will not let a variation change after the
+// configuration is created), and a General configuration issues an ORDINARY
+// Facebook Login code — which must be exchanged with the SAME redirect_uri the
+// dialog used. Only a "Business" variation issues the business-login code that
+// /oauth/access_token accepts with nothing but client_id + client_secret, which
+// is what exchangeSignupCode sends. So every attempt failed with
+//
+//   "Error validating verification code. Please make sure your redirect_uri is
+//    identical to the one you used in the OAuth dialog request" (100 / 36008)
+//
+// — literally true, and indistinguishable from a domain misconfiguration.
+//
+// Taking the token the SDK returns by default sidesteps the exchange entirely.
+// The server upgrades it to a long-lived one and derives the Page tokens from
+// it, so this token is in the browser for exactly one POST and the PAGE tokens
+// still never are.
+export async function launchFacebookSignup(): Promise<{ token: string }> {
   await loadSdk();
   if (!FB_CONFIG_ID) throw new Error("Facebook Page sign-up is not configured yet");
   return new Promise((resolve, reject) => {
     window.FB!.login((response) => {
-      const code = response?.authResponse?.code;
-      if (!code) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
-      resolve({ code });
-    }, {
-      config_id: FB_CONFIG_ID,
-      response_type: "code",
-      override_default_response_type: true,
-    });
+      const token = response?.authResponse?.accessToken;
+      if (!token) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
+      resolve({ token });
+    }, { config_id: FB_CONFIG_ID });
   });
 }
 

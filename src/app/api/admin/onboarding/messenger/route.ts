@@ -61,17 +61,24 @@ export async function POST(req: Request) {
   // which workspace and plan produced it.
   { const gate = await guardFeature(tenantId, "ch_messenger"); if (gate) { console.error(TAG, "blocked by plan (ch_messenger)", { tenantId }); return gate; } }
 
-  let body: { code?: string; pageId?: string; name?: string };
+  let body: { code?: string; token?: string; pageId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  // Second leg of a Page choice: no new code, reuse the parked token.
-  const parked = body.pageId && !body.code ? await takeParkedToken(tenantId) : null;
-  if (body.pageId && !body.code && !parked) {
+  // The popup hands back a short-lived USER token now, not an authorization
+  // code — the code flow cannot work against a "General" login configuration
+  // (launchFacebookSignup carries the full reason). `code` is still honoured so
+  // a browser running a cached older bundle keeps working through a deploy.
+  const fresh = body.token?.trim() || null;
+
+  // Second leg of a Page choice: no new login, reuse the parked token.
+  const parked = body.pageId && !fresh && !body.code ? await takeParkedToken(tenantId) : null;
+  if (body.pageId && !fresh && !body.code && !parked) {
     return NextResponse.json({ error: "That Page choice expired. Click Connect with Facebook again." }, { status: 400 });
   }
-  if (!body.code && !parked) return NextResponse.json({ error: "Missing signup code" }, { status: 400 });
+  if (!fresh && !body.code && !parked) return NextResponse.json({ error: "Missing Facebook login" }, { status: 400 });
 
   const ex = parked ? { ok: true as const, token: parked, error: undefined }
+           : fresh  ? { ok: true as const, token: fresh, error: undefined }
                     : await exchangeSignupCode(body.code!);
   if (!ex.ok || !ex.token) {
     console.error(TAG, "token exchange failed", { tenantId, error: ex.error });

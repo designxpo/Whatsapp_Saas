@@ -1250,14 +1250,13 @@ export function MessengerCard() {
     if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`); return; }
     setBusy(true); setMsg(null);
     try {
-      // Picking a Page must NOT re-run the login: a Login-for-Business code is
-      // single use, and the SDK returns the spent one from cache — which Meta
-      // rejects as an invalid verification code. The server parked the token
-      // from the first exchange, so the pick just names the Page.
-      const code = pageId ? undefined : (await launchFacebookSignup()).code;
+      // Picking a Page must NOT re-run the login: the SDK returns its cached
+      // authResponse, so a second call re-sends the same credential. The server
+      // parked the token from the first call, so the pick just names the Page.
+      const token = pageId ? undefined : (await launchFacebookSignup()).token;
       const res = await fetch("/api/admin/onboarding/messenger", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, pageId }),
+        body: JSON.stringify({ token, pageId }),
       });
       const d = await res.json();
       if (res.ok && d.needsPageChoice) { setPagePick(d.pages ?? []); }

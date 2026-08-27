@@ -35,9 +35,20 @@ export interface ExchangeResult {
 // not use. Say what can actually be wrong here instead.
 export function describeOauthError(err: { message?: string; code?: number; error_subcode?: number } | null | undefined): string {
   const msg = err?.message ?? "";
+  // Subcode 36008 is NOT an expired code, however much the message reads like a
+  // domain problem. It means the authorization code needs a redirect_uri to
+  // validate against — which is what an ORDINARY Facebook Login code (issued by
+  // a "General" login configuration) requires and a business-login code does
+  // not. Chasing App Domains and JS-SDK domains for it costs hours and fixes
+  // nothing; the flow has to stop asking for a code at all. Subcode 36007 is
+  // the genuinely-spent code.
+  if (err?.code === 100 && err?.error_subcode === 36008) {
+    return "Facebook rejected this login code because the configuration behind it issues codes that must be redeemed against a redirect URL. " +
+      "This connector no longer uses the code flow — if you are seeing this, the browser is running a cached older version of the portal. Hard-refresh the page and click Connect with Facebook again.";
+  }
   if (err?.code === 100 && /verification code|redirect_uri/i.test(msg)) {
-    return "Facebook wouldn't accept the login code. These codes are single-use and expire within minutes, so this is almost always a code that was already spent or left too long — click Connect with Facebook again and complete the window without pausing. " +
-      "If it repeats every time, the app's Facebook Login for Business settings need this site listed under \"Allowed Domains for the JavaScript SDK\" (and app.thetalko.in under App Domains).";
+    return "Facebook wouldn't accept the login code — these are single-use, so it was most likely already spent. " +
+      "Click Connect with Facebook again and complete the window without pausing.";
   }
   if (err?.code === 190) return "Facebook rejected the credentials for this app. Check META_APP_ID and META_APP_SECRET.";
   return msg || "Facebook wouldn't complete the connection.";
