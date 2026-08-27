@@ -179,6 +179,74 @@ export type Post = {
 };
 export const POSTS: Post[] = [
   {
+    slug: "comment-to-dm-automation",
+    title: "Comment-to-DM Automation on Instagram and Facebook: How It Actually Works",
+    excerpt: "Turn post comments into private messages the compliant way — Meta's real rules on the 7-day window, one reply per comment, and why a comment is treated as an opt-in a cold DM never gets.",
+    date: "August 27, 2026", category: "Growth", readTime: "8 min read",
+    keyTakeaway: [
+      "The bottom line: a comment on your post is Meta's one built-in exception to the no-cold-messaging rule — it lets you send exactly one private reply within 7 days, no prior conversation required. Built well, that turns every comment into a qualified lead in someone's DMs within seconds; built carelessly, it reads as spam and gets the Page restricted.",
+      "This is for any business running ads or organic posts on Instagram or Facebook that gets comments asking for price, availability, or \"how do I order\" — and is currently answering them by hand, hours later, if at all.",
+    ],
+    body: [
+      p("Someone comments \"price?\" under your Instagram post. Answer in the comments and the price is now public, next to every competitor who's watching. Say nothing and they've usually moved on within the hour. Comment-to-DM automation is the third option: the comment triggers one private message straight into their inbox, automatically, without breaking any rule Meta actually enforces. It's one of the highest-converting flows in messaging automation, and one of the easiest to get slightly wrong — so here's exactly how the mechanism works, what the real constraints are, and what separates a flow that converts from one that gets a Page flagged."),
+
+      h2("The rule that makes this possible: a comment is an opt-in"),
+      p("Meta's default position on messaging is strict: you cannot message someone who hasn't messaged you first. Meta calls the exception a Private Reply, and defines it precisely — a Page can send exactly one private message to someone who comments on its post, sendable within 7 days of the comment, with no requirement that the person messaged the Page first. The comment itself is treated as the opt-in."),
+      p("That's a narrower door than it might sound. One message, not a conversation — the reply lands, and unless the recipient replies back, the thread ends there. If they do reply, the standard 24-hour messaging window opens from that point, the same as any other DM. So the private reply is a single, well-aimed opening line, not a place to run a multi-step sales sequence."),
+      p("This is also why a comment-triggered DM and a cold outbound DM are fundamentally different things, even though the end result looks similar from the recipient's side. One is Meta-sanctioned because the person took a public action inviting a reply; the other is exactly what gets accounts restricted."),
+
+      h2("Why the public reply matters as much as the private one"),
+      p("It's tempting to treat the comment itself as noise — just the trigger — and put all the effort into the DM. That misses half of what's happening. The comment is sitting on your post in public, and everyone who scrolls past it is silently reading whether your business responds and how fast."),
+      p("Response-time expectations on Instagram and Facebook have compressed sharply. Industry benchmarking from customer-service platforms like Kayako puts Facebook and Instagram response expectations in the 30-minute range for a genuinely satisfying reply, with satisfaction scores dropping roughly a point and a half for every additional hour of delay. A comment sitting unanswered for a day doesn't just cost that one commenter — it's a visible signal to everyone else deciding whether to comment at all."),
+      p("A well-built flow answers both halves at once: a short public reply under the comment (even something as simple as \"Sent you the details! 📩\") that shows the business is responsive to anyone watching, paired with the actual private reply carrying price, a link, or next steps. The public half builds trust at scale; the private half does the actual selling."),
+
+      h2("What a comment-to-DM flow should actually do"),
+      p("The mechanism is simple; the judgment is in what triggers it and what it sends. A flow that converts well usually has:"),
+      list([
+        "Keyword or intent matching, not a blanket reply to every comment — \"price\", \"available\", \"how to order\" should fire the flow; \"beautiful 😍\" or an unrelated question shouldn't get the same canned DM.",
+        "Post-specific targeting, so a comment on a product launch gets a different private reply than one on a hiring post or a giveaway — the same generic message under every post is the fastest way to look automated.",
+        "A public reply that's short, human, and not identical every time — rotating a few variants avoids the pattern that makes an account read as bot-run at a glance.",
+        "One DM, not a drip — respecting Meta's single-message limit isn't just compliance, it's better marketing; a wall of automated follow-ups is what makes people block a business.",
+        "A clean handoff to a human the moment the conversation gets specific — pricing negotiation, a complaint, anything that isn't a simple next step, should land with a person, not keep bouncing through a bot.",
+      ]),
+
+      h2("The mistakes that get a Page restricted"),
+      p("The flow itself is compliant by design — Meta built the private reply mechanism specifically for this use case. Accounts get flagged by what businesses build on top of it:"),
+      list([
+        "Firing the DM on every single comment regardless of content, which reads to Meta's spam systems exactly like a bot blasting messages, because that's what it is.",
+        "Sending identical, unpersonalized text at high volume — the same message, word for word, to hundreds of different commenters in a short window is a classic spam signature.",
+        "Trying to continue the conversation past the single allowed message when the person hasn't replied — Meta's systems and the recipient both notice a second unsolicited message.",
+        "Ignoring opt-outs — someone who replies \"stop\" or unfollows needs to actually stop receiving automated messages, not just from that flow but from every automation on the account.",
+        "Running the same untouched flow across every post for months — stale, generic automation is what both users and Meta's spam detection are tuned to catch.",
+      ]),
+
+      h2("A rollout checklist"),
+      p("Whether this is built in-house or with a tool, the same list separates a flow that scales safely from one that risks the Page:"),
+      list([
+        "Matches on keywords or intent, not every comment indiscriminately.",
+        "Can be scoped to specific posts, not just a single always-on rule for the whole account.",
+        "Sends one private reply per comment, with no automated follow-up beyond it.",
+        "Pairs the private DM with a short, varied public reply.",
+        "Respects opt-outs and hands off to a human the moment a conversation needs judgment.",
+        "Works the same way — and is enforced the same way — on both Instagram and Facebook, since the underlying mechanism and the 7-day window are identical on each.",
+      ]),
+
+      p("A comment is the highest-intent, lowest-effort signal a customer can send — someone typed a question under your post instead of just scrolling on. Turning that into an instant, on-brand answer is the entire game of conversational commerce. Talko AI runs comment-to-DM automation on both Instagram and Facebook from the same rule builder — keyword gating, per-post targeting, rotating public replies, and a live inbox where every comment and DM land in one place — see [how comment automation works](/features) or [compare plans](/pricing). For the DM side of the same rules, see [what's allowed in Instagram DMs](/blog/instagram-dm-best-practices)."),
+    ],
+    faqs: [
+      { q: "Is comment-to-DM automation against Instagram or Facebook's rules?", a: "No — Meta built the Private Reply mechanism specifically to allow it. A comment is treated as consent for exactly one private message within 7 days. What breaks the rules is what businesses sometimes build on top of it: automated follow-ups beyond that one message, ignoring opt-outs, or DMing every comment regardless of what it says." },
+      { q: "Can I send more than one message once someone comments?", a: "Only one private reply is allowed from the comment trigger itself. If the person replies to that message, a standard 24-hour messaging window opens and you can continue the conversation normally from there — the restriction is specifically on unsolicited follow-ups after a single reply goes unanswered." },
+      { q: "Does this work the same way on Instagram and Facebook?", a: "Yes. Both run on the same underlying Private Reply mechanism with the same 7-day window and one-message limit, though each requires its own permission grant from Meta and its own webhook subscription to receive comment events." },
+      { q: "What happens if someone doesn't want the automated DM?", a: "Treat any reply like \"stop\", \"unsubscribe\", or a block/unfollow as a hard opt-out for that person across every automation on the account, not just the flow that triggered it. This is both a platform requirement and the difference between automation that earns trust and one that erodes it." },
+      { q: "Should the public comment reply and the private DM say the same thing?", a: "No — they do different jobs. The public reply is a brief, visible signal to everyone reading the post that the business responds fast; the actual price, link, or next step belongs in the private message, not spelled out for competitors to see in the comments." },
+    ],
+    sources: [
+      { label: "Private Replies — Messenger Platform, Meta for Developers", href: "https://developers.facebook.com/docs/messenger-platform/discovery/private-replies", note: "Meta's own specification: one message, within 7 days of the comment, comment as the opt-in" },
+      { label: "Private Replies — Instagram, Meta for Developers", href: "https://developers.facebook.com/docs/messenger-platform/instagram/features/private-replies/", note: "The Instagram-specific implementation of the same mechanism" },
+      { label: "Social Media Customer Service Statistics — Kayako", href: "https://kayako.com/blog/social-media-customer-service-statistics/", note: "Response-time expectations and satisfaction data for Facebook and Instagram" },
+    ],
+  },
+  {
     slug: "automate-google-review-replies",
     title: "Automate Google Review Replies Without Sounding Fake",
     excerpt: "Reply to every Google review fast, in your own voice — a rating-based AI framework so automated replies never read like a generic template.",
