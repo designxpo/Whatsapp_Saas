@@ -290,6 +290,42 @@ export async function resolveInstagramAsset(token: string): Promise<{ ok: boolea
 // pages_manage_engagement, etc.). The Messenger "Connect with Facebook" flow lets
 // the admin pick one; the Page token is what we store as the channel token so
 // public comment replies (POST /{comment}/comments) actually work.
+/**
+ * The Page ids an ASSET-SCOPED grant covers.
+ *
+ * Facebook Login for Business offers "Opt in to all current and future Pages"
+ * and "Opt in to current Pages only". The second is asset-scoped: Meta records
+ * the chosen Page ids against each permission and /me/accounts — which answers
+ * "Pages this USER has a role on" — can legitimately come back 200 with an
+ * EMPTY list. Observed exactly that: six permissions approved, the Page ticked
+ * on Meta's own screen, and an empty /me/accounts.
+ *
+ * The selected ids live in the token's granular_scopes, which debug_token
+ * returns. Null means the probe failed, so the caller must not read it as "no
+ * Pages".
+ */
+export async function granularPageTargets(token: string): Promise<string[] | null> {
+  const appId = process.env.META_APP_ID, appSecret = process.env.META_APP_SECRET;
+  if (!token || !appId || !appSecret) return null;
+  try {
+    const u = new URL(`${GRAPH}/debug_token`);
+    u.searchParams.set("input_token", token);
+    u.searchParams.set("access_token", `${appId}|${appSecret}`);
+    const r = await fetch(u, { cache: "no-store" });
+    const j = await r.json().catch(() => null) as {
+      data?: { granular_scopes?: { scope?: string; target_ids?: string[] }[] };
+    } | null;
+    const granular = j?.data?.granular_scopes;
+    if (!r.ok || !Array.isArray(granular)) return null;
+    const ids = new Set<string>();
+    for (const g of granular) {
+      if (!g?.scope?.startsWith("pages_")) continue;
+      for (const id of g.target_ids ?? []) if (id) ids.add(String(id));
+    }
+    return [...ids];
+  } catch { return null; }
+}
+
 export async function resolveFacebookPages(
   userToken: string,
 ): Promise<{ ok: boolean; pages?: { id: string; name: string; token: string }[]; error?: string }> {
@@ -304,8 +340,27 @@ export async function resolveFacebookPages(
     const pages = ((j.data as { id?: string; name?: string; access_token?: string }[] | undefined) ?? [])
       .filter(p => p.id && p.access_token)
       .map(p => ({ id: p.id as string, name: (p.name as string) || `Page ${p.id}`, token: p.access_token as string }));
-    if (!pages.length) return { ok: false, error: "No Facebook Page found on this account — you need a Page you manage, with a role that can read and reply to its messages." };
-    return { ok: true, pages };
+    if (pages.length) return { ok: true, pages };
+
+    // /me/accounts is empty. Before believing there is no Page, ask the token
+    // which Pages it was actually granted (see granularPageTargets) and fetch
+    // each one's own token directly.
+    const targets = await granularPageTargets(userToken);
+    if (targets?.length) {
+      const resolved = (await Promise.all(targets.map(async id => {
+        try {
+          const pr = await fetch(`${GRAPH}/${encodeURIComponent(id)}?fields=id,name,access_token`, {
+            headers: { Authorization: `Bearer ${userToken}` }, cache: "no-store",
+          });
+          const pj = await pr.json().catch(() => null) as { id?: string; name?: string; access_token?: string } | null;
+          if (!pr.ok || !pj?.access_token) return null;
+          return { id: String(pj.id ?? id), name: pj.name || `Page ${id}`, token: pj.access_token };
+        } catch { return null; }
+      }))).filter((p): p is { id: string; name: string; token: string } => !!p);
+      if (resolved.length) return { ok: true, pages: resolved };
+    }
+
+    return { ok: false, error: "No Facebook Page found on this account — you need a Page you manage, with a role that can read and reply to its messages." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Page lookup error" };
   }
