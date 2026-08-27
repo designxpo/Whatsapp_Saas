@@ -88,11 +88,48 @@ describe("embeddedsignup", () => {
     expect((init?.headers as Record<string, string>).Authorization).toBe("Bearer user-tok");
   });
 
-  it("resolveFacebookPages drops Pages without a token and fails when none remain", async () => {
+  it("resolveFacebookPages derives the Page token when /me/accounts omits it", async () => {
+    // A Page reached through a business portfolio comes back as id + name and
+    // no access_token. Dropping those rows reported "no Page found" while
+    // Meta's own dialog had just listed the Page — so fetch its token directly.
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("/me/accounts")) return res(200, { data: [{ id: "333", name: "Portfolio Page" }] });
+      if (u.includes("/333")) return res(200, { id: "333", name: "Portfolio Page", access_token: "derived-tok" });
+      return res(200, { data: {} });
+    }));
+    const r = await resolveFacebookPages("user-tok");
+    expect(r.ok).toBe(true);
+    expect(r.pages).toEqual([{ id: "333", name: "Portfolio Page", token: "derived-tok" }]);
+  });
+
+  it("resolveFacebookPages says Pages were listed when none will issue a token", async () => {
+    // Distinct from "you have no Page": this one is a Page-role problem on
+    // those specific Pages, and telling the admin they manage no Page is a
+    // dead end they cannot act on.
     vi.stubGlobal("fetch", vi.fn(async () => res(200, { data: [{ id: "333", name: "No Token" }] })));
     const r = await resolveFacebookPages("user-tok");
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/No Facebook Page/);
+    expect(r.error).toMatch(/listed 1 Page \(No Token\)/);
+    expect(r.error).toMatch(/would not issue an access token/);
+  });
+
+  it("resolveFacebookPages finds an asset-scoped Page absent from /me/accounts", async () => {
+    // "Opt in to current Pages only" records the chosen ids in the token's
+    // granular_scopes, and /me/accounts can come back empty regardless.
+    vi.stubGlobal("fetch", vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("/me/accounts")) return res(200, { data: [] });
+      if (u.includes("/debug_token")) return res(200, { data: { granular_scopes: [
+        { scope: "pages_messaging", target_ids: ["444"] },
+        { scope: "public_profile" },
+      ] } });
+      if (u.includes("/444")) return res(200, { id: "444", name: "Scoped Page", access_token: "scoped-tok" });
+      return res(200, { data: {} });
+    }));
+    const r = await resolveFacebookPages("user-tok");
+    expect(r.ok).toBe(true);
+    expect(r.pages).toEqual([{ id: "444", name: "Scoped Page", token: "scoped-tok" }]);
   });
 
   it("resolveFacebookPages surfaces Meta's error message", async () => {

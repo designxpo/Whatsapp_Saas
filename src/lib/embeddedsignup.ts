@@ -337,29 +337,46 @@ export async function resolveFacebookPages(
     const r = await fetch(url, { headers: { Authorization: `Bearer ${userToken}` } });
     const j = await r.json();
     if (!r.ok) return { ok: false, error: j.error?.message || `Page lookup failed (${r.status})` };
-    const pages = ((j.data as { id?: string; name?: string; access_token?: string }[] | undefined) ?? [])
-      .filter(p => p.id && p.access_token)
-      .map(p => ({ id: p.id as string, name: (p.name as string) || `Page ${p.id}`, token: p.access_token as string }));
+
+    // Two things this used to get wrong, both of which end as "no Page found"
+    // while Meta's own dialog just listed the Pages:
+    //
+    //  1. It required an INLINE access_token on every row and dropped the rest.
+    //     /me/accounts does not always carry one — a Page reached through a
+    //     Business portfolio commonly comes back as id + name + tasks and
+    //     nothing else — so three listed Pages could filter down to zero.
+    //  2. It never looked at an asset-scoped grant ("Opt in to current Pages
+    //     only"), whose Page ids live in the token's granular_scopes and may
+    //     not appear in /me/accounts at all.
+    //
+    // So collect CANDIDATE ids from both sources, then get each Page's own
+    // token — inline if Meta supplied it, otherwise straight from the Page.
+    const listed = (j.data as { id?: string; name?: string; access_token?: string }[] | undefined) ?? [];
+    const candidates = new Map<string, { name?: string; token?: string }>();
+    for (const p of listed) if (p.id) candidates.set(String(p.id), { name: p.name, token: p.access_token });
+    for (const id of (await granularPageTargets(userToken)) ?? []) if (!candidates.has(id)) candidates.set(id, {});
+
+    const pages = (await Promise.all([...candidates].map(async ([id, hint]) => {
+      if (hint.token) return { id, name: hint.name || `Page ${id}`, token: hint.token };
+      try {
+        const pr = await fetch(`${GRAPH}/${encodeURIComponent(id)}?fields=id,name,access_token`, {
+          headers: { Authorization: `Bearer ${userToken}` }, cache: "no-store",
+        });
+        const pj = await pr.json().catch(() => null) as { id?: string; name?: string; access_token?: string } | null;
+        if (!pr.ok || !pj?.access_token) return null;
+        return { id: String(pj.id ?? id), name: pj.name || hint.name || `Page ${id}`, token: pj.access_token };
+      } catch { return null; }
+    }))).filter((p): p is { id: string; name: string; token: string } => !!p);
+
     if (pages.length) return { ok: true, pages };
 
-    // /me/accounts is empty. Before believing there is no Page, ask the token
-    // which Pages it was actually granted (see granularPageTargets) and fetch
-    // each one's own token directly.
-    const targets = await granularPageTargets(userToken);
-    if (targets?.length) {
-      const resolved = (await Promise.all(targets.map(async id => {
-        try {
-          const pr = await fetch(`${GRAPH}/${encodeURIComponent(id)}?fields=id,name,access_token`, {
-            headers: { Authorization: `Bearer ${userToken}` }, cache: "no-store",
-          });
-          const pj = await pr.json().catch(() => null) as { id?: string; name?: string; access_token?: string } | null;
-          if (!pr.ok || !pj?.access_token) return null;
-          return { id: String(pj.id ?? id), name: pj.name || `Page ${id}`, token: pj.access_token };
-        } catch { return null; }
-      }))).filter((p): p is { id: string; name: string; token: string } => !!p);
-      if (resolved.length) return { ok: true, pages: resolved };
+    // Distinguish "you have no Page" from "Meta listed Pages but issued no
+    // token for any of them" — the second is a permission/ownership problem on
+    // those specific Pages and needs a completely different fix.
+    if (candidates.size) {
+      const names = [...candidates].map(([id, h]) => h.name || id).join(", ");
+      return { ok: false, error: `Facebook listed ${candidates.size} Page${candidates.size === 1 ? "" : "s"} (${names}) but would not issue an access token for any of them. That usually means the Page is owned by a business portfolio this login only has partial access to — open Meta Business settings and give this account a Page role with messaging and moderation tasks.` };
     }
-
     return { ok: false, error: "No Facebook Page found on this account — you need a Page you manage, with a role that can read and reply to its messages." };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Page lookup error" };
