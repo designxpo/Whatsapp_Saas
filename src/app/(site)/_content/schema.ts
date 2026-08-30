@@ -168,7 +168,7 @@ export const affiliateProgramSchema = {
   "@id": AFFILIATE_PROGRAM_ID,
   name: "Talko AI Affiliate Program",
   url: `${SITE_URL}/affiliate`,
-  description: "Earn a 20% recurring commission on every subscription payment made by a business you refer to Talko AI, for as long as they stay a paying customer. Open to anyone — no Talko AI account required.",
+  description: "Earn a 10% recurring commission on every subscription payment made by a business you refer to Talko AI, for as long as they stay a paying customer. Open to anyone — no Talko AI account required.",
   seller: { "@id": ORG_ID },
   itemOffered: {
     "@type": "Service",

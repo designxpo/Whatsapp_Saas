@@ -12,15 +12,15 @@ import { webPageSchema, affiliateProgramSchema } from "../_content/schema";
 import { AFFILIATE_SEO } from "../_content/pageseo";
 
 const PATH = "/affiliate";
-const TITLE = "Talko AI Affiliate Program — Earn 20% Recurring Commission";
-const DESCRIPTION = "Refer businesses to Talko AI and earn a 20% recurring commission on every subscription payment they make, for as long as they stay a customer. Free to join, no account required.";
+const TITLE = "Talko AI Affiliate Program — Earn 10% Recurring Commission";
+const DESCRIPTION = "Refer businesses to Talko AI and earn a 10% recurring commission on every subscription payment they make, for as long as they stay a customer. Free to join, no account required.";
 
 export const metadata: Metadata = { title: TITLE, description: DESCRIPTION };
 
 type Benefit = { icon: typeof Users; title: string; body: string };
 const BENEFITS: Benefit[] = [
   { icon: Link2, title: "Get a unique referral link", body: "Every affiliate gets their own referral link the moment they join. Share it on your website, in a newsletter, on social media, or directly with a business you know." },
-  { icon: TrendingUp, title: "Earn recurring commission", body: "20% of every subscription payment a business you referred makes — not a one-time bonus. As long as they stay a paying Talko AI customer, you keep earning from that one referral." },
+  { icon: TrendingUp, title: "Earn recurring commission", body: "10% of every subscription payment a business you referred makes — not a one-time bonus. As long as they stay a paying Talko AI customer, you keep earning from that one referral." },
   { icon: Wallet, title: "Track everything in your dashboard", body: "See exactly who signed up through your link, who converted to a paying plan, which plan they chose, and a running total of pending and paid commission — updated automatically." },
 ];
 
@@ -28,7 +28,7 @@ const STEPS: { title: string; body: string }[] = [
   { title: "Sign up for free", body: "Create an affiliate account in under a minute — no Talko AI subscription or existing account required." },
   { title: "Share your referral link", body: "Every affiliate gets a unique link (thetalko.in/signup?ref=YOURCODE). Share it however you already reach businesses that could use Talko AI." },
   { title: "A business signs up through your link", body: "When someone creates a Talko AI account through your link, they're permanently attributed to you — even if they sign up weeks after clicking." },
-  { title: "You earn commission on every payment", body: "The moment that business's subscription payment goes through, 20% of it lands in your dashboard as commission — and again on every renewal, for as long as they stay subscribed." },
+  { title: "You earn commission on every payment", body: "The moment that business's subscription payment goes through, 10% of it lands in your dashboard as commission — and again on every renewal, for as long as they stay subscribed." },
 ];
 
 export default function AffiliatePage() {
@@ -43,11 +43,11 @@ export default function AffiliatePage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Affiliate Program", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Free to join · no Talko AI account required"
             title="Refer businesses to Talko AI, earn recurring commission for as long as they stay"
-            subtitle="Anyone can join the Talko AI Affiliate Program. Get a unique referral link, and earn 20% of every subscription payment made by a business you referred — every month, not just once." />
+            subtitle="Anyone can join the Talko AI Affiliate Program. Get a unique referral link, and earn 10% of every subscription payment made by a business you referred — every month, not just once." />
 
           <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
             <p>
-              <strong className="font-semibold text-slate-900">The Talko AI Affiliate Program pays a 20% recurring commission</strong> on
+              <strong className="font-semibold text-slate-900">The Talko AI Affiliate Program pays a 10% recurring commission</strong> on
               every subscription payment made by a business you refer, for as long as that business stays a paying customer —
               not a one-time payout like most referral programs.
             </p>
@@ -68,13 +68,13 @@ export default function AffiliatePage() {
             <div className="rounded-3xl overflow-hidden shadow-[0_20px_60px_-20px_rgba(7,131,253,0.35)]">
               <div className={`${GRADIENTS.aurora} p-8 sm:p-10 text-white`}>
                 <div className="flex items-baseline gap-3">
-                  <span className="text-6xl sm:text-7xl font-extrabold tracking-tight">20%</span>
+                  <span className="text-6xl sm:text-7xl font-extrabold tracking-tight">10%</span>
                   <span className="text-lg font-bold text-white/80">commission</span>
                 </div>
                 <p className="mt-2 text-white/90 font-semibold">On every subscription payment from a business you refer</p>
                 <p className="mt-4 text-sm text-white/75 leading-relaxed max-w-md">
                   Paid on every renewal, not just the first sale — a business paying ₹4,999/month earns you
-                  ₹999.80 every month they stay subscribed.
+                  ₹499.90 every month they stay subscribed.
                 </p>
               </div>
               <div className="bg-white p-6 sm:p-8 grid grid-cols-3 gap-4 text-center">

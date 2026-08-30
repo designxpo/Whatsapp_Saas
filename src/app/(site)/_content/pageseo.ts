@@ -369,7 +369,7 @@ export const EXTENSION_SEO: PageSeo = {
 // ── /affiliate ──────────────────────────────────────────────────────────────
 
 export const AFFILIATE_SEO: PageSeo = {
-  updated: "2026-08-21",
+  updated: "2026-08-30",
   published: "2026-08-21",
   faqs: [
     {
@@ -378,7 +378,7 @@ export const AFFILIATE_SEO: PageSeo = {
     },
     {
       q: "How much commission do I earn?",
-      a: "20% of the subscription payment made by each business you refer, for as long as they stay a paying customer — not a one-time payout. If someone you referred is on a ₹4,999/month plan, you earn ₹999.80 every month they remain subscribed.",
+      a: "10% of the subscription payment made by each business you refer, for as long as they stay a paying customer — not a one-time payout. If someone you referred is on a ₹4,999/month plan, you earn ₹499.90 every month they remain subscribed.",
     },
     {
       q: "Is the commission recurring or a one-time payment?",

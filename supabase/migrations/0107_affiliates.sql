@@ -12,7 +12,7 @@ create table if not exists wa_affiliates (
   phone text,
   password_hash text not null,
   code text not null unique,
-  commission_pct numeric(5,2) not null default 20.00,
+  commission_pct numeric(5,2) not null default 10.00, -- overridden to 10.00 (was 20.00) by 0113_affiliate_commission_10pct.sql on already-applied databases
   status text not null default 'active' check (status in ('active','suspended')),
   payout_method text,
   created_at timestamptz not null default now()

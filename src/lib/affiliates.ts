@@ -19,7 +19,7 @@ function mapAffiliate(r: Record<string, unknown>): Affiliate {
   return {
     id: r.id as string, email: r.email as string, name: r.name as string,
     phone: (r.phone as string | null) ?? null, code: r.code as string,
-    commissionPct: Number(r.commission_pct ?? 20),
+    commissionPct: Number(r.commission_pct ?? 10),
     status: (r.status as Affiliate["status"]) ?? "active",
     payoutMethod: (r.payout_method as string | null) ?? null,
     createdAt: r.created_at as string,
