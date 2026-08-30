@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
-import { type Entitlements, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye } from "lucide-react";
+import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -172,6 +172,14 @@ export default function Admin() {
   const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
+  // Shown once per full page load when the account isn't in good standing —
+  // dismissing it sets state on THIS mounted component, so switching tabs
+  // (a setTab call, no remount) never re-triggers it, but a fresh reload does.
+  // It naturally disappears on its own the next time this loads after payment
+  // clears: accountState() is recomputed from freshly-fetched `ent` below, so
+  // there's nothing to explicitly "close on payment" — an active account just
+  // never opens it.
+  const [paywallDismissed, setPaywallDismissed] = useState(false);
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json()).then(d => {
       const u = d.user ?? null;
@@ -289,7 +297,7 @@ export default function Admin() {
           return (
             <div className="shrink-0 px-6 py-2 text-[12px] font-semibold text-center bg-red-50 text-red-700 border-b border-red-200 flex items-center justify-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {a.message}
-              <button onClick={() => setTab("settings")} className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Manage billing</button>
+              <a href="/admin/billing" className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Manage billing</a>
             </div>
           );
         })()}
@@ -354,6 +362,11 @@ export default function Admin() {
         </main>
       </div>
       {showTour && <Walkthrough goTo={goTo} role={me?.role} onDone={() => setShowTour(false)} />}
+      {!paywallDismissed && !me?.isPlatformOwner && (() => {
+        const a = accountState(ent);
+        if (a.active) return null;
+        return <PaywallModal state={a.state} message={a.message} onClose={() => setPaywallDismissed(true)} />;
+      })()}
     </div>
   );
 }
@@ -403,6 +416,41 @@ function Walkthrough({ goTo, role, onDone }: { goTo: (t: Tab) => void; role?: st
             <span className="text-[11px] text-ink-400">{i + 1} / {steps.length}</span>
             <button onClick={next} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{i + 1 >= steps.length ? "Get started" : "Next"}</button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One popup for every reason accountState() can go inactive — trial ran out,
+// last payment failed, or the workspace was suspended. Dismissible: closing it
+// still lets the tenant read everything (Live Chat history, contacts,
+// analytics) — accountState() is explicitly a READ-ONLY soft block, never a
+// data lock. What actually stops working is guarded server-side per write
+// route (guardAccount(), src/lib/feature-guard.ts), so a dismissed popup isn't
+// the only thing standing between an expired trial and a free ride: an
+// attempted send still gets refused with the same message, just as a plain
+// error instead of this modal reopening.
+const PAYWALL_COPY: Record<AccountState, { title: string }> = {
+  ok: { title: "" },   // never rendered — accountState() only reaches here when inactive
+  trial_expired: { title: "Your free trial has ended" },
+  past_due: { title: "Your last payment failed" },
+  suspended: { title: "Your workspace is paused" },
+};
+function PaywallModal({ state, message, onClose }: { state: AccountState; message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 u-fade-in">
+      <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4 u-scale-in">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+          <CreditCard className="h-5 w-5" />
+        </div>
+        <div>
+          <h3 className="text-lg font-extrabold text-ink-900">{PAYWALL_COPY[state].title}</h3>
+          <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{message} Your data is safe and nothing is deleted — pick a plan to pick up right where you left off.</p>
+        </div>
+        <div className="flex items-center justify-between pt-1">
+          <button onClick={onClose} className="text-xs font-semibold text-ink-400 hover:text-ink-700">Maybe later</button>
+          <a href="/admin/billing" className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><CreditCard className="h-3.5 w-3.5" /> See plans</a>
         </div>
       </div>
     </div>
