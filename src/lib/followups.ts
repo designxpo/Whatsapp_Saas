@@ -30,6 +30,7 @@ import { pushWaActivity } from "./leadsquared";
 import { hasActiveEnrollment } from "./sequences";
 import { isAiEnabled } from "./messaging-settings";
 import { DEFAULT_TENANT_ID } from "./tenant";
+import { accountCanSend } from "./feature-guard";
 
 // A margin under 24h so a send never RACES the window closing between this check
 // and the actual API call (mirrors drainFlowReminders' 23.5h guard).
@@ -167,6 +168,7 @@ export async function drainAiFollowups(max = 50): Promise<number> {
         .select("id");
       if (!ok.data?.length) { await release(); continue; }
 
+      if (!(await accountCanSend(tenantId))) { await release(); continue; }
       const res = await deliver(platform, phone, nudge.text, channel, li);
       if (!res.ok) { await release(); continue; }   // window slammed shut / API error → retry later
 

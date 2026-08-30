@@ -16,6 +16,7 @@ import { sendIgMessage, within24hWindow } from "./instagram";
 import { getConversationByPhone } from "./store";
 import { pushWaActivity } from "./leadsquared";
 import { assertTextsAllowed } from "./moderation";
+import { accountCanSend } from "./feature-guard";
 
 
 export type SequenceTriggerKind =
@@ -202,6 +203,10 @@ export async function listRecentEnrollments(limit = 100, tenantId = DEFAULT_TENA
 
 // ── Execution ─────────────────────────────────────────────────────────────────
 async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: SequenceStep): Promise<{ ok: boolean; error?: string }> {
+  // Every drip step — either platform, every action type — funnels through
+  // here, same as the 24h-window check below it. Skip, don't hard-fail, so a
+  // paused sequence just quietly stops advancing rather than erroring out.
+  if (!(await accountCanSend(seq.tenantId))) return { ok: false, error: "Skipped: account not in good standing (trial expired, past due, or suspended)" };
   const channel = seq.channelId ? (await getChannel(seq.channelId)) ?? undefined : undefined;
   const phone = enr.phone as string;
   const a = step.action;

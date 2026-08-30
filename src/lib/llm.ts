@@ -9,6 +9,7 @@ import { syncLeadProfile } from "./leadsquared";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
+import { accountCanSend } from "./feature-guard";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
 export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
@@ -372,6 +373,15 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
 // A blocked reply becomes an escalation, not silence: the customer's message
 // lands with a human instead of the conversation dead-ending.
 export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
+  // Same funnel, same reasoning as the moderation check two lines down: every
+  // channel's AI reply passes through here, so this is the one place an
+  // expired trial / past-due / suspended account actually stops the bot from
+  // replying — no per-channel duplicate checks to keep in sync. Same shape as
+  // a moderation block (escalate, not silence) so an expired tenant's real
+  // customer lands with a human instead of the conversation just dying.
+  if (!(await accountCanSend(tenantId))) {
+    return { reply: null, escalate: true, reason: "account not in good standing (trial expired, past due, or suspended)", usedChunks: 0 };
+  }
   const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce);
   if (!result.reply) return result;
   const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });

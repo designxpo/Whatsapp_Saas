@@ -13,6 +13,7 @@ import { getSequenceByTrigger, enroll, matchKeywordSequence } from "@/lib/sequen
 import { handleFlowMessage } from "@/lib/flowengine";
 import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, pickPublicReply, type IgCommentRule } from "@/lib/igcomments";
 import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
+import { accountCanSend } from "@/lib/feature-guard";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 // A user replying to a follow-gate prompt to confirm they followed.
@@ -363,6 +364,16 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   }
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
+
+  // The comment still gets claimed and shown in the portal above (so a tenant
+  // who's fallen behind on billing can see what they're missing) — only the
+  // actual outbound send is what stops, same failure-reporting shape as every
+  // other blocked-send path in this function.
+  if (!(await accountCanSend(tid))) {
+    console.warn("[ig webhook] comment rule blocked: account not in good standing");
+    await logSendFailure(conv.id, channel.id, "account not in good standing (trial expired, past due, or suspended)", tid);
+    return;
+  }
 
   // Reply-only rule: post a public reply (rotated) and send NO DM at all.
   if (rule.replyOnly) {

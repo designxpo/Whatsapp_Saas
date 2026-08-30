@@ -33,6 +33,7 @@ import { isIfsc } from "./ifsc";
 import { deriveFieldAttrs } from "./fieldenrich";
 import { assertTextsAllowed, collectStrings } from "./moderation";
 import { isAiEnabled, getFlowNudge, getFlowReminders } from "./messaging-settings";
+import { accountCanSend } from "./feature-guard";
 import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
@@ -576,11 +577,19 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
   // which have no AI fallback once a flow is "handled", strand the user in total
   // silence. Wrapping the sender covers every node's send sites in one place.
   let sent = false;
+  // Checked ONCE per run, not per send — account status can't change mid-flow,
+  // and a "sequence" node alone can fire up to 10 sends. isReal excludes the
+  // flow-builder's "Test" simulation and drySender, which must always work so
+  // someone can validate a flow while deciding whether to pay for one.
+  const canSend = isReal ? await accountCanSend(tenantId) : true;
   const send: FlowSender = new Proxy(baseSend, {
     get(target, prop, recv) {
       const v = Reflect.get(target, prop, recv);
       if (typeof v !== "function") return v;
-      return (...a: unknown[]) => { sent = true; return (v as (...x: unknown[]) => unknown).apply(target, a); };
+      return (...a: unknown[]) => {
+        if (!canSend) return Promise.resolve({ error: "account not in good standing" });
+        sent = true; return (v as (...x: unknown[]) => unknown).apply(target, a);
+      };
     },
   }) as FlowSender;
   while (cur && steps++ < MAX_STEPS) {
@@ -1524,6 +1533,9 @@ export async function drainFlowReminders(max = 50): Promise<number> {
     else if (kind === "messenger") { if (!channel) continue; sender = fbSender(convKey, conv.phone as string, channel, cTid); }
     else if (kind === "webchat") sender = webchatSender(convKey, [], cTid);   // appended to the conversation; the widget polls it up
     else sender = realSender(convKey, conv.phone as string, channel, cTid);
+    // This cron path sends directly through a sender, bypassing runFrom's Proxy
+    // (which is where every OTHER flow send is gated) — so it needs its own check.
+    if (!(await accountCanSend(cTid))) continue;
     const r = await sender.text(step.text);
     if (!r.error) sent++;
   }

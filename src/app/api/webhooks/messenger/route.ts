@@ -14,6 +14,7 @@ import { matchCommentRule, claimComment, bumpRuleMatch } from "@/lib/fbcomments"
 import { pickPublicReply } from "@/lib/igcomments";
 import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
 import { handleFlowMessage } from "@/lib/flowengine";
+import { accountCanSend } from "@/lib/feature-guard";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const AI_REPLY_CAP = 6;   // safety cap before escalating a runaway thread to a human
@@ -298,6 +299,16 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
   await touchInbound(conv.id, `[comment] ${text}`);   // bump so the thread sorts to the top of Live Chat
+
+  // The comment still gets claimed and shown in the portal above (so a tenant
+  // who's fallen behind on billing can see what they're missing) — only the
+  // actual outbound send is what stops, same failure-reporting shape as every
+  // other blocked-send path in this function.
+  if (!(await accountCanSend(tid))) {
+    console.warn("[fb webhook] comment rule blocked: account not in good standing");
+    await logSendFailure(conv.id, channel.id, "account not in good standing (trial expired, past due, or suspended)", tid);
+    return;
+  }
 
   const creds = credsOf(channel);
 

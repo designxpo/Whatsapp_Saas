@@ -32,3 +32,20 @@ export async function guardAccount(tenantId: string | null | undefined): Promise
   if (a.active) return null;
   return NextResponse.json({ error: a.message, code: `account_${a.state}`, state: a.state }, { status: 402 });
 }
+
+// Same check, without the NextResponse wrapper — for orchestration code that
+// isn't itself an API route handler and just needs a yes/no before doing the
+// (only) thing that actually delivers product value: sending a message. This
+// is the ONE place that decision is made for automated sends (AI auto-reply,
+// a flow step, a sequence step) — every one of those call sites imports this
+// instead of re-deriving accountState() itself, so there is exactly one
+// definition of "is this account allowed to send right now" to keep correct.
+//
+// Deliberately NOT used by: admin/tenant login, email/WhatsApp OTP for the
+// admin's OWN account access, or anything under /api/admin/billing — an
+// account with no active subscription must always be able to log in and pay,
+// or a trial-expiring tenant could never dig their own way out.
+export async function accountCanSend(tenantId: string | null | undefined): Promise<boolean> {
+  if (!tenantId) return true;
+  return accountState(await getEntitlements(tenantId)).active;
+}

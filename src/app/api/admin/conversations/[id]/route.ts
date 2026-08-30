@@ -18,6 +18,7 @@ import { supportDeskTenantId } from "@/lib/supportdesk";
 import { logActivity } from "@/lib/team";
 import { contactIdForPhone, batchesForContact, addBatchMembers, removeBatchMembers, getBatch } from "@/lib/audience";
 import { errorMessage } from "@/lib/errors";
+import { guardAccount } from "@/lib/feature-guard";
 import { moderateImageUrl } from "@/lib/moderation";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +66,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const conv = await getConversation(id, tid);
   if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Every action in this route that actually reaches the customer, gated in
+  // one place rather than five — everything else here (status/labels/assign/
+  // bot toggle/agent persona/batches) is bookkeeping, not a send, and stays
+  // available even when the account isn't in good standing. "suggest" also
+  // stays reachable: it's draft-only and never sends, and it goes through
+  // generateReply(), which is gated separately in llm.ts.
+  const SEND_ACTIONS = new Set(["reply", "react", "media", "template", "canned"]);
+  if (body.action && SEND_ACTIONS.has(body.action)) {
+    const gate = await guardAccount(tid);
+    if (gate) return gate;
+  }
 
   try {
     // Agent-assist: draft a KB-grounded reply for the agent to review/edit — NOT

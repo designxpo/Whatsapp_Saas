@@ -6,6 +6,7 @@ import {
 import { sendCampaign, getCreds } from "./whatsapp";
 import { credsFor, explicitDefaultChannel, getChannel, isMarketingSendable, type Channel } from "./channels";
 import { getDailyCapForTier } from "./quota";
+import { accountCanSend } from "./feature-guard";
 
 const CHUNK = Math.max(1, parseInt(process.env.WA_SEND_CHUNK ?? "80", 10));
 
@@ -60,6 +61,18 @@ export async function drainQueue(campaignId: string, maxToSend = CHUNK): Promise
   if (ch && !isMarketingSendable(ch)) {
     const queued = await countPending(campaignId);
     const why = `Paused — number quality is ${ch.qualityRating ?? ch.messagingHealth ?? "degraded"}. Sending resumes automatically once Meta health recovers. (${queued} queued)`;
+    await updateCampaign(campaignId, { status: "sending", errorSummary: why });
+    return { sentNow: 0, queuedRemaining: queued, status: "sending", failedNow: 0, skippedNow: 0, reason: why };
+  }
+
+  // /api/admin/broadcast already blocks STARTING a new broadcast when the
+  // account isn't in good standing, but a large one already queued while
+  // paying can otherwise keep draining for days after a subscription lapses
+  // mid-send. Same pause-and-auto-resume shape as the Meta-health gate above —
+  // nothing is lost, the queue just waits.
+  if (!(await accountCanSend(campaign.tenantId))) {
+    const queued = await countPending(campaignId);
+    const why = `Paused — subscription isn't active. Sending resumes automatically once it's resolved. (${queued} queued)`;
     await updateCampaign(campaignId, { status: "sending", errorSummary: why });
     return { sentNow: 0, queuedRemaining: queued, status: "sending", failedNow: 0, skippedNow: 0, reason: why };
   }
@@ -211,6 +224,10 @@ export async function drainAutoSends(maxItems = 150): Promise<{ sent: number; fa
   for (const [cid, group] of byCampaign) {
     const campaign = await getCampaign(cid);
     if (!campaign) { for (const d of group) { await markScheduled(d.id, "failed", "config not found"); failed++; } continue; }
+    // Leave the group untouched (still "due") rather than marking it — the next
+    // tick re-selects it once the account is active again, same retry-later
+    // shape as drainQueue's account gate above.
+    if (!(await accountCanSend(campaign.tenantId))) continue;
     try {
       const r = await sendCampaign({
         campaignId: campaign.id,

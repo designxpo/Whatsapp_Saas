@@ -5,6 +5,7 @@ import { sendCampaign, fetchTemplates, dynamicUrlButtonIndexes } from "./whatsap
 import { credsFor, getChannel } from "./channels";
 import { getTrackedUrls } from "./links";
 import { getDailyCap } from "./quota";
+import { accountCanSend } from "./feature-guard";
 
 
 // ── API broadcasting rules engine ─────────────────────────────────────────────
@@ -406,6 +407,14 @@ export async function drainRuleSends(max = 100): Promise<{ sent: number; failed:
     // This tenant's daily cap reached → release the claim back to pending so the
     // row is retried after the daily reset (other tenants keep draining).
     if (await headroomFor(rule.tenantId) <= 0) {
+      await db().from("wa_rule_sends").update({ status: "pending" }).eq("id", id);
+      out.skipped++; continue;
+    }
+
+    // Same release-and-retry-later shape as the daily-cap check just above —
+    // an account that fixes its billing shouldn't have lost queued sends,
+    // just had them wait.
+    if (!(await accountCanSend(rule.tenantId))) {
       await db().from("wa_rule_sends").update({ status: "pending" }).eq("id", id);
       out.skipped++; continue;
     }

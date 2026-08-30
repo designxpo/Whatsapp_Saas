@@ -16,6 +16,7 @@ import { getTenantSetting, setTenantSetting } from "./store";
 import { credsFor, explicitDefaultChannel, type ChannelCreds } from "./channels";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { sendAuthTemplate } from "./whatsapp";
+import { accountCanSend } from "./feature-guard";
 
 export const OTP_COOLDOWN_SECONDS = 45;   // min gap between sends to one phone
 export const OTP_DAILY_CAP = 10;          // sends per phone per calendar day
@@ -124,6 +125,11 @@ export async function resolveOtpCreds(tenantId: string, channelId: string): Prom
 export async function issueOtp(tenantId: string, rawPhone: string, opts?: { area?: string; channelId?: string }): Promise<IssueResult> {
   const phone = digits(rawPhone);
   if (phone.length < 8 || phone.length > 15) return { error: "phone must be 8–15 digits", status: 400 };
+  // This is the WhatsApp OTP API PRODUCT — a tenant's own paid feature for
+  // verifying THEIR customers, unrelated to how the tenant logs into Talko
+  // itself. Checked before burning a send slot, same as the area/creds checks
+  // right below.
+  if (!(await accountCanSend(tenantId))) return { error: "This workspace's subscription isn't active — the OTP API is paused until it's resolved.", status: 402 };
 
   // Resolve the sending number BEFORE reserving, so a bad area doesn't burn a
   // send slot. An explicit channelId wins; else an area is looked up (unknown
