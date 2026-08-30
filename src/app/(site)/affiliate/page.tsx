@@ -40,7 +40,18 @@ export default function AffiliatePage() {
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-160px] -translate-x-1/2" />
         <Container className="relative pt-16 pb-4">
-          <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Affiliate Program", href: PATH }]} />
+          <div className="flex items-center justify-between gap-4">
+            <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Affiliate Program", href: PATH }]} />
+            {/* The site header's own "Log in" always points at the tenant portal
+                (/login), even here — a returning affiliate has no visible way
+                back into their dashboard without this. Labeled "Affiliate
+                login", not just "Log in", so it reads as a second, distinct
+                destination rather than a duplicate of the header's link. */}
+            <Link href="/affiliate/login"
+              className="shrink-0 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-bold text-slate-700 transition-colors hover:border-[#0783fd]/40 hover:text-[#0783fd]">
+              Affiliate login
+            </Link>
+          </div>
           <SectionTitle level={1} eyebrow="Free to join · no Talko AI account required"
             title="Refer businesses to Talko AI, earn recurring commission for as long as they stay"
             subtitle="Anyone can join the Talko AI Affiliate Program. Get a unique referral link, and earn 10% of every subscription payment made by a business you referred — every month, not just once." />
