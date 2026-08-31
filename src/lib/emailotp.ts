@@ -144,7 +144,7 @@ export async function sendEmailOtp(rawEmail: string, purpose: EmailOtpPurpose): 
   }
 
   const mail = composeOtpEmail(purpose, code);
-  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
+  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text, type: "otp" });
   if (!sent.ok) return { ok: false, error: sent.error || "Failed to send email" };
   return { ok: true };
 }

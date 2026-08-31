@@ -3,8 +3,17 @@
 // auth flow can never appear to "send a code" that never left the server.
 
 import { Resend } from "resend";
+import { db } from "./supabase";
 
 let client: Resend | null = null;
+
+// Every category of email this app sends. Kept here (not derived) so the
+// Emails panel's filter list and every call site's `type` argument both stay
+// honest about the full set — a call site passing a typo'd string just gets
+// TypeScript red, not a silently uncategorized "other" row discovered later.
+export type EmailType =
+  | "otp" | "invoice" | "dunning_failed" | "dunning_suspended"
+  | "weekly_recap" | "onboarding_nudge" | "affiliate_commission" | "contact_form" | "other";
 
 function resend(): Resend {
   const key = process.env.RESEND_API_KEY;
@@ -35,6 +44,38 @@ export interface SendEmailOptions {
    * https endpoints.
    */
   unsubscribeUrl?: string;
+  /**
+   * What this email is, for the Owner Console's Emails panel. Optional so a
+   * call site can't fail to compile over a logging detail, but every real
+   * caller should pass one — an omitted type logs as "other" and is
+   * indistinguishable from every other uncategorized send in the panel.
+   */
+  type?: EmailType;
+  /** Whose workspace this concerns, when there is one (absent for the
+   * contact form and other platform-level sends). */
+  tenantId?: string | null;
+}
+
+// Best-effort row in wa_email_log — logging failing must never make a
+// successful send LOOK failed to the caller, so every error here is
+// swallowed after a console.error. Returns the row id (for the webhook to
+// find later) or null if logging itself didn't work.
+async function logSend(opts: SendEmailOptions, resendId: string | null, status: "sent" | "failed", error?: string): Promise<string | null> {
+  try {
+    const { data } = await db().from("wa_email_log").insert({
+      tenant_id: opts.tenantId ?? null,
+      email_type: opts.type ?? "other",
+      to_email: opts.to,
+      subject: opts.subject,
+      resend_id: resendId,
+      status,
+      error: error ?? null,
+    }).select("id").single();
+    return (data?.id as string) ?? null;
+  } catch (e) {
+    console.error("[email] failed to log send (email itself was unaffected):", e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult> {
@@ -56,9 +97,17 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
       ...(opts.replyTo ? { replyTo: opts.replyTo } : {}),
       ...(Object.keys(headers).length ? { headers } : {}),
     });
-    if (r.error) return { ok: false, error: r.error.message };
+    if (r.error) {
+      await logSend(opts, null, "failed", r.error.message);
+      return { ok: false, error: r.error.message };
+    }
+    // Fire-and-forget: the log row is for the Emails panel, not something a
+    // caller should ever wait on or fail over.
+    void logSend(opts, r.data?.id ?? null, "sent");
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Email send failed" };
+    const msg = e instanceof Error ? e.message : "Email send failed";
+    await logSend(opts, null, "failed", msg);
+    return { ok: false, error: msg };
   }
 }

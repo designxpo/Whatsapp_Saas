@@ -12,7 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ShieldCheck, LayoutDashboard, Users, CreditCard, Activity, Megaphone, Inbox,
-  TrendingUp, LogIn, LogOut, Settings, Search, CornerDownLeft, Loader2, Handshake,
+  TrendingUp, LogIn, LogOut, Settings, Search, CornerDownLeft, Loader2, Handshake, Mail,
 } from "lucide-react";
 import { Badge, useDebounced, useLatest } from "./_ui";
 
@@ -23,6 +23,7 @@ const NAV = [
   { href: "/admin/owner/affiliates", label: "Affiliates", icon: Handshake },
   { href: "/admin/owner/health", label: "Health", icon: Activity },
   { href: "/admin/owner/waitlist", label: "Waitlist", icon: Inbox },
+  { href: "/admin/owner/emails", label: "Emails", icon: Mail },
   { href: "/admin/owner/plans", label: "Plans & pricing", icon: CreditCard },
   { href: "/admin/owner/platform", label: "Platform", icon: Megaphone },
 ];

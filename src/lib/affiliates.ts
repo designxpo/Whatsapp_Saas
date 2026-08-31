@@ -209,6 +209,7 @@ export async function recordAffiliateCommission(tenantId: string, p: {
       to: affiliate.email,
       subject: subjectForCommission(),
       html: htmlForCommission((commissionCents / 100).toFixed(2), (tenant?.company as string) || "A referred business"),
+      type: "affiliate_commission",   // recipient is the affiliate, not the referred tenant — tenantId left unset
     });
   } catch { /* commission is recorded regardless of email delivery */ }
 }

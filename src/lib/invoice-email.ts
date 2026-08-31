@@ -217,7 +217,7 @@ export async function sendInvoiceEmail(billingEventId: string): Promise<boolean>
   const { data: claimed, error: claimErr } = await db().from("wa_billing_events")
     .update({ invoice_emailed_at: new Date().toISOString() })
     .eq("id", billingEventId).is("invoice_emailed_at", null)
-    .select("id");
+    .select("id, tenant_id");
   // Fail CLOSED, unlike claimWebhookEvent (which returns true on a broken dedup
   // table so a notice still goes out). If we cannot prove this document has not
   // already been emailed, not sending is the recoverable outcome — the invoice
@@ -251,7 +251,7 @@ export async function sendInvoiceEmail(billingEventId: string): Promise<boolean>
 
   // Label and number both in the subject: this is the mail someone digs out of a
   // year-old inbox at filing time, and the number is what they'll search for.
-  const result = await sendEmail({ to, subject: `Talko AI ${inv.documentLabel} ${inv.invoiceNumber}`, html, text });
+  const result = await sendEmail({ to, subject: `Talko AI ${inv.documentLabel} ${inv.invoiceNumber}`, html, text, type: "invoice", tenantId: (claimed[0] as { tenant_id?: string })?.tenant_id ?? null });
   if (!result.ok) {
     console.error("[invoice-email] send failed", billingEventId, inv.invoiceNumber, result.error);
     // Hand the claim back on an EXPLICIT failure so the next webhook delivery

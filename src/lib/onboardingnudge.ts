@@ -68,6 +68,8 @@ export async function drainOnboardingNudges(): Promise<number> {
       subject: "One step left to switch on Talko AI",
       html,
       text,
+      type: "onboarding_nudge",
+      tenantId,
     });
     if (result.ok) {
       sent++;

@@ -83,7 +83,7 @@ export async function notifyPaymentFailed(tenant: Tenant, inv: FailedPayment): P
     footerReason: "You're getting this because you own a Talko AI workspace and a payment on it was declined. It's sent once per failed attempt — there's nothing recurring here to unsubscribe from.",
   }, SITE_URL);
 
-  const result = await sendEmail({ to: tenant.ownerEmail, subject: "Your Talko AI payment didn't go through", html, text });
+  const result = await sendEmail({ to: tenant.ownerEmail, subject: "Your Talko AI payment didn't go through", html, text, type: "dunning_failed", tenantId: tenant.id });
   if (!result.ok) console.error("[dunning] payment-failed send failed", tenant.id, result.error);
   return result.ok;
 }
@@ -113,7 +113,7 @@ export async function notifyServiceSuspended(tenant: Tenant, subscriptionId: str
     footerReason: "You're getting this because you own a Talko AI workspace whose subscription went unpaid. It's a one-off notice, not a recurring email.",
   }, SITE_URL);
 
-  const result = await sendEmail({ to: tenant.ownerEmail, subject: "Your Talko AI workspace is paused", html, text });
+  const result = await sendEmail({ to: tenant.ownerEmail, subject: "Your Talko AI workspace is paused", html, text, type: "dunning_suspended", tenantId: tenant.id });
   if (!result.ok) console.error("[dunning] suspended send failed", tenant.id, result.error);
   return result.ok;
 }

@@ -10,6 +10,36 @@ export function constEq(provided: string, expected: string | undefined): boolean
   return crypto.timingSafeEqual(a, b);
 }
 
+// Verifies a Resend webhook request, which is Svix under the hood — done by
+// hand rather than pulling the `svix` package in for three headers' worth of
+// HMAC (matches how verifyMetaSignature above and verifySignedRequest below
+// both do their own signing rather than reaching for a library). FAIL-CLOSED:
+// a missing secret, missing headers, an expired timestamp (>5 min — bounds how
+// long a captured request stays replayable) or a mismatched signature all
+// reject. Algorithm, per Svix's docs: sign `{id}.{timestamp}.{raw body}` with
+// HMAC-SHA256 keyed by the part of WEBHOOK_SECRET after "whsec_", base64-
+// decoded; svix-signature carries one or more space-separated "v1,<sig>"
+// entries — a request is valid if ANY of them match (Svix rotates keys by
+// sending the payload signed with more than one during a rotation window).
+export function verifyResendSignature(raw: string, headers: { id: string | null; timestamp: string | null; signature: string | null }, secret: string | undefined): boolean {
+  if (!secret) {
+    console.error("[resend webhook] RESEND_WEBHOOK_SECRET not configured — rejecting (fail-closed)");
+    return false;
+  }
+  const { id, timestamp, signature } = headers;
+  if (!id || !timestamp || !signature) return false;
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;   // 5 min tolerance
+  const keyPart = secret.startsWith("whsec_") ? secret.slice(6) : secret;
+  let key: Buffer;
+  try { key = Buffer.from(keyPart, "base64"); } catch { return false; }
+  const expected = crypto.createHmac("sha256", key).update(`${id}.${timestamp}.${raw}`).digest("base64");
+  return signature.split(" ").some(entry => {
+    const sig = entry.startsWith("v1,") ? entry.slice(3) : entry;
+    return constEq(sig, expected);
+  });
+}
+
 // Verifies Meta's X-Hub-Signature-256 over the RAW request body. FAIL-CLOSED:
 // a missing/empty app secret rejects the request (never processes unsigned
 // payloads). Constant-time compare. Pass the exact bytes read via req.text().

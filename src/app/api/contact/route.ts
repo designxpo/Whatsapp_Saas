@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       <p><strong>Message:</strong></p>
       <p>${escapeHtml(message).replace(/\n/g, "<br />")}</p>
     `,
+    type: "contact_form",
   });
   if (!result.ok) return NextResponse.json({ error: "Couldn't send your message — please email us directly instead." }, { status: 502 });
   return NextResponse.json({ success: true });

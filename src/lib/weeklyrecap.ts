@@ -173,7 +173,7 @@ export async function drainWeeklyRecaps(): Promise<number> {
       unsubscribeHref: unsub,
     }, SITE_URL);
 
-    const result = await sendEmail({ to: ownerEmail, subject, html, text, unsubscribeUrl: unsub });
+    const result = await sendEmail({ to: ownerEmail, subject, html, text, unsubscribeUrl: unsub, type: "weekly_recap", tenantId });
     if (result.ok) {
       sent++;
     } else {
