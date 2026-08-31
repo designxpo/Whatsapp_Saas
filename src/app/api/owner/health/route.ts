@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 import { isPlatformOwner } from "@/lib/auth";
 import { db } from "@/lib/supabase";
 import { metricsFreshness } from "@/lib/ownermetrics";
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
 // tenant_metrics, so the cost is flat in fleet size.
 export async function GET() {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  after(() => kickIfStalled("owner-health"));   // same reasoning as owner/queues
   try {
     const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
     const head = () => db().from("tenant_metrics").select("tenant_id", { count: "exact", head: true });

@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { isPlatformOwner } from "@/lib/auth";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 import { queueCounts, platformStatsFast, metricsFreshness } from "@/lib/ownermetrics";
 import { getSetting } from "@/lib/store";
 import { crmSyncStats } from "@/lib/leadsquared";
@@ -21,6 +22,12 @@ export const dynamic = "force-dynamic";
 // never stale — the queue catalog marks which is which.
 export async function GET() {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
+  // The Today screen is where a stalled engine is actually noticed, so loading
+  // it should also try to fix it. This was the obvious hook and it was missed
+  // first time round: the watchdog went on the tenant portal's /api/admin/me
+  // and the channel webhooks, none of which the owner touches while staring at
+  // "Background engine: stalled" on this page.
+  after(() => kickIfStalled("owner-today"));
   try {
     const [queues, stats, freshness, tick, crm] = await Promise.all([
       queueCounts(),

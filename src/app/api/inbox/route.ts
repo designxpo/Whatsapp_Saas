@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 import { listConversations, type Conversation, type ConvPlatform } from "@/lib/store";
 import { guardFeature } from "@/lib/feature-guard";
 
@@ -34,6 +35,12 @@ export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const gate = await guardFeature(tenantId, "extension"); if (gate) return gate;
+  // This endpoint is polled every ~3 minutes, all day, by the extension/inbox
+  // client — measured in production logs, it is by far the most reliable
+  // recurring request this app receives, which makes it the best available
+  // clock for the background engine (see cronwatchdog.ts). after() so the poll
+  // is never slowed down by it.
+  after(() => kickIfStalled("inbox-poll"));
   const sp = new URL(req.url).searchParams;
   const limit = Math.min(100, Math.max(1, Number(sp.get("limit")) || 50));
   const view = sp.get("view") === "comments" ? "comments" : "chats";
