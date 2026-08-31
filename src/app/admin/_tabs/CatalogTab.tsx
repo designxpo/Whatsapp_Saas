@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2, MessageSquareText, Check, X, AlertTriangle } from "lucide-react";
 import { inp, ImageUpload, ImgFallback } from "../_shared";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // ── Catalog (commerce) ────────────────────────────────────────────────────────
 type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null };
@@ -15,6 +16,7 @@ const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", descripti
 // ImgFallback now lives in ./_shared.
 
 function CatalogTab() {
+  const ask = useConfirm();
   const [view, setView] = useState<"products" | "orders">("products");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
@@ -57,7 +59,7 @@ function CatalogTab() {
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    if (!confirm("Delete this product?")) return;
+    if (!(await ask({ title: "Delete this product?", tone: "danger", confirmLabel: "Delete product" }))) return;
     await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }

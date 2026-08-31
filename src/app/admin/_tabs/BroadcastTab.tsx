@@ -6,7 +6,8 @@ import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-
 import { useState, useEffect, useCallback } from "react";
 import { Check, Copy, FlaskConical, Globe, Image as ImageIcon, Loader2, Plus, Send, Trash2, Zap, X } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
-import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics } from "../_shared";
+import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics, useChannelList } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 const TIER_LABELS: Record<string, string> = {
   TIER_50: "50 / day", TIER_250: "250 / day", TIER_1K: "1,000 / day",
@@ -108,6 +109,11 @@ function BroadcastTab({ goTo }: { goTo: (t: Tab) => void }) {
 }
 
 function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
+  const askConfirm = useConfirm();
+  // Only to name the sending number in the confirmation. Templates are
+  // WABA-scoped, so picking the wrong number is the mistake that reaches every
+  // recipient at once — the dialog shows it by name, not by id.
+  const channelRows = useChannelList();
   const [audMode, setAudMode] = useState<"all" | "tag" | "attribute" | "batch" | "recipients">("all");
   const [batches, setBatches] = useState<{ id: string; name: string; kind: string; size: number }[]>([]);
   const [batchId, setBatchId] = useState("");
@@ -198,15 +204,33 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       if (!when || isNaN(when.getTime()) || when.getTime() <= Date.now()) { setError("Pick a future date & time to schedule this broadcast."); return; }
       scheduledFor = when.toISOString();
     }
-    // Confirm before a real blast — this fires to the whole audience and can't
-    // be undone. Show the authoritative recipient count so it's never a surprise.
+    // Last stop before real messages leave. The native confirm() this replaces
+    // could only fit one sentence, so the thing most worth seeing — WHICH number
+    // it leaves from — was never in it. A wrong number means a template the
+    // target WhatsApp Business Account does not have, failing on every recipient.
     const who = recipientCount === null
       ? "your selected audience"
-      : `${recipientCount.toLocaleString()} recipient${recipientCount === 1 ? "" : "s"}`;
-    const ask = scheduledFor
-      ? `Schedule "${templateName.trim()}" to ${who} for ${new Date(scheduledFor).toLocaleString()}?`
-      : `Send "${templateName.trim()}" to ${who}? This sends real WhatsApp messages and can't be undone.`;
-    if (!confirm(ask)) return;
+      : `${recipientCount.toLocaleString()} ${recipientCount === 1 ? "person" : "people"}`;
+    const facts = [
+      { label: scheduledFor ? "Will send to" : "Sending to", value: who },
+      { label: "Template", value: `${templateName.trim() || "—"} · ${languageCode.trim() || "en_US"}` },
+      { label: "From", value: channelId ? (channelRows.find(c => c.id === channelId)?.name ?? "selected number") : "default number" },
+    ];
+    if (scheduledFor) facts.push({ label: "When", value: new Date(scheduledFor).toLocaleString() });
+    // "500 selected, 320 will actually receive it" is a reason to stop, and the
+    // form shows it far from the button.
+    if (noConsent && noConsent > 0) facts.push({ label: "No opt-in", value: `${noConsent.toLocaleString()} will be skipped` });
+
+    if (!(await askConfirm({
+      title: scheduledFor ? "Schedule this broadcast?" : "Send this broadcast now?",
+      message: scheduledFor
+        ? "At the scheduled time this goes out to everyone in the audience as it stands then. Each message is charged by Meta and counts towards this number's quality rating."
+        : "Messages start going out immediately and cannot be recalled. Each one is charged by Meta and counts towards this number's quality rating.",
+      facts,
+      tone: "caution",
+      typeToConfirm: "SEND",
+      confirmLabel: scheduledFor ? "Schedule broadcast" : "Send broadcast",
+    }))) return;
     setSending(true);
     try {
       const body: Record<string, unknown> = {
@@ -273,7 +297,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         const isMarketing = (selected?.category ?? "MARKETING").toUpperCase() === "MARKETING";
         setTestMsg({
           ok: true,
-          text: `Accepted by Meta — check the phone.${isMarketing
+          text: `Accepted by Meta ✓ — check WhatsApp on that number.${isMarketing
             ? " If it doesn't arrive, Meta most likely capped it: a MARKETING template is dropped for a recipient who has had too many recently. A utility template to the same number is not capped."
             : ""}`,
         });
@@ -568,6 +592,7 @@ const COND_OPS: { v: UiCond["op"]; label: string }[] = [
 ];
 
 function ApiBroadcasting() {
+  const ask = useConfirm();
   const [rules, setRules] = useState<UiRule[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [templates, setTemplates] = useState<{ name: string; status: string; language: string }[]>([]);
@@ -630,7 +655,10 @@ function ApiBroadcasting() {
     load();
   }
   async function removeRule(id: string) {
-    if (!confirm("Delete this rule? Already-queued sends are cancelled.")) return;
+    if (!(await ask({
+      title: "Delete this rule?", tone: "danger", confirmLabel: "Delete rule",
+      message: "Sends already queued by it are cancelled and will not go out.",
+    }))) return;
     await fetch("/api/admin/api-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert, RefreshCw } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
+import { useConfirm } from "@/components/confirm-dialog";
 
 function YoutubeTab() {
   return (
@@ -65,6 +66,7 @@ const YT_ERROR_MESSAGES: Record<string, string> = {
 };
 
 function YoutubeManager() {
+  const ask = useConfirm();
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [kbTags, setKbTags] = useState<string[]>([]);
@@ -181,7 +183,10 @@ function YoutubeManager() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Disconnect this YouTube channel? Its rules stay.")) return;
+    if (!(await ask({
+      title: "Disconnect this YouTube channel?", tone: "danger", confirmLabel: "Disconnect",
+      message: "Its comment rules are kept but stop running. You will need to reconnect with Google to start them again.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -203,7 +208,10 @@ function YoutubeManager() {
     loadRules();
   }
   async function delRule(id?: string) {
-    if (!id || !confirm("Delete this comment rule?")) return;
+    if (!id || !(await ask({
+      title: "Delete this comment rule?", tone: "danger", confirmLabel: "Delete rule",
+      message: "Comments matching it stop getting a reply.",
+    }))) return;
     await fetch("/api/admin/yt-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
     loadRules();
   }

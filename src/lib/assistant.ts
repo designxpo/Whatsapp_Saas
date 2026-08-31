@@ -166,7 +166,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
     if (lastUserMsg && !lastHasMedia) {
-      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
+      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag, platform: conv.platform });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
         const sent = await sendReply(routed.answer);
@@ -180,7 +180,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbTag);
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbTag, false, undefined, conv.platform);
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");

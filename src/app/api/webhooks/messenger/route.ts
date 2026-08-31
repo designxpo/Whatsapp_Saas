@@ -229,7 +229,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // → tenant-global (used to hardcode a null KB scope and skip the pin).
   // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
   // built-in commerce tools; public comment replies never sell.
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id });
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger");
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
@@ -382,7 +382,7 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
     { role: "assistant" as const, body: watch.replyText, mediaUrl: null, mediaType: null },
     { role: "user" as const, body: fu.text, mediaUrl: null, mediaType: null },
   ].filter(h => h.body);
-  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined);
+  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined, "messenger");
   if (!r.reply || r.escalate) return;
   const sent = await replyToFbComment(creds, watch.rootCommentId, r.reply, tid);
   if (!sent.ok) {

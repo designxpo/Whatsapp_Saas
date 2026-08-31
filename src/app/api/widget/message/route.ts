@@ -138,7 +138,7 @@ export async function POST(req: Request) {
   // Same resolution chain as WhatsApp: conversation pin / flow-stamped KB tag
   // first, then this widget's own persona + allocated KB, then tenant-global
   // (this route used to hardcode a null KB scope and skip the conversation pin).
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false);
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined, "webchat");
   if (!r.reply || r.escalate) return closeOut();
 
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid, channelId: channel.id });

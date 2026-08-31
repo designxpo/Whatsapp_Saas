@@ -6,6 +6,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { safeFilterValue, escapeLike, safeAttrKey } from "./filters";
 import { logError } from "./errors";
 import { assertTextAllowed } from "./moderation";
+import type { ConversationPlatform } from "./channel-label";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type CampaignStatus = "draft" | "scheduled" | "sending" | "sent" | "partial" | "failed";
@@ -800,7 +801,10 @@ export interface ConvMessage {
 // Which channel a conversation arrived on. WhatsApp/Instagram are Meta numbers;
 // messenger = Facebook Messenger (PSID identity); webchat = website widget
 // (visitor-UUID identity). Only WhatsApp identifiers are phone numbers.
-export type ConvPlatform = "whatsapp" | "instagram" | "messenger" | "webchat";
+// Alias, not a second definition. Declaring this union here AND in
+// channel-label.ts is how a channel gets added to one and missed in the other
+// — the drift that let the assistant call every chat a WhatsApp chat.
+export type ConvPlatform = ConversationPlatform;
 
 function mapConversation(r: Record<string, unknown>): Conversation {
   return {

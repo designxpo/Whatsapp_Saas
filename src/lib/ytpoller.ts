@@ -141,6 +141,8 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
           channel.tenantId,
           effectiveKbTag(null, channel),
           false,
+          undefined,
+          "youtube",
         );
         if (res.reply && !res.escalate) {
           const r = await replyToComment(creds, c.id, res.reply);

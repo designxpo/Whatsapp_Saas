@@ -74,7 +74,7 @@ const PIPELINE: { icon: React.ReactNode; title: string; desc: string }[] = [
   { icon: <Database className="w-5 h-5" />, title: "Retrieve", desc: "Search business docs (pgvector) for relevant context" },
   { icon: <Sparkles className="w-5 h-5" />, title: "Draft", desc: "Gemini drafts a reply grounded in that context" },
   { icon: <ShieldCheck className="w-5 h-5" />, title: "Guardrails", desc: "Opt-out, grounding & escalation checks" },
-  { icon: <Send className="w-5 h-5" />, title: "Reply", desc: "Delivered on WhatsApp (within 24h window)" },
+  { icon: <Send className="w-5 h-5" />, title: "Reply", desc: "Delivered back on the same channel the customer wrote from" },
 ];
 
 // statusBadge now lives in ./_shared (used by ChatView here + the Assistant tab).

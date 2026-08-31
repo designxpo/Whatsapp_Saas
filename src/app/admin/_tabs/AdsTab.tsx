@@ -10,6 +10,7 @@ import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft,
 import { launchAdsSignup, adsSignupReady, adsSignupMissing } from "@/lib/embedded-signup-client";
 import { type Tab, inp, btnPrimary, railLoading, RailCard, StatRow } from "../_shared";
 import AiAdBuilder from "./AiAdBuilder";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type AdsData = {
   connected: boolean;
@@ -44,6 +45,7 @@ function deliveryPill(d?: Delivery): { cls: string; label: string } {
 }
 
 function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const ask = useConfirm();
   const [data, setData] = useState<AdsData | null>(null);
   const [preset, setPreset] = useState<"today" | "last_7d" | "last_30d">("last_7d");
   const [accountInput, setAccountInput] = useState("");
@@ -173,7 +175,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           {isAdmin && (c.effectiveStatus === "ACTIVE"
             ? <button disabled={busy === c.id} onClick={() => act(c.id, "pause")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas disabled:opacity-50">Pause</button>
             : c.effectiveStatus === "PAUSED" && <button disabled={busy === c.id} onClick={() => act(c.id, "resume")} className="px-3 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold disabled:opacity-50">Resume</button>)}
-          {isAdmin && <button disabled={busy === c.id} title="Duplicate (copy created paused)" onClick={() => { if (confirm(`Duplicate "${c.name}"? The copy is created PAUSED.`)) act(c.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas disabled:opacity-50"><Copy className="w-3 h-3" /></button>}
+          {isAdmin && <button disabled={busy === c.id} title="Duplicate (copy created paused)" onClick={async () => { if (await ask({ title: "Duplicate this campaign?", tone: "neutral", confirmLabel: "Duplicate", message: "The copy is created paused, so nothing spends until you start it.", facts: [{ label: "Campaign", value: c.name }] })) act(c.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas disabled:opacity-50"><Copy className="w-3 h-3" /></button>}
           <button onClick={() => setDetail({ level: "campaign", id: c.id, name: c.name })} className="px-3 py-1 rounded-lg bg-ink-950 text-white text-[11px] font-bold">Open</button>
         </div>
       </div>
@@ -392,7 +394,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   <p className="text-[11px] text-slate-400">Last edited {timeAgo(dr.updatedAt)}</p>
                 </div>
                 <button onClick={() => openDraft(dr.id)} className="px-3 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold">Continue</button>
-                <button onClick={() => { if (confirm(`Delete draft "${dr.name}"?`)) deleteDraft(dr.id); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-slate-500 hover:text-red-600 hover:border-red-200"><Trash2 className="w-3 h-3" /></button>
+                <button onClick={async () => { if (await ask({ title: "Delete this draft?", tone: "danger", confirmLabel: "Delete draft", facts: [{ label: "Draft", value: dr.name }] })) deleteDraft(dr.id); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-slate-500 hover:text-red-600 hover:border-red-200"><Trash2 className="w-3 h-3" /></button>
               </div>
             ))}
           </div>
@@ -2065,6 +2067,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
   preset: "today" | "last_7d" | "last_30d"; currency: string; isAdmin: boolean;
   onBack: () => void; onOpen: (level: "campaign" | "adset" | "ad", id: string, name: string) => void;
 }) {
+  const ask = useConfirm();
   const [full, setFull] = useState<NodeFull | null>(null);
   const [adsets, setAdsets] = useState<ChildRow[]>([]);
   const [ads, setAds] = useState<ChildRow[]>([]);
@@ -2171,7 +2174,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
             <div className="flex items-center gap-2 shrink-0">
               <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${deliveryPill(full.delivery).cls}`}>{deliveryPill(full.delivery).label}</span>
               {isAdmin && <button disabled={busy === full.id} onClick={() => act(full.id, full.effectiveStatus === "ACTIVE" ? "pause" : "resume")} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas">{full.effectiveStatus === "ACTIVE" ? "Pause" : "Resume"}</button>}
-              {isAdmin && node.level === "campaign" && <button disabled={busy === full.id} onClick={() => { if (confirm(`Duplicate "${full.name}"? The copy is created PAUSED.`)) act(full.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas"><Copy className="w-3 h-3" /></button>}
+              {isAdmin && node.level === "campaign" && <button disabled={busy === full.id} onClick={async () => { if (await ask({ title: "Duplicate this campaign?", tone: "neutral", confirmLabel: "Duplicate", message: "The copy is created paused, so nothing spends until you start it.", facts: [{ label: "Campaign", value: full.name }] })) act(full.id, "duplicate"); }} className="px-2 py-1 rounded-lg border border-line text-[11px] font-bold text-ink-600 hover:bg-canvas"><Copy className="w-3 h-3" /></button>}
             </div>
           </div>
 
@@ -2247,6 +2250,7 @@ const RULE_METRICS: [string, string][] = [
 const RULE_WINDOWS: [string, string][] = [["today", "today"], ["last_7d", "last 7 days"], ["last_30d", "last 30 days"]];
 
 function AdRulesPanel({ campaigns, isAdmin, currency }: { campaigns: { id: string; name: string }[]; isAdmin: boolean; currency: string }) {
+  const ask = useConfirm();
   const [rules, setRules] = useState<AdRuleRow[] | null>(null);
   const [form, setForm] = useState<{ name: string; scopeCampaignId: string; metric: string; op: string; threshold: string; windowPreset: string; action: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -2295,7 +2299,7 @@ function AdRulesPanel({ campaigns, isAdmin, currency }: { campaigns: { id: strin
           </div>
           {isAdmin && <>
             <button onClick={() => toggle(r)} className={`px-2.5 py-1 rounded-full text-[10px] font-bold shrink-0 ${r.active ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{r.active ? "● ON" : "○ OFF"}</button>
-            <button onClick={async () => { if (confirm(`Delete rule "${r.name}"?`)) { await fetch("/api/admin/meta/rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }); load(); } }} className="p-1 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
+            <button onClick={async () => { if (await ask({ title: "Delete this ad rule?", tone: "danger", confirmLabel: "Delete rule", facts: [{ label: "Rule", value: r.name }] })) { await fetch("/api/admin/meta/rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: r.id }) }); load(); } }} className="p-1 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
           </>}
         </div>
       ))}

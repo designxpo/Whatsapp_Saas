@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Plus, Trash2, TrendingUp, Download, Sparkles, Lightbulb } from "lucide-react";
 import { inp } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // ── Growth tools ──────────────────────────────────────────────────────────────
 type GrowthRow = { id: string; name: string; kind: string; slug: string; prefill: string | null; tag: string | null; sequenceId: string | null; config: { number?: string; url?: string; igUsername?: string }; clicks: number; conversions: number; active: boolean };
@@ -11,6 +12,7 @@ const GROWTH_KINDS: [string, string][] = [["ref_link", "Referral link"], ["qr", 
 const EMPTY_GROWTH = { id: undefined as string | undefined, name: "", kind: "ref_link", slug: "", prefill: "", number: "", igUsername: "", url: "", tag: "", sequenceId: "", active: true };
 
 function GrowthTab() {
+  const ask = useConfirm();
   const [tools, setTools] = useState<GrowthRow[]>([]);
   const [seqs, setSeqs] = useState<{ id: string; name: string }[]>([]);
   const [form, setForm] = useState<typeof EMPTY_GROWTH | null>(null);
@@ -33,7 +35,7 @@ function GrowthTab() {
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    if (!confirm("Delete this growth tool?")) return;
+    if (!(await ask({ title: "Delete this growth tool?", tone: "danger", confirmLabel: "Delete tool" }))) return;
     await fetch("/api/admin/growth", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }

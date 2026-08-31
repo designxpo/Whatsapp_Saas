@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
   const c = (s: string) => forms.filter(f => f.status === s).length;
@@ -95,6 +96,7 @@ function FormResponsesPanel() {
 }
 
 function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const ask = useConfirm();
   const [forms, setForms] = useState<WaFormRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -217,7 +219,11 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
   // chatbot flow can send it natively from any number (not just the one it was
   // built on). A WhatsApp form is tied to one WABA; this replicates it per WABA.
   async function publishAll(f: WaFormRow) {
-    if (!confirm(`Publish a copy of "${f.name}" to every other connected number, so flows can send this form natively from any number?`)) return;
+    if (!(await ask({
+      title: "Publish this form to every number?", tone: "caution", confirmLabel: "Publish to all",
+      message: "A separate copy is created on each connected number's WhatsApp Business Account. Forms are account-scoped, so this is what lets a flow send it from any number.",
+      facts: [{ label: "Form", value: f.name }],
+    }))) return;
     setBusy("all:" + f.id); setMsg(null);
     try {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, publishToAll: true, channelId }) });
@@ -233,7 +239,11 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   async function remove(f: WaFormRow) {
     const verb = f.status === "PUBLISHED" ? "Deprecate" : "Delete";
-    if (!confirm(`${verb} form "${f.name}"?`)) return;
+    if (!(await ask({
+      title: `${verb} this form?`, tone: "danger", confirmLabel: verb,
+      message: "Flows that send it will stop being able to. Responses already collected are kept.",
+      facts: [{ label: "Form", value: f.name }],
+    }))) return;
     setMsg(null);
     const r = await adminFetch("/api/admin/waforms", { method: "DELETE", body: { id: f.id, channelId } });
     if (!r.ok) { setMsg(`${verb} failed — ${r.error}`); return; }

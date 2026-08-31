@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
@@ -80,6 +81,7 @@ function rulePublicRepliesOf(r: { publicReplies?: string[]; publicReply?: string
 }
 
 function InstagramManager() {
+  const ask = useConfirm();
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [kbTags, setKbTags] = useState<string[]>([]);
@@ -165,7 +167,10 @@ function InstagramManager() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Disconnect this Instagram account? Its conversations stay.")) return;
+    if (!(await ask({
+      title: "Disconnect this Instagram account?", tone: "danger", confirmLabel: "Disconnect",
+      message: "Its conversations stay in Live Chat, but the app stops answering comments and DMs on it. You will need the access token again to reconnect.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -253,7 +258,10 @@ function InstagramManager() {
     loadRules();
   }
   async function delRule(id?: string) {
-    if (!id || !confirm("Delete this comment rule?")) return;
+    if (!id || !(await ask({
+      title: "Delete this comment rule?", tone: "danger", confirmLabel: "Delete rule",
+      message: "Comments matching it stop getting a reply or a DM.",
+    }))) return;
     await fetch("/api/admin/ig-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
     loadRules();
   }

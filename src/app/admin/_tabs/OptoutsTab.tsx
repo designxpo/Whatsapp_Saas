@@ -4,10 +4,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { adminFetch } from "@/lib/adminfetch";
 import { inp, RailCard, StatRow } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type Optout = { phone: string; reason: string | null; createdAt?: string };
 
 function OptoutsTab() {
+  const ask = useConfirm();
   const [list, setList] = useState<Optout[]>([]);
   const [phone, setPhone] = useState("");
   const [search, setSearch] = useState("");
@@ -28,7 +30,11 @@ function OptoutsTab() {
     setErr(null); setPhone(""); load();
   }
   async function remove(p: string) {
-    if (!confirm(`Remove ${p} from the opt-out list? They will start receiving broadcasts again.`)) return;
+    if (!(await ask({
+      title: "Put this person back on broadcasts?", tone: "caution", confirmLabel: "Remove from opt-outs",
+      message: "They asked to stop, either by replying STOP or by being opted out here. Only do this if they have since asked to be re-subscribed.",
+      facts: [{ label: "Number", value: p }],
+    }))) return;
     const r = await adminFetch("/api/admin/optouts", { method: "DELETE", body: { phone: p } });
     if (!r.ok) { setErr(`Couldn't remove ${p} — ${r.error}`); return; }
     setErr(null); load();

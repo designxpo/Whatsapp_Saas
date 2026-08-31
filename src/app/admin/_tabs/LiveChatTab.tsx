@@ -8,6 +8,7 @@ import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTempla
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
 // One step in a lead's ownership trail (which number owned it, and who moved it).
@@ -77,20 +78,24 @@ function isHandle(phone: string): boolean { return (phone || "").startsWith("wa:
 // Resolve the channel from the phone sentinel FIRST — a web:<uuid> is web chat
 // even if the platform column is null/mis-stored (store.ts defaults null →
 // "whatsapp") — then fall back to the platform column.
-function contactChannel(c: { phone: string; platform?: string | null }): "whatsapp" | "instagram" | "messenger" | "webchat" {
+function contactChannel(c: { phone: string; platform?: string | null }): ConversationPlatform {
   if ((c.phone || "").startsWith("web:")) return "webchat";
   const p = c.platform ?? "whatsapp";
   return p === "instagram" || p === "messenger" || p === "webchat" ? p : "whatsapp";
 }
-function channelLabel(k: string): string {
-  return k === "instagram" ? "Instagram user" : k === "messenger" ? "Messenger user" : k === "webchat" ? "Website visitor" : "WhatsApp";
+// A stand-in NAME for someone we have no name for — not a channel name. Kept
+// separate from channelLabel() in lib/channel-label.ts, which names the channel
+// itself ("WhatsApp", "Facebook Messenger"): the two read almost the same but
+// one goes where a person's name goes, and "WhatsApp" is not a person.
+function anonymousName(k: ConversationPlatform): string {
+  return k === "instagram" ? "Instagram user" : k === "messenger" ? "Messenger user" : k === "webchat" ? "Website visitor" : "WhatsApp user";
 }
 // A human name for the contact — never a raw web:<uuid> / IG-scoped id / PSID.
 function contactDisplayName(c: { name?: string | null; phone: string; platform?: string | null }): string {
   if (c.name?.trim()) return c.name.trim();
   const k = contactChannel(c);
   if (k === "whatsapp") return isHandle(c.phone) ? "@" + c.phone.slice(3) : formatPhone(c.phone);
-  return channelLabel(k);
+  return anonymousName(k);
 }
 // The sub-line under the name in the chat header: the number / @handle for
 // WhatsApp, a friendly channel label (plus any captured phone) otherwise — so
@@ -98,7 +103,7 @@ function contactDisplayName(c: { name?: string | null; phone: string; platform?:
 function contactSubtitle(c: { phone: string; platform?: string | null; leadPhone?: string | null }): string {
   const k = contactChannel(c);
   if (k === "whatsapp") return isHandle(c.phone) ? "@" + c.phone.slice(3) : formatPhone(c.phone);
-  return c.leadPhone ? `${channelLabel(k)} · ${formatPhone(c.leadPhone)}` : channelLabel(k);
+  return c.leadPhone ? `${channelShort(k)} · ${formatPhone(c.leadPhone)}` : channelShort(k);
 }
 // Monospace only when the subtitle is an actual number (a real phone / captured
 // lead phone) — not an @handle or a channel label.

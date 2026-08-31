@@ -14,6 +14,7 @@ import { matchFaq } from "./faq";
 import { cacheLookup, cacheStore } from "./cache";
 import { loadMemory, saveMemory, resolveFollowUp, type ConvMemory } from "./memory";
 import { logRouterEvent } from "./metrics";
+import type { Platform } from "@/lib/channel-label";
 
 // A canned answer that withholds the specifics and redirects to a human
 // ("contact our sales team", "speak to an advisor", "we'll get back to you").
@@ -39,7 +40,7 @@ export function routerEnabled(): boolean {
   return process.env.KNOWLEDGE_ROUTER_ENABLED !== "false";
 }
 
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null }): Promise<RouteResult> {
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null; platform?: Platform }): Promise<RouteResult> {
   const t0 = Date.now();
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
@@ -47,7 +48,7 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 
   // FAQ/cache answers are rewritten in the agent's persona voice before sending
   // (cheap one-shot call, falls back to the raw answer on any failure).
-  const toned = (answer: string) => applyPersonaTone(answer, p.message, p.agentId ?? null, tid);
+  const toned = (answer: string) => applyPersonaTone(answer, p.message, p.agentId ?? null, tid, p.platform ?? "whatsapp");
 
   let mem: ConvMemory = {};
   try { mem = await loadMemory(p.conversationId); } catch { /* memory is best-effort */ }

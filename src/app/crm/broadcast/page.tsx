@@ -9,10 +9,12 @@ import { templatePlaceholders, paramCount } from "@/lib/template-params";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Send, Megaphone } from "lucide-react";
+import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
 
 interface Tpl { name: string; language: string; status: string; components?: { type: string; format?: string; text?: string }[] }
 
 function BroadcastPanel() {
+  const ask = useConfirm();
   const params = useSearchParams();
   const token = params.get("token") ?? "";
   const prefill = params.get("phones") ?? "";
@@ -46,7 +48,14 @@ function BroadcastPanel() {
     setError(""); setResult("");
     if (!tplName) { setError("Pick a template."); return; }
     if (recipients.length === 0) { setError("Add at least one valid phone."); return; }
-    if (!confirm(`Send "${tplName}" to ${recipients.length} lead(s)? This sends real WhatsApp messages.`)) return;
+    if (!(await ask({
+      title: "Send this broadcast now?", tone: "caution", confirmLabel: "Send broadcast", typeToConfirm: "SEND",
+      message: "Messages start going out immediately and cannot be recalled. Each one is charged by Meta and counts towards the number's quality rating.",
+      facts: [
+        { label: "Sending to", value: `${recipients.length.toLocaleString()} ${recipients.length === 1 ? "lead" : "leads"}` },
+        { label: "Template", value: tplName || "—" },
+      ],
+    }))) return;
     setSending(true);
     try {
       const res = await fetch("/api/crm/broadcast", {
@@ -102,7 +111,9 @@ function BroadcastPanel() {
 export default function CrmBroadcastPage() {
   return (
     <Suspense fallback={<div className="h-screen flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>}>
-      <BroadcastPanel />
+      <ConfirmProvider>
+        <BroadcastPanel />
+      </ConfirmProvider>
     </Suspense>
   );
 }

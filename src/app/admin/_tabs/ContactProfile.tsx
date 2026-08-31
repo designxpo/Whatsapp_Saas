@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database, Briefcase, LifeBuoy, Compass, MessageCircle, Ban, Hand, Bot, User, type LucideIcon } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
 type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[] };
@@ -30,6 +31,7 @@ const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp", instagram:
 const chanLabel = (p?: string) => CHANNEL_LABEL[p ?? ""] ?? "WhatsApp";
 
 function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; onClose: () => void; onChanged: () => void; goTo: GoTo }) {
+  const ask = useConfirm();
   const [p, setP] = useState<LeadProfile | null>(null);
   const [busy, setBusy] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -75,7 +77,11 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
   async function toggleOptout() {
     if (!p) return;
     const active = p.contact.status === "active";
-    if (active && !confirm(`Opt ${p.contact.name || phone} out? They'll stop receiving all broadcasts.`)) return;
+    if (active && !(await ask({
+      title: "Opt this contact out?", tone: "caution", confirmLabel: "Opt out",
+      message: "They stop receiving every broadcast from every number. You can undo this from the Opt-outs tab.",
+      facts: [{ label: "Contact", value: p.contact.name || phone }],
+    }))) return;
     setBusy(true);
     try {
       await fetch("/api/admin/optouts", {

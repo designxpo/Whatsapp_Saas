@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Star, Sparkles, Copy, Check, Trash2, Loader2, RefreshCw, Plus, SlidersHorizontal, Send, MapPin, Link2, Unlink } from "lucide-react";
 import { inp } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type ReplyStatus = "none" | "draft" | "posted";
 type Review = {
@@ -44,6 +45,7 @@ function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
 }
 
 export default function ReviewsTab() {
+  const ask = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [settings, setSettings] = useState<Settings>({ autoMinStars: 4, signature: "", tone: "" });
   const [msg, setMsg] = useState<string | null>(null);
@@ -118,7 +120,10 @@ export default function ReviewsTab() {
   }
 
   async function disconnectGoogle() {
-    if (!grChannel || !confirm("Disconnect this Google Business Profile? Imported reviews stay.")) return;
+    if (!grChannel || !(await ask({
+      title: "Disconnect this Google Business Profile?", tone: "danger", confirmLabel: "Disconnect",
+      message: "Reviews already imported are kept, but new ones stop arriving and replies can no longer be posted.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: grChannel.id }) }).catch(() => {});
     setGrChannel(null);
   }
@@ -149,7 +154,10 @@ export default function ReviewsTab() {
   }
 
   async function del(id: string) {
-    if (!confirm("Delete this review?")) return;
+    if (!(await ask({
+      title: "Delete this review?", tone: "danger", confirmLabel: "Delete review",
+      message: "It is removed from this workspace only — the review stays on Google.",
+    }))) return;
     await fetch("/api/admin/reviews", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
     load();
   }

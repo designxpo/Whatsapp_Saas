@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, ArrowLeft, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
 type Integration = {
@@ -68,6 +69,7 @@ function Logo({ kind, logo }: { kind: string; logo: string | null }) {
 }
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const ask = useConfirm();
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
@@ -133,7 +135,11 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
 
   async function remove(i: Integration) {
-    if (!confirm(`Delete "${i.name}"? Events will stop being sent there.`)) return;
+    if (!(await ask({
+      title: "Delete this integration?", tone: "danger", confirmLabel: "Delete integration",
+      message: "Events stop being sent to it immediately. Anything on the far side that depends on them goes quiet.",
+      facts: [{ label: "Integration", value: i.name }],
+    }))) return;
     await fetch(`/api/admin/integrations/${i.id}`, { method: "DELETE" });
     load();
   }
@@ -372,6 +378,7 @@ function PaymentWebhookCard({ integration: i, onSaved }: { integration: Integrat
 // contact in sync and auto-assigns the lead's conversation to the team member
 // whose email matches the LSQ owner.
 function LsqInboundCard() {
+  const ask = useConfirm();
   const [cfg, setCfg] = useState<{ url: string; secret: string; header: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -382,7 +389,10 @@ function LsqInboundCard() {
     try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(k => (k === key ? null : k)), 1500); } catch { /* blocked */ }
   };
   async function rotate() {
-    if (!confirm("Rotate the inbound secret? Every LSQ automation using the old one starts failing (401) until updated.")) return;
+    if (!(await ask({
+      title: "Rotate the inbound secret?", tone: "caution", confirmLabel: "Rotate secret",
+      message: "The old secret stops working the moment this is done. Every LeadSquared automation still using it fails with a 401 until you paste the new one in — so have LeadSquared open before you continue.",
+    }))) return;
     setBusy(true);
     try {
       const d = await fetch("/api/admin/lsq-webhook", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rotate: true }) }).then(r => r.json());

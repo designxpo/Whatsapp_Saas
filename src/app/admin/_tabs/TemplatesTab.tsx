@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, FileText, GalleryHorizontalEnd, Loader2, MessageSquare, MousePointerClick, Phone, Plus, RefreshCw, Star, Trash2, UploadCloud, Video, Image as ImageIcon, Link2, X, Sparkles } from "lucide-react";
 import { inp, ChannelSelect } from "../_shared";
 import { buildFestivalGreeting } from "@/lib/greetingtemplates";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // ── Templates ─────────────────────────────────────────────────────────────────
 type WaTplComponent = {
@@ -162,6 +163,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
 }
 
 function TemplatesTab() {
+  const ask = useConfirm();
   const [templates, setTemplates] = useState<WaTemplateRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -334,7 +336,11 @@ function TemplatesTab() {
   }
 
   async function remove(n: string) {
-    if (!confirm(`Delete template "${n}" (all languages)? This can't be undone.`)) return;
+    if (!(await ask({
+      title: "Delete this template?", tone: "danger", confirmLabel: "Delete template",
+      message: "Every language variant goes with it, and any broadcast or flow still pointing at this name will start failing.",
+      facts: [{ label: "Template", value: n }],
+    }))) return;
     await fetch("/api/admin/templates", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: n, channelId }) });
     load();
   }

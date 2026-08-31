@@ -729,8 +729,14 @@ describe("Travel agency (Wanderly Trips)", () => {
 
       const res = await respondToConversation(CONV2);
       expect(res).toEqual({ outcome: "escalated", detail: "KB has nothing on custom Europe itineraries" });
-      // The reply was composed with THIS tenant's context.
-      expect(h.generateReply).toHaveBeenCalledWith(expect.anything(), TRAVELLER_PHONE, null, WANDERLY, null);
+      // The reply was composed with THIS tenant's context, and for the channel
+      // the customer actually wrote from. Asserted positionally rather than as a
+      // full argument list so adding a trailing option doesn't fail a test that
+      // is about tenant isolation.
+      const args = h.generateReply.mock.calls.at(-1)!;
+      expect(args[1]).toBe(TRAVELLER_PHONE);
+      expect(args[3]).toBe(WANDERLY);
+      expect(args[7]).toBe("whatsapp");
       expect(h.store.setConversationStatus).toHaveBeenCalledWith(CONV2, "escalated");
       // The customer gets the default hand-off line, not silence.
       expect(h.wa.sendText).toHaveBeenCalledWith(

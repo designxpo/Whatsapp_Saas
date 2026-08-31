@@ -8,6 +8,7 @@ import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Fac
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab, DEFAULT_TENANT_ID } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
+import { useConfirm } from "@/components/confirm-dialog";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -52,6 +53,7 @@ type AwayS = { enabled: boolean; text: string; startHour: number; endHour: numbe
 type TeamUserRow = { id: string; email: string; name: string; title: string; role: "admin" | "member"; active: boolean; lastLoginAt: string | null };
 
 function TeamManager() {
+  const ask = useConfirm();
   const [users, setUsers] = useState<TeamUserRow[]>([]);
   const [owner, setOwner] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -78,7 +80,11 @@ function TeamManager() {
   }
 
   async function remove(u: TeamUserRow) {
-    if (!confirm(`Remove ${u.email}? They'll be signed out and can't log in again.`)) return;
+    if (!(await ask({
+      title: "Remove this person's access?", tone: "danger", confirmLabel: "Remove access",
+      message: "They are signed out immediately and cannot log in again until you re-invite them.",
+      facts: [{ label: "Account", value: u.email }],
+    }))) return;
     await fetch("/api/admin/team", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: u.id, email: u.email }) });
     load();
   }
@@ -222,6 +228,7 @@ export async function fetchKbTags(): Promise<string[]> {
 }
 
 function ChannelsManager() {
+  const ask = useConfirm();
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [envMode, setEnvMode] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
@@ -265,7 +272,10 @@ function ChannelsManager() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Remove this number? Its conversations stay but will reply via the default credentials.")) return;
+    if (!(await ask({
+      title: "Remove this number?", tone: "danger", confirmLabel: "Remove number",
+      message: "Its conversations stay, but replies go out through the default credentials instead — possibly a different WhatsApp Business Account, where this number's templates do not exist.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -545,6 +555,7 @@ function UsageCard() {
 // Developer API keys — mint per-tenant keys for the public API (/api/broadcast,
 // /api/events, /api/contacts). The full key is shown once on creation.
 function ApiKeysCard() {
+  const ask = useConfirm();
   const [keys, setKeys] = useState<{ id: string; name: string; prefix: string; lastUsedAt: string | null; revoked: boolean }[]>([]);
   const [name, setName] = useState("");
   const [fresh, setFresh] = useState<string | null>(null);
@@ -560,7 +571,10 @@ function ApiKeysCard() {
     } finally { setBusy(false); }
   }
   async function revoke(id: string) {
-    if (!confirm("Revoke this key? Any integration using it stops working immediately.")) return;
+    if (!(await ask({
+      title: "Revoke this API key?", tone: "danger", confirmLabel: "Revoke key",
+      message: "Anything authenticating with it starts failing straight away, and the key cannot be restored. You will need to issue a new one and update every integration.",
+    }))) return;
     await fetch("/api/admin/api-keys", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -613,6 +627,7 @@ type SweepStatus = {
 };
 
 function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
+  const ask = useConfirm();
   const [s, setS] = useState<SweepStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -636,7 +651,11 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
 
   async function runNow() {
     if (!s) return;
-    if (!confirm(`Reset ${s.dueNow} chat(s) escalated ${s.staleAfterDays}+ days back to Active and turn their bot back on?\n\nThis can't be undone.`)) return;
+    if (!(await ask({
+      title: "Hand these chats back to the bot?", tone: "caution", confirmLabel: "Reset chats", typeToConfirm: "RESET",
+      message: "Each one goes back to Active with its bot switched on, so the assistant may reply to any of them. This cannot be undone in bulk.",
+      facts: [{ label: "Chats", value: `${s.dueNow} escalated ${s.staleAfterDays}+ days ago` }],
+    }))) return;
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/escalation-sweep", {
@@ -718,6 +737,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function CannedTemplatesCard() {
+  const ask = useConfirm();
   const [list, setList] = useState<CannedRow[] | null>(null);
   const [tpls, setTpls] = useState<CannedTpl[]>([]);
   const [browse, setBrowse] = useState("");     // which number's WABA the picker lists
@@ -800,7 +820,7 @@ function CannedTemplatesCard() {
             <p className="text-[11px] text-ink-400 font-mono truncate">{c.templateName} · {c.language}{c.params.length ? ` · ${c.params.join(" · ")}` : ""}</p>
           </div>
           <button onClick={() => { setForm({ ...c, params: [...c.params] }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => { if (confirm(`Delete the "${c.label}" canned template? Your team loses the button immediately.`)) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
+          <button onClick={async () => { if (await ask({ title: "Delete this canned reply?", tone: "danger", confirmLabel: "Delete reply", message: "The button disappears from Live Chat for your whole team straight away.", facts: [{ label: "Reply", value: c.label }] })) save(list.filter(x => x.id !== c.id)); }} disabled={busy} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
       {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “RNR” and “Post-call follow-up” to give your team one-click sends.</p>}
@@ -1182,6 +1202,7 @@ function fbRepliesOf(r: { publicReplies?: string[]; publicReply?: string | null 
 }
 
 export function MessengerCard() {
+  const ask = useConfirm();
   const [pages, setPages] = useState<ChannelRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_FB_PAGE | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
@@ -1279,7 +1300,10 @@ export function MessengerCard() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Remove this Facebook Page? Its conversations stay but it will stop replying.")) return;
+    if (!(await ask({
+      title: "Remove this Facebook Page?", tone: "danger", confirmLabel: "Remove Page",
+      message: "Its conversations stay in Live Chat, but the app stops replying to comments and messages on it. You will need the Page access token again to reconnect.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -1315,7 +1339,10 @@ export function MessengerCard() {
     loadRules();
   }
   async function delRule(id?: string) {
-    if (!id || !confirm("Delete this comment rule?")) return;
+    if (!id || !(await ask({
+      title: "Delete this comment rule?", tone: "danger", confirmLabel: "Delete rule",
+      message: "Comments matching it stop getting a reply or a DM.",
+    }))) return;
     await fetch("/api/admin/fb-comment-rules", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
     loadRules();
   }
@@ -1609,6 +1636,7 @@ type WcForm = { id?: string; name: string; origins: string; active: boolean; age
 const BLANK_WC: WcForm = { name: "", origins: "", active: true, agentId: "", kbTag: "", color: "#0783fd", title: "Chat with us", welcome: "", position: "right", iconUrl: "", logoFit: "cover", badgeColor: "#ffffff", logoScale: 100, offsetSide: "", offsetBottom: "" };
 
 export function WebchatCard() {
+  const ask = useConfirm();
   const [list, setList] = useState<WcRow[]>([]);
   const [form, setForm] = useState<WcForm | null>(null);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
@@ -1656,7 +1684,10 @@ export function WebchatCard() {
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    if (!confirm("Remove this web-chat widget? The embed snippet will stop working.")) return;
+    if (!(await ask({
+      title: "Remove this web-chat widget?", tone: "danger", confirmLabel: "Remove widget",
+      message: "The embed snippet already on the site stops working, so the chat bubble disappears for visitors.",
+    }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -1885,6 +1916,7 @@ function QrTool() {
 }
 
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const ask = useConfirm();
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
   const [aiOn, setAiOn] = useState<boolean | null>(null);
@@ -2183,7 +2215,11 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <button onClick={async () => {
               const phone = prompt("Erase a contact — enter their phone number.\nThis permanently deletes the contact and ALL their data.");
               if (!phone?.trim()) return;
-              if (!confirm(`Permanently erase all data for ${phone}? This cannot be undone.`)) return;
+              if (!(await ask({
+                title: "Permanently erase this person's data?", tone: "danger", confirmLabel: "Erase everything", typeToConfirm: "ERASE",
+                message: "Their contact record, conversations, messages and logs are deleted outright. There is no backup to restore from and no way to reverse this.",
+                facts: [{ label: "Number", value: phone }],
+              }))) return;
               const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "request failed" }));
               alert(r.error ? `Error: ${r.error}` : `Erased data for ${r.phone}.`);
             }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>

@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2, Zap, Drama } from "lucide-react";
 import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiPromptT, RailCard, StatRow } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 function AiHubRail({ goTo, agents, fns, prompts, autoRoute, tone }: { goTo: (t: Tab) => void; agents: AiAgentT[]; fns: AiFunctionT[]; prompts: AiPromptT[]; autoRoute: boolean | null; tone: boolean | null }) {
   return (
@@ -53,6 +54,7 @@ const AI_KEY_HELP: Record<string, string> = {
   anthropic: "Anthropic key — console.anthropic.com",
 };
 function AiKeyCard() {
+  const ask = useConfirm();
   const [status, setStatus] = useState<AiKeyStatusT | null>(null);
   const [provider, setProvider] = useState("gemini");
   const [apiKey, setApiKey] = useState("");
@@ -77,7 +79,10 @@ function AiKeyCard() {
     finally { setBusy(false); }
   }
   async function remove() {
-    if (!confirm("Remove this AI key? AI auto-replies will stop for this workspace until you add one.")) return;
+    if (!(await ask({
+      title: "Remove this AI key?", tone: "danger", confirmLabel: "Remove key",
+      message: "AI auto-replies stop for this whole workspace until you add another key. Customers messaging in the meantime get no automated answer.",
+    }))) return;
     setBusy(true); setMsg(null);
     try { const d = await fetch("/api/admin/ai/key", { method: "DELETE" }).then(r => r.json()); setStatus(d); }
     finally { setBusy(false); }

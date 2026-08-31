@@ -7,6 +7,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
+import { ConfirmProvider } from "@/components/confirm-dialog";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -216,6 +217,7 @@ export default function Admin() {
   }
 
   return (
+    <ConfirmProvider>
     <div className="min-h-screen flex bg-canvas">
       <aside className="w-64 shrink-0 bg-white border-r border-line flex flex-col h-screen sticky top-0">
         {/* Logo block */}
@@ -368,6 +370,7 @@ export default function Admin() {
         return <PaywallModal state={a.state} message={a.message} onClose={() => setPaywallDismissed(true)} />;
       })()}
     </div>
+    </ConfirmProvider>
   );
 }
 

@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X, FlaskConical, Send, Zap, RefreshCw, Sparkles, AlertTriangle, Clock } from "lucide-react";
 import { inp, ChannelSelect, ImgFallback } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // ── Sequences (drip) ──────────────────────────────────────────────────────────
 type StepDraft = { delayMinutes: number; action: { type: "text" | "template" | "media"; text?: string; templateName?: string; languageCode?: string; mediaKind?: "image" | "video" | "document" | "audio"; url?: string; caption?: string } };
@@ -169,6 +170,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
 const LSQ_OPS: [string, string][] = [["eq", "equals"], ["contains", "contains"], ["gt", "after / greater"], ["lt", "before / less"]];
 const LSQ_FIELDS = ["ProspectStage", "Source", "Owner", "OwnerIdName", "mx_City", "CreatedOn", "EmailAddress"];
 function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
+  const ask = useConfirm();
   const [conds, setConds] = useState<{ field: string; op: string; value: string }[]>([{ field: "ProspectStage", op: "eq", value: "" }]);
   const [seqId, setSeqId] = useState("");
   const [preview, setPreview] = useState<{ count: number; scanned: number; truncated: boolean; sample: string[] } | null>(null);
@@ -181,7 +183,11 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
   async function run(action: "preview" | "enroll") {
     if (action === "enroll") {
       if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to enroll into." }); return; }
-      if (!confirm(`Enroll ${preview?.count ?? "the matching"} lead(s) into this drip? They'll receive its messages on schedule.`)) return;
+      if (!(await ask({
+        title: "Enrol these leads into the drip?", tone: "caution", confirmLabel: "Enrol leads", typeToConfirm: "ENROL",
+        message: "Everyone enrolled starts receiving this sequence's messages on its schedule. Enrolments cannot be un-sent once a message has gone.",
+        facts: [{ label: "Leads", value: preview?.count != null ? `${preview.count.toLocaleString()} matching` : "all matching leads" }],
+      }))) return;
     }
     setBusy(action); setMsg(null); if (action === "preview") setPreview(null);
     try {
@@ -333,6 +339,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
 }
 
 function SequencesTab() {
+  const ask = useConfirm();
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
   const [busy, setBusy] = useState(false);
@@ -357,7 +364,10 @@ function SequencesTab() {
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    if (!confirm("Delete this sequence? Active enrollments stop.")) return;
+    if (!(await ask({
+      title: "Delete this sequence?", tone: "danger", confirmLabel: "Delete sequence",
+      message: "Anyone part-way through it stops receiving the rest of its messages.",
+    }))) return;
     await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }

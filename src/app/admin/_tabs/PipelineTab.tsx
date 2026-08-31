@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink, Check } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 type PStage = { id: string; name: string; position: number; color: string | null; lsqStage: string | null; onEnterTag: string | null; onEnterSequenceId: string | null; isWon: boolean; isLost: boolean };
 type PCard = { contactId: string; name: string; phone: string; tags: string[]; stageId: string; lastMessage: string | null; lastInboundAt: string | null };
@@ -12,6 +13,7 @@ type PCard = { contactId: string; name: string; phone: string; tags: string[]; s
 // One editable stage row in the "Manage stages" panel. Reorder is driven by the
 // parent (onReorder) so the closure over the full stage list stays clean.
 function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PStage; seqs: { id: string; name: string }[]; first: boolean; last: boolean; onReorder: (dir: -1 | 1) => void; onSaved: () => void }) {
+  const ask = useConfirm();
   const [s, setS] = useState<PStage>(stage);
   const [busy, setBusy] = useState(false);
   useEffect(() => { setS(stage); }, [stage]);
@@ -22,7 +24,11 @@ function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PSt
     setBusy(false); onSaved();
   }
   async function del() {
-    if (!confirm(`Delete the "${stage.name}" stage? Its leads stay as contacts but drop off the board.`)) return;
+    if (!(await ask({
+      title: "Delete this pipeline stage?", tone: "danger", confirmLabel: "Delete stage",
+      message: "Its leads stay as contacts but drop off the board, and which stage they were in is not kept.",
+      facts: [{ label: "Stage", value: stage.name }],
+    }))) return;
     await fetch("/api/admin/pipeline/stages", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: stage.id }) }).catch(() => {});
     onSaved();
   }

@@ -6,6 +6,7 @@
 // side by side, each with its own sources.
 import { useState, useEffect, useCallback } from "react";
 import { inp, RailCard, StatRow } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface Source {
   id: string; entryPointId: string; label: string; refCode: string; kind: string; touches: number;
@@ -17,6 +18,7 @@ interface EntryPoint {
 const EMPTY_DRAFT = { label: "", number: "", handle: "", greeting: "" };
 
 function HandleHubTab() {
+  const ask = useConfirm();
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
   const [newEp, setNewEp] = useState(EMPTY_DRAFT);
   const [editDraft, setEditDraft] = useState<Record<string, typeof EMPTY_DRAFT>>({});
@@ -46,7 +48,14 @@ function HandleHubTab() {
     load();
   }
   async function removeEntryPoint(ep: EntryPoint) {
-    if (!confirm(`Delete "${ep.label}"? Its ${ep.sources.length} tracked link(s) will stop being attributed.`)) return;
+    if (!(await ask({
+      title: "Delete this entry point?", tone: "danger", confirmLabel: "Delete entry point",
+      message: "Links already shared keep working as plain chat links, but new chats from them will no longer be attributed to any source.",
+      facts: [
+        { label: "Entry point", value: ep.label },
+        { label: "Tracked links", value: `${ep.sources.length} will stop being attributed` },
+      ],
+    }))) return;
     await fetch(`/api/admin/handle-hub?entryPointId=${encodeURIComponent(ep.id)}`, { method: "DELETE" });
     load();
   }
@@ -59,7 +68,11 @@ function HandleHubTab() {
     else { setSourceDraft(s => ({ ...s, [entryPointId]: { label: "", kind: draft.kind } })); load(); }
   }
   async function removeSource(id: string, name: string) {
-    if (!confirm(`Delete the "${name}" source? Its links/QRs will stop being attributed.`)) return;
+    if (!(await ask({
+      title: "Delete this source?", tone: "danger", confirmLabel: "Delete source",
+      message: "Its links and QR codes keep working, but new chats from them will no longer be attributed.",
+      facts: [{ label: "Source", value: name }],
+    }))) return;
     await fetch(`/api/admin/handle-hub?sourceId=${encodeURIComponent(id)}`, { method: "DELETE" });
     load();
   }

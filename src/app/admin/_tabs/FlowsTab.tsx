@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2 } from "lucide-react";
 import { inp, type FlowSummary, RailCard, StatRow, flowPlatformBadge } from "../_shared";
+import { useConfirm } from "@/components/confirm-dialog";
 
 function FlowsRail({ flows }: { flows: FlowSummary[] }) {
   const active = flows.filter(f => f.active).length;
@@ -41,6 +42,7 @@ function FlowsRail({ flows }: { flows: FlowSummary[] }) {
   );
 }
 function FlowsTab() {
+  const ask = useConfirm();
   const router = useRouter();
   const [flows, setFlows] = useState<FlowSummary[]>([]);
   const [name, setName] = useState("");
@@ -64,7 +66,10 @@ function FlowsTab() {
   }
 
   async function remove(id: string) {
-    if (!confirm("Delete this flow?")) return;
+    if (!(await ask({
+      title: "Delete this flow?", tone: "danger", confirmLabel: "Delete flow",
+      message: "Anyone part-way through it stops where they are, and any rule or keyword pointing at it stops working.",
+    }))) return;
     await fetch(`/api/admin/flows/${id}`, { method: "DELETE" });
     load();
   }

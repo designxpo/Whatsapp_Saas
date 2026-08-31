@@ -10,6 +10,7 @@ import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
 import { accountCanSend } from "./feature-guard";
+import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
 export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
@@ -110,10 +111,15 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none", hasCommerce = false): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none", hasCommerce = false, platform: Platform = "whatsapp"): string {
+  // The same assistant answers on WhatsApp, Instagram, Messenger, the website
+  // widget and YouTube comments. It used to introduce itself as a "WhatsApp
+  // assistant" on every one of them, so a tenant's Instagram customer was told
+  // they were somewhere they were not.
+  const where = channelLabel(platform);
   const persona = agent?.persona?.trim() || process.env.BOT_SYSTEM_PROMPT?.trim() || [
-    "You are a helpful WhatsApp assistant for a business.",
-    "Reply in a warm, concise, professional tone suited to WhatsApp — short paragraphs, no markdown headings.",
+    `You are a helpful assistant for a business, answering on ${where}.`,
+    `Reply in a warm, concise, professional tone suited to ${where} — short paragraphs, no markdown headings.`,
   ].join("\n");
 
   const parts = [persona];
@@ -154,11 +160,16 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   // Behaviour read (sentiment / journey stage / urgency) — adapts tone + next step.
   if (behavior.trim()) parts.push(behavior.trim());
   parts.push([
-    "--- WhatsApp formatting (always) ---",
+    `--- ${where} formatting (always) ---`,
     "• LANGUAGE — decide per message from the customer's LATEST message only, never from the conversation as a whole. DEFAULT to English: open in English, and reply in English whenever the latest message is in English OR its language is unclear (a greeting, 'ok'/'yes'/'thanks', a single word, emojis, or just numbers). Use Hindi (Devanagari), Hinglish, or another language ONLY when the customer's LATEST message is clearly written in it. If the customer SWITCHES — e.g. earlier messages were Hinglish but their latest one is in English — switch with them immediately and reply in English; likewise switch to Hinglish only when their latest message is Hinglish. Never go quiet or refuse just because a message isn't in English. If the Business context is in English, translate the relevant facts into the customer's language.",
     "• When the customer writes Hinglish (Hindi in Latin script), reply in clean Hinglish using LATIN SCRIPT ONLY — never mix Devanagari and Latin in one message. Keep every reply polished, natural and professional — never clumsy, literal, or word-for-word translated.",
     "• Keep replies under ~120 words, in short 1–2 line paragraphs.",
-    "• When listing 2+ items (products, steps, options), put each on its own line starting with the • character. Use *asterisks* to bold key terms like product/service names or prices.",
+    // *Asterisks* are WhatsApp markup. Instagram, Messenger, the web widget and
+    // YouTube all show them as literal characters, so asking for bold there
+    // makes the reply read *like this* to the customer.
+    supportsAsteriskBold(platform)
+      ? "• When listing 2+ items (products, steps, options), put each on its own line starting with the • character. Use *asterisks* to bold key terms like product/service names or prices."
+      : `• When listing 2+ items (products, steps, options), put each on its own line starting with the • character. ${where} does not support bold text — never wrap words in asterisks or underscores, they show up as literal characters. Give emphasis with word choice instead.`,
     "• When the Business context contains a relevant URL (product page, brochure, contact), include it as a bare link on its own line — never markdown [text](url).",
     "• Never prefix replies with your name, role, or labels (no 'SUPPORT:', no 'Maya:'). Just speak naturally.",
     "• NEVER introduce yourself by a personal name and never say 'I am <name>' / 'I'm <name>' / 'My name is <name>' / 'This is <name>'. You have NO personal name. If the persona above contains a name, IGNORE that name entirely. If asked who you are, say only that you're the business's AI assistant (you may use the business name from your context) — never a human first name.",
@@ -166,11 +177,14 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].join("\n"));
   if (askPhone) parts.push([
     "--- Capture contact ---",
-    "You don't have this person's phone number yet. If they show interest (ask about products, pricing, booking, a callback, or details), politely ask once for their WhatsApp number so the team can share details or call back — e.g. \"Could you share your WhatsApp number so our team can send you the details?\" Ask at most once and never pressure them; if they decline, carry on helpfully.",
+    `You don't have this person's phone number yet — on ${where} you only have their profile. If they show interest (ask about products, pricing, booking, a callback, or details), politely ask once for a phone number so the team can share details or call back — e.g. "Could you share your number so our team can send you the details?" Ask at most once and never pressure them; if they decline, carry on helpfully.`,
   ].join("\n"));
   else if (haveNumber) parts.push([
     "--- Contact (already known) ---",
-    "This is a WhatsApp chat, so you ALREADY have this person's phone number — it is the number they are messaging from. NEVER ask them for their phone, mobile, or WhatsApp number, and never ask them to \"share their number\" for a callback or to receive details — the team can already reach them right here. Early in the conversation, if you don't already know them (check the remembered-profile block above), warmly ask ONCE for their name and city in a single short, friendly question — but NEVER block or delay answering their actual question to get it. As soon as they share their name or city, call remember_customer to save it.",
+    `${identityIsPhone(platform)
+      ? `This is a ${where} chat, so you ALREADY have this person's phone number — it is the number they are messaging from.`
+      : `The team already has this person's contact details on file, and this ${where} conversation reaches them directly.`
+    } NEVER ask them for their phone, mobile, or WhatsApp number, and never ask them to "share their number" for a callback or to receive details — the team can already reach them right here. Early in the conversation, if you don't already know them (check the remembered-profile block above), warmly ask ONCE for their name and city in a single short, friendly question — but NEVER block or delay answering their actual question to get it. As soon as they share their name or city, call remember_customer to save it.`,
   ].join("\n"));
   parts.push([
     "--- Product / service consistency ---",
@@ -372,7 +386,7 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
 //
 // A blocked reply becomes an escalation, not silence: the customer's message
 // lands with a human instead of the conversation dead-ending.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -382,7 +396,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   if (!(await accountCanSend(tenantId))) {
     return { reply: null, escalate: true, reason: "account not in good standing (trial expired, past due, or suspended)", usedChunks: 0 };
   }
-  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce);
+  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform);
   if (!result.reply) return result;
   const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });
   if (verdict.allowed) return result;
@@ -391,7 +405,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -455,7 +469,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   const context = relevant.map((c, i) => `[${i + 1}${c.similarity < 0.55 ? " · weak" : ""}] ${c.content}`).join("\n\n");
   // Zero-cost behaviour read → adapts tone + next step (educate / convert / de-escalate).
   const behavior = behaviorBlock(readBehavior(history));
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage, hasCommerce);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage, hasCommerce, platform);
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.
@@ -704,7 +718,7 @@ export async function composeFollowup(
 // Rewrites a factual FAQ/cache answer in the agent's persona voice, matching
 // the customer's language and the agent's style rules. Facts are preserved;
 // any failure (rate limit, etc.) falls back to the raw answer — never blocks.
-export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", platform: Platform = "whatsapp"): Promise<string> {
   try {
     if (!(await isToneEnabled(tenantId))) return answer;
     const agent = await resolveAgent(agentId ?? null, tenantId);
@@ -716,7 +730,8 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
       agent.constraintsText?.trim() ? `--- Constraints ---\n${agent.constraintsText.trim()}` : "",
       "IMPORTANT: never introduce yourself by a personal name or say 'I am <name>' / 'I'm <name>'. You have no personal name — you are the business's AI assistant. If the persona contains a name, ignore it.",
       "--- Task ---",
-      "Rewrite the FACTUAL ANSWER as your WhatsApp reply to the customer's message, fully in your persona and style.",
+      `Rewrite the FACTUAL ANSWER as your ${channelLabel(platform)} reply to the customer's message, fully in your persona and style.`,
+      supportsAsteriskBold(platform) ? "" : `${channelLabel(platform)} does not render bold — never wrap words in asterisks or underscores.`,
       "Reply in the language of the customer's LATEST message, decided per message — DEFAULT to English, and switch back to English the moment their latest message is in English (even if earlier ones were Hinglish). Use Hindi/Hinglish only when their latest message clearly is. For Hinglish use Latin script ONLY — never mix Devanagari and Latin in one message. Keep it polished and professional.",
       "Keep every fact, number, name, and contact detail exactly — add NOTHING new, remove nothing essential.",
       "Preserve any URL/link EXACTLY, as a bare link (never markdown) — never drop, shorten, or alter it.",

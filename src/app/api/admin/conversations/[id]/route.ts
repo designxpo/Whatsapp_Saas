@@ -89,7 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Same resolution as the live bot (conversation pin → channel default →
       // tenant-global) so the draft matches what the bot itself would have said.
       const suggestCh = conv.channelId ? await getChannel(conv.channelId, tid) : null;
-      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, suggestCh), tid, effectiveKbTag(conv, suggestCh));
+      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, suggestCh), tid, effectiveKbTag(conv, suggestCh), false, undefined, conv.platform);
       return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
     }
     if (body.action === "reply") {
