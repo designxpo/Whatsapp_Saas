@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { currentUser, isPlatformOwnerEmail } from "@/lib/auth";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 import { getTenant, type Tenant } from "@/lib/tenants";
 import { getActiveBanner, type Announcement } from "@/lib/announcements";
 import { getEntitlements } from "@/lib/entitlements";
@@ -14,6 +15,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const user = await currentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Every portal load doubles as a clock for the background engine
+  // (cronwatchdog.ts). This is the path that covers a workspace with no
+  // customer traffic at all: if someone is looking at the dashboard, the engine
+  // gets a chance to restart itself. after() so it never delays the response.
+  after(() => kickIfStalled("admin-me"));
   const isPlatformOwner = isPlatformOwnerEmail(user.email);
   let needsWalkthrough = false;
   let tenant: Tenant | null = null;

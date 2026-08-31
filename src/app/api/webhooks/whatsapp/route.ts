@@ -29,6 +29,7 @@ import { handleFlowMessage } from "@/lib/flowengine";
 import { recordFormSubmitted } from "@/lib/formresponses";
 import { deriveFieldAttrs } from "@/lib/fieldenrich";
 import { resolveFlowIdForAd } from "@/lib/adflow";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const OPTIN_RE = /^\s*(start|unstop|subscribe|opt[\s-]?in)\s*$/i;
@@ -476,6 +477,10 @@ export async function POST(req: Request) {
   if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), secret)) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
+  // Real traffic doubles as a clock for the background engine — see
+  // cronwatchdog.ts. after() so it never delays this webhook's response, and
+  // AFTER signature verification so unsigned noise can't trigger anything.
+  after(() => kickIfStalled("whatsapp-webhook"));
 
   try {
     const body = JSON.parse(raw);

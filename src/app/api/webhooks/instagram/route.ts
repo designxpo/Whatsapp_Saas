@@ -14,6 +14,7 @@ import { handleFlowMessage } from "@/lib/flowengine";
 import { matchCommentRule, claimComment, bumpRuleMatch, getCommentRule, setFollowGate, getFollowGate, clearFollowGate, pickPublicReply, type IgCommentRule } from "@/lib/igcomments";
 import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
 import { accountCanSend } from "@/lib/feature-guard";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 // A user replying to a follow-gate prompt to confirm they followed.
@@ -59,6 +60,9 @@ export async function POST(req: Request) {
     });
     return new NextResponse("Invalid signature", { status: 401 });
   }
+
+  // Real traffic doubles as a clock for the background engine (cronwatchdog.ts).
+  after(() => kickIfStalled("instagram-webhook"));
 
   // Echoed in the response so routing can be verified with one signed request
   // instead of correlating a log line by hand. Safe to expose: the endpoint is

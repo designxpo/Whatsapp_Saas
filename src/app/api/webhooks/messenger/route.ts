@@ -15,6 +15,7 @@ import { pickPublicReply } from "@/lib/igcomments";
 import { getCommentWatch, trackCommentWatch, MAX_AI_THREAD_DEPTH, type CommentWatch } from "@/lib/commentthreads";
 import { handleFlowMessage } from "@/lib/flowengine";
 import { accountCanSend } from "@/lib/feature-guard";
+import { kickIfStalled } from "@/lib/cronwatchdog";
 
 const OPTOUT_RE = /^\s*(stop|unsubscribe|cancel|opt[\s-]?out)\s*$/i;
 const AI_REPLY_CAP = 6;   // safety cap before escalating a runaway thread to a human
@@ -43,6 +44,8 @@ export async function POST(req: Request) {
   if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
+  // Real traffic doubles as a clock for the background engine (cronwatchdog.ts).
+  after(() => kickIfStalled("messenger-webhook"));
 
   try {
     const body = JSON.parse(raw);

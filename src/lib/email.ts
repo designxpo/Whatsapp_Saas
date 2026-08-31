@@ -14,7 +14,7 @@ let client: Resend | null = null;
 export type EmailType =
   | "otp" | "invoice" | "dunning_failed" | "dunning_suspended"
   | "weekly_recap" | "onboarding_nudge" | "affiliate_commission" | "contact_form"
-  | "owner_broadcast" | "other";
+  | "owner_broadcast" | "platform_alert" | "other";
 
 function resend(): Resend {
   const key = process.env.RESEND_API_KEY;
