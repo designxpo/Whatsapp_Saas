@@ -13,7 +13,8 @@ let client: Resend | null = null;
 // TypeScript red, not a silently uncategorized "other" row discovered later.
 export type EmailType =
   | "otp" | "invoice" | "dunning_failed" | "dunning_suspended"
-  | "weekly_recap" | "onboarding_nudge" | "affiliate_commission" | "contact_form" | "other";
+  | "weekly_recap" | "onboarding_nudge" | "affiliate_commission" | "contact_form"
+  | "owner_broadcast" | "other";
 
 function resend(): Resend {
   const key = process.env.RESEND_API_KEY;
@@ -54,6 +55,9 @@ export interface SendEmailOptions {
   /** Whose workspace this concerns, when there is one (absent for the
    * contact form and other platform-level sends). */
   tenantId?: string | null;
+  /** Set by an owner broadcast, so the Emails log doubles as that campaign's
+   * per-recipient delivery report. */
+  campaignId?: string | null;
 }
 
 // Best-effort row in wa_email_log — logging failing must never make a
@@ -64,6 +68,7 @@ async function logSend(opts: SendEmailOptions, resendId: string | null, status: 
   try {
     const { data } = await db().from("wa_email_log").insert({
       tenant_id: opts.tenantId ?? null,
+      campaign_id: opts.campaignId ?? null,
       email_type: opts.type ?? "other",
       to_email: opts.to,
       subject: opts.subject,

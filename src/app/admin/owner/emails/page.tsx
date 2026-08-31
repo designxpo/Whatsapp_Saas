@@ -8,7 +8,8 @@
 // checking the Resend dashboard by hand, one email at a time.
 
 import { useCallback, useEffect, useState } from "react";
-import { Mail, MailCheck, MailOpen, MailX, MailWarning, Send, ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
+import { Mail, MailCheck, MailOpen, MailX, MailWarning, Send, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone } from "../_ui";
 
 type Row = {
@@ -42,6 +43,15 @@ const STATUS_ICON: Record<string, typeof Mail> = {
 const sel = "border border-line rounded-control px-2 py-1.5 text-xs bg-white text-ink-900";
 const PAGE_SIZE = 50;
 
+type Campaign = {
+  id: string; subject: string; status: string; audienceMode: string;
+  totalRecipients: number; sentCount: number; failedCount: number; createdAt: string;
+};
+
+const CAMPAIGN_TONE: Record<string, Tone> = {
+  draft: "muted", sending: "info", sent: "ok", partial: "warn", failed: "bad", cancelled: "muted",
+};
+
 export default function EmailsPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [total, setTotal] = useState(0);
@@ -49,6 +59,8 @@ export default function EmailsPage() {
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
+  const [campaignId, setCampaignId] = useState("");
+  const [campaigns, setCampaigns] = useState<Campaign[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -56,26 +68,74 @@ export default function EmailsPage() {
     if (type) params.set("type", type);
     if (status) params.set("status", status);
     if (q.trim()) params.set("q", q.trim());
+    if (campaignId) params.set("campaignId", campaignId);
     try {
       const r = await fetch(`/api/owner/emails?${params}`);
       const d = await r.json();
       if (!r.ok || d.error) { setErr(d.error || "Couldn't load the email log."); setRows([]); return; }
       setErr(null); setRows(d.rows ?? []); setTotal(d.total ?? 0);
     } catch { setErr("Couldn't reach the server."); setRows([]); }
-  }, [offset, type, status, q]);
+  }, [offset, type, status, q, campaignId]);
   useEffect(() => { load(); }, [load]);
   // Any filter change re-starts from the first page — a stale offset past a
   // narrower result set would otherwise render an empty page that looks broken.
-  useEffect(() => { setOffset(0); }, [type, status, q]);
+  useEffect(() => { setOffset(0); }, [type, status, q, campaignId]);
+
+  // Campaigns refresh alongside the log: a sending one advances every cron tick,
+  // so a stale count here would read as a stuck campaign.
+  useEffect(() => {
+    fetch("/api/owner/broadcast").then(r => r.json())
+      .then(d => setCampaigns(d.campaigns ?? [])).catch(() => setCampaigns([]));
+  }, [rows]);
+
+  const openCampaign = campaigns?.find(c => c.id === campaignId);
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-xl font-extrabold text-brand-dark">Emails</h1>
-        <p className="text-sm text-ink-600">Every email the platform has sent — login codes, invoices, dunning notices, recaps — and what happened to it after.</p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-extrabold text-brand-dark">Emails</h1>
+          <p className="text-sm text-ink-600">Every email the platform has sent — login codes, invoices, dunning notices, recaps, campaigns — and what happened to it after.</p>
+        </div>
+        <Link href="/admin/owner/emails/new"
+          className="shrink-0 px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold inline-flex items-center gap-1.5">
+          <Plus className="w-3.5 h-3.5" /> New campaign
+        </Link>
       </header>
 
       {err && <div className="bg-red-50 border border-red-200 rounded-card px-4 py-3 text-sm text-red-700">{err}</div>}
+
+      {!!campaigns?.length && (
+        <Panel title="Campaigns" dense>
+          <div className="divide-y divide-line">
+            {campaigns.slice(0, 5).map(c => {
+              const done = c.sentCount + c.failedCount;
+              const pct = c.totalRecipients ? Math.round((done / c.totalRecipients) * 100) : 0;
+              return (
+                <button key={c.id} onClick={() => setCampaignId(id => (id === c.id ? "" : c.id))}
+                  className={`w-full text-left px-4 py-2.5 hover:bg-canvas ${campaignId === c.id ? "bg-canvas" : ""}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[13px] font-bold text-ink-900 truncate">{c.subject}</span>
+                    <Badge tone={CAMPAIGN_TONE[c.status] ?? "muted"}>{c.status}</Badge>
+                    <span className="text-[11px] text-ink-400">{ago(c.createdAt)}</span>
+                  </div>
+                  <p className="text-[11px] text-ink-600 mt-0.5">
+                    {c.sentCount} sent{c.failedCount ? ` · ${c.failedCount} failed` : ""} of {c.totalRecipients}
+                    {c.status === "sending" && <span className="text-brand-700 font-semibold"> · {pct}% — still sending, continues on each cron tick</span>}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {openCampaign && (
+        <div className="flex items-center gap-2 bg-brand-50 border border-brand-100 rounded-card px-4 py-2.5">
+          <p className="text-[12px] text-brand-800 flex-1">Showing only <b>{openCampaign.subject}</b> — every recipient of that campaign, with its real delivery outcome.</p>
+          <button onClick={() => setCampaignId("")} className="text-brand-700 hover:text-brand-800"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricTile label="This page" value={rows?.length ?? "—"} sub={`of ${total} matching`} />
@@ -97,8 +157,8 @@ export default function EmailsPage() {
             <option value="">Any status</option>
             {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
           </select>
-          {(type || status || q) && (
-            <button onClick={() => { setType(""); setStatus(""); setQ(""); }} className="text-[11px] font-bold text-ink-400 hover:text-ink-700">Reset</button>
+          {(type || status || q || campaignId) && (
+            <button onClick={() => { setType(""); setStatus(""); setQ(""); setCampaignId(""); }} className="text-[11px] font-bold text-ink-400 hover:text-ink-700">Reset</button>
           )}
           <span className="ml-auto text-[11px] text-ink-400">{total.toLocaleString()} total</span>
         </div>
@@ -106,8 +166,8 @@ export default function EmailsPage() {
         {rows === null && <div className="flex justify-center py-16"><Spinner /></div>}
         {rows !== null && !rows.length && (
           <EmptyState icon={<Mail className="w-5 h-5" />}
-            title={type || status || q ? "Nothing matches these filters" : "No emails sent yet"}
-            body={type || status || q ? undefined : "They'll appear here the moment the platform sends its first one — a login code, an invoice, anything."} />
+            title={type || status || q || campaignId ? "Nothing matches these filters" : "No emails sent yet"}
+            body={type || status || q || campaignId ? undefined : "They'll appear here the moment the platform sends its first one — a login code, an invoice, anything."} />
         )}
 
         <div className="divide-y divide-line">

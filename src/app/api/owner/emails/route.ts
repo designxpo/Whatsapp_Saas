@@ -17,6 +17,7 @@ export async function GET(req: Request) {
   const type = url.searchParams.get("type") ?? "";
   const status = url.searchParams.get("status") ?? "";
   const tenantId = url.searchParams.get("tenantId") ?? "";
+  const campaignId = url.searchParams.get("campaignId") ?? "";
   const q = url.searchParams.get("q")?.trim() ?? "";
   const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
 
@@ -28,6 +29,7 @@ export async function GET(req: Request) {
     if (type) query = query.eq("email_type", type);
     if (status) query = query.eq("status", status);
     if (tenantId) query = query.eq("tenant_id", tenantId);
+    if (campaignId) query = query.eq("campaign_id", campaignId);
     if (q) query = query.or(`to_email.ilike.%${q}%,subject.ilike.%${q}%`);
 
     const { data, count, error } = await query;

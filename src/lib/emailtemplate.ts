@@ -108,6 +108,15 @@ export interface EmailOptions {
    * `caption` sits under it in small muted type (e.g. an expiry note).
    */
   codeBlock?: { code: string; caption?: string };
+  /**
+   * A single supporting image, rendered full-width under the lead paragraphs.
+   * Must be an absolute https URL a mail client can fetch — an email cannot
+   * see anything hosted behind the app's auth, and most clients block images
+   * until the reader opts in, so nothing essential should live only in here.
+   * `alt` is what those readers see instead, so it is required in practice.
+   */
+  imageUrl?: string;
+  imageAlt?: string;
   /** One takeaway drawn from the numbers — the reason to keep reading. */
   highlight?: string;
   /** Numbered next steps. Rendered as a real ordered list in the text part. */
@@ -325,6 +334,13 @@ ${successDisc()}
                   </td>
                 </tr>`).join("\n                ")}
 
+                ${o.imageUrl ? `<tr>
+                  <td class="pad" style="padding:24px 36px 0;">
+                    <img src="${escapeHtml(o.imageUrl)}" alt="${escapeHtml(o.imageAlt ?? "")}" width="528"
+                      style="display:block;width:100%;max-width:528px;height:auto;border:0;border-radius:10px;outline:none;text-decoration:none;" />
+                  </td>
+                </tr>` : ""}
+
                 ${o.metaRows?.length ? `<tr>
                   <td class="pad" style="padding:26px 36px 0;">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
@@ -437,6 +453,9 @@ ${button(o.cta, siteUrl)}
   // button, which is the one thing the text part most needs to carry.
   const lines: string[] = [o.heading, ""];
   for (const p of o.paragraphs) lines.push(p, "");
+  // The text part can't show the image, so name it and give the URL — a
+  // plain-text reader gets a describable link rather than silently less email.
+  if (o.imageUrl) lines.push(o.imageAlt ? `[${o.imageAlt}] ${o.imageUrl}` : `[image] ${o.imageUrl}`, "");
   if (o.metaRows?.length) {
     for (const r of o.metaRows) lines.push(`${r.label}: ${r.value}`);
     lines.push("");
