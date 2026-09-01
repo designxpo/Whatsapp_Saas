@@ -521,6 +521,17 @@ export async function POST(req: Request) {
           const at = status.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : new Date().toISOString();
           if (status.status === "delivered") await updateLogByMessageId(id, "delivered", at);
           else if (status.status === "read") await updateLogByMessageId(id, "read", at);
+          // A send Meta ACCEPTED can still fail to reach the customer, and this
+          // branch did not exist: those webhooks were dropped entirely, so the
+          // row stayed at "sent" forever, delivery rates read better than
+          // reality, and the reason was nowhere in the product at all.
+          else if (status.status === "failed") {
+            const e = (((status.errors as Record<string, unknown>[]) ?? [])[0] ?? {}) as Record<string, unknown>;
+            const detail = (e.error_data as { details?: string } | undefined)?.details;
+            const reason = [e.title, detail || e.message].filter(Boolean).join(" — ")
+              || (e.code ? `Meta error ${e.code}` : "Delivery failed (no reason given)");
+            await updateLogByMessageId(id, "failed", at, String(reason));
+          }
         }
 
         // Inbound messages.

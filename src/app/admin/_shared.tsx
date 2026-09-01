@@ -65,10 +65,29 @@ export function useChannelList() {
 export function ChannelSelect({ value, onChange, allLabel, className, kind = "whatsapp" }: { value: string | null; onChange: (v: string | null) => void; allLabel?: string; className?: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" }) {
   const channels = useChannelList().filter(c => (c.kind ?? "whatsapp") === kind);
   if (!channels.length) return null;
+  // "Default number" never said WHICH number, and the answer is not obvious: it
+  // is the one flagged primary if there is one, otherwise whatever the
+  // environment config points at — potentially a different WhatsApp Business
+  // Account from every number in this list, holding its own, different set of
+  // templates. Someone leaving the picker alone had no way to know that, so a
+  // template chosen from one list could go out from an account that never had
+  // it, and Meta rejects every message with (#132001).
+  const primary = channels.find(c => c.isDefault && c.active);
+  const defaultLabel = kind !== "whatsapp"
+    ? (allLabel ?? "Default")
+    : primary
+      ? `Default: ${primary.name} (primary)`
+      : `${allLabel ?? "Default number"} — set one in Settings`;
   return (
-    <select className={className ?? inp} value={value ?? ""} onChange={e => onChange(e.target.value || null)} title={kind === "instagram" ? "Instagram account" : kind === "messenger" ? "Facebook Page" : kind === "webchat" ? "Web-chat site" : kind === "youtube" ? "YouTube channel" : "WhatsApp number"}>
-      <option value="">{allLabel ?? "Default number"}</option>
-      {channels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+    <select
+      className={className ?? inp}
+      value={value ?? ""}
+      onChange={e => onChange(e.target.value || null)}
+      title={kind === "instagram" ? "Instagram account" : kind === "messenger" ? "Facebook Page" : kind === "webchat" ? "Web-chat site" : kind === "youtube" ? "YouTube channel"
+        : primary ? `Default sends go out from ${primary.name}` : "No primary number is set, so sends fall back to the workspace default — possibly a different WhatsApp Business Account with its own templates. Pick a number explicitly to be sure."}
+    >
+      <option value="">{defaultLabel}</option>
+      {channels.map(c => <option key={c.id} value={c.id}>{c.name}{c.isDefault ? " · primary" : ""}</option>)}
     </select>
   );
 }

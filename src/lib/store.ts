@@ -4,7 +4,7 @@ import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { safeFilterValue, escapeLike, safeAttrKey } from "./filters";
-import { logError } from "./errors";
+import { logError, errorMessage } from "./errors";
 import { assertTextAllowed } from "./moderation";
 import type { ConversationPlatform } from "./channel-label";
 
@@ -710,15 +710,65 @@ export async function logCounts(campaignId: string): Promise<{ sent: number; fai
   return { sent, failed, delivered, read };
 }
 
-export async function updateLogByMessageId(metaMessageId: string, status: "delivered" | "read", at: string): Promise<void> {
+export async function updateLogByMessageId(metaMessageId: string, status: "delivered" | "read" | "failed", at: string, errorDetail?: string): Promise<void> {
   const row: Record<string, unknown> = { status };
   if (status === "delivered") row.delivered_at = at;
   if (status === "read") { row.read_at = at; row.delivered_at = at; }
+  // A send Meta ACCEPTED can still fail on the way out (frequency cap, number
+  // not on WhatsApp, blocked, re-engagement window). "failed" used not to be
+  // handled here AT ALL, so those webhooks were dropped: the row sat at "sent"
+  // forever, delivery rates read better than reality, and the reason existed
+  // nowhere in the product. Keeping the reason is the point — a failure count
+  // with no "why" cannot be acted on.
+  if (status === "failed" && errorDetail) row.error_detail = errorDetail.slice(0, 500);
   // Only ever move a receipt FORWARD (sent → delivered → read). Meta can deliver
   // a "delivered" webhook after "read" (or duplicates); without this guard a late
   // event would downgrade the row and the read count would silently shrink.
+  // "failed" is only ever accepted from "sent" for the same reason: something
+  // already delivered or read must never be rewritten as a failure.
   const allowedFrom = status === "read" ? ["sent", "delivered"] : ["sent"];
-  await db().from("wa_send_log").update(row).eq("meta_message_id", metaMessageId).in("status", allowedFrom);
+  const { data } = await db().from("wa_send_log").update(row)
+    .eq("meta_message_id", metaMessageId).in("status", allowedFrom)
+    .select("campaign_id");
+
+  // A post-acceptance failure has to reach the CAMPAIGN, not just its log row.
+  //
+  // Meta answers the send API with a message id, the campaign is written as
+  // "sent", and the drop arrives by webhook seconds later. Recording it only in
+  // wa_send_log leaves the campaign reading status="sent", error_summary=null
+  // forever — so History shows a clean send, Analytics counts deliveries that
+  // never happened, and the reason sits one table away. Proven on the internal
+  // build 2026-09-01: two broadcasts reported "Sent to 1 recipient." while both
+  // messages were dropped under the marketing frequency cap (131049).
+  if (status === "failed") {
+    const campaignId = (data ?? [])[0]?.campaign_id as string | undefined;
+    if (campaignId) await rollUpCampaignOutcome(campaignId, errorDetail);
+  }
+}
+
+/**
+ * Re-derives a campaign's counts from its send log after a late status arrives.
+ *
+ * Best-effort: a webhook must never fail because a summary could not be written,
+ * and a missed roll-up is a stale number rather than lost data — the log rows
+ * are the record.
+ */
+export async function rollUpCampaignOutcome(campaignId: string, reason?: string): Promise<void> {
+  try {
+    const { sent, failed } = await logCounts(campaignId);
+    const patch: Parameters<typeof updateCampaign>[1] = { sentCount: sent, failedCount: failed };
+    if (failed > 0) {
+      // Keep the campaign "sent" when anything actually landed — a partial send
+      // is not a failed one — but never let it stay silent about the shortfall.
+      patch.status = sent > 0 ? "sent" : "failed";
+      patch.errorSummary = sent > 0
+        ? `${failed} of ${sent + failed} not delivered${reason ? ` — ${reason}` : ""}`
+        : `Not delivered${reason ? ` — ${reason}` : ""}`;
+    }
+    await updateCampaign(campaignId, patch);
+  } catch (err) {
+    console.error("[store] rollUpCampaignOutcome failed:", errorMessage(err));
+  }
 }
 
 // Per-tenant daily sent count — each tenant's volume counts against its own cap
