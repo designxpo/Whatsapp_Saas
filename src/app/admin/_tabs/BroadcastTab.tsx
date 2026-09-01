@@ -4,7 +4,7 @@ import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-
 // Broadcast tab — manual sends (BroadcastNow), API broadcasting rules, auto-sends
 // (Automations), and the BroadcastRail. Extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Check, Copy, FlaskConical, Globe, Image as ImageIcon, Loader2, Plus, Send, Trash2, Zap, X } from "lucide-react";
+import { AlertTriangle, Check, Copy, FlaskConical, Globe, Image as ImageIcon, Loader2, Plus, Send, Trash2, Zap, X } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics, useChannelList } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -132,6 +132,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const [replyFlowId, setReplyFlowId] = useState("");
   const [flows, setFlows] = useState<{ id: string; name: string; active: boolean; triggerKeywords?: string[] }[]>([]);
   const [templates, setTemplates] = useState<{ name: string; status: string; language: string; category: string; components?: { type: string; format?: string; text?: string }[] }[]>([]);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [manualTemplate, setManualTemplate] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
@@ -147,7 +148,14 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const [holidays, setHolidays] = useState<{ date: string; name: string; daysAway: number }[]>([]);
 
   useEffect(() => {
-    fetch(`/api/admin/templates${channelId ? `?channelId=${channelId}` : ""}`).then(r => r.json()).then(d => setTemplates(d.templates ?? [])).catch(() => {});
+    // Reset first: while the new number's list is in flight the OLD list is
+    // still in state, so a stale selection would look valid for a moment and
+    // the warning below would flicker off exactly when it matters.
+    setTemplatesLoaded(false);
+    fetch(`/api/admin/templates${channelId ? `?channelId=${channelId}` : ""}`)
+      .then(r => r.json())
+      .then(d => { setTemplates(d.templates ?? []); setTemplatesLoaded(true); })
+      .catch(() => setTemplatesLoaded(true));
   }, [channelId]);
 
   // Upcoming festivals & holidays (non-PII) — planning aid for greeting broadcasts.
@@ -312,6 +320,21 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   // the form can only produce payloads Meta will accept (no #132018).
   const approved = templates.filter(t => t.status === "APPROVED");
   const selected = !manualTemplate ? approved.find(t => t.name === templateName && t.language === languageCode) : undefined;
+  // Is the chosen template actually on the chosen number's WhatsApp Business
+  // Account? Templates are account-scoped, and the picker reloads when the
+  // number changes — but templateName does NOT reset, so choosing a template
+  // and then switching numbers leaves a name the target account never had.
+  //
+  // Meta rejects those with (#132001) per message, during the queue drain,
+  // minutes after the composer said "Sent to N recipients." Nothing arrives and
+  // nothing on screen admits it. Caught here it is a sentence, before a send.
+  //
+  // Skipped in manual mode (where not being in the list is the entire point —
+  // the server re-checks that against Meta) and while the list is loading.
+  const templateOffAccount = !manualTemplate && templatesLoaded && !!templateName.trim() && !selected;
+  const sendingFromName = channelId
+    ? (channelRows.find(c => c.id === channelId)?.name ?? "the selected number")
+    : "the default number";
   const comps = selected?.components ?? [];
   const headerFormat = comps.find(c => c.type === "HEADER")?.format ?? null;
   const needsImage = headerFormat === "IMAGE";
@@ -340,6 +363,9 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   // Shared pre-send validation for both real sends and tests.
   function templateProblem(): string | null {
     if (!templateName.trim()) return "Pick an approved template first.";
+    if (templateOffAccount) {
+      return `"${templateName.trim()}" isn't an approved template on ${sendingFromName}. Templates belong to one WhatsApp Business Account, so Meta would reject every message. Pick a template from this number's list, or change the number back.`;
+    }
     if (selected && needsImage && !headerImageUrl.trim()) return "This template has an image header — add or upload the image first.";
     if (selected && varCount > 0 && varsArr.some(v => !v.trim())) return `Fill all ${varCount} variable value(s) — the template's text has {{${varCount}}} placeholders.`;
     return null;
@@ -449,6 +475,32 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             <input className={inp} placeholder="en_US" value={languageCode} onChange={e => setLanguageCode(e.target.value)} />
             <button onClick={() => { setManualTemplate(false); setTemplateName(""); }} className="text-xs font-bold text-brand-700 hover:underline">use list</button>
           </div>
+        )}
+
+        {/* The wrong-number trap, called out where it happens rather than at
+            send time. Red, not amber: this is not a warning about something
+            risky, it is a send that cannot possibly arrive. */}
+        {templateOffAccount && (
+          <div className="rounded-control border border-red-200 bg-red-50 px-3 py-2.5 space-y-1">
+            <p className="text-[12px] font-bold text-red-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              This template isn&apos;t approved on {sendingFromName}
+            </p>
+            <p className="text-[11.5px] text-red-700/90 leading-relaxed">
+              <span className="font-mono font-semibold">{templateName.trim()}</span> belongs to a different
+              WhatsApp Business Account. Meta would accept the broadcast and then reject every
+              message (#132001) — it would report as sent and arrive nowhere.
+              Pick a template from this number&apos;s list above, or switch the number back.
+            </p>
+          </div>
+        )}
+
+        {/* Manual mode can't be checked against the list — that's its purpose —
+            so say what will check it instead of implying nothing does. */}
+        {manualTemplate && !!templateName.trim() && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">
+            Typed by hand, so it isn&apos;t checked against this number&apos;s list. It&apos;s verified against Meta when you send — if it isn&apos;t approved on {sendingFromName}, the send is refused rather than silently failing.
+          </p>
         )}
 
         {selected && bodyPreview && (

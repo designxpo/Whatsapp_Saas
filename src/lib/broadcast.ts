@@ -2,20 +2,48 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { createCampaign, getCampaign, recipientsForAudience, type Campaign } from "./store";
 import { startSend } from "./campaign";
 import { getChannel, credsFor } from "./channels";
-import { fetchTemplates } from "./whatsapp";
+import { fetchTemplates, type WaTemplate } from "./whatsapp";
 import { templateIssues } from "./preflight";
 import { assertImageAllowed } from "./moderation";
 
 
-// Best-effort: fetch the chosen template's Meta definition so we can preflight
-// it. Returns null when creds are missing / Meta is unreachable — never blocks
-// the send on an inability to verify.
-async function fetchTemplateByName(name: string, lang: string, channelId: string | null, tenantId: string) {
+// Look the chosen template up on the WhatsApp Business Account it will actually
+// be sent from.
+//
+// This used to return a bare `null` for two situations that need opposite
+// handling, and the caller could not tell them apart:
+//
+//   • we could not CHECK (missing creds, Meta unreachable) — must not block
+//   • the template is genuinely NOT on this number's account — must block
+//
+// Since both collapsed to null and the caller guarded with `if (tpl)`, the
+// second case skipped validation entirely. That is the wrong-number bug:
+// templates belong to ONE account, the composer reloads its list when the
+// number changes but keeps the chosen NAME, and Meta then accepts the broadcast
+// and rejects every message with (#132001) during the queue drain — minutes
+// after the composer said "Sent to N recipients." Nothing arrives; nothing says so.
+//
+// The old language fallback (`?? tpls.find(t => t.name === name)`) hid a second
+// version of it: a template present only in `hi` satisfied a request for
+// `en_US`, and preflight waved through a send Meta would reject.
+type TemplateLookup =
+  | { kind: "found"; tpl: WaTemplate }
+  | { kind: "absent"; approvedHere: string[] }
+  | { kind: "wrongLanguage"; languages: string[] }
+  | { kind: "unknown" };
+
+async function lookUpTemplate(name: string, lang: string, channelId: string | null, tenantId: string): Promise<TemplateLookup> {
+  let tpls: WaTemplate[];
   try {
-    const channel = await credsFor(channelId, tenantId);
-    const tpls = await fetchTemplates(channel);
-    return tpls.find(t => t.name === name && t.language === lang) ?? tpls.find(t => t.name === name) ?? null;
-  } catch { return null; }
+    tpls = await fetchTemplates(await credsFor(channelId, tenantId));
+  } catch {
+    return { kind: "unknown" };   // could not verify — say so, don't guess
+  }
+  const exact = tpls.find(t => t.name === name && t.language === lang);
+  if (exact) return { kind: "found", tpl: exact };
+  const sameName = tpls.filter(t => t.name === name);
+  if (sameName.length > 0) return { kind: "wrongLanguage", languages: sameName.map(t => t.language) };
+  return { kind: "absent", approvedHere: tpls.filter(t => t.status === "APPROVED").slice(0, 3).map(t => t.name) };
 }
 
 export type BroadcastMode = "campaign" | "audience" | "recipients";
@@ -94,11 +122,21 @@ export async function runBroadcast(input: BroadcastInput, tenantId = DEFAULT_TEN
   // Preflight against Meta's template definition — turn a silent rejection
   // (carousel template, missing {{n}} values, missing header media) into a
   // clear, plain-English error instead of a broadcast that quietly fails.
-  const tpl = await fetchTemplateByName(input.templateName!.trim(), languageCode, input.channelId ?? null, tenantId);
-  if (tpl) {
-    const { blocking } = templateIssues(tpl, { bodyParams: variables, headerImageUrl: input.headerImageUrl }, "broadcast");
+  const look = await lookUpTemplate(input.templateName!.trim(), languageCode, input.channelId ?? null, tenantId);
+  if (look.kind === "absent") {
+    assert(false, `The template "${input.templateName!.trim()}" doesn't exist on this number's WhatsApp Business Account, so Meta would reject every message (#132001). Templates belong to one account — pick a template from this number's list, or switch back to the number you chose it on.`
+      + (look.approvedHere.length ? ` Approved here: ${look.approvedHere.join(", ")}.` : ""));
+  }
+  if (look.kind === "wrongLanguage") {
+    assert(false, `"${input.templateName!.trim()}" exists on this number but not in ${languageCode}. Available languages: ${look.languages.join(", ")}.`);
+  }
+  if (look.kind === "found") {
+    const { blocking } = templateIssues(look.tpl, { bodyParams: variables, headerImageUrl: input.headerImageUrl }, "broadcast");
     assert(blocking.length === 0, blocking[0]);
   }
+  // kind === "unknown" falls through deliberately: not being able to verify a
+  // template is not evidence the template is wrong, and a guard that cannot run
+  // must not become an outage.
 
   let recipients: { phone: string; fullName: string }[];
   let audience: Campaign["audience"];
