@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 const inp = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
 
@@ -20,6 +21,9 @@ export function AffiliateForm() {
       const res = await fetch("/api/affiliate/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(f) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Signup failed"); return; }
+      // Before the push: the dashboard is outside the (site) group and carries
+      // no tag, so an event queued after navigating would never be sent.
+      track("affiliate_signup");
       router.push("/affiliate/dashboard");
       router.refresh();
     } catch { setError("Connection error"); }

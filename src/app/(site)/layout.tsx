@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SiteNav, SiteFooter } from "./_components/chrome";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { SiteBackground } from "./_components/site-background";
 import { JsonLd } from "./_components/json-ld";
 import { orgSchema, websiteSchema, softwareSchema } from "./_content/schema";
@@ -45,6 +46,9 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         <main id="main-content">{children}</main>
         <SiteFooter />
       </div>
+      {/* GA4 — marketing funnel only. Also mounted on /signup (a different
+          host, a different layout); never on the /admin portal. */}
+      <GoogleAnalytics />
       {MARKETING_WEBCHAT_SITE_KEY && (
         // eslint-disable-next-line @next/next/no-sync-scripts
         <script src={`/api/widget/${MARKETING_WEBCHAT_SITE_KEY}/loader.js`} async />

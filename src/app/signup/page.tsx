@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { planFromHref, track } from "@/lib/analytics";
 
 const inp = "w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400";
 const INDUSTRIES = ["E-commerce / D2C", "Education / EdTech", "Real estate", "Healthcare", "Travel & hospitality", "Financial services", "Agency / Marketing", "SaaS / Tech", "Other"];
@@ -13,6 +14,16 @@ const VOLUMES = ["< 1,000 / mo", "1,000–10,000 / mo", "10,000–100,000 / mo",
 
 export default function SignupPage() {
   const router = useRouter();
+  // Pricing CTAs arrive as /signup?plan=<Name>, read again here rather than
+  // relying on the click event alone so a plan is still attributed when this
+  // URL is reached directly — a shared link, a bookmark, a second session.
+  //
+  // Read from window at event time, NOT via useSearchParams(): that hook opts
+  // the whole route out of static prerendering unless it sits under a Suspense
+  // boundary, and this is the highest-value page on the site to keep static.
+  // The plan is never rendered, only reported, so there is nothing to read it
+  // for until an event actually fires.
+  const plan = () => planFromHref(typeof window === "undefined" ? null : window.location.href) ?? undefined;
   const [f, setF] = useState({ company: "", ownerName: "", ownerEmail: "", ownerPhone: "", password: "", industry: INDUSTRIES[0], teamSize: TEAM_SIZES[1], useCase: GOALS[0], expectedVolume: VOLUMES[1] });
   const [accept, setAccept] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -33,6 +44,10 @@ export default function SignupPage() {
       const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, acceptTerms: true }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Signup failed"); return; }
+      // Funnel step, not the conversion — no account exists until the code is
+      // confirmed below. Reported separately so the gap between the two is
+      // visible: a large one means the verification email is the leak.
+      track("sign_up_start", { plan: plan(), industry: f.industry, team_size: f.teamSize, use_case: f.useCase });
       setStep("otp");
     } catch { setError("Connection error"); }
     finally { setLoading(false); }
@@ -45,6 +60,9 @@ export default function SignupPage() {
       const res = await fetch("/api/signup/verify-otp", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: otpCode }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Invalid code"); return; }
+      // THE conversion. Fired before the push, because /admin has no GA tag to
+      // fire it from and a navigation can outrun a beacon queued after it.
+      track("sign_up", { method: "email", plan: plan() });
       router.push("/admin?welcome=1");
       router.refresh();
     } catch { setError("Connection error"); }

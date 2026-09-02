@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Loader2, MailCheck } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 const TOPICS = ["Sales", "Support", "Partnership", "General"];
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
@@ -23,6 +24,9 @@ export function ContactForm() {
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(d.error || "Something went wrong — please try again."); return; }
+      // `topic` is the useful dimension here — it separates a sales enquiry
+      // from a support question, which are different leads entirely.
+      track("generate_lead", { topic: form.topic });
       setDone(true);
     } catch { setErr("Connection error — please try again."); }
     finally { setBusy(false); }
