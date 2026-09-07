@@ -66,6 +66,71 @@ export const CLARIFY_REPLY =
 // through to CLARIFY_REPLY.
 export const GREETING_REPLY =
   "Hi there! 👋 Welcome — how can I help you today? 😊";
+// ── "Did we actually answer them?" ───────────────────────────────────────────
+// FALLBACK_REPLY / SOFT_FALLBACK / CLARIFY_REPLY are the three texts we send
+// when the pipeline produced NO answer — a model error, an exhausted tool loop,
+// an empty completion. They read like replies in the transcript but carry no
+// information, and treating them as real replies is what produced this bug:
+// a customer answered our question, both our attempts fell back to "a team
+// member will get back to you", and because OUR message was the most recent one
+// the follow-up sweep classified an actively-engaged customer as a quiet lead
+// and re-asked the question they had already said yes to.
+const CANNED_NON_ANSWERS = [FALLBACK_REPLY, SOFT_FALLBACK, CLARIFY_REPLY];
+const squash = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+const CANNED_SET = new Set(CANNED_NON_ANSWERS.map(squash));
+
+/** True when this outbound text is one of our "we couldn't answer" placeholders. */
+export function isCannedNonAnswer(body: string | null | undefined): boolean {
+  return !!body && CANNED_SET.has(squash(body));
+}
+
+/**
+ * True when our most recent message was already a canned non-answer.
+ *
+ * Two inbound messages arriving together (the customer answering, then adding a
+ * thought) each get their own reply attempt. If the pipeline is failing, both
+ * produce the identical placeholder and the customer sees the same sentence
+ * twice in a row — which is what happened. Repeating it a second time carries
+ * no new information, so the honest move is to stop pretending and hand the
+ * thread to a human.
+ */
+function repeatingFallback(history: { role: "user" | "assistant"; body: string }[]): boolean {
+  const lastOurs = [...(history ?? [])].reverse().find(m => m.role === "assistant" && m.body?.trim());
+  return isCannedNonAnswer(lastOurs?.body);
+}
+
+export type FollowupState =
+  | "quiet"          // they genuinely stopped replying to a real message of ours
+  | "answer_owed";   // they replied; we never actually answered them
+
+/**
+ * What a transcript actually shows, as opposed to what "we sent the last
+ * message" implies. Pure, so the classification is testable without a database.
+ *
+ * The follow-up sweep selects on `last_outbound_at > last_inbound_at`, which is
+ * a fine SQL pre-filter but a bad conclusion: it is also true when the customer
+ * answered us and our reply pipeline then failed twice into a canned
+ * placeholder. Those two situations need opposite handling — one wants a gentle
+ * nudge, the other wants the answer we owe them — so the decision is made here
+ * from the transcript rather than from a pair of timestamps.
+ */
+export function followupState(
+  history: { role: "user" | "assistant"; body: string }[],
+): FollowupState {
+  const msgs = (history ?? []).filter(m => m.body?.trim());
+  if (!msgs.length) return "quiet";
+  // Walk back over the unbroken run of OUR messages at the end.
+  let i = msgs.length - 1;
+  const ours: string[] = [];
+  while (i >= 0 && msgs[i].role === "assistant") { ours.push(msgs[i].body); i--; }
+  // The customer spoke last. Nothing here is "gone quiet" — we simply owe a reply.
+  if (!ours.length) return "answer_owed";
+  // Every trailing message of ours is a placeholder AND the customer spoke
+  // before them: they answered, we didn't.
+  if (i >= 0 && ours.every(isCannedNonAnswer)) return "answer_owed";
+  return "quiet";
+}
+
 const GREETING_RE = /^\s*(?:hi+|hey+|hello+|helo+|hiya|yo+|hola|namaste|namaskar|salaam|good\s*(?:morning|afternoon|evening|day)|gm|greetings)[\s!.,]*$/i;
 function isGreeting(text: string): boolean {
   return GREETING_RE.test((text || "").trim());
@@ -613,6 +678,9 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       }
       return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed, context, coverageBand: coverage, topSim, chunkSims, groundingActions: guarded.actions };
     }
+    if (repeatingFallback(history)) {
+      return { reply: null, escalate: true, reason: "second consecutive non-answer — handing off", usedChunks: relevant.length, functionCalls: executed };
+    }
     const exhausted = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
     return { reply: exhausted, escalate: false, reason: "tool loop exhausted", usedChunks: relevant.length, functionCalls: executed };
   } catch (err) {
@@ -620,6 +688,9 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     // API failure → a warm hello for a greeting, a clarifying nudge for low-stakes
     // input, otherwise the safe team-handoff fallback. Never "I didn't get that"
     // for a "hi".
+    if (repeatingFallback(history)) {
+      return { reply: null, escalate: true, reason: "second consecutive non-answer — handing off", usedChunks: relevant.length };
+    }
     const reply = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : FALLBACK_REPLY;
     return { reply, escalate: false, reason: "generation error (fallback)", usedChunks: relevant.length };
   }
@@ -672,14 +743,34 @@ export async function composeFollowup(
   const nameRule = usableName
     ? `• If you address them by name, use EXACTLY "${usableName}" — copy it verbatim. NEVER shorten it, nickname it, abbreviate it to initials, or swap in any other name. When unsure, use no name at all.`
     : "• Do NOT address them by any name — you don't reliably know it, so never guess, shorten, or invent one.";
+  // The premise used to be hardcoded as "they did not reply to your last
+  // message". When that is false the model obediently re-asks a question the
+  // customer already answered, which reads as not listening — the exact bug
+  // this branch exists to prevent. Derive it from the transcript instead.
+  const state = followupState(transcript);
+  const premise = state === "answer_owed"
+    ? [
+        "IMPORTANT: the customer DID reply — read their most recent message above carefully.",
+        "Our own last message was a placeholder ('a team member will get back to you') that did not answer them, so we owe them a real response.",
+        "Write ONE brief message that picks the conversation up from what they actually said.",
+      ]
+    : [
+        "The customer has gone quiet: they did not reply to your last message.",
+        "Write ONE brief, warm follow-up nudge to gently re-engage them.",
+      ];
+  // Re-asking is the failure mode when they have already answered, so the
+  // question rule is inverted for that branch rather than merely softened.
+  const questionRule = state === "answer_owed"
+    ? "• NEVER re-ask, re-offer, or seek confirmation for anything they have ALREADY answered or agreed to. If they said yes to an offer, treat it as accepted and move forward from there."
+    : "• If your last message asked a question, gently re-offer to help with that. Otherwise, lightly check whether they have any questions.";
   const system = [
     "You are the SAME business assistant continuing an existing chat — not a new conversation.",
-    "The customer has gone quiet: they did not reply to your last message. Write ONE brief, warm follow-up nudge to gently re-engage them.",
+    ...premise,
     "RULES:",
     "• 1–2 short sentences. Friendly and low-pressure — never pushy, needy, or guilt-trippy.",
     "• This is a CONTINUATION: do NOT greet from scratch, do NOT open with hi/hello as if it's first contact, and NEVER introduce yourself by any name.",
     nameRule,
-    "• If your last message asked a question, gently re-offer to help with that. Otherwise, lightly check whether they have any questions.",
+    questionRule,
     "• Introduce NO new facts — no prices, fees, dates, durations, phone numbers, email addresses, links, or claims that aren't already present in the conversation above. If you have nothing specific to add, stay general ('just checking if you had any questions about …').",
     "• Reply in the SAME language the customer was using (English by default; clean Hinglish in Latin script only if they wrote Hinglish).",
     "• Output ONLY the message text — no quotes, no labels, no preamble.",

@@ -20,9 +20,10 @@
 //   wa_settings.followup_max_attempts  — per-tenant nudges per silent stretch (env default 1)
 
 import { db } from "./supabase";
-import { getChannel, type Channel } from "./channels";
+import type { GroundingAction } from "./guard/sanitize";
+import { getChannel, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
 import { getConvHistory, optoutSet, touchOutbound, appendConvMessage, getTenantSetting, type ConvPlatform } from "./store";
-import { composeFollowup } from "./llm";
+import { composeFollowup, followupState, generateReply } from "./llm";
 import { sendText } from "./whatsapp";
 import { sendIgMessage } from "./instagram";
 import { sendFbMessage } from "./messenger";
@@ -151,10 +152,41 @@ export async function drainAiFollowups(max = 50): Promise<number> {
       // "Website visitor" placeholder — composeFollowup then uses no name.
       const convName = ((r.name as string | null) ?? "").trim();
       const customerName = convName && convName.toLowerCase() !== "website visitor" ? convName : null;
-      const nudge = await composeFollowup(history, { tenantId, agentName: channel?.name ?? null, customerName });
+      // "Our message is the most recent" is the SQL pre-filter, not the whole
+      // story. It is equally true when the customer answered us and our own
+      // reply pipeline then failed into a canned "a team member will get back
+      // to you" placeholder — twice, in the case that surfaced this. Nudging
+      // there re-asks a question they already said yes to, which is the one
+      // thing guaranteed to read as not listening. followupState reads the
+      // transcript and tells the two apart.
+      const state = followupState(history.map(h => ({ role: h.role, body: h.body })));
+      let outbound: { text: string; groundingActions: GroundingAction[] } | null;
+      if (state === "answer_owed") {
+        // Finish the job instead of poking them: run the SAME grounded reply
+        // path the live webhook uses, with this conversation's own agent and KB
+        // allocation. composeFollowup structurally cannot do this — its prompt
+        // forbids introducing any fact not already in the transcript, so the
+        // most it could ever produce is a politer acknowledgement of a question
+        // it still hasn't answered.
+        const convAlloc = { agentId: (r.agent_id as string | null) ?? null, primaryKbTag: (r.primary_kb_tag as string | null) ?? null };
+        const retry = await generateReply(
+          history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })),
+          phone, effectiveAgentId(convAlloc, channel), tenantId, effectiveKbTag(convAlloc, channel),
+          false, undefined, platform,
+        );
+        // Still nothing usable, or the model wants a human: release the claim and
+        // leave it in the human queue rather than sending a third placeholder.
+        outbound = retry.reply && !retry.escalate
+          ? { text: retry.reply, groundingActions: retry.groundingActions ?? [] }
+          : null;
+      } else {
+        const nudge = await composeFollowup(history, { tenantId, agentName: channel?.name ?? null, customerName });
+        outbound = nudge?.text ? { text: nudge.text, groundingActions: nudge.groundingActions } : null;
+      }
       // Nothing safe to say (no AI key / busy, or every claim stripped) — release so a
       // later tick can retry; don't burn an attempt on a no-op.
-      if (!nudge?.text) { await release(); continue; }
+      if (!outbound?.text) { await release(); continue; }
+      const nudge = outbound;
 
       // composeFollowup is a slow model call — RE-CONFIRM the stop conditions
       // atomically before sending: proceed only if the customer hasn't replied
