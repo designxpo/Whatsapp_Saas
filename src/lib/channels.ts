@@ -7,6 +7,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { randomBytes } from "crypto";
 import { db } from "./supabase";
 import { encryptSecret, readSecret } from "./crypto";
+import type { KbScope } from "./kb";
 
 
 export interface ChannelCreds {
@@ -339,7 +340,29 @@ export function effectiveKbTag(
   conv: { primaryKbTag?: string | null } | null | undefined,
   channel?: { kbTag?: string | null } | null,
 ): string | null {
-  return conv?.primaryKbTag ?? channel?.kbTag ?? null;
+  return effectiveKbScope(conv, channel).tag;
+}
+
+/**
+ * The same precedence, but carrying WHERE the tag came from — which decides
+ * whether retrieval may widen to the tenant's other documents when the tagged
+ * KB doesn't cover a question.
+ *
+ * A channel's allocated KB is a boundary: a tenant running two brands on two
+ * Instagram accounts expects each to answer only from its own knowledge, and
+ * silently widening makes one brand speak in the other's words. A flow-stamped
+ * conversation tag is only a focus within one brand, so widening there is the
+ * helpful behaviour it was written to be.
+ *
+ * Pure, so the precedence AND the strictness are unit-testable without a DB.
+ */
+export function effectiveKbScope(
+  conv: { primaryKbTag?: string | null } | null | undefined,
+  channel?: { kbTag?: string | null } | null,
+): KbScope {
+  if (conv?.primaryKbTag) return { tag: conv.primaryKbTag, strict: false };
+  if (channel?.kbTag) return { tag: channel.kbTag, strict: true };
+  return { tag: null, strict: false };
 }
 
 // phoneId/wabaId are hand-typed on the manual "add a number" admin form (the

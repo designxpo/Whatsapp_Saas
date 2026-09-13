@@ -31,6 +31,7 @@ vi.mock("../channels", () => ({
   listChannels: vi.fn(),
   effectiveAgentId: () => null,
   effectiveKbTag: () => null,
+  effectiveKbScope: () => ({ tag: null, strict: false }),
 }));
 
 vi.mock("../messaging-settings", () => ({ isAiEnabled: vi.fn(async () => true) }));

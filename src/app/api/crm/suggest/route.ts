@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { crmAuthorized } from "@/lib/crm";
 import { getConversationByPhone, getConvHistory } from "@/lib/store";
-import { getChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
+import { getChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
 import { generateReply } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     // Match the live bot's resolution (conversation pin → channel default →
     // tenant-global) so the drafted reply speaks with the same persona + knowledge.
     const channel = conv.channelId ? await getChannel(conv.channelId, conv.tenantId) : null;
-    const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), phone, effectiveAgentId(conv, channel), conv.tenantId, effectiveKbTag(conv, channel), false, undefined, conv.platform);
+    const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), phone, effectiveAgentId(conv, channel), conv.tenantId, effectiveKbScope(conv, channel), false, undefined, conv.platform);
     return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
   } catch (err) {
     const busy = err instanceof Error && /AI_BUSY/.test(err.message);

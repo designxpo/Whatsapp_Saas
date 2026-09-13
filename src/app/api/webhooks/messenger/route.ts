@@ -1,7 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
-import { getChannelByPageId, effectiveAgentId, effectiveKbTag, type Channel } from "@/lib/channels";
+import { getChannelByPageId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, landCapturedLead, upsertContacts, logSendFailure, type Conversation } from "@/lib/store";
 import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
 import { fetchLeadgen } from "@/lib/ads";
@@ -232,7 +232,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // → tenant-global (used to hardcode a null KB scope and skip the pin).
   // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
   // built-in commerce tools; public comment replies never sell.
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger");
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger");
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
@@ -385,7 +385,7 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
     { role: "assistant" as const, body: watch.replyText, mediaUrl: null, mediaType: null },
     { role: "user" as const, body: fu.text, mediaUrl: null, mediaType: null },
   ].filter(h => h.body);
-  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbTag(conv, channel), false, undefined, "messenger");
+  const r = await generateReply(history, conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, undefined, "messenger");
   if (!r.reply || r.escalate) return;
   const sent = await replyToFbComment(creds, watch.rootCommentId, r.reply, tid);
   if (!sent.ok) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
 import { getConversation, getConversationByPhone, getConvHistory } from "@/lib/store";
-import { getChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
+import { getChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
 import { generateReply } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 import { guardFeature } from "@/lib/feature-guard";
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     const channel = conv.channelId ? await getChannel(conv.channelId, tenantId) : null;
     const r = await generateReply(
       history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })),
-      conv.phone, effectiveAgentId(conv, channel), tenantId, effectiveKbTag(conv, channel),
+      conv.phone, effectiveAgentId(conv, channel), tenantId, effectiveKbScope(conv, channel),
       false, undefined, conv.platform,
     );
     return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });

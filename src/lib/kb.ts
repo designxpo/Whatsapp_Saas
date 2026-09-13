@@ -512,14 +512,44 @@ export function fuseHybrid(
     .map(([content]) => ({ content, similarity: sim.get(content) ?? KW_SIM }));
 }
 
-export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primaryTag?: string | null): Promise<{ content: string; similarity: number }[]> {
+/**
+ * A KB tag plus whether it is a BOUNDARY or merely a FOCUS.
+ *
+ * The distinction is the whole point, and conflating the two is what leaked:
+ *   • `strict: true`  — a channel's allocated knowledge base. "This Instagram
+ *     account answers from THIS knowledge base." Widening to the tenant's other
+ *     docs means one brand's account answering in another brand's words.
+ *   • `strict: false` — a flow-stamped conversation tag ("this chat is about
+ *     Course A"). Here the general KB is the same business, so falling back to
+ *     it when the tagged docs don't cover a question is helpful, not a leak.
+ */
+export interface KbScope { tag: string | null; strict: boolean }
+
+const asScope = (p: string | null | undefined | KbScope): KbScope =>
+  p && typeof p === "object" ? p : { tag: p ?? null, strict: false };
+
+export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primary?: string | null | KbScope): Promise<{ content: string; similarity: number }[]> {
   const q = (query || "").trim();
   if (!q) return [];
-  const emb = await embedQuery(q);
+  const { tag: primaryTag, strict } = asScope(primary);
+  // Embeddings are the ONE thing spent on the PLATFORM Gemini key (genai()
+  // above) rather than each tenant's own, so an unset, revoked or rate-limited
+  // GEMINI_API_KEY takes vector search down for every tenant simultaneously.
+  // This used to throw straight out of retrieve(), and generateReply's catch
+  // turned that into chunks = [] — every reply on the platform answered with no
+  // knowledge base at all, while the chunks sat untouched in the table and the
+  // keyword retrievers, which need no embedding whatsoever, were never reached.
+  // An ungrounded-but-fluent answer is the worst possible failure mode here, so
+  // degrade to keyword-only rather than to nothing.
+  const emb = await embedQuery(q).catch(err => {
+    console.error("[kb] embedQuery failed — degrading to keyword-only search:", errorMessage(err));
+    return null;
+  });
+  const noVectors: { content: string; similarity: number }[] = [];
 
   if (!primaryTag) {
     const [vec, kw] = await Promise.all([
-      matchChunks(emb, HYBRID_POOL, tenantId).catch(() => []),
+      emb ? matchChunks(emb, HYBRID_POOL, tenantId).catch(() => noVectors) : noVectors,
       matchChunksText(q, HYBRID_POOL, tenantId),
     ]);
     return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);
@@ -531,14 +561,23 @@ export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_I
   // anything) do we fall back to the general KB.
   const PRIMARY_FLOOR = 0.5;
   const [vecTag, kwTag] = await Promise.all([
-    matchChunksByTag(emb, HYBRID_POOL, primaryTag, tenantId).catch(() => []),
+    emb ? matchChunksByTag(emb, HYBRID_POOL, primaryTag, tenantId).catch(() => noVectors) : noVectors,
     matchChunksTextByTag(q, HYBRID_POOL, primaryTag, tenantId),
   ]);
   const vecLead = vecTag.filter(c => c.similarity >= PRIMARY_FLOOR);
   if (vecLead.length || kwTag.length) return fuseHybrid(vecLead, kwTag, k);
 
+  // A channel's allocated KB is a boundary, not a preference. Widening to the
+  // tenant's whole KB here is what let one Instagram account answer from a
+  // different brand's docs whenever its own KB didn't cover the question — a
+  // silent, invisible failure, because the reply reads perfectly fluent.
+  // Returning nothing is the correct outcome: generateReply's grounding rules
+  // let the model still greet and make small talk, but refuse to state
+  // brand-specific facts it has no evidence for.
+  if (strict) return [];
+
   const [vec, kw] = await Promise.all([
-    matchChunks(emb, HYBRID_POOL, tenantId).catch(() => []),
+    emb ? matchChunks(emb, HYBRID_POOL, tenantId).catch(() => noVectors) : noVectors,
     matchChunksText(q, HYBRID_POOL, tenantId),
   ]);
   return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);

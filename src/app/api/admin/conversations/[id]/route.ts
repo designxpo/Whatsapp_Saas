@@ -10,7 +10,7 @@ import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
-import { credsFor, getChannel, explicitDefaultChannel, effectiveAgentId, effectiveKbTag } from "@/lib/channels";
+import { credsFor, getChannel, explicitDefaultChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes, getLeadIdByPhone, updateLeadStage } from "@/lib/leadsquared";
 import { getCannedTemplates, resolveCannedParams } from "@/lib/canned";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
@@ -89,7 +89,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       // Same resolution as the live bot (conversation pin → channel default →
       // tenant-global) so the draft matches what the bot itself would have said.
       const suggestCh = conv.channelId ? await getChannel(conv.channelId, tid) : null;
-      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, suggestCh), tid, effectiveKbTag(conv, suggestCh), false, undefined, conv.platform);
+      const r = await generateReply(history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, suggestCh), tid, effectiveKbScope(conv, suggestCh), false, undefined, conv.platform);
       return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
     }
     if (body.action === "reply") {

@@ -158,6 +158,10 @@ vi.mock("@/lib/channels", () => ({
   // Real (pure) precedence helpers — conversation override → channel default → global.
   effectiveAgentId: (conv: { agentId?: string | null } | null | undefined, channel?: { agentId?: string | null } | null) => conv?.agentId ?? channel?.agentId ?? null,
   effectiveKbTag: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) => conv?.primaryKbTag ?? channel?.kbTag ?? null,
+  effectiveKbScope: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) =>
+    conv?.primaryKbTag ? { tag: conv.primaryKbTag, strict: false }
+    : channel?.kbTag ? { tag: channel.kbTag, strict: true }
+    : { tag: null, strict: false },
 }));
 vi.mock("@/lib/formresponses", () => h.formresponses);
 vi.mock("@/lib/leadsquared", () => h.lsq);

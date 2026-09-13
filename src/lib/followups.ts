@@ -21,7 +21,7 @@
 
 import { db } from "./supabase";
 import type { GroundingAction } from "./guard/sanitize";
-import { getChannel, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
+import { getChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { getConvHistory, optoutSet, touchOutbound, appendConvMessage, getTenantSetting, type ConvPlatform } from "./store";
 import { composeFollowup, followupState, generateReply } from "./llm";
 import { sendText } from "./whatsapp";
@@ -171,7 +171,7 @@ export async function drainAiFollowups(max = 50): Promise<number> {
         const convAlloc = { agentId: (r.agent_id as string | null) ?? null, primaryKbTag: (r.primary_kb_tag as string | null) ?? null };
         const retry = await generateReply(
           history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })),
-          phone, effectiveAgentId(convAlloc, channel), tenantId, effectiveKbTag(convAlloc, channel),
+          phone, effectiveAgentId(convAlloc, channel), tenantId, effectiveKbScope(convAlloc, channel),
           false, undefined, platform,
         );
         // Still nothing usable, or the model wants a human: release the claim and

@@ -1,4 +1,4 @@
-import { retrieve } from "./kb";
+import { type KbScope, retrieve } from "./kb";
 import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
 import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type ChatMedia } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
@@ -451,7 +451,7 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
 //
 // A blocked reply becomes an escalation, not silence: the customer's message
 // lands with a human instead of the conversation dead-ending.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -470,7 +470,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 

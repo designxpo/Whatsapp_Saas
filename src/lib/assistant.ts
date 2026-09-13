@@ -14,7 +14,7 @@ import { auditReply } from "./guard/audit";
 import { isAutoRouteEnabled, pickAgentForQuery } from "./aihub";
 import { embedQuery } from "./kb";
 import { setConversationAgent } from "./store";
-import { getChannel, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
+import { getChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { getDailyCap } from "./quota";
 import { hasActiveDripEnrollment } from "./sequences";
 
@@ -148,7 +148,12 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // allocated KB → the tenant's whole KB. Threaded through the router (cache
     // suppression), RAG retrieval, and the cache write below so a channel-scoped
     // answer can never leak into (or out of) the tenant's semantic cache.
-    const kbTag = effectiveKbTag(conv, channel);
+    const kbScope = effectiveKbScope(conv, channel);
+    // The semantic cache is keyed by the TAG alone — strictness governs
+    // retrieval, not what an already-generated answer belongs to. Keeping the
+    // cache keyed the same way it always was means a channel-scoped answer
+    // still cannot be served to a differently-scoped question.
+    const kbTag = kbScope.tag;
     let queryEmbedding: number[] | null = null;
     try {
       if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
@@ -180,7 +185,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbTag, false, undefined, conv.platform);
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbScope, false, undefined, conv.platform);
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");

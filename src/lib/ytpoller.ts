@@ -9,7 +9,7 @@
 // dormant until the OAuth client is approved) or the tables don't exist yet.
 
 import { db } from "./supabase";
-import { listChannels, effectiveAgentId, effectiveKbTag, type Channel } from "./channels";
+import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, type YtCreds } from "./youtube";
 import { matchYtCommentRule, claimYtComment, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday } from "./ytcomments";
 import { pickPublicReply } from "./igcomments";
@@ -139,7 +139,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
           undefined,
           effectiveAgentId(null, channel),
           channel.tenantId,
-          effectiveKbTag(null, channel),
+          effectiveKbScope(null, channel),
           false,
           undefined,
           "youtube",
