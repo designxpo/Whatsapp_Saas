@@ -178,6 +178,88 @@ export type Post = {
 };
 export const POSTS: Post[] = [
   {
+    slug: "whatsapp-service-message-pricing-october-2026",
+    title: "WhatsApp Service Messages Stop Being Free on 1 October 2026",
+    excerpt: "Every free-form reply you send inside the 24-hour window becomes billable after the first 1,000 a month. In India the bill is small — but miss the 30 September payment-method deadline and Meta stops delivering those replies altogether.",
+    date: "September 13, 2026", category: "Compliance", readTime: "9 min read",
+    body: [
+      p("On 1 October 2026, the replies your team and your bot send inside WhatsApp's 24-hour customer service window stop being free. They have been free since 1 November 2024, which is long enough that most businesses have built their entire support model on the assumption — answer as many times as you like, at no cost, as long as the customer messaged first. That assumption expires in a little over two weeks."),
+      p("The bottom line: service messages become chargeable at each market's utility rate after a monthly allowance of 1,000 per business phone number, and utility templates lose the in-window waiver they have had since July 2025. For an Indian business the money involved is genuinely small — a few hundred rupees a month at ordinary volumes. The part worth acting on this week is different: any business without a valid payment method on file by 30 September has service message delivery stopped when charging begins. Not throttled, not billed later. Stopped."),
+
+      h2("What actually becomes chargeable"),
+      p("Two separate things change on the same date, and they are easy to conflate:"),
+      list([
+        "Service messages — the free-form replies you send inside an open 24-hour window. An agent typing an answer, a bot replying to a question, an automated workflow sending a status update. Free since November 2024; from 1 October they are charged at the same per-message rate your market already pays for utility and authentication templates.",
+        "Utility templates sent inside the window — order confirmations, delivery updates, appointment reminders sent in response to a customer while the window is open. These were made free in July 2025 as a temporary waiver. The waiver ends; they go back to the utility rate.",
+      ]),
+      p("The 24-hour window itself is unchanged. It still opens and resets with every inbound customer message, and service messages are still only deliverable inside it. What changes is that passing through that door now costs something."),
+      p("Worth being precise about scope, because a lot of the coverage is not: this applies to the WhatsApp Business Platform — the Cloud API, what most people mean when they say \"the WhatsApp Business API\", usually accessed through a Business Solution Provider. The free WhatsApp Business app that a corner shop runs on a phone is unaffected. If you are not on the API, none of this touches you."),
+
+      h2("The 1,000-message allowance, and how fast a bot burns through it"),
+      p("Each business phone number gets 1,000 free service messages per month. Meta charges from the 1,001st delivered message. Unused messages do not roll over into the next month."),
+      p("A thousand sounds generous until you count how a modern support conversation actually works. One customer asking three questions and getting three answers is three service messages, not one. An AI assistant that replies conversationally — a greeting, an answer, a follow-up question, a confirmation — can spend four or five on a single exchange that a human would have handled in two. At 1,000 free messages, that is roughly 200 to 250 AI-handled conversations a month before the meter starts."),
+      p("This is the first time the shape of your bot's replies has had a direct price attached. An assistant that answers completely in one message now costs a fifth of one that thinks out loud across five. That is not an argument against automation — it is an argument for automation that is actually good, and it is a real design constraint that did not exist in September."),
+
+      h2("What it costs in India"),
+      p("India is the cheapest major market on the WhatsApp Business Platform by a wide margin, and that does not change here. Utility and authentication messages sit at roughly ₹0.115 each, and the service rate matches the utility rate in every market — so Indian service messages land in the same region, around ₹0.12."),
+      p("Run the arithmetic and the scale of this becomes clear. A business sending 5,000 service messages a month pays for 4,000 of them: about ₹460. At 50,000 service messages — a serious support operation — it is roughly ₹5,635 a month. Those are real numbers, but for most businesses they are not the line item that changes a decision."),
+      p("The cost pressure that genuinely moved this year was elsewhere. Marketing template rates in India rose about 10% in 2026, from ₹0.7846 to ₹0.8631 per message. A single broadcast to 10,000 contacts costs about ₹8,631 — which is to say one marketing campaign costs more than most businesses will spend on service messages in a year. If you are auditing WhatsApp spend because of the October headlines, the marketing line is where the money actually is."),
+      p("One caveat on every figure above: Meta publishes per-market rate cards and reserves the right to revise them quarterly. Treat these as the current shape of the pricing, not a permanent quote, and check the rate card for your own account's currency before building a budget on them."),
+
+      h2("The part that actually breaks things: 30 September"),
+      p("Here is the change that deserves your attention this week, and it has nothing to do with how much anything costs."),
+      p("Service messages have been free for nearly two years. A business that only ever sends service messages — a pure support operation, no broadcasts, no marketing — has had no reason to put a payment method on the account, because nothing has ever generated a bill. Plenty of accounts are in exactly that state without anyone having made a decision about it."),
+      p("From 1 October those messages are billable, and Meta does not deliver billable messages against an account with no way to pay. Any business or Solution Provider without a valid payment method on file by 30 September has service message delivery stopped when charging begins. The failure mode is not an invoice you can argue about later — it is your support replies silently not arriving, on the channel your customers use most, starting on a Wednesday."),
+      p("Check this today rather than on the 29th. If you are on the API through a BSP, ask them directly whose payment method is on file — yours or theirs — and get the answer in writing. If you are directly integrated, open WhatsApp Manager and confirm the account has a live payment method, not an expired card from a trial."),
+
+      h2("What is not changing"),
+      p("Worth stating plainly, because the coverage this month has been noisier than the change deserves:"),
+      list([
+        "The Free Entry Point window is untouched. A conversation started from a click-to-WhatsApp ad or a Page CTA still gives you 72 hours in which any message type is free. This remains the single biggest delivery-charge exception on the platform.",
+        "The 24-hour customer service window still works exactly as it does today — it opens on an inbound message, resets on each new one, and gates what you are allowed to send.",
+        "Marketing and authentication templates are billed as they already are. Marketing rates rose earlier in 2026; nothing further changes for them on 1 October.",
+        "The free WhatsApp Business app is unaffected. This is an API-only change.",
+        "Inbound messages from customers remain free. You are never charged for receiving.",
+      ]),
+
+      h2("How to keep the bill, and the risk, down"),
+      p("Most of what follows is good practice regardless of pricing. That is rather the point — the businesses least affected by this change are the ones already messaging well."),
+      list([
+        "Answer completely the first time. Now that each reply is metered, an assistant that resolves a question in one well-formed message is measurably cheaper than one that trickles out four. Grounding your AI in a real knowledge base rather than letting it improvise is the single biggest lever here.",
+        "Route the free entry point deliberately. Traffic arriving from click-to-WhatsApp ads carries a 72-hour free window. Knowing which conversations are inside it is the difference between a free exchange and a metered one.",
+        "Stop paying for conversations that should never have started. Every avoidable \"where is my order\" is a service message you now pay for. A proactive utility template at dispatch costs the same as one reply, and prevents three.",
+        "Watch the marketing line harder than the service line. At Indian rates a single 10,000-contact broadcast outweighs a month of support messaging. Segmenting a list so 3,000 relevant people receive it saves more than any service-message optimisation will.",
+        "Keep one number's volume visible. The 1,000-message allowance is per business phone number, per month, with no rollover — so the allowance is only useful if somebody can see how much of it is left.",
+      ]),
+
+      h2("A checklist for the next two weeks"),
+      list([
+        "Confirm a valid payment method is on file — yours or your BSP's — before 30 September. This is the only item on this list that can stop messages from being delivered.",
+        "Find out whether your provider bills you per message or absorbs service messages into a plan, and get it in writing before October.",
+        "Count your current service-message volume per number so you know whether 1,000 a month is a ceiling you will notice or one you will never reach.",
+        "Audit where your utility templates fire. The ones sent inside the window were free since July 2025 and are about to reappear on the bill.",
+        "Look at your AI's average reply length. Five short messages and one complete one now cost different amounts for the same answer.",
+      ]),
+
+      p("The headline is that WhatsApp got more expensive. The accurate version is that WhatsApp got slightly more expensive and considerably less forgiving of an unconfigured account. For most Indian businesses the bill arriving in November will be smaller than a single marketing broadcast; the genuine risk is a support line that quietly stops delivering on 1 October because nobody checked a billing page in September."),
+      p("Talko AI runs on your own AI key, so the model cost behind every reply stays yours to control, and the inbox shows WhatsApp, Instagram, Messenger and web chat together — which matters more when one of those channels starts metering replies. See [how the AI is grounded in your own knowledge base](/features), [compare plans](/pricing), or read the wider view in [how automation is transforming customer messaging](/blog/whatsapp-automation-guide)."),
+    ],
+    faqs: [
+      { q: "What exactly is a service message on WhatsApp?", a: "A free-form, non-template message a business sends inside an open 24-hour customer service window — an agent's typed reply, a bot's answer, an automated status update. It is defined by being free-form and in-window, not by who or what composed it. From 1 October 2026 these are charged at each market's utility rate after the first 1,000 per business phone number each month." },
+      { q: "Does the 1,000 free service messages reset every month?", a: "Yes, the allowance is per business phone number per calendar month, and charging starts from the 1,001st message delivered. Unused messages do not carry over — an unused allowance in September is simply gone in October." },
+      { q: "What happens if I have no payment method on file by 30 September 2026?", a: "Service message delivery stops when charging begins on 1 October. This is the most disruptive part of the change and the easiest to overlook, because an account that has only ever sent free service messages has never generated a bill and so may never have needed a payment method. If you are on the API through a BSP, confirm with them whose payment method is on file." },
+      { q: "Is the free entry point window affected?", a: "No. A conversation started from a click-to-WhatsApp ad or a Page call-to-action still opens a 72-hour window in which any message type is free to send. It remains the largest delivery-charge exception on the platform and is unchanged by the October pricing update." },
+      { q: "Does this affect the free WhatsApp Business app?", a: "No. This change applies only to the WhatsApp Business Platform — the Cloud API, usually accessed through a Business Solution Provider. Businesses running the free WhatsApp Business app on a phone are not affected by per-message charging at all." },
+      { q: "How much will this actually cost an Indian business?", a: "Less than most of the coverage implies. With utility and service rates around ₹0.115 to ₹0.12, a business sending 5,000 service messages a month pays for 4,000 of them — roughly ₹460. India remains the cheapest major market. The 2026 marketing rate rise to ₹0.8631 per message has a far larger effect on most WhatsApp budgets than service message charging will." },
+    ],
+    sources: [
+      { label: "Pricing for non-template messages — WhatsApp Business Platform, Meta for Developers", href: "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing/non-template-messages", note: "Meta's own specification: service messages and in-window utility templates move from free to per-message charging on 1 October 2026" },
+      { label: "Pricing on the WhatsApp Business Platform — Meta for Developers", href: "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing", note: "Per-market rate cards, the 72-hour free entry point window, and Meta's note that rates may be revised quarterly" },
+      { label: "Service message charging starts October 1, 2026 — 360dialog", href: "https://360dialog.com/blog/whatsapp-service-message-charging-october-2026/", note: "The 1,000-message monthly allowance per business phone number, and the 30 September payment-method requirement" },
+      { label: "WhatsApp service message pricing changes — WATI", href: "https://www.wati.io/en/blog/whatsapp-service-message-pricing/", note: "Indian utility and authentication rates, and the end of the in-window utility template waiver introduced in July 2025" },
+    ],
+  },
+  {
     slug: "comment-to-dm-automation",
     title: "Comment-to-DM Automation on Instagram and Facebook: How It Actually Works",
     excerpt: "Turn post comments into private messages the compliant way — Meta's real rules on the 7-day window, one reply per comment, and why a comment is treated as an opt-in a cold DM never gets.",
