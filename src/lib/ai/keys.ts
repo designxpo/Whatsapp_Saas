@@ -2,7 +2,9 @@ import { DEFAULT_TENANT_ID } from "../tenant";
 // Resolves a tenant's OWN chat AI configuration (provider + model + key).
 // Policy: REQUIRE-OWN-KEY — if a tenant hasn't configured a key, AI chat is off
 // for them (resolveTenantAi throws AiKeyMissingError; callers escalate to human).
-// Embeddings are unaffected — they run on the platform Gemini key in kb.ts.
+// Embeddings (kb.ts) try this same key FIRST when the provider is Gemini, then
+// fall back to the platform GEMINI_API_KEY — so a tenant who saves a Gemini key
+// here gets a working knowledge base too, not just working chat replies.
 
 import { getTenantSetting, setTenantSetting, getTenantSecret, setTenantSecret } from "../store";
 import { DEFAULT_CHAT_MODEL, type AiProvider } from "./chat";

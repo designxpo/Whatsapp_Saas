@@ -78,7 +78,7 @@ export async function cacheLookup(question: string, precomputed?: number[] | nul
   }
 
   // Step 2 — vector similarity (reuse the caller's embedding when provided).
-  const embedding = precomputed ?? await embedQuery(question);
+  const embedding = precomputed ?? await embedQuery(question, tenantId);
   const { data } = await db().rpc("match_semantic_cache", { query_embedding: embedding, match_count: 1, p_tenant_id: tenantId });
   const top = (data as { id: string; answer: string; similarity: number }[] | null)?.[0];
   if (top && top.similarity >= CACHE_SIMILARITY) {
@@ -106,7 +106,7 @@ export async function cacheStore(question: string, answer: string, embedding: nu
     if (!norm || !answer.trim()) return;
     // Never cache a name-personalised answer — the cache is shared across customers.
     if (isPersonalizedAnswer(answer, knownName)) return;
-    const emb = embedding ?? await embedQuery(question);
+    const emb = embedding ?? await embedQuery(question, tenantId);
     // Unique on (tenant_id, normalized_question) — concurrent dup inserts no-op.
     await db().from("wa_semantic_cache").upsert(
       { tenant_id: tenantId, question, normalized_question: norm, answer, source, embedding: emb },

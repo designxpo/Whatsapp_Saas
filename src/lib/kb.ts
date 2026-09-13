@@ -1,4 +1,5 @@
 import { DEFAULT_TENANT_ID } from "./tenant";
+import { resolveTenantAi } from "./ai/keys";
 import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, matchChunksText, matchChunksTextByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
@@ -19,23 +20,61 @@ export const EMBED_DIM = 768;
 // and every retrieval that reads them. See model-allowlist.ts.
 const EMBED_MODEL = resolveEmbedModel(process.env.GEMINI_EMBED_MODEL, "gemini-embedding-001", "env:GEMINI_EMBED_MODEL");
 
-let client: GoogleGenAI | null = null;
-function genai(): GoogleGenAI {
-  if (!client) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY not configured");
-    client = new GoogleGenAI({ apiKey });
-  }
-  return client;
+// Clients are cached per API KEY, not globally: embeddings can now run on a
+// tenant's own Gemini key, so there is no longer one client for the process.
+const clients = new Map<string, GoogleGenAI>();
+function clientFor(apiKey: string): GoogleGenAI {
+  let c = clients.get(apiKey);
+  if (!c) { c = new GoogleGenAI({ apiKey }); clients.set(apiKey, c); }
+  return c;
 }
 
-// Embed a batch of texts. taskType tunes the embedding for storage vs. querying.
-export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
-  if (texts.length === 0) return [];
+export class EmbedKeyMissingError extends Error {
+  constructor() {
+    super("No Gemini API key available for embeddings — add a Gemini key in Settings → AI, or set GEMINI_API_KEY");
+    this.name = "EmbedKeyMissingError";
+  }
+}
+
+/**
+ * The keys to try, in order, for this tenant's embeddings.
+ *
+ * The tenant's OWN key first: this is a bring-your-own-key product, and a
+ * tenant who has pasted a key into the portal reasonably expects it to power
+ * their knowledge base, not just their chat replies. Embeddings used to be the
+ * one thing charged to the platform key, which meant a fully-configured tenant
+ * could still have a completely dead KB because a DIFFERENT, invisible key was
+ * unset — the failure this resolution exists to end.
+ *
+ * The platform key stays as a fallback rather than a replacement, so a tenant
+ * whose own key is rate-limited, revoked or simply wrong keeps a working
+ * knowledge base instead of losing it the moment they save a bad key.
+ *
+ * Gemini keys ONLY. An OpenAI or Anthropic key cannot produce a vector in the
+ * same space as the 768-dimension gemini-embedding-001 output already stored in
+ * kb_chunks, and mixing spaces does not fail loudly — it silently returns
+ * nonsense for every retrieval. Those tenants keep using the platform key,
+ * which is exactly why it must not be removed once this ships.
+ */
+async function embedKeys(tenantId: string): Promise<string[]> {
+  const platform = process.env.GEMINI_API_KEY?.trim() || null;
+  let own: string | null = null;
+  try {
+    const ai = await resolveTenantAi(tenantId);
+    if (ai.provider === "gemini" && ai.apiKey.trim()) own = ai.apiKey.trim();
+  } catch {
+    /* AiKeyMissingError, or settings unreachable — the platform key stands alone. */
+  }
+  return [...new Set([own, platform].filter((k): k is string => !!k))];
+}
+
+async function embedWith(client: GoogleGenAI, texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[][]> {
   const out: number[][] = [];
   for (let i = 0; i < texts.length; i += 100) {
     const batch = texts.slice(i, i + 100);
-    const res = await genai().models.embedContent({
+    // The model and dimension are pinned regardless of WHOSE key pays for it —
+    // every vector in kb_chunks has to live in the same space.
+    const res = await client.models.embedContent({
       model: EMBED_MODEL,
       contents: batch,
       config: { taskType, outputDimensionality: EMBED_DIM },
@@ -50,8 +89,28 @@ export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT"
   return out;
 }
 
-export async function embedQuery(text: string): Promise<number[]> {
-  const [v] = await embedTexts([text], "RETRIEVAL_QUERY");
+// Embed a batch of texts. taskType tunes the embedding for storage vs. querying.
+export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY", tenantId = DEFAULT_TENANT_ID): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  const keys = await embedKeys(tenantId);
+  if (!keys.length) throw new EmbedKeyMissingError();
+  let lastErr: unknown;
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      return await embedWith(clientFor(keys[i]), texts, taskType);
+    } catch (err) {
+      lastErr = err;
+      // Only the first key can be the tenant's own; say so plainly, because
+      // "the KB stopped working after I changed my API key" is otherwise a
+      // genuinely hard thing to diagnose from the outside.
+      if (i < keys.length - 1) console.error("[kb] embedding on the tenant's own Gemini key failed — retrying on the platform key:", errorMessage(err));
+    }
+  }
+  throw lastErr;
+}
+
+export async function embedQuery(text: string, tenantId = DEFAULT_TENANT_ID): Promise<number[]> {
+  const [v] = await embedTexts([text], "RETRIEVAL_QUERY", tenantId);
   return v;
 }
 
@@ -383,7 +442,7 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
     }
     const doc = await getDocument(docId, tenantId).catch(() => null);   // for the "[title › section]" header
     const contents = headeredChunks(doc?.title ?? "", chunks);
-    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tenantId);
     const rows = contents.map((content, i) => ({ content, embedding: embeddings[i] }));
     const n = await replaceChunks(docId, rows, tenantId);
     await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
@@ -415,7 +474,7 @@ export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unc
       return "failed";
     }
     const contents = headeredChunks(doc.title, chunks);
-    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tid);
     const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
     await setDocSync(doc.id, hash, tid);
@@ -458,7 +517,7 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
       return "failed";
     }
     const contents = headeredChunks(doc.title, chunks);
-    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT");
+    const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tid);
     const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
     await setDocSync(doc.id, sha256(text), tid);
@@ -476,7 +535,7 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
 // we defer to it. Returns the embedding so the caller can reuse it (no double cost).
 const COVERAGE_FLOOR = 0.45;   // keep in sync with MIN_SIMILARITY in llm.ts
 export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, embedding?: number[] | null): Promise<{ covered: boolean; top: number; embedding: number[] }> {
-  const emb = embedding ?? await embedQuery(query);
+  const emb = embedding ?? await embedQuery(query, tenantId);
   const top = (await matchChunks(emb, 1, tenantId))[0]?.similarity ?? 0;
   return { covered: top >= COVERAGE_FLOOR, top, embedding: emb };
 }
@@ -541,7 +600,7 @@ export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_I
   // keyword retrievers, which need no embedding whatsoever, were never reached.
   // An ungrounded-but-fluent answer is the worst possible failure mode here, so
   // degrade to keyword-only rather than to nothing.
-  const emb = await embedQuery(q).catch(err => {
+  const emb = await embedQuery(q, tenantId).catch(err => {
     console.error("[kb] embedQuery failed — degrading to keyword-only search:", errorMessage(err));
     return null;
   });

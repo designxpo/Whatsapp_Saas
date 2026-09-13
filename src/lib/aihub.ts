@@ -75,7 +75,7 @@ export async function saveAgent(p: Partial<AiAgent> & { name: string }, tenantId
   let embedding: number[] | null = null;
   const routingText = `${p.name}. ${p.description ?? ""}. ${p.routingKeywords ?? ""}`.trim();
   if (routingText.length > p.name.length + 3) {
-    try { [embedding] = await embedTexts([routingText], "RETRIEVAL_QUERY"); }
+    try { [embedding] = await embedTexts([routingText], "RETRIEVAL_QUERY", tenantId); }
     catch (e) { console.error("[aihub] agent embed failed:", e); }
   }
   const row = {

@@ -157,7 +157,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     let queryEmbedding: number[] | null = null;
     try {
       if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
-        queryEmbedding = await embedQuery(lastUserMsg).catch(() => null);
+        queryEmbedding = await embedQuery(lastUserMsg, conv.tenantId).catch(() => null);
         if (queryEmbedding) {
           const pick = await pickAgentForQuery(queryEmbedding, agentId, conv.tenantId);
           if (pick && pick.agentId !== agentId) {
