@@ -38,6 +38,14 @@ const KICK_THROTTLE_MIN = 3;
 const ALERT_MIN = 45;
 /** And at most this often, so an ongoing outage doesn't become an inbox flood. */
 const ALERT_THROTTLE_HOURS = 6;
+/**
+ * How long a kick gets to land before we judge whether it worked.
+ *
+ * The engine's own run takes a while; alerting two seconds after firing the
+ * request that fixes the problem is how this ended up emailing the owner every
+ * six hours about an outage that had already resolved itself.
+ */
+const KICK_GRACE_MIN = 5;
 
 const KICK_KEY = "cron_kick_at";
 const ALERT_KEY = "cron_alert_at";
@@ -66,6 +74,42 @@ export function decideKick(heartbeatAgeMin: number | null, lastKickAgeMin: numbe
 }
 
 /**
+ * Whether a stall is worth waking a human for.
+ *
+ * The original rule — "heartbeat older than ALERT_MIN" — produced a genuinely
+ * misleading alert on this fleet, and it is worth spelling out why, because the
+ * shape of the mistake recurs.
+ *
+ * The watchdog runs on inbound traffic. On a quiet fleet hours pass with no
+ * request at all, so the FIRST request of the morning legitimately finds a
+ * 50-minute-old heartbeat. That request kicks the engine — and under the old
+ * rule also emailed the owner to say the engine was down. It was reporting a
+ * problem it was in the middle of fixing, every six hours, for days. The
+ * emails were accurate about the heartbeat and completely wrong about the
+ * situation, which is the worst kind of alert: it trains you to ignore it.
+ *
+ * A stall is only real if a kick has already been given time to land and the
+ * heartbeat is STILL older than that kick — meaning the engine never ticked in
+ * response. That is the condition no amount of traffic will fix on its own.
+ */
+export function decideAlert(
+  heartbeatAgeMin: number,
+  lastKickAgeMin: number | null,
+  lastAlertAgeMin: number | null,
+): boolean {
+  if (heartbeatAgeMin < ALERT_MIN) return false;
+  // Never alert on a first detection — that request is about to kick it.
+  if (lastKickAgeMin === null) return false;
+  // Don't judge a kick that hasn't had time to complete.
+  if (lastKickAgeMin < KICK_GRACE_MIN) return false;
+  // The heartbeat being NEWER than our last kick means the kick worked.
+  // Only a heartbeat that still predates it shows the engine never responded.
+  if (heartbeatAgeMin <= lastKickAgeMin) return false;
+  if (lastAlertAgeMin !== null && lastAlertAgeMin < ALERT_THROTTLE_HOURS * 60) return false;
+  return true;
+}
+
+/**
  * Called from real traffic. Cheap on the happy path: one settings read, then
  * returns. NEVER throws — a webhook must not fail because the watchdog did.
  *
@@ -88,7 +132,7 @@ export async function kickIfStalled(source: string): Promise<"fresh" | "throttle
     if (decideKick(ageMin, sinceKick) === "throttled") return "throttled";
     await setSetting(KICK_KEY, new Date().toISOString());
 
-    void alertIfBadlyStalled(ageMin).catch(() => undefined);
+    void alertIfBadlyStalled(ageMin, sinceKick).catch(() => undefined);
 
     const secret = process.env.CRON_SECRET;
     const base = (process.env.NEXT_PUBLIC_SITE_URL || SITE_URL || "").replace(/\/$/, "");
@@ -118,13 +162,16 @@ export async function kickIfStalled(source: string): Promise<"fresh" | "throttle
 // One email to the platform owner when the engine has been down long enough
 // that all three clocks have clearly failed. Throttled hard — an outage that
 // lasts a day should produce a handful of emails, not hundreds.
-async function alertIfBadlyStalled(ageMin: number): Promise<void> {
-  if (ageMin < ALERT_MIN) return;
+async function alertIfBadlyStalled(ageMin: number, lastKickAgeMin: number | null): Promise<void> {
+  // An explicit off switch, because an operator who has decided to live with a
+  // flaky scheduler should be able to say so once rather than filtering mail.
+  // Off means OFF — the Owner Console still shows the engine's real state.
+  if ((process.env.PLATFORM_ALERT_EMAILS ?? "").toLowerCase() === "off") return;
   const to = process.env.ADMIN_USER;
   if (!to) return;
 
   const sinceAlert = minutesSince(await getSetting<string>(ALERT_KEY, ""));
-  if (sinceAlert !== null && sinceAlert < ALERT_THROTTLE_HOURS * 60) return;
+  if (!decideAlert(ageMin, lastKickAgeMin, sinceAlert)) return;
   await setSetting(ALERT_KEY, new Date().toISOString());
 
   const mins = Math.round(ageMin);
@@ -134,9 +181,9 @@ async function alertIfBadlyStalled(ageMin: number): Promise<void> {
     paragraphs: [
       `Talko AI's background engine last completed a pass ${mins} minutes ago. While it's stalled, everything queue-driven is paused: broadcasts, drip sequences, flow reminders, AI follow-ups, comment automation and owner email campaigns.`,
       "Nothing is lost — every queue claims its work atomically and resumes where it left off. But nothing is going out either.",
-      "The app tried to restart the engine itself from live traffic before sending this, so if you're reading this, that didn't take. Check the pg_cron job in Supabase first, then the GitHub Actions schedule and CRON_URL.",
+      "This is not a first sighting: the app already restarted the engine from live traffic, gave it time to respond, and the heartbeat still predates that attempt. Something is wrong with the engine itself, not just its schedule. Check the pg_cron job in Supabase first, then the GitHub Actions schedule and CRON_URL.",
     ],
-    highlight: "This alert is throttled to once every 6 hours, so it won't flood while the problem persists.",
+    highlight: "Throttled to once every 6 hours. Set PLATFORM_ALERT_EMAILS=off to stop these entirely.",
     cta: { label: "Open the Owner Console", href: "/admin/owner" },
     footerReason: "You're getting this because you're the platform owner (ADMIN_USER) and the background engine stopped running.",
   }, SITE_URL);

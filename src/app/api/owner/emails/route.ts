@@ -51,7 +51,15 @@ export async function GET(req: Request) {
       bouncedAt: (r.bounced_at as string | null) ?? null,
     }));
 
-    return NextResponse.json({ rows, total: count ?? rows.length, offset, pageSize: PAGE_SIZE });
+    // Whether delivery status can EVER advance past "sent". Without the Resend
+    // webhook configured, sendEmail() still logs every row, so the panel fills
+    // up and every row sits on "sent" forever with Delivered and Opened stuck
+    // at zero — indistinguishable from "nobody is reading our email". Saying so
+    // outright is the difference between a config gap and a phantom bug.
+    return NextResponse.json({
+      rows, total: count ?? rows.length, offset, pageSize: PAGE_SIZE,
+      deliveryTracking: !!process.env.RESEND_WEBHOOK_SECRET,
+    });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

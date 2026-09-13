@@ -55,6 +55,8 @@ const CAMPAIGN_TONE: Record<string, Tone> = {
 export default function EmailsPage() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [total, setTotal] = useState(0);
+  // null until the first load answers; see the banner below.
+  const [tracking, setTracking] = useState<boolean | null>(null);
   const [offset, setOffset] = useState(0);
   const [type, setType] = useState("");
   const [status, setStatus] = useState("");
@@ -73,7 +75,7 @@ export default function EmailsPage() {
       const r = await fetch(`/api/owner/emails?${params}`);
       const d = await r.json();
       if (!r.ok || d.error) { setErr(d.error || "Couldn't load the email log."); setRows([]); return; }
-      setErr(null); setRows(d.rows ?? []); setTotal(d.total ?? 0);
+      setErr(null); setRows(d.rows ?? []); setTotal(d.total ?? 0); setTracking(d.deliveryTracking ?? null);
     } catch { setErr("Couldn't reach the server."); setRows([]); }
   }, [offset, type, status, q, campaignId]);
   useEffect(() => { load(); }, [load]);
@@ -137,10 +139,30 @@ export default function EmailsPage() {
         </div>
       )}
 
+      {tracking === false && (
+        // Without the Resend webhook there is no second half to this panel:
+        // sendEmail() logs every row at "sent" and nothing ever moves it on, so
+        // Delivered and Opened sit at zero forever. That is indistinguishable
+        // from "our email isn't landing", which is a far more alarming thing to
+        // believe — so name the actual cause rather than showing bare zeros.
+        <div className="bg-amber-50 border border-amber-200 rounded-card px-4 py-3 text-[12px] text-amber-900 space-y-1">
+          <p className="font-bold">Delivery tracking is off — every row will stay on &ldquo;Sent&rdquo;.</p>
+          <p>
+            Emails are being sent and logged correctly, but Resend isn&rsquo;t telling us what happened next, so
+            Delivered, Opened and Bounced stay at zero no matter how many are actually read.
+          </p>
+          <p>
+            To turn it on: add a webhook in the Resend dashboard pointing at <code className="font-mono">/api/webhooks/resend</code>,
+            subscribe it to the <code className="font-mono">email.*</code> events, then put its signing secret in{" "}
+            <code className="font-mono">RESEND_WEBHOOK_SECRET</code> and redeploy.
+          </p>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <MetricTile label="This page" value={rows?.length ?? "—"} sub={`of ${total} matching`} />
-        <MetricTile label="Delivered" value={rows ? rows.filter(r => ["delivered", "opened", "clicked"].includes(r.status)).length : "—"} tone="ok" />
-        <MetricTile label="Opened" value={rows ? rows.filter(r => ["opened", "clicked"].includes(r.status)).length : "—"} />
+        <MetricTile label="Delivered" value={tracking === false ? "—" : rows ? rows.filter(r => ["delivered", "opened", "clicked"].includes(r.status)).length : "—"} tone="ok" />
+        <MetricTile label="Opened" value={tracking === false ? "—" : rows ? rows.filter(r => ["opened", "clicked"].includes(r.status)).length : "—"} />
         <MetricTile label="Bounced / failed" value={rows ? rows.filter(r => ["bounced", "complained", "failed"].includes(r.status)).length : "—"} tone={rows?.some(r => ["bounced", "complained", "failed"].includes(r.status)) ? "bad" : undefined} />
       </div>
       <p className="text-[11px] text-ink-400 -mt-2">Tiles reflect only the rows currently loaded below, not the full {total}-row match.</p>
