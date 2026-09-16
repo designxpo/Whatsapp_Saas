@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { checkCredentials, createSession, createPendingToken, SESSION_COOKIE, DEFAULT_TENANT_ID, PENDING_LOGIN_COOKIE, PENDING_LOGIN_PURPOSE, type SessionUser } from "@/lib/auth";
+import { checkCredentials, createSession, createPendingToken, SESSION_COOKIE, DEFAULT_TENANT_ID, PENDING_LOGIN_COOKIE, PENDING_LOGIN_PURPOSE, PENDING_TOTP_PURPOSE, type SessionUser } from "@/lib/auth";
 import { verifyTeamLogin, logActivity } from "@/lib/team";
 import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from "@/lib/loginthrottle";
 import { isTrustedDevice, DEVICE_COOKIE } from "@/lib/devices";
 import { sendEmailOtp } from "@/lib/emailotp";
+import { twoFactorStatus } from "@/lib/twofactor";
 
 // Accounts that skip the new-device email OTP entirely — e.g. a platform
 // reviewer test login (Meta App Review, etc.) that must work from an unknown
@@ -50,6 +51,21 @@ export async function POST(req: Request) {
   // challenge for this email, sign in immediately as before. Otherwise this is
   // an unrecognized device — challenge with an emailed code before issuing a
   // real session.
+  // An authenticator app REPLACES the emailed code rather than adding to it.
+  // It is the stronger of the two — nothing sitting in a mailbox to intercept,
+  // nothing to deliver — so asking for both would be friction without security.
+  // It is also asked for on EVERY device, trusted or not: the whole reason
+  // somebody enrols is that they want a real second factor, and honouring the
+  // trusted-device shortcut would quietly downgrade them to password-only.
+  const totp = await twoFactorStatus(user.email).catch(() => ({ enrolled: false }));
+  if (totp.enrolled) {
+    logActivity(user, "auth.login_totp", "authenticator challenge");
+    const pending = await createPendingToken({ email: user.email, name: user.name, role: user.role, tenantId: user.tenantId, tokenVersion: user.tokenVersion }, PENDING_TOTP_PURPOSE, "10m");
+    const res = NextResponse.json({ pending: true, factor: "totp", email: user.email });
+    res.cookies.set(PENDING_LOGIN_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600 });
+    return res;
+  }
+
   const deviceToken = (await cookies()).get(DEVICE_COOKIE)?.value;
   const trusted = isOtpExempt(user.email) || (await isTrustedDevice(user.email, deviceToken));
 
@@ -67,7 +83,7 @@ export async function POST(req: Request) {
 
     logActivity(user, "auth.login_otp_sent", "new device — code emailed");
     const pending = await createPendingToken({ email: user.email, name: user.name, role: user.role, tenantId: user.tenantId, tokenVersion: user.tokenVersion }, PENDING_LOGIN_PURPOSE, "10m");
-    const res = NextResponse.json({ pending: true, email: user.email });
+    const res = NextResponse.json({ pending: true, factor: "email", email: user.email });
     res.cookies.set(PENDING_LOGIN_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 600 });
     return res;
   }

@@ -52,6 +52,7 @@ const LiveChatTab = dynamic(() => import("./_tabs/LiveChatTab"), { ssr: false, l
 const ContactsTab = dynamic(() => import("./_tabs/ContactsTab"), { ssr: false, loading: () => tabLoading });
 const PipelineTab = dynamic(() => import("./_tabs/PipelineTab"), { ssr: false, loading: () => tabLoading });
 const SettingsTab = dynamic(() => import("./_tabs/SettingsTab"), { ssr: false, loading: () => tabLoading });
+const SecurityTab = dynamic(() => import("./_tabs/SecurityTab"), { ssr: false, loading: () => tabLoading });
 
 // Warm a tab's chunk on nav hover/focus so it's in memory by click time (the
 // same import() → same webpack chunk as the dynamic() above, just eager). This
@@ -82,6 +83,7 @@ const PRELOAD: Partial<Record<Tab, () => Promise<unknown>>> = {
   setup: () => import("./_tabs/SetupTab"),
   integrations: () => import("./_tabs/IntegrationsTab"),
   settings: () => import("./_tabs/SettingsTab"),
+  security: () => import("./_tabs/SecurityTab"),
 };
 const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 
@@ -144,6 +146,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "integrations", label: "Integrations", icon: <Plug className="w-[18px] h-[18px]" />, hint: "Connect your CRM, payments and other tools" },
       { key: "optouts", label: "Do Not Contact", icon: <Ban className="w-[18px] h-[18px]" />, hint: "People who asked to stop receiving messages" },
       { key: "settings", label: "Settings", icon: <Settings className="w-[18px] h-[18px]" />, hint: "WhatsApp numbers, your team, and billing" },
+      { key: "security", label: "Sign-in security", icon: <ShieldCheck className="w-[18px] h-[18px]" />, hint: "Your passkeys and authenticator app" },
     ],
   },
 ];
@@ -151,7 +154,7 @@ const TAB_TITLES: Record<Tab, string> = {
   home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Links & QR Codes",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
-  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations",
+  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security",
 };
 
 export default function Admin() {
@@ -360,6 +363,7 @@ export default function Admin() {
           {tab === "setup" && <SetupTab goTo={goTo} />}
           {tab === "integrations" && <IntegrationsTab goTo={goTo} />}
           {tab === "settings" && <SettingsTab goTo={goTo} />}
+          {tab === "security" && <SecurityTab />}
           </>}
         </main>
       </div>

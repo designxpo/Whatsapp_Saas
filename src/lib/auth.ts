@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { timingSafeEqual } from "crypto";
-import { verifyPassword, getMemberAuthState } from "./team";
+import { verifyPassword, getMemberAuthState, getMemberIdentity } from "./team";
 import { DEFAULT_TENANT_ID } from "./tenant";
 
 const COOKIE = "wa_admin_session";
@@ -54,6 +54,10 @@ export async function createSession(user: SessionUser): Promise<string> {
 // export fails the framework's route-type check.
 export const PENDING_LOGIN_COOKIE = "wa_pending_login";
 export const PENDING_LOGIN_PURPOSE = "login_otp_pending";
+// An authenticator-app challenge, in place of the emailed one. Same cookie as
+// the email step — a login is only ever at one of them — but its own purpose,
+// so a token minted for one cannot be spent on the other.
+export const PENDING_TOTP_PURPOSE = "login_totp_pending";
 export const PENDING_SIGNUP_COOKIE = "wa_pending_signup";
 export const PENDING_SIGNUP_PURPOSE = "signup_otp_pending";
 
@@ -202,6 +206,19 @@ export function isPlatformOwnerEmail(email: string | null | undefined): boolean 
 
 export async function isPlatformOwner(): Promise<boolean> {
   return isPlatformOwnerEmail((await currentUser())?.email);
+}
+
+/**
+ * Build a session user from LIVE state for a sign-in that proved identity
+ * without a password and without an existing session — a passkey. The tenant
+ * cannot be read off a JWT claim there, because there is no JWT yet.
+ */
+export async function liveSessionUser(email: string): Promise<SessionUser | null> {
+  if (isPlatformOwnerEmail(email)) {
+    return { email, name: "Owner", role: "admin", tenantId: DEFAULT_TENANT_ID, tokenVersion: ownerEpoch() };
+  }
+  const m = await getMemberIdentity(email);
+  return m ? { email, name: m.name, role: m.role, tenantId: m.tenantId, tokenVersion: m.tokenVersion } : null;
 }
 
 export const SESSION_COOKIE = COOKIE;

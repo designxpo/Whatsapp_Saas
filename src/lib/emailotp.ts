@@ -24,7 +24,7 @@ export const EMAIL_OTP_DAILY_CAP = 10;          // sends per email per calendar 
 export const EMAIL_OTP_MAX_ATTEMPTS = 5;        // wrong guesses before the code dies
 export const EMAIL_OTP_EXPIRY_MINUTES = 10;
 
-export type EmailOtpPurpose = "login" | "signup";
+export type EmailOtpPurpose = "login" | "signup" | "reset";
 
 // The secret peppers the hash (same pepper as the WhatsApp OTP feature — see
 // otpPepper()), and email+purpose are folded in so a code is bound to both
@@ -45,11 +45,12 @@ export interface OtpEmailContent { subject: string; html: string; text: string }
 // Exported as the seam the rendering tests drive: composing the email touches no
 // DB and no Resend, so the copy can be asserted without standing either up.
 //
-// The two purposes are written out separately rather than parameterised over one
+// The purposes are written out separately rather than parameterised over one
 // paragraph, because they answer different questions and the "if this wasn't
-// you" advice differs: an unwanted signup code means nothing exists yet and
-// ignoring it is the whole fix, while an unwanted sign-in code means someone
-// else already has the password.
+// you" advice differs in each: an unwanted signup code means nothing exists yet
+// and ignoring it is the whole fix; an unwanted sign-in code means someone else
+// already has the password; an unwanted reset code means someone is trying to
+// take the account from an owner who still has it.
 export function composeOtpEmail(purpose: EmailOtpPurpose, code: string): OtpEmailContent {
   // Typed rather than inferred so the branch that has no `secondary` link and
   // the branch that does are still one shape at the render call below.
@@ -59,7 +60,20 @@ export function composeOtpEmail(purpose: EmailOtpPurpose, code: string): OtpEmai
     paragraphs: string[];
     secondary?: { label: string; href: string };
     footerReason: string;
-  } = purpose === "signup"
+  } = purpose === "reset"
+    ? {
+        subject: "Reset your Talko AI password",
+        heading: "Set a new password",
+        paragraphs: [
+          "Someone asked to reset the password on this account. Enter the code below on the page you still have open, and you'll be able to choose a new one.",
+          "If that wasn't you, don't enter it: nothing changes without this code, so ignoring this email leaves your password exactly as it is. Your account hasn't been touched.",
+        ],
+        // Same reasoning as the sign-in variant: a way to tell a human, never a
+        // link that completes the action.
+        secondary: { label: "Report this", href: "/contact" },
+        footerReason: "You're getting this because a password reset was requested for this address on Talko AI. It's sent only when that happens — there's nothing recurring to unsubscribe from.",
+      }
+    : purpose === "signup"
     ? {
         subject: "Verify your email — Talko AI",
         heading: "Confirm your email address",

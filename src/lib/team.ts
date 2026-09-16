@@ -51,6 +51,27 @@ export async function getMemberAuthState(email: string): Promise<MemberAuthState
   }
 }
 
+// Everything a session needs about a member, without a password — for sign-in
+// paths that prove identity some other way (a passkey), where the tenant cannot
+// come off an existing JWT because there isn't one yet.
+export interface MemberIdentity { name: string; role: "admin" | "member"; tenantId: string; tokenVersion: number }
+export async function getMemberIdentity(email: string): Promise<MemberIdentity | null> {
+  try {
+    const { data } = await db().from("wa_users")
+      .select("name, role, active, tenant_id, token_version")
+      .eq("email", email.trim().toLowerCase()).maybeSingle();
+    if (!data || !(data.active as boolean)) return null;
+    return {
+      name: (data.name as string) || email,
+      role: (data.role as "admin" | "member") ?? "member",
+      tenantId: (data.tenant_id as string) ?? DEFAULT_TENANT_ID,
+      tokenVersion: (data.token_version as number) ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ── Passwords (scrypt, no external deps) ──────────────────────────────────────
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
