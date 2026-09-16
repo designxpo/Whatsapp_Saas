@@ -453,7 +453,7 @@ const PING: EventEnvelope = {
   event: "message.inbound",
   occurredAt: "",
   tenant: "",
-  data: { name: "Alabs Connect", phone: "", text: "✅ Test ping — your webhook is connected." },
+  data: { name: "Talko AI", phone: "", text: "✅ Test ping — your webhook is connected." },
 };
 
 const webhookConnector: Connector = {

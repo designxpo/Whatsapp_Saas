@@ -129,10 +129,21 @@ describe("provisioning URI", () => {
   });
 
   it("percent-encodes the issuer instead of turning its space into a plus", () => {
-    // URLSearchParams would emit "Alabs+Connect", which several apps display
+    // URLSearchParams would emit "Talko+AI", which several apps display
     // literally, so the account shows up in the list with a plus sign in it.
-    expect(uri).toContain("Alabs%20Connect");
-    expect(uri).not.toContain("Alabs+Connect");
+    expect(uri).toContain("Talko%20AI");
+    expect(uri).not.toContain("Talko+AI");
+  });
+
+  it("names the brand the customer actually signed up to", () => {
+    // This is the label a person sees in Google Authenticator forever after,
+    // beside a six-digit code and nothing else explaining what it unlocks. It
+    // defaulted to the repository's old internal name, so every enrolment was
+    // filed under a product that does not exist publicly. Pinned in both
+    // places the issuer appears: the label prefix and the issuer parameter.
+    expect(uri).toContain("otpauth://totp/Talko%20AI:");
+    expect(uri).toContain("issuer=Talko%20AI");
+    expect(uri).not.toMatch(/alabs/i);
   });
 
   it("encodes the account so an email's @ cannot break the label", () => {

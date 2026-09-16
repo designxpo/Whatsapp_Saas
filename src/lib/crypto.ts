@@ -24,6 +24,9 @@ function masterKey(): Buffer {
   }
   // Fixed salt: the input is already a strong secret; scrypt here only maps it
   // to exactly 32 bytes. (Per-secret salt is unnecessary for a single env key.)
+  // The old internal name in this salt must STAY — it is an input to key
+  // derivation, not a label. Rename it and every secret in the database
+  // (channel tokens, tenant AI keys) becomes permanently undecryptable.
   keyCache = scryptSync(raw, "alabs-connect:secret-enc:v1", 32);
   return keyCache;
 }

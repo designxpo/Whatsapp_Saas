@@ -119,9 +119,16 @@ export function verifyTotp(
 }
 
 // otpauth:// URI that authenticator apps read from the QR code.
+//
+// The issuer is the name a person sees in Google Authenticator or 1Password
+// forever after, next to a six-digit code, with no other context telling them
+// which account it unlocks. It has to be the brand they signed up to — this
+// defaulted to the repository's old internal name, so every enrolment was
+// labelled for a product that does not exist publicly.
+//
 // Built by hand rather than with URLSearchParams because that encodes spaces as
-// "+", and several apps render the issuer literally — "Alabs+Connect".
-export function provisioningUri(secret: string, account: string, issuer = "Alabs Connect"): string {
+// "+", and several apps render the issuer literally — "Talko+AI".
+export function provisioningUri(secret: string, account: string, issuer = "Talko AI"): string {
   const label = `${encodeURIComponent(issuer)}:${encodeURIComponent(account)}`;
   const q = [
     `secret=${secret}`,
