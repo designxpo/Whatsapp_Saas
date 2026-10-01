@@ -194,19 +194,16 @@ export type Post = {
 };
 // Who writes here.
 //
-// Posts declared `author: Organization` with no named person and carried no
-// visible byline, which is the single weakest E-E-A-T signal a young site can
-// send: Google's quality guidance leans on who stands behind a claim, and
-// "Talko AI" standing behind an article about Talko AI says nothing. A named
-// person with a stated reason to know the subject is the whole point.
-//
-// Kept here rather than per-post because every post is currently by the same
-// person; add an optional `author` to Post when that stops being true.
+// The organization, by the owner's choice — not a named person. That is a
+// legitimate and common pattern for a company blog; it is just a slightly
+// weaker credential than a named human, since the party vouching for an
+// article about Talko AI is Talko AI. The bio therefore has to do the work the
+// name no longer does: state a specific, checkable basis for knowing the
+// subject rather than asserting authority.
 export const AUTHOR = {
-  name: "Priyesh Mishra",
-  role: "Founder, Talko AI",
-  // Expertise has to be specific and checkable, not "passionate about AI".
-  bio: "Builds Talko AI, the messaging platform behind this site — which means working against the WhatsApp Business Platform, Instagram and Messenger APIs directly, and reading Meta's policy changes the week they ship rather than after they bite.",
+  name: "Talko AI",
+  role: "WhatsApp, Instagram & Messenger automation",
+  bio: "Talko AI builds the messaging platform behind this site, which means working against the WhatsApp Business Platform, Instagram and Messenger APIs directly — and reading Meta's policy and pricing changes the week they ship rather than after they bite.",
   url: "/about",
 } as const;
 

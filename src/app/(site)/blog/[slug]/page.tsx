@@ -132,10 +132,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     image: `${SITE_URL}/blog/${post.slug}/cover`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
-    // A Person, not the Organization. "Talko AI" as the author of an article
-    // about Talko AI is a circular credential; a named human with a stated
-    // reason to know the subject is what the guidance is actually asking for.
-    author: { "@type": "Person", name: AUTHOR.name, jobTitle: AUTHOR.role, url: `${SITE_URL}${AUTHOR.url}` },
+    // The Organization, by the owner's choice. Declaring a Person named
+    // "Talko AI" would be false structured data, so the type follows the name.
+    author: { "@type": "Organization", name: AUTHOR.name, url: SITE_URL },
     publisher: { "@id": `${SITE_URL}/#organization` },
   };
 
@@ -157,7 +156,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
               <span>{post.date} · {post.readTime}</span>
             </div>
             <div className="mt-3 text-xs text-slate-500">
-              By <Link href={AUTHOR.url} className="font-semibold text-slate-700 hover:text-[#0783fd]">{AUTHOR.name}</Link>, {AUTHOR.role}
+              By the <Link href={AUTHOR.url} className="font-semibold text-slate-700 hover:text-[#0783fd]">{AUTHOR.name}</Link> team
             </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
@@ -177,7 +176,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
         ) : null}
 
         <div className="mx-auto mt-16 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">About the author</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Who writes this</p>
           <p className="mt-2 text-sm font-bold text-slate-900">{AUTHOR.name}</p>
           <p className="text-xs text-slate-500">{AUTHOR.role}</p>
           <p className="mt-3 text-sm leading-relaxed text-slate-600">{AUTHOR.bio}</p>
