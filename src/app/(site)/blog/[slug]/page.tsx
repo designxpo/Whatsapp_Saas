@@ -98,7 +98,16 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const { slug } = await params;
   const post = POSTS.find(p => p.slug === slug);
   if (!post) return { title: "Article — Talko AI" };
-  return { title: `${post.title} — Talko AI`, description: post.excerpt };
+  // Point og:image at this post's own generated cover, so a share on WhatsApp
+  // or LinkedIn previews THIS article rather than the identical site-wide card
+  // every post used to fall back to.
+  const cover = `${SITE_URL}/blog/${post.slug}/cover`;
+  return {
+    title: `${post.title} — Talko AI`,
+    description: post.excerpt,
+    openGraph: { type: "article", images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
+    twitter: { card: "summary_large_image", images: [cover] },
+  };
 }
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -120,7 +129,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
     ...(Number.isFinite(parsedMod) ? { dateModified: new Date(parsedMod).toISOString() } : {}),
     articleSection: post.category,
-    image: `${SITE_URL}/brand/talkopng.png`,
+    image: `${SITE_URL}/blog/${post.slug}/cover`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
     // A Person, not the Organization. "Talko AI" as the author of an article

@@ -107,7 +107,15 @@ export default function BlogPage() {
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {POSTS.map(p => (
             <Link key={p.slug} href={`/blog/${p.slug}`}
-              className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
+              className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
+              {/* The post's generated OG card, reused as the cover. aspect-[1200/630]
+                  reserves the box so the grid never reflows as images arrive. */}
+              <div className="relative aspect-[1200/630] w-full overflow-hidden bg-slate-100">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/blog/${p.slug}/cover`} alt="" loading="lazy" decoding="async"
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]" />
+              </div>
+              <div className="flex flex-1 flex-col p-6">
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{p.category}</span>
                 <span>{p.readTime}</span>
@@ -117,6 +125,7 @@ export default function BlogPage() {
               <div className="mt-5 flex items-center justify-between text-xs text-slate-400">
                 <span>{p.date}</span>
                 <ArrowUpRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </div>
               </div>
             </Link>
           ))}

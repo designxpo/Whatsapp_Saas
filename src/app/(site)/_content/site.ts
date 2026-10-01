@@ -205,6 +205,87 @@ export const AUTHOR = {
 
 export const POSTS: Post[] = [
   {
+    slug: "whatsapp-quality-rating-red-flagged-restricted",
+    title: "Red, Flagged, Restricted: What WhatsApp Is Actually Telling You",
+    excerpt: "Three different warnings, three different causes, and most advice treats them as one. Flagged is a quality problem. Restricted usually isn't a problem at all. Knowing which you have decides whether rewriting your copy helps or wastes a week.",
+    date: "October 1, 2026", category: "Compliance", readTime: "9 min read",
+    body: [
+      p("Opening WhatsApp Manager to a red dot beside your number is a bad morning. The usual response is to rewrite the templates, soften the copy, and wait — and about half the time that is the wrong fix entirely, because the warning on screen was never about your writing. WhatsApp shows two things that look like the same alarm and are not: a quality rating, and a phone number status. Reading them as one problem is why businesses spend a week fixing something that was not broken."),
+      p("The bottom line: Flagged means recipients are blocking and reporting you, and only changing who you message fixes it. Restricted usually means you hit your daily sending cap, which is a capacity problem rather than a punishment. Rewriting copy helps with the first and does nothing at all for the second."),
+
+      h2("The two things on that screen"),
+      p("Quality rating is a score. Status is a state. They move for different reasons."),
+      list([
+        "Quality rating — Green (high), Yellow (medium) or Red (low). It is an assessment of how your messages were received over the past seven days, weighted toward the most recent ones. It is a rolling window, so it both degrades and recovers continuously.",
+        "Status — Connected, Flagged or Restricted. Connected means you can send within your quota. Flagged means your quality is low and Meta wants it improved. Restricted means you have used up your business-initiated conversations for the current 24-hour period.",
+      ]),
+      { type: "callout", tone: "info", title: "The distinction that decides what you do next", text: "Flagged is a quality problem — people are blocking you. Restricted is a volume ceiling — you ran out of daily allowance and it resets in 24 hours. The second one is frequently a sign of a healthy, growing account, and treating it as a punishment by cutting sends is precisely the wrong response." },
+
+      h2("What actually drives the rating"),
+      p("This is the part most advice gets wrong. Quality is not scored on your wording, your template approvals, or how commercial your tone is. Meta computes it from what recipients do, and specifically from three signals: blocks, reports, and the reason a person selects when they block you."),
+      p("That last one matters more than its billing suggests. When someone blocks a business, WhatsApp asks why — and \"I didn't sign up for this\" lands differently from \"no longer interested\". Your rating is not just counting blocks; it is reading the stated reason behind them."),
+      p("Which leads to the uncomfortable conclusion: a beautifully written, fully approved, perfectly compliant template sent to people who never asked for it will tank your quality rating. The template review process and the quality rating measure completely different things. Passing one tells you nothing about the other."),
+      { type: "compare", badLabel: "Gets blocked", bad: "Hi! 🎉 MEGA SALE is LIVE! Flat 50% OFF on everything, today only. Shop now before stock runs out! Limited offer!!", goodLabel: "Gets read", good: "Hi Anjali — the running shoes you asked about last week are back in your size. Want me to hold a pair until Friday?", caption: "Same business, same goal. The first was sent to a purchased list; the second to someone who had actually asked. The copy is the smaller difference." },
+
+      h2("Flagged: what happens, and the seven-day clock"),
+      p("When your quality drops low enough, the status changes to Flagged, and a seven-day clock starts. While it runs:"),
+      list([
+        "You cannot move up a messaging tier. Whatever limit you were on is frozen there, so this is the worst possible moment to be scaling a campaign.",
+        "You can still send. Flagged is a warning, not a suspension — which is exactly why it gets ignored until the week is up.",
+        "If quality recovers to medium or high within those seven days, the status returns to Connected and nothing is lost.",
+        "If it does not recover, the status still returns to Connected — but your business-initiated conversation limit drops by one tier.",
+      ]),
+      { type: "callout", tone: "warn", title: "The outcome people misread", text: "Because the status goes back to Connected either way, it is easy to assume the problem resolved itself. It didn't. Quietly dropping a tier is the actual penalty, and the only visible symptom is that campaigns start hitting a ceiling they didn't hit last month." },
+      p("Seven days is also the window the rating itself is measured over, which gives you a usefully concrete rule: whatever you change today starts counting immediately, and a full week of clean sending is enough to clear a bad one out of the window entirely."),
+
+      h2("Restricted: usually not what you think"),
+      p("Restricted sounds the most alarming of the three and is normally the least serious. It means you have hit your business-initiated conversation limit for the current 24-hour period. That is a cap, not a judgement."),
+      list([
+        "You can still reply to anyone who messages you. Inbound conversations and your replies inside the service window are unaffected, so support carries on as normal.",
+        "What stops is new business-initiated conversations — your templates and broadcasts — until the 24-hour period rolls over.",
+        "It resets on its own. No appeal, no form, no waiting period beyond the clock.",
+      ]),
+      p("If you are hitting Restricted regularly, the fix is a higher tier, not less sending. Tiers rise as you send consistently to a growing number of unique recipients with a quality rating that holds up — which is why a Flagged status is so expensive: it freezes the exact mechanism that would have raised the ceiling you keep hitting."),
+
+      h2("How to actually recover a Red rating"),
+      p("Ordered by how much difference each makes, not by how easy it is:"),
+      list([
+        "Stop sending marketing to the segment that generated the blocks. Not all marketing — the specific list. If you cannot identify which list it was, that is the real problem to fix first.",
+        "Switch to utility-only sends for a week or two. Order updates, delivery notifications and appointment reminders get blocked far less, because the recipient is expecting them. This lets the seven-day window clear without going silent.",
+        "Cut frequency before you cut quality of copy. Three messages a week to an interested customer generates more blocks than one message to the same person, and nothing about the wording changes that arithmetic.",
+        "Audit the opt-in. Purchased lists, scraped numbers and contacts who gave you a phone number for a delivery and nothing else are the usual source. Someone who never agreed to hear from you is doing exactly the right thing by blocking you.",
+        "Make opting out trivially easy. A visible \"reply STOP\" costs you a few unsubscribes and saves you the blocks that actually damage the rating — an unsubscribe is invisible to Meta, a block is not.",
+        "Only then look at the copy. It matters least, and it is where almost everyone starts.",
+      ]),
+      p("Worth knowing what is not available: there is no button that resets a quality rating, and no appeal for a Red score the way there is for a rejected template. It is a rolling seven-day measurement of real recipient behaviour. The only way to move it is to change the behaviour it is measuring."),
+
+      h2("A quick diagnostic"),
+      list([
+        "Rating Red, status Connected — early warning. Act now; you have not lost a tier yet.",
+        "Status Flagged — the seven-day clock is running. Switch to utility-only immediately; a dropped tier is the cost of waiting it out.",
+        "Status Restricted, rating Green — you are growing. Nothing is wrong; you need a higher tier, which means continuing to send well.",
+        "Status Restricted, rating Red — the serious combination. You are hitting a ceiling AND being blocked, so the tier that would relieve the pressure is frozen. Pause marketing entirely and let the window clear.",
+      ]),
+
+      p("The through-line is that WhatsApp's quality system measures your relationship with recipients, not your craftsmanship. It is unusually honest feedback: a Red rating means real people are actively telling WhatsApp they did not want to hear from you. That is worth more than it costs, if you read it as the audience problem it is rather than the copy problem it looks like."),
+      p("Talko AI surfaces each number's quality rating and status in the dashboard rather than leaving it in WhatsApp Manager, and pauses marketing sends automatically when quality drops — so a Flagged week does not quietly become a lost tier. See [how broadcasts work](/features), [compare plans](/pricing), or read [why templates get rejected](/blog/whatsapp-template-rejected), which is a different system with different rules."),
+    ],
+    faqs: [
+      { q: "What is the difference between Flagged and Restricted on WhatsApp?", a: "They are unrelated problems. Flagged means your quality rating has dropped low — recipients are blocking and reporting you — and a seven-day clock is running during which you cannot move up a messaging tier. Restricted means you have used your business-initiated conversation allowance for the current 24-hour period; it resets on its own and is often a sign of growth rather than a penalty. You can still reply to inbound messages while Restricted." },
+      { q: "How long does it take to recover a Red quality rating?", a: "Quality is measured over a rolling seven-day window with recent messages weighted more heavily, so a full week of clean sending clears a bad stretch out of the window entirely. If you are Flagged, recovering to medium or high within seven days returns you to Connected with nothing lost; failing to recover also returns you to Connected but drops your conversation limit by one tier." },
+      { q: "Does rewriting my message templates fix a low quality rating?", a: "Rarely, and it is where most businesses start. Quality is computed from recipient behaviour — blocks, reports, and the reason someone gives when they block you — not from your wording. A fully approved, well-written template sent to people who never opted in will still destroy your rating. Change who you are messaging and how often before you change the copy." },
+      { q: "Can I appeal a Red quality rating?", a: "No. Unlike a rejected template, there is no review to request and no button that resets the score. It is a rolling measurement of how real recipients responded over the past seven days, so the only way to move it is to change what they are responding to — stop sending to the segment generating blocks, switch to utility messages, and cut frequency." },
+      { q: "Can I still message customers while my number is Restricted?", a: "Yes, you can reply to anyone who messages you — inbound conversations and your replies inside the service window are unaffected, so customer support continues as normal. What pauses is new business-initiated conversations, meaning your templates and broadcasts, until the 24-hour period rolls over." },
+      { q: "Why does my number keep hitting Restricted?", a: "You are consistently reaching your business-initiated conversation limit, which means you need a higher tier rather than less sending. Tiers rise as you send to a growing number of unique recipients while keeping a healthy quality rating — which is why a Flagged status is doubly expensive: it freezes the exact mechanism that would have raised the ceiling you keep hitting." },
+    ],
+    sources: [
+      { label: "Understanding phone number quality rating — AWS End User Messaging Social", href: "https://docs.aws.amazon.com/social-messaging/latest/userguide/understanding-phone-number-quality-rating.html", note: "The signals behind the rating (blocks, reports, stated block reasons), the seven-day weighted window, and the precise definitions of Connected, Flagged and Restricted" },
+      { label: "Pricing on the WhatsApp Business Platform — Meta for Developers", href: "https://developers.facebook.com/documentation/business-messaging/whatsapp/pricing", note: "Conversation categories and the business-initiated conversation model the limits are counted against" },
+      { label: "WhatsApp Business Messaging Policy", href: "https://www.whatsapp.com/legal/business-policy/", note: "The opt-in requirement that most quality problems trace back to" },
+      { label: "WhatsApp messaging limits and quality rating — Yellow.ai documentation", href: "https://docs.yellow.ai/docs/platform_concepts/channelConfiguration/WA-messaging-limits", note: "Tier mechanics, and the one-tier drop that follows seven days without recovery" },
+    ],
+  },
+  {
     slug: "whatsapp-template-rejected",
     title: "Why Your WhatsApp Template Keeps Getting Rejected",
     excerpt: "Most rejections aren't judgement calls about your content — they're mechanical rules about variables, length and category that fail before a human ever reads it. Paste your template into the checker below and see which ones it breaks.",
