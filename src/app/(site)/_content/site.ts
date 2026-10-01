@@ -16,9 +16,16 @@ export const NAV: { label: string; href: string }[] = [
 
 export const HERO = {
   eyebrow: "WhatsApp · Instagram · Messenger · YouTube · Web chat",
-  title: "Turn every chat into a customer",
+  // Names the core topic, not just the benefit. "Turn every chat into a
+  // customer" is a good hook and shared nothing with the page title, which
+  // leads on WhatsApp/Instagram automation — so the H1 and title read as two
+  // different pages. Naming the channels keeps the hook and closes that gap.
+  title: "Turn every WhatsApp and Instagram chat into a customer",
   titleAccent: "a customer", // rendered with the brand→violet gradient
 
+  // Stays benefit-led on purpose: the definitional sentence lives in
+  // #site-tldr immediately below (and is what `speakable` quotes), so making
+  // this one definitional too would put two definitions back to back.
   subtitle:
     "AI that replies, qualifies and sells everywhere your customers show up — WhatsApp, Instagram, Facebook, YouTube and your website — and keeps your Google reviews answered. One inbox, on autopilot.",
   primary: { label: "Start free trial", href: "/signup" },

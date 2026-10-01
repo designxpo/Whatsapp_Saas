@@ -67,16 +67,21 @@ export default function HomePage() {
       {/* Hero — orbit panel */}
       <Hero />
 
-      {/* Plain-language definition near the top of the page — answers "what is
-          Talko AI" directly for readers and answer engines, instead of making
-          them infer it from the hero's benefit-led copy. Ordinary flowing
-          copy, no boxed-off callout and no label: the sentence itself is the
-          answer, which is what answer-engine extraction actually rewards —
-          not the presence of a "summary" wrapper around it. */}
-      <p id="site-tldr" className="mx-auto max-w-2xl px-5 pb-6 text-center text-sm leading-relaxed text-slate-500">
-        Talko AI is an AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube
-        comments, Google Business Profile reviews and website chat. It&apos;s built for small businesses, D2C brands and
-        agencies that want one inbox to auto-reply, qualify leads and sell across every channel — on their own AI key.
+      {/* Plain-language definition near the top — answers "what is Talko AI"
+          directly for readers and answer engines, instead of making them infer
+          it from the hero's benefit-led copy.
+          No boxed callout and no "In short" label: that version was removed for
+          looking bolted on, and the label was never the part that mattered.
+          What does matter is that the sentence reads as the page's answer
+          rather than as fine print, so it is set at body size in body colour
+          with the definition itself emphasised — the clause an extractor should
+          lift is the clause a human eye lands on first. Also the target of
+          `speakable` in the WebPage schema above. */}
+      <p id="site-tldr" className="mx-auto max-w-2xl px-5 pb-6 text-center text-base leading-relaxed text-slate-600">
+        <strong className="font-semibold text-slate-900">Talko AI is an AI-powered customer conversation platform</strong>{" "}
+        for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.
+        It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply, qualify leads and
+        sell across every channel — on their own AI key.
       </p>
 
       {/* Platform glimpse — leads the page with a look inside the product */}
