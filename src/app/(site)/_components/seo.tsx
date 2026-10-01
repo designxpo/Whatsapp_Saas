@@ -17,6 +17,42 @@ import { ExternalLink } from "lucide-react";
 import { JsonLd } from "./json-ld";
 import { faqPageSchema, type FaqItem } from "../_content/schema";
 
+/**
+ * The page's definitional summary, collapsed behind a question.
+ *
+ * Every page carried two intro blocks stacked: an editorial lede, then a
+ * plain-language "X is a Y for Z" paragraph written for answer engines. Both
+ * say the same thing to a reader, so the second one reads as padding under the
+ * first — on ten pages.
+ *
+ * Deleting it is the wrong fix: that paragraph is the one self-contained
+ * statement an AI answer engine can quote, and on several pages it is also the
+ * `speakable` target. A native <details> keeps the page clean AND keeps the
+ * text in the document.
+ *
+ * It must be <details>, not CSS. Text hidden from people but served to
+ * crawlers is cloaking — a named Google spam policy whose penalty is removal
+ * from the index. Collapsed content is indexed normally, and the difference
+ * that makes it legitimate is simply that a reader can open it.
+ *
+ * `question` is per-page on purpose. A question heading with its answer
+ * directly beneath is the shape answer engines extract from, so "How much does
+ * Talko AI cost?" on /pricing is worth more than a generic label everywhere.
+ */
+export function PageSummary({ question, children }: { question: string; children: React.ReactNode }) {
+  return (
+    <details className="group mx-auto mt-6 max-w-2xl">
+      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#0783fd] [&::-webkit-details-marker]:hidden">
+        {question}
+        <svg className="h-3 w-3 transition-transform group-open:rotate-180" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </summary>
+      <div className="mt-3 space-y-3 text-center text-sm leading-relaxed text-slate-500">{children}</div>
+    </details>
+  );
+}
+
 // Shared ISO → "5 August 2026" formatter. UTC-pinned so the rendered date is
 // identical on the server and in every reader's timezone (a bare
 // `new Date("2026-08-05")` renders as the 4th west of Greenwich).

@@ -6,7 +6,7 @@ import { Reveal } from "../_components/motion";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { LastUpdated, PageFaq, SourceList } from "../_components/seo";
+import { LastUpdated, PageSummary, PageFaq, SourceList } from "../_components/seo";
 import { AffiliateForm } from "../_components/affiliate-form";
 import { webPageSchema, affiliateProgramSchema } from "../_content/schema";
 import { AFFILIATE_SEO } from "../_content/pageseo";
@@ -56,7 +56,7 @@ export default function AffiliatePage() {
             title="Refer businesses to Talko AI, earn recurring commission for as long as they stay"
             subtitle="Anyone can join the Talko AI Affiliate Program. Get a unique referral link, and earn 10% of every subscription payment made by a business you referred — every month, not just once." />
 
-          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
+          <PageSummary question="How does the affiliate program work?">
             <p>
               <strong className="font-semibold text-slate-900">The Talko AI Affiliate Program pays a 10% recurring commission</strong> on
               every subscription payment made by a business you refer, for as long as that business stays a paying customer —
@@ -68,6 +68,8 @@ export default function AffiliatePage() {
               <Link href="/pricing" className="font-semibold text-[#0783fd] hover:underline">Talko AI subscription</Link>{" "}
               yourself to join and start earning.
             </p>
+          </PageSummary>
+          <div className="mt-4 text-center text-sm text-slate-500">
             <LastUpdated iso={AFFILIATE_SEO.updated} />
           </div>
         </Container>

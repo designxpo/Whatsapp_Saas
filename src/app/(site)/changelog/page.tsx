@@ -4,7 +4,7 @@ import { Container, Glow, SectionTitle } from "../_components/ui";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
-import { LastUpdated, PageFaq, SourceList, formatIsoDate } from "../_components/seo";
+import { LastUpdated, PageSummary, PageFaq, SourceList, formatIsoDate } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { CHANGELOG_SEO } from "../_content/pageseo";
 import { CHANGELOG, type ChangeTag } from "../_content/changelog";
@@ -52,7 +52,7 @@ export default function ChangelogPage() {
           <Breadcrumbs items={[{ name: "Home", href: "/" }, { name: "Changelog", href: PATH }]} />
           <SectionTitle level={1} eyebrow="Changelog" title="What's new, improved and fixed in Talko AI"
             subtitle="New channels, features and fixes, as they ship — in plain language, not commit messages." />
-          <div className="mx-auto mt-6 max-w-2xl space-y-3 text-center text-sm leading-relaxed text-slate-500">
+          <PageSummary question="What is this changelog?">
             <p>
               <strong className="font-semibold text-slate-900">This page logs every customer-visible change to Talko AI, on the day it ships.</strong>{" "}
               Entries are tagged New, Improved or Fixed, and grouped by date with the most recent first. The latest release
@@ -64,6 +64,8 @@ export default function ChangelogPage() {
               the <Link href="/status" className="font-semibold text-[#0783fd] hover:underline">system status page</Link> instead — this page covers
               what changed, not what is working at this moment.
             </p>
+          </PageSummary>
+          <div className="mt-4 text-center text-sm text-slate-500">
             <LastUpdated iso={LATEST} />
           </div>
         </Container>
