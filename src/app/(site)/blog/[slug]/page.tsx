@@ -9,6 +9,7 @@ import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { PageFaq, SourceList } from "../../_components/seo";
 import { AUTHOR, POSTS, type PostBlock } from "../../_content/site";
+import { TemplateChecker } from "../../_components/template-checker";
 import { SITE_URL } from "@/lib/siteurl";
 
 export function generateStaticParams() {
@@ -42,6 +43,42 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
       {blocks.map((b, i) => {
         if (b.type === "h2") return <h2 key={i} className="!mt-10 text-xl font-extrabold text-slate-900">{renderInline(b.text)}</h2>;
         if (b.type === "h3") return <h3 key={i} className="text-base font-bold text-slate-900">{renderInline(b.text)}</h3>;
+        if (b.type === "tool") {
+          // Interactive widgets are keyed by id so _content/site.ts stays pure
+          // data — no JSX, no client imports in the content layer.
+          return b.id === "template-checker" ? <TemplateChecker key={i} /> : null;
+        }
+        if (b.type === "callout") {
+          const warn = b.tone === "warn";
+          return (
+            <aside key={i} className={`not-prose rounded-2xl border px-5 py-4 ${warn ? "border-amber-200 bg-amber-50" : "border-[#0783fd]/20 bg-[#0783fd]/5"}`}>
+              <p className={`text-sm font-bold ${warn ? "text-amber-900" : "text-[#0783fd]"}`}>{b.title}</p>
+              <p className={`mt-1.5 text-sm leading-relaxed ${warn ? "text-amber-900/90" : "text-slate-600"}`}>{renderInline(b.text)}</p>
+            </aside>
+          );
+        }
+        if (b.type === "compare") {
+          // Two WhatsApp-style bubbles. A rejected template beside its fix
+          // teaches the rule faster than a paragraph about the rule.
+          return (
+            <figure key={i} className="not-prose my-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: b.badLabel, text: b.bad, bad: true },
+                  { label: b.goodLabel, text: b.good, bad: false },
+                ].map(c => (
+                  <div key={c.label} className={`overflow-hidden rounded-2xl border ${c.bad ? "border-red-200" : "border-emerald-200"}`}>
+                    <p className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wide ${c.bad ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"}`}>{c.label}</p>
+                    <div className="bg-[#e4ddd4] p-3">
+                      <div className="max-w-[94%] rounded-xl rounded-tl-sm bg-white px-3 py-2 font-mono text-[12.5px] leading-snug text-slate-800 shadow-sm">{c.text}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {b.caption && <figcaption className="mt-2.5 text-center text-xs text-slate-400">{b.caption}</figcaption>}
+            </figure>
+          );
+        }
         if (b.type === "list") {
           return (
             <ul key={i} className="list-disc space-y-2 pl-5 marker:text-[#0783fd]">

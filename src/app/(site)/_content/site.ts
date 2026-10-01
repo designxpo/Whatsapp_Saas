@@ -164,7 +164,16 @@ export type PostBlock =
   | { type: "p"; text: string }
   | { type: "h2"; text: string }
   | { type: "h3"; text: string }
-  | { type: "list"; items: string[] };
+  | { type: "list"; items: string[] }
+  // A point worth pulling out of the prose — a rule that costs money to miss.
+  | { type: "callout"; tone: "warn" | "info"; title: string; text: string }
+  // Side-by-side wrong/right, rendered as two WhatsApp-style message bubbles.
+  // Showing a rejected template beside the fixed one teaches the rule faster
+  // than a paragraph describing it, and it is the format people screenshot.
+  | { type: "compare"; caption?: string; badLabel: string; bad: string; goodLabel: string; good: string }
+  // Mounts a named interactive widget. Kept as an id rather than a component so
+  // this file stays pure data with no JSX and no client imports.
+  | { type: "tool"; id: "template-checker" };
 const p = (text: string): PostBlock => ({ type: "p", text });
 const h2 = (text: string): PostBlock => ({ type: "h2", text });
 const list = (items: string[]): PostBlock => ({ type: "list", items });
@@ -195,6 +204,96 @@ export const AUTHOR = {
 } as const;
 
 export const POSTS: Post[] = [
+  {
+    slug: "whatsapp-template-rejected",
+    title: "Why Your WhatsApp Template Keeps Getting Rejected",
+    excerpt: "Most rejections aren't judgement calls about your content — they're mechanical rules about variables, length and category that fail before a human ever reads it. Paste your template into the checker below and see which ones it breaks.",
+    date: "October 1, 2026", category: "Playbook", readTime: "10 min read",
+    body: [
+      p("A rejected WhatsApp template is a peculiar kind of stuck. The email from Meta says almost nothing — \"does not comply with our policies\" — and you are left rereading copy that looks perfectly ordinary, wondering which word offended a reviewer. Usually none of them did. Most rejections never reach a judgement call about your content at all: they fail on a mechanical rule about variables, length or category, and those are rules you can check in about ten seconds."),
+      p("The bottom line: there are roughly eight structural rules, every one of them documented, and breaking any single one rejects the template outright no matter how good the writing is. The checker below tests all eight against whatever you paste in. What it cannot test is the judgement half — whether the content itself is allowed and whether you picked the right category — so the rest of this post covers that part, including the one mistake that causes more rejections than every structural rule combined."),
+
+      { type: "tool", id: "template-checker" },
+
+      h2("The rule that rejects more templates than any other"),
+      p("It is not a formatting mistake. It is sending a marketing message in a Utility template."),
+      p("Meta sorts templates into three categories, and they are priced differently — in India, marketing runs about ₹0.8631 a message while utility sits near ₹0.115. That gap is roughly seven and a half times, and it creates an obvious temptation: write a promotion, file it as Utility, pay the lower rate. Meta is extremely good at catching this, because the distinction is not about tone. It is about whether the message was triggered by something the customer did."),
+      list([
+        "Utility — follows a specific action or an existing transaction the customer initiated. An order confirmation, a delivery update, an appointment reminder, a payment receipt. The customer did something, and the message is about that thing.",
+        "Marketing — anything promoting, offering, inviting or re-engaging. Discounts, new arrivals, abandoned-cart nudges, festival offers, \"we miss you\" messages. Also anything with a promotional call to action bolted onto an otherwise transactional message.",
+        "Authentication — one-time passcodes and verification only. Nothing else may ride along in them.",
+      ]),
+      { type: "callout", tone: "warn", title: "The test that actually decides it", text: "Would this message exist if the customer had done nothing? If yes, it is Marketing. An order confirmation only exists because they ordered — that is Utility. A Diwali offer exists because of your calendar, not their behaviour, so it is Marketing even if you address them by name and keep the tone helpful." },
+      p("The trap most businesses fall into is the hybrid. An order confirmation is genuinely Utility — right up until you add \"and here's 10% off your next order\" at the end. That one sentence makes the whole template Marketing, and submitting it as Utility is the single most common rejection reason there is."),
+
+      h2("Variables: the rules that fail before a human reads it"),
+      p("Placeholders cause more mechanical rejections than everything else combined, and every rule is specific enough to be checked mechanically — which is exactly what the tool above does."),
+      { type: "compare", badLabel: "Rejected", bad: "{{1}}, your order {{2}}{{3}} ships today.", goodLabel: "Approved", good: "Hi {{1}}, your order {{2}} ships today from our {{3}} warehouse.", caption: "Three separate violations in the left-hand version: it opens on a variable, two placeholders sit adjacent, and there is barely any real text holding it together." },
+      list([
+        "Sequential, with no gaps. {{1}}, {{2}}, {{3}} in order. Jumping from {{1}} to {{3}} is an automatic rejection even though the message reads fine.",
+        "Never at the very start or the very end of the body. A body that opens or closes on a placeholder has nothing anchoring it, and Meta rejects it on sight. A single word before or after fixes it.",
+        "Never adjacent. {{1}}{{2}} with nothing between them reads as a data dump rather than a sentence.",
+        "Enough real text around them. A template with five variables and ten words of copy gets rejected for abuse potential — it says nothing on its own, so Meta cannot tell what you will actually send. Roughly three words of copy per variable is a workable floor.",
+        "Exactly {{n}} — two braces, a number, no spaces, no names. {{ 1 }} and {{name}} are both malformed.",
+      ]),
+
+      h2("Length limits, and the one everybody misses"),
+      p("Three hard caps, all counted in characters including spaces and emoji:"),
+      list([
+        "Body — 1,024 characters. Generous, and rarely the problem.",
+        "Header — 60 characters. Easy to overrun, because it reads like a subject line and people write it like one.",
+        "Footer — 60 characters, and static text only.",
+      ]),
+      { type: "callout", tone: "info", title: "The footer catches almost everyone", text: "A footer takes no variables at all. The body directly above it accepts them happily, so putting {{1}} in a footer feels obviously fine — and it is rejected every time. If you need something personalised down there, it has to move into the body." },
+      p("One more that looks like nothing: tabs, and runs of five or more consecutive spaces, are both rejected. This almost always comes from pasting copy out of Word or Google Docs, where the whitespace is invisible in the editor and perfectly visible to the validator."),
+
+      h2("What gets a template rejected on content"),
+      p("Once the structure is clean, the remaining rejections are genuine policy calls. These are the ones that recur:"),
+      list([
+        "Link shorteners. bit.ly, tinyurl and the rest read as concealment, because that is what they do — they hide the destination. Use your own domain.",
+        "wa.me links inside a WhatsApp template, which is circular and flagged as such.",
+        "Anything touching the Commerce Policy — alcohol, tobacco, supplements with health claims, weapons, adult content, gambling, prescription drugs. These are rejected regardless of how the message is worded.",
+        "Threatening or pressuring language. \"Your account will be suspended\" in a marketing message is treated as a scam pattern.",
+        "Vague copy that could mean anything. \"Hi {{1}}, check this out!\" tells a reviewer nothing about what you intend to send, and a reviewer who cannot tell says no.",
+      ]),
+
+      h2("If it has already been rejected"),
+      p("You have two routes, and people reflexively pick the slower one."),
+      list([
+        "Appeal, when the rejection is genuinely wrong. In WhatsApp Manager, open the template and request a review. Appeals are read, and a clear factual explanation of what the template does and when it fires succeeds more often than people expect.",
+        "Edit and resubmit, when it is one of the mechanical rules above. Far faster than arguing. Fix the structure and send it back rather than waiting on a review you will probably lose.",
+      ]),
+      { type: "callout", tone: "warn", title: "Don't resubmit the same template repeatedly", text: "Submitting a near-identical template again and again after rejections is itself a quality signal, and a bad one. Repeated rejections contribute to the account-level quality rating that governs your messaging limits — so a stubborn template can cost you throughput well beyond the template itself." },
+      p("Worth separating two things that look alike: a template that is Paused or Disabled was not rejected at review. It was approved, sent, and then accumulated enough blocks and spam reports from real recipients that Meta pulled it. That is not a writing problem — it is an audience problem, and rewriting the copy will not fix it."),
+
+      h2("A pre-submission checklist"),
+      list([
+        "Category matches the trigger — would this message exist if the customer had done nothing?",
+        "Variables sequential, none at the start or end, none adjacent, with real copy around them.",
+        "Body under 1,024, header under 60, footer under 60 and free of variables.",
+        "No link shorteners, no wa.me links, no tabs or long space runs from a pasted document.",
+        "The message says something specific enough that a reviewer can tell what you will actually send.",
+      ]),
+
+      p("Template review is one of the few parts of WhatsApp messaging that is genuinely deterministic. The structural half is a list of rules you can verify before you ever submit, and the judgement half comes down almost entirely to honest categorisation. Businesses that get rejected repeatedly are usually not writing badly — they are filing marketing as utility and hoping."),
+      p("Talko AI keeps your approved templates, their category and their current status in one place, so a Paused template is visible before your next campaign goes out rather than after it fails. See [how broadcasts and templates work](/features), [compare plans](/pricing), or read what the [1 October pricing change](/blog/whatsapp-service-message-pricing-october-2026) means for the messages around them."),
+    ],
+    faqs: [
+      { q: "Why was my WhatsApp template rejected with no reason given?", a: "Meta's rejection emails are deliberately vague, so the reason is almost never in the message. Check the structural rules first — variable numbering and placement, body/header/footer length, a variable in the footer, tabs or long space runs pasted in from a document — because those reject a template outright before anyone assesses the content. The checker in this article tests all of them." },
+      { q: "How long does WhatsApp template approval take?", a: "Most templates are reviewed automatically within minutes. Anything that needs human review can take up to 24 hours, and templates submitted outside business hours or in a high-volume period sit longer. If a template has been pending well past a day, that usually means it was escalated to a human reviewer rather than that it was lost." },
+      { q: "Can I edit a rejected template or do I have to create a new one?", a: "You can edit and resubmit the same template, and for any of the mechanical rules — variable placement, length, a footer variable — that is much faster than appealing. Reserve the appeal route for rejections you genuinely believe are wrong, where a clear factual explanation of what the template does and when it fires will change the outcome." },
+      { q: "What is the difference between a Utility and a Marketing template?", a: "Whether the customer triggered it. Utility follows a specific action or existing transaction — an order confirmation, a delivery update, an appointment reminder. Marketing promotes, offers, invites or re-engages. The practical test: would this message exist if the customer had done nothing? If yes, it is Marketing. Adding a discount line to an order confirmation converts the whole template to Marketing." },
+      { q: "Why does my approved template say Paused or Disabled?", a: "That is not a review rejection — it was approved, sent, and then accumulated enough blocks and spam reports from real recipients that Meta pulled it. Rewriting the copy will not fix it, because the problem is who it went to rather than what it said. Review the list it was sent to, the opt-in behind it and the sending frequency instead." },
+      { q: "Do template rejections affect my WhatsApp quality rating?", a: "Repeatedly resubmitting near-identical templates after rejection is itself a negative signal, and quality rating governs your messaging limits — so a stubborn template can cost throughput well beyond that one template. Fix the structural problem and resubmit once rather than retrying the same submission." },
+    ],
+    sources: [
+      { label: "Template review and common rejection reasons — Meta for Developers", href: "https://developers.facebook.com/documentation/business-messaging/whatsapp/templates/template-review", note: "Meta's own review process and the documented rejection reasons" },
+      { label: "Message template guidelines — Meta for Developers", href: "https://developers.facebook.com/docs/whatsapp/message-templates/guidelines", note: "Template fundamentals, categories and the rules review applies" },
+      { label: "Reasons why a template is rejected in WhatsApp — AWS End User Messaging", href: "https://docs.aws.amazon.com/social-messaging/latest/userguide/managing-templates_rejection.html", note: "Special characters in parameters, mismatched braces and non-sequential variables as named rejection causes" },
+      { label: "Message template approvals and statuses — Twilio", href: "https://www.twilio.com/docs/whatsapp/tutorial/message-template-approvals-statuses", note: "Sequential placeholders, no variable at the start or end, no adjacent variables, and what Paused versus Disabled mean" },
+      { label: "WhatsApp Commerce Policy", href: "https://www.whatsapp.com/legal/commerce-policy/", note: "The product categories that are rejected regardless of how a template is written" },
+    ],
+  },
   {
     slug: "whatsapp-service-message-pricing-october-2026",
     title: "WhatsApp Service Messages Stop Being Free on 1 October 2026",
