@@ -98,6 +98,10 @@ export function SiteFooter() {
             {LEGAL_NAV.map(l => (
               <Link key={l.slug} href={`/legal/${l.slug}`} className="transition-colors hover:text-white">{l.label}</Link>
             ))}
+            {/* /legal is in the sitemap but was the one page nothing linked to —
+                the footer jumped straight to each policy and skipped the index,
+                leaving a submitted URL with no internal path to it. */}
+            <Link href="/legal" className="transition-colors hover:text-white">All policies</Link>
           </nav>
         </div>
       </div>

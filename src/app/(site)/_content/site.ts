@@ -176,6 +176,24 @@ export type Post = {
   faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
   sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
 };
+// Who writes here.
+//
+// Posts declared `author: Organization` with no named person and carried no
+// visible byline, which is the single weakest E-E-A-T signal a young site can
+// send: Google's quality guidance leans on who stands behind a claim, and
+// "Talko AI" standing behind an article about Talko AI says nothing. A named
+// person with a stated reason to know the subject is the whole point.
+//
+// Kept here rather than per-post because every post is currently by the same
+// person; add an optional `author` to Post when that stops being true.
+export const AUTHOR = {
+  name: "Priyesh Mishra",
+  role: "Founder, Talko AI",
+  // Expertise has to be specific and checkable, not "passionate about AI".
+  bio: "Builds Talko AI, the messaging platform behind this site — which means working against the WhatsApp Business Platform, Instagram and Messenger APIs directly, and reading Meta's policy changes the week they ship rather than after they bite.",
+  url: "/about",
+} as const;
+
 export const POSTS: Post[] = [
   {
     slug: "whatsapp-service-message-pricing-october-2026",

@@ -8,7 +8,7 @@ import { CtaBand } from "../../_components/sections";
 import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { PageFaq, SourceList } from "../../_components/seo";
-import { POSTS, type PostBlock } from "../../_content/site";
+import { AUTHOR, POSTS, type PostBlock } from "../../_content/site";
 import { SITE_URL } from "@/lib/siteurl";
 
 export function generateStaticParams() {
@@ -86,7 +86,10 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     image: `${SITE_URL}/brand/talkopng.png`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
-    author: { "@type": "Organization", name: "Talko AI" },
+    // A Person, not the Organization. "Talko AI" as the author of an article
+    // about Talko AI is a circular credential; a named human with a stated
+    // reason to know the subject is what the guidance is actually asking for.
+    author: { "@type": "Person", name: AUTHOR.name, jobTitle: AUTHOR.role, url: `${SITE_URL}${AUTHOR.url}` },
     publisher: { "@id": `${SITE_URL}/#organization` },
   };
 
@@ -107,6 +110,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
               <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{post.category}</span>
               <span>{post.date} · {post.readTime}</span>
             </div>
+            <div className="mt-3 text-xs text-slate-500">
+              By <Link href={AUTHOR.url} className="font-semibold text-slate-700 hover:text-[#0783fd]">{AUTHOR.name}</Link>, {AUTHOR.role}
+            </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
         </Container>
@@ -123,6 +129,13 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             {!!post.sources?.length && <SourceList items={post.sources} className={post.faqs?.length ? "mt-14" : ""} />}
           </div>
         ) : null}
+
+        <div className="mx-auto mt-16 max-w-2xl rounded-2xl border border-slate-200 bg-white p-6">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">About the author</p>
+          <p className="mt-2 text-sm font-bold text-slate-900">{AUTHOR.name}</p>
+          <p className="text-xs text-slate-500">{AUTHOR.role}</p>
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">{AUTHOR.bio}</p>
+        </div>
 
         {more.length > 0 && (
           <div className="mx-auto mt-16 max-w-2xl border-t border-slate-200 pt-10">
