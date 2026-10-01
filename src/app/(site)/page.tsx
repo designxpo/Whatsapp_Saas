@@ -67,22 +67,33 @@ export default function HomePage() {
       {/* Hero — orbit panel */}
       <Hero />
 
-      {/* Plain-language definition near the top — answers "what is Talko AI"
-          directly for readers and answer engines, instead of making them infer
-          it from the hero's benefit-led copy.
-          No boxed callout and no "In short" label: that version was removed for
-          looking bolted on, and the label was never the part that mattered.
-          What does matter is that the sentence reads as the page's answer
-          rather than as fine print, so it is set at body size in body colour
-          with the definition itself emphasised — the clause an extractor should
-          lift is the clause a human eye lands on first. Also the target of
-          `speakable` in the WebPage schema above. */}
-      <p id="site-tldr" className="mx-auto max-w-2xl px-5 pb-6 text-center text-base leading-relaxed text-slate-600">
-        <strong className="font-semibold text-slate-900">Talko AI is an AI-powered customer conversation platform</strong>{" "}
-        for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.
-        It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply, qualify leads and
-        sell across every channel — on their own AI key.
-      </p>
+      {/* The "what is Talko AI" definition, collapsed by default.
+          It repeats the hero's channel list almost word for word, so on screen
+          it reads as padding — but it is also the one self-contained sentence
+          an answer engine can quote for "what is Talko AI", and the target of
+          `speakable` above, so deleting it costs something real.
+          A native <details> is the honest way to have both: closed by default
+          so the page stays clean, and openable by a reader, which is what
+          separates it from hidden text. Collapsed content is indexed normally
+          — CSS-hiding it from people while serving it to crawlers is cloaking,
+          a named Google spam policy, and the penalty is removal from the index
+          rather than a lower score.
+          The <summary> doubles as a question heading with its answer directly
+          beneath, which is the pattern answer engines extract from. */}
+      <details className="group mx-auto mb-10 max-w-2xl px-5">
+        <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#0783fd] [&::-webkit-details-marker]:hidden">
+          What is Talko AI?
+          <svg className="h-3 w-3 transition-transform group-open:rotate-180" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </summary>
+        <p id="site-tldr" className="mt-3 text-center text-sm leading-relaxed text-slate-500">
+          <strong className="font-semibold text-slate-700">Talko AI is an AI-powered customer conversation platform</strong>{" "}
+          for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.
+          It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply, qualify leads and
+          sell across every channel — on their own AI key.
+        </p>
+      </details>
 
       {/* Platform glimpse — leads the page with a look inside the product */}
       <PlatformGlimpse />
