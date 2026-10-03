@@ -30,6 +30,30 @@ const RELEVANCE = [
 
 const sh = (cmd: string, args: string[]) => execFileSync(cmd, args, { encoding: "utf8" }).trim();
 
+/**
+ * File the research with the app so the Owner Console can show it.
+ *
+ * Best-effort on purpose: the report is a convenience, and a content run that
+ * produced a good draft must not be marked failed because a settings write
+ * timed out. Logs loudly and carries on.
+ */
+async function fileReport(payload: Record<string, unknown>): Promise<void> {
+  const base = (process.env.CONTENT_REPORT_URL || "https://app.thetalko.in").replace(/\/$/, "");
+  const secret = process.env.CRON_SECRET;
+  if (!secret) { console.warn("[report] CRON_SECRET not set — skipping the Owner Console report"); return; }
+  try {
+    const r = await fetch(`${base}/api/cron/content-report`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(20_000),
+    });
+    console.log(r.ok ? "[report] filed to the Owner Console" : `[report] rejected: HTTP ${r.status}`);
+  } catch (e) {
+    console.warn("[report] could not file (ignored):", e instanceof Error ? e.message : e);
+  }
+}
+
 /** Three recent posts, as the voice sample the writer imitates. */
 async function voiceSamples(): Promise<string> {
   const src = await readFile(SITE_CONTENT, "utf8");
@@ -83,12 +107,20 @@ async function main(): Promise<void> {
   const gaps = findGaps(competitors, ours, { minCompetitors: 2, relevanceTerms: RELEVANCE });
   await writeFile("tmp/content-pipeline/gaps.json", JSON.stringify(gaps.slice(0, 40), null, 2));
   console.log(`[gaps] ${gaps.length} topics competitors cover and we do not`);
-  if (!gaps.length) { console.log("[done] no gaps found — nothing to write."); return; }
+  const crawled = competitors.map(c => ({ competitor: c.competitor, pages: c.pages.length }));
+  const baseReport = { ranAt: new Date().toISOString(), crawled, gaps: gaps.slice(0, 25) };
+
+  if (!gaps.length) {
+    await fileReport({ ...baseReport, outcome: "dry-run" });
+    console.log("[done] no gaps found — nothing to write.");
+    return;
+  }
 
   // ── 2. Select
   const chosen: Gap = gaps[0];
   console.log(`[pick] ${chosen.label}  (${chosen.covered.length} competitors, score ${chosen.score})`);
   if (dry) {
+    await fileReport({ ...baseReport, outcome: "dry-run" });
     console.log(gaps.slice(0, 12).map(g =>
       `  ${String(g.score).padStart(6)}  ${g.covered.length}x  ${g.label}` +
       (g.penalties.length ? `\n          ↳ ${g.penalties.map(x => x.reason).join("; ")}` : "")
@@ -153,6 +185,14 @@ ${issues.length
   await writeFile("tmp/content-pipeline/pr-body.md", body);
   const url = sh("gh", ["pr", "create", "--title", `content(blog): ${draft.title}`, "--body-file", "tmp/content-pipeline/pr-body.md", "--base", "main", "--head", branch, ...(issues.length ? ["--draft"] : [])]);
   console.log(`[pr] ${url}`);
+  await fileReport({ ...baseReport, outcome: "pr-opened", prUrl: url, error: issues.length ? `${issues.length} check(s) still failing — opened as a draft` : null });
 }
 
-main().catch(err => { console.error("[pipeline] failed:", err?.message ?? err); process.exit(1); });
+main().catch(async err => {
+  const message = err?.message ?? String(err);
+  console.error("[pipeline] failed:", message);
+  // Without this the console keeps showing last night's report as if it were
+  // current, which is worse than showing a failure.
+  await fileReport({ ranAt: new Date().toISOString(), crawled: [], gaps: [], outcome: "failed", error: message }).catch(() => undefined);
+  process.exit(1);
+});

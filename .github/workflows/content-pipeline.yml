@@ -13,6 +13,8 @@
 #   variable CONTENT_MODEL        — optional; defaults to that provider's model
 #   secret  CONTENT_AI_KEY        — optional; use a SEPARATE key for drafting
 #                                   instead of the provider's usual variable
+#   secret  CRON_SECRET           — optional; lets the run file its report to
+#                                   Owner Console → Content (same value as the app's)
 #
 # Drafting goes through the app's own runChat (src/lib/ai/chat.ts), the same
 # path every production AI reply takes, so the pipeline cannot drift away from
@@ -66,6 +68,9 @@ jobs:
           CONTENT_AI_PROVIDER: ${{ vars.CONTENT_AI_PROVIDER }}
           CONTENT_MODEL: ${{ vars.CONTENT_MODEL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Files the gap report back to the Owner Console → Content page.
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CONTENT_REPORT_URL: ${{ vars.CRON_URL && 'https://app.thetalko.in' || '' }}
         run: |
           # A dry run is research only and needs no model at all, so the key
           # check is skipped for it — that is the run you want first anyway.
