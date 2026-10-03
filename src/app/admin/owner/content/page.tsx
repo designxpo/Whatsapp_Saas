@@ -81,7 +81,7 @@ export default function ContentPage() {
           </button>
           <button onClick={() => run(false)} disabled={!d?.canTrigger || !!busy}
             className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 inline-flex items-center gap-1.5">
-            <Play className="w-3.5 h-3.5" /> {busy === "full" ? "Starting…" : "Run &amp; draft"}
+            <Play className="w-3.5 h-3.5" /> {busy === "full" ? "Starting…" : "Run and draft"}
           </button>
         </div>
       </header>
@@ -156,7 +156,10 @@ export default function ContentPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-[13px] font-semibold text-ink-900">{g.label}</p>
                       <p className="mt-0.5 text-[11px] text-ink-400">
-                        {g.covered.length} of {report.crawled.length} competitors — {g.covered.join(", ")}
+                        {/* max() because the crawl list can be shorter than a
+                            topic's coverage on a partial report — "4 of 3
+                            competitors" reads as a broken page, not as data. */}
+                        {g.covered.length} of {Math.max(report.crawled.length, g.covered.length)} competitors — {g.covered.join(", ")}
                       </p>
                       {g.penalties.map(p => (
                         <p key={p.reason} className="mt-1 text-[11px] text-amber-700">↳ {p.reason} ({p.points})</p>
