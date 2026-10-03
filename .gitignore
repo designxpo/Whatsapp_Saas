@@ -15,3 +15,4 @@ tsconfig.tsbuildinfo
 
 # Vendored codebase-memory-mcp tool clone (external toolchain — not part of the app)
 codebase-memory-mcp/
+tmp/

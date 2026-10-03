@@ -1,0 +1,72 @@
+# Nightly content pipeline — research, draft, review, and open a PR.
+#
+# It does NOT publish. Merging the PR publishes. That is deliberate: Google's
+# scaled content abuse policy targets exactly the pattern of generating pages
+# on a schedule with no human judgement in the loop, and thetalko.in is a young
+# domain with few backlinks — the profile with the least margin for a manual
+# action. A two-minute review removes that entire category of risk, and every
+# stage before the PR is still fully automatic.
+#
+# Setup (repo → Settings → Secrets and variables → Actions):
+#   secret  ANTHROPIC_API_KEY  — required; the drafting and fact-check stages
+#   variable CONTENT_MODEL     — optional, defaults to claude-sonnet-5
+#
+# Runs at 20:40 UTC (02:10 IST). Deliberately NOT on the hour: GitHub queues
+# every :00 schedule on the planet at once, and this job is in no hurry.
+
+name: content-pipeline
+
+on:
+  schedule:
+    - cron: "40 20 * * 1-5"    # weeknights only — a PR nobody reads on Sunday is noise
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Research only — list the gaps, write nothing"
+        type: boolean
+        default: false
+
+jobs:
+  draft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45        # the crawl is deliberately slow and polite
+    permissions:
+      contents: write          # push the content branch
+      pull-requests: write     # open the PR
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm }
+
+      - run: npm ci
+
+      # The pipeline is TypeScript run natively by node --experimental-strip-types,
+      # so it is typechecked like the rest of the repo rather than being a pile
+      # of untyped glue. Fail here rather than halfway through a crawl.
+      - name: Typecheck the pipeline
+        run: npx tsc -p scripts --noEmit
+
+      - name: Run pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CONTENT_MODEL: ${{ vars.CONTENT_MODEL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ] && [ "${{ inputs.dry_run }}" != "true" ]; then
+            echo "::error::ANTHROPIC_API_KEY is not set (Settings → Secrets and variables → Actions)"
+            exit 1
+          fi
+          git config user.name  "talko-content-bot"
+          git config user.email "noreply@thetalko.in"
+          node --experimental-strip-types scripts/content-pipeline/run.ts \
+            ${{ inputs.dry_run == true && '--dry-run' || '' }}
+
+      # The gap list is useful even when drafting fails — it is the research
+      # half, and it is what tells you whether the topic selection is sane.
+      - name: Upload research
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: content-gaps
+          path: tmp/content-pipeline/
+          if-no-files-found: ignore

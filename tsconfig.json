@@ -37,6 +37,5 @@
   ],
   "exclude": [
     "node_modules",
-    "codebase-memory-mcp"
-  ]
+    "codebase-memory-mcp", "scripts"]
 }

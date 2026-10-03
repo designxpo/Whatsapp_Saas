@@ -1,0 +1,17 @@
+{
+  // The pipeline runs under `node --experimental-strip-types`, which requires
+  // explicit .ts extensions on relative imports. tsc rejects those unless
+  // allowImportingTsExtensions is on, and turning it on project-wide would
+  // change how the app's own imports are allowed to look — so the scripts get
+  // their own config and the root tsconfig excludes this directory.
+  //
+  // Typecheck with:  npx tsc -p scripts --noEmit
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "module": "esnext",
+    "moduleResolution": "bundler"
+  },
+  "include": ["**/*.ts", "../src/lib/contentgaps.ts"]
+}
