@@ -47,8 +47,10 @@ jobs:
       contents: write          # push the content branch
       pull-requests: write     # open the PR
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # v5, not v4: the v4 line targets Node 20, which GitHub has deprecated and
+      # is currently force-running on Node 24 with a warning on every run.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with: { node-version: "22", cache: npm }
 
       - run: npm ci
@@ -89,7 +91,7 @@ jobs:
       # half, and it is what tells you whether the topic selection is sane.
       - name: Upload research
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: content-gaps
           path: tmp/content-pipeline/
