@@ -8,8 +8,19 @@
 # stage before the PR is still fully automatic.
 #
 # Setup (repo → Settings → Secrets and variables → Actions):
-#   secret  ANTHROPIC_API_KEY  — required; the drafting and fact-check stages
-#   variable CONTENT_MODEL     — optional, defaults to claude-sonnet-5
+#   secret  GEMINI_API_KEY        — required by default; drafting + fact-check
+#   variable CONTENT_AI_PROVIDER  — optional: gemini (default) | openai | anthropic
+#   variable CONTENT_MODEL        — optional; defaults to that provider's model
+#   secret  CONTENT_AI_KEY        — optional; use a SEPARATE key for drafting
+#                                   instead of the provider's usual variable
+#
+# Drafting goes through the app's own runChat (src/lib/ai/chat.ts), the same
+# path every production AI reply takes, so the pipeline cannot drift away from
+# how the rest of the system talks to a model — and switching provider is a
+# variable, not a rewrite.
+#
+# NOTE: a GitHub Actions secret is a different store from your Vercel env. The
+# key value can be identical; it still has to be added in both places.
 #
 # Runs at 20:40 UTC (02:10 IST). Deliberately NOT on the hour: GitHub queues
 # every :00 schedule on the planet at once, and this job is in no hurry.
@@ -48,12 +59,20 @@ jobs:
 
       - name: Run pipeline
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CONTENT_AI_KEY: ${{ secrets.CONTENT_AI_KEY }}
+          CONTENT_AI_PROVIDER: ${{ vars.CONTENT_AI_PROVIDER }}
           CONTENT_MODEL: ${{ vars.CONTENT_MODEL }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ] && [ "${{ inputs.dry_run }}" != "true" ]; then
-            echo "::error::ANTHROPIC_API_KEY is not set (Settings → Secrets and variables → Actions)"
+          # A dry run is research only and needs no model at all, so the key
+          # check is skipped for it — that is the run you want first anyway.
+          if [ "${{ inputs.dry_run }}" != "true" ] \
+             && [ -z "$CONTENT_AI_KEY" ] && [ -z "$GEMINI_API_KEY" ] \
+             && [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::No model key. Add GEMINI_API_KEY (Settings → Secrets and variables → Actions), or set CONTENT_AI_PROVIDER to one you have a key for."
             exit 1
           fi
           git config user.name  "talko-content-bot"

@@ -4,10 +4,34 @@
 // specific tone" produces the same article every model produces; three of our
 // actual posts in the prompt produce something that sounds like the site.
 
-import Anthropic from "@anthropic-ai/sdk";
+import { DEFAULT_CHAT_MODEL, runChat, type AiProvider, type ChatTurn } from "../../src/lib/ai/chat.ts";
 import type { Draft, Issue } from "./review.ts";
 
-const MODEL = process.env.CONTENT_MODEL || "claude-sonnet-5";
+// Reuses the app's own provider abstraction rather than a second, hardcoded
+// client. runChat already speaks Gemini, OpenAI and Anthropic, already retries
+// on the transient failures these APIs produce, and is the code every AI reply
+// in production goes through — so the pipeline cannot drift away from how the
+// rest of the system talks to a model.
+//
+// Gemini by default, because that is the key this project already has. A
+// drafting run is a handful of long calls once a night, so the cost difference
+// between providers is pennies either way; pick on quality, not price.
+const PROVIDERS: AiProvider[] = ["gemini", "openai", "anthropic"];
+const isProvider = (v: string): v is AiProvider => (PROVIDERS as string[]).includes(v);
+
+function aiConfig(): { provider: AiProvider; apiKey: string; model: string } {
+  const raw = (process.env.CONTENT_AI_PROVIDER || "gemini").toLowerCase();
+  const provider: AiProvider = isProvider(raw) ? raw : "gemini";
+  // CONTENT_AI_KEY wins, so the pipeline can be pointed at a separate key
+  // without touching the one the app uses. Otherwise fall back to the
+  // provider's usual variable.
+  const fallback = { gemini: "GEMINI_API_KEY", openai: "OPENAI_API_KEY", anthropic: "ANTHROPIC_API_KEY" }[provider];
+  const apiKey = process.env.CONTENT_AI_KEY || process.env[fallback] || "";
+  if (!apiKey) {
+    throw new Error(`No API key for ${provider} — set CONTENT_AI_KEY or ${fallback} as a GitHub Actions secret.`);
+  }
+  return { provider, apiKey, model: process.env.CONTENT_MODEL || DEFAULT_CHAT_MODEL[provider] };
+}
 
 const SYSTEM = `You write for the Talko AI blog. Talko AI is a customer conversation
 platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business
@@ -39,12 +63,6 @@ OUTPUT: a single JSON object, no markdown fence, matching:
 Internal links use [label](/path) inside any text. Link 2+ of: /features, /pricing,
 /blog, /guides, /industries.`;
 
-function client(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set — the pipeline cannot draft without it.");
-  return new Anthropic({ apiKey });
-}
-
 function parseDraft(raw: string): Draft {
   const json = raw.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
   const start = json.indexOf("{");
@@ -53,11 +71,14 @@ function parseDraft(raw: string): Draft {
   return JSON.parse(json.slice(start, end + 1)) as Draft;
 }
 
-async function ask(messages: Anthropic.MessageParam[]): Promise<string> {
-  const res = await client().messages.create({
-    model: MODEL, max_tokens: 8000, system: SYSTEM, messages,
-  });
-  return res.content.filter(b => b.type === "text").map(b => (b as { text: string }).text).join("");
+async function ask(text: string): Promise<string> {
+  const { provider, apiKey, model } = aiConfig();
+  const turns: ChatTurn[] = [{ role: "user", text }];
+  // A full article is far slower than a chat reply, so the 24s default would
+  // abort every draft. Nothing is waiting on this — it runs at 2am.
+  const res = await runChat({ provider, apiKey, model, system: SYSTEM, turns, maxTokens: 8000, timeoutMs: 180_000 });
+  if (res.truncated) console.warn("[write] model stopped at the token ceiling — the draft may break off mid-sentence");
+  return res.text;
 }
 
 export async function draftPost(topic: { label: string; covered: string[]; examples: string[] }, voiceSamples: string): Promise<Draft> {
@@ -72,7 +93,7 @@ Here are three of our own posts, so you can hear the voice:
 ${voiceSamples}
 
 Return only the JSON object.`;
-  return parseDraft(await ask([{ role: "user", content: prompt }]));
+  return parseDraft(await ask(prompt));
 }
 
 /** Hand the editor's findings back to the writer. Same voice, targeted fixes. */
@@ -85,7 +106,7 @@ ${issues.map(i => `- [${i.rule}] ${i.detail}`).join("\n")}
 
 DRAFT:
 ${JSON.stringify(draft)}`;
-  return parseDraft(await ask([{ role: "user", content: prompt }]));
+  return parseDraft(await ask(prompt));
 }
 
 /**
@@ -103,7 +124,7 @@ Reply with a JSON array of {"rule":"fact","detail":"..."} — an empty array [] 
 SOURCES: ${JSON.stringify(draft.sources ?? [])}
 DRAFT:
 ${text}`;
-  const raw = await ask([{ role: "user", content: prompt }]);
+  const raw = await ask(prompt);
   try {
     const s = raw.indexOf("["), e = raw.lastIndexOf("]");
     return s < 0 ? [] : (JSON.parse(raw.slice(s, e + 1)) as Issue[]);
