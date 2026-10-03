@@ -89,7 +89,10 @@ async function main(): Promise<void> {
   const chosen: Gap = gaps[0];
   console.log(`[pick] ${chosen.label}  (${chosen.covered.length} competitors, score ${chosen.score})`);
   if (dry) {
-    console.log(gaps.slice(0, 10).map(g => `  ${g.score}  ${g.covered.length}x  ${g.label}`).join("\n"));
+    console.log(gaps.slice(0, 12).map(g =>
+      `  ${String(g.score).padStart(6)}  ${g.covered.length}x  ${g.label}` +
+      (g.penalties.length ? `\n          ↳ ${g.penalties.map(x => x.reason).join("; ")}` : "")
+    ).join("\n"));
     return;
   }
 
@@ -131,6 +134,11 @@ ${chosen.examples.map(u => `- ${u}`).join("\n")}
 > Competitor consensus is a *proxy* for demand, not a volume figure. Nothing here
 > has search-volume data behind it — that needs a paid keyword API. Treat the
 > ranking as "several competitors thought this was worth writing", no more.
+${chosen.penalties.length
+  ? `\nThis topic was still marked down for: ${chosen.penalties.map(x => x.reason).join("; ")}. It won anyway, which means everything else scored worse — worth a harder look before merging.`
+  : ""}
+### Runners-up
+${gaps.slice(1, 5).map(g => `- \`${g.score}\` ${g.label}${g.penalties.length ? ` — _${g.penalties.map(x => x.reason).join("; ")}_` : ""}`).join("\n")}
 
 ### Review status
 ${issues.length

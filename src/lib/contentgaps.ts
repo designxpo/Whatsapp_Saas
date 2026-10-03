@@ -24,6 +24,8 @@ export interface Gap {
   /** One example url per competitor, for the PR body to cite. */
   examples: string[];
   score: number;
+  /** Why it was marked down, so the ranking can explain itself. */
+  penalties: Penalty[];
 }
 
 // Words that carry no topical meaning in a title, plus the publisher furniture
@@ -180,36 +182,98 @@ export function findGaps(
     }
   }
 
+  const terms = opts.relevanceTerms ?? [];
   return clusters
     .filter(c => c.covered.size >= minCompetitors)
     .filter(c => !ours.some(o => sameTopic(o, c.key)))
-    .map(c => ({
-      topic: c.key,
+    .map(c => {
       // Shortest title is usually the least keyword-stuffed phrasing of it.
-      label: cleanTitle([...c.titles].sort((a, b) => a.length - b.length)[0]),
-      covered: [...c.covered].sort(),
-      examples: c.examples,
-      score: scoreGap(c.key, c.covered.size, opts.relevanceTerms ?? []),
-    }))
+      const label = cleanTitle([...c.titles].sort((a, b) => a.length - b.length)[0]);
+      return {
+        topic: c.key,
+        label,
+        covered: [...c.covered].sort(),
+        examples: c.examples,
+        score: scoreGap(c.key, label, c.covered.size, terms),
+        penalties: penalties(label, c.key, terms),
+      };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
 /**
- * Rank a gap. Competitor consensus dominates; product relevance breaks ties.
+ * Title shapes that are poor targets however many competitors chase them.
  *
- * Relevance matters because consensus alone will happily surface a topic our
- * product has nothing to say about — competitors write about plenty we do not
- * do, and a page written from no real expertise is exactly the thin content
- * Google's scaled-content policy targets.
+ * Consensus is blind to format, and the first live run showed what that costs:
+ * four of the top five gaps were listicles, and the second was a 2022 product
+ * announcement that two competitors still have in their sitemaps. Both read as
+ * strong demand and neither is winnable or worth winning here.
  */
-export function scoreGap(topic: string, competitorCount: number, relevanceTerms: string[]): number {
+const LISTICLE = /^\s*\d+\s|\btop\s*\d+\b|^\s*(the\s+)?(best|top)\b|\b\d+\s+(best|top|ways|tips|benefits|examples|reasons|alternatives)\b/i;
+const NEWS = /\b(announce[sd]?|announcing|launche[sd]|launching|introduc(e|es|ing)|unveil(s|ed)?|is now live|now available|rolls? out)\b/i;
+
+/** Years this far behind count the title as dated. */
+const STALE_YEARS = 2;
+
+export interface Penalty { reason: string; points: number }
+
+/**
+ * Why a topic is a worse target than its competitor count suggests.
+ * Returned rather than silently subtracted so the PR can explain the ranking.
+ */
+export function penalties(label: string, topic: string, relevanceTerms: string[], now = new Date()): Penalty[] {
+  const out: Penalty[] = [];
+
+  if (LISTICLE.test(label)) {
+    // "Best WhatsApp API Providers" is a head term that rewards domain
+    // authority, which a four-month-old site does not have — and on our own
+    // site it is an invitation to rank our competitors for them.
+    out.push({ reason: "listicle — a head term that rewards domain age we don't have", points: -14 });
+  }
+
+  const years = [...label.matchAll(/\b(20\d{2})\b/g)].map(m => Number(m[1]));
+  const newest = years.length ? Math.max(...years) : null;
+  if (newest !== null && newest <= now.getFullYear() - STALE_YEARS) {
+    out.push({ reason: `dated (${newest}) — competitors simply haven't pruned it`, points: -12 });
+  }
+  if (NEWS.test(label)) {
+    out.push({ reason: "news announcement — its moment has passed", points: -12 });
+  }
+
+  // Consensus will happily surface topics our product has nothing to say
+  // about. A page written from no real expertise is exactly the thin content
+  // the scaled-content policy is pointed at, so this is a hard penalty rather
+  // than a missing bonus.
+  if (relevanceTerms.length) {
+    const words = new Set(topic.split(" "));
+    if (!relevanceTerms.some(t => words.has(t))) {
+      out.push({ reason: "nothing to do with what we actually build", points: -20 });
+    }
+  }
+  return out;
+}
+
+/**
+ * Rank a gap. Competitor consensus drives it; format and relevance correct it.
+ *
+ * The correction matters more than it sounds. Consensus alone put a "Best
+ * Messaging Apps" listicle first and a 2022 announcement second on real data,
+ * while the three topics genuinely worth writing sat at 3, 6 and 8.
+ */
+export function scoreGap(
+  topic: string,
+  label: string,
+  competitorCount: number,
+  relevanceTerms: string[],
+  now = new Date(),
+): number {
   // Diminishing: the jump from 2 to 3 competitors means far more than 5 to 6.
   const consensus = Math.log2(competitorCount + 1) * 10;
   const words = new Set(topic.split(" "));
   const relevance = relevanceTerms.filter(t => words.has(t)).length * 3;
-  // Very broad two-word topics ("whatsapp marketing") are contested by everyone
-  // and unwinnable for a young domain; very long ones are usually one
-  // competitor's odd phrasing rather than a real query.
+  // Very broad two-word topics are contested by everyone and unwinnable for a
+  // young domain; very long ones are usually one competitor's odd phrasing.
   const specificity = words.size >= 3 && words.size <= 7 ? 4 : 0;
-  return Number((consensus + relevance + specificity).toFixed(2));
+  const penalty = penalties(label, topic, relevanceTerms, now).reduce((n, p) => n + p.points, 0);
+  return Number((consensus + relevance + specificity + penalty).toFixed(2));
 }

@@ -6,7 +6,7 @@
 // rather than trusted.
 
 import { describe, it, expect } from "vitest";
-import { cleanTitle, findGaps, isEnglishish, normalizeTopic, scoreGap, topicSimilarity } from "../contentgaps";
+import { cleanTitle, findGaps, isEnglishish, normalizeTopic, penalties, scoreGap, topicSimilarity } from "../contentgaps";
 
 const pages = (competitor: string, ...titles: string[]) =>
   ({ competitor, pages: titles.map((t, i) => ({ url: `https://${competitor}.com/blog/${i}`, title: t })) });
@@ -107,23 +107,23 @@ describe("findGaps", () => {
 
 describe("scoreGap", () => {
   it("rewards competitor consensus with diminishing returns", () => {
-    const two = scoreGap("whatsapp broadcast limit", 2, []);
-    const three = scoreGap("whatsapp broadcast limit", 3, []);
-    const six = scoreGap("whatsapp broadcast limit", 6, []);
+    const two = scoreGap("whatsapp broadcast limit", "whatsapp broadcast limit", 2, []);
+    const three = scoreGap("whatsapp broadcast limit", "whatsapp broadcast limit", 3, []);
+    const six = scoreGap("whatsapp broadcast limit", "whatsapp broadcast limit", 6, []);
     expect(three).toBeGreaterThan(two);
     // 2→3 must matter more than 5→6, or a crowded topic always wins.
-    expect(three - two).toBeGreaterThan(six - scoreGap("whatsapp broadcast limit", 5, []));
+    expect(three - two).toBeGreaterThan(six - scoreGap("whatsapp broadcast limit", "whatsapp broadcast limit", 5, []));
   });
 
   it("rewards topics our product actually knows about", () => {
-    expect(scoreGap("whatsapp broadcast limit", 2, ["whatsapp", "broadcast"]))
-      .toBeGreaterThan(scoreGap("email newsletter design", 2, ["whatsapp", "broadcast"]));
+    expect(scoreGap("whatsapp broadcast limit", "whatsapp broadcast limit", 2, ["whatsapp", "broadcast"]))
+      .toBeGreaterThan(scoreGap("email newsletter design", "email newsletter design", 2, ["whatsapp", "broadcast"]));
   });
 
   it("penalises topics too broad or too narrow to win", () => {
     // Two words is a head term a four-month-old domain cannot take.
-    const broad = scoreGap("whatsapp marketing", 3, []);
-    const right = scoreGap("whatsapp broadcast limit tier", 3, []);
+    const broad = scoreGap("whatsapp marketing", "whatsapp marketing", 3, []);
+    const right = scoreGap("whatsapp broadcast limit tier", "whatsapp broadcast limit tier", 3, []);
     expect(right).toBeGreaterThan(broad);
   });
 });
@@ -203,5 +203,81 @@ describe("cleanTitle", () => {
 
   it("handles an empty title", () => {
     expect(cleanTitle("")).toBe("");
+  });
+});
+
+// ── What consensus alone cannot see ─────────────────────────────────────────
+// On the first live run against 465 competitor pages, four of the top five
+// gaps were listicles and the second was a 2022 product announcement two
+// competitors still had in their sitemaps. All read as strong demand; none
+// were worth writing. These penalties exist to correct exactly that.
+describe("penalties", () => {
+  const TERMS = ["whatsapp", "broadcast", "template"];
+  const reasons = (label: string, topic = "whatsapp broadcast limit") =>
+    penalties(label, topic, TERMS).map(p => p.reason).join(" | ");
+
+  it("marks down listicles in every shape competitors write them", () => {
+    expect(reasons("10 Best WhatsApp API Providers (2026) for B2C Teams")).toMatch(/listicle/);
+    expect(reasons("Best Messaging Apps For Your Business")).toMatch(/listicle/);
+    expect(reasons("Best WhatsApp AI Agents & chatbots: Top 10 (2026)")).toMatch(/listicle/);
+    expect(reasons("16 Top Benefits of Chatbots for Businesses")).toMatch(/listicle/);
+  });
+
+  it("leaves an ordinary explainer alone", () => {
+    expect(reasons("WhatsApp Co-existence: Everything you need to know")).toBe("");
+    expect(reasons("How to use WhatsApp Payments for your business?")).toBe("");
+  });
+
+  it("marks down a product announcement whose moment has passed", () => {
+    // Ranked second on real data. The launch was 2022.
+    expect(reasons("Meta Announced WhatsApp Cloud API For All Businesses")).toMatch(/news announcement/);
+    expect(reasons("Meta launches WhatsApp Business Calling")).toMatch(/news announcement/);
+  });
+
+  it("marks down a title carrying an old year, and leaves the current one", () => {
+    const now = new Date("2026-10-03");
+    expect(penalties("WhatsApp Pricing Guide 2023", "whatsapp pricing", TERMS, now).map(p => p.reason).join())
+      .toMatch(/dated \(2023\)/);
+    expect(penalties("WhatsApp Pricing Guide 2026", "whatsapp pricing", TERMS, now)).toEqual([]);
+  });
+
+  it("marks down a topic our product has nothing to do with", () => {
+    // "What Is Customer Experience?" cleared the consensus floor on real data.
+    expect(reasons("What Is Customer Experience?", "customer experience")).toMatch(/nothing to do with/);
+  });
+
+  it("applies no relevance penalty when no terms were supplied", () => {
+    expect(penalties("What Is Customer Experience?", "customer experience", [])).toEqual([]);
+  });
+
+  it("stacks penalties when a title is several kinds of bad at once", () => {
+    const p = penalties("10 Best CRM Tools Announced in 2023", "crm tool", TERMS, new Date("2026-10-03"));
+    expect(p.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe("scoreGap — the real ranking it had to fix", () => {
+  const TERMS = ["whatsapp", "broadcast", "template", "payment", "api", "existence"];
+
+  it("ranks a specific explainer above a better-covered listicle", () => {
+    // Exactly the inversion from the live run: the listicle had FOUR
+    // competitors, the explainer two, and the listicle won.
+    const listicle = scoreGap("app business messaging", "Best Messaging Apps For Your Business", 4, TERMS);
+    const explainer = scoreGap("coexistence everything know whatsapp", "WhatsApp Co-existence: Everything you need to know", 2, TERMS);
+    expect(explainer).toBeGreaterThan(listicle);
+  });
+
+  it("ranks a how-to above a stale announcement with the same coverage", () => {
+    const stale = scoreGap("api cloud whatsapp meta", "Meta Announced WhatsApp Cloud API For All Businesses", 2, TERMS);
+    const howto = scoreGap("business payment use whatsapp", "How to use WhatsApp Payments for your business?", 2, TERMS);
+    expect(howto).toBeGreaterThan(stale);
+  });
+
+  it("still prefers more competitors when neither title is penalised", () => {
+    // The correction must not override consensus entirely — that was the
+    // signal we started from.
+    const two = scoreGap("business manager verify facebook", "How to verify Facebook Business Manager Account?", 2, TERMS);
+    const three = scoreGap("business manager verify facebook", "How to verify Facebook Business Manager Account?", 3, TERMS);
+    expect(three).toBeGreaterThan(two);
   });
 });
