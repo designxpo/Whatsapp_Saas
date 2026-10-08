@@ -45,8 +45,8 @@ async function valid(token: string | undefined): Promise<boolean> {
   const s = process.env.ADMIN_JWT_SECRET;
   if (!s || s.length < 32) return false;
   try {
-    await jwtVerify(token, new TextEncoder().encode(s));
-    return true;
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
+    return payload.purpose === undefined && typeof payload.sub === "string" && !!payload.sub;
   } catch {
     return false;
   }

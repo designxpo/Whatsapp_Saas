@@ -485,10 +485,10 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
   useEffect(() => { fetch("/api/admin/system/status").then(r => r.json()).then(setS).catch(() => undefined); }, []);
 
   const guide: { icon: React.ReactNode; title: string; text: string; cta: string; tab: Tab }[] = [
-    { icon: <Database className="w-5 h-5" />, title: "1 · Teach the AI", text: "Upload your business docs (PDF, text, website URL) so the assistant can answer customer questions.", cta: "Add knowledge", tab: "assistant" },
-    { icon: <FlaskConical className="w-5 h-5" />, title: "2 · Test it", text: "Ask the assistant questions in the test box — no WhatsApp needed. See whether the answer came from FAQ, cache, or AI.", cta: "Test assistant", tab: "assistant" },
-    { icon: <Users className="w-5 h-5" />, title: "3 · Add contacts", text: "Import a CSV or add contacts with tags and attributes (e.g. city, interest) for targeted broadcasts.", cta: "Import contacts", tab: "contacts" },
-    { icon: <Send className="w-5 h-5" />, title: "4 · Broadcast", text: "Pick an approved template, choose an audience (all / tag / attribute), and send. Replies land in Live Chat where the AI answers automatically.", cta: "Send a broadcast", tab: "broadcast" },
+    { icon: <ListChecks className="w-5 h-5" />, title: "1 · Connect your business", text: "Follow the setup checklist to connect a channel and your AI provider. Start with the channel your customers already use.", cta: "Open setup checklist", tab: "setup" },
+    { icon: <Database className="w-5 h-5" />, title: "2 · Teach the AI", text: "Add your FAQs, opening hours, prices and policies so replies reflect your business.", cta: "Add knowledge", tab: "assistant" },
+    { icon: <FlaskConical className="w-5 h-5" />, title: "3 · Test a customer question", text: "Try the assistant test box, then send a real question through your connected channel. Check the reply and practise handing the conversation to a person.", cta: "Test assistant", tab: "assistant" },
+    { icon: <Users className="w-5 h-5" />, title: "4 · Handle your first enquiry", text: "Open Live Chat to see incoming conversations, reply as a team, and track which enquiries need attention. Use broadcasts later, with opted-in contacts and approved WhatsApp templates.", cta: "Open Live Chat", tab: "livechat" },
   ];
 
   return (
@@ -496,7 +496,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
       <div>
         <h2 className="text-xl font-bold">Welcome</h2>
-        <p className="text-sm text-slate-500 mt-1">This platform sends WhatsApp broadcasts, and an AI assistant answers replies automatically using your knowledge base. Humans take over anytime from Live Chat.</p>
+        <p className="text-sm text-slate-500 mt-1">Connect the channels your customers use, teach the assistant about your business, and manage enquiries with your team from Live Chat.</p>
       </div>
 
       {/* At a glance */}

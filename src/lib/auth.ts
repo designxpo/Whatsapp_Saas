@@ -65,8 +65,7 @@ export const PENDING_SIGNUP_PURPOSE = "signup_otp_pending";
 // and signup). Same secret/algorithm as a real session, but a distinct
 // `purpose` claim and a short expiry — verifyPendingToken only accepts a
 // token whose purpose matches, so a pending token can never be replayed as a
-// real session (verifySession never reads the `purpose` claim, and these are
-// never stored in SESSION_COOKIE).
+// real session (verifySession rejects every token carrying a purpose claim).
 export async function createPendingToken(payload: Record<string, unknown>, purpose: string, ttl = "10m"): Promise<string> {
   return new SignJWT({ ...payload, purpose })
     .setProtectedHeader({ alg: "HS256" })
@@ -124,7 +123,7 @@ export async function verifySession(token: string | undefined): Promise<SessionU
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    if (typeof payload.sub !== "string") return null;
+    if (payload.purpose !== undefined || typeof payload.sub !== "string" || !payload.sub) return null;
     const email = payload.sub;
     const ver = typeof payload.v === "number" ? payload.v : 0;
     const tenantId = typeof payload.t === "string" && payload.t ? payload.t : DEFAULT_TENANT_ID;
@@ -141,6 +140,7 @@ export async function verifySession(token: string | undefined): Promise<SessionU
     const state = await getMemberAuthState(email);
     if (!state) return null;                 // deleted / deactivated → reject
     if (state.tokenVersion !== ver) return null;   // revoked (e.g. password changed)
+    if (state.tenantId !== tenantId) return null;   // moved tenant → require a fresh sign-in
     return { email, name: typeof payload.n === "string" ? payload.n : "", role: state.role, tenantId, tokenVersion: ver };
   } catch {
     return null;

@@ -20,8 +20,6 @@ export const dynamic = "force-dynamic";
 // the same secret as RAZORPAY_SUBSCRIPTIONS_WEBHOOK_SECRET (a separate secret
 // from RAZORPAY_WEBHOOK_SECRET, since it's configured as a separate endpoint).
 
-type RzpSubscriptionStatus = "authenticated" | "activated" | "charged" | "pending" | "halted" | "completed" | "cancelled";
-
 // Razorpay subscription.status → our payment/tenant status. Mirrors
 // mapStatus() in webhooks/stripe/route.ts's shape and intent exactly.
 function mapStatus(event: string): { payment: PaymentStatus; tenant: TenantStatus } {
@@ -32,7 +30,7 @@ function mapStatus(event: string): { payment: PaymentStatus; tenant: TenantStatu
     case "subscription.halted":        return { payment: "past_due", tenant: "suspended" };
     case "subscription.cancelled":     return { payment: "cancelled", tenant: "cancelled" };
     case "subscription.completed":     return { payment: "cancelled", tenant: "cancelled" };
-    default:                           return { payment: "active", tenant: "active" };   // authenticated, updated — no status change implied
+    default:                           return { payment: "none", tenant: "suspended" };
   }
 }
 
@@ -47,7 +45,7 @@ interface RzpWebhookBody {
     // instrument the customer actually paid with ("card", "upi",
     // "netbanking"…), which a Rule 46 document has to name and which this
     // payload is the only place we ever learn it from.
-    payment?: { entity?: { id?: string; amount?: number; currency?: string; fee?: number; tax?: number; method?: string } };
+    payment?: { entity?: { id?: string; amount?: number; currency?: string; status?: string; fee?: number; tax?: number; method?: string } };
   };
 }
 
@@ -62,10 +60,12 @@ export async function POST(req: Request) {
   try { event = JSON.parse(raw); } catch { return NextResponse.json({ error: "invalid json" }, { status: 400 }); }
 
   const HANDLED = new Set([
-    "subscription.authenticated", "subscription.activated", "subscription.charged",
+    "subscription.activated", "subscription.charged",
     "subscription.pending", "subscription.halted", "subscription.completed", "subscription.cancelled",
   ]);
   if (!HANDLED.has(event.event)) return NextResponse.json({ received: true });   // subscription.updated etc — ignored for now
+  // Authentication proves only that a recurring mandate exists. It must never
+  // upgrade a trial or restore suspended access before the first paid cycle.
 
   try {
     const subId = event.payload?.subscription?.entity?.id;
@@ -76,6 +76,10 @@ export async function POST(req: Request) {
     const { payment, tenant: tenantStatus } = mapStatus(event.event);
     const currentEndUnix = event.payload?.subscription?.entity?.current_end;
     const pay = event.payload?.payment?.entity;
+    if (event.event === "subscription.charged" &&
+        (!pay?.id || pay.status !== "captured" || typeof pay.amount !== "number" || pay.amount <= 0)) {
+      return NextResponse.json({ error: "Captured subscription payment required" }, { status: 400 });
+    }
 
     // Read prior state BEFORE the write — the suspension email must fire on
     // the transition INTO suspended, not on every event that finds us already
@@ -93,6 +97,7 @@ export async function POST(req: Request) {
     const breakdown = isCharge ? computeChargeBreakdown(plan?.priceCents ?? pay?.amount ?? 0) : null;
 
     await applySubscription(tenant.id, {
+      plan: plan?.key,
       paymentStatus: payment,
       status: tenantStatus,
       subscriptionId: subId,
@@ -108,12 +113,11 @@ export async function POST(req: Request) {
       const billingEventId = await recordBillingEvent(tenant.id, {
         provider: "razorpay", providerPaymentId: pay?.id, currency: pay?.currency?.toUpperCase() ?? "INR", breakdown,
         paymentMethod: pay?.method ?? null,
-      }).catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordBillingEvent", tenantId: tenant.id, error: errorMessage(err) })));
+      });
       // The REAL fee Razorpay took on this specific payment, replacing the
       // checkout-time estimate for accurate net-revenue reporting.
       if (pay?.id && typeof pay.fee === "number") {
-        await recordActualGatewayFee(pay.id, pay.fee, pay.tax ?? 0)
-          .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.recordActualGatewayFee", tenantId: tenant.id, error: errorMessage(err) })));
+        await recordActualGatewayFee(pay.id, pay.fee, pay.tax ?? 0);
       }
       // The receipt goes out LAST, and strictly after the actual fee is on the
       // row: issuing a document stamps a permanent, consecutively-numbered
@@ -122,10 +126,9 @@ export async function POST(req: Request) {
       // for the same reason — firing it off unawaited would race the update
       // above and sometimes state the estimate instead of the real fee.
       //
-      // Best-effort like the two writes above, and the isolation matters most
-      // here: this charge has ALREADY been taken, so an SMTP hiccup must not
-      // surface as a non-200 that makes Razorpay retry a completed payment.
-      // Re-delivery is safe regardless — issuing is idempotent per charge.
+      // Email remains best-effort. Financial writes above must succeed before
+      // acknowledging the event; retries reconcile the same payment, using its
+      // unique provider id, rather than charging the customer again.
       if (billingEventId) {
         await sendInvoiceEmail(billingEventId)
           .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.sendInvoiceEmail", tenantId: tenant.id, error: errorMessage(err) })));
@@ -145,7 +148,8 @@ export async function POST(req: Request) {
       await notifyServiceSuspended(before, subId);
     }
   } catch (err) {
-    console.error("[razorpay subscriptions webhook]", event.event, err);   // 200 anyway so Razorpay doesn't storm retries on a transient DB error
+    console.error("[razorpay subscriptions webhook]", event.event, err);
+    return NextResponse.json({ error: "Billing reconciliation failed" }, { status: 503 });
   }
   return NextResponse.json({ received: true });
 }

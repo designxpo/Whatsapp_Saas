@@ -71,7 +71,7 @@ export default function PricingPage() {
             </p>
             <p>
               Two costs sit outside your subscription, and both are billed to you directly rather than marked up by us: Meta&apos;s
-              per-conversation WhatsApp fees, and your AI provider&apos;s usage on the Gemini, OpenAI or Anthropic key you bring. That is
+              WhatsApp messaging charges, and your AI provider&apos;s usage on the Gemini, OpenAI or Anthropic key you bring. That is
               what &quot;transparent&quot; means here — you can see each line separately instead of one bundled number.
             </p>
           </PageSummary>
@@ -87,6 +87,11 @@ export default function PricingPage() {
         <SectionTitle title="Business plans" eyebrow="For teams" id="business-plans"
           subtitle="Every channel, one inbox. Pick by monthly message volume and how many numbers you need." />
         <div className="mt-12"><PricingTiers /></div>
+        <div className="mt-8 rounded-2xl border border-blue-100 bg-blue-50 p-6 text-center">
+          <h3 className="text-lg font-bold text-slate-900">Want help getting your business on WhatsApp?</h3>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600">Tell us what you sell and how you handle customer enquiries. We&apos;ll help you choose a plan and walk through connecting your number, adding your FAQs, and testing your first reply.</p>
+          <Link href="/contact?intent=demo" className="mt-4 inline-flex rounded-xl bg-[#0783fd] px-5 py-3 text-sm font-bold text-white hover:bg-[#0668d6]">Request a WhatsApp walkthrough</Link>
+        </div>
         {/* Was "Need annual billing? Talk to sales" — which contradicted the
             annual toggle directly above it. Annual is self-serve; only volume
             pricing needs a conversation. */}
@@ -116,7 +121,7 @@ export default function PricingPage() {
             title="Instagram-first plans for creators"
             subtitle="No WhatsApp business stack to pay for — just the Instagram DM & comment automation creators actually need. Reply to every DM, turn comments into DMs, and capture leads on autopilot." />
           <PricingTiers tiers={CREATOR_TIERS} showToggle={false} />
-          <p className="mt-8 text-center text-xs text-slate-500">Need WhatsApp too? See the business plans above — or <span className="font-semibold text-[#0783fd]">talk to sales</span> for a custom mix.</p>
+          <p className="mt-8 text-center text-xs text-slate-500">Need WhatsApp too? See the business plans above — or <Link href="/contact?intent=demo" className="font-semibold text-[#0783fd] hover:underline">talk to sales</Link> for a custom mix.</p>
         </div>
       </Container>
 

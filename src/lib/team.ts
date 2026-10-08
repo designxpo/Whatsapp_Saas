@@ -38,14 +38,14 @@ function mapUser(r: Record<string, unknown>): TeamUser {
 // Live auth state for a member, read on every request by verifySession so that
 // deactivation and role changes take effect immediately (not at token expiry).
 // Returns null when the user is gone/inactive or the table is missing.
-export interface MemberAuthState { role: "admin" | "member"; tokenVersion: number }
+export interface MemberAuthState { role: "admin" | "member"; tokenVersion: number; tenantId: string }
 export async function getMemberAuthState(email: string): Promise<MemberAuthState | null> {
   try {
     const { data } = await db().from("wa_users")
-      .select("role, active, token_version")
+      .select("role, active, token_version, tenant_id")
       .eq("email", email.trim().toLowerCase()).maybeSingle();
     if (!data || !(data.active as boolean)) return null;
-    return { role: (data.role as "admin" | "member") ?? "member", tokenVersion: (data.token_version as number) ?? 0 };
+    return { role: (data.role as "admin" | "member") ?? "member", tokenVersion: (data.token_version as number) ?? 0, tenantId: (data.tenant_id as string) ?? DEFAULT_TENANT_ID };
   } catch {
     return null;   // table missing → pre-team mode; caller treats as no member
   }

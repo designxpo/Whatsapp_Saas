@@ -14,11 +14,9 @@ import type { PriceBreakdown } from "./billing-tax";
 // null on any charge that arrives without one, and it addresses a payment
 // rather than the row).
 //
-// Still best-effort at the CALL SITE, which is where it matters: every caller
-// wraps this in .catch() and carries on, because a charge the gateway already
-// took must never be undone — or retried — by a bookkeeping failure. The throw
-// is kept deliberately, since swallowing the error here would also swallow the
-// message the caller logs. Null only if the insert somehow returned no row.
+// Webhook callers must propagate persistence failures so the gateway can retry
+// reconciliation of the same charge. The unique payment id makes redelivery
+// idempotent; replaying a webhook never initiates a new payment.
 export async function recordBillingEvent(tenantId: string, p: {
   provider: PaymentProvider; providerPaymentId?: string | null; currency: string;
   breakdown: PriceBreakdown; paymentMethod?: string | null;
@@ -43,16 +41,19 @@ export async function recordBillingEvent(tenantId: string, p: {
   // and issued exactly one invoice number.
   if (error) {
     if ((error as { code?: string }).code === "23505" && p.providerPaymentId) {
-      const { data: existing } = await db().from("wa_billing_events")
+      const { data: existing, error: lookupError } = await db().from("wa_billing_events")
         .select("id").eq("provider_payment_id", p.providerPaymentId).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!existing?.id) throw new Error("Existing billing event could not be reconciled");
       // payment_method arrives only on the webhook leg, so the row inserted by
       // the checkout confirmation has none. Backfill it rather than losing the
       // instrument the document has to name — but never overwrite a value that
       // is already there.
       if (existing?.id && p.paymentMethod) {
-        await db().from("wa_billing_events")
+        const { error: updateError } = await db().from("wa_billing_events")
           .update({ payment_method: p.paymentMethod })
           .eq("id", existing.id).is("payment_method", null);
+        if (updateError) throw updateError;
       }
       return (existing?.id as string) ?? null;
     }
@@ -67,7 +68,8 @@ export async function recordBillingEvent(tenantId: string, p: {
 // (e.g. this payment's checkout-time event was somehow missed), this is a
 // no-op rather than inserting a partial row with no base/tax breakdown.
 export async function recordActualGatewayFee(providerPaymentId: string, feeCents: number, taxCents: number): Promise<void> {
-  await db().from("wa_billing_events")
+  const { error } = await db().from("wa_billing_events")
     .update({ gateway_fee_actual_cents: feeCents, gateway_tax_actual_cents: taxCents })
     .eq("provider_payment_id", providerPaymentId);
+  if (error) throw error;
 }

@@ -54,13 +54,15 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
   };
   const required = (steps ?? []).filter(s => !s.optional);
   const doneCount = required.filter(s => s.status === "ok").length;
+  const nextStep = required.find(s => s.status !== "ok" && s.fixTab);
+  const knowledgeStep = steps?.find(s => s.key === "kb" && s.status !== "ok");
 
   return (
     <div className="max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup &amp; status</h2>
-          <p className="text-sm text-slate-500">Connect your channels and AI, then confirm each one is live. Every step is checked in real time.</p>
+          <p className="text-sm text-slate-500">Connect your channels and AI, then confirm each one is live. Connection checks show what still needs attention.</p>
         </div>
         <button onClick={load} disabled={busy} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check
@@ -89,11 +91,23 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
           <span className="font-bold text-ink-900">{doneCount}/{required.length} required steps ready.</span>
           {doneCount < required.length
             ? <span className="text-slate-500"> Finish the items below to go live.</span>
-            : <span className="text-emerald-700"> You&apos;re live — customers can message you and the AI will reply.</span>}
+            : <span className="text-emerald-700"> Required configuration is ready. Send a test message from another account before inviting customers.</span>}
+          {nextStep && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3">
+              <p className="text-xs text-ink-600">Next: <span className="font-semibold">{nextStep.title}</span></p>
+              <button onClick={() => goTo(nextStep.fixTab as Tab)} className="rounded-control bg-brand-700 px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-600">Continue setup</button>
+            </div>
+          )}
+          {doneCount === required.length && knowledgeStep && (
+            <div className="mt-3 border-t border-line pt-3 text-xs text-ink-600">
+              <p>Add your FAQ, prices, or business documents so the assistant can answer accurately, then test a real customer question.</p>
+              <button onClick={() => goTo("assistant")} className="mt-2 text-xs font-bold text-brand-700 hover:underline">Add knowledge and test replies</button>
+            </div>
+          )}
         </div>
       )}
 
-      {loadErr && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">{loadErr}</p>}
+      {loadErr && <p role="alert" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">{loadErr}</p>}
       {!steps && !loadErr && <div className="py-10 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>}
 
       {/* Owner-only Meta diagnostics — renders nothing for tenant admins. */}
@@ -119,13 +133,13 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
                 </div>
                 <p className="text-[13px] text-ink-600 mt-0.5">{s.detail}</p>
                 {s.hint && <p className="text-[12px] text-slate-500 mt-1">{s.hint}</p>}
-                {tr && <p className={`flex items-start gap-1.5 text-[12px] mt-1 font-medium ${tr.ok ? "text-emerald-700" : "text-red-600"}`}>{tr.ok ? <CircleCheck className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />} <span>{tr.detail}</span></p>}
+                {tr && <p role="status" className={`flex items-start gap-1.5 text-[12px] mt-1 font-medium ${tr.ok ? "text-emerald-700" : "text-red-600"}`}>{tr.ok ? <CircleCheck className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <X className="w-3.5 h-3.5 shrink-0 mt-0.5" />} <span>{tr.detail}</span></p>}
               </div>
             </div>
             <div className="flex items-center gap-2 pl-8">
               {s.fixTab && <button onClick={() => goTo(s.fixTab as Tab)} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{s.status === "ok" ? "Manage" : "Set up"}</button>}
               {canTest && (
-                <button onClick={() => test(s.key)} disabled={testing === s.key} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
+                <button onClick={() => test(s.key)} disabled={testing !== null} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
                   {testing === s.key ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Test now
                 </button>
               )}

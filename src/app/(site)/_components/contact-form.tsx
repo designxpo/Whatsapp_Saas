@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, MailCheck } from "lucide-react";
 import { track } from "@/lib/analytics";
 
@@ -12,9 +12,16 @@ export function ContactForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    if (query.get("intent") === "demo") {
+      setForm(f => ({ ...f, topic: "Sales", message: "I'd like a WhatsApp walkthrough for my business.\nBusiness type: \nMonthly customer enquiries: \nMain goal: " }));
+    }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return;
     if (!form.name.trim() || !form.email.trim() || !form.message.trim()) { setErr("Please fill in your name, email, and message."); return; }
     setBusy(true); setErr(null);
     try {
@@ -47,11 +54,11 @@ export function ContactForm() {
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <span className="mb-1.5 block text-xs font-bold text-slate-700">Your name *</span>
-          <input className={field} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Priya Sharma" autoComplete="name" />
+          <input className={field} required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Priya Sharma" autoComplete="name" />
         </label>
         <label className="block">
           <span className="mb-1.5 block text-xs font-bold text-slate-700">Email *</span>
-          <input className={field} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="priya@yourbrand.com" autoComplete="email" />
+          <input className={field} required maxLength={200} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="priya@yourbrand.com" autoComplete="email" />
         </label>
       </div>
 
@@ -64,13 +71,13 @@ export function ContactForm() {
 
       <label className="mt-4 block">
         <span className="mb-1.5 block text-xs font-bold text-slate-700">Message *</span>
-        <textarea className={field} rows={5} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} placeholder="How can we help?" />
+        <textarea className={field} required maxLength={5000} rows={5} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} placeholder="How can we help?" />
       </label>
 
       {/* Honeypot — hidden from humans; bots fill it and get silently dropped. */}
       <input type="text" name="website" tabIndex={-1} autoComplete="off" value={form.website} onChange={e => setForm({ ...form, website: e.target.value })} className="hidden" aria-hidden="true" />
 
-      {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
+      {err && <p role="alert" className="mt-4 text-sm text-red-600">{err}</p>}
 
       <button type="submit" disabled={busy}
         className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0783fd] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0668d6] disabled:opacity-60">

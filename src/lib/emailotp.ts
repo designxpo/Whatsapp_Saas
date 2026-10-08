@@ -165,19 +165,19 @@ export async function sendEmailOtp(rawEmail: string, purpose: EmailOtpPurpose): 
 
 export interface VerifyOtpResult { ok: boolean; error?: string }
 
-// Check a submitted code. email_otp_claim_attempt atomically checks expiry +
+// Check a submitted code. email_otp_claim_attempt_v2 atomically checks expiry +
 // the attempt cap and increments attempts under a row lock BEFORE we compare,
 // so concurrent verifies can't test more than EMAIL_OTP_MAX_ATTEMPTS guesses.
 // The hash comparison stays here and is constant-time. Single-use: a match
-// consumes (blanks) the code.
+// consumes the exact issuance atomically; a concurrent replay or resend loses.
 export async function verifyEmailOtp(rawEmail: string, purpose: EmailOtpPurpose, rawCode: string): Promise<VerifyOtpResult> {
   const email = rawEmail.trim().toLowerCase();
   const code = (rawCode || "").trim();
   if (!email || !/^\d{4}$/.test(code)) return { ok: false, error: "Enter the 4-digit code" };
 
-  let claim: { ok?: boolean; out_hash?: string; reason?: string } | undefined;
+  let claim: { ok?: boolean; out_hash?: string; out_sent_at?: string; reason?: string } | undefined;
   try {
-    const { data, error } = await db().rpc("email_otp_claim_attempt", {
+    const { data, error } = await db().rpc("email_otp_claim_attempt_v2", {
       p_email: email, p_purpose: purpose, p_max: EMAIL_OTP_MAX_ATTEMPTS, p_now: new Date().toISOString(),
     });
     if (error) throw error;
@@ -196,6 +196,16 @@ export async function verifyEmailOtp(rawEmail: string, purpose: EmailOtpPurpose,
   const match = safeEqual(hashEmailOtp(email, purpose, code, otpPepper()), claim.out_hash ?? "");
   if (!match) return { ok: false, error: "Incorrect code" };
 
-  await db().rpc("email_otp_consume", { p_email: email, p_purpose: purpose }).then(undefined, () => undefined);
-  return { ok: true };
+  if (!claim.out_sent_at) return { ok: false, error: "OTP store unavailable" };
+  try {
+    const { data, error } = await db().rpc("email_otp_consume_if_matches", {
+      p_email: email, p_purpose: purpose, p_hash: claim.out_hash,
+      p_sent_at: claim.out_sent_at, p_now: new Date().toISOString(),
+    });
+    if (error) throw error;
+    if (data !== true) return { ok: false, error: "Code expired or already used — request a new one" };
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "OTP store unavailable" };
+  }
 }

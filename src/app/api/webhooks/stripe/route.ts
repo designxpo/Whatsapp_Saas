@@ -143,7 +143,9 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error("[stripe webhook]", event.type, err);
-    // 200 anyway so Stripe doesn't hammer retries on a transient DB hiccup; we log it.
+    // A webhook retry replays reconciliation; it does not charge the customer
+    // again. Acknowledging a failed write would permanently lose this event.
+    return NextResponse.json({ error: "Billing reconciliation failed" }, { status: 503 });
   }
   return NextResponse.json({ received: true });
 }

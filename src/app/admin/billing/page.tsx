@@ -190,7 +190,7 @@ export default function BillingPage() {
             const v = await fetch("/api/admin/billing/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(resp) });
             const vd = await v.json();
             if (!v.ok) { setMsg(vd.error || "Payment could not be verified"); return; }
-            setBanner("Subscription active — thanks!");
+            setBanner(vd.pending ? "Payment authorization received. Your plan will activate after the first payment is confirmed." : "Subscription active — thanks!");
             await load();
           } finally { setBusy(null); }
         },

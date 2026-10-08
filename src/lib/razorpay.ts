@@ -138,6 +138,7 @@ export async function createSubscription(tenant: Tenant, plan: Plan): Promise<Cr
 
 export interface RazorpaySubscriptionDetail {
   planKey: string | null; amountCents: number; currency: string; currentPeriodEnd: string | null;
+  status: string; paidCount: number;
 }
 
 // Read back a subscription's actual plan/amount/period from Razorpay itself —
@@ -147,7 +148,7 @@ export interface RazorpaySubscriptionDetail {
 // no other way to know which plan the customer just bought.
 export async function getSubscriptionDetail(subscriptionId: string): Promise<RazorpaySubscriptionDetail> {
   const sub = await rzp<{
-    notes?: Record<string, string>; current_end?: number;
+    notes?: Record<string, string>; current_end?: number; status?: string; paid_count?: number;
     plan?: { item?: { amount?: number; currency?: string }; notes?: Record<string, string> };
   }>(`/subscriptions/${subscriptionId}`);
   return {
@@ -155,6 +156,8 @@ export async function getSubscriptionDetail(subscriptionId: string): Promise<Raz
     amountCents: sub.plan?.item?.amount ?? 0,
     currency: sub.plan?.item?.currency ?? "INR",
     currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null,
+    status: sub.status ?? "unknown",
+    paidCount: sub.paid_count ?? 0,
   };
 }
 

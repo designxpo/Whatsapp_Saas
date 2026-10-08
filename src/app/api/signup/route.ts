@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { db } from "@/lib/supabase";
-import { createPendingToken, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
+import { isPlatformOwnerEmail, createPendingToken, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
 import { getFlag } from "@/lib/flags";
 import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
 import { sendEmailOtp } from "@/lib/emailotp";
@@ -54,6 +54,12 @@ export async function POST(req: Request) {
   if (password.length < 8) return NextResponse.json({ error: "Use a password of at least 8 characters" }, { status: 400 });
   // Legal consent is mandatory — the account cannot be created without it.
   if (body.acceptTerms !== true) return NextResponse.json({ error: "You must accept the Terms of Service and Privacy Policy to continue." }, { status: 400 });
+
+  // The bootstrap owner is an environment account, not a wa_users row.
+  // Never mint a self-serve session that verifySession treats as that owner.
+  if (isPlatformOwnerEmail(ownerEmail)) {
+    return NextResponse.json({ error: "An account with this email already exists — try logging in." }, { status: 400 });
+  }
 
   // Fail fast on an email that can never complete signup — no point sending a
   // code (or burning the daily send cap) for an account that already exists.

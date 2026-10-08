@@ -41,6 +41,12 @@ export async function POST(req: Request) {
     // the three signature-check fields, so this is the authoritative source
     // for what was actually purchased (not something the client could spoof).
     const detail = await getSubscriptionDetail(subscriptionId);
+    // A valid checkout signature can represent mandate authorization only.
+    // Preserve the existing trial/plan until Razorpay confirms a paid cycle;
+    // the charged webhook remains the durable activation path.
+    if (detail.status !== "active" || detail.paidCount < 1) {
+      return NextResponse.json({ success: true, pending: true }, { status: 202 });
+    }
     // Recompute the GST/gateway-fee breakdown from the PLAN's base price
     // rather than reverse-engineering it from Razorpay's total — the base
     // price is the one number both sides agree on exactly, so this avoids any

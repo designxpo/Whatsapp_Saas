@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email";
 // Submitter-controlled text is interpolated into an HTML email body — escaping
 // it stops a message injecting markup into the email the support inbox opens.
 import { escapeHtml } from "@/lib/emailtemplate";
+import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // accept the request (so the bot sees success) but send nothing.
 export async function POST(req: Request) {
   let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  try {
+    const parsed: unknown = await req.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid payload");
+    body = parsed as Record<string, unknown>;
+  } catch { return NextResponse.json({ error: "Please send a valid contact form." }, { status: 400 }); }
 
   if (typeof body.website === "string" && body.website.trim()) {
     return NextResponse.json({ success: true });
@@ -28,6 +33,19 @@ export async function POST(req: Request) {
   if (!name || !EMAIL_RE.test(email) || !message) {
     return NextResponse.json({ error: "Please fill in your name, a valid email, and a message." }, { status: 400 });
   }
+
+  if (name.length > 120 || email.length > 200 || message.length > 5000 || !["Sales", "Support", "Partnership", "General"].includes(topic)) {
+    return NextResponse.json({ error: "Please use a valid topic, a name under 120 characters, and a message under 5,000 characters." }, { status: 400 });
+  }
+  const key = loginKey(req, "contact");
+  const gate = await loginThrottle(key);
+  if (!gate.allowed) {
+    return NextResponse.json({ error: "Too many messages. Please try again later or email info@thetalko.in." }, {
+      status: 429,
+      headers: gate.retryAfterSec ? { "Retry-After": String(gate.retryAfterSec) } : undefined,
+    });
+  }
+  await recordLoginFailure(key);
 
   const result = await sendEmail({
     to: SUPPORT_INBOX,

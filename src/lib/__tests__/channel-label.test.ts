@@ -80,6 +80,8 @@ describe("assistant system prompt", () => {
     // good standing, and would never reach the prompt.
     vi.doMock("../feature-guard", () => ({ accountCanSend: async () => true }));
     vi.doMock("../moderation", () => ({ moderateText: async () => ({ allowed: true, reason: null }) }));
+    // This checks prompt wording; retrieval must not make live embedding calls.
+    vi.doMock("../kb", () => ({ retrieve: async () => [] }));
 
     const { generateReply } = await import("../llm");
     await generateReply(

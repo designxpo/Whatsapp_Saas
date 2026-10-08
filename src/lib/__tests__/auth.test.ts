@@ -4,11 +4,18 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // call here). Stub it so importing the module is safe under vitest.
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
 
-import { createSession, verifySession, checkCredentials, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { createSession, createPendingToken, verifySession, checkCredentials, DEFAULT_TENANT_ID } from "@/lib/auth";
+
+vi.mock("@/lib/team", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/team")>(),
+  getMemberAuthState: vi.fn(),
+}));
+import { getMemberAuthState } from "@/lib/team";
 
 const OWNER = "owner@alabs.local";
 
 beforeEach(() => {
+  vi.mocked(getMemberAuthState).mockReset();
   process.env.ADMIN_JWT_SECRET = "x".repeat(40);   // ≥32 chars
   process.env.ADMIN_USER = OWNER;
   delete process.env.ADMIN_TOKEN_EPOCH;
@@ -73,5 +80,36 @@ describe("checkCredentials (owner)", () => {
     process.env.ADMIN_PASSWORD_HASH = hashPassword("hashed-secret");
     expect(checkCredentials(OWNER, "hashed-secret")).toBe(true);
     expect(checkCredentials(OWNER, "hashed-secret-wrong")).toBe(false);
+  });
+});
+
+
+describe("session purpose and tenant isolation", () => {
+  it("rejects a signed pending token even when it contains an owner subject", async () => {
+    const token = await createPendingToken({ sub: OWNER, t: DEFAULT_TENANT_ID }, "login_otp_pending");
+    expect(await verifySession(token)).toBeNull();
+  });
+
+  it("rejects an affiliate token carrying a tenant user's subject", async () => {
+    const token = await createPendingToken({ sub: OWNER }, "affiliate_session");
+    expect(await verifySession(token)).toBeNull();
+  });
+
+  it("rejects an old tenant session after membership moves", async () => {
+    vi.mocked(getMemberAuthState).mockResolvedValue({ role: "admin", tokenVersion: 0, tenantId: "new-tenant" });
+    const token = await createSession({ email: "member@example.com", name: "Member", role: "admin", tenantId: "old-tenant" });
+    expect(await verifySession(token)).toBeNull();
+  });
+
+  it("uses live membership role for the matching tenant", async () => {
+    vi.mocked(getMemberAuthState).mockResolvedValue({ role: "member", tokenVersion: 0, tenantId: "tenant-a" });
+    const token = await createSession({ email: "member@example.com", name: "Member", role: "admin", tenantId: "tenant-a" });
+    expect(await verifySession(token)).toMatchObject({ role: "member", tenantId: "tenant-a" });
+  });
+
+  it("rejects deactivated members", async () => {
+    vi.mocked(getMemberAuthState).mockResolvedValue(null);
+    const token = await createSession({ email: "member@example.com", name: "Member", role: "member", tenantId: "tenant-a" });
+    expect(await verifySession(token)).toBeNull();
   });
 });

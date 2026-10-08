@@ -122,16 +122,21 @@ export async function setStripeIds(tenantId: string, ids: { customerId?: string;
   const row: Record<string, unknown> = {};
   if (ids.customerId !== undefined) row.stripe_customer_id = ids.customerId;
   if (ids.subscriptionId !== undefined) row.stripe_subscription_id = ids.subscriptionId;
-  if (Object.keys(row).length) await db().from("tenants").update(row).eq("id", tenantId);
+  if (Object.keys(row).length) {
+    const { error } = await db().from("tenants").update(row).eq("id", tenantId);
+    if (error) throw error;
+  }
 }
 
 export async function getTenantByStripeCustomer(customerId: string): Promise<Tenant | null> {
-  const { data } = await db().from("tenants").select("*").eq("stripe_customer_id", customerId).maybeSingle();
+  const { data, error } = await db().from("tenants").select("*").eq("stripe_customer_id", customerId).maybeSingle();
+  if (error) throw error;
   return data ? mapTenant(data as Record<string, unknown>) : null;
 }
 
 export async function getTenantByStripeSubscription(subscriptionId: string): Promise<Tenant | null> {
-  const { data } = await db().from("tenants").select("*").eq("stripe_subscription_id", subscriptionId).maybeSingle();
+  const { data, error } = await db().from("tenants").select("*").eq("stripe_subscription_id", subscriptionId).maybeSingle();
+  if (error) throw error;
   return data ? mapTenant(data as Record<string, unknown>) : null;
 }
 
@@ -142,11 +147,15 @@ export async function setRazorpayIds(tenantId: string, ids: { customerId?: strin
   const row: Record<string, unknown> = {};
   if (ids.customerId !== undefined) row.razorpay_customer_id = ids.customerId;
   if (ids.subscriptionId !== undefined) row.razorpay_subscription_id = ids.subscriptionId;
-  if (Object.keys(row).length) await db().from("tenants").update(row).eq("id", tenantId);
+  if (Object.keys(row).length) {
+    const { error } = await db().from("tenants").update(row).eq("id", tenantId);
+    if (error) throw error;
+  }
 }
 
 export async function getTenantByRazorpaySubscription(subscriptionId: string): Promise<Tenant | null> {
-  const { data } = await db().from("tenants").select("*").eq("razorpay_subscription_id", subscriptionId).maybeSingle();
+  const { data, error } = await db().from("tenants").select("*").eq("razorpay_subscription_id", subscriptionId).maybeSingle();
+  if (error) throw error;
   return data ? mapTenant(data as Record<string, unknown>) : null;
 }
 
@@ -210,7 +219,8 @@ export async function applySubscription(tenantId: string, p: {
   if (p.subscriptionId !== undefined) row[provider === "razorpay" ? "razorpay_subscription_id" : "stripe_subscription_id"] = p.subscriptionId;
   if (p.status !== undefined) row.status = p.status;
   if (p.provider !== undefined) row.payment_provider = p.provider;
-  await db().from("tenants").update(row).eq("id", tenantId);
+  const { error } = await db().from("tenants").update(row).eq("id", tenantId);
+  if (error) throw error;
 
   // An active charge on a referred tenant earns its affiliate a commission,
   // computed on the BASE price only — never on GST or the gateway-fee

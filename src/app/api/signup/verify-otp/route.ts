@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createTenantFromSignup } from "@/lib/tenants";
-import { createSession, verifyPendingToken, SESSION_COOKIE, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
+import { isPlatformOwnerEmail, createSession, verifyPendingToken, SESSION_COOKIE, PENDING_SIGNUP_COOKIE, PENDING_SIGNUP_PURPOSE } from "@/lib/auth";
 import { sendEmailOtp, verifyEmailOtp } from "@/lib/emailotp";
 import { trustDevice, newDeviceToken, DEVICE_COOKIE, DEVICE_COOKIE_MAX_AGE } from "@/lib/devices";
 import { readSecret } from "@/lib/crypto";
@@ -25,6 +25,13 @@ export async function POST(req: Request) {
   const pendingToken = jar.get(PENDING_SIGNUP_COOKIE)?.value;
   const pending = await verifyPendingToken<PendingSignup>(pendingToken, PENDING_SIGNUP_PURPOSE);
   if (!pending) return NextResponse.json({ error: "Your signup session expired — please start again." }, { status: 401 });
+
+  // Also reject in-flight cookies created before the reserved-email check.
+  if (isPlatformOwnerEmail(pending.ownerEmail)) {
+    const res = NextResponse.json({ error: "An account with this email already exists — try logging in." }, { status: 400 });
+    res.cookies.delete(PENDING_SIGNUP_COOKIE);
+    return res;
+  }
 
   if (body.resend) {
     const sent = await sendEmailOtp(pending.ownerEmail, "signup");
