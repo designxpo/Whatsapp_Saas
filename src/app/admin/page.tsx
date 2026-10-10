@@ -8,6 +8,7 @@ import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimar
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
+import { MascotHint } from "@/components/MascotHint";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -90,7 +91,8 @@ const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 // Sidebar nav, grouped by WHAT THE USER IS TRYING TO DO rather than by internal
 // feature area — the old single 13-item "Main Menu" mixed the daily inbox with
 // per-platform setup, so nothing was findable. Each item carries a plain-English
-// `hint` surfaced as a tooltip, so a label like "Sequences" explains itself.
+// `hint` is shown by MascotHint after a few seconds of dwell, so a label
+// like "Sequences" explains itself to anyone who pauses on it.
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode; hint: string }[] }[] = [
   {
     group: "Home & Inbox",
@@ -258,11 +260,17 @@ export default function Admin() {
                 {items.map(n => {
                   const active = tab === n.key;
                   return (
-                    <button key={n.key} onClick={() => goTo(n.key)} title={n.hint}
-                      onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
-                      className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
-                      {n.icon}<span className="truncate">{n.label}</span>
-                    </button>
+                    // title= deliberately dropped: the OS tooltip fires at
+                    // ~1s, so keeping it alongside MascotHint would explain
+                    // the same item twice, three seconds apart. MascotHint
+                    // still exposes the hint to screen readers immediately.
+                    <MascotHint key={n.key} text={n.hint}>
+                      <button onClick={() => goTo(n.key)}
+                        onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
+                        className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
+                        {n.icon}<span className="truncate">{n.label}</span>
+                      </button>
+                    </MascotHint>
                   );
                 })}
               </div>
