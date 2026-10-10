@@ -154,7 +154,7 @@ function AuditLog() {
       </div>
 
       {rows === null && <div className="flex justify-center py-12"><Spinner /></div>}
-      {rows?.length === 0 && <EmptyState title="Nothing matches" body="Try a different search or clear the action filter." />}
+      {rows?.length === 0 && <EmptyState mood="searching" title="Nothing matches" body="Try a different search or clear the action filter." />}
 
       {rows && rows.length > 0 && (
         <>

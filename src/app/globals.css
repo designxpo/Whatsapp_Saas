@@ -105,6 +105,44 @@ button:not([disabled]):not(.no-press):active,
 .animate-marquee { animation: marquee linear infinite; will-change: transform; }
 
 /* Flow fade-in when switching use-case tabs (re-runs via React key). */
+/* ── Talko, the portal mascot (components/Mascot.tsx) ───────────────────────
+   Kept here beside `floaty` rather than inline in the component so every
+   animation in the app is in one place — and so the prefers-reduced-motion
+   block below collapses these with everything else, for free. */
+
+/* Blink: the eye scales to nothing and back, held open ~96% of the cycle.
+   Blinking at a believable interval is most of what makes a face feel alive;
+   anything faster reads as a nervous tic. */
+@keyframes talko-blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.08); } }
+.animate-talko-blink { animation: talko-blink 5.2s ease-in-out infinite; }
+
+/* Thinking: eyes drift up and left, the universal "working on it" tell. */
+@keyframes talko-glance {
+  0%, 100% { transform: translate(0, 0); }
+  30%, 55% { transform: translate(-2px, -2.5px); }
+}
+.animate-talko-glance { animation: talko-glance 3.4s ease-in-out infinite; }
+
+/* Searching: a steady sweep, like reading a list. */
+@keyframes talko-scan {
+  0%, 100% { transform: translateX(-2.5px); }
+  50% { transform: translateX(2.5px); }
+}
+.animate-talko-scan { animation: talko-scan 2.2s ease-in-out infinite; }
+
+/* Breathing. Smaller than the hero's 10px float — this sits inside panels,
+   where a big drift would pull the eye away from the text beside it. */
+@keyframes talko-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+.animate-talko-float { animation: talko-float 4.2s ease-in-out infinite; }
+
+/* The shadow shrinks as the body rises — without this the float looks like
+   the whole drawing sliding, rather than a character hovering. */
+@keyframes talko-shadow { 0%, 100% { transform: scaleX(1); opacity: .10; } 50% { transform: scaleX(.86); opacity: .06; } }
+.animate-talko-shadow { animation: talko-shadow 4.2s ease-in-out infinite; transform-origin: 32px 61px; }
+
+@keyframes talko-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+.animate-talko-pulse { animation: talko-pulse 2.6s ease-in-out infinite; }
+
 @keyframes flowin { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .animate-flowin { animation: flowin .45s ease-out both; }
 

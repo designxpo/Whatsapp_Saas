@@ -12,6 +12,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { X, Loader2, Search, Check } from "lucide-react";
+import { Mascot, type Mood } from "@/components/Mascot";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -78,10 +79,18 @@ export const PAYMENT_TONE: Record<string, Tone> = {
 
 // ── Empty / loading ───────────────────────────────────────────────────────────
 
-export function EmptyState({ icon, title, body }: { icon?: ReactNode; title: string; body?: string }) {
+export function EmptyState({ icon, title, body, mood }: {
+  icon?: ReactNode; title: string; body?: string; mood?: Mood;
+}) {
+  // An empty screen is the one place in a work tool with room for character,
+  // and the one place a grey glyph says least. `mood` opts a panel into the
+  // mascot; `icon` still wins where the glyph carries real meaning (a mail
+  // icon on the email log says "email", which a face does not).
   return (
     <div className="text-center py-14 px-6">
-      {icon && <div className="w-10 h-10 rounded-full bg-canvas text-ink-400 flex items-center justify-center mx-auto mb-3">{icon}</div>}
+      {mood
+        ? <div className="mb-3 flex justify-center"><Mascot mood={mood} size={64} /></div>
+        : icon && <div className="w-10 h-10 rounded-full bg-canvas text-ink-400 flex items-center justify-center mx-auto mb-3">{icon}</div>}
       <p className="text-sm font-bold text-ink-900">{title}</p>
       {body && <p className="text-[13px] text-ink-600 mt-1 max-w-sm mx-auto leading-relaxed">{body}</p>}
     </div>

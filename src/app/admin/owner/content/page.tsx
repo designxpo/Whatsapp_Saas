@@ -9,7 +9,7 @@
 // line comments beat anything built here — merging IS publishing.
 
 import { useCallback, useEffect, useState } from "react";
-import { ExternalLink, FileText, Play, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, Play, RefreshCw, Search } from "lucide-react";
 import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone } from "../_ui";
 
 type Gap = {
@@ -104,7 +104,7 @@ export default function ContentPage() {
 
       {!report ? (
         <Panel>
-          <EmptyState icon={<FileText className="w-5 h-5" />} title="No research filed yet"
+          <EmptyState mood="sleeping" title="No research filed yet"
             body="The pipeline posts its report here at the end of each run. Start one with Research only — it crawls and ranks without writing anything." />
         </Panel>
       ) : (

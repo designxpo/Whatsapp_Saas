@@ -93,7 +93,7 @@ export default function RevenuePage() {
           <div className="grid lg:grid-cols-2 gap-4">
             <Panel title="Revenue by plan" dense>
               {!d.revenueByPlan.length
-                ? <EmptyState title="No paying accounts yet" body="Revenue appears here once a subscription goes active." />
+                ? <EmptyState mood="sleeping" title="No paying accounts yet" body="Revenue appears here once a subscription goes active." />
                 : (
                   <Table head={<tr><Th>Plan</Th><Th align="right">Paying</Th><Th align="right">MRR</Th><Th align="right">Share</Th></tr>}>
                     {d.revenueByPlan.map(p => {
