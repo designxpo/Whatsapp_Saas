@@ -9,6 +9,7 @@ import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accou
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { MascotHint } from "@/components/MascotHint";
+import { Mascot } from "@/components/Mascot";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -502,9 +503,33 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">Welcome</h2>
-        <p className="text-sm text-slate-500 mt-1">This platform sends WhatsApp broadcasts, and an AI assistant answers replies automatically using your knowledge base. Humans take over anytime from Live Chat.</p>
+      {/* Talko greets you here, and the expression is a status signal rather
+          than decoration: it is the first thing on the first screen, so it may
+          as well say something true. Empty states elsewhere only appear on an
+          empty account — on a working one the mascot was effectively invisible,
+          which is the bug this fixes. */}
+      <div className="flex items-start gap-4">
+        <Mascot
+          size={64}
+          className="shrink-0 -mt-1"
+          mood={
+            !s ? "thinking"                              // still loading
+            : s.counts.needsAttention > 0 ? "oops"       // chats are waiting on a human
+            : s.counts.kbDocuments === 0 ? "sleeping"    // nothing taught yet
+            : "happy"
+          }
+          label="Talko, your assistant"
+        />
+        <div>
+          <h2 className="text-xl font-bold">Welcome</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            {s && s.counts.needsAttention > 0
+              ? <>{s.counts.needsAttention} conversation{s.counts.needsAttention === 1 ? " is" : "s are"} waiting on a human — the AI handed {s.counts.needsAttention === 1 ? "it" : "them"} over. Everything else is running.</>
+              : s && s.counts.kbDocuments === 0
+                ? <>Nothing in the knowledge base yet, so the assistant has no business facts to answer from. Add a document or a website URL and it starts working.</>
+                : <>This platform sends WhatsApp broadcasts, and an AI assistant answers replies automatically using your knowledge base. Humans take over anytime from Live Chat.</>}
+          </p>
+        </div>
       </div>
 
       {/* At a glance */}
