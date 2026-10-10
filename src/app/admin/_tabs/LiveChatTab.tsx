@@ -9,6 +9,7 @@ import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatInt
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
+import { EmptyState } from "../_shared";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
 // One step in a lead's ownership trail (which number owned it, and who moved it).
@@ -264,7 +265,13 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               </div>
             </button>
           ))}
-          {visible.length === 0 && <p className="text-center text-ink-400 text-sm py-10">No conversations{q || filter !== "all" ? " match this filter" : " yet"}.</p>}
+          {visible.length === 0 && (
+            (q || filter !== "all")
+              ? <EmptyState mood="searching" title="No conversations match this filter"
+                  body="Try clearing the search, or switch back to All." />
+              : <EmptyState mood="sleeping" title="No conversations yet"
+                  body="When someone messages one of your connected channels, the chat lands here." />
+          )}
         </div>
       </aside>
 

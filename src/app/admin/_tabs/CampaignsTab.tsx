@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, ArrowLeft, BarChart3, Check, ChevronRight, CircleCheck, Loader2, MessageSquare, MousePointerClick, Reply } from "lucide-react";
 import { type Tab } from "../_shared";
+import { EmptyState } from "../_shared";
 
 // ── Campaign history + detail dashboard (funnel, clicks, replies) ─────────────
 type Funnel = { total: number; sent: number; delivered: number; read: number; failed: number; skipped: number };
@@ -199,7 +200,10 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           </button>
         ))}
-        {campaigns.length === 0 && <p className="text-center text-slate-400 text-sm py-8">No campaigns yet.</p>}
+        {campaigns.length === 0 && (
+          <EmptyState mood="sleeping" title="No campaigns yet"
+            body="Broadcasts you send appear here with their delivery, read and reply counts." />
+        )}
       </div>
     </div>
   );

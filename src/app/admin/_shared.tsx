@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from "react";
 import { Loader2, UploadCloud, ArrowRight } from "lucide-react";
+import { Mascot, type Mood } from "@/components/Mascot";
 
 export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
@@ -182,6 +183,32 @@ export function ImgFallback({ url, imgClass, boxClass, icon }: { url: string; im
 }
 
 // ── Sidebar rail primitives (home + per-tab rails) ───────────────────────────
+/**
+ * The empty state the tenant portal never had.
+ *
+ * Every tab was inlining its own bare grey <p>, so an empty screen — often a
+ * new customer's very first impression of a feature — looked like something
+ * had failed to load rather than like a place to begin. This gives them one
+ * shape, and room for the mascot.
+ *
+ * `mood` is opt-in for the same reason as in the Owner Console: a face belongs
+ * where the alternative says nothing, not on every blank panel in the product.
+ * `action` matters more than the character — the useful thing on an empty
+ * screen is the way out of it.
+ */
+export function EmptyState({ mood, title, body, action }: {
+  mood?: Mood; title: string; body?: React.ReactNode; action?: React.ReactNode;
+}) {
+  return (
+    <div className="text-center py-12 px-6">
+      {mood && <div className="mb-3 flex justify-center"><Mascot mood={mood} size={60} /></div>}
+      <p className="text-sm font-bold text-ink-900">{title}</p>
+      {body && <p className="text-[13px] text-ink-400 mt-1 max-w-sm mx-auto leading-relaxed">{body}</p>}
+      {action && <div className="mt-4 flex justify-center">{action}</div>}
+    </div>
+  );
+}
+
 export function RailCard({ title, action, onAction, children }: { title: string; action?: string; onAction?: () => void; children: React.ReactNode }) {
   return (
     <section className="bg-white rounded-card border border-line p-4 space-y-2">

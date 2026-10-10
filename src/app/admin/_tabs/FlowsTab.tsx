@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Trash2 } from "lucide-react";
 import { inp, type FlowSummary, RailCard, StatRow, flowPlatformBadge } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { EmptyState } from "../_shared";
 
 function FlowsRail({ flows }: { flows: FlowSummary[] }) {
   const active = flows.filter(f => f.active).length;
@@ -108,7 +109,10 @@ function FlowsTab() {
             <button onClick={() => remove(f.id)} className="p-1.5 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
-        {flows.length === 0 && <p className="text-center text-slate-400 text-sm py-8">No flows yet — create one above. Example: trigger &quot;hi&quot; → welcome buttons → product info / talk to an agent.</p>}
+        {flows.length === 0 && (
+          <EmptyState mood="idle" title="No flows yet"
+            body={<>Create one above. A simple first flow: trigger &quot;hi&quot; → welcome buttons → product info or talk to an agent.</>} />
+        )}
       </div>
     </div>
     <FlowsRail flows={flows} />
