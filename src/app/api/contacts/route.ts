@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiKeyTenant } from "@/lib/apiauth";
+import { rateLimit, apiPerKey } from "@/lib/ratelimit";
 import { upsertContacts, getContactByPhone } from "@/lib/store";
 import { fireTrigger } from "@/lib/autosend";
 
@@ -9,6 +10,13 @@ import { fireTrigger } from "@/lib/autosend";
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Per TENANT, not per key: the budget belongs to the account, and a bucket
+  // name must never carry secret material. A leaked key sends WhatsApp
+  // messages, which costs money AND sender reputation — and reputation does
+  // not come back, so this is capped per minute rather than per day.
+  const rl = await rateLimit(`api:${tenantId}`, apiPerKey());
+  if (!rl.allowed) return NextResponse.json({ error: "Rate limit exceeded. Slow down and retry." }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } });
   let body: { contacts?: { phone: string; name?: string; email?: string; tags?: string[] }[]; consent?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const rows = Array.isArray(body.contacts) ? body.contacts : [];

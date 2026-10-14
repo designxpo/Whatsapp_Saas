@@ -3,6 +3,7 @@ import { sendEmail } from "@/lib/email";
 // Submitter-controlled text is interpolated into an HTML email body — escaping
 // it stops a message injecting markup into the email the support inbox opens.
 import { escapeHtml } from "@/lib/emailtemplate";
+import { rateLimit, clientIp, CONTACT_PER_IP } from "@/lib/ratelimit";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+
+  // The honeypot only catches a bot that fills every field. One that skips
+  // it sends an email to the support inbox per request, so the cost is
+  // bounded by IP as well. Checked AFTER the body parses, so a malformed
+  // flood cannot consume the budget for honest callers.
+  const rl = await rateLimit(`contact:${clientIp(req)}`, CONTACT_PER_IP);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "Too many messages from this address. Please try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
 
   if (typeof body.website === "string" && body.website.trim()) {
     return NextResponse.json({ success: true });
