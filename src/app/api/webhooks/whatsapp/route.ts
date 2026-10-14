@@ -11,7 +11,8 @@ import {
   setContactAttributes, addContactTag, markOptedIn, landCapturedLead, hasNewerInbound,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
-import { parseRef, stripRef, resolveRef, recordTouch } from "@/lib/handlehub";
+import { parseRef, stripRef, resolveRef, recordTouch, resolveSessionRef, markSessionRefMatched } from "@/lib/handlehub";
+import { utmAttributes } from "@/lib/attribution";
 import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
 import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
@@ -226,16 +227,36 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // lands under that source's label (e.g. "ppc-whatsapp") instead of "WhatsApp";
   // the resolve is a single indexed read and only runs when a ref is present.
   let adSource: string | undefined;   // Handle Hub source label → LSQ lead Source (new leads only)
+  const refAttrs: Record<string, string> = {};
   const hhRef = parseRef(text);
   if (hhRef) {
     const stripped = stripRef(text);
     if (stripped) text = stripped;
-    const src = await resolveRef(tid, hhRef).catch(() => null);
+
+    // A SESSION code first — 12 chars, where a source code is always 7, so
+    // the two can never be confused. A session says which VISITOR this is and
+    // where they came from; a source code only says which link, shared by
+    // everyone who clicked it (0118).
+    const session = await resolveSessionRef(hhRef).catch(() => null);
+    // `from`, not the message id. The column is matched_wa_id and a wamid
+    // cannot be joined to anything; the sender's id ties the session to the
+    // contact it produced, which is the whole point of the metric.
+    if (session) void markSessionRefMatched(hhRef, from);
+
+    // Campaign attribution still comes from the SOURCE code — the session's
+    // when it has one. Without this a graded lead would lose its label.
+    const sourceCode = session ? session.sourceRefCode : hhRef;
+    const src = sourceCode ? await resolveRef(tid, sourceCode).catch(() => null) : null;
     if (src) {
       adSource = src.label;
       void recordTouch(src.id, tid);
-      void setContactAttributes(from, { handle_source: src.label }, tid).catch(() => undefined);
+      refAttrs.handle_source = src.label;
     }
+    // Where they actually came from, in the ad platforms' own words plus one
+    // readable phrase. This is the only copy: the URL that held it ended at
+    // /chat, and WhatsApp carried nothing but the prefilled text.
+    if (session) Object.assign(refAttrs, utmAttributes(session.utm));
+    if (session?.sclxId) refAttrs.sclx_id = session.sclxId;
   }
 
   // Ensure the sender is a contact, then attach to a conversation. An inbound
@@ -243,6 +264,18 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   // imported-but-unconsented contact via markOptedIn).
   const upserted = await upsertContacts([{ phone: from, name: profileName }], "inbound", tid, { consented: true, proof: "WhatsApp inbound message" }, channel?.id ?? null).catch(() => undefined);
   await markOptedIn(from, "inbound", "WhatsApp inbound message", tid).catch(() => undefined);
+
+  // ── Attribution is stamped AFTER the contact exists ──────────────────────
+  //
+  // setContactAttributes looks the contact up and returns silently when it
+  // finds nothing. These writes used to run in the block above — BEFORE
+  // upsertContacts — so on a brand-new number the write landed nowhere and
+  // raised nothing. A brand-new number is every first-time paid visitor,
+  // which is the only person this data is collected for, so the attribution
+  // was lost in exactly the case it existed to cover.
+  if (Object.keys(refAttrs).length) {
+    void setContactAttributes(from, refAttrs, tid).catch(() => undefined);
+  }
   // Brand-new contact → a new lead. Fire once (inserted>0) so CRM connectors
   // sync each lead exactly once instead of on every message.
   if (upserted?.inserted) after(() => emitEvent(tid, "contact.created", { phone: from, name: profileName, channel: "whatsapp" }));
