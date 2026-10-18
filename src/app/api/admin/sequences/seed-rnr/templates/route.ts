@@ -22,7 +22,7 @@
 // names are skipped and reported as skipped.
 
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, isPlatformOwner } from "@/lib/auth";
 import { rnrTemplates, templateDrafts, validateButtons, type RnrSeedOptions } from "@/lib/rnrseed";
 import { createTemplate, fetchTemplates } from "@/lib/whatsapp";
 import { credsFor, listChannels } from "@/lib/channels";
@@ -60,6 +60,9 @@ function chosen(o: RnrSeedOptions & { phase: string }) {
 }
 
 export async function GET(req: Request) {
+  // AnalytixLabs's own RNR campaign: their template names and course lists. Not a
+  // tenant feature, so only the platform owner can reach it.
+  if (!(await isPlatformOwner())) return new Response("Not found", { status: 404 });
   const tenantId = await currentTenantId();
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
   const gate = await guardFeature(tenantId, "sequences"); if (gate) return gate;
@@ -86,6 +89,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  // AnalytixLabs's own RNR campaign: their template names and course lists. Not a
+  // tenant feature, so only the platform owner can reach it.
+  if (!(await isPlatformOwner())) return new Response("Not found", { status: 404 });
   const tenantId = await currentTenantId();
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
   const gate = await guardFeature(tenantId, "sequences"); if (gate) return gate;

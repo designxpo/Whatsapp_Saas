@@ -12,7 +12,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { type Tab, type GoTo } from "../_shared";
-import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/teams";
+import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
 
 type ProgressRow = {
   key: string; team: Team; who: string; channelName: string; shared: boolean;

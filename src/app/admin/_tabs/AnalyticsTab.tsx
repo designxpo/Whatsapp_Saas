@@ -154,8 +154,6 @@ function AnalyticsTab() {
 
   return (
     <div className="max-w-6xl space-y-5">
-      <TrackedLinkAnalytics range={range} />
-
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2>
@@ -171,6 +169,9 @@ function AnalyticsTab() {
         </div>
       </div>
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
+      {/* Where chats came from — follows the range picker above. Lives here, not in
+          Links & QR Codes, which is for creating links, not reading results. */}
+      <TrackedLinkAnalytics range={range} />
       {data && (
         <>
           {/* ── CEO executive overview: week-over-week + AI brief ── */}

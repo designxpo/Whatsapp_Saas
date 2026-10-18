@@ -377,7 +377,7 @@ export default function Admin() {
           {tab === "integrations" && <IntegrationsTab goTo={goTo} />}
           {tab === "settings" && <SettingsTab goTo={goTo} />}
           {tab === "security" && <SecurityTab />}
-          {tab === "team" && <TeamProgressTab me={me ? { role: me.role as "admin" | "lead" | "member", team: (me.team ?? null) as import("@/lib/teams").Team | null } : null} goTo={goTo} />}
+          {tab === "team" && <TeamProgressTab me={me ? { role: me.role as "admin" | "lead" | "member", team: (me.team ?? null) as import("@/lib/team-vocab").Team | null } : null} goTo={goTo} />}
           </>}
         </main>
       </div>

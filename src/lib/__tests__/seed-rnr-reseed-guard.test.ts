@@ -26,7 +26,7 @@ vi.mock("next/server", async (orig) => {
   const real = await orig<typeof import("next/server")>();
   return { ...real, after: (fn: () => unknown) => { void fn; } };
 });
-vi.mock("../../lib/auth", () => ({ requireRoleAdmin: async () => true, currentUser: async () => ({ id: "u1" }), currentTenantId: async () => "t1" }));
+vi.mock("../../lib/auth", () => ({ requireRoleAdmin: async () => true, currentUser: async () => ({ id: "u1" }), currentTenantId: async () => "t1", isPlatformOwner: async () => true }));
 vi.mock("../../lib/feature-guard", () => ({ guardFeature: async () => null }));
 vi.mock("../../lib/team", () => ({ logActivity: () => undefined }));
 vi.mock("../../lib/channels", () => ({ listChannels: async () => [{ id: "ch-1", name: "PPC SM" }], getChannel: async () => ({ id: "ch-1", name: "PPC SM" }) }));

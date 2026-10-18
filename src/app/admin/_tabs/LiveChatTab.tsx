@@ -10,7 +10,7 @@ import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
 import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
-import { TEAM_SHORT, nextTeam, type Team } from "@/lib/teams";
+import { TEAM_SHORT, nextTeam, type Team } from "@/lib/team-vocab";
 import { EmptyState } from "../_shared";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
@@ -1038,7 +1038,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               ))}
             </div>
           )}
-          {/* One-click canned templates (RNR, post-call follow-up…). WhatsApp only —
+          {/* One-click canned templates (follow-up, post-call follow-up…). WhatsApp only —
               they deliver even outside the 24h window and log to the CRM timeline. */}
           {conv?.platform === "whatsapp" && canned.length > 0 && (
             <div className="flex gap-1.5 flex-wrap">

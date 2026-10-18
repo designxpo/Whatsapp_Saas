@@ -504,192 +504,6 @@ type PollCfg = {
 // the library would produce now against what is saved, and says which steps
 // are stale. A rebuild that changes nothing should look like one.
 type SeedStep = { id: string; day: number; template: string; params: string[]; audience: SeqAudience; note: string | null };
-type SeedPreview = {
-  exists: boolean; sequenceId: string | null;
-  steps: SeedStep[];
-  held: { id: string; template: string; reason: string }[];
-  problems: string[];
-  todo: string[];
-  matchingOn?: { course: string; city: string };
-};
-
-function SeedRnrPanel({ seqs, onBuilt }: { seqs: SeqRow[]; onBuilt: () => void }) {
-  const ask = useConfirm();
-  const channels = useChannelList();
-  const live = seqs.find(s => s.name === "RNR follow-up") ?? null;
-  const [channelId, setChannelId] = useState("");
-  const [preview, setPreview] = useState<SeedPreview | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  // Default to the number the journey already goes out from, so a rebuild
-  // cannot silently move it to a different WABA — where the templates are
-  // not approved and every step would fail at send time.
-  useEffect(() => {
-    if (channelId) return;
-    const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
-    setChannelId(live?.channelId ?? wa.find(c => c.isDefault)?.id ?? wa[0]?.id ?? "");
-  }, [channels, live, channelId]);
-
-  useEffect(() => {
-    if (!channelId) return;
-    fetch(`/api/admin/sequences/seed-rnr?channelId=${encodeURIComponent(channelId)}`)
-      .then(r => r.json()).then(d => setPreview(d.error ? null : d)).catch(() => setPreview(null));
-  }, [channelId]);
-
-  // What is saved versus what the library would build now.
-  const diff = (() => {
-    if (!preview || !live) return null;
-    const saved = live.steps ?? [];
-    const order = (xs: { template: string; delay: number }[]) => JSON.stringify(xs);
-    const savedOrder = order(saved.map(x => ({ template: x.action?.templateName ?? "", delay: x.delayMinutes })));
-    const nextOrder = order(preview.steps.map((x, i) => ({
-      template: x.template,
-      delay: Math.max(0, x.day - (preview.steps[i - 1]?.day ?? 0)) * 1440,
-    })));
-    const stale = preview.steps.filter((x, i) => {
-      const got = saved[i];
-      return got?.action?.templateName === x.template
-        && audienceFingerprint(got.audience ?? null) !== audienceFingerprint(x.audience);
-    }).map(x => x.template);
-    return { reorders: savedOrder !== nextOrder, stale };
-  })();
-
-  async function build(force: boolean) {
-    setBusy(true); setMsg(null);
-    try {
-      const d = await fetch("/api/admin/sequences/seed-rnr", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelId, ...(force ? { force: true } : {}) }),
-      }).then(async r => ({ status: r.status, body: await r.json() }));
-
-      // The guard refuses only when the RUNNING ORDER changes, which would
-      // move a lead part-way through onto a different message. Offering
-      // force here rather than hiding it keeps that decision where the facts
-      // are, but it is never the default.
-      if (d.status === 409) {
-        const ok = await ask({
-          title: "This rebuild would move leads already in the journey",
-          tone: "danger", confirmLabel: "Rebuild anyway", typeToConfirm: "REBUILD",
-          message: "Leads track their place by step number. This rebuild changes the running order, so anyone part-way through will jump to whichever message now sits at their position — possibly one they have already had, or one meant for weeks later.",
-          facts: [{ label: "Safer", value: "Stop the enrolments first, then rebuild" }],
-        });
-        if (ok) return void (await build(true));
-        setMsg({ ok: false, text: "Not rebuilt." });
-        return;
-      }
-      if (d.body.error) { setMsg({ ok: false, text: d.body.error }); return; }
-      setMsg({ ok: true, text: d.body.warning ?? `${d.body.created ? "Built" : "Rebuilt"} — ${d.body.steps} steps, ${d.body.audienceRules} audience rule(s).` });
-      onBuilt();
-    } catch { setMsg({ ok: false, text: "Connection error." }); }
-    finally { setBusy(false); }
-  }
-
-  const waChannels = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
-  const stale = diff?.stale ?? [];
-
-  return (
-    <div className="bg-white rounded-card border border-line p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
-            <Workflow className="w-4 h-4 text-brand-700" /> Build the RNR drip
-          </p>
-          <p className="text-[11px] text-ink-400">
-            Builds the five-step follow-up from the message library — steps, audience rules, 10 AM–8 PM window, one message a day, stop on reply. Most of that cannot be set in the sequence editor, so building it by hand produces a different journey.
-          </p>
-        </div>
-        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${stale.length ? "bg-amber-100 text-amber-900" : live ? "bg-brand-700 text-white" : "bg-canvas text-ink-400 border border-line"}`}>
-          {stale.length ? "NEEDS REBUILD" : live ? "UP TO DATE" : "NOT BUILT"}
-        </span>
-      </div>
-
-      {/* The reason somebody opens this panel. */}
-      {stale.length > 0 && (
-        <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 leading-snug space-y-1">
-          <p>
-            <b>{stale.length} step{stale.length === 1 ? " is" : "s are"} running an older course list.</b>{" "}
-            The programme table has changed since this journey was built, and saved steps keep their own copy — so those steps are still reaching whoever they reached before.
-          </p>
-          <p className="text-amber-800">{stale.join(", ")}</p>
-          <p>Rebuilding applies the current list. Nothing else about the journey changes.</p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 flex-wrap">
-        <label className="text-[11px] text-ink-400">Send from</label>
-        <select className={`${inp} !py-1.5 text-xs`} value={channelId} onChange={e => setChannelId(e.target.value)}>
-          <option value="">Pick a number…</option>
-          {waChannels.map(c => <option key={c.id} value={c.id}>{c.name}{c.id === live?.channelId ? " (current)" : ""}</option>)}
-        </select>
-        <button
-          onClick={() => void build(false)}
-          disabled={busy || !channelId || !preview}
-          className={`px-3 py-1 rounded-control text-xs font-bold disabled:opacity-60 ${stale.length ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-900 hover:bg-canvas"}`}
-        >
-          {busy ? "…" : live ? "Rebuild" : "Build the drip"}
-        </button>
-        {msg && <span className={`text-[11px] ${msg.ok ? "text-ink-500" : "text-red-600"}`}>{msg.text}</span>}
-      </div>
-
-      {live && channelId && channelId !== live.channelId && (
-        <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-control px-3 py-1.5 leading-snug">
-          <b>This would move the journey to a different number.</b> Templates are approved per WhatsApp business account, so every step would fail at send time unless they are approved there too.
-        </p>
-      )}
-
-      {preview && (
-        <div className="border border-line rounded-control divide-y divide-line">
-          {preview.steps.map((st, i) => {
-            const isStale = stale.includes(st.template);
-            return (
-              <div key={st.id} className="px-3 py-1.5 flex items-start justify-between gap-3">
-                <span className="text-[12px] text-ink-900 shrink-0">
-                  <b>Day {st.day}</b> <span className="text-ink-400">· {st.template}</span>
-                </span>
-                <span className="text-[11px] text-right min-w-0 break-words">
-                  {st.audience
-                    ? <span className="text-ink-400" title={describeSeqAudience(st.audience, true)}>{describeSeqAudience(st.audience)}</span>
-                    : <span className="text-ink-400">everyone enrolled</span>}
-                  {isStale && <b className="text-amber-800"> · stale</b>}
-                  {i === 0 && !preview.exists && <b className="text-brand-700"> · first message</b>}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Held steps are not a failure — they are steps whose data source does
-          not exist yet, and saying so stops somebody hunting for them. */}
-      {preview?.held?.length ? (
-        <div className="text-[11px] text-ink-400 space-y-0.5">
-          <p className="font-medium text-ink-600">Not included:</p>
-          {preview.held.map(h => <p key={h.id}>· <b className="text-ink-900">{h.template}</b> — {h.reason}</p>)}
-        </div>
-      ) : null}
-
-      {preview?.matchingOn && (
-        <p className="text-[11px] text-ink-400">
-          Matching on the CRM fields <b className="text-ink-900">{preview.matchingOn.course}</b> and{" "}
-          <b className="text-ink-900">{preview.matchingOn.city}</b> — the names LeadSquared uses on this account.
-        </p>
-      )}
-
-      {preview?.todo?.length ? (
-        <div className="text-[11px] text-amber-800 space-y-0.5">
-          <p className="font-medium">Still outstanding:</p>
-          {preview.todo.map((t, i) => <p key={i}>· {t}</p>)}
-        </div>
-      ) : null}
-
-      {preview?.problems?.length ? (
-        <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-1.5">{preview.problems.join(" · ")}</p>
-      ) : null}
-    </div>
-  );
-}
-
 function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
   const ask = useConfirm();
   const [cfg, setCfg] = useState<PollCfg | null>(null);
@@ -755,7 +569,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="flex items-center gap-2 flex-wrap">
         <label className="text-[11px] text-ink-400">Stage</label>
         <input
-          className={`${inp} !py-1.5 text-xs w-44`} placeholder="e.g. Not Reachable"
+          className={`${inp} !py-1.5 text-xs w-44`} placeholder="e.g. Qualified"
           defaultValue={cfg.stage}
           onBlur={e => { if (e.target.value.trim() !== cfg.stage) void save({ stage: e.target.value.trim() }, "Stage changed — the next pass re-seeds and enrols nobody."); }}
         />
@@ -870,7 +684,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
-          <input className={`${inp} !py-1.5 text-xs w-44`} placeholder="LSQ stage, e.g. RNR" value={d.stage}
+          <input className={`${inp} !py-1.5 text-xs w-44`} placeholder="CRM stage, e.g. Contacted" value={d.stage}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, stage: e.target.value } : x)))} />
           <span className="text-[11px] text-ink-400">→</span>
           <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
@@ -1396,7 +1210,6 @@ export default function SequencesTab() {
       <FunnelCoverage seqs={seqs} />
       <SeqMonitorPanel seqs={seqs} />
       <LeadWelcomePanel />
-      <SeedRnrPanel seqs={seqs} onBuilt={load} />
       <StagePollPanel seqs={seqs} />
       <StageDripsPanel seqs={seqs} />
       <ScoreDripsPanel seqs={seqs} />
