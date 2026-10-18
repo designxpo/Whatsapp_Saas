@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, currentTenantId } from "@/lib/auth";
-import { uploadPublic } from "@/lib/supabase";
+import { uploadPublic, UploadRefused } from "@/lib/supabase";
 import { moderateImageFile } from "@/lib/moderation";
 import { errorMessage } from "@/lib/errors";
 
@@ -22,6 +22,9 @@ export async function POST(req: Request) {
     const url = await uploadPublic(file as File);
     return NextResponse.json({ url });
   } catch (err) {
+    // A refused file is the caller's problem and the message is written for them —
+    // "SVG images can carry scripts" tells somebody what to do next.
+    if (err instanceof UploadRefused) return NextResponse.json({ error: err.message }, { status: 400 });
     return NextResponse.json({ error: errorMessage(err) }, { status: 400 });
   }
 }

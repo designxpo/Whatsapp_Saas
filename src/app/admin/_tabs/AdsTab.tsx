@@ -63,7 +63,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [tokenInput, setTokenInput] = useState("");
   const [acctPick, setAcctPick] = useState<{ id: string; name: string; currency?: string }[] | null>(null);
   const [blocked, setBlocked] = useState(false);
-  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "admin")).catch(() => {}); }, []);
 
   const loadDrafts = useCallback(() => { fetch("/api/admin/meta/drafts").then(r => r.json()).then(d => setDrafts(d.drafts ?? [])).catch(() => {}); }, []);
   useEffect(() => { loadDrafts(); }, [loadDrafts]);

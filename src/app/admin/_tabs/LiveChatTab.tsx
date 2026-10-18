@@ -9,6 +9,8 @@ import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatInt
 import { ContactProfile } from "./ContactProfile";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
+import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
+import { TEAM_SHORT, nextTeam, type Team } from "@/lib/teams";
 import { EmptyState } from "../_shared";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
@@ -115,6 +117,194 @@ function subtitleIsPhone(c: { phone: string; platform?: string | null; leadPhone
 }
 
 // ── Live Chat: 3-pane chat workspace (list / thread / contact info) ──────────
+// ── LeadSquared push status ─────────────────────────────────────────────────
+// Mirrors CrmPushHealth in lib/leadsquared.ts (DB counters, no network probe).
+type CrmHealth = {
+  configured: boolean;
+  state: "ok" | "syncing" | "failing" | "off";
+  pending: number; dead: number; held: number;
+  lastOkAt: string | null; lastError: string; detail: string;
+};
+
+// LeadSquared push status, shown across the top of Live Chat.
+//
+// The July 2026 outage ran for a full day before anyone noticed: LeadSquared
+// kept answering lead LOOKUPS while rejecting every activity Create, so the
+// settings page said "Connected" while nothing reached a single timeline. The
+// only honest signal is whether pushes are LANDING, which is what this shows —
+// and it shows it where the work happens rather than on a settings page nobody
+// opens.
+function CrmStatusBar() {
+  const [h, setH] = useState<CrmHealth | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/crm/health").then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setH(d); }).catch(() => {});
+  }, []);
+
+  // Once the CRM side is fixed, held conversations are still parked up to 24h
+  // out by the permanent-failure backoff. This pulls them all back to due-now so
+  // the next cron tick clears the backlog instead of trickling it over a day.
+  async function retryNow() {
+    setRetrying(true); setNote(null);
+    try {
+      const d = await fetch("/api/admin/crm/health", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry" }),
+      }).then(r => r.json());
+      if (d.success) {
+        setNote(`${d.released} queued for immediate retry`);
+        if (d.health) setH(d.health);
+      } else setNote(d.error || "Retry failed");
+    } catch { setNote("Connection error"); }
+    finally { setRetrying(false); }
+  }
+
+  useEffect(() => {
+    // Slower than the 10s conversation poll: sync state changes on the cron's
+    // cadence, not the customer's, so a faster poll would only add load.
+    load();   // first answer straight away — otherwise the bar stays blank until the first poll
+    const t = setInterval(() => { if (!document.hidden) load(); }, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  // Nothing to say before the first response, and nothing worth nagging about
+  // on a workspace that doesn't use LeadSquared at all.
+  if (!h || h.state === "off") return null;
+
+  const tone = {
+    ok:      { dot: "bg-emerald-500", text: "text-ink-600",    bg: "bg-emerald-50/60 border-emerald-100" },
+    syncing: { dot: "bg-amber-500",   text: "text-amber-800",  bg: "bg-amber-50 border-amber-200" },
+    failing: { dot: "bg-red-500",     text: "text-red-800",    bg: "bg-red-50 border-red-200" },
+  }[h.state === "ok" ? "ok" : h.state === "syncing" ? "syncing" : "failing"];
+
+  return (
+    <div className={`shrink-0 flex items-center gap-2 px-4 py-1.5 border-b text-[12px] ${tone.bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot} ${h.state === "failing" ? "animate-pulse" : ""}`} />
+      <span className="font-bold text-ink-900 shrink-0">LeadSquared</span>
+      <span className={`${tone.text} truncate`}>{h.detail}</span>
+      {/* Dead pushes never retry themselves — they are the part a person has to
+          act on, so they get their own count rather than hiding inside detail. */}
+      {note && <span className="shrink-0 text-ink-500">· {note}</span>}
+      {h.held > 0 && (
+        <button
+          onClick={retryNow}
+          disabled={retrying}
+          title="Release every held conversation so the next sync retries them immediately"
+          className="ml-auto shrink-0 px-2 py-0.5 rounded-control border border-current/25 font-bold hover:bg-white/60 disabled:opacity-50"
+        >
+          {retrying ? "Retrying…" : `Retry ${h.held} now`}
+        </button>
+      )}
+      {h.held === 0 && h.dead > 0 && (
+        <span className="ml-auto shrink-0 font-bold text-red-700">{h.dead} gave up</span>
+      )}
+      {h.held === 0 && h.dead === 0 && h.lastOkAt && (
+        <span className="ml-auto shrink-0 text-ink-400" title={new Date(h.lastOkAt).toLocaleString()}>
+          last push {agoShort(h.lastOkAt)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Compact relative time for the status bar ("3m", "2h", "4d").
+function agoShort(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins < 0) return "just now";
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (mins < 24 * 60) return `${Math.floor(mins / 60)}h ago`;
+  return `${Math.floor(mins / (24 * 60))}d ago`;
+}
+
+// "in 8m" / "now" — the mirror of agoShort for a deadline that hasn't passed.
+// A due time already behind us means the flush just hasn't reached this row
+// yet, which is "any moment now", not a negative number.
+function untilShort(iso: string | null): string {
+  if (!iso) return "";
+  const mins = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (!Number.isFinite(mins) || mins <= 0) return "any moment";
+  if (mins < 60) return `in ${mins}m`;
+  if (mins < 24 * 60) return `in ${Math.floor(mins / 60)}h`;
+  return `in ${Math.floor(mins / (24 * 60))}d`;
+}
+
+type CrmChatMap = Record<string, ChatCrmStatus>;
+
+// Which buffer row belongs to this conversation.
+//
+// Tries several identities because one conversation can be reached by more than
+// one: a WhatsApp chat is its phone, an Instagram lead who later shared a number
+// is buffered under that number, and a phone-less IG lead is buffered under its
+// handle. First hit wins; no hit means nothing is waiting, which is the "clear"
+// state rather than "unknown".
+function crmStatusFor(c: Conversation, map: CrmChatMap): ChatCrmStatus {
+  const handle = c.name && c.name.startsWith("@") ? `handle:${c.name}` : null;
+  for (const id of [c.phone, c.leadPhone, handle]) {
+    const k = crmChatKey(id);
+    if (k && map[k]) return map[k];
+  }
+  return { state: "clear", attempts: 0, dueAt: null };
+}
+
+// What each state means in words, so the dot and the pill can never drift apart.
+function crmChatCopy(s: ChatCrmStatus, lastError: string): { tone: string; label: string; title: string } {
+  switch (s.state) {
+    case "held":
+      return {
+        tone: "bg-red-500", label: "Not syncing",
+        title: `This chat is NOT reaching LeadSquared — ${s.attempts} failed attempt${s.attempts === 1 ? "" : "s"}, next try ${untilShort(s.dueAt)}.${lastError ? `\n\n${lastError}` : ""}`,
+      };
+    case "dead":
+      return {
+        tone: "bg-red-600", label: "Gave up",
+        title: "LeadSquared pushes for this chat were abandoned after repeated failures. Nothing will retry on its own.",
+      };
+    case "queued":
+      return {
+        tone: "bg-amber-500", label: "Queued",
+        // Not a fault: messages are batched into ONE timeline note per session
+        // rather than one per message, so a live chat is SUPPOSED to sit here.
+        title: `Waiting to post to LeadSquared. Messages are combined into one timeline note once the chat goes quiet — posts ${untilShort(s.dueAt)}.`,
+      };
+    default:
+      return {
+        tone: "bg-emerald-500", label: "Synced",
+        title: "Nothing is waiting to reach LeadSquared for this chat — every message has been posted.",
+      };
+  }
+}
+
+// Compact marker for the conversation list: one dot per row, no text, so 100
+// chats stay scannable and the eye only stops on the red ones.
+function CrmChatDot({ status, lastError }: { status: ChatCrmStatus; lastError: string }) {
+  const { tone, title } = crmChatCopy(status, lastError);
+  return (
+    <span
+      title={title}
+      className={`w-2 h-2 rounded-full shrink-0 ${tone} ${status.state === "held" || status.state === "dead" ? "animate-pulse" : ""}`}
+    />
+  );
+}
+
+// Spelled-out version for the open chat's header, where there is room to say
+// which system this is and there is only one conversation to describe.
+function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: string }) {
+  const { tone, label, title } = crmChatCopy(status, lastError);
+  const bg = status.state === "clear" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+    : status.state === "queued" ? "bg-amber-50 text-amber-800 border-amber-200"
+    : "bg-red-50 text-red-700 border-red-200";
+  return (
+    <span title={title} className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[10px] font-bold ${bg}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${tone}`} />
+      LSQ · {label}
+    </span>
+  );
+}
+
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -123,20 +313,58 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   // Narrow further to ONE number/account/Page of the selected platform — only
   // shown when that platform has 2+ connected channels.
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
+  // Set when the signed-in member is pinned to one team — the inbox then only
+  // ever contains that team's numbers, and we say so rather than letting it look
+  // like chats went missing.
+  const [scopedTeam, setScopedTeam] = useState<Team | null>(null);
+  // phone → pipeline stage, batched by the conversations endpoint so the inbox
+  // can show WHERE each lead is, not only which number it arrived on.
+  const [stages, setStages] = useState<Record<string, { name: string; color: string | null; isWon: boolean; isLost: boolean }>>({});
+  const [stageFilter, setStageFilter] = useState<string>("");
   const channelList = useChannelList();
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
 
+  // The number filter goes to the SERVER, not the browser. This endpoint returns
+  // at most 150 conversations ordered by recency, so filtering client-side would
+  // search only the newest page and quietly hide the rest of that number's chats.
+  // Refetching on change also means the counts and the list agree.
   const load = useCallback(() => {
-    fetch("/api/admin/conversations").then(r => r.ok ? r.json() : { conversations: [] })
-      .then(d => setConvos(d.conversations ?? [])).catch(() => {});
-  }, []);
+    const qs = channelFilter ? `?channelId=${encodeURIComponent(channelFilter)}` : "";
+    fetch(`/api/admin/conversations${qs}`).then(r => r.ok ? r.json() : { conversations: [] })
+      .then(d => { setConvos(d.conversations ?? []); setStages(d.stages ?? {}); setScopedTeam(d.scopedToTeam ?? null); }).catch(() => {});
+  }, [channelFilter]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     const t = setInterval(() => { if (!document.hidden) load(); }, 10_000);
-    return () => clearInterval(t);
+    // The poll skips hidden tabs, so coming back to one left the list showing
+    // whatever was true when it was last visible for up to another 10s. Fetch on
+    // the way back in: that gap is exactly when the inbox looks frozen.
+    const wake = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
   }, [load]);
+
+  // Per-chat CRM markers. Polled a third as often as the conversations: this
+  // state moves on the flush cron's cadence, not the customer's, so matching the
+  // 10s message poll would only add load for no extra freshness.
+  const [crmChats, setCrmChats] = useState<CrmChatMap>({});
+  const [crmOn, setCrmOn] = useState(false);
+  const [crmErr, setCrmErr] = useState("");
+  useEffect(() => {
+    const pull = () => fetch("/api/admin/crm/chat-status").then(r => r.ok ? r.json() : null)
+      .then(d => { if (!d) return; setCrmOn(!!d.configured); setCrmChats(d.statuses ?? {}); setCrmErr(d.lastError ?? ""); })
+      .catch(() => {});
+    pull();
+    const t = setInterval(() => { if (!document.hidden) pull(); }, 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   // Apply a deep-link intent on arrival (Home cards / Pipeline / Contacts).
   // Opening a specific person clears any filter so their chat can't be hidden.
@@ -164,14 +392,30 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const inView = convos.filter(c => view === "comments" ? !!c.isComment : !c.isComment);
   const visible = inView
     .filter(c => platform === "all" ? true : onPlatform(c, platform))
+    // Belt-and-braces only: the server already applied this. Kept so a list still
+    // in flight from the previous number can't flash the wrong chats.
     .filter(c => !channelFilter || c.channelId === channelFilter)
+    .filter(c => !stageFilter || (stageFilter === "__none" ? !stages[c.phone] : stages[c.phone]?.name === stageFilter))
     .filter(c => filter === "all" ? true : filter === "needs_reply" ? !!c.needsReply : filter === "escalated" ? c.status === "escalated" : !c.botEnabled)
     .filter(c => !q || (c.name ?? "").toLowerCase().includes(q) || c.phone.includes(q));
+  const stageNames = [...new Set(inView.map(c => stages[c.phone]?.name).filter(Boolean))] as string[];
   const platformChannels = platform === "all" ? [] : channelList.filter(c => (c.kind ?? "whatsapp") === platform);
   const waCount = inView.filter(c => onPlatform(c, "whatsapp")).length;
   const igCount = inView.filter(c => onPlatform(c, "instagram")).length;
   const fbCount = inView.filter(c => onPlatform(c, "messenger")).length;
   const wcCount = inView.filter(c => onPlatform(c, "webchat")).length;
+
+  // The row's clock. Ranking and labelling by the last INBOUND alone made a chat
+  // we had replied to twenty minutes ago read as hours old, because that was when
+  // the customer last wrote — while the preview underneath showed our reply, so
+  // the row contradicted itself. The later of the two is the last touch.
+  const lastTouch = (c: Conversation) => {
+    const t = Math.max(
+      c.lastInboundAt ? Date.parse(c.lastInboundAt) : 0,
+      c.lastOutboundAt ? Date.parse(c.lastOutboundAt) : 0,
+    );
+    return t ? new Date(t).toISOString() : null;
+  };
 
   const timeAgo = (iso: string | null) => {
     if (!iso) return "";
@@ -183,7 +427,9 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   };
 
   return (
-    <div className="-m-6 h-[calc(100vh-64px)] flex bg-white overflow-hidden">
+    <div className="-m-6 h-[calc(100vh-64px)] flex flex-col bg-white overflow-hidden">
+      <CrmStatusBar />
+      <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
       <aside className="w-80 shrink-0 border-r border-line flex flex-col min-h-0">
         <div className="p-4 pb-3 space-y-3 border-b border-line">
@@ -234,6 +480,24 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           )}
+          {/* A pinned member's inbox is a subset by design. Saying so stops it
+              reading as missing data — the failure mode this whole split risks. */}
+          {scopedTeam && (
+            <p className="text-[11px] text-blue-700 bg-blue-50 rounded-control px-2.5 py-1.5">
+              Showing the <b>{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only. Other teams&apos; chats are handled in their own inbox.
+            </p>
+          )}
+          {/* Pipeline stage — the "where is this lead" axis, next to the "which
+              number" one. Stages come from the Pipeline tab, so this needs no
+              configuration of its own. */}
+          {stageNames.length > 0 && (
+            <select className={`${inp} w-full !py-1.5 text-xs`} value={stageFilter} onChange={e => { setStageFilter(e.target.value); setSelected(null); }}
+              title="Show only leads sitting at one pipeline stage">
+              <option value="">All stages</option>
+              {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
+              <option value="__none">No stage set</option>
+            </select>
+          )}
           <div className="flex gap-1 flex-wrap">
             {([["all", "All"], ["needs_reply", "Needs reply"], ["escalated", "Escalated"], ["bot_off", "Human"]] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)} className={`px-2.5 py-1 rounded-full text-[11px] font-bold ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-400 hover:text-ink-600"}`}>{label}</button>
@@ -253,13 +517,22 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[13px] font-semibold text-ink-900 truncate">{contactDisplayName(c)}</p>
-                  <span className="text-[10px] text-ink-400 shrink-0">{timeAgo(c.lastInboundAt ?? c.lastOutboundAt ?? null)}</span>
+                  {/* Whether THIS chat's messages are reaching LeadSquared. Hidden
+                      entirely when LeadSquared isn't configured, so a workspace
+                      that doesn't use it sees no unexplained dots. */}
+                  {crmOn && <CrmChatDot status={crmStatusFor(c, crmChats)} lastError={crmErr} />}
+                  <span className="text-[10px] text-ink-400 shrink-0">{timeAgo(lastTouch(c))}</span>
                 </div>
                 <p className="text-[12px] text-ink-400 truncate">{c.lastMessage ?? "—"}</p>
                 <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                   {c.needsReply && <span className="w-2 h-2 rounded-full bg-brand-500" title="awaiting reply" />}
                   {c.status === "escalated" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600">ESCALATED</span>}
                   {!c.botEnabled && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-canvas text-ink-400">BOT OFF</span>}
+                  {stages[c.phone] && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#64748b" }}
+                      title={`Pipeline stage: ${stages[c.phone].name}`}>{stages[c.phone].name.toUpperCase()}</span>
+                  )}
                   {c.assignedTo && <span className="text-[9px] font-bold text-brand-700 truncate">@{c.assignedTo}</span>}
                 </div>
               </div>
@@ -276,13 +549,14 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
       </aside>
 
       {selected
-        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} />
+        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} crm={crmOn ? crmChats : null} crmError={crmErr} />
         : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-400 bg-canvas/40">
             <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center"><MessageSquare className="w-6 h-6" /></div>
             <p className="text-sm font-medium">Select a conversation to start chatting</p>
           </div>
         )}
+      </div>
     </div>
   );
 }
@@ -376,7 +650,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
 }
 
 // Middle thread + right contact-info pane for one conversation.
-function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; goTo: (t: Tab) => void }) {
+function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChanged: () => void; goTo: (t: Tab) => void; crm?: CrmChatMap | null; crmError?: string }) {
   const [conv, setConv] = useState<Conversation | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -414,6 +688,10 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
   const [showTools, setShowTools] = useState(false);
   const [aiAgents, setAiAgents] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [actError, setActError] = useState("");
+  // What the last hand-over said back — which number took the lead, and whether it
+  // has left this person's inbox. Shown, not swallowed: a chat that leaves the
+  // inbox with no explanation reads as the conversation having been lost.
+  const [handNotice, setHandNotice] = useState("");
   const [showTemplate, setShowTemplate] = useState(false);
   const [reactMsgId, setReactMsgId] = useState<string | null>(null);
   const [contact, setContact] = useState<{ email: string | null; tags: string[]; attributes: Record<string, string> } | null>(null);
@@ -502,6 +780,41 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
     finally { setDrafting(false); }
   }
 
+  // Push this lead to the next phase. Its own fetch rather than act(), because the
+  // server's answer matters here: which number took it, whether it has left this
+  // person's inbox, and — when a team works several numbers — the list to choose
+  // from instead of a guess.
+  async function handToTeam(team: Team, channelId?: string) {
+    setBusy(true); setActError(""); setHandNotice("");
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "handToTeam", team, ...(channelId ? { channelId } : {}) }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setActError(d.error ?? `Failed (HTTP ${res.status})`); return; }
+      setHandNotice(d.alreadyThere ? `Already on a ${TEAM_SHORT[team]} number.` : (d.notice ?? "Handed over."));
+      load(); onChanged();
+    } catch { setActError("Could not reach the server"); }
+    finally { setBusy(false); }
+  }
+
+  // Ask LeadSquared who owns this lead right now and apply it.
+  async function syncCrmOwner() {
+    setBusy(true); setActError(""); setHandNotice("");
+    try {
+      const res = await fetch(`/api/admin/conversations/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "syncCrmOwner" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setActError(d.error ?? `Failed (HTTP ${res.status})`); return; }
+      setHandNotice(d.moved ? `Moved — ${d.note}` : `No change — ${d.note}`);
+      load(); onChanged();
+    } catch { setActError("Could not reach the server"); }
+    finally { setBusy(false); }
+  }
+
   async function act(payload: Record<string, unknown>): Promise<boolean> {
     setBusy(true); setActError("");
     try {
@@ -566,6 +879,10 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             {/* Which number/account/Page this chat lives on — replies always
                 leave from it, so the agent should see it at a glance. */}
             {conv?.channelId && <ChannelNameBadge channelId={conv.channelId} />}
+            {/* Has this specific conversation landed on the lead's LeadSquared
+                timeline? The bar above answers it for the whole inbox; sales
+                asks it about the person they're looking at. */}
+            {conv && crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
           </div>
           {conv && (
             <div className="flex items-center gap-2 shrink-0 text-xs">
@@ -868,6 +1185,54 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
                       </div>
                     )}
 
+                    {/* Hand the lead to the NEXT PHASE. The funnel is marketing → sales →
+                        ops, so this offers only the step forward; sideways or backwards
+                        moves stay on the picker below, where the person is choosing a
+                        number knowingly. Appears only once numbers have teams. */}
+                    {(() => {
+                      const curTeam = (threadChannels.find(c => c.id === conv.channelId)?.team ?? null) as Team | null;
+                      const to = nextTeam(curTeam);
+                      if (!to) return null;
+                      const targets = owners.filter(c => c.team === to);
+                      if (!targets.length) return null;
+                      return (
+                        <div className="mb-2">
+                          {targets.length === 1 ? (
+                            <button
+                              disabled={busy}
+                              onClick={() => handToTeam(to)}
+                              title={`Move this lead onto ${targets[0].name}, the ${TEAM_SHORT[to]} number. Replies then go out from there.`}
+                              className="w-full px-2.5 py-1.5 rounded-control bg-ink-900 hover:bg-ink-800 text-white text-[11px] font-bold disabled:opacity-60">
+                              Hand to {TEAM_SHORT[to]} → {targets[0].name}
+                            </button>
+                          ) : (
+                            <select
+                              disabled={busy}
+                              defaultValue=""
+                              onChange={e => { if (e.target.value) { void handToTeam(to, e.target.value); e.target.value = ""; } }}
+                              className="w-full border border-ink-900 rounded-control px-2.5 py-1.5 text-xs font-bold text-ink-900 bg-white focus:outline-none">
+                              <option value="">Hand to {TEAM_SHORT[to]} …</option>
+                              {targets.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      );
+                    })()}
+
+                    {conv.platform === "whatsapp" && crm && (
+                      <button
+                        disabled={busy}
+                        onClick={() => void syncCrmOwner()}
+                        title="Read this lead's owner from LeadSquared and move the chat onto that person's number."
+                        className="mb-2 w-full px-2.5 py-1.5 rounded-control border border-line text-[11px] font-semibold text-ink-600 hover:bg-canvas disabled:opacity-60">
+                        Sync owner from LeadSquared
+                      </button>
+                    )}
+
+                    {handNotice && (
+                      <p className="mb-2 text-[11px] text-ink-600 bg-canvas border border-line rounded-control px-2.5 py-1.5 leading-relaxed">{handNotice}</p>
+                    )}
+
                     <label className="text-[11px] text-ink-400">Replies go out from</label>
                     <select
                       disabled={busy}
@@ -970,12 +1335,14 @@ function ChatView({ id, onChanged, goTo }: { id: string; onChanged: () => void; 
             <div>
               <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Details collected</p>
               <div className="border border-line rounded-control divide-y divide-line">
-                {Object.entries(contact.attributes).map(([k, v]) => (
-                  <div key={k} className="px-3 py-1.5 flex items-start justify-between gap-3">
+                {Object.entries(contact.attributes).map(([k, v]) => {
+                  const value = String(v ?? "");
+                  const ownLine = value.length > 48 || (!/\s/.test(value) && value.length > 28);
+                  return <div key={k} className={`px-3 py-1.5 gap-3 ${ownLine ? "" : "flex items-start justify-between"}`}>
                     <span className="text-[11px] text-ink-400 capitalize shrink-0">{k.replaceAll("_", " ")}</span>
-                    <span className="text-[12px] text-ink-900 font-medium text-right break-words">{v}</span>
-                  </div>
-                ))}
+                    <span className={ownLine ? "mt-0.5 block max-h-32 overflow-y-auto whitespace-pre-wrap break-all text-[12px] text-ink-900 font-medium" : "min-w-0 text-[12px] text-ink-900 font-medium text-right break-words"}>{value}</span>
+                  </div>;
+                })}
               </div>
             </div>
           )}

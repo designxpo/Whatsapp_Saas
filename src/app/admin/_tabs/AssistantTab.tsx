@@ -3,8 +3,10 @@
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
-import { ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
+
+import { areaChoices } from "@/lib/kblibrary";
 
 // AI Knowledge Base: answer-engine split, latency/savings, personas, inbox.
 type RouterStatsData = {
@@ -83,11 +85,26 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [docs, setDocs] = useState<KbDoc[]>([]);
   const [backendReady, setBackendReady] = useState(true);
+  // The OKF library. Absent until 0105/0106 are applied, so a failure here is
+  // "not set up yet" and must not blank the documents list above it.
+  const [review, setReview] = useState<ReviewItem[]>([]);
+  const [areas, setAreas] = useState<AreaCount[]>([]);
+  const [spine, setSpine] = useState<{ slug: string; title: string }[]>([]);
+  const [mismatches, setMismatches] = useState<Mismatch[]>([]);
+  const [libraryOn, setLibraryOn] = useState(false);
 
   const load = useCallback(() => {
     fetch("/api/admin/kb").then(r => { if (!r.ok) throw new Error(); return r.json(); })
       .then(d => { setDocs(d.documents ?? []); setEnabled(d.botEnabled ?? null); setBackendReady(true); })
       .catch(() => setBackendReady(false));
+    fetch("/api/admin/kb/concepts").then(r => r.ok ? r.json() : null)
+      .then(d => { if (!d || d.error) return; setReview(d.review ?? []); setAreas(d.areas ?? []); setSpine(d.spine ?? []); setLibraryOn(!!d.live); })
+      .catch(() => {});
+    // Separately, and after: the scan reads every chunk of every document, and
+    // the tab should not wait on it to show the documents.
+    fetch("/api/admin/kb/concepts?mismatches=1").then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && !d.error) setMismatches(d.mismatches ?? []); })
+      .catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -128,6 +145,32 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {/* Test the assistant (no WhatsApp send) */}
       <TestAssistantBox />
+
+      {/* The OKF library. Only shown once something has been filed into it —
+          before that it is noise on a screen about documents. */}
+      {(review.length > 0 || areas.length > 0) && (
+        <>
+          <KbReviewQueue items={review} onResolved={load} />
+          <KbConceptBrowser areas={areas} spine={spine} />
+          <KbLibraryActions docs={docs.length} onChanged={load} />
+          {!libraryOn && areas.length > 0 && (
+            <p className="text-[11px] text-slate-400 -mt-3">
+              The library is being built but is not answering yet — replies still come from the documents below.
+            </p>
+          )}
+        </>
+      )}
+
+      {review.length === 0 && areas.length === 0 && docs.length > 0 && (
+        <KbLibraryActions docs={docs.length} onChanged={load} />
+      )}
+
+      {/* Disagreements between uploads exist whether or not the library has
+          been built, so this is not gated on it. */}
+      {docs.length > 0 && <KbMismatches items={mismatches} />}
+
+      {/* How to organise what you upload — the OKF library's shape */}
+      <KbStructureGuide />
 
       {/* Knowledge base */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -274,3 +317,379 @@ function TestAssistantBox() {
 
 
 export default AssistantTab;
+
+function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => void }) {
+  const [busy, setBusy] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [check, setCheck] = useState<{ ready: boolean; reason: string } | null>(null);
+
+  const post = async (payload: Record<string, unknown>, label: string) => {
+    setBusy(label); setNote(null); setCheck(null);
+    try {
+      const r = await fetch("/api/admin/kb/concepts", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      }).then(x => x.json()).catch(() => ({ error: "request failed" }));
+      if (r.error) { setNote(r.error); return; }
+      if (r.verdict) setCheck(r.verdict);
+      if (r.converting) setNote(`Converting ${r.converting} document${r.converting === 1 ? "" : "s"} in the background. Reload in a minute.`);
+      onChanged();
+    } finally { setBusy(""); }
+  };
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <p className="text-xs font-bold text-slate-400 uppercase">Library tools</p>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button disabled={!!busy || !docs} onClick={() => post({ convert: "all" }, "convert")}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {busy === "convert" ? "Converting…" : `Convert ${docs} document${docs === 1 ? "" : "s"}`}
+        </button>
+        <button disabled={!!busy} onClick={() => post({ evaluate: true }, "evaluate")}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+          {busy === "evaluate" ? "Comparing…" : "Compare against live answers"}
+        </button>
+        <a href="/api/admin/kb/concepts/export"
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50">
+          Download bundle
+        </a>
+      </div>
+
+      <p className="text-[11px] text-slate-400">
+        Converting reads documents already uploaded and files them into the library. It is safe to run twice — a
+        document restating itself merges rather than duplicating.
+      </p>
+
+      {note && <p className="text-[12px] text-slate-600">{note}</p>}
+
+      {check && (
+        <div className={`rounded-lg border px-3 py-2 ${check.ready ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+          <p className={`text-[12px] font-semibold ${check.ready ? "text-emerald-800" : "text-amber-800"}`}>
+            {check.ready ? "No coverage lost" : "Not ready to switch"}
+          </p>
+          <p className="text-[11px] text-slate-600 mt-0.5">{check.reason}</p>
+          <p className="text-[10px] text-slate-400 mt-1">
+            This compares what each index returns. It cannot say the library is more accurate — there is no answer key —
+            so read the flagged cases before switching.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type Mismatch = {
+  subject: string; field: string; preferred: string;
+  claims: { value: string; source: string; path: string }[];
+  stale: { value: string; source: string; path: string }[];
+};
+
+function KbMismatches({ items }: { items: Mismatch[] }) {
+  const label = (f: string) =>
+    f.startsWith("price:") ? f.slice(6).replace(/-/g, " ") : f.replace(/_/g, " ");
+
+  if (!items.length) {
+    return (
+      <section className="bg-white rounded-card border border-line p-5">
+        <p className="text-xs font-bold text-slate-400 uppercase">Source mismatches</p>
+        <p className="text-sm text-slate-500 mt-1">
+          No disagreements found. Every figure stated by more than one document matches.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-slate-400 uppercase">Source mismatches</p>
+        <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+          {items.length} to fix
+        </span>
+      </div>
+      <p className="text-sm text-slate-500">
+        Two documents give different numbers for the same thing. The assistant already uses the
+        higher-priority one — these are the documents that still need correcting at source.
+      </p>
+
+      <div className="space-y-3">
+        {items.map((m, i) => (
+          <div key={`${m.subject}-${m.field}-${i}`} className="rounded-lg border border-line overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-line flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <span className="text-sm font-semibold text-brand-dark">{m.subject}</span>
+              <code className="text-[11px] text-slate-500">{label(m.field)}</code>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {m.claims.map((c, j) => {
+                const wins = c.value === m.preferred;
+                return (
+                  <div key={j} className="px-3 py-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className={`font-mono text-sm font-semibold ${wins ? "text-emerald-700" : "text-red-700"}`}
+                          style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {m.field.startsWith("price:") ? `₹${Number(c.value).toLocaleString("en-IN")}` : c.value}
+                    </span>
+                    <span className="text-[12px] text-slate-600 min-w-0 truncate">{c.source || "unknown source"}</span>
+                    <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wide ${wins ? "text-emerald-700" : "text-red-700"}`}>
+                      {wins ? "in use" : "fix this"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+type ReviewItem = {
+  incoming: { id: string; path: string; area: string; title: string | null; body: string; tags: string[]; reviewNote: string | null; sources: string[] };
+  live: { id: string; path: string; title: string | null; body: string; sources: string[] } | null;
+};
+
+type AreaCount = { area: string; active: number; pending: number };
+
+function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const act = async (id: string, which: "approve" | "reject") => {
+    setBusy(id);
+    try {
+      await fetch("/api/admin/kb/concepts", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [which]: id }),
+      });
+      onResolved();
+    } finally { setBusy(null); }
+  };
+
+  if (!items.length) {
+    return (
+      <section className="bg-white rounded-card border border-line p-5">
+        <p className="text-xs font-bold text-slate-400 uppercase">Review queue</p>
+        <p className="text-sm text-slate-500 mt-1">Nothing waiting. Uploads that agree with what is published go live on their own.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-bold text-slate-400 uppercase">Review queue</p>
+        <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+          {items.length} waiting
+        </span>
+      </div>
+      <p className="text-sm text-slate-500">
+        These were held back. Until one is approved the published answer keeps being used.
+      </p>
+
+      <div className="space-y-3">
+        {items.map(it => (
+          <div key={it.incoming.id} className="rounded-lg border border-line overflow-hidden">
+            <div className="px-3 py-2 bg-slate-50 border-b border-line flex items-center justify-between gap-2">
+              <code className="text-[11px] text-slate-500 truncate">{it.incoming.path}</code>
+              <span className="text-[11px] text-slate-400 shrink-0">from {it.incoming.sources.join(", ") || "unknown"}</span>
+            </div>
+
+            {it.incoming.reviewNote && (
+              <p className="px-3 pt-2 text-[11px] text-amber-800">{it.incoming.reviewNote}</p>
+            )}
+
+            <div className="grid sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
+              <div className="p-3">
+                <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">
+                  {it.live ? "Published now" : "Nothing published yet"}
+                </p>
+                <p className="text-[12px] leading-relaxed text-slate-600 whitespace-pre-wrap">
+                  {it.live ? it.live.body.slice(0, 600) : "—"}
+                </p>
+              </div>
+              <div className="p-3 bg-amber-50/40">
+                <p className="text-[10px] font-bold uppercase text-amber-700 mb-1">Incoming</p>
+                <p className="text-[12px] leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  {it.incoming.body.slice(0, 600)}
+                </p>
+              </div>
+            </div>
+
+            <div className="px-3 py-2 border-t border-line flex items-center justify-end gap-2">
+              <button disabled={busy === it.incoming.id}
+                onClick={() => act(it.incoming.id, "reject")}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-600 hover:bg-slate-50 disabled:opacity-50">
+                Keep published
+              </button>
+              <button disabled={busy === it.incoming.id}
+                onClick={() => act(it.incoming.id, "approve")}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-700 text-white hover:bg-brand-900 disabled:opacity-50">
+                {busy === it.incoming.id ? "Saving…" : "Use incoming"}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function KbConceptBrowser({ areas, spine }: { areas: AreaCount[]; spine: { slug: string; title: string }[] }) {
+  const [open, setOpen] = useState<string | null>(null);
+  const [concepts, setConcepts] = useState<{ id: string; path: string; title: string | null; body: string; tags: string[] }[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async (area: string) => {
+    const r = await fetch(`/api/admin/kb/concepts?area=${encodeURIComponent(area)}`).then(x => x.json()).catch(() => null);
+    setConcepts(r?.concepts ?? []);
+  }, []);
+
+  const pick = (slug: string) => {
+    const next = open === slug ? null : slug;
+    setOpen(next); setEditing(null); setErr("");
+    setConcepts([]);
+    if (next) void load(next);
+  };
+
+  const save = async (id: string) => {
+    setErr("");
+    const r = await fetch("/api/admin/kb/concepts", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ save: id, body: draft }),
+    }).then(x => x.json()).catch(() => ({ error: "save failed" }));
+    if (r.error) { setErr(r.error); return; }
+    setEditing(null);
+    if (open) void load(open);
+  };
+
+  const title = (slug: string) => spine.find(s => s.slug === slug)?.title ?? slug;
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <p className="text-xs font-bold text-slate-400 uppercase">Library</p>
+      {!areas.length && <p className="text-sm text-slate-500">Empty. Nothing has been filed into the library yet.</p>}
+
+      <div className="space-y-1.5">
+        {areas.map(a => (
+          <div key={a.area} className="rounded-lg border border-line">
+            <button onClick={() => pick(a.area)} className="w-full flex items-center justify-between px-3 py-2 text-left">
+              <span className="text-sm font-semibold text-brand-dark">{title(a.area)}</span>
+              <span className="flex items-center gap-2 text-[11px] text-slate-400">
+                {a.pending > 0 && <span className="text-amber-700 font-semibold">{a.pending} waiting</span>}
+                <span>{a.active} live</span>
+                <ChevronRight className={`w-3.5 h-3.5 transition-transform ${open === a.area ? "rotate-90" : ""}`} />
+              </span>
+            </button>
+
+            {open === a.area && (
+              <div className="border-t border-line divide-y divide-slate-100">
+                {!concepts.length && <p className="px-3 py-2 text-[12px] text-slate-400">Loading…</p>}
+                {concepts.map(c => (
+                  <div key={c.id} className="px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-semibold text-brand-dark truncate">{c.title ?? c.path}</p>
+                        <code className="text-[10px] text-slate-400">{c.path}</code>
+                      </div>
+                      <button onClick={() => { setEditing(editing === c.id ? null : c.id); setDraft(c.body); setErr(""); }}
+                        className="text-[11px] font-semibold text-brand-700 hover:underline shrink-0">
+                        {editing === c.id ? "Cancel" : "Edit"}
+                      </button>
+                    </div>
+
+                    {editing === c.id ? (
+                      <div className="mt-2 space-y-2">
+                        <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={8}
+                          className="w-full border border-line rounded-lg p-2 text-[12px] font-mono leading-relaxed" />
+                        {err && <p className="text-[11px] text-red-600">{err}</p>}
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] text-slate-400">Saving re-embeds this concept only.</p>
+                          <button onClick={() => save(c.id)}
+                            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-brand-700 text-white hover:bg-brand-900">Save</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 mt-1 line-clamp-2">{c.body.slice(0, 180)}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function KbStructureGuide() {
+  const [open, setOpen] = useState(false);
+  const areas = areaChoices();
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between text-left group">
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-slate-400 uppercase">Recommended structure</p>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {areas.length} subject areas. Upload against these and the assistant answers from one place per subject instead of nine.
+          </p>
+        </div>
+        <ChevronRight className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+      </button>
+
+      {open && (
+        <div className="space-y-4 pt-1">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {areas.map(a => (
+              <div key={a.slug} className="rounded-lg border border-line bg-slate-50 p-3">
+                <div className="flex items-baseline gap-2">
+                  <span className="text-sm font-bold text-brand-dark">{a.title}</span>
+                  <code className="text-[10px] text-slate-400">{a.slug}/</code>
+                </div>
+                <p className="text-[11px] leading-snug text-slate-500 mt-1">{a.description}</p>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  e.g. {a.examples.slice(0, 3).join(" · ")}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-line p-3 space-y-2">
+            <p className="text-xs font-bold text-slate-400 uppercase">Uploading for the best answers</p>
+            <ul className="text-[12px] leading-relaxed text-slate-600 space-y-1.5">
+              <li><b className="text-brand-dark">Use headings.</b> Every heading becomes one answerable concept. A document with no headings is split mechanically and flagged for review — four of the current ten are in that state.</li>
+              <li><b className="text-brand-dark">Prefer Markdown or text over PDF.</b> PDF extraction loses heading structure, which is why one 174,000-character upload could not be split at all.</li>
+              <li><b className="text-brand-dark">One subject per heading.</b> Keep a figure and its conditions together — a fee separated from what it covers gets quoted without them.</li>
+              <li><b className="text-brand-dark">Do not re-upload the same knowledge in another format.</b> A second copy does not add anything; it gives the assistant a second answer to choose between.</li>
+              <li><b className="text-brand-dark">Leave out blog and SEO pages.</b> Articles explaining SQL or statistics are not what a sales assistant should answer from, and they currently outnumber the real knowledge.</li>
+              <li><b className="text-brand-dark">Tag by audience, not by source.</b> The tag decides which numbers may use a document. &ldquo;brochure&rdquo; describes where it came from, which the system already records on its own.</li>
+            </ul>
+          </div>
+
+          <div className="rounded-lg border border-line p-3 space-y-2">
+            <p className="text-xs font-bold text-slate-400 uppercase">When two documents disagree</p>
+            <ol className="text-[12px] leading-relaxed text-slate-600 space-y-1 list-decimal pl-4">
+              <li><b className="text-brand-dark">Website</b> — public and kept current, so it is treated as the most accurate.</li>
+              <li><b className="text-brand-dark">Brochure</b> — a snapshot, which goes stale between printings.</li>
+              <li><b className="text-brand-dark">Everything else</b> — mail templates, exports, older knowledge bases.</li>
+            </ol>
+            <p className="text-[11px] text-slate-500">
+              A higher-ranked source replaces a lower-ranked one automatically and the old version is kept, so the
+              change can be traced. A lower-ranked one never overrides: it is filed away unpublished. Only two
+              sources of <em>equal</em> rank reach the review queue, because no ranking can settle those.
+            </p>
+          </div>
+
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] leading-snug text-amber-800">
+              An upload that <b>contradicts</b> a published answer is held for review rather than going live, and the current
+              answer keeps being used until someone decides between them. Uploading can never silently change what the
+              assistant tells a lead.
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

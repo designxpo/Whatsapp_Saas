@@ -1,4 +1,6 @@
 "use client";
+import TrackedLinkAnalytics from "./TrackedLinkAnalytics";
+import { RANGES, DEFAULT_RANGE, type RangeKey } from "@/lib/analytics-range";
 
 // Analytics tab (lightweight SVG charts + exec brief) — extracted from the
 // monolithic admin/page.tsx and lazy-loaded as its own chunk. Logic unchanged.
@@ -98,14 +100,18 @@ function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { lab
 type ExecBrief = { health: "strong" | "steady" | "at-risk"; headline: string; working: string[]; lacking: string[]; steps: { action: string; why: string }[] };
 
 function AnalyticsTab() {
+  const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [brief, setBrief] = useState<ExecBrief | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
   const [briefErr, setBriefErr] = useState<string | null>(null);
   useEffect(() => {
-    fetch("/api/admin/analytics").then(r => r.json()).then(d => { setData(d.analytics ?? null); setNotice(d.notice ?? null); }).catch(() => {});
-  }, []);
+    // Cleared on range change so a stale window's figures never sit under a new
+    // period's heading.
+    setData(null);
+    fetch(`/api/admin/analytics?range=${range}`).then(r => r.json()).then(d => { setData(d.analytics ?? null); setNotice(d.notice ?? null); }).catch(() => {});
+  }, [range]);
 
   async function genBrief() {
     setBriefBusy(true); setBriefErr(null);
@@ -119,10 +125,18 @@ function AnalyticsTab() {
   const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : "—");
   const sumWeek = (rows: { sent: number; delivered: number; read: number; failed: number }[]) =>
     rows.reduce((a, x) => ({ sent: a.sent + x.sent, delivered: a.delivered + x.delivered, read: a.read + x.read, failed: a.failed + x.failed }), { sent: 0, delivered: 0, read: 0, failed: 0 });
-  const wow = data ? (() => {
-    const prev = sumWeek(data.daily.slice(0, 7)), cur = sumWeek(data.daily.slice(7));
+  // Recent half vs the half before it. This used to hard-code slice(0,7) and
+  // slice(7), which only meant anything while the series was always exactly 14
+  // daily buckets — on a 90-day or all-time range it silently compared two
+  // arbitrary weeks. Splitting down the middle holds for any length, and an odd
+  // bucket count drops the middle one rather than double-counting it.
+  const wow = data && data.daily.length >= 2 ? (() => {
+    const half = Math.floor(data.daily.length / 2);
+    const prev = sumWeek(data.daily.slice(0, half)), cur = sumWeek(data.daily.slice(-half));
     const dpct = prev.sent > 0 ? Math.round(((cur.sent - prev.sent) / prev.sent) * 100) : (cur.sent > 0 ? 100 : 0);
-    return { prev, cur, dpct };
+    // Name the halves from the real bucket size instead of always saying "week".
+    const unit = data.range.granularity === "month" ? "months" : data.range.granularity === "week" ? "weeks" : "days";
+    return { prev, cur, dpct, unit, half, label: `Latest ${half} ${unit} vs the ${half} before` };
   })() : null;
   const r0 = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
   const healthStyle = (h: string) => h === "strong" ? "bg-brand-100 text-brand-700" : h === "at-risk" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700";
@@ -130,19 +144,31 @@ function AnalyticsTab() {
   // Secondary KPIs (the first metric is the green hero card below).
   const cards: { label: string; value: string; sub?: string; icon: React.ReactNode }[] = data ? [
     { label: "Sent today", value: data.messaging.sentToday.toLocaleString(), sub: `cap ${process.env.NEXT_PUBLIC_WA_DAILY_LIMIT ?? "900"}`, icon: <Send className="w-[18px] h-[18px]" /> },
-    { label: "Delivery rate", value: pct(data.messaging.totals.delivered, data.messaging.totals.sent), sub: `${data.messaging.totals.delivered.toLocaleString()} delivered (14d)`, icon: <CircleCheck className="w-[18px] h-[18px]" /> },
-    { label: "Read rate", value: pct(data.messaging.totals.read, data.messaging.totals.sent), sub: `${data.messaging.totals.read.toLocaleString()} read (14d)`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
+    { label: "Delivery rate", value: pct(data.messaging.totals.delivered, data.messaging.totals.sent), sub: `${data.messaging.totals.delivered.toLocaleString()} delivered · ${data.range.short}`, icon: <CircleCheck className="w-[18px] h-[18px]" /> },
+    { label: "Read rate", value: pct(data.messaging.totals.read, data.messaging.totals.sent), sub: `${data.messaging.totals.read.toLocaleString()} read · ${data.range.short}`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
     { label: "Campaigns", value: data.campaigns.total.toLocaleString(), sub: `${data.campaigns.automations} automations`, icon: <Send className="w-[18px] h-[18px]" /> },
     { label: "Conversations", value: data.conversations.total.toLocaleString(), sub: `${data.conversations.escalated} escalated · ${data.conversations.needsReply} awaiting`, icon: <MessageSquare className="w-[18px] h-[18px]" /> },
-    { label: "Failed (14d)", value: data.messaging.totals.failed.toLocaleString(), icon: <AlertTriangle className="w-[18px] h-[18px]" /> },
+    { label: `Failed (${data.range.short})`, value: data.messaging.totals.failed.toLocaleString(), icon: <AlertTriangle className="w-[18px] h-[18px]" /> },
     { label: "KB documents", value: data.kb.documents.toLocaleString(), sub: `${data.kb.ready} ready`, icon: <Database className="w-[18px] h-[18px]" /> },
   ] : [];
 
   return (
     <div className="max-w-6xl space-y-5">
-      <div>
-        <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2>
-        <p className="text-[13px] text-ink-400">Messaging performance across WhatsApp &amp; Instagram</p>
+      <TrackedLinkAnalytics range={range} />
+
+      <div className="flex items-end justify-between gap-3 flex-wrap">
+        <div>
+          <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2>
+          <p className="text-[13px] text-ink-400">Messaging performance across WhatsApp &amp; Instagram</p>
+        </div>
+        {/* The window every figure below is computed over — and the one its labels
+            are written from, so a heading and its numbers cannot disagree. */}
+        <div role="group" aria-label="Date range" className="inline-flex rounded-control border border-line bg-white p-0.5">
+          {RANGES.map(r => (
+            <button key={r.key} onClick={() => setRange(r.key)} aria-pressed={range === r.key}
+              className={`px-3 py-1.5 rounded-[7px] text-xs font-bold ${range === r.key ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"}`}>{r.short}</button>
+          ))}
+        </div>
       </div>
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
       {data && (
@@ -152,7 +178,7 @@ function AnalyticsTab() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><TrendingUp className="w-4 h-4 text-brand-700" /> Executive overview</p>
-                <p className="text-[11px] text-ink-400">This week vs last — with an AI read on what to fix.</p>
+                <p className="text-[11px] text-ink-400">{wow ? wow.label : "Latest period vs the one before"} — the AI brief always reads the last 14 days.</p>
               </div>
               <button onClick={genBrief} disabled={briefBusy} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
                 {briefBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} {brief ? "Refresh brief" : "Generate brief"}
@@ -162,7 +188,7 @@ function AnalyticsTab() {
             {wow && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {[
-                  { label: "Sent this week", value: wow.cur.sent.toLocaleString(), delta: wow.dpct },
+                  { label: `Sent (latest ${wow.half} ${wow.unit})`, value: wow.cur.sent.toLocaleString(), delta: wow.dpct },
                   { label: "Read rate", value: `${r0(wow.cur.read, wow.cur.sent)}%`, delta: r0(wow.cur.read, wow.cur.sent) - r0(wow.prev.read, wow.prev.sent) },
                   { label: "Delivery rate", value: `${r0(wow.cur.delivered, wow.cur.sent)}%`, delta: r0(wow.cur.delivered, wow.cur.sent) - r0(wow.prev.delivered, wow.prev.sent) },
                   { label: "Failures", value: wow.cur.failed.toLocaleString(), delta: wow.cur.failed - wow.prev.failed, invert: true },
@@ -174,7 +200,7 @@ function AnalyticsTab() {
                       <p className="text-[19px] font-bold text-ink-900 tnum leading-none">{k.value}</p>
                       <p className="text-[11px] text-ink-500 font-medium mt-1">{k.label}</p>
                       <p className={`text-[10px] font-bold mt-0.5 ${flat ? "text-ink-400" : good ? "text-brand-700" : "text-red-600"}`}>
-                        {flat ? "no change" : `${up ? "▲" : "▼"} ${Math.abs(k.delta)}${k.label.includes("rate") ? "pp" : ""} vs last week`}
+                        {flat ? "no change" : `${up ? "▲" : "▼"} ${Math.abs(k.delta)}${k.label.includes("rate") ? "pp" : ""} vs the ${wow.half} before`}
                       </p>
                     </div>
                   );
@@ -245,7 +271,7 @@ function AnalyticsTab() {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-sm font-semibold text-ink-900">Messages sent</p>
-                  <p className="text-[12px] text-ink-400">Last 14 days · {data.messaging.totals.sent.toLocaleString()} total</p>
+                  <p className="text-[12px] text-ink-400">{data.range.label} · {data.messaging.totals.sent.toLocaleString()} total</p>
                 </div>
                 <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-bold text-brand-700">{pct(data.messaging.totals.delivered, data.messaging.totals.sent)} delivered</span>
               </div>
@@ -270,7 +296,7 @@ function AnalyticsTab() {
 
           {/* ── Engagement funnel: sent → delivered → read → replied ── */}
           <section className="bg-white rounded-card border border-line p-5">
-            <p className="text-sm font-semibold text-ink-900 mb-1">Engagement funnel <span className="font-normal text-ink-400">— last 14 days</span></p>
+            <p className="text-sm font-semibold text-ink-900 mb-1">Engagement funnel <span className="font-normal text-ink-400">— {data.range.label.toLowerCase()}</span></p>
             <p className="text-[11px] text-ink-400 mb-4">How far your messages travel — and where people drop off.</p>
             {(() => {
               const t = data.messaging.totals;
@@ -279,7 +305,7 @@ function AnalyticsTab() {
                 { label: "Sent", n: t.sent, color: "bg-brand-700" },
                 { label: "Delivered", n: t.delivered, color: "bg-brand-600" },
                 { label: "Read", n: t.read, color: "bg-brand-500" },
-                { label: "Replied", n: data.messaging.replied14d, color: "bg-brand-400" },
+                { label: "Replied", n: data.messaging.repliedInRange, color: "bg-brand-400" },
               ];
               return (
                 <div className="space-y-2">
@@ -326,7 +352,7 @@ function AnalyticsTab() {
                         <div className="bg-canvas rounded-full h-2.5 overflow-hidden"><div className={`${x.c} h-full rounded-full`} style={{ width: `${Math.max(2, (x.n / tot) * 100)}%` }} /></div>
                       </div>
                     ))}
-                    <p className="text-[11px] text-ink-400">{data.messaging.aiReplies14d.toLocaleString()} AI replies sent in the last 14 days.</p>
+                    <p className="text-[11px] text-ink-400">{data.messaging.aiRepliesInRange.toLocaleString()} AI replies sent · {data.range.label.toLowerCase()}.</p>
                   </div>
                 );
               })()}
@@ -340,7 +366,7 @@ function AnalyticsTab() {
                 { l: "Chatbot flows", v: `${data.automation.flowsActive}/${data.automation.flows}`, s: "active / total" },
                 { l: "Drip sequences", v: `${data.automation.sequencesActive}/${data.automation.sequences}`, s: "active / total" },
                 { l: "Active drips", v: data.automation.activeEnrollments.toLocaleString(), s: "people enrolled" },
-                { l: "AI replies (14d)", v: data.messaging.aiReplies14d.toLocaleString() },
+                { l: `AI replies (${data.range.short})`, v: data.messaging.aiRepliesInRange.toLocaleString() },
               ].map(x => (
                 <div key={x.l} className="bg-canvas rounded-control p-3">
                   <p className="text-xl font-bold tnum text-ink-900">{x.v}</p>
@@ -356,7 +382,7 @@ function AnalyticsTab() {
               <p className="text-sm font-semibold text-ink-900 mb-3 flex items-center gap-1.5"><Users className="w-4 h-4 text-brand-700" /> Audience</p>
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{data.contacts.active.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">Active</p></div>
-                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-brand-700">+{data.contacts.new14d.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">New (14d)</p></div>
+                <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-brand-700">+{data.contacts.newInRange.toLocaleString()}</p><p className="text-[11px] text-ink-500 font-medium">New ({data.range.short})</p></div>
                 <div className="bg-canvas rounded-control p-3"><p className="text-xl font-bold tnum text-ink-900">{r0(data.contacts.optedOut, data.contacts.active + data.contacts.optedOut)}%</p><p className="text-[11px] text-ink-500 font-medium">Opt-out rate</p></div>
               </div>
             </section>

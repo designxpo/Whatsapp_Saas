@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { registerClick, siteUrl } from "@/lib/links";
+import { registerClick, siteUrl, safeRedirectTarget } from "@/lib/links";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +9,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const target = code ? await registerClick(code) : null;
-  return NextResponse.redirect(target || siteUrl(), 302);
+  // Only http(s) targets are followed: the value is tenant-supplied and this is
+  // a redirector on the production domain every template links to.
+  return NextResponse.redirect(safeRedirectTarget(target) || siteUrl(), 302);
 }

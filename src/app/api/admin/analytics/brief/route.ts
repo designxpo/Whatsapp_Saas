@@ -15,7 +15,10 @@ export async function POST() {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const a = await getAnalytics(tid);
+  // Pinned to 14 days, not the dashboard default: the week-over-week split below
+  // halves the daily buckets, which is only "this week vs last week" when there are
+  // exactly 14 of them.
+  const a = await getAnalytics(tid, "14d");
   const sum = (rows: typeof a.daily) => rows.reduce((s, d) => ({ sent: s.sent + d.sent, delivered: s.delivered + d.delivered, read: s.read + d.read, failed: s.failed + d.failed }), { sent: 0, delivered: 0, read: 0, failed: 0 });
   const prev = sum(a.daily.slice(0, 7));
   const cur = sum(a.daily.slice(7));
@@ -28,8 +31,8 @@ export async function POST() {
     `Messages sent — this week: ${cur.sent}, last week: ${prev.sent} (${deltaPct >= 0 ? "+" : ""}${deltaPct}% WoW)`,
     `This week delivery rate ${rate(cur.delivered, cur.sent)}%, read rate ${rate(cur.read, cur.sent)}%, failures ${cur.failed} (${rate(cur.failed, cur.sent + cur.failed)}%)`,
     `Last week delivery rate ${rate(prev.delivered, prev.sent)}%, read rate ${rate(prev.read, prev.sent)}%, failures ${prev.failed}`,
-    `Replies from customers (14d): ${a.messaging.replied14d}; AI auto-replies sent (14d): ${a.messaging.aiReplies14d}`,
-    `New contacts (14d): ${a.contacts.new14d}`,
+    `Replies from customers (${a.range.short}): ${a.messaging.repliedInRange}; AI auto-replies sent (${a.range.short}): ${a.messaging.aiRepliesInRange}`,
+    `New contacts (${a.range.short}): ${a.contacts.newInRange}`,
     `Conversations: ${a.conversations.total} total, ${a.conversations.active} active, AI-handled ${a.conversations.botOn}, ${a.conversations.escalated} escalated (${escalationRate}%), ${a.conversations.needsReply} awaiting a reply`,
     `Channels: WhatsApp ${a.conversations.whatsapp} chats, Instagram ${a.conversations.instagram} chats, Facebook Messenger ${a.conversations.messenger} chats, Website live-chat ${a.conversations.webchat} chats`,
     `NOTE: "Messages sent" above counts OUTBOUND BROADCASTS only (WhatsApp template blasts). Website/Instagram/Messenger live chats and inbound replies are NOT broadcasts — measure two-way engagement from replies, AI replies and active conversations, not from broadcast volume.`,

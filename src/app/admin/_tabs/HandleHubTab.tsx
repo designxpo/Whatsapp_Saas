@@ -1,4 +1,5 @@
 "use client";
+import TrackedLinkAnalytics from "./TrackedLinkAnalytics";
 
 // Handle Hub tab — multiple branded WhatsApp entry points (numbers), each with
 // its own set of per-source tracked links + QR codes, so every chat's origin
@@ -85,6 +86,8 @@ function HandleHubTab() {
 
   return (
     <div className="flex gap-6 items-start">
+      <TrackedLinkAnalytics />
+
       <div className="flex-1 min-w-0 max-w-2xl space-y-5">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2>

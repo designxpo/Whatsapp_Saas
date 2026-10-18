@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentTenantId } from "@/lib/auth";
+import { requireAdmin, currentUser, currentTenantId } from "@/lib/auth";
+import { visibleChannelIds } from "@/lib/teams";
 import { getContactByPhone } from "@/lib/store";
 import { generateConversationBrief } from "@/lib/llm";
 import { AiKeyMissingError } from "@/lib/ai/keys";
@@ -22,9 +23,14 @@ export async function POST(req: Request) {
 
   // Instagram chats have no contact row (keyed by IGSID) — fall back to the
   // conversation so the brief works from the DM thread instead of 404-ing.
-  const { data: convRow } = await db().from("wa_conversations")
-    .select("id, name, platform, lead_phone, created_at")
-    .eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  // Team scope — the brief quotes the recent thread, so it is the same exposure
+  // as the inbox and gets the same restriction.
+  const allowedChannels = await visibleChannelIds(await currentUser());
+  let briefQuery = db().from("wa_conversations")
+    .select("id, name, platform, lead_phone, created_at, channel_id")
+    .eq("tenant_id", tid).eq("phone", digits).order("created_at", { ascending: false }).limit(1);
+  if (allowedChannels) briefQuery = briefQuery.in("channel_id", allowedChannels);
+  const { data: convRow } = await briefQuery.maybeSingle();
 
   const contact = await getContactByPhone(digits, tid);
   if (!contact && !convRow) return NextResponse.json({ error: "Contact not found" }, { status: 404 });

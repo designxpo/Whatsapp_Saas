@@ -1,3 +1,4 @@
+import { stopAllEnrollments } from "@/lib/sequences";
 export const maxDuration = 60;   // the "suggest" action runs an LLM call — must outlast the default
 import { NextResponse, after } from "next/server";
 import {
@@ -10,7 +11,9 @@ import { generateReply } from "@/lib/llm";
 import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
-import { credsFor, getChannel, explicitDefaultChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
+import { credsFor, getChannel, listChannels, explicitDefaultChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
+import { visibleChannelIds, canSeeConversation, asTeam } from "@/lib/teams";
+import { resolveTeamTarget, syncOwnerFromCrm } from "@/lib/handover";
 import { pushWaActivity, pushIgActivity, phoneFromAttributes, getLeadIdByPhone, updateLeadStage } from "@/lib/leadsquared";
 import { getCannedTemplates, resolveCannedParams } from "@/lib/canned";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
@@ -37,6 +40,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const conversation = await getConversation(id, tid);
     if (!conversation) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    // Team scope. Filtering the inbox list is not enforcement — without this a
+    // member could open any chat by guessing its id.
+    if (!canSeeConversation(await visibleChannelIds(await currentUser()), conversation.channelId ?? null)) {
+      return NextResponse.json({ error: "That chat belongs to another team" }, { status: 403 });
+    }
     const messages = await getConvHistory(id, 200, tid);
     // Ownership trail — where the lead came from and who has had it since.
     const ownerHistory = await getOwnerHistory(id, tid);
@@ -59,13 +67,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 //   { action: "bot", enabled }           → toggle the per-conversation bot
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string; channelId?: string; reason?: string; batchId?: string };
+  let body: { action?: string; body?: string; buttons?: string[]; status?: ConvStatus; enabled?: boolean; labels?: string[]; assignedTo?: string | null; agentId?: string | null; templateName?: string; languageCode?: string; bodyParams?: string[]; preview?: string; url?: string; kind?: "image" | "video" | "document" | "audio"; mediaType?: string; caption?: string; cannedId?: string; targetMessageId?: string; emoji?: string; team?: string; channelId?: string; reason?: string; batchId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const tid = await deskTenant(req);
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const conv = await getConversation(id, tid);
   if (!conv) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  // Every action below — replying, sending media, reassigning, changing status —
+  // is gated on the same scope as GET, so a member cannot act on another team's
+  // chat even if they never see it listed.
+  const allowedChannels = await visibleChannelIds(await currentUser());
+  if (!canSeeConversation(allowedChannels, conv.channelId ?? null)) {
+    return NextResponse.json({ error: "That chat belongs to another team" }, { status: 403 });
+  }
 
   // Every action in this route that actually reaches the customer, gated in
   // one place rather than five — everything else here (status/labels/assign/
@@ -106,9 +121,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!ch?.igUserId || !ch?.token) return NextResponse.json({ error: "Instagram account not connected for this chat" }, { status: 502 });
         const creds = { igUserId: ch.igUserId, token: ch.token };
         const sent = buttons.length > 0
-          ? await sendIgQuickReplies(creds, conv.phone, text, buttons.map((title, i) => ({ title, payload: `btn_${i + 1}` })), { lastInboundAt: conv.lastInboundAt })
-          : await sendIgMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt });
-        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
+          ? await sendIgQuickReplies(creds, conv.phone, text, buttons.map((title, i) => ({ title, payload: `btn_${i + 1}` })), { lastInboundAt: conv.lastInboundAt, humanAgent: true })
+          : await sendIgMessage(creds, conv.phone, text, { lastInboundAt: conv.lastInboundAt, humanAgent: true });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || "Instagram send failed" }, { status: 502 });
         messageId = sent.messageId;
         // Mirror to LeadSquared by a known phone (shared in chat) or @handle.
         // after(), not a bare `void` — see the note on the WhatsApp push below.
@@ -149,6 +164,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: messageId, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
+      await stopAllEnrollments(conv.phone, tid);
       // A human has stepped in → pause the bot for this chat so it doesn't reply
       // over the agent. (Escalated chats now keep the bot on until this happens.)
       // The agent can re-enable any time with "Turn bot on".
@@ -198,10 +214,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         if (!ch?.igUserId || !ch?.token) return NextResponse.json({ error: "Instagram account not connected for this chat" }, { status: 502 });
         if (kind === "document") return NextResponse.json({ error: "Instagram supports photos and videos only — paste the file link as a message instead." }, { status: 400 });
         const creds = { igUserId: ch.igUserId, token: ch.token };
-        const sent = await sendIgMedia(creds, conv.phone, kind, url, { lastInboundAt: conv.lastInboundAt });
-        if (!sent.ok) return NextResponse.json({ error: sent.error || (sent.blockedBy === "window" ? "Outside the 24-hour window — the user must message again first." : "Instagram send failed") }, { status: 502 });
+        const sent = await sendIgMedia(creds, conv.phone, kind, url, { lastInboundAt: conv.lastInboundAt, humanAgent: true });
+        if (!sent.ok) return NextResponse.json({ error: sent.error || "Instagram send failed" }, { status: 502 });
         messageId = sent.messageId;
-        if (caption) await sendIgMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt }).catch(() => undefined);
+        if (caption) await sendIgMessage(creds, conv.phone, caption, { lastInboundAt: conv.lastInboundAt, humanAgent: true }).catch(() => undefined);
       } else if (conv.platform === "messenger") {
         const ch = conv.channelId ? await getChannel(conv.channelId, tid) : null;
         if (!ch?.pageId || !ch?.token) return NextResponse.json({ error: "Facebook Page not connected for this chat" }, { status: 502 });
@@ -249,6 +265,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: logged, via: "agent", tenantId: tid }));
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
+      await stopAllEnrollments(conv.phone, tid);
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
       return NextResponse.json({ success: true, messageId: sent.id });
     }
@@ -288,6 +305,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const logged = `[${canned.label}]`;
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
+      await stopAllEnrollments(conv.phone, tid);
       after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: `Sent "${canned.label}"`, via: "agent", tenantId: tid }));
       // Stage change is best-effort but never silent: the response + audit log
       // say whether the CRM actually moved.
@@ -359,7 +377,63 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const who = await currentUser();
       await reassignConversationChannel(id, channelId, who?.name || who?.email || "admin", body.reason ?? null, tid);
       logActivity(who, "conversation.reassign", `${conv.name || conv.phone} → ${target.name}`);
-      return NextResponse.json({ success: true });
+      // Handing a lead to the next phase is exactly what reassign is for, so the
+      // TARGET number is deliberately not scope-checked. The consequence is that
+      // the chat may now sit outside the sender's own team — tell them, or it
+      // reads as the conversation having vanished.
+      const handedAway = !canSeeConversation(allowedChannels, channelId);
+      return NextResponse.json({
+        success: true,
+        handedAway,
+        ...(handedAway ? { notice: `Handed to ${target.name}. That number belongs to another team, so this chat has left your inbox.` } : {}),
+      });
+    }
+
+    // Hand this lead on to the NEXT PHASE — the sales → ops push. Same machinery
+    // as reassignChannel, but addressed by team instead of by number, because
+    // that is how a funnel is actually described: a counsellor knows the lead is
+    // converted, not which of ops' lines should carry it.
+    //
+    // Never guesses between a team's numbers. Several → 400 with the list, and
+    // the UI asks; picking one at random would send the next reply from a line
+    // the customer has never seen and burn a fresh 24-hour window.
+    if (body.action === "handToTeam") {
+      const team = asTeam(body.team);
+      if (!team) return NextResponse.json({ error: "team required" }, { status: 400 });
+      const channels = await listChannels(tid);          // this workspace's numbers only
+      const picked = body.channelId?.trim();
+      const r = resolveTeamTarget(team, channels, { channelId: conv.channelId, platform: conv.platform });
+      if (!picked && r.error) {
+        return NextResponse.json({ error: r.error, choices: r.choices.map(c => ({ id: c.id, name: c.name })) }, { status: 400 });
+      }
+      const channelId = picked || r.channelId;
+      if (!channelId) return NextResponse.json({ success: true, alreadyThere: true });   // already on that team's number
+      // A picked number must be one of THAT TEAM'S numbers in this workspace —
+      // r.choices is built from the tenant's own list, so this also refuses an id
+      // from another tenant.
+      const target = r.choices.find(c => c.id === channelId);
+      if (!target) return NextResponse.json({ error: "That number isn't on that team." }, { status: 400 });
+      const who = await currentUser();
+      const actorName = who?.name || who?.email || "admin";
+      await reassignConversationChannel(id, channelId, actorName, `Handed to ${team} by ${actorName}`, tid);
+      logActivity(who, "conversation.handToTeam", `${conv.name || conv.phone} → ${team} (${target.name})`);
+      const handedAway = !canSeeConversation(allowedChannels, channelId);
+      return NextResponse.json({
+        success: true, channelId, handedAway,
+        notice: handedAway
+          ? `Handed to ${target.name}. That number belongs to another team, so this chat has left your inbox.`
+          : `Handed to ${target.name}.`,
+      });
+    }
+
+    // Pull LeadSquared's answer for who owns this lead and apply it now. `force`
+    // because a person clicking this is asking for the CRM's current answer, not
+    // for whatever changed since the last sweep.
+    if (body.action === "syncCrmOwner") {
+      const who = await currentUser();
+      const out = await syncOwnerFromCrm(conv, { force: true, changedBy: who?.name || who?.email || "admin" }, tid);
+      if (out.moved) logActivity(who, "conversation.crmOwnerSync", `${conv.name || conv.phone}: ${out.note}`);
+      return NextResponse.json({ success: true, ...out });
     }
     if (body.action === "agent") {
       await setConversationAgent(id, body.agentId ?? null);

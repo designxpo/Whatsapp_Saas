@@ -1,3 +1,4 @@
+import { handleLeadResponse } from "@/lib/rnrhandoff";
 // Generous budget: an inbound voice note does a synchronous transcription AND
 // then an AI reply (in after()) — two sequential model calls that on a slow
 // moment can blow a 60s cap, killing the reply. (The cron is the backstop; this
@@ -7,7 +8,7 @@ import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import {
   updateLogByMessageId, messageLogged, sendLogged, claimWebhookEvent, addOptout, removeOptout, isOptedOut, upsertContacts,
-  getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, claimWelcome, setBotEnabled, setSetting,
+  getOrCreateConversation, autoHandoverToCounselorLine, appendConvMessage, touchInbound, touchOutbound, claimWelcome, setBotEnabled, setSetting,
   setContactAttributes, addContactTag, markOptedIn, landCapturedLead, hasNewerInbound,
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
@@ -15,7 +16,9 @@ import { parseRef, stripRef, resolveRef, recordTouch, resolveSessionRef, markSes
 import { utmAttributes } from "@/lib/attribution";
 import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
 import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
-import { sendText, sendTypingIndicator, downloadMedia } from "@/lib/whatsapp";
+import { sendText, sendTypingIndicator, downloadMedia, WA_NOT_ON_WHATSAPP } from "@/lib/whatsapp";
+import { markNumberNotOnWhatsApp } from "@/lib/dripstore";
+import { revertDroppedNudge } from "@/lib/rnrdelivery";
 import { transcribeAudio } from "@/lib/voice";
 import { formAnswers, messageText } from "@/lib/wa-message";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -312,9 +315,30 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (fEmail || fCity) void syncLeadProfile({ phone: from, email: fEmail, city: fCity, name: profileName }, tid);
   }
 
-  const conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
+  let conv = await getOrCreateConversation(from, profileName, channel?.id ?? null, "whatsapp", tid);
+  // A customer writing to a counsellor's own line hands them the lead. Placed on
+  // the INBOUND path only — the coexistence echo path (handleEcho) must not move
+  // ownership, or a counsellor forwarding something from their phone app would
+  // claim a lead nobody handed them.
+  conv = await autoHandoverToCounselorLine(conv, channel ?? null);
   const savedInbound = await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
+  const dripReply = await handleLeadResponse(from, text, { channel }, tid);
+  // ONLY an opt-out ends the handler here. A reply the hand-off sent, or a journey
+  // it stopped, does not: the lead's message still has to reach their CRM timeline,
+  // the integrations, and the contact stamping below — a lead's reply to a nurture
+  // is precisely the message the CRM most needs. What a drip reply DOES change is
+  // who answers next, and that is carried by `handledByDrip` further down.
+  if (dripReply.optedOut) {
+    // handleLeadResponse already sent the library's closing line, which ends with
+    // the way back in. Sending a second one would say the same thing twice to
+    // somebody who just asked us to stop.
+    if (!dripReply.replySent) {
+      await sendText(from, "Your enquiry is closed and you won't receive further messages. Reply START if you change your mind.", channel);
+    }
+    return;
+  }
+
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.
   if (answers && Object.keys(answers).length) {
@@ -434,7 +458,20 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
 
     // If a drip is already driving this contact, stay quiet — no welcome, no AI —
     // so the sequence owns the thread (until it completes) and nothing collides.
-    const inSequence = await hasActiveEnrollment(from, tid).catch(() => false);
+    //
+    // This used to ask the database "is this lead mid-journey", which was right
+    // until handleLeadResponse started STOPPING the journey higher up this same
+    // function. By the time we get here the enrolment is stopped, so the query says
+    // false for exactly the person the guard exists to protect: somebody who just
+    // tapped a drip button. What they would get is three messages for one tap — the
+    // acknowledgement already sent, then the welcome greeting, then an AI answer to
+    // "Request a callback" — while a counsellor has been alerted.
+    //
+    // So the question is asked about the moment the message ARRIVED: either a
+    // journey was running and we stopped it, or we sent a canned reply, or they are
+    // still enrolled in something.
+    const inSequence = dripReply.stopped > 0 || !!dripReply.replySent
+      || await hasActiveEnrollment(from, tid).catch(() => false);
 
     // Chatbot flows take precedence: an ad-bound flow (CTWA lead from a campaign
     // with a flow attached), then keyword triggers and in-progress sessions.
@@ -487,7 +524,14 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (!flowHandled) {
       try {
         const seq = await matchKeywordSequence("whatsapp", text, tid);
-        if (seq) { await enroll(seq.id, { phone: from, platform: "whatsapp", conversationId: conv.id }, tid); sequenceTriggered = true; }
+        if (seq) {
+          // enroll() REFUSES when the lead is already on another journey ("one
+          // journey at a time") or has finished this one. Claiming the thread
+          // anyway would suppress the AI reply for a drip that never started,
+          // and the person who typed the word would hear nothing at all.
+          const res = await enroll(seq.id, { phone: from, platform: "whatsapp", conversationId: conv.id }, tid);
+          sequenceTriggered = res.enrolled;
+        }
       } catch (e) { console.error("[webhook] keyword sequence", conv.id, e); }
     }
 
@@ -564,6 +608,54 @@ export async function POST(req: Request) {
             const reason = [e.title, detail || e.message].filter(Boolean).join(" — ")
               || (e.code ? `Meta error ${e.code}` : "Delivery failed (no reason given)");
             await updateLogByMessageId(id, "failed", at, String(reason));
+
+            // The two follow-ups below write to a CONTACT, which belongs to a
+            // tenant — and a status callback carries no session. The number it came
+            // in on does: resolve the tenant from it, and do NOTHING if that cannot
+            // be resolved. Guessing a default workspace here could flag, or
+            // un-stamp, somebody else's lead.
+            const recipient = String(status.recipient_id ?? "");
+            const meta = (value.metadata as Record<string, unknown>) ?? {};
+            const statusChannel = recipient && meta.phone_number_id
+              ? await getChannelByPhoneNumberId(String(meta.phone_number_id)).catch(() => null)
+              : null;
+            if (recipient && statusChannel) {
+              const statusTid = statusChannel.tenantId;
+
+              // ── "Not on WhatsApp" almost always arrives HERE ──────────────
+              //
+              // 131026 says something about the RECIPIENT rather than about us, and
+              // it is the one delivery failure worth acting on: the same dead number
+              // is otherwise retried by every future campaign, and nobody can list
+              // them to be re-checked by phone.
+              //
+              // The send path checks for it too, but Meta rarely refuses at send
+              // time — it accepts, returns a message id, and reports the failure
+              // seconds later in this webhook. A flag that only fired on the
+              // synchronous case would essentially never fire. Only THIS code: a
+              // rate limit or a re-engagement block says nothing about the lead's
+              // number, and flagging one sends sales chasing a ghost.
+              if (Number(e.code) === WA_NOT_ON_WHATSAPP) {
+                await markNumberNotOnWhatsApp(recipient, `Meta ${e.code}: ${reason}`, statusTid).catch(() => false);
+              }
+
+              // ── A dropped RNR nudge has to give the day back ──────────────
+              //
+              // The nudge route stamps "Message A went out" the moment Meta returns
+              // a message id, which is BEFORE Meta decides whether to deliver it.
+              // When it then drops the message — 131049, the marketing frequency cap
+              // — the stamp is a lie that costs the lead the rest of the day and
+              // sends them Message B tomorrow referring to an A they never got.
+              // Retract it here. Not gated on 131049: whatever the code, a message
+              // that failed was not received, so the stamp is wrong either way.
+              const r = await revertDroppedNudge(recipient, new Date(at), reason, statusTid).catch(() => null);
+              if (r?.reverted) {
+                console.warn(JSON.stringify({
+                  tag: "rnr_nudge_dropped", nudge: r.reverted, code: e.code ?? null,
+                  phone: recipient.slice(-4), note: "stamp retracted — the counsellor can send again",
+                }));
+              }
+            }
           }
         }
 

@@ -3,9 +3,10 @@
 // Settings: workspace rail + plan/usage, WhatsApp numbers, team, activity log,
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
+import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/teams";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
-import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab, DEFAULT_TENANT_ID } from "../_shared";
+import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab, DEFAULT_TENANT_ID, useChannelList } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -50,14 +51,16 @@ type WelcomeS = { enabled: boolean; text: string };
 type AwayS = { enabled: boolean; text: string; startHour: number; endHour: number; tzOffsetMinutes: number };
 
 // ── Team members + activity log ──
-type TeamUserRow = { id: string; email: string; name: string; title: string; role: "admin" | "member"; active: boolean; lastLoginAt: string | null };
+type TeamUserRow = { id: string; email: string; name: string; title: string; role: Role; team: Team | null; channelId: string | null; active: boolean; lastLoginAt: string | null };
 
 function TeamManager() {
   const ask = useConfirm();
   const [users, setUsers] = useState<TeamUserRow[]>([]);
   const [owner, setOwner] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [form, setForm] = useState<{ id?: string; email: string; name: string; title: string; role: "admin" | "member"; password: string; active: boolean } | null>(null);
+  const [form, setForm] = useState<{ id?: string; email: string; name: string; title: string; role: Role; team: Team | null; channelId: string | null; password: string; active: boolean } | null>(null);
+  // This workspace's own WhatsApp numbers, for "the number this person works".
+  const numbers = useChannelList().filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -70,6 +73,7 @@ function TeamManager() {
     if (!form) return;
     if (!form.email.trim()) { setMsg("Email is required."); return; }
     if (!form.id && !form.password.trim()) { setMsg("Password is required for a new member."); return; }
+    if (form.role === "lead" && !form.team) { setMsg("A team lead has to be assigned to a team."); return; }
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
@@ -94,9 +98,9 @@ function TeamManager() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-bold text-slate-400 uppercase">Team members</p>
-          <p className="text-xs text-slate-500 mt-0.5">Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…). All actions are recorded in the activity log.</p>
+          <p className="text-xs text-slate-500 mt-0.5">Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…). Optionally group people and numbers into <b>teams</b> so each team only sees its own inbox. All actions are recorded in the activity log.</p>
         </div>
-        <button onClick={() => { setForm({ email: "", name: "", title: "", role: "member", password: "", active: true }); setMsg(null); }}
+        <button onClick={() => { setForm({ email: "", name: "", title: "", role: "member", team: null, channelId: null, password: "", active: true }); setMsg(null); }}
           className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
       </div>
 
@@ -119,12 +123,13 @@ function TeamManager() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">
-              {u.name || u.email} <span className={`text-[10px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role.toUpperCase()}</span>
+              {u.name || u.email} <span className={`text-[10px] font-bold ${u.role === "admin" ? "text-brand-700" : "text-ink-400"}`}>· {u.role === "lead" ? "TEAM LEAD" : u.role.toUpperCase()}</span>
+              {u.team && <span className="text-[10px] font-bold text-blue-600"> · {TEAM_SHORT[u.team].toUpperCase()}</span>}
               {!u.active && <span className="text-[10px] font-bold text-red-500"> · DISABLED</span>}
             </p>
-            <p className="text-[11px] text-ink-400 truncate">{u.title ? `${u.title} · ` : ""}{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleString()}` : " · never logged in"}</p>
+            <p className="text-[11px] text-ink-400 truncate">{u.title ? `${u.title} · ` : ""}{u.channelId && numbers.find(n => n.id === u.channelId) ? `works ${numbers.find(n => n.id === u.channelId)!.name} · ` : ""}{u.email}{u.lastLoginAt ? ` · last login ${new Date(u.lastLoginAt).toLocaleString()}` : " · never logged in"}</p>
           </div>
-          <button onClick={() => { setForm({ id: u.id, email: u.email, name: u.name, title: u.title ?? "", role: u.role, password: "", active: u.active }); setMsg(null); }}
+          <button onClick={() => { setForm({ id: u.id, email: u.email, name: u.name, title: u.title ?? "", role: u.role, team: u.team ?? null, channelId: u.channelId ?? null, password: "", active: u.active }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(u)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -136,9 +141,23 @@ function TeamManager() {
             <input className={inp} placeholder="email@company.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!form.id} />
             <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Role / title — e.g. Sales Executive, Support Lead" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
-            <select className={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value as "admin" | "member" })}>
+            <select className={inp} value={form.role} onChange={e => setForm({ ...form, role: e.target.value as Role })}>
               <option value="member">Member — inbox, broadcasts, flows, templates</option>
+              <option value="lead">Team lead — their team&apos;s inbox + Team Progress</option>
               <option value="admin">Admin — everything incl. numbers & team</option>
+            </select>
+            {/* A team scopes the INBOX: a member on a team sees only that team's
+                numbers. Left blank they see every number, exactly as before, so
+                nothing changes until a team is chosen. Admins always see all. */}
+            <select className={inp} value={form.team ?? ""} onChange={e => setForm({ ...form, team: (e.target.value || null) as Team | null })}
+              title="Which team's numbers this person works. Blank = sees every number.">
+              <option value="">No team — sees every number</option>
+              {TEAMS.map(t => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
+            </select>
+            <select className={inp} value={form.channelId ?? ""} onChange={e => setForm({ ...form, channelId: e.target.value || null })}
+              title="Their own line. Used to credit chats to them in Team Progress and to route a lead to them when the CRM owner changes.">
+              <option value="">No personal number</option>
+              {numbers.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
             </select>
             <input className={inp} type="password" placeholder={form.id ? "New password (blank = keep current)" : "Password"} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
           </div>
@@ -216,7 +235,7 @@ function ActivityLog() {
 }
 
 // ── WhatsApp numbers (multi-WABA channels) ──
-const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", kbTag: "", crmSource: "", mode: "full" as "full" | "manual", active: true, isDefault: false };
+const EMPTY_CHANNEL = { id: undefined as string | undefined, name: "", phoneId: "", wabaId: "", token: "", appId: "", agentId: "", kbTag: "", crmSource: "", team: "" as Team | "", mode: "full" as "full" | "manual", active: true, isDefault: false };
 
 // Distinct KB topic tags for the per-channel knowledge picker — same client-side
 // derivation the flow editor uses (tags live on kb_documents, no dedicated API).
@@ -255,7 +274,7 @@ function ChannelsManager() {
     try {
       const res = await fetch("/api/admin/channels", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, crmSource: form.crmSource?.trim() || null, appId: form.appId || null }),
+        body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null, crmSource: form.crmSource?.trim() || null, team: form.team || null, appId: form.appId || null }),
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
@@ -336,7 +355,7 @@ function ChannelsManager() {
           </div>
           <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
             className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
+          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", team: (c.team ?? "") as Team | "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -362,6 +381,14 @@ function ChannelsManager() {
           <div>
             <input className={`${inp} w-full`} placeholder="CRM lead source for this number (e.g. ppc-whatsapp) — optional" value={form.crmSource} onChange={e => setForm({ ...form, crmSource: e.target.value })} title="New CRM leads that first message THIS number are created with this Source, so you can tell which number/campaign a lead came from. Leave blank for the generic 'WhatsApp'. A tracked-link [ref:] source, if present, takes precedence." />
             <p className="text-[11px] text-ink-400 mt-1">New leads that arrive on this number land in your CRM under this <b>Source</b> — so a lead from your PPC number vs another is instantly distinguishable. Blank = <span className="font-mono">WhatsApp</span>.</p>
+          </div>
+          <div>
+            <select className={`${inp} w-full`} value={form.team} onChange={e => setForm({ ...form, team: e.target.value as Team | "" })}
+              title="Members pinned to a team only see this number's chats if it belongs to their team.">
+              <option value="">No team — visible to everyone</option>
+              {TEAMS.map(t => <option key={t} value={t}>{TEAM_LABELS[t]}</option>)}
+            </select>
+            <p className="text-[11px] text-ink-400 mt-1">Optional. A member pinned to a <b>team</b> (Settings → Team) only sees the chats on that team&apos;s numbers. Leave blank and every member sees this number, as before.</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <select className={inp} value={form.agentId} onChange={e => setForm({ ...form, agentId: e.target.value })} title="Default AI persona for this number">
@@ -1924,8 +1951,13 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [nudgeVars, setNudgeVars] = useState<string[]>([]);
   const [remOn, setRemOn] = useState<boolean | null>(null);
   const [remSteps, setRemSteps] = useState<{ minutes: number; text: string }[]>([]);
+  // Both CRM switches default OFF, so false is a real value (not "still loading").
+  const [crmOwnerOn, setCrmOwnerOn] = useState<boolean | null>(null);
+  const [crmPaused, setCrmPaused] = useState<boolean | null>(null);
+  const [crmErr, setCrmErr] = useState("");
   const [isAdmin, setIsAdmin] = useState(true);
-  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role !== "member")).catch(() => {}); }, []);
+  // A team lead is scoped like a member, not an admin — only "admin" opens these panels.
+  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "admin")).catch(() => {}); }, []);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [quickReplies, setQuickReplies] = useState<{ id: string; shortcut: string; body: string }[]>([]);
@@ -1938,6 +1970,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       setWelcome(d.welcome); setAway(d.away); setAiOn(d.ai?.enabled !== false);
       setNudgeOn(d.flowNudge?.enabled !== false); setNudgeVars((d.flowNudge?.variations ?? []) as string[]);
       setRemOn(d.flowReminders?.enabled !== false); setRemSteps((d.flowReminders?.steps ?? []) as { minutes: number; text: string }[]);
+      setCrmOwnerOn(d.crmOwnerSync?.enabled === true);
+      setCrmPaused(d.crmPaused?.enabled === true);
     }).catch(() => {});
     loadQr();
   }, [loadQr]);
@@ -2000,6 +2034,37 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   }
   function toggleReminders() { if (remOn === null) return; const next = !remOn; setRemOn(next); void persistReminders(next); }
 
+  // These two decide whether conversations move between teams' inboxes and whether
+  // the CRM is being written to, so they report a FAILED save instead of showing
+  // the new state over a 403/500 — an operator who pauses the CRM and is told it
+  // is paused while it keeps writing is the worst outcome here.
+  async function persistCrm(patch: { crmOwnerSync?: { enabled: boolean }; crmPaused?: { enabled: boolean } }, revert: () => void): Promise<boolean> {
+    setSaving(true); setCrmErr("");
+    try {
+      const res = await fetch("/api/admin/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); setCrmErr(d.error ?? `Couldn't save (HTTP ${res.status})`); revert(); return false; }
+      setSavedAt(Date.now());
+      return true;
+    } catch { setCrmErr("Could not reach the server"); revert(); return false; }
+    finally { setSaving(false); }
+  }
+  // Follow LeadSquared ownership — moves chats between teams' inboxes, so it
+  // persists instantly and is logged, like the AI master switch.
+  async function toggleCrmOwner() {
+    if (crmOwnerOn === null) return;
+    const prev = crmOwnerOn, next = !crmOwnerOn;
+    setCrmOwnerOn(next);
+    await persistCrm({ crmOwnerSync: { enabled: next } }, () => setCrmOwnerOn(prev));
+  }
+  // Pause / resume all automatic LeadSquared writes. While it is on the CRM goes
+  // stale; pushes wait in the retry queue and drain when it is switched back off.
+  async function toggleCrmPause() {
+    if (crmPaused === null) return;
+    const prev = crmPaused, next = !crmPaused;
+    setCrmPaused(next);
+    await persistCrm({ crmPaused: { enabled: next } }, () => setCrmPaused(prev));
+  }
+
   async function addQr() {
     if (!qrShortcut.trim() || !qrBody.trim()) return;
     await fetch("/api/admin/quick-replies", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ shortcut: qrShortcut, body: qrBody }) });
@@ -2046,6 +2111,46 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
         {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
       </section>
+
+      {/* LeadSquared controls — only meaningful for a workspace that has connected it. */}
+      {isAdmin && (
+        <section className="bg-white rounded-card border border-line p-5 space-y-4">
+          <p className="text-xs font-bold text-slate-400 uppercase">LeadSquared</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Follow the CRM&apos;s lead owner</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                When a lead&apos;s owner changes in LeadSquared, move the chat onto that person&apos;s number and show their name.
+                Checked every 10 minutes on recent chats, and the moment LeadSquared tells us. Moves conversations between your teams&apos;
+                inboxes, so it is off until you turn it on. Needs each member&apos;s email to match their LeadSquared user.
+              </p>
+            </div>
+            {crmOwnerOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+              <button onClick={toggleCrmOwner} disabled={saving}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 shrink-0 ${crmOwnerOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+                {crmOwnerOn ? "ON" : "OFF"}
+              </button>
+            )}
+          </div>
+          <div className="flex items-start justify-between gap-3 border-t border-line pt-4">
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Pause LeadSquared sync</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Stops every automatic write to LeadSquared — timeline notes, lead creation and profile updates. Nothing is lost:
+                messages wait in a queue and post when you switch this off. Use it during a CRM migration or while you fix a bad field mapping.
+              </p>
+            </div>
+            {crmPaused === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+              <button onClick={toggleCrmPause} disabled={saving}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 shrink-0 ${crmPaused ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"}`}>
+                {crmPaused ? "PAUSED" : "OFF"}
+              </button>
+            )}
+          </div>
+          {crmPaused && <p className="text-[11px] text-amber-700 bg-amber-50 rounded-control px-3 py-2">LeadSquared is not receiving anything from this workspace right now. Switch this off to let the queue drain.</p>}
+          {crmErr && <p className="text-[11px] text-red-600 bg-red-50 rounded-control px-3 py-2">{crmErr}</p>}
+        </section>
+      )}
 
       <EscalationSweepCard isAdmin={isAdmin} />
 

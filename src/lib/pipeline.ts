@@ -130,6 +130,30 @@ export async function getBoard(tenantId = DEFAULT_TENANT_ID, max = 500): Promise
   return { stages, cards };
 }
 
+// Pipeline stage per phone, for the inbox: one batched query for a whole page of
+// conversations, so the list shows WHERE each lead is and not only which number
+// it came in on. Best-effort by design — a workspace whose pipeline tables are
+// not migrated must still get an inbox, just without stage chips.
+export async function stagesByPhone(phones: string[], tenantId = DEFAULT_TENANT_ID): Promise<Record<string, { name: string; color: string | null; isWon: boolean; isLost: boolean }>> {
+  const unique = [...new Set(phones.filter(Boolean))];
+  if (unique.length === 0) return {};
+  const out: Record<string, { name: string; color: string | null; isWon: boolean; isLost: boolean }> = {};
+  try {
+    const [{ data: rows }, stages] = await Promise.all([
+      db().from("contacts").select("phone, pipeline_stage_id").eq("tenant_id", tenantId).in("phone", unique).not("pipeline_stage_id", "is", null),
+      listStages(tenantId),
+    ]);
+    const byId = new Map(stages.map(st => [st.id, st]));
+    for (const r of rows ?? []) {
+      const st = byId.get((r as { pipeline_stage_id: string }).pipeline_stage_id);
+      if (st) out[(r as { phone: string }).phone] = { name: st.name, color: st.color, isWon: st.isWon, isLost: st.isLost };
+    }
+  } catch {
+    return {};
+  }
+  return out;
+}
+
 // Fast path: set the contact's stage (tenant-scoped). Rejects a stage that isn't
 // this tenant's so a crafted request can't move a card into another tenant.
 // Which stage a single contact sits in. getBoard() answers this too, but it

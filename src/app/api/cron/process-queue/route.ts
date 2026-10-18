@@ -1,3 +1,6 @@
+import { runStagePoll } from "@/lib/stagepoll";
+import { db as stagePollDb } from "@/lib/supabase";
+import { accountCanSend as canPollStage } from "@/lib/feature-guard";
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { cronOk } from "@/lib/apiauth";
@@ -9,6 +12,7 @@ import { drainAdRules } from "@/lib/adrules";
 import { drainSequences, drainInactiveLeads } from "@/lib/sequences";
 import { drainAiFollowups } from "@/lib/followups";
 import { drainCrmSync, crmSyncStats, flushCrmSessions } from "@/lib/leadsquared";
+import { drainCrmOwnerSync } from "@/lib/handover";
 import { drainAbandonedCarts } from "@/lib/commerce";
 import { drainIntegrationDeliveries } from "@/lib/integrations";
 import { refreshDueUrlDocuments } from "@/lib/kb";
@@ -97,6 +101,15 @@ export async function POST(req: Request) {
       try { inactiveNudges = await drainInactiveLeads(100); } catch (e) { console.error("[cron] inactivity", e); }
     }
 
+    // Each workspace owns its poll watermark, credentials and observe/apply setting.
+    if (Date.now() - startedAt < DEADLINE) {
+      const { data: workspaces } = await stagePollDb().from("tenants").select("id");
+      for (const workspace of workspaces ?? []) {
+        if (Date.now() - startedAt >= DEADLINE) break;
+        if (await canPollStage(workspace.id)) await runStagePoll({}, workspace.id).catch(e => console.error("[cron] stage poll", e));
+      }
+    }
+
     // Drip sequences — advance due enrollments one step (follow-ups, cart recovery).
     let sequences = 0;
     if (Date.now() - startedAt < DEADLINE) {
@@ -153,6 +166,17 @@ export async function POST(req: Request) {
     let crmSessions = { flushed: 0, deferred: 0 };
     if (Date.now() - startedAt < DEADLINE) {
       try { crmSessions = await flushCrmSessions(100, startedAt + DEADLINE); } catch (e) { console.error("[cron] crmsessions", e); }
+    }
+
+    // LeadSquared ownership sweep — mirror who owns each lead in the CRM onto the
+    // number that carries it here, so a hand-off made in LSQ lands in the portal
+    // even when nobody configured the LSQ automation webhook. Reads only; writes
+    // nothing unless an owner actually changed. Each workspace is self-throttled to
+    // every 10 minutes on a rolling cursor, and OFF until that workspace switches
+    // it on in Settings — it moves conversations between teams' inboxes.
+    let crmOwners = { ran: false, checked: 0, moved: 0 } as Awaited<ReturnType<typeof drainCrmOwnerSync>>;
+    if (Date.now() - startedAt < DEADLINE) {
+      try { crmOwners = await drainCrmOwnerSync(15); } catch (e) { console.error("[cron] crmowners", e); }
     }
 
     // YouTube comment automation — poll connected channels for new comments and
@@ -225,7 +249,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, kbSync, crmSync, crmSessions, integrationDeliveries, adChatsPurged });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, ytComments, googleReviews, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, kbSync, crmSync, crmSessions, crmOwners, integrationDeliveries, adChatsPurged });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }

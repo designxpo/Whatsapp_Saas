@@ -149,21 +149,22 @@ export async function sendIgMessage(
 }
 
 // Send a media attachment (image/video/audio) by public URL. Same 24h-window and
-// rate rules as a text message. IG has no caption field on attachments, so any
+// rate rules as a text message, including the manual human-agent allowance. IG has no caption field on attachments, so any
 // caption must be sent as a separate text message by the caller.
 export async function sendIgMedia(
   creds: IgCreds,
   recipientIgsid: string,
   kind: "image" | "video" | "audio",
   url: string,
-  opts: { lastInboundAt?: string | null } = {},
+  opts: { lastInboundAt?: string | null; humanAgent?: boolean } = {},
 ): Promise<IgSendResult> {
   if (!recipientIgsid || !url) return { ok: false, error: "recipient and media URL required" };
-  if (!within24hWindow(opts.lastInboundAt)) {
-    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  const allowed = opts.humanAgent ? withinHumanAgentWindow(opts.lastInboundAt) : within24hWindow(opts.lastInboundAt);
+  if (!allowed) {
+    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: opts.lastInboundAt ? (opts.humanAgent ? "Outside the 7-day human-agent window" : "Outside the 24-hour messaging window") : "No prior interaction — cold DMs are not allowed" };
   }
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
-  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { attachment: { type: kind, payload: { url } } } });
+  return postMessage(creds, withHumanAgentTag({ recipient: { id: recipientIgsid }, message: { attachment: { type: kind, payload: { url } } } }, opts.lastInboundAt, !!opts.humanAgent));
 }
 
 // Quick replies — tappable chips under a message (IG supports up to 13, titles
@@ -175,11 +176,12 @@ export async function sendIgQuickReplies(
   recipientIgsid: string,
   text: string,
   replies: IgQuickReply[],
-  opts: { lastInboundAt?: string | null } = {},
+  opts: { lastInboundAt?: string | null; humanAgent?: boolean } = {},
 ): Promise<IgSendResult> {
   if (!recipientIgsid || !text.trim() || !replies.length) return { ok: false, error: "recipient, text and replies required" };
-  if (!within24hWindow(opts.lastInboundAt)) {
-    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: "Outside the 24-hour messaging window" };
+  const allowed = opts.humanAgent ? withinHumanAgentWindow(opts.lastInboundAt) : within24hWindow(opts.lastInboundAt);
+  if (!allowed) {
+    return { ok: false, blockedBy: opts.lastInboundAt ? "window" : "cold", error: opts.lastInboundAt ? (opts.humanAgent ? "Outside the 7-day human-agent window" : "Outside the 24-hour messaging window") : "No prior interaction — cold DMs are not allowed" };
   }
   if (!allowSend(creds.igUserId)) return { ok: false, blockedBy: "rate", error: "Hourly send cap reached for this account" };
   // Body + every quick-reply label are all customer-visible.
@@ -191,7 +193,7 @@ export async function sendIgQuickReplies(
     title: r.title.slice(0, 20),
     payload: (r.payload || r.title).slice(0, 1000),
   }));
-  return postMessage(creds, { recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000), quick_replies } });
+  return postMessage(creds, withHumanAgentTag({ recipient: { id: recipientIgsid }, message: { text: text.slice(0, 1000), quick_replies } }, opts.lastInboundAt, !!opts.humanAgent));
 }
 
 // Buttons usable in IG message/private-reply templates.

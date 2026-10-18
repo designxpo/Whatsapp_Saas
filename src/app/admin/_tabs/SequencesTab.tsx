@@ -1,17 +1,273 @@
 "use client";
+import { previewParts, type TemplateComponent } from "@/lib/templatepreview";
+import { useState, useEffect, useCallback, useRef, Fragment, type Dispatch, type SetStateAction } from "react";
+import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Smartphone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp, Mic, Paperclip, KanbanSquare, GripVertical, SmilePlus, KeyRound, Building2} from "lucide-react";
+import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
+import { getJson, postJson, apiErrorText, newGeneration } from "@/lib/apicall";
+import { SEQ_TRIGGERS, SEQ_TRIGGERS_DEAD, triggerSpec, triggerLabel } from "@/lib/seqtriggers";
+import { KNOWN_SCORES } from "@/lib/drip-types";
+import { audienceFingerprint, describeAudience as describeSeqAudience } from "@/lib/seqaudience";
+import { LANES, AIDA_STAGES, AIDA_LABELS, type Lane, type AidaStage } from "@/lib/drip-types";
+import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
+import { inp, ChannelSelect, useChannelList, ImageUpload } from "../_shared";
+function closeIfDeleted<T extends { id?: string }>(
+  set: Dispatch<SetStateAction<T | null>>,
+  deletedId: string,
+) {
+  set(f => (f && f.id === deletedId ? null : f));
+}
+type SeqAudience = { attrIn?: Record<string, string[]>; attrNotIn?: Record<string, string[]>; hasTag?: string[]; lacksTag?: string[] } | null;
+// `audience` is carried through the editor untouched. It is set by the RNR
+// seeder, there is no editor for it yet, and a save that dropped it would
+// widen a restricted step to the whole enrolment without saying so.
+type StepDraft = { delayMinutes: number; audience?: SeqAudience; action: { type: "text" | "template" | "media"; text?: string; templateName?: string; languageCode?: string; params?: string[]; mediaKind?: "image" | "video" | "document" | "audio"; url?: string; caption?: string } };
+type SeqRow = { id: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string | null; channelId: string | null; active: boolean; team: Lane | null; aidaStage: AidaStage | null; steps: { delayMinutes: number; audience?: SeqAudience; action: StepDraft["action"] }[] };
+type SeqDraft = { id?: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string; channelId: string | null; active: boolean; team: Lane | null; aidaStage: AidaStage | null; steps: StepDraft[] };
+const EMPTY_SEQ: SeqDraft = { name: "", platform: "whatsapp", triggerKind: "manual", triggerValue: "", channelId: null, active: true, team: null, aidaStage: null, steps: [{ delayMinutes: 0, action: { type: "text", text: "" } }] };
 
-// Sequences (drip) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
-import { useState, useEffect, useCallback } from "react";
-import { Database, FileText, Loader2, Plus, Trash2, Workflow, Image as ImageIcon, Video, X, FlaskConical, Send, Zap, RefreshCw, Sparkles, AlertTriangle, Clock } from "lucide-react";
-import { inp, ChannelSelect, ImgFallback } from "../_shared";
-import { useConfirm } from "@/components/confirm-dialog";
+// describeAudience now lives in seqaudience.ts, imported above: the page had
+// a near-identical copy whose comment said it "mirrors" the lib one, which is
+// a promise no compiler keeps. Only the lib version learned to summarise a
+// forty-value list, so for a while the two said different things about the
+// same rule on the same screen.
+// Attaching the media a sequence step sends.
+//
+// This was a bare "Media URL" box. WhatsApp fetches media by URL, so a URL
+// is genuinely what the step needs — but nobody has one to hand, and the
+// portal already has a public bucket and an upload route that every other
+// media field uses. Asking for a URL here meant uploading the file
+// somewhere else first, or pasting a link to a Drive page that Meta cannot
+// fetch and that fails as an opaque send error.
+//
+// The URL box stays, because a hosted asset is a real answer. The upload is
+// the path for everybody else.
+//
+// `accept` is narrowed to what uploadguard.ts will actually store for the
+// chosen kind. A refusal after the file has uploaded is a worse experience
+// than a file picker that never offered it — and the refusal text that does
+// get through is written for the person, so it is shown verbatim.
+const MEDIA_ACCEPT: Record<string, string> = {
+  image: "image/jpeg,image/png,image/webp,image/gif",
+  video: "video/mp4,video/3gpp,video/quicktime",
+  document: "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/plain,text/csv",
+};
 
-// ── Sequences (drip) ──────────────────────────────────────────────────────────
-type StepDraft = { delayMinutes: number; action: { type: "text" | "template" | "media"; text?: string; templateName?: string; languageCode?: string; mediaKind?: "image" | "video" | "document" | "audio"; url?: string; caption?: string } };
-type SeqRow = { id: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string | null; channelId: string | null; active: boolean; steps: { delayMinutes: number; action: StepDraft["action"] }[] };
-type SeqDraft = { id?: string; name: string; platform: "whatsapp" | "instagram"; triggerKind: string; triggerValue: string; channelId: string | null; active: boolean; steps: StepDraft[] };
-const SEQ_TRIGGERS: [string, string][] = [["manual", "Manual / API"], ["keyword", "Keyword reply"], ["opt_in", "Opt-in (growth tool)"], ["story_reply", "Instagram story reply"], ["comment", "Comment"], ["tag_added", "Tag added"], ["cart_abandoned", "Cart abandoned"], ["order_placed", "Order placed"], ["ad_referral", "Ad referral"], ["inactivity", "Inactivity (no reply) — trigger value = minutes of silence before the first nudge"]];
-const EMPTY_SEQ: SeqDraft = { name: "", platform: "whatsapp", triggerKind: "manual", triggerValue: "", channelId: null, active: true, steps: [{ delayMinutes: 0, action: { type: "text", text: "" } }] };
+function SeqMediaPicker({ action, onChange }: {
+  action: StepDraft["action"];
+  onChange: (patch: Partial<StepDraft["action"]>) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const kind = action.mediaKind ?? "image";
+  const url = action.url ?? "";
+
+  async function upload(file: File) {
+    setBusy(true); setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch("/api/upload", { method: "POST", body: fd });
+      const d = await r.json().catch(() => ({}));
+      // The refusal messages are prose written for whoever is standing here
+      // ("SVG images can carry scripts — export it as a PNG"). Swallowing
+      // them, as the older upload buttons do, leaves the field empty with no
+      // reason given and the person re-picking the same file.
+      if (!r.ok || !d.url) setErr(d.error || "Upload failed. Try again.");
+      else onChange({ url: d.url });
+    } catch {
+      setErr("Upload failed. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <select
+          className={`${inp} !py-1.5`} aria-label="Media type" value={kind}
+          onChange={e => onChange({ mediaKind: e.target.value as NonNullable<StepDraft["action"]["mediaKind"]> })}
+        >
+          <option value="image">Image</option>
+          <option value="video">Video</option>
+          <option value="document">Document</option>
+        </select>
+
+        <label className={`flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-dashed border-line text-xs font-bold cursor-pointer hover:border-brand-500 ${busy ? "opacity-60 pointer-events-none" : ""}`}>
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />}
+          {busy ? "Uploading…" : "Upload"}
+          <input
+            type="file" className="hidden" accept={MEDIA_ACCEPT[kind] ?? ""}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              // Cleared before the await: the input is reused, and leaving
+              // the old value means re-picking the SAME file fires nothing.
+              e.currentTarget.value = "";
+              if (f) void upload(f);
+            }}
+          />
+        </label>
+
+        {url && !busy && (
+          <button type="button" onClick={() => { onChange({ url: "" }); setErr(null); }}
+            className="text-[11px] font-bold text-ink-400 hover:text-red-600">Remove</button>
+        )}
+      </div>
+
+      <input
+        className={`${inp} w-full`} placeholder="Media URL — or upload a file above"
+        aria-label="Media URL" value={url} onChange={e => { onChange({ url: e.target.value }); setErr(null); }}
+      />
+      <input
+        className={`${inp} w-full`} placeholder="Caption (optional)"
+        aria-label="Caption" value={action.caption ?? ""} onChange={e => onChange({ caption: e.target.value })}
+      />
+
+      {err && (
+        <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-control px-2.5 py-1.5">{err}</p>
+      )}
+
+      {url && !err && (
+        <div className="flex items-center gap-2">
+          {kind === "image"
+            /* eslint-disable-next-line @next/next/no-img-element */
+            ? <img src={url} alt="" className="w-12 h-12 rounded-control object-cover border border-line" />
+            : <Paperclip className="w-4 h-4 text-ink-400" />}
+          <a href={url} target="_blank" rel="noreferrer" className="text-[11px] text-brand-700 hover:underline truncate max-w-[22rem]">{url}</a>
+        </div>
+      )}
+
+      <p className="text-[11px] text-ink-400">
+        WhatsApp fetches this by URL, so it has to be publicly reachable — a Drive or Dropbox share page is not.
+        Uploading puts it in this workspace&apos;s own public bucket.
+      </p>
+    </div>
+  );
+}
+
+// Picking the template a sequence step sends.
+//
+// This was two free-text boxes. A template name is not something anybody
+// remembers correctly — it is lowercase, underscored, and has to match a
+// name on Meta exactly — and a typo fails at SEND time, four weeks into a
+// campaign, as one line in last_error that nobody is watching.
+//
+// Scoped to the number the sequence sends from, because templates are
+// WABA-scoped: the same name approved on a different account does not exist
+// here. Picking one fills the language too, so the two can never disagree.
+//
+// Free text is still reachable. A template approved minutes ago may not be
+// in Meta's list yet, and an editor that cannot express a real name is
+// worse than one that lets you get it wrong.
+type SeqTpl = { name: string; status: string; language: string; components?: TemplateComponent[] };
+const tplKey = (n: string, l: string) => `${n}\u0000${l}`;
+/** Highest {{n}} in the body — how many params the step must supply. */
+function tplVarCount(t: SeqTpl): number {
+  const body = t.components?.find(c => c.type === "BODY")?.text ?? "";
+  return Math.max(0, ...(body.match(/\{\{(\d+)\}\}/g) ?? []).map(m => parseInt(m.replace(/\D/g, ""), 10)));
+}
+
+function SeqTemplatePicker({ channelId, action, onChange }: {
+  channelId: string | null;
+  action: StepDraft["action"];
+  onChange: (patch: Partial<StepDraft["action"]>) => void;
+}) {
+  const [tpls, setTpls] = useState<SeqTpl[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [manual, setManual] = useState(false);
+
+  useEffect(() => {
+    // Reset first: while the new number's list is in flight the OLD list is
+    // still in state, so a name from the previous account would look valid
+    // for a moment — exactly when the warning matters most.
+    setLoaded(false);
+    fetch(`/api/admin/templates${channelId ? `?channelId=${encodeURIComponent(channelId)}` : ""}`)
+      .then(r => r.json()).then(d => { setTpls(d.templates ?? []); setLoaded(true); })
+      .catch(() => { setTpls([]); setLoaded(true); });
+  }, [channelId]);
+
+  const name = action.templateName ?? "";
+  const lang = action.languageCode ?? "";
+  const approved = tpls.filter(t => t.status === "APPROVED");
+  const chosen = approved.find(t => tplKey(t.name, t.language) === tplKey(name, lang));
+  const unknown = !!name && loaded && !chosen;
+  const varCount = chosen ? tplVarCount(chosen) : 0;
+  const params = action.params ?? [];
+
+  if (manual) {
+    return (
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <input className={inp} placeholder="Template name" value={name} onChange={e => onChange({ templateName: e.target.value })} />
+          <input className={inp} placeholder="Language (e.g. en_US)" value={lang} onChange={e => onChange({ languageCode: e.target.value })} />
+        </div>
+        <button type="button" onClick={() => setManual(false)} className="text-[11px] font-bold text-brand-700 hover:text-brand-600">Choose from the approved list instead</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <select
+        className={`${inp} w-full`} aria-label="Template"
+        value={chosen ? tplKey(chosen.name, chosen.language) : ""}
+        onChange={e => {
+          const t = approved.find(x => tplKey(x.name, x.language) === e.target.value);
+          // Changing template throws the old params away — they belonged to
+          // a different body and would be filled into the wrong {{n}}.
+          onChange({ templateName: t?.name ?? "", languageCode: t?.language ?? "", params: [] });
+        }}
+      >
+        <option value="">{loaded ? "Choose a template…" : "Loading templates…"}</option>
+        {approved.map(t => (
+          <option key={tplKey(t.name, t.language)} value={tplKey(t.name, t.language)}>
+            {t.name} · {t.language}{tplVarCount(t) ? ` · ${tplVarCount(t)} variable${tplVarCount(t) === 1 ? "" : "s"}` : ""}
+          </option>
+        ))}
+      </select>
+
+      {!channelId && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-2.5 py-1.5">
+          Pick the number this sends from first — templates only exist on the account they were approved for.
+        </p>
+      )}
+      {channelId && loaded && !approved.length && (
+        <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-2.5 py-1.5">
+          No approved templates on this number yet{tpls.length ? ` (${tpls.length} still pending or rejected)` : ""}.
+        </p>
+      )}
+      {unknown && (
+        <p className="text-[11px] text-red-800 bg-red-50 border border-red-200 rounded-control px-2.5 py-1.5">
+          <b>“{name}” is not approved on this number.</b> This step will fail at send time. Templates are tied to the account they were approved on.
+        </p>
+      )}
+
+      {/* Variables. A template with {{1}} sent without a param is rejected by
+          Meta with #132000 — and nothing in this editor used to ask for them. */}
+      {varCount > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold text-ink-500">What fills each blank</p>
+          {Array.from({ length: varCount }, (_, v) => (
+            <input
+              key={v} className={`${inp} w-full !py-1`} placeholder={`{{${v + 1}}}`}
+              aria-label={`Value for variable ${v + 1}`}
+              value={params[v] ?? ""}
+              onChange={e => {
+                const next = Array.from({ length: varCount }, (_, k) => params[k] ?? "");
+                next[v] = e.target.value;
+                onChange({ params: next });
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <button type="button" onClick={() => setManual(true)} className="text-[11px] font-bold text-brand-700 hover:text-brand-600">
+        Type a name instead
+      </button>
+    </div>
+  );
+}
 
 // Format a step delay (minutes) as a human label for the preview timeline.
 function fmtDelay(min: number): string {
@@ -20,10 +276,65 @@ function fmtDelay(min: number): string {
   return "after " + [d && `${d}d`, h && `${h}h`, m && `${m}m`].filter(Boolean).join(" ");
 }
 
+// A labelled field. The sequence editor had none: four controls sat in a grid
+// with placeholder text on the two inputs and nothing at all on the two
+// selects, so the trigger dropdown simply read "Manual / API" with no
+// indication that it was the trigger. A select cannot carry a placeholder, so
+// the label is the only thing that can say what it is.
+function SeqField({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">{label}</p>
+      {children}
+      {hint && <p className="text-[11px] text-ink-400 mt-1 leading-snug">{hint}</p>}
+    </div>
+  );
+}
+
+// A wait, in whatever unit the person is thinking in.
+//
+// This was a box of raw minutes, which asks somebody planning a three-day
+// follow-up to type 4320. The stored value is still minutes; only the typing
+// changes. The unit is held in state rather than re-derived on every render, so
+// typing 24 while in hours does not rewrite itself as "1 day" mid-keystroke.
+const DELAY_UNITS: [string, number][] = [["minutes", 1], ["hours", 60], ["days", 1440]];
+function DelayPicker({ minutes, onChange }: { minutes: number; onChange: (m: number) => void }) {
+  const [unit, setUnit] = useState(() =>
+    minutes && minutes % 1440 === 0 ? 1440 : minutes && minutes % 60 === 0 ? 60 : 1);
+  const shown = unit === 1 ? minutes : Math.round((minutes / unit) * 100) / 100;
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <input type="number" min={0} className={`${inp} !py-1 w-16`} value={shown}
+        onChange={e => onChange(Math.max(0, Math.round((Number(e.target.value) || 0) * unit)))} />
+      <select className={`${inp} !py-1`} value={unit}
+        onChange={e => {
+          // Keep the real wait unchanged when the unit changes — this is a
+          // change of how it reads, not of what it does.
+          setUnit(Number(e.target.value));
+        }}>
+        {DELAY_UNITS.map(([l, v]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </span>
+  );
+}
+
 // Chat-style preview of a sequence — each step shown as the message the contact
 // receives, in WhatsApp or Instagram styling, with the wait before each step.
-function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagram"; steps: StepDraft[] }) {
+function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" | "instagram"; steps: StepDraft[]; channelId: string | null }) {
   const ig = platform === "instagram";
+  // One fetch for the whole panel. A template step shows the approved body
+  // and buttons rather than a filename — what the operator is checking is
+  // the message, and the filename is the one part the lead never sees.
+  const [tpls, setTpls] = useState<SeqTpl[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    setLoaded(false);
+    fetch(`/api/admin/templates${channelId ? `?channelId=${encodeURIComponent(channelId)}` : ""}`)
+      .then(r => r.json()).then(d => { setTpls(d.templates ?? []); setLoaded(true); })
+      .catch(() => { setTpls([]); setLoaded(true); });
+  }, [channelId]);
+  const find = (name?: string, lang?: string) =>
+    tpls.find(t => tplKey(t.name, t.language) === tplKey(name ?? "", lang ?? ""));
   const bubble = ig ? "bg-slate-100 text-slate-800 rounded-2xl rounded-bl-md" : "bg-white text-slate-800 rounded-lg rounded-tl-sm";
   return (
     <div className="xl:w-72 shrink-0">
@@ -31,20 +342,50 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
       <div className={`rounded-control p-3 space-y-3 ${ig ? "bg-white border border-line" : "bg-[#e5ddd5]"}`}>
         {steps.map((st, i) => {
           const a = st.action;
+          // Hoisted so the timestamp can sit ABOVE the button strip, which is
+          // where WhatsApp puts it — buttons are a footer attached to the
+          // bubble, not part of the message.
+          const tpl = a.type === "template" ? find(a.templateName, a.languageCode) : undefined;
+          const parts = tpl ? previewParts(tpl, a.params ?? []) : null;
           return (
             <div key={i} className="space-y-1.5">
-              <p className="text-center"><span className="inline-flex items-center gap-1 text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5"><Clock className="w-3 h-3" /> {fmtDelay(st.delayMinutes)}</span></p>
+              <p className="text-center"><span className="text-[10px] text-slate-500 bg-black/[0.06] rounded-full px-2 py-0.5">⏱ {fmtDelay(st.delayMinutes)}</span></p>
               <div className="flex">
                 <div className={`max-w-[85%] px-3 py-2 text-[13px] shadow-sm ${bubble}`}>
                   {a.type === "text" && <p className="whitespace-pre-wrap break-words">{a.text?.trim() || "Empty message…"}</p>}
-                  {a.type === "template" && <><p className="font-semibold break-words"><FileText className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />{a.templateName?.trim() || "template"}</p><p className="text-[11px] text-slate-400 mt-0.5">approved template message</p></>}
+                  {a.type === "template" && !parts && <>
+                    <p className="font-semibold break-words">📄 {a.templateName?.trim() || "template"}</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {!a.templateName?.trim() ? "no template chosen yet"
+                        : !loaded ? "loading the approved copy…"
+                        : "not approved on this number — nothing to preview"}
+                    </p>
+                  </>}
+                  {a.type === "template" && parts && <>
+                    {parts.headerMedia && (
+                      <div className="w-full h-20 bg-slate-200 rounded-md flex items-center justify-center text-slate-400 mb-1">
+                        {parts.headerMedia === "VIDEO" ? <Video className="w-5 h-5" /> : parts.headerMedia === "DOCUMENT" ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
+                      </div>
+                    )}
+                    {parts.headerText && <p className="font-bold break-words mb-1">{parts.headerText}</p>}
+                    <p className="whitespace-pre-wrap break-words">{parts.body}</p>
+                    {parts.footer && <p className="text-[11px] text-slate-400 mt-1 break-words">{parts.footer}</p>}
+                    {parts.buttons.length > 0 && <>
+                      <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>
+                      <div className="-mx-3 -mb-2 border-t border-slate-200 divide-y divide-slate-200">
+                        {parts.buttons.map((b, bi) => (
+                          <p key={bi} className="text-center text-[12px] font-medium text-[#00a5f4] py-1.5 px-2 break-words">{b}</p>
+                        ))}
+                      </div>
+                    </>}
+                  </>}
                   {a.type === "media" && <>
                     {a.mediaKind === "image" && a.url
                       ? <ImgFallback url={a.url} imgClass="w-40 h-24 object-cover rounded-md" boxClass="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400" icon={<ImageIcon className="w-6 h-6" />} />
                       : <div className="w-40 h-24 bg-slate-200 rounded-md flex items-center justify-center text-slate-400">{a.mediaKind === "video" ? <Video className="w-6 h-6" /> : a.mediaKind === "document" ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}</div>}
                     {a.caption?.trim() && <p className="break-words mt-1">{a.caption}</p>}
                   </>}
-                  <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>
+                  {!parts?.buttons.length && <p className="text-[9px] text-slate-400 text-right mt-0.5">10:30</p>}
                 </div>
               </div>
             </div>
@@ -61,7 +402,7 @@ function SequencePreview({ platform, steps }: { platform: "whatsapp" | "instagra
 // stage-managed sequences stop. Config in wa_settings via /api/admin/stage-drips.
 // Landing-page form → WhatsApp flow. A cold web-form lead can't be sent free-form
 // messages, so this sends an approved TEMPLATE on the LeadSquared event and ARMS
-// the question flow for the reply. Per-tenant config via /api/admin/lead-welcome.
+// the question flow for the reply. Config in wa_settings via /api/admin/lead-welcome.
 type LeadWelcomeCfg = { enabled: boolean; templateName: string; languageCode: string; nameParam: boolean; flowId: string; trigger: string; sourceContains: string };
 function LeadWelcomePanel() {
   const [cfg, setCfg] = useState<LeadWelcomeCfg | null>(null);
@@ -76,7 +417,7 @@ function LeadWelcomePanel() {
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/lead-welcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) }).then(r => r.json());
-      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved"); }
+      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved ✓"); }
     } finally { setBusy(false); }
   }
   if (!cfg) return null;
@@ -110,7 +451,393 @@ function LeadWelcomePanel() {
         <button onClick={save} disabled={busy} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save"}</button>
         {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
       </div>
-      <p className="text-[11px] text-ink-400">Point your signup form&apos;s LeadSquared automation at the LSQ→portal webhook (Integrations → LeadSquared). Each lead is welcomed once per 30 days; opted-out numbers are skipped.</p>
+      <p className="text-[11px] text-ink-400">Set the LeadSquared automation for your signup form to POST to the LSQ→portal webhook (see docs/lsq-webhooks.md). Each lead is welcomed once per 30 days; opted-out numbers are skipped.</p>
+    </div>
+  );
+}
+
+// The switch that starts the stage drip, and the dry run it is read from.
+//
+// ── Why this screen exists ─────────────────────────────────────────────────
+//
+// The poll asks LeadSquared which leads reached the hand-off stage, because
+// LeadSquared has no API for creating the Automation that would otherwise
+// tell us. It had an API route and no UI at all, which meant the one control
+// that starts sending marketing templates to thousands of real people could
+// only be operated by somebody with database access.
+//
+// Worse, observe mode wrote its findings to wa_settings and nothing read them
+// back. A dry run nobody can see is not a dry run — it is a delay.
+//
+// So the panel's real job is the bottom half: showing WHAT THE LAST PASS SAW,
+// so the decision to go live is made against evidence rather than a promise.
+type PollCfg = {
+  enabled: boolean; mode: "observe" | "apply"; stage: string;
+  watermark: string | null; maxPerRun: number; burstAlarm: number;
+  lastRunAt?: string; lastApplied?: number; lastError?: string;
+  lastCandidates?: number;
+  lastObserved?: { phone: string; stage: string | null; knownStage: string | null; wouldEnroll: string | null; note: string }[];
+};
+
+// Build (or rebuild) the RNR drip from the message library.
+//
+// ── Why this needs a screen at all ────────────────────────────────────────
+//
+// The journey is five steps, three audience rules, a send window, a daily
+// cap and an enrolment guard. Exactly one of those — the steps — can be set
+// from the sequence editor, so hand-building it produces a DIFFERENT journey
+// that looks right: every step to everybody, at any hour, as often as the
+// delays allow. The seeder has existed since the drip was designed and could
+// only be reached by posting to an API, which meant in practice it was run
+// once and then nobody could re-run it.
+//
+// ── Why rebuilding matters more than building ─────────────────────────────
+//
+// The course lists inside the saved steps are a FROZEN COPY of the programme
+// table, taken at seed time. Teaching that table a new course changes the
+// code, the tests and nothing else: the live drip goes on reaching exactly
+// who it reached before. That had already happened twice — Tanvi's answers
+// sat unapplied for a day, and the 17 names LeadSquared actually uses were
+// mapped and still reached nobody until a rebuild.
+//
+// So this screen leads with the diff, not the build button. It compares what
+// the library would produce now against what is saved, and says which steps
+// are stale. A rebuild that changes nothing should look like one.
+type SeedStep = { id: string; day: number; template: string; params: string[]; audience: SeqAudience; note: string | null };
+type SeedPreview = {
+  exists: boolean; sequenceId: string | null;
+  steps: SeedStep[];
+  held: { id: string; template: string; reason: string }[];
+  problems: string[];
+  todo: string[];
+  matchingOn?: { course: string; city: string };
+};
+
+function SeedRnrPanel({ seqs, onBuilt }: { seqs: SeqRow[]; onBuilt: () => void }) {
+  const ask = useConfirm();
+  const channels = useChannelList();
+  const live = seqs.find(s => s.name === "RNR follow-up") ?? null;
+  const [channelId, setChannelId] = useState("");
+  const [preview, setPreview] = useState<SeedPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Default to the number the journey already goes out from, so a rebuild
+  // cannot silently move it to a different WABA — where the templates are
+  // not approved and every step would fail at send time.
+  useEffect(() => {
+    if (channelId) return;
+    const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
+    setChannelId(live?.channelId ?? wa.find(c => c.isDefault)?.id ?? wa[0]?.id ?? "");
+  }, [channels, live, channelId]);
+
+  useEffect(() => {
+    if (!channelId) return;
+    fetch(`/api/admin/sequences/seed-rnr?channelId=${encodeURIComponent(channelId)}`)
+      .then(r => r.json()).then(d => setPreview(d.error ? null : d)).catch(() => setPreview(null));
+  }, [channelId]);
+
+  // What is saved versus what the library would build now.
+  const diff = (() => {
+    if (!preview || !live) return null;
+    const saved = live.steps ?? [];
+    const order = (xs: { template: string; delay: number }[]) => JSON.stringify(xs);
+    const savedOrder = order(saved.map(x => ({ template: x.action?.templateName ?? "", delay: x.delayMinutes })));
+    const nextOrder = order(preview.steps.map((x, i) => ({
+      template: x.template,
+      delay: Math.max(0, x.day - (preview.steps[i - 1]?.day ?? 0)) * 1440,
+    })));
+    const stale = preview.steps.filter((x, i) => {
+      const got = saved[i];
+      return got?.action?.templateName === x.template
+        && audienceFingerprint(got.audience ?? null) !== audienceFingerprint(x.audience);
+    }).map(x => x.template);
+    return { reorders: savedOrder !== nextOrder, stale };
+  })();
+
+  async function build(force: boolean) {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/sequences/seed-rnr", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channelId, ...(force ? { force: true } : {}) }),
+      }).then(async r => ({ status: r.status, body: await r.json() }));
+
+      // The guard refuses only when the RUNNING ORDER changes, which would
+      // move a lead part-way through onto a different message. Offering
+      // force here rather than hiding it keeps that decision where the facts
+      // are, but it is never the default.
+      if (d.status === 409) {
+        const ok = await ask({
+          title: "This rebuild would move leads already in the journey",
+          tone: "danger", confirmLabel: "Rebuild anyway", typeToConfirm: "REBUILD",
+          message: "Leads track their place by step number. This rebuild changes the running order, so anyone part-way through will jump to whichever message now sits at their position — possibly one they have already had, or one meant for weeks later.",
+          facts: [{ label: "Safer", value: "Stop the enrolments first, then rebuild" }],
+        });
+        if (ok) return void (await build(true));
+        setMsg({ ok: false, text: "Not rebuilt." });
+        return;
+      }
+      if (d.body.error) { setMsg({ ok: false, text: d.body.error }); return; }
+      setMsg({ ok: true, text: d.body.warning ?? `${d.body.created ? "Built" : "Rebuilt"} — ${d.body.steps} steps, ${d.body.audienceRules} audience rule(s).` });
+      onBuilt();
+    } catch { setMsg({ ok: false, text: "Connection error." }); }
+    finally { setBusy(false); }
+  }
+
+  const waChannels = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
+  const stale = diff?.stale ?? [];
+
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
+            <Workflow className="w-4 h-4 text-brand-700" /> Build the RNR drip
+          </p>
+          <p className="text-[11px] text-ink-400">
+            Builds the five-step follow-up from the message library — steps, audience rules, 10 AM–8 PM window, one message a day, stop on reply. Most of that cannot be set in the sequence editor, so building it by hand produces a different journey.
+          </p>
+        </div>
+        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${stale.length ? "bg-amber-100 text-amber-900" : live ? "bg-brand-700 text-white" : "bg-canvas text-ink-400 border border-line"}`}>
+          {stale.length ? "NEEDS REBUILD" : live ? "UP TO DATE" : "NOT BUILT"}
+        </span>
+      </div>
+
+      {/* The reason somebody opens this panel. */}
+      {stale.length > 0 && (
+        <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 leading-snug space-y-1">
+          <p>
+            <b>{stale.length} step{stale.length === 1 ? " is" : "s are"} running an older course list.</b>{" "}
+            The programme table has changed since this journey was built, and saved steps keep their own copy — so those steps are still reaching whoever they reached before.
+          </p>
+          <p className="text-amber-800">{stale.join(", ")}</p>
+          <p>Rebuilding applies the current list. Nothing else about the journey changes.</p>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-[11px] text-ink-400">Send from</label>
+        <select className={`${inp} !py-1.5 text-xs`} value={channelId} onChange={e => setChannelId(e.target.value)}>
+          <option value="">Pick a number…</option>
+          {waChannels.map(c => <option key={c.id} value={c.id}>{c.name}{c.id === live?.channelId ? " (current)" : ""}</option>)}
+        </select>
+        <button
+          onClick={() => void build(false)}
+          disabled={busy || !channelId || !preview}
+          className={`px-3 py-1 rounded-control text-xs font-bold disabled:opacity-60 ${stale.length ? "bg-brand-700 hover:bg-brand-600 text-white" : "border border-line text-ink-900 hover:bg-canvas"}`}
+        >
+          {busy ? "…" : live ? "Rebuild" : "Build the drip"}
+        </button>
+        {msg && <span className={`text-[11px] ${msg.ok ? "text-ink-500" : "text-red-600"}`}>{msg.text}</span>}
+      </div>
+
+      {live && channelId && channelId !== live.channelId && (
+        <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-control px-3 py-1.5 leading-snug">
+          <b>This would move the journey to a different number.</b> Templates are approved per WhatsApp business account, so every step would fail at send time unless they are approved there too.
+        </p>
+      )}
+
+      {preview && (
+        <div className="border border-line rounded-control divide-y divide-line">
+          {preview.steps.map((st, i) => {
+            const isStale = stale.includes(st.template);
+            return (
+              <div key={st.id} className="px-3 py-1.5 flex items-start justify-between gap-3">
+                <span className="text-[12px] text-ink-900 shrink-0">
+                  <b>Day {st.day}</b> <span className="text-ink-400">· {st.template}</span>
+                </span>
+                <span className="text-[11px] text-right min-w-0 break-words">
+                  {st.audience
+                    ? <span className="text-ink-400" title={describeSeqAudience(st.audience, true)}>{describeSeqAudience(st.audience)}</span>
+                    : <span className="text-ink-400">everyone enrolled</span>}
+                  {isStale && <b className="text-amber-800"> · stale</b>}
+                  {i === 0 && !preview.exists && <b className="text-brand-700"> · first message</b>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Held steps are not a failure — they are steps whose data source does
+          not exist yet, and saying so stops somebody hunting for them. */}
+      {preview?.held?.length ? (
+        <div className="text-[11px] text-ink-400 space-y-0.5">
+          <p className="font-medium text-ink-600">Not included:</p>
+          {preview.held.map(h => <p key={h.id}>· <b className="text-ink-900">{h.template}</b> — {h.reason}</p>)}
+        </div>
+      ) : null}
+
+      {preview?.matchingOn && (
+        <p className="text-[11px] text-ink-400">
+          Matching on the CRM fields <b className="text-ink-900">{preview.matchingOn.course}</b> and{" "}
+          <b className="text-ink-900">{preview.matchingOn.city}</b> — the names LeadSquared uses on this account.
+        </p>
+      )}
+
+      {preview?.todo?.length ? (
+        <div className="text-[11px] text-amber-800 space-y-0.5">
+          <p className="font-medium">Still outstanding:</p>
+          {preview.todo.map((t, i) => <p key={i}>· {t}</p>)}
+        </div>
+      ) : null}
+
+      {preview?.problems?.length ? (
+        <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-1.5">{preview.problems.join(" · ")}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
+  const ask = useConfirm();
+  const [cfg, setCfg] = useState<PollCfg | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    fetch("/api/admin/stage-poll").then(r => r.json()).then(d => setCfg(d.poll ?? null)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(patch: Record<string, unknown>, note?: string) {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/stage-poll", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+      }).then(r => r.json());
+      if (d.error) setMsg(d.error);
+      else { setCfg(d.poll ?? null); setMsg(note ?? "Saved ✓"); }
+    } catch { setMsg("Connection error."); }
+    finally { setBusy(false); }
+  }
+
+  if (!cfg) return null;
+  const live = cfg.enabled && cfg.mode === "apply";
+  const seqName = (id: string | null) => seqs.find(s => s.id === id)?.name ?? id ?? "—";
+  const when = (iso?: string | null) => (iso ? new Date(iso).toLocaleString() : "never");
+
+  // Going live is the one action here that reaches customers. It is gated on
+  // the same facts a person would want to check first — which stage, which
+  // sequence, and how many leads one pass can touch.
+  async function goLive() {
+    const ok = await ask({
+      title: "Start enrolling leads for real?",
+      message: "Leads reaching this stage will be enrolled into the sequence and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning counsellor's number — visible to your team.",
+      facts: [
+        { label: "Stage watched", value: cfg!.stage || "(none set)" },
+        { label: "Per pass, at most", value: String(cfg!.maxPerRun) },
+        { label: "Last pass saw", value: `${cfg!.lastCandidates ?? 0} candidate(s)` },
+      ],
+      confirmLabel: "Go live",
+      tone: "caution",
+    });
+    if (ok) await save({ mode: "apply", enabled: true }, "Live — enrolling for real.");
+  }
+
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5">
+            <RefreshCw className="w-4 h-4 text-brand-700" /> Stage poll
+          </p>
+          <p className="text-[11px] text-ink-400">
+            Asks LeadSquared every minute which leads reached the hand-off stage, because LeadSquared has no API for creating an Automation. Runs the same decisions as the webhook, so both together are harmless.
+          </p>
+        </div>
+        <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${live ? "bg-brand-700 text-white" : cfg.enabled ? "bg-amber-100 text-amber-900" : "bg-canvas text-ink-400 border border-line"}`}>
+          {live ? "LIVE" : cfg.enabled ? "WATCHING ONLY" : "OFF"}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="text-[11px] text-ink-400">Stage</label>
+        <input
+          className={`${inp} !py-1.5 text-xs w-44`} placeholder="e.g. Not Reachable"
+          defaultValue={cfg.stage}
+          onBlur={e => { if (e.target.value.trim() !== cfg.stage) void save({ stage: e.target.value.trim() }, "Stage changed — the next pass re-seeds and enrols nobody."); }}
+        />
+        <label className="text-[11px] text-ink-400 ml-2">Max per pass</label>
+        <input
+          type="number" min={1} max={500} className={`${inp} !py-1.5 text-xs w-20`} defaultValue={cfg.maxPerRun}
+          onBlur={e => { const n = Number(e.target.value); if (n > 0 && n !== cfg.maxPerRun) void save({ maxPerRun: n }); }}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <button
+          onClick={() => void save({ enabled: !cfg.enabled })}
+          disabled={busy}
+          className="px-3 py-1 rounded-control border border-line text-xs font-bold text-ink-900 hover:bg-canvas disabled:opacity-60"
+        >
+          {cfg.enabled ? "Turn off" : "Turn on"}
+        </button>
+        {cfg.mode === "apply" ? (
+          <button
+            onClick={() => void save({ mode: "observe" }, "Back to watching only — nothing will enrol.")}
+            disabled={busy}
+            className="px-3 py-1 rounded-control border border-amber-300 bg-amber-50 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+          >
+            Stop enrolling
+          </button>
+        ) : (
+          <button
+            onClick={() => void goLive()}
+            disabled={busy || !cfg.stage.trim()}
+            className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60"
+            title={cfg.stage.trim() ? undefined : "Set the stage first"}
+          >
+            Go live
+          </button>
+        )}
+        <button
+          onClick={() => void save({ runNow: true }, "Ran one pass.")}
+          disabled={busy || !cfg.enabled}
+          className="px-3 py-1 rounded-control border border-line text-xs font-semibold text-ink-900 hover:bg-canvas disabled:opacity-60"
+        >
+          Run a pass now
+        </button>
+        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+      </div>
+
+      <div className="text-[11px] text-ink-400 flex flex-wrap gap-x-4 gap-y-0.5">
+        <span>Last run: <b className="text-ink-900">{when(cfg.lastRunAt)}</b></span>
+        <span>Candidates: <b className="text-ink-900">{cfg.lastCandidates ?? 0}</b></span>
+        <span>Enrolled last pass: <b className="text-ink-900">{cfg.lastApplied ?? 0}</b></span>
+        {cfg.watermark && <span>Caught up to: <b className="text-ink-900">{when(cfg.watermark)}</b></span>}
+      </div>
+      {cfg.lastError && (
+        <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-1.5">{cfg.lastError}</p>
+      )}
+
+      {/* The point of the whole screen: what the dry run actually saw. */}
+      <div>
+        <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">
+          What the last pass saw {cfg.mode !== "apply" && <span className="normal-case tracking-normal">(nothing was sent)</span>}
+        </p>
+        {!cfg.lastObserved?.length ? (
+          <p className="text-[11px] text-ink-400">
+            Nothing yet. A lead has to MOVE onto the stage while the poll is on — leads already sitting there are treated as seen, so switching on never messages the backlog.
+          </p>
+        ) : (
+          <div className="border border-line rounded-control divide-y divide-line">
+            {cfg.lastObserved.map((o, i) => (
+              <div key={i} className="px-3 py-1.5 flex items-start justify-between gap-3">
+                <span className="text-[12px] text-ink-900 font-medium shrink-0">{o.phone}</span>
+                <span className="text-[11px] text-ink-400 text-right min-w-0 break-words">
+                  {o.knownStage ?? "new"} → {o.stage} · {o.wouldEnroll ? <b className="text-brand-700">{seqName(o.wouldEnroll)}</b> : o.note}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="text-[11px] text-ink-400">
+        Switching the stage re-seeds: the leads already on it are treated as already seen, so the backlog is never messaged. Only leads who move onto it afterwards are enrolled.
+      </p>
     </div>
   );
 }
@@ -128,7 +855,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/stage-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.stage.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved"); }
+      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
     } finally { setBusy(false); }
   }
 
@@ -165,10 +892,120 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   );
 }
 
+// Which rungs of the funnel actually have a journey.
+//
+// This is the whole audit finding, made permanent. Both teams are supposed to
+// run a full Attention → Interest → Desire → Action, and the gap nobody could
+// see was that Desire — the proof, the outcomes, the alumni, the scarcity —
+// had no journey in either lane. A list of sequences cannot show an absence;
+// a grid can.
+function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
+  const live = seqs.filter(s => s.active);
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-2.5">
+      <div>
+        <p className="text-sm font-bold text-ink-900">Funnel coverage</p>
+        <p className="text-[11px] text-ink-400">Each team runs its own full funnel. An empty cell is a stage with nothing sending.</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="text-[11px] w-full min-w-[520px]">
+          <thead>
+            <tr className="text-ink-400">
+              <th className="text-left font-medium py-1 pr-3 w-24"></th>
+              {AIDA_STAGES.map(st => <th key={st} className="text-left font-medium py-1 px-1.5" title={AIDA_LABELS[st].job}>{AIDA_LABELS[st].label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {LANES.map(lane => (
+              <tr key={lane} className="border-t border-line">
+                <td className="py-1.5 pr-3 font-semibold text-ink-700 capitalize">{lane}</td>
+                {AIDA_STAGES.map(st => {
+                  const hits = live.filter(x => x.team === lane && x.aidaStage === st);
+                  return (
+                    <td key={st} className="py-1.5 px-1.5">
+                      {hits.length
+                        ? <span className="inline-block rounded-full bg-brand-50 text-brand-700 font-semibold px-2 py-0.5" title={hits.map(h => h.name).join(", ")}>{hits.length}</span>
+                        : <span className="inline-block rounded-full bg-canvas text-ink-400 px-2 py-0.5">—</span>}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {seqs.some(s => !s.team) && (
+        <p className="text-[11px] text-amber-700">
+          {seqs.filter(s => !s.team).length} journey(s) are not filed under a team, so they do not appear above and will reach leads in either lane.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// Auto-drip by the grade a counsellor gives a lead. Same shape as the stage
+// panel above, on the other axis LeadSquared grades on — kept separate because
+// a lead moves on one without moving on the other, so one combined screen
+// would force a choice the CRM does not.
+function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
+  const [drips, setDrips] = useState<{ score: string; sequenceId: string }[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => { fetch("/api/admin/lead-score-drips").then(r => r.json()).then(d => setDrips(d.drips ?? [])).catch(() => setDrips([])); }, []);
+
+  async function save() {
+    if (!drips) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/lead-score-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.score.trim() && x.sequenceId) }) }).then(r => r.json());
+      if (d.error) setMsg(d.error);
+      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
+    } finally { setBusy(false); }
+  }
+
+  if (drips === null) return null;
+  const clash = drips.some((d, i) => d.score.trim() && drips.findIndex(x => x.score.trim().toLowerCase() === d.score.trim().toLowerCase()) !== i);
+  const waSeqs = seqs.filter(s => s.platform === "whatsapp");
+  return (
+    <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p>
+        <p className="text-[11px] text-ink-400">When a counsellor grades a lead in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s sequence — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out leads are never enrolled.</p>
+      </div>
+      <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
+      {drips.map((d, i) => (
+        <div key={i} className="flex items-center gap-2 flex-wrap">
+          <input list="lsq-scores" className={`${inp} !py-1.5 text-xs w-44`} placeholder="Lead Score, e.g. Hot" value={d.score}
+            onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, score: e.target.value } : x)))} />
+          <span className="text-[11px] text-ink-400">→</span>
+          <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
+            onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
+            <option value="">Pick a sequence…</option>
+            {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
+          </select>
+          <button onClick={() => setDrips(a => (a ?? []).filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 flex-wrap">
+        <button onClick={() => setDrips(a => [...(a ?? []), { score: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add score rule</button>
+        <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
+        {clash && <span className="text-[11px] text-red-500">Duplicate score.</span>}
+        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+      </div>
+      <p className="text-[11px] text-ink-400">A counsellor grading a lead is almost never inside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+    </div>
+  );
+}
+
 // Run a drip from LeadSquared: pull leads matching an advanced (multi-condition)
 // search and enroll them into a sequence. Preview before enrolling.
 const LSQ_OPS: [string, string][] = [["eq", "equals"], ["contains", "contains"], ["gt", "after / greater"], ["lt", "before / less"]];
-const LSQ_FIELDS = ["ProspectStage", "Source", "Owner", "OwnerIdName", "mx_City", "CreatedOn", "EmailAddress"];
+// Suggestions for the condition field box (a datalist, so anything else can
+// still be typed). mx_Lead_Score leads because grading a lead by hand is the
+// most common reason to build an audience, and it was absent — typeable in
+// principle, undiscoverable in practice.
+const LSQ_FIELDS = ["mx_Lead_Score", "ProspectStage", "Source", "Owner", "OwnerIdName", "mx_City", "CreatedOn", "EmailAddress", "Score", "EngagementScore"];
 function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
   const ask = useConfirm();
   const [conds, setConds] = useState<{ field: string; op: string; value: string }[]>([{ field: "ProspectStage", op: "eq", value: "" }]);
@@ -239,7 +1076,8 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
 }
 
 // Test + monitor a drip: enroll one number on demand, force the due steps to run
-// (without waiting for the cron), and watch every enrollment's progress + errors.
+// (without waiting for the 5-minute cron), and watch every enrollment's progress
+// + errors. This is what turns "is it even working?" into a yes/no you can see.
 type EnrRow = { id: string; sequenceName: string; phone: string; platform: string; currentStep: number; status: string; nextRunAt: string | null; lastError: string | null; updatedAt: string | null };
 function fmtWhen(s: string | null): string {
   if (!s) return "—";
@@ -296,7 +1134,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
         <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p>
-        <p className="text-[11px] text-ink-400">Enroll your own number to test a drip, force due steps to send now (instead of waiting for the scheduler), and watch every enrollment below.</p>
+        <p className="text-[11px] text-ink-400">Enroll your own number to test a drip, force due steps to send now (instead of waiting up to 5 min for the scheduler), and watch every enrollment below.</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => { setSeqId(e.target.value); setPhone(""); setMsg(null); }}>
@@ -307,7 +1145,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         {seqId && (
           <select className={`${inp} w-48`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
             <option value="">{contacts.length ? "Pick a contact who messaged you…" : "No contacts on this platform yet"}</option>
-            {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " (open)" : ""}</option>)}
+            {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " ✅" : ""}</option>)}
           </select>
         )}
         <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
@@ -316,7 +1154,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>(open)</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
+      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
       {/* Enrollment monitor */}
       <div className="border border-line rounded-control overflow-hidden">
@@ -330,7 +1168,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
             <div className="col-span-3 truncate font-mono text-ink-600">{e.phone}<span className="text-ink-300"> · {e.platform === "instagram" ? "IG" : "WA"}</span></div>
             <div className="col-span-2 text-ink-600">#{(e.currentStep ?? 0) + 1}</div>
             <div className="col-span-2"><span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${ENR_BADGE[e.status] ?? "bg-slate-100 text-slate-500"}`}>{e.status}</span></div>
-            <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="inline-flex items-center gap-1 text-red-600" title={e.lastError}><AlertTriangle className="w-3 h-3 shrink-0" /> {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
+            <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
           </div>
         ))}
       </div>
@@ -338,7 +1176,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
   );
 }
 
-function SequencesTab() {
+export default function SequencesTab() {
   const ask = useConfirm();
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
@@ -349,7 +1187,7 @@ function SequencesTab() {
   useEffect(() => { load(); }, [load]);
 
   function editRow(s: SeqRow) {
-    setForm({ id: s.id, name: s.name, platform: s.platform, triggerKind: s.triggerKind, triggerValue: s.triggerValue ?? "", channelId: s.channelId, active: s.active, steps: s.steps.length ? s.steps.map(st => ({ delayMinutes: st.delayMinutes, action: st.action })) : EMPTY_SEQ.steps });
+    setForm({ id: s.id, name: s.name, platform: s.platform, triggerKind: s.triggerKind, triggerValue: s.triggerValue ?? "", channelId: s.channelId, active: s.active, team: s.team ?? null, aidaStage: s.aidaStage ?? null, steps: s.steps.length ? s.steps.map(st => ({ delayMinutes: st.delayMinutes, audience: st.audience ?? null, action: st.action })) : EMPTY_SEQ.steps });
     setMsg(null);
   }
 
@@ -369,11 +1207,13 @@ function SequencesTab() {
       message: "Anyone part-way through it stops receiving the rest of its messages.",
     }))) return;
     await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    closeIfDeleted(setForm, id);
     load();
   }
   const setStep = (i: number, patch: Partial<StepDraft>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, ...patch } : s) } : f);
   const setStepAction = (i: number, patch: Partial<StepDraft["action"]>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, action: { ...s.action, ...patch } } : s) } : f);
 
+  const editorRef = useRevealOnOpen(!!form);
   return (
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
@@ -398,7 +1238,7 @@ function SequencesTab() {
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Workflow className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[10px] font-bold text-red-500">· OFF</span>}</p>
-            <p className="text-[11px] text-ink-400">{s.platform} · trigger: {SEQ_TRIGGERS.find(t => t[0] === s.triggerKind)?.[1] ?? s.triggerKind}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
+            <p className="text-[11px] text-ink-400">{s.team ? <span className="font-semibold text-ink-600">{s.team === "sales" ? "Sales" : "Marketing"}{s.aidaStage ? ` · ${AIDA_LABELS[s.aidaStage].label}` : ""} · </span> : <span className="text-amber-600 font-semibold">Unassigned · </span>}{s.platform} · starts when: {triggerLabel(s.triggerKind)}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
           </div>
           <button onClick={() => editRow(s)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
@@ -406,38 +1246,115 @@ function SequencesTab() {
       ))}
       {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
 
-      <SeqMonitorPanel seqs={seqs} />
-      <LeadWelcomePanel />
-      <StageDripsPanel seqs={seqs} />
-      <LsqDripPanel seqs={seqs} />
-
       {form && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4 u-fade-in" onClick={() => setForm(null)}>
-        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-3xl flex flex-col xl:flex-row gap-5 u-scale-in">
+        <div ref={editorRef} className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
           <div className="flex-1 min-w-0 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <input className={inp} placeholder="Sequence name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-            <select className={inp} value={form.platform} onChange={e => setForm({ ...form, platform: e.target.value as SeqDraft["platform"], channelId: null })}>
-              <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
-            </select>
-            <select className={inp} value={form.triggerKind} onChange={e => setForm({ ...form, triggerKind: e.target.value })}>
-              {SEQ_TRIGGERS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-            <input className={inp} placeholder="Trigger value (keyword / tag / ref id)" value={form.triggerValue} onChange={e => setForm({ ...form, triggerValue: e.target.value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <SeqField label="Name it" hint="Only you see this.">
+              <input className={`${inp} w-full`} placeholder="Brochure follow-up" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            </SeqField>
+            <SeqField label="Where it sends" hint="Changing this changes which triggers are available.">
+              <select className={`${inp} w-full`} value={form.platform}
+                onChange={e => {
+                  // A trigger that does not exist on the new platform would stay
+                  // selected and invisible, so move to one that does.
+                  const platform = e.target.value as SeqDraft["platform"];
+                  const keep = triggerSpec(form.triggerKind)?.platforms.includes(platform);
+                  setForm({ ...form, platform, channelId: null, triggerKind: keep ? form.triggerKind : "manual", triggerValue: keep ? form.triggerValue : "" });
+                }}>
+                <option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option>
+              </select>
+            </SeqField>
           </div>
-          <div className="flex items-center gap-3">
-            <ChannelSelect kind={form.platform} value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel={form.platform === "instagram" ? "Account: default" : "Number: default"} className={`${inp} !py-1.5 text-xs`} />
-            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} /> active</label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <SeqField label="Which team runs this" hint="Marketing speaks to leads nobody owns yet. Sales speaks to leads a counsellor already has. A journey never reaches the other team's leads.">
+              <select className={`${inp} w-full`} value={form.team ?? ""}
+                onChange={e => setForm({ ...form, team: (e.target.value || null) as Lane | null })}>
+                <option value="">Unassigned — reaches anyone (old behaviour)</option>
+                {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? "Marketing — leads nobody owns yet" : "Sales — leads a counsellor owns"}</option>)}
+              </select>
+            </SeqField>
+            <SeqField label="What job it does" hint={form.aidaStage ? AIDA_LABELS[form.aidaStage].job : "Used to show which part of the funnel has no journey yet. It does not change how anything sends."}>
+              <select className={`${inp} w-full`} value={form.aidaStage ?? ""}
+                onChange={e => setForm({ ...form, aidaStage: (e.target.value || null) as AidaStage | null })}>
+                <option value="">Not set</option>
+                {AIDA_STAGES.map(st => <option key={st} value={st}>{AIDA_LABELS[st].label}</option>)}
+              </select>
+            </SeqField>
+          </div>
+
+          <SeqField label="What starts it" hint="A sequence sends nothing until something enrols a contact.">
+            <div className="space-y-1.5">
+              {SEQ_TRIGGERS.filter(t => t.platforms.includes(form.platform)).map(t => {
+                const on = form.triggerKind === t.value;
+                return (
+                  <label key={t.value}
+                    className={`flex gap-2.5 items-start rounded-control border p-2.5 cursor-pointer transition-colors ${on ? "border-brand-700 bg-brand-50/60" : "border-line hover:bg-canvas"}`}>
+                    <input type="radio" name="seq-trigger" className="accent-brand-700 mt-0.5" checked={on}
+                      onChange={() => setForm({ ...form, triggerKind: t.value, triggerValue: "" })} />
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-ink-900">{t.label}</span>
+                      <span className="block text-[11px] text-ink-600">{t.when}</span>
+                      {t.note && <span className="block text-[11px] text-ink-400 mt-0.5">{t.note}</span>}
+                    </span>
+                  </label>
+                );
+              })}
+              {/* Only ever rendered for a sequence already saved on one of the
+                  dead four, so the setting is visible instead of silently kept. */}
+              {SEQ_TRIGGERS_DEAD[form.triggerKind] && (
+                <label className="flex gap-2.5 items-start rounded-control border border-amber-300 bg-amber-50 p-2.5">
+                  <input type="radio" name="seq-trigger" className="accent-amber-500 mt-0.5" checked readOnly />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-semibold text-ink-900">{SEQ_TRIGGERS_DEAD[form.triggerKind]}</span>
+                    <span className="block text-[11px] text-ink-700">This one was never connected to anything — nobody is being enrolled by it. Pick one above instead.</span>
+                  </span>
+                </label>
+              )}
+            </div>
+          </SeqField>
+
+          {triggerSpec(form.triggerKind)?.field && (() => {
+            const f = triggerSpec(form.triggerKind)!.field!;
+            return (
+              <SeqField label={f.label} hint={f.help}>
+                <input className={`${inp} w-full max-w-xs`} inputMode={f.numeric ? "numeric" : undefined}
+                  placeholder={f.placeholder} value={form.triggerValue}
+                  onChange={e => setForm({ ...form, triggerValue: e.target.value })} />
+              </SeqField>
+            );
+          })()}
+
+          <div className="grid grid-cols-2 gap-3">
+            <SeqField label={form.platform === "instagram" ? "Which account it sends from" : "Which number it sends from"}
+              hint="Templates only work on the account they were approved for.">
+              <ChannelSelect kind={form.platform} value={form.channelId} onChange={v => setForm({ ...form, channelId: v })} allLabel={form.platform === "instagram" ? "Account: default" : "Number: default"} className={`${inp} w-full`} />
+            </SeqField>
+            <SeqField label="Live?" hint="Switching this off also stops everyone part-way through.">
+              <label className="flex items-center gap-2 text-sm text-ink-700 cursor-pointer py-2">
+                <input type="checkbox" className="accent-brand-700" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} />
+                {form.active ? "On — it can enrol people" : "Off — nothing will be sent"}
+              </label>
+            </SeqField>
           </div>
 
           <p className="text-xs font-bold text-slate-400 uppercase pt-1">Steps</p>
-          {form.steps.map((st, i) => (
+          {form.steps.map((st, i) => {
+            // Minutes from enrolment, so a step that will land outside the
+            // 24-hour window can be flagged where the mistake is being made
+            // rather than discovered as a campaign that went quiet after day
+            // one. Text and media steps are SKIPPED outside the window, not
+            // failed, so nothing else would ever draw attention to it.
+            const elapsed = form.steps.slice(0, i + 1).reduce((n, x) => n + Math.max(0, x.delayMinutes), 0);
+            const willBeSkipped = elapsed >= 1440 && st.action.type !== "template";
+            return (
             <div key={i} className="border border-line rounded-control p-2.5 space-y-2">
-              <div className="flex items-center gap-2 text-xs text-ink-500">
+              <div className="flex items-center gap-2 text-xs text-ink-500 flex-wrap">
                 <span className="font-bold">#{i + 1}</span>
-                <span>wait</span>
-                <input type="number" min={0} className={`${inp} !py-1 w-20`} value={st.delayMinutes} onChange={e => setStep(i, { delayMinutes: Math.max(0, Number(e.target.value) || 0) })} />
-                <span>min, then send</span>
+                <span>{i === 0 ? "after enrolling, wait" : "then wait"}</span>
+                <DelayPicker minutes={st.delayMinutes} onChange={m => setStep(i, { delayMinutes: m })} />
+                <span>and send</span>
                 <select className={`${inp} !py-1`} value={st.action.type} onChange={e => setStepAction(i, { type: e.target.value as StepDraft["action"]["type"] })}>
                   <option value="text">Text</option><option value="template">Template</option><option value="media">Media</option>
                 </select>
@@ -445,10 +1362,25 @@ function SequencesTab() {
                 {form.steps.length > 1 && <button onClick={() => setForm({ ...form, steps: form.steps.filter((_, j) => j !== i) })} className="p-1 text-ink-400 hover:text-red-600"><X className="w-3.5 h-3.5" /></button>}
               </div>
               {st.action.type === "text" && <textarea className={`${inp} w-full`} rows={2} placeholder="Message text (sends inside the 24h window)" value={st.action.text ?? ""} onChange={e => setStepAction(i, { text: e.target.value })} />}
-              {st.action.type === "template" && <div className="grid grid-cols-2 gap-2"><input className={inp} placeholder="Template name" value={st.action.templateName ?? ""} onChange={e => setStepAction(i, { templateName: e.target.value })} /><input className={inp} placeholder="Language (e.g. en_US)" value={st.action.languageCode ?? ""} onChange={e => setStepAction(i, { languageCode: e.target.value })} /></div>}
-              {st.action.type === "media" && <div className="grid grid-cols-2 gap-2"><select className={inp} value={st.action.mediaKind ?? "image"} onChange={e => setStepAction(i, { mediaKind: e.target.value as NonNullable<StepDraft["action"]["mediaKind"]> })}><option value="image">Image</option><option value="video">Video</option><option value="document">Document</option></select><input className={inp} placeholder="Media URL" value={st.action.url ?? ""} onChange={e => setStepAction(i, { url: e.target.value })} /></div>}
+              {st.action.type === "template" && <SeqTemplatePicker channelId={form.channelId} action={st.action} onChange={patch => setStepAction(i, patch)} />}
+              {/* Set by the RNR seeder; there is no editor for it yet. Shown
+                  so nobody wonders why a step reached fewer people than the
+                  enrolment count, and carried through the save untouched. */}
+              {st.audience && (
+                <p className="text-[11px] text-ink-600 bg-canvas border border-line rounded-control px-2.5 py-1.5">
+                  <b>Only some leads get this step.</b> {describeSeqAudience(st.audience)}
+                </p>
+              )}
+              {st.action.type === "media" && <SeqMediaPicker action={st.action} onChange={patch => setStepAction(i, patch)} />}
+              {willBeSkipped && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-2.5 py-1.5 leading-snug">
+                  <b>This step will be skipped.</b> It lands more than 24 hours after the contact
+                  wrote to you, and WhatsApp only allows an approved template that far out. Change
+                  it to a <b>Template</b>, or move it earlier.
+                </p>
+              )}
             </div>
-          ))}
+          );})}
           <button onClick={() => setForm({ ...form, steps: [...form.steps, { delayMinutes: 60, action: { type: "text", text: "" } }] })} className="text-xs font-bold text-brand-700 hover:text-brand-600 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add step</button>
 
           <div className="flex items-center gap-2 pt-1">
@@ -457,13 +1389,178 @@ function SequencesTab() {
             {msg && <span className="text-xs text-red-500">{msg}</span>}
           </div>
           </div>
-          <SequencePreview platform={form.platform} steps={form.steps} />
+          <SequencePreview platform={form.platform} steps={form.steps} channelId={form.channelId} />
         </div>
+      )}
+
+      <FunnelCoverage seqs={seqs} />
+      <SeqMonitorPanel seqs={seqs} />
+      <LeadWelcomePanel />
+      <SeedRnrPanel seqs={seqs} onBuilt={load} />
+      <StagePollPanel seqs={seqs} />
+      <StageDripsPanel seqs={seqs} />
+      <ScoreDripsPanel seqs={seqs} />
+      <LsqDripPanel seqs={seqs} />
+
+    </div>
+  );
+}
+
+// ── Catalog (commerce) ────────────────────────────────────────────────────────
+type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null };
+const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", description: "", price: "", currency: "INR", imageUrl: "", retailerId: "", metaProductId: "", catalogId: "", available: true, buttonText: "", buttonUrl: "" };
+
+// Image that falls back to a placeholder icon when the URL is missing or fails
+// to load (e.g. a non-image link was pasted), instead of a broken-image glyph.
+function ImgFallback({ url, imgClass, boxClass, icon }: { url: string; imgClass: string; boxClass: string; icon: React.ReactNode }) {
+  const [err, setErr] = useState(false);
+  useEffect(() => setErr(false), [url]);
+  // eslint-disable-next-line @next/next/no-img-element
+  if (url && !err) return <img src={url} alt="" className={imgClass} onError={() => setErr(true)} />;
+  return <div className={boxClass}>{icon}</div>;
+}
+
+function CatalogTab() {
+  const ask = useConfirm();
+  const [products, setProducts] = useState<ProductRow[]>([]);
+  const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [checkoutBusy, setCheckoutBusy] = useState(false);
+  const [checkoutId, setCheckoutId] = useState<string | null>(null);
+  const load = useCallback(() => { fetch("/api/admin/products").then(r => r.json()).then(d => setProducts(d.products ?? [])).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function makeCheckout() {
+    setCheckoutBusy(true); setMsg(null); setCheckoutId(null);
+    try {
+      const res = await fetch("/api/admin/checkout-flow", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "Checkout" }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setMsg(d.error || `Could not create checkout flow (HTTP ${res.status})`);
+      else if (d.published) setCheckoutId(d.id);
+      else setMsg(`Created the flow but Meta couldn't publish it: ${(d.validationErrors?.length ? d.validationErrors.join("; ") : d.publishError) || "the Flow JSON didn't pass validation"}`);
+    } catch {
+      setMsg("Could not reach the server to create the checkout flow.");
+    } finally { setCheckoutBusy(false); }
+  }
+
+  async function save() {
+    if (!form) return;
+    if (!form.name.trim()) { setMsg("Product name is required."); return; }
+    // Left to the old `|| 0`, "abc" became a free product with no warning.
+    if (!/^\d+(\.\d{1,2})?$/.test(form.price.trim())) { setMsg("Enter a price as a number, for example 4999 or 4999.00."); return; }
+    setBusy(true); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/products", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: form.id, name: form.name, description: form.description, priceCents: Math.round(Number(form.price) * 100), currency: form.currency, imageUrl: form.imageUrl || null, retailerId: form.retailerId || null, metaProductId: form.metaProductId || null, catalogId: form.catalogId || null, available: form.available, buttonText: form.buttonText || null, buttonUrl: form.buttonUrl || null }) });
+      const d = await res.json();
+      if (!res.ok) setMsg(d.error || "Save failed"); else { setForm(null); load(); }
+    } finally { setBusy(false); }
+  }
+  async function remove(id: string) {
+    if (!(await ask({ title: "Delete this product?", tone: "danger", confirmLabel: "Delete product" }))) return;
+    await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+    closeIfDeleted(setForm, id);
+    load();
+  }
+
+  const editorRef = useRevealOnOpen(!!form);
+  return (
+    <div className="max-w-5xl space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
+          <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>
+          <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
+        </div>
+      </div>
+      {checkoutId && <p className="text-[11px] text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">Published a multi-screen checkout flow — id <code className="font-mono">{checkoutId}</code>. Use it in a flow&apos;s “WhatsApp form” node; on submit, the order is created from the contact&apos;s open cart.</p>}
+      {!form && msg && <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">⚠ {msg}{/credential|token|WABA|not configured/i.test(msg) ? " — checkout flows need a connected WhatsApp number with WhatsApp Flows access." : ""}</p>}
+
+      {products.map(p => (
+        <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
+          <ImgFallback url={p.imageUrl ?? ""} imgClass="w-12 h-12 rounded-lg object-cover shrink-0" boxClass="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ShoppingBag className="w-5 h-5 text-ink-300" />} />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
+            <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
+          </div>
+          <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available, buttonText: p.buttonText ?? "", buttonUrl: p.buttonUrl ?? "" })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+          <button onClick={() => remove(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
+
+      {form && (
+        <div ref={editorRef} className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
+          <div className="flex-1 space-y-2 min-w-0">
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+            <div className="flex gap-2"><input className={inp} placeholder="Price" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} /><input className={`${inp} w-20`} placeholder="INR" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value.toUpperCase() })} /></div>
+            <div className="col-span-2 flex items-center gap-3">
+              <ImgFallback url={form.imageUrl} imgClass="w-14 h-14 rounded-lg object-cover border border-line shrink-0" boxClass="w-14 h-14 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ImageIcon className="w-5 h-5 text-ink-300" />} />
+              <div className="flex-1 space-y-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <ImageUpload onUploaded={url => setForm({ ...form, imageUrl: url })} />
+                  {form.imageUrl && <button onClick={() => setForm({ ...form, imageUrl: "" })} className="text-[11px] font-semibold text-ink-400 hover:text-red-600">Remove</button>}
+                </div>
+                <input className={`${inp} w-full`} placeholder="…or paste an image link" value={form.imageUrl} onChange={e => setForm({ ...form, imageUrl: e.target.value })} />
+              </div>
+            </div>
+            <textarea className={`${inp} col-span-2`} rows={2} placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+            <input className={inp} placeholder={form.id ? "Your SKU / retailer id" : "SKU / retailer id — auto-generated if blank"} value={form.retailerId} onChange={e => setForm({ ...form, retailerId: e.target.value })} />
+            <input className={inp} placeholder="Meta catalog product id (optional)" value={form.metaProductId} onChange={e => setForm({ ...form, metaProductId: e.target.value })} />
+            <input className={inp} maxLength={20} placeholder='Button label (e.g. "Buy now") — max 20' value={form.buttonText} onChange={e => setForm({ ...form, buttonText: e.target.value })} />
+            <input className={inp} placeholder="Button link (https://… — required to use a custom button)" value={form.buttonUrl} onChange={e => setForm({ ...form, buttonUrl: e.target.value })} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.available} onChange={e => setForm({ ...form, available: e.target.checked })} /> available</label>
+            <div className="flex-1" />
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save product"}</button>
+            <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          </div>
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          </div>
+          <div className="xl:w-64 shrink-0">
+            <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
+            <div className="bg-[#e5ddd5] rounded-control p-3">
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                <ImgFallback url={form.imageUrl} imgClass="w-full h-32 object-cover" boxClass="h-32 bg-slate-100 flex items-center justify-center text-slate-300" icon={<ImageIcon className="w-7 h-7" />} />
+                <div className="p-2.5 space-y-0.5">
+                  <p className="text-[13px] font-semibold text-slate-800 break-words">{form.name || "Product name"}</p>
+                  <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
+                  {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
+                </div>
+                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{form.buttonText.trim() || "View"}</div>
+              </div>
+            </div>
+            <p className="mt-1.5 text-[10px] text-ink-400 leading-snug">
+              {form.buttonUrl.trim()
+                ? <>Custom card: image + this button → <span className="font-mono break-all">{form.buttonUrl}</span>. Use the “Custom card” style on a flow’s Product node.</>
+                : <>Native catalog card shows WhatsApp’s own “View” button. Add a button link above to send a custom card with your label instead.</>}
+            </p>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+// ── Sales Pipeline (Kanban; stage-on-contact) ─────────────────────────────────
 
-export default SequencesTab;
+function useRevealOnOpen<T extends HTMLElement = HTMLDivElement>(open: boolean) {
+  const ref = useRef<T | null>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    // Only on the transition into open. Reacting to every render would drag
+    // the page back to the top of the form on every keystroke.
+    if (open && !wasOpen.current && ref.current) {
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      ref.current.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
+    wasOpen.current = open;
+  }, [open]);
+  return ref;
+}

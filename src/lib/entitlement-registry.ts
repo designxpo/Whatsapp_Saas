@@ -97,8 +97,15 @@ export const TAB_MIN_ROLE: Record<string, "admin"> = {
 // allowed so the nav never flickers items away mid-load — same rule tabAllowed
 // uses for a not-yet-resolved entitlements object. The platform owner's session
 // carries role "admin" (auth.ts), so the owner is never gated here.
+// Tabs a team LEAD may open in addition to an admin. A lead is otherwise scoped
+// exactly like a member — the one extra thing they get is the board over their
+// own team's numbers. Platform screens (settings, numbers, team management)
+// stay admin-only and are enforced server-side by requireRoleAdmin.
+const LEAD_TABS = new Set(["team"]);
+
 export function tabRoleAllowed(tab: string, role: string | null | undefined): boolean {
   if (!role) return true;
+  if (LEAD_TABS.has(tab)) return role === "admin" || role === "lead";
   return TAB_MIN_ROLE[tab] !== "admin" || role === "admin";
 }
 

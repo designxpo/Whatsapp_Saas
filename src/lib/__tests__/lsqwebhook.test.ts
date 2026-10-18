@@ -16,6 +16,7 @@ describe("parseLsqWebhook", () => {
       Source: "PPC",
     });
     expect(ev).toEqual({
+      city: null, course: null, leadScore: null,
       event: "owner_changed",
       phone: "918368872108",
       name: "Asha Verma",

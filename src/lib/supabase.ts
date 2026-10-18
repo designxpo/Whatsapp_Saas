@@ -1,3 +1,4 @@
+import { uploadProblem, safeStorageName, storedContentType, inertContentType } from "./uploadguard";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 // Defense-in-depth: this service-role client bypasses RLS and must never run in
@@ -35,30 +36,25 @@ export async function ensureBucket() {
 // cap, a server-generated random key (never the client filename), and a validated
 // Content-Type. SVG and HTML are refused on purpose — served from a public bucket
 // origin they would execute as stored XSS on a trusted first-party domain.
-const UPLOAD_MAX_BYTES = 25 * 1024 * 1024;   // 25MB
-const UPLOAD_ALLOWED: Record<string, string> = {
-  "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif",
-  "application/pdf": "pdf",
-  "application/msword": "doc",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
-  "application/vnd.ms-excel": "xls",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-  "text/csv": "csv", "text/plain": "txt",
-  "video/mp4": "mp4", "video/webm": "webm",
-  "audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/wav": "wav",
-};
+// Thrown when a file is not one we store. The message is written for the person
+// who picked the file ("SVG images can carry scripts…"), so the route hands it
+// back as a 400 instead of a generic failure.
+export class UploadRefused extends Error {}
+
 export async function uploadPublic(file: File): Promise<string> {
-  const mime = (file.type || "").split(";")[0].trim().toLowerCase();
-  const ext = UPLOAD_ALLOWED[mime];
-  if (!ext) throw new Error(`Unsupported file type${mime ? ` (${mime})` : ""}. Allowed: PNG/JPG/WebP/GIF, PDF, Office docs, MP4/WebM, common audio.`);
-  if (file.size > UPLOAD_MAX_BYTES) throw new Error(`File too large — max ${UPLOAD_MAX_BYTES / (1024 * 1024)}MB.`);
+  // What may go into the PUBLIC bucket, how big, and under what name — all decided
+  // in uploadguard.ts, which is pure and tested on its own.
+  const problem = uploadProblem({ type: file.type, size: file.size, name: file.name });
+  if (problem) throw new UploadRefused(problem);
   const supabase = db();
   await ensureBucket();
-  // Random server-generated key — the client filename is never used in the path
-  // (path-segment injection / overwrite safety).
-  const filename = `upload/${Date.now()}_${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  // The readable original name is kept (a document sent over WhatsApp is shown to
+  // the recipient by it) with everything dangerous about it removed, behind a
+  // random token so two uploads of "brochure.pdf" can never collide or be guessed.
+  const filename = `upload/${Math.random().toString(36).slice(2, 10)}_${safeStorageName(file.name, file.type)}`;
   const { error } = await supabase.storage.from(BUCKET).upload(filename, file, {
-    contentType: mime,   // validated against the allowlist above
+    // OUR content type for the accepted kind, never the client's string.
+    contentType: storedContentType(file.type),
     upsert: false,
   });
   if (error) throw error;
@@ -82,7 +78,7 @@ export async function uploadAudio(data: Buffer, mimeType: string): Promise<strin
     await ensureBucket();
     const supabase = db();
     const filename = `voice/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: mime, upsert: false });
+    const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: inertContentType(mime), upsert: false });   // the sender chooses the declared type, and this bucket is public
     if (error) return null;
     return supabase.storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;
   } catch {
@@ -114,7 +110,7 @@ export async function uploadMedia(data: Buffer, mimeType: string): Promise<strin
     await ensureBucket();
     const supabase = db();
     const filename = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${mediaExt(type, sub)}`;
-    const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: mime, upsert: false });
+    const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: inertContentType(mime), upsert: false });   // the sender chooses the declared type, and this bucket is public
     if (error) return null;
     return supabase.storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;
   } catch {

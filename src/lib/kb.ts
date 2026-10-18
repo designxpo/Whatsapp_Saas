@@ -1,3 +1,6 @@
+import { db } from "./supabase";
+import { ingestToLibrary } from "./kbconcepts";
+import { publishConcepts } from "./kbpublish";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { resolveTenantAi } from "./ai/keys";
 import { createHash } from "crypto";
@@ -446,6 +449,7 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
     const rows = contents.map((content, i) => ({ content, embedding: embeddings[i] }));
     const n = await replaceChunks(docId, rows, tenantId);
     await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
+    if (doc) { await ingestToLibrary(doc, text, tenantId); await publishConcepts({}, tenantId); }
     await setDocSync(docId, sha256(text), tenantId);   // baseline hash for future change detection
   } catch (err) {
     await setDocStatus(docId, "failed", { error: errorMessage(err) }, tenantId);
@@ -477,6 +481,8 @@ export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unc
     const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tid);
     const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
+    await ingestToLibrary(doc, text, tid);
+    await publishConcepts({}, tid);
     await setDocSync(doc.id, hash, tid);
     return "updated";
   } catch (err) {
@@ -536,7 +542,18 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
 const COVERAGE_FLOOR = 0.45;   // keep in sync with MIN_SIMILARITY in llm.ts
 export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, embedding?: number[] | null): Promise<{ covered: boolean; top: number; embedding: number[] }> {
   const emb = embedding ?? await embedQuery(query, tenantId);
-  const top = (await matchChunks(emb, 1, tenantId))[0]?.similarity ?? 0;
+  // Probe the SAME index the answer will come from. A gate that checks documents
+  // while answers are read from concepts would report "we know this" about
+  // knowledge the assistant cannot reach (or miss knowledge it can), and the
+  // grounding firewall's decisions rest on this number.
+  let top: number;
+  if (libraryLive()) {
+    const { data, error } = await db().rpc("match_kb_concept_chunks", { query_embedding: emb, match_count: 1, p_tenant_id: tenantId, concept_tag: null });
+    if (error) throw new Error(error.message);
+    top = (data as { similarity: number }[] | null)?.[0]?.similarity ?? 0;
+  } else {
+    top = (await matchChunks(emb, 1, tenantId))[0]?.similarity ?? 0;
+  }
   return { covered: top >= COVERAGE_FLOOR, top, embedding: emb };
 }
 
@@ -587,7 +604,7 @@ export interface KbScope { tag: string | null; strict: boolean }
 const asScope = (p: string | null | undefined | KbScope): KbScope =>
   p && typeof p === "object" ? p : { tag: p ?? null, strict: false };
 
-export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primary?: string | null | KbScope): Promise<{ content: string; similarity: number }[]> {
+export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primary?: string | null | KbScope, opts: { index?: "documents" | "concepts" } = {}): Promise<{ content: string; similarity: number }[]> {
   const q = (query || "").trim();
   if (!q) return [];
   const { tag: primaryTag, strict } = asScope(primary);
@@ -605,6 +622,20 @@ export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_I
     return null;
   });
   const noVectors: { content: string; similarity: number }[] = [];
+  if ((opts.index ?? (libraryLive() ? "concepts" : "documents")) === "concepts") {
+    const search = async (tag: string | null) => {
+      const args = { match_count: HYBRID_POOL, p_tenant_id: tenantId, concept_tag: tag };
+      const [vec, kw] = await Promise.all([
+        emb ? db().rpc("match_kb_concept_chunks", { ...args, query_embedding: emb }) : Promise.resolve({ data: [], error: null }),
+        db().rpc("match_kb_concept_chunks_text", { ...args, query_text: q }),
+      ]);
+      if (vec.error || kw.error) throw new Error(vec.error?.message || kw.error?.message);
+      return fuseHybrid((vec.data ?? []).filter((r: { similarity: number }) => r.similarity >= VEC_FLOOR), kw.data ?? [], k);
+    };
+    const scoped = await search(primaryTag || null);
+    return scoped.length || !primaryTag || strict ? scoped : search(null);
+  }
+
 
   if (!primaryTag) {
     const [vec, kw] = await Promise.all([
@@ -641,3 +672,6 @@ export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_I
   ]);
   return fuseHybrid(vec.filter(c => c.similarity >= VEC_FLOOR), kw, k);
 }
+
+/** Reversible switch: only reviewed, active concepts answer when enabled. */
+export function libraryLive(): boolean { return process.env.KB_LIBRARY_LIVE === "true"; }

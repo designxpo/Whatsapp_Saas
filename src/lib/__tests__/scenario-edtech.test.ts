@@ -537,7 +537,7 @@ describe("EdTech (course academy)", () => {
       expect(await hasActiveEnrollment(LEAD_PHONE, ACADEMY)).toBe(true);   // welcome + AI stay silent
       expect(await hasActiveEnrollment(LEAD_PHONE, RIVAL)).toBe(false);    // another academy unaffected
       expect(await hasActiveEnrollment("", ACADEMY)).toBe(false);          // blank-phone guard
-      await stopEnrollment("seq-join", LEAD_PHONE);
+      await stopEnrollment("seq-join", LEAD_PHONE, ACADEMY);
       expect(await hasActiveEnrollment(LEAD_PHONE, ACADEMY)).toBe(false);  // AI resumes
     });
 
@@ -549,6 +549,10 @@ describe("EdTech (course academy)", () => {
       }];
       expect(await hasActiveEnrollment(LEAD_PHONE, ACADEMY)).toBe(true);
       expect(await hasActiveDripEnrollment(LEAD_PHONE, ACADEMY)).toBe(false);  // a returning lead still gets an instant AI reply
+      // enroll() enforces one journey at a time, so the lead's idle nudge has
+      // to end before JOIN can start. (In production the reply guard stops it;
+      // here we do it directly. The fixture's nudge is "seq-idle".)
+      await stopEnrollment("seq-idle", LEAD_PHONE, ACADEMY);
       await enroll("seq-join", { phone: LEAD_PHONE }, ACADEMY);
       expect(await hasActiveDripEnrollment(LEAD_PHONE, ACADEMY)).toBe(true);   // a real drip owns the thread
     });

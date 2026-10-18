@@ -157,7 +157,7 @@ vi.mock("@/lib/messenger", () => ({
   sendFbQuickReplies: vi.fn(async () => ({ ok: true, messageId: "fb_q" })),
 }));
 vi.mock("@/lib/channels", () => ({
-  getChannel: vi.fn(async () => null),
+  getChannel: vi.fn(async () => ({ id: "wanderly-channel", phoneId: "test-phone", token: "test-token", wabaId: "test-waba" })),
   // Real (pure) precedence helpers — conversation override → channel default → global.
   effectiveAgentId: (conv: { agentId?: string | null } | null | undefined, channel?: { agentId?: string | null } | null) => conv?.agentId ?? channel?.agentId ?? null,
   effectiveKbTag: (conv: { primaryKbTag?: string | null } | null | undefined, channel?: { kbTag?: string | null } | null) => conv?.primaryKbTag ?? channel?.kbTag ?? null,
@@ -220,7 +220,7 @@ import {
 } from "@/lib/flowengine";
 import { retrievalQuery } from "@/lib/llm";
 import { enforceGrounding } from "@/lib/guard/grounding";
-import { matchKeywordSequence, enroll, drainSequences } from "@/lib/sequences";
+import { matchKeywordSequence, enroll, drainSequences, stopEnrollment } from "@/lib/sequences";
 import { respondToConversation } from "@/lib/assistant";
 import { signPayload } from "@/lib/integrations";
 
@@ -539,10 +539,10 @@ describe("Travel agency (Wanderly Trips)", () => {
     const seedDrip = () => {
       h.tables["wa_sequences"] = [
         { id: "seq-bali", tenant_id: WANDERLY, name: "Bali deal drip", platform: "whatsapp",
-          trigger_kind: "keyword", trigger_value: "bali offers", active: true, channel_id: null,
+          trigger_kind: "keyword", trigger_value: "bali offers", active: true, stop_on_reply: false, channel_id: "wanderly-channel",
           created_at: "2026-07-01T00:00:00.000Z" },
         { id: "seq-rival", tenant_id: RIVAL, name: "Rival's drip", platform: "whatsapp",
-          trigger_kind: "keyword", trigger_value: "bali offers", active: true, channel_id: null,
+          trigger_kind: "keyword", trigger_value: "bali offers", active: true, stop_on_reply: false, channel_id: "wanderly-channel",
           created_at: "2026-07-01T00:00:01.000Z" },
       ];
       h.tables["wa_sequence_steps"] = [
@@ -589,6 +589,8 @@ describe("Travel agency (Wanderly Trips)", () => {
         id: "st-p0", tenant_id: WANDERLY, sequence_id: "seq-precheck", step_index: 0, delay_minutes: 1440,
         action: { type: "text", text: "Your Bali pre-departure checklist 📋 passport, visa, forex." },
       });
+      // A lead must finish or stop the current journey before starting another.
+      await stopEnrollment("seq-bali", TRAVELLER_PHONE, WANDERLY);
       await enroll("seq-precheck", { phone: TRAVELLER_PHONE }, WANDERLY);
       const pre = h.tables["wa_sequence_enrollments"].find(r => r.sequence_id === "seq-precheck")!;
       expect(Math.abs(Date.parse(pre.next_run_at) - (Date.now() + 1440 * 60_000))).toBeLessThan(5000);
@@ -609,7 +611,7 @@ describe("Travel agency (Wanderly Trips)", () => {
       h.within24h.mockReturnValue(true);
 
       expect(await drainSequences(50, WANDERLY)).toBe(1);
-      expect(h.wa.sendText).toHaveBeenCalledWith(TRAVELLER_PHONE, "Today's Bali deal 🌴 5N/6D from ₹52,999 — flights + villa included.", undefined);
+      expect(h.wa.sendText).toHaveBeenCalledWith(TRAVELLER_PHONE, "Today's Bali deal 🌴 5N/6D from ₹52,999 — flights + villa included.", expect.objectContaining({ id: "wanderly-channel" }));
       const row = h.tables["wa_sequence_enrollments"][0];
       expect(row).toMatchObject({ current_step: 1, status: "active", last_error: null });
       // Step 1 waits 2880 minutes (2 days) measured from NOW.
@@ -637,7 +639,7 @@ describe("Travel agency (Wanderly Trips)", () => {
       // Step 2 is a Meta-approved template — those need no window. Make it due again.
       row.next_run_at = "2026-07-10T00:00:00.000Z";
       expect(await drainSequences(50, WANDERLY)).toBe(1);
-      expect(h.wa.sendTemplateSingle).toHaveBeenCalledWith(TRAVELLER_PHONE, "bali_final_call", "en", ["Priya"], undefined);
+      expect(h.wa.sendTemplateSingle).toHaveBeenCalledWith(TRAVELLER_PHONE, "bali_final_call", "en", ["Priya"], expect.objectContaining({ id: "wanderly-channel" }));
       expect(h.wa.sendText).not.toHaveBeenCalled();
       // Last step done → the enrollment completes cleanly.
       expect(h.tables["wa_sequence_enrollments"][0]).toMatchObject({ status: "completed", last_error: null });

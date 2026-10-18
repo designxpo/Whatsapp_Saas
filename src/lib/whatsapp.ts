@@ -259,7 +259,7 @@ export async function sendTemplateTest(params: {
   headerImageUrl?: string | null;
   channel?: ChannelCreds;
   tenantId?: string;
-}): Promise<{ id?: string; error?: string }> {
+}): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(params.channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   // A test send must preview the real thing, merge fields included.
@@ -294,7 +294,7 @@ export async function sendTemplateTest(params: {
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -302,7 +302,7 @@ export async function sendTemplateTest(params: {
 
 // Sends a free-form text message. Only valid within the 24h customer-service
 // window (i.e. in reply to a recent inbound message). Returns the Meta message id.
-export async function sendText(phone: string, body: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendText(phone: string, body: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   if (!body.trim()) return { error: "Empty message body" };
@@ -328,7 +328,7 @@ export async function sendText(phone: string, body: string, channel?: ChannelCre
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -337,7 +337,7 @@ export async function sendText(phone: string, body: string, channel?: ChannelCre
 // React to a specific inbound/outbound message with an emoji (tap-and-hold
 // react, mirrored from the agent's side). Pass emoji: "" to remove a reaction.
 // No free-text body, so nothing to run through moderateText here.
-export async function sendReaction(phone: string, messageId: string, emoji: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendReaction(phone: string, messageId: string, emoji: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   if (!messageId) return { error: "Missing target message id" };
@@ -354,7 +354,7 @@ export async function sendReaction(phone: string, messageId: string, emoji: stri
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -362,7 +362,7 @@ export async function sendReaction(phone: string, messageId: string, emoji: stri
 
 // Sends a single product card from the WABA's connected catalog (Meta Commerce
 // Manager). Free-form, 24h-window rules apply.
-export async function sendProduct(phone: string, body: string, catalogId: string, productRetailerId: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendProduct(phone: string, body: string, catalogId: string, productRetailerId: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   return sendInteractive(phone, {
     type: "product",
     body: { text: body.slice(0, 1024) },
@@ -371,7 +371,7 @@ export async function sendProduct(phone: string, body: string, catalogId: string
 }
 
 // Sends a multi-product list (≤30 products across ≤10 sections) from the catalog.
-export async function sendProductList(phone: string, header: string, body: string, catalogId: string, sections: { title: string; productRetailerIds: string[] }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendProductList(phone: string, header: string, body: string, catalogId: string, sections: { title: string; productRetailerIds: string[] }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   return sendInteractive(phone, {
     type: "product_list",
     header: { type: "text", text: header.slice(0, 60) },
@@ -384,7 +384,7 @@ export async function sendProductList(phone: string, header: string, body: strin
 }
 
 // Shared sender for interactive payloads (product/product_list).
-async function sendInteractive(phone: string, interactive: Record<string, unknown>, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+async function sendInteractive(phone: string, interactive: Record<string, unknown>, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   // Shared funnel for every interactive send (cta_url, list, flow) — the payload
@@ -402,7 +402,7 @@ async function sendInteractive(phone: string, interactive: Record<string, unknow
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -410,7 +410,7 @@ async function sendInteractive(phone: string, interactive: Record<string, unknow
 
 // Sends one approved template to one recipient — the only message type allowed
 // outside the 24h customer-service window. bodyParams fill {{1}}..{{n}} in order.
-export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds, headerImageUrl?: string, buttonUrlParams?: (string | null)[]): Promise<{ id?: string; error?: string }> {
+export async function sendTemplateSingle(phone: string, templateName: string, languageCode: string, bodyParams: string[] = [], channel?: ChannelCreds, headerImageUrl?: string, buttonUrlParams?: (string | null)[]): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const components: Record<string, unknown>[] = [];
@@ -447,7 +447,7 @@ export async function sendTemplateSingle(phone: string, templateName: string, la
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -465,7 +465,7 @@ export async function sendCarouselTemplate(
   bubbleParams: string[],
   cards: { mediaUrl: string; kind?: "image" | "video"; bodyParams?: string[] }[],
   channel?: ChannelCreds,
-): Promise<{ id?: string; error?: string }> {
+): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const usable = cards.filter(c => c.mediaUrl?.trim());
@@ -496,7 +496,7 @@ export async function sendCarouselTemplate(
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -504,7 +504,7 @@ export async function sendCarouselTemplate(
 
 // Sends a media message (image/video/document/audio) by public URL. Free-form,
 // so 24h-window rules apply just like sendText.
-export async function sendMedia(phone: string, kind: "image" | "video" | "document" | "audio", url: string, caption?: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendMedia(phone: string, kind: "image" | "video" | "document" | "audio", url: string, caption?: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const media: Record<string, unknown> = { link: url };
@@ -523,7 +523,7 @@ export async function sendMedia(phone: string, kind: "image" | "video" | "docume
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -531,7 +531,7 @@ export async function sendMedia(phone: string, kind: "image" | "video" | "docume
 
 // Sends a message with a tappable URL button (interactive cta_url). Free-form,
 // 24h-window rules apply — used when an AI answer references a link.
-export async function sendCtaUrl(phone: string, body: string, buttonText: string, url: string, channel?: ChannelCreds, headerImageUrl?: string): Promise<{ id?: string; error?: string }> {
+export async function sendCtaUrl(phone: string, body: string, buttonText: string, url: string, channel?: ChannelCreds, headerImageUrl?: string): Promise<{ id?: string; error?: string; code?: number }> {
   return sendInteractive(phone, {
     type: "cta_url",
     ...(headerImageUrl ? { header: { type: "image", image: { link: headerImageUrl } } } : {}),
@@ -542,7 +542,7 @@ export async function sendCtaUrl(phone: string, body: string, buttonText: string
 
 // Sends an interactive quick-reply button message (max 3 buttons, titles ≤20 chars).
 // Free-form → 24h-window rules apply.
-export async function sendButtons(phone: string, body: string, buttons: { id: string; title: string }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendButtons(phone: string, body: string, buttons: { id: string; title: string }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const btns = buttons.filter(b => b.title.trim()).slice(0, 3);
@@ -568,14 +568,14 @@ export async function sendButtons(phone: string, body: string, buttons: { id: st
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
 }
 
 // Sends an interactive list message (≤10 rows across all sections).
-export async function sendList(phone: string, body: string, buttonText: string, sections: { title: string; rows: { id: string; title: string; description?: string }[] }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendList(phone: string, body: string, buttonText: string, sections: { title: string; rows: { id: string; title: string; description?: string }[] }[], channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   try {
@@ -601,7 +601,7 @@ export async function sendList(phone: string, body: string, buttonText: string, 
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -975,7 +975,7 @@ export async function fetchTemplates(channel?: ChannelCreds): Promise<WaTemplate
 // Send a Meta AUTHENTICATION template carrying an OTP. The code fills the body
 // variable AND the COPY_CODE button's URL param (button sub_type "url", index
 // "0") — Meta requires both for the one-tap copy button to work.
-export async function sendAuthTemplate(phone: string, templateName: string, languageCode: string, code: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string }> {
+export async function sendAuthTemplate(phone: string, templateName: string, languageCode: string, code: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   try {
@@ -998,7 +998,7 @@ export async function sendAuthTemplate(phone: string, templateName: string, lang
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}` };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }
@@ -1032,3 +1032,5 @@ export async function createAuthTemplate(name: string, language: string, channel
     return { error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+export const WA_NOT_ON_WHATSAPP = 131026;

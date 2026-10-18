@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getWelcomeSetting, getAwaySetting, setWelcomeSetting, setAwaySetting, isAiEnabled, setAiEnabled, getFlowNudge, setFlowNudge, getFlowReminders, setFlowReminders, type WelcomeSetting, type AwaySetting, type FlowNudgeSetting, type FlowRemindersSetting } from "@/lib/messaging-settings";
 import { currentUser, currentTenantId, requireRoleAdmin } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
+import { getTenantSetting, setTenantSetting } from "@/lib/store";
+import { resetLsqPauseCache } from "@/lib/leadsquared";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +14,9 @@ export async function GET() {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const [welcome, away, aiEnabled, flowNudge, flowReminders] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid)]);
-    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders });
+    const [welcome, away, aiEnabled, flowNudge, flowReminders, crmOwnerSync, crmPaused] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid), getTenantSetting<boolean>(tid, "crm_owner_sync_enabled", false), getTenantSetting<boolean>(tid, "lsq_paused", false)]);
+    // Both default OFF, so `=== true` is the right read: an unset value is a real "no".
+    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders, crmOwnerSync: { enabled: crmOwnerSync === true }, crmPaused: { enabled: crmPaused === true } });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -23,7 +26,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let body: { ai?: { enabled?: boolean }; welcome?: Partial<WelcomeSetting>; away?: Partial<AwaySetting>; flowNudge?: Partial<FlowNudgeSetting>; flowReminders?: Partial<FlowRemindersSetting> };
+  let body: { ai?: { enabled?: boolean }; welcome?: Partial<WelcomeSetting>; away?: Partial<AwaySetting>; flowNudge?: Partial<FlowNudgeSetting>; flowReminders?: Partial<FlowRemindersSetting>; crmOwnerSync?: { enabled?: boolean }; crmPaused?: { enabled?: boolean } };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
     // Tenant-wide AI switch — a deliberate human action (logged below), never automated.
@@ -31,6 +34,21 @@ export async function POST(req: Request) {
       // The tenant-wide AI kill switch is an admin-only control.
       if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Only admins can toggle the AI switch" }, { status: 403 });
       await setAiEnabled(body.ai.enabled, tid);
+    }
+    // Follow the CRM's lead owner. MOVES conversations between teams' inboxes on
+    // the strength of what LeadSquared says, so it is an admin decision and is off
+    // until somebody turns it on.
+    if (body.crmOwnerSync && typeof body.crmOwnerSync.enabled === "boolean") {
+      if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Only admins can change this" }, { status: 403 });
+      await setTenantSetting(tid, "crm_owner_sync_enabled", body.crmOwnerSync.enabled);
+    }
+    // Pause every automatic LeadSquared write. While it is on the CRM goes stale
+    // (pushes park in the retry queue and drain when it is switched back off), so
+    // it is admin-only and logged like the AI master switch.
+    if (body.crmPaused && typeof body.crmPaused.enabled === "boolean") {
+      if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Only admins can change this" }, { status: 403 });
+      await setTenantSetting(tid, "lsq_paused", body.crmPaused.enabled);
+      resetLsqPauseCache(tid);
     }
     if (body.welcome) {
       const current = await getWelcomeSetting(tid);
@@ -57,9 +75,10 @@ export async function POST(req: Request) {
         steps: Array.isArray(body.flowReminders.steps) ? body.flowReminders.steps : current.steps,
       }, tid);
     }
-    logActivity(await currentUser(), "settings.save", [body.ai && `AI replies ${body.ai.enabled ? "ON" : "OFF"}`, body.welcome && "welcome", body.away && "away", body.flowNudge && "flow nudge", body.flowReminders && "flow reminders"].filter(Boolean).join(" + "));
-    const [welcome, away, aiEnabled, flowNudge, flowReminders] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid)]);
-    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders });
+    logActivity(await currentUser(), "settings.save", [body.ai && `AI replies ${body.ai.enabled ? "ON" : "OFF"}`, body.welcome && "welcome", body.away && "away", body.flowNudge && "flow nudge", body.flowReminders && "flow reminders", body.crmOwnerSync && `follow LeadSquared owner ${body.crmOwnerSync.enabled ? "ON" : "OFF"}`, body.crmPaused && `LeadSquared sync ${body.crmPaused.enabled ? "PAUSED" : "resumed"}`].filter(Boolean).join(" + "));
+    const [welcome, away, aiEnabled, flowNudge, flowReminders, crmOwnerSync, crmPaused] = await Promise.all([getWelcomeSetting(tid), getAwaySetting(tid), isAiEnabled(tid), getFlowNudge(tid), getFlowReminders(tid), getTenantSetting<boolean>(tid, "crm_owner_sync_enabled", false), getTenantSetting<boolean>(tid, "lsq_paused", false)]);
+    // Both default OFF, so `=== true` is the right read: an unset value is a real "no".
+    return NextResponse.json({ welcome, away, ai: { enabled: aiEnabled }, flowNudge, flowReminders, crmOwnerSync: { enabled: crmOwnerSync === true }, crmPaused: { enabled: crmPaused === true } });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

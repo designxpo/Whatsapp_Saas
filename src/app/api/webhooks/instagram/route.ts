@@ -235,7 +235,13 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
 
   // Keyword-triggered sequence opts the sender into a timed drip; suppress AI.
   const kwSeq = await matchKeywordSequence("instagram", text, channel.tenantId).catch(() => null);
-  if (kwSeq) { await enroll(kwSeq.id, { phone: senderId, platform: "instagram", conversationId: conv.id }, channel.tenantId); return; }
+  if (kwSeq) {
+    // Only suppress the AI when the drip actually started — enroll() refuses
+    // a lead who is already on another journey, and returning anyway would
+    // leave the sender with no reply from either.
+    const res = await enroll(kwSeq.id, { phone: senderId, platform: "instagram", conversationId: conv.id }, channel.tenantId);
+    if (res.enrolled) return;
+  }
 
   await aiRespond(channel, conv, text);
 }

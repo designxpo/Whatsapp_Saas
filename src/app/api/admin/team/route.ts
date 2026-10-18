@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
 import { listUsers, saveUser, deleteUser, logActivity } from "@/lib/team";
+import { asTeam, asRole } from "@/lib/teams";
+import { tdb } from "@/lib/tenantdb";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
 
@@ -27,10 +29,10 @@ export async function GET(req: Request) {
   }
 }
 
-// POST — create/update a member. Body: { id?, email, name, role, password?, active? }
+// POST — create/update a member. Body: { id?, email, name, role, password?, active?, team?, channelId? }
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  let body: { id?: string; email?: string; name?: string; title?: string; role?: "admin" | "member"; password?: string; active?: boolean };
+  let body: { id?: string; email?: string; name?: string; title?: string; role?: string; password?: string; active?: boolean; team?: string | null; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.email?.trim()) return NextResponse.json({ error: "email required" }, { status: 400 });
   const tid = (await teamTenant(req)) ?? DEFAULT_TENANT_ID;
@@ -39,20 +41,35 @@ export async function POST(req: Request) {
     try { await enforceLimit(tid, "seats"); }
     catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   }
+  // The number a member personally works must be one of THIS workspace's. The
+  // column is a plain foreign key, so without this a tenant admin could point a
+  // member at another tenant's number — and hand-over later moves conversations
+  // onto the number a member is tied to.
+  if (body.channelId) {
+    const { data: own } = await tdb(tid).from("wa_channels").select("id").eq("id", body.channelId).maybeSingle();
+    if (!own) return NextResponse.json({ error: "That number isn't one of this workspace's channels." }, { status: 400 });
+  }
   try {
     const user = await saveUser({
       id: body.id,
       email: body.email,
       name: body.name ?? "",
       title: body.title ?? "",
-      role: body.role === "admin" ? "admin" : "member",
+      role: asRole(body.role),   // anything unrecognised falls to member, never up to admin
       password: body.password,
       active: body.active,
+      // Only forwarded when the client actually sent the field, so an older
+      // client can still edit a member without silently clearing their team.
+      ...("team" in body ? { team: asTeam(body.team) } : {}),
+      ...("channelId" in body ? { channelId: body.channelId || null } : {}),
     }, tid);
-    logActivity(await currentUser(), body.id ? "team.update" : "team.add", `${user.email} (${user.role})`);
+    logActivity(await currentUser(), body.id ? "team.update" : "team.add", `${user.email} (${user.role}${user.team ? ` · ${user.team}` : ""})`);
     return NextResponse.json({ success: true, user });
   } catch (err) {
     const msg = errorMessage(err);
+    // Our own validation messages are already written for the person editing the
+    // team; the schema hint below would only confuse them.
+    if (/has to be assigned to a team|need the 2026\d+_port_wab_parity/i.test(msg)) return NextResponse.json({ error: msg }, { status: 400 });
     // wa_users.email is unique across ALL workspaces — surface that plainly
     // instead of the misleading migration hint (a 23505 is not a schema gap).
     if (/duplicate key|23505/i.test(msg) && /email/i.test(msg)) {

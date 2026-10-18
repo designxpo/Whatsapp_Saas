@@ -1,4 +1,5 @@
 import { DEFAULT_TENANT_ID } from "./tenant";
+import { asTeam, type Team } from "./teams";
 // Multi-number / multi-WABA channels. Every sender accepts an optional
 // ChannelCreds; when omitted (or when wa_channels is empty / migration 0013
 // not applied) the META_WA_* env credentials are used — so single-number
@@ -48,6 +49,7 @@ export interface Channel extends ChannelCreds {
   kbTag: string | null;       // default KB topic for AI answers on this number (null = tenant-wide KB)
   crmSource: string | null;   // CRM lead Source for NEW leads that arrive on this number (null = "WhatsApp"); e.g. "ppc-whatsapp" so per-number campaigns are attributable
   mode: "full" | "manual";    // "manual" = personal line: no AI/flow/welcome/sequence/follow-up
+  team: Team | null;          // the team that works this number (null = unassigned: visible to everyone). See teams.ts
   commentAi: boolean;         // IG: may the AI publicly answer comments with no matching rule (default true)
   coex: boolean;              // coexistence: number is ALSO active on the WhatsApp Business phone app
   active: boolean;
@@ -98,6 +100,7 @@ function mapChannel(r: Record<string, unknown>): Channel {
     kbTag: (r.kb_tag as string | null) ?? null,
     crmSource: (r.crm_source as string | null) ?? null,
     mode: (r.mode as string) === "manual" ? "manual" : "full",
+    team: asTeam(r.team),
     commentAi: (r.comment_ai as boolean) ?? true,
     coex: (r.coex as boolean) ?? false,
     active: (r.active as boolean) ?? true,
@@ -384,6 +387,33 @@ export async function verifyWhatsappPhoneId(phoneId: string, token: string): Pro
   }
 }
 
+/**
+ * The number a lead will see a message arrive FROM, e.g. "+91 95555 25908".
+ *
+ * A counsellor pressing "Send WhatsApp" on a lead they have been chatting to
+ * from their own line gets a message sent from a DIFFERENT number — the
+ * campaign's. It arrives in a chat nobody is looking at and everyone concludes
+ * it was never sent. Naming the number is what lets them find it.
+ *
+ * Cached for the life of the process: a display number changes about never,
+ * and a Graph round trip on every button press is not worth it. Failure is
+ * silent and returns null — naming the number is a courtesy, and must never be
+ * the reason a send cannot be reported.
+ */
+const displayNumbers = new Map<string, string | null>();
+
+export async function displayNumberFor(creds: ChannelCreds | undefined): Promise<string | null> {
+  const id = creds?.phoneId?.trim();
+  if (!id || !creds?.token) return null;
+  if (displayNumbers.has(id)) return displayNumbers.get(id) ?? null;
+  const r = await verifyWhatsappPhoneId(id, creds.token).catch(() => null);
+  const n = r?.ok ? (r.displayPhone ?? null) : null;
+  // A failed lookup is not cached: a transient Graph error would otherwise
+  // blank the number until the process restarts.
+  if (r?.ok) displayNumbers.set(id, n);
+  return n;
+}
+
 export async function saveChannel(input: Partial<Channel> & { name: string; phoneId: string; wabaId: string; token: string; tenantId?: string }): Promise<Channel> {
   const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
   const row = {
@@ -402,6 +432,9 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
     ...(input.crmSource !== undefined ? { crm_source: input.crmSource?.trim() || null } : {}),
     ...(input.mode !== undefined ? { mode: input.mode } : {}),
     ...(input.coex !== undefined ? { coex: input.coex } : {}),
+    // Only written when the caller sends it, so an older client cannot clear a
+    // number's team by saving without naming one.
+    ...(input.team !== undefined ? { team: asTeam(input.team) } : {}),
     active: input.active ?? true,
     is_default: input.isDefault ?? false,
   };
@@ -418,6 +451,12 @@ export async function saveChannel(input: Partial<Channel> & { name: string; phon
   // source simply isn't persisted until the column exists.
   if (error && (error.code === "42703" || error.code === "PGRST204") && "crm_source" in row) {
     delete row.crm_source;
+    ({ data, error } = await runSave(row));
+  }
+  // Same for `team` (the parity migration): the channel editor must stay usable
+  // before it is applied. The team simply is not stored until the column exists.
+  if (error && (error.code === "42703" || error.code === "PGRST204") && "team" in row) {
+    delete row.team;
     ({ data, error } = await runSave(row));
   }
   if (error) throw error;

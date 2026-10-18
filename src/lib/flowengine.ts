@@ -979,6 +979,19 @@ function webchatSender(conversationId: string, out: WebchatOut[], tenantId = DEF
   };
 }
 
+/**
+ * How long an escalation keeps the bot quiet.
+ *
+ * Long enough that a counsellor picking the chat up today is never talked
+ * over; short enough that a lead returning next week is not met with silence
+ * by a queue nobody worked. 48 hours spans a weekend, which is the gap that
+ * produced the real case this exists for.
+ *
+ * Measured only from the last OUTBOUND, so the clock starts when we last
+ * said something — not when the lead last wrote.
+ */
+export const ESCALATION_HOLD_MS = 48 * 60 * 60_000;
+
 export async function handleFlowMessage(
   convKey: string,
   phone: string,
@@ -1413,7 +1426,28 @@ export async function handleFlowMessage(
       const { data: convRow } = await db().from("wa_conversations")
         .select("status, last_outbound_at").eq("id", convKey).maybeSingle();
       const lastOut = convRow?.last_outbound_at ? Date.parse(String(convRow.last_outbound_at)) : 0;
-      freshChat = convRow?.status !== "escalated" && (!lastOut || Date.now() - lastOut > 60 * 60_000);
+      const quiet = !lastOut || Date.now() - lastOut > 60 * 60_000;
+      // ── An escalation holds the bot back, but not forever ────────────────
+      //
+      // "A human owns it" is true for the rest of the day and false a
+      // fortnight later. Measured on a real lead, 14 Oct: escalated on
+      // 1 October, nobody ever assigned (assigned_to was null), and when she
+      // came back thirteen days later and sent SEVEN messages she received
+      // total silence — because welcome fires once, away only out of hours,
+      // the AI is switched off, and this branch is the only thing left that
+      // can answer. A chat escalated to nobody had become a black hole.
+      //
+      // So the hold expires. Inside the window the reasoning still stands:
+      // "our team will get back to you" must not be followed by the bot
+      // re-opening the menu. Past it, silence is the worse failure — the
+      // lead is being ignored by a queue nobody is working.
+      // No outbound at all means no promise was ever made to talk over, so
+      // there is nothing for the hold to protect — and holding anyway would
+      // silence the lead permanently, which is the failure this whole branch
+      // exists to prevent.
+      const escalated = convRow?.status === "escalated";
+      const holdExpired = !lastOut || Date.now() - lastOut > ESCALATION_HOLD_MS;
+      freshChat = (!escalated || holdExpired) && quiet;
     }
     if (nudgeCfg?.enabled && freshChat) {
       const platform = opts.channel?.kind ?? "whatsapp";

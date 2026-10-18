@@ -13,7 +13,7 @@ export { DEFAULT_TENANT_ID } from "@/lib/tenant";
 
 // The set of dashboard tabs (sidebar keys). The shell owns the active-tab state
 // and passes `goTo` to tabs for cross-tab navigation.
-export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "youtube" | "webchat" | "reviews" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "handlehub" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations" | "security";
+export type Tab = "home" | "livechat" | "broadcast" | "ads" | "instagram" | "facebook" | "youtube" | "webchat" | "reviews" | "assistant" | "flows" | "sequences" | "catalog" | "growth" | "handlehub" | "aihub" | "templates" | "forms" | "analytics" | "contacts" | "pipeline" | "campaigns" | "optouts" | "settings" | "setup" | "integrations" | "security" | "team";
 
 // A deep-link "intent" carried alongside a tab switch, so Home stat cards, the
 // Sales Pipeline, and Contacts can open Live Chat already focused on a specific
@@ -43,7 +43,7 @@ export function statusBadge(s: string): string {
 }
 
 // ── Multi-number channels (shared across broadcast/templates/forms/ads/etc.) ──
-export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" | "google_reviews"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; ytChannelId?: string | null; googleAccountId?: string | null; googleLocationId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
+export type ChannelRow = { id: string; kind?: "whatsapp" | "instagram" | "messenger" | "webchat" | "youtube" | "google_reviews"; name: string; phoneId: string; wabaId: string; igUserId?: string | null; pageId?: string | null; ytChannelId?: string | null; googleAccountId?: string | null; googleLocationId?: string | null; token: string; appId: string | null; agentId: string | null; kbTag?: string | null; crmSource?: string | null; mode?: "full" | "manual"; team?: "marketing" | "sales" | "ops" | "api" | null; coex?: boolean; commentAi?: boolean; active: boolean; isDefault: boolean };
 let CHANNELS_CACHE: ChannelRow[] | null = null;
 export async function loadChannelList(force = false): Promise<ChannelRow[]> {
   if (!CHANNELS_CACHE || force) {
@@ -108,20 +108,26 @@ export type Conversation = { id: string; phone: string; name?: string | null; st
 // Analytics payload — used by both the Analytics tab and the Home/Broadcast rails'
 // useAnalytics() hook, so it lives here rather than inside the analytics module.
 export type AnalyticsData = {
-  contacts: { active: number; optedOut: number; new14d: number };
+  /** Which window these figures cover — labels derive from this, never a hard-coded "14d". */
+  range: { key: "7d" | "14d" | "30d" | "90d" | "all"; label: string; short: string; granularity: "day" | "week" | "month" };
+  contacts: { active: number; optedOut: number; newInRange: number };
   campaigns: { total: number; automations: number };
   conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number };
   kb: { documents: number; ready: number };
-  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
+  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; repliedInRange: number; aiRepliesInRange: number };
   automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
   recentCampaigns: { name: string; sent: number; total: number; status: string }[];
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 };
 
 // Analytics fetch hook — used by the Home / Broadcast / Knowledge sidebar rails.
+//
+// Always the LAST 14 DAYS: those rails are titled "last 14 days" and draw one bar
+// per day, so they ask for exactly that rather than inheriting the dashboard's
+// default window. The Analytics tab has its own range picker.
 export function useAnalytics(): AnalyticsData | null {
   const [a, setA] = useState<AnalyticsData | null>(null);
-  useEffect(() => { fetch("/api/admin/analytics").then(r => r.json()).then(d => setA(d.analytics ?? null)).catch(() => {}); }, []);
+  useEffect(() => { fetch("/api/admin/analytics?range=14d").then(r => r.json()).then(d => setA(d.analytics ?? null)).catch(() => {}); }, []);
   return a;
 }
 

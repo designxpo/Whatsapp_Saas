@@ -12,8 +12,27 @@ export interface LsqEvent {
   ownerEmail: string | null;   // counselor to assign, matched to wa_users.email
   ownerName: string | null;
   stage: string | null;
+  leadScore: string | null;    // mx_Lead_Score — the grade a counsellor sets by hand
   leadId: string | null;       // LSQ ProspectID
   source: string | null;
+  /**
+   * The programme the lead enquired about, and the city they are in.
+   *
+   * Three of the five drip messages are addressed to a subset: the roles
+   * message needs a confirmed role pair, the results message makes a salary
+   * and refund claim only some programmes carry, and the centre invitation
+   * is meaningless to an online-only course or a lead nowhere near a centre.
+   * Each is an `attrIn` rule, and attrIn treats a MISSING value as "no" on
+   * purpose — an unverifiable claim must not go out by default.
+   *
+   * Which meant that until these two fields existed, every lead enrolled by
+   * the stage poll arrived knowing neither, failed all three gates, and
+   * received a four-week nurture consisting of day 3 and day 28. Measured
+   * 13 Oct: 122 of 3,128 contacts carried a course, and none of the leads
+   * this path creates could.
+   */
+  course: string | null;       // mx_Course_Interested
+  city: string | null;         // mx_City
 }
 
 const digits = (v: string) => v.replace(/\D/g, "");
@@ -38,11 +57,11 @@ function pick(rec: Record<string, string>, patterns: RegExp[]): string | null {
 // stringify scalars. Non-scalar values are ignored.
 function flatten(body: unknown): Record<string, string> {
   if (!body || typeof body !== "object") return {};
-  const root = body as Record<string, unknown>;
+  const root = body as unknown as Record<string, unknown>;
   const layers: Record<string, unknown>[] = [root];
   for (const key of ["Current", "current", "After", "after"]) {
     const nested = root[key];
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) layers.push(nested as Record<string, unknown>);
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) layers.push(nested as unknown as Record<string, unknown>);
   }
   const out: Record<string, string> = {};
   for (const layer of layers) {                       // later layers (After/Current) override the root
@@ -100,7 +119,19 @@ export function parseLsqWebhook(body: unknown): LsqEvent {
     ownerEmail,
     ownerName,
     stage: pick(rec, [/^prospectstage$/i, /^(currentstage|leadstage|stage)$/i, /^mx_.*stage.*$/i]),
+    // The grade a counsellor sets by hand. Exact schema name first — a fuzzy
+    // /score/ pass alone would happily pick up EngagementScore or
+    // QualityScore01, which LeadSquared moves on its own, and a drip fired by
+    // an automatic score is not what anybody configured.
+    leadScore: pick(rec, [/^mx_lead_score$/i, /^lead_?score$/i, /^mx_.*lead.*score.*$/i]),
     leadId: pick(rec, [/^prospectid$/i, /^(leadid|relatedprospectid)$/i]),
     source: pick(rec, [/^(source|leadsource)$/i]),
+    // mx_Course_Interested is the field this instance actually fills;
+    // mx_Course does not exist here, and mx_Course_Suggested is the
+    // counsellor's recommendation rather than the lead's own enquiry, so it
+    // is only a fallback. Whatever arrives is validated downstream — the
+    // live field is about four-fifths "66" and "Select".
+    course: pick(rec, [/^mx_course_interested$/i, /^(course|programme|program)$/i, /^mx_course_suggested$/i]),
+    city: pick(rec, [/^mx_city$/i, /^city$/i, /^mx_city_name$/i]),
   };
 }

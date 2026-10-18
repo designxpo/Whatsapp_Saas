@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { cache } from "react";
 import { timingSafeEqual } from "crypto";
 import { verifyPassword, getMemberAuthState, getMemberIdentity } from "./team";
+import type { Team } from "./teams";
 import { DEFAULT_TENANT_ID } from "./tenant";
 
 const COOKIE = "wa_admin_session";
@@ -28,7 +29,12 @@ export { DEFAULT_TENANT_ID };
 export interface SessionUser {
   email: string;
   name: string;
-  role: "admin" | "member";
+  // "lead" runs one team (that team's numbers + Team progress); it is NOT a
+  // platform role — requireRoleAdmin and the owner checks only ever pass "admin".
+  role: "admin" | "lead" | "member";
+  // The team this member is pinned to, or null = unrestricted. Read LIVE from
+  // the member row (never from the JWT) so a reassignment applies immediately.
+  team?: Team | null;
   tenantId: string;
   tokenVersion?: number;   // revocation epoch embedded in the JWT
 }
@@ -141,7 +147,7 @@ export async function verifySession(token: string | undefined): Promise<SessionU
     const state = await getMemberAuthState(email);
     if (!state) return null;                 // deleted / deactivated → reject
     if (state.tokenVersion !== ver) return null;   // revoked (e.g. password changed)
-    return { email, name: typeof payload.n === "string" ? payload.n : "", role: state.role, tenantId, tokenVersion: ver };
+    return { email, name: typeof payload.n === "string" ? payload.n : "", role: state.role, team: state.team, tenantId, tokenVersion: ver };
   } catch {
     return null;
   }
@@ -218,7 +224,7 @@ export async function liveSessionUser(email: string): Promise<SessionUser | null
     return { email, name: "Owner", role: "admin", tenantId: DEFAULT_TENANT_ID, tokenVersion: ownerEpoch() };
   }
   const m = await getMemberIdentity(email);
-  return m ? { email, name: m.name, role: m.role, tenantId: m.tenantId, tokenVersion: m.tokenVersion } : null;
+  return m ? { email, name: m.name, role: m.role, team: m.team, tenantId: m.tenantId, tokenVersion: m.tokenVersion } : null;
 }
 
 export const SESSION_COOKIE = COOKIE;

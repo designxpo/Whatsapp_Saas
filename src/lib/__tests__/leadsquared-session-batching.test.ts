@@ -61,7 +61,9 @@ function makeFakeDb() {
       insert(obj: Row) {
         const dup = name === "wa_crm_session" && rows.some(r => r.kind === obj.kind && r.phone === obj.phone && r.channel === obj.channel && r.tenant_id === obj.tenant_id);
         if (dup) return Promise.resolve({ data: null, error: { message: "duplicate key value violates unique constraint" } });
-        rows.push({ id: `row_${seq++}`, attempts: 0, last_message_at: new Date().toISOString(), ...obj });
+        // `status` defaults to 'pending' in the real schema (a session still owed to the
+        // CRM); the fake mirrors that default so the flusher's status filter sees it.
+        rows.push({ id: `row_${seq++}`, attempts: 0, last_message_at: new Date().toISOString(), ...(name === "wa_crm_session" ? { status: "pending" } : {}), ...obj });
         return Promise.resolve({ data: [obj], error: null });
       },
       update(patch: Row) {

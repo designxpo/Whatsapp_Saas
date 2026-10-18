@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchTemplates, createTemplate, deleteTemplate, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
 import { credsFor, explicitDefaultChannel, type ChannelCreds } from "@/lib/channels";
-import { setTemplateMeta, siteUrl, type TrackedUrl } from "@/lib/links";
+import { setTemplateMeta, siteUrl, trackingOrigin, type TrackedUrl } from "@/lib/links";
 import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
@@ -65,7 +65,18 @@ export async function POST(req: Request) {
   // unique /r/<code> per recipient and passes it as the button's URL suffix.
   const trackedUrls: TrackedUrl[] = [];
   if (body.clickTracking && buttons?.length) {
-    const site = siteUrl();
+    // Meta approves the button URL once and it can't be edited afterwards, so a
+    // dead origin would permanently ship a broken link to every recipient.
+    // Prefer the configured site URL, fall back to the host this request came
+    // from, and only refuse when neither is a real public address.
+    const reqOrigin = (() => {
+      const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+      return host ? `${req.headers.get("x-forwarded-proto") || "https"}://${host}` : null;
+    })();
+    const site = trackingOrigin(reqOrigin);
+    if (!site) {
+      return NextResponse.json({ error: `Click tracking can't be enabled: no real public URL available (NEXT_PUBLIC_SITE_URL is "${siteUrl()}"). Meta bakes the tracked link into the approved template permanently, so set NEXT_PUBLIC_SITE_URL to your live domain, then resubmit.` }, { status: 400 });
+    }
     buttons = buttons.map((b, i) => {
       if (b.type !== "URL" || !b.url.trim() || /\{\{1\}\}/.test(b.url)) return b;
       trackedUrls.push({ index: i, url: b.url.trim() });

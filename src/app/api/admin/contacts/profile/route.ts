@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin, currentUser, currentTenantId } from "@/lib/auth";
+import { visibleChannelIds } from "@/lib/teams";
 import { getContactByPhone, updateContactProfile, renameLeadConversations } from "@/lib/store";
 import { db } from "@/lib/supabase";
 import { logActivity } from "@/lib/team";
@@ -21,9 +22,15 @@ export async function GET(req: Request) {
   // store.getOrCreateConversation) — can still render a profile instead of a 404
   // that spins the drawer forever. All of them together are the lead's journey:
   // a returning lead reads as one person, not one stranger per channel.
-  const { data: convRows } = await db().from("wa_conversations")
-    .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at, name, platform, lead_phone, created_at")
+  // Team scope. This route returns the lead's recent MESSAGES, so leaving it at
+  // "any signed-in user" would let a member scoped out of the Live Chat inbox
+  // read the very same threads by looking up a phone number.
+  const allowedChannels = await visibleChannelIds(await currentUser());
+  let convQuery = db().from("wa_conversations")
+    .select("id, status, bot_enabled, assigned_to, labels, agent_id, last_inbound_at, last_outbound_at, name, platform, lead_phone, created_at, channel_id")
     .eq("tenant_id", tid).or(`phone.eq.${digits},lead_phone.eq.${digits}`).order("created_at", { ascending: false }).limit(8);
+  if (allowedChannels) convQuery = convQuery.in("channel_id", allowedChannels);
+  const { data: convRows } = await convQuery;
   const convRow = (convRows ?? [])[0] ?? null;
 
   let contact = await getContactByPhone(digits, tid);

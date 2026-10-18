@@ -25,6 +25,9 @@ export interface HandleEntryPoint {
 }
 export interface HandleSource {
   id: string; entryPointId: string; label: string; refCode: string; kind: string;
+  /** Optional per-source prefilled text; falls back to the entry point's greeting. */
+  message?: string;
+  shortSlug?: string | null; shortClicks?: number;
   touches: number; lastTouchAt: string | null; createdAt: string;
 }
 const DEFAULT_GREETING = "Hi! I'd like to know more.";
@@ -45,7 +48,10 @@ export async function listEntryPoints(tenantId = DEFAULT_TENANT_ID): Promise<Han
 
 export async function createEntryPoint(tenantId: string, p: { label?: string; number: string; handle?: string; greeting?: string }): Promise<HandleEntryPoint> {
   const number = (p.number || "").replace(/\D/g, "");
-  if (!number) throw new Error("A WhatsApp number is required");
+  // A bare national number builds a wa.me link that reaches nobody, and
+  // nothing fails at any point — so refuse it here, where it is typed.
+  const problem = entryPointNumberProblem(number);
+  if (problem) throw new Error(problem);
   const ins = await db().from("wa_handle_entry_points").insert({
     tenant_id: tenantId,
     label: (p.label || "").trim().slice(0, 80) || `WhatsApp ${number.slice(-4)}`,
@@ -60,7 +66,12 @@ export async function createEntryPoint(tenantId: string, p: { label?: string; nu
 export async function updateEntryPoint(id: string, tenantId: string, p: { label?: string; number?: string; handle?: string; greeting?: string }): Promise<void> {
   const patch: Record<string, unknown> = {};
   if (p.label !== undefined) patch.label = p.label.trim().slice(0, 80);
-  if (p.number !== undefined) patch.number = p.number.replace(/\D/g, "");
+  if (p.number !== undefined) {
+    const number = p.number.replace(/\D/g, "");
+    const problem = entryPointNumberProblem(number);
+    if (problem) throw new Error(problem);
+    patch.number = number;
+  }
   if (p.handle !== undefined) patch.handle = p.handle.replace(/^@+/, "").trim().slice(0, 60);
   if (p.greeting !== undefined) patch.greeting = (p.greeting || "").trim().slice(0, 300) || DEFAULT_GREETING;
   if (Object.keys(patch).length) await db().from("wa_handle_entry_points").update(patch).eq("id", id).eq("tenant_id", tenantId);
@@ -74,6 +85,8 @@ export async function deleteEntryPoint(id: string, tenantId: string): Promise<vo
 // ── Sources (CRUD) — each belongs to exactly one entry point ─────────────────
 function mapSource(r: Record<string, unknown>): HandleSource {
   return {
+    message: (r.message as string | null) ?? "",
+    shortSlug: (r.short_slug as string) ?? null, shortClicks: Number(r.short_clicks ?? 0),
     id: r.id as string, entryPointId: (r.entry_point_id as string) ?? "", label: (r.label as string) ?? "",
     refCode: (r.ref_code as string) ?? "", kind: (r.kind as string) ?? "link", touches: (r.touches as number) ?? 0,
     lastTouchAt: (r.last_touch_at as string | null) ?? null, createdAt: r.created_at as string,
@@ -87,16 +100,47 @@ export async function listSources(tenantId = DEFAULT_TENANT_ID): Promise<HandleS
 
 const genCode = () => Math.random().toString(36).slice(2, 9);   // 7-char base36
 
-export async function createSource(tenantId: string, p: { entryPointId: string; label: string; kind?: string }): Promise<HandleSource> {
+// Columns added after the table first shipped. A deploy can run ahead of its
+// migration, so an insert that names one must degrade rather than 500 the page.
+const OPTIONAL_SOURCE_COLS = ["short_slug", "message"] as const;
+
+export async function createSource(tenantId: string, p: { entryPointId: string; label: string; kind?: string; message?: string }): Promise<HandleSource> {
   if (!p.entryPointId) throw new Error("Pick which WhatsApp number this tracked link should use");
   const label = (p.label || "").trim().slice(0, 80) || "Untitled source";
   const kind = (p.kind || "link").trim().slice(0, 20);
+  const message = (p.message || "").trim().slice(0, 300);
   // Retry on the (rare) ref-code collision — the unique index is the source of truth.
   for (let i = 0; i < 6; i++) {
-    const ins = await db().from("wa_handle_sources").insert({ tenant_id: tenantId, entry_point_id: p.entryPointId, label, ref_code: genCode(), kind }).select().single();
+    const row: Record<string, unknown> = {
+      tenant_id: tenantId, entry_point_id: p.entryPointId, label, ref_code: genCode(), kind, short_slug: mintShortSlug(),
+    };
+    if (message) row.message = message;
+    let ins = await db().from("wa_handle_sources").insert(row).select().single();
+    // 0091 / the message migration not applied yet: drop the column and retry.
+    for (const col of OPTIONAL_SOURCE_COLS) {
+      if (!ins.error || !missingColumn(ins.error) || !(col in row)) continue;
+      delete row[col];
+      ins = await db().from("wa_handle_sources").insert(row).select().single();
+    }
     if (!ins.error && ins.data) return mapSource(ins.data as Record<string, unknown>);
   }
   throw new Error("Could not allocate a unique ref code");
+}
+
+export async function updateSource(id: string, tenantId: string, p: { label?: string; kind?: string; message?: string }): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (p.label !== undefined) patch.label = p.label.trim().slice(0, 80) || "Untitled source";
+  if (p.kind !== undefined) patch.kind = p.kind.trim().slice(0, 20);
+  if (p.message !== undefined) patch.message = p.message.trim().slice(0, 300) || null;
+  if (!Object.keys(patch).length) return;
+  const { error } = await db().from("wa_handle_sources").update(patch).eq("id", id).eq("tenant_id", tenantId);
+  if (error && missingColumn(error) && "message" in patch) {
+    // Save what can be saved, then say what could not.
+    delete patch.message;
+    if (Object.keys(patch).length) await db().from("wa_handle_sources").update(patch).eq("id", id).eq("tenant_id", tenantId);
+    throw new Error("Saved, but the starter message needs the 20261019000000_port_wab_parity.sql migration");
+  }
+  if (error) throw error;
 }
 
 export async function deleteSource(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
@@ -158,10 +202,25 @@ function stripInvisibleRef(text: string): string {
 // ── Tracked link + QR ────────────────────────────────────────────────────────
 // wa.me click-to-chat with the ref token appended (invisibly) to the prefilled
 // greeting. Returns null when no number is configured yet.
-export function trackedLink(entryPoint: Pick<HandleEntryPoint, "number" | "handle" | "greeting">, source: Pick<HandleSource, "refCode">): string | null {
+/**
+ * The text a tracked link pre-fills: the source's own message when it has one,
+ * otherwise the number's greeting, with the invisible ref code appended. Also
+ * used verbatim as a Google Ads Message-asset starter message.
+ */
+export function starterMessage(
+  entryPoint: Pick<HandleEntryPoint, "greeting">,
+  source: Pick<HandleSource, "refCode"> & { message?: string | null },
+): string {
+  const body = (source.message || "").trim() || entryPoint.greeting;
+  return `${body}${encodeInvisibleRef(source.refCode)}`;
+}
+
+export function trackedLink(
+  entryPoint: Pick<HandleEntryPoint, "number" | "handle" | "greeting">,
+  source: Pick<HandleSource, "refCode"> & { message?: string | null },
+): string | null {
   if (!entryPoint.number) return null;
-  const text = `${entryPoint.greeting}${encodeInvisibleRef(source.refCode)}`;
-  return `https://wa.me/${entryPoint.number}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${entryPoint.number}?text=${encodeURIComponent(starterMessage(entryPoint, source))}`;
 }
 
 export async function qrDataUrl(link: string): Promise<string> {
@@ -386,7 +445,7 @@ export async function resolveBridgeTarget(
     });
   }
 
-  const link = trackedLink(entryPoint, { refCode: sessionRefCode ?? source.refCode });
+  const link = trackedLink(entryPoint, { refCode: sessionRefCode ?? source.refCode, message: source.message });
   return link ? { tenantId, entryPoint, source, link, sessionRefCode } : null;
 }
 
@@ -394,3 +453,97 @@ export async function resolveBridgeTarget(
 export function bridgeUrl(origin: string, source: Pick<HandleSource, "refCode">): string {
   return `${origin.replace(/\/$/, "")}/chat?src=${encodeURIComponent(source.refCode)}`;
 }
+
+export function entryPointNumberProblem(raw: string): string | null {
+  const n = (raw || "").replace(/\D/g, "");
+  if (!n) return "A WhatsApp number is required";
+  if (n.length < MIN_MSISDN) {
+    return `Include the country code — "${n}" is ${n.length} digits, which is a national number. An Indian mobile becomes 91${n}. wa.me links built from a bare number do not reach anyone.`;
+  }
+  if (n.length > MAX_MSISDN) return `That is ${n.length} digits; a phone number is at most ${MAX_MSISDN}`;
+  if (n.startsWith("0")) return "Drop the leading 0 — it is a national dialling prefix, not part of the international number";
+  return null;
+}
+const missingColumn = (e: { code?: string } | null): boolean =>
+  e?.code === "42703" || e?.code === "PGRST204";
+const SLUG_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
+const SLUG_LEN = 5;
+export function mintShortSlug(): string {
+  let out = "";
+  while (out.length < SLUG_LEN) {
+    for (const b of randomBytes(SLUG_LEN)) {
+      if (b < 248) out += SLUG_ALPHABET[b % SLUG_ALPHABET.length];
+      if (out.length >= SLUG_LEN) break;
+    }
+  }
+  return out;
+}
+export function normalizeSlug(raw: string): string | null {
+  const v = (raw || "").trim().toLowerCase().replace(/^\/+|\/+$/g, "");
+  if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(v)) return null;
+  if (v.endsWith("-") || v.includes("--")) return null;
+  return v;
+}
+export function shortUrl(origin: string, slug: string): string {
+  return `${origin.replace(/\/$/, "")}/s/${slug}`;
+}
+export async function ensureShortSlug(sourceId: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
+  try {
+    const { data } = await db().from("wa_handle_sources").select("short_slug").eq("id", sourceId).eq("tenant_id", tenantId).maybeSingle();
+    const existing = (data as { short_slug?: string | null } | null)?.short_slug;
+    if (existing) return existing;
+    for (let i = 0; i < 6; i++) {
+      const slug = mintShortSlug();
+      const { error } = await db().from("wa_handle_sources").update({ short_slug: slug }).eq("id", sourceId).eq("tenant_id", tenantId);
+      if (!error) return slug;
+      if (missingColumn(error)) return null;   // 0091 not applied yet
+    }
+    return null;
+  } catch { return null; }   // a short link is a convenience; never break the page
+}
+export async function setShortSlug(sourceId: string, raw: string, tenantId = DEFAULT_TENANT_ID): Promise<string> {
+  const slug = normalizeSlug(raw);
+  if (!slug) throw new Error("Use 2–31 characters: letters, numbers and single hyphens, starting with a letter or number");
+  const { error } = await db().from("wa_handle_sources").update({ short_slug: slug }).eq("id", sourceId).eq("tenant_id", tenantId);
+  if (error) {
+    if (missingColumn(error)) throw new Error("Short links need migration 0091_handle_source_short_link.sql");
+    // 23505 is the unique index in 0091 doing its job.
+    if (error.code === "23505") throw new Error(`/s/${slug} is already taken — pick another`);
+    throw error;
+  }
+  return slug;
+}
+export interface ShortLinkTarget {
+  source: HandleSource;
+  entryPoint: HandleEntryPoint;
+  tenantId: string | null;
+  link: string;
+}
+export async function resolveShortLink(slug: string): Promise<ShortLinkTarget | null> {
+  const s = normalizeSlug(slug);
+  if (!s) return null;
+  return (async () => {
+    const { data } = await db().from("wa_handle_sources").select("*").eq("short_slug", s).maybeSingle();
+    if (!data) return null;
+    const row = data as Record<string, unknown>;
+    const source = mapSource(row);
+    if (!source.entryPointId) return null;
+    const { data: epRow } = await db().from("wa_handle_entry_points").select("*").eq("id", source.entryPointId).eq("tenant_id", row.tenant_id as string).maybeSingle();
+    if (!epRow) return null;
+    const entryPoint = mapEntryPoint(epRow as Record<string, unknown>);
+    const link = trackedLink(entryPoint, source);
+    if (!link) return null;   // entry point left without a number — no link to send them to
+    return { source, entryPoint, tenantId: (row.tenant_id as string | null) ?? null, link };
+  })();
+}
+export async function recordShortClick(id: string): Promise<void> {
+  try {
+    const { data } = await db().from("wa_handle_sources").select("short_clicks").eq("id", id).maybeSingle();
+    const clicks = ((data as { short_clicks?: number } | null)?.short_clicks ?? 0) + 1;
+    await db().from("wa_handle_sources")
+      .update({ short_clicks: clicks, short_last_click_at: new Date().toISOString() }).eq("id", id);
+  } catch { /* soft metric */ }
+}
+
+const MIN_MSISDN = 11;
+const MAX_MSISDN = 15;

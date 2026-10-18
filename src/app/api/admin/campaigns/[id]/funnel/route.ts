@@ -27,7 +27,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const [funnel, clicks, replied] = await Promise.all([
       campaignFunnel(id),
       campaignClickStats(id),
-      campaignRepliedCount(id, campaign.sentAt ?? campaign.createdAt),
+      campaignRepliedCount(id, campaign.sentAt ?? campaign.createdAt, tid),
     ]);
     const perDay = await campaignPerDay(id, clicks.perDayClicks);
     return NextResponse.json({

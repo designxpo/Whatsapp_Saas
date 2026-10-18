@@ -80,7 +80,10 @@ export function deriveOrigin(u: UtmSet): Origin {
   // No usable source, but a click id names the platform by itself.
   if (!platform && u.gclid) platform = "Google";
   if (!platform && u.fbclid) platform = "Meta";
-  if (!platform && src) platform = src.replace(/\b\w/g, c => c.toUpperCase());
+  // A source we have no rule for is still worth naming. Title-casing is right
+  // for a word ("coursera" → "Coursera") and wrong for a host, which
+  // title-case turns into "Chatgpt.Com" — a real value seen in production.
+  if (!platform && src) platform = src.includes(".") ? src : src.replace(/\b\w/g, c => c.toUpperCase());
 
   let kind: Origin["kind"] = "unknown";
   if (PAID.test(med)) kind = "paid";

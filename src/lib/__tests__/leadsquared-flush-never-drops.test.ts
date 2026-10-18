@@ -61,7 +61,9 @@ function makeFakeDb() {
       insert(o: Row) {
         if (name === "wa_crm_session" && rows.some(r => r.kind === o.kind && r.phone === o.phone && r.channel === o.channel && r.tenant_id === o.tenant_id))
           return Promise.resolve({ data: null, error: { message: "duplicate key" } });
-        rows.push({ id: `row_${seq++}`, attempts: 0, last_message_at: new Date().toISOString(), ...o });
+        // `status` defaults to 'pending' in the real schema (a session still owed to the
+        // CRM); the fake mirrors that default so the flusher's status filter sees it.
+        rows.push({ id: `row_${seq++}`, attempts: 0, last_message_at: new Date().toISOString(), ...(name === "wa_crm_session" ? { status: "pending" } : {}), ...o });
         return Promise.resolve({ data: [o], error: null });
       },
       upsert(_o: Row, _opts?: unknown) { return Promise.resolve({ data: null, error: null }); },

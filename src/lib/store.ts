@@ -3,6 +3,7 @@ import { pageAll } from "./pagedselect";
 import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
 import { DEFAULT_TENANT_ID } from "./tenant";
+import { rangeStart, rangeLabel, rangeShort, granularityFor, bucketKeys, bucketKey, DEFAULT_RANGE, type RangeKey, type Granularity } from "./analytics-range";
 import { safeFilterValue, escapeLike, safeAttrKey } from "./filters";
 import { logError, errorMessage } from "./errors";
 import { assertTextAllowed } from "./moderation";
@@ -1049,6 +1050,55 @@ export async function reassignConversationChannel(id: string, channelId: string,
   await logOwnerChange(id, channelId, changedBy, reason ?? null, tenantId);
 }
 
+// Auto hand-over: a customer writing to a COUNSELLOR'S OWN LINE moves the lead
+// to that counsellor.
+//
+// Ownership is otherwise sticky, and deliberately so — see the note in
+// getOrCreateConversation. Overwriting channel_id on every inbound was a real
+// bug: it sent one counsellor's portal reply out through whichever colleague's
+// number the customer had written to most recently.
+//
+// The discriminator is the ARRIVING NUMBER'S MODE, not recency. A `manual`
+// channel is a counsellor's 1:1 line, so a customer messaging it IS the
+// marketing → sales hand-off; a shared line never claims a lead this way, which
+// is what keeps the old bug dead — a broadcast reply landing on the marketing
+// number can't pull a lead away from the counsellor working it.
+//
+// This also keeps Meta's 24-hour window honest. The window is per-NUMBER, but a
+// portal reply leaves from the owner: with the lead stuck on a shared number
+// while the customer writes to a counsellor, the reply went out from a number
+// that had no open conversation with them at all.
+//
+// Returns the conversation as it should now be used, so a reply composed later
+// in the same request leaves from the new owner. Takes the arriving channel
+// itself rather than an id — the webhook already resolved it, so this stays
+// decidable from its arguments alone.
+export async function autoHandoverToCounselorLine(
+  conv: Conversation,
+  incoming: { id: string; mode?: string | null; name?: string | null; tenantId?: string | null } | null | undefined,
+): Promise<Conversation> {
+  if (!incoming?.id) return conv;                          // env-era / unknown number
+  if (conv.channelId === incoming.id) return conv;         // already the owner
+  // A conversation with no owner is filled in by getOrCreateConversation and
+  // logged as "first known number" — that is not a hand-over.
+  if (!conv.channelId) return conv;
+  if ((conv.platform ?? "whatsapp") !== "whatsapp") return conv;   // counsellor lines are a WhatsApp concept
+  if (incoming.mode !== "manual") return conv;             // shared line — stays sticky
+  // Never move a chat onto another workspace's number. The webhook resolves both
+  // from the same tenant, so this only ever fires on a bug — and then refuses.
+  if (incoming.tenantId && incoming.tenantId !== conv.tenantId) return conv;
+  try {
+    await reassignConversationChannel(
+      conv.id, incoming.id, "system",
+      `Auto: customer messaged ${incoming.name ?? "this counsellor line"} directly`,
+      conv.tenantId,
+    );
+    return { ...conv, channelId: incoming.id };
+  } catch {
+    return conv;   // never let a hand-over failure drop an inbound message
+  }
+}
+
 // Read-only lookup by phone — used by the CRM panel, which must not create
 // empty conversations just because an agent opened the tab.
 export async function getConversationByPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<Conversation | null> {
@@ -1151,11 +1201,33 @@ export async function getConversation(id: string, tenantId?: string): Promise<Co
   return data ? mapConversation(data as Record<string, unknown>) : null;
 }
 
-export async function listConversations(opts: { status?: ConvStatus | null; limit?: number; tenantId?: string } = {}): Promise<Conversation[]> {
-  let q = db().from("wa_conversations").select("*").eq("tenant_id", opts.tenantId ?? DEFAULT_TENANT_ID).order("last_inbound_at", { ascending: false, nullsFirst: false }).limit(Math.min(200, opts.limit ?? 100));
-  if (opts.status) q = q.eq("status", opts.status);
-  const { data } = await q;
-  return (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
+export function conversationActivityAt(c: Pick<Conversation, "lastInboundAt" | "lastOutboundAt">): number {
+  return Math.max(Date.parse(c.lastInboundAt ?? "") || 0, Date.parse(c.lastOutboundAt ?? "") || 0);
+}
+
+// `channelIds` narrows the inbox to those numbers — null means "no restriction",
+// and an EMPTY array means "restricted to nothing" (a team that owns no numbers
+// sees no chats). The two are different answers; collapsing them would hand that
+// team the whole inbox. The filter is applied IN THE QUERY, before the row cap:
+// filtering afterwards would search only the newest page and quietly hide the
+// rest of a number's chats.
+export async function listConversations(opts: { status?: ConvStatus | null; limit?: number; tenantId?: string; channelIds?: string[] | null } = {}): Promise<Conversation[]> {
+  const limit = Math.min(200, opts.limit ?? 100);
+  if (opts.channelIds && opts.channelIds.length === 0) return [];
+  const query = (column: string) => {
+    let q = db().from("wa_conversations").select("*").eq("tenant_id", opts.tenantId ?? DEFAULT_TENANT_ID).order(column, { ascending: false, nullsFirst: false }).limit(limit);
+    if (opts.status) q = q.eq("status", opts.status);
+    if (opts.channelIds) q = q.in("channel_id", opts.channelIds);
+    return q;
+  };
+  const [incoming, outgoing] = await Promise.all([query("last_inbound_at"), query("last_outbound_at")]);
+  if (incoming.error || outgoing.error) throw incoming.error || outgoing.error;
+  const unique = new Map<string, Conversation>();
+  for (const row of [...incoming.data ?? [], ...outgoing.data ?? []]) {
+    const conv = mapConversation(row as Record<string, unknown>);
+    unique.set(conv.id, conv);
+  }
+  return [...unique.values()].sort((a,b) => conversationActivityAt(b) - conversationActivityAt(a)).slice(0, limit);
 }
 
 // Returns the persisted row's id + created_at so callers (e.g. the web-chat
@@ -1561,9 +1633,23 @@ export async function getDocument(id: string, tenantId = DEFAULT_TENANT_ID): Pro
 }
 
 // A document's chunk bodies in order (used to reconstruct text for re-processing).
+/**
+ * Every chunk of a document, in order.
+ *
+ * Paged, because a truncated answer here is not a short read but DATA LOSS.
+ * PostgREST caps each response at 1,000 rows and says nothing about it, so a
+ * plain select hands back a prefix that looks complete. reingestDocument rebuilds
+ * a document's text from this and then calls replaceChunks, which deletes every
+ * chunk before inserting; pressing "Reprocess" on a document with more than 1,000
+ * chunks would destroy the rest permanently, the original upload being long gone.
+ * convertDocumentToLibrary reads the same way and would file only the prefix.
+ */
 export async function getChunks(documentId: string, tenantId = DEFAULT_TENANT_ID): Promise<string[]> {
-  const { data } = await db().from("kb_chunks").select("content").eq("tenant_id", tenantId).eq("document_id", documentId).order("chunk_index", { ascending: true });
-  return (data ?? []).map(r => (r as { content: string }).content);
+  const rows = await pageAll<{ content: string }>(
+    () => db().from("kb_chunks").select("content").eq("tenant_id", tenantId).eq("document_id", documentId).is("concept_id", null).order("chunk_index", { ascending: true }),
+    { cap: 50_000, label: "kb_chunks" },
+  );
+  return rows.map(r => r.content);
 }
 
 export async function deleteDocument(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
@@ -1597,7 +1683,7 @@ export async function listSyncableUrlDocs(olderThanMs: number, max: number): Pro
 
 // Replace a document's chunks (delete-then-insert) so re-ingest doesn't duplicate.
 export async function replaceChunks(documentId: string, chunks: { content: string; embedding: number[] }[], tenantId = DEFAULT_TENANT_ID): Promise<number> {
-  await db().from("kb_chunks").delete().eq("tenant_id", tenantId).eq("document_id", documentId);
+  await db().from("kb_chunks").delete().eq("tenant_id", tenantId).eq("document_id", documentId).is("concept_id", null);
   if (chunks.length === 0) return 0;
   const rows = chunks.map((c, i) => ({ tenant_id: tenantId, document_id: documentId, chunk_index: i, content: c.content, embedding: c.embedding }));
   // Insert in batches to stay under request-size limits.
@@ -1639,13 +1725,16 @@ export async function matchChunksByTag(queryEmbedding: number[], k: number, tag:
 
 // ── Analytics ─────────────────────────────────────────────────────────────────
 export interface Analytics {
-  contacts: { active: number; optedOut: number; new14d: number };
+  /** Which window these figures cover — the UI labels itself from this. */
+  range: { key: RangeKey; label: string; short: string; granularity: Granularity };
+  contacts: { active: number; optedOut: number; newInRange: number };
   campaigns: { total: number; automations: number };
   conversations: { total: number; active: number; escalated: number; needsReply: number; botOn: number; whatsapp: number; instagram: number; webchat: number; messenger: number };
   kb: { documents: number; ready: number };
-  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; replied14d: number; aiReplies14d: number };
+  messaging: { sentToday: number; totals: { sent: number; delivered: number; read: number; failed: number }; repliedInRange: number; aiRepliesInRange: number };
   automation: { flows: number; flowsActive: number; sequences: number; sequencesActive: number; activeEnrollments: number };
   recentCampaigns: { name: string; sent: number; total: number; status: string }[];
+  /** One entry per bucket. Buckets are days, weeks or months — see range.granularity. */
   daily: { date: string; sent: number; delivered: number; read: number; failed: number }[];
 }
 
@@ -1656,8 +1745,12 @@ async function countWhere(table: string, filters: Record<string, unknown> = {}):
   return count ?? 0;
 }
 
-export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analytics> {
-  const since = new Date(); since.setDate(since.getDate() - 13); since.setHours(0, 0, 0, 0);
+export async function getAnalytics(tenantId = DEFAULT_TENANT_ID, rangeKey: RangeKey = DEFAULT_RANGE): Promise<Analytics> {
+  const now = new Date();
+  // null for "all time" — every gte() below becomes unbounded rather than being
+  // silently clamped to some very old date, which would still be a lie.
+  const since = rangeStart(rangeKey, now);
+  const sinceIso = since?.toISOString();
   const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
   const t = { tenant_id: tenantId };
 
@@ -1674,27 +1767,57 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
     countWhere("kb_documents", { ...t, status: "ready" }),
   ]);
 
-  // Last 14 days of send-log rows, aggregated per day in JS (internal-tool scale).
-  const ANALYTICS_LIMIT = 20000;
-  const { data: logRows } = await db().from("wa_send_log")
-    .select("status, sent_at").eq("tenant_id", tenantId).gte("sent_at", since.toISOString())
-    .order("sent_at", { ascending: false }).limit(ANALYTICS_LIMIT);
-  // Past this cap the 14-day chart under-counts silently — flag the scale cliff
-  // (move aggregation into a Postgres function when this starts firing).
-  if ((logRows?.length ?? 0) >= ANALYTICS_LIMIT) {
-    console.warn(JSON.stringify({ tag: "analytics_truncated", tenantId, limit: ANALYTICS_LIMIT }));
+  // Send-log rows for the window, aggregated in JS.
+  //
+  // pageAll, NOT a plain .limit(): PostgREST caps every response at 1,000 rows and
+  // asking for 20,000 does not raise that ceiling. That silently truncated every
+  // total — a workspace sending more than 1,000 messages in the window was
+  // under-counted with nothing to say so, and a wider range simply received the
+  // SAME newest 1,000 rows (identical totals, identical chart). The old
+  // "truncated" warning fired at 20,000 rows, which the server never returns, so
+  // it could not fire at all.
+  //
+  // 50 pages. Deliberately not higher: paging is sequential, so a cap of 200k
+  // would spend ~16s in round-trips and hit the platform timeout BEFORE the
+  // warning below could ever log. This cap is reachable, so the cliff is visible.
+  const ANALYTICS_CAP = 50_000;
+  const logRows = await pageAll<{ status: string; sent_at: string | null }>(
+    () => {
+      let q = db().from("wa_send_log").select("status, sent_at").eq("tenant_id", tenantId);
+      if (sinceIso) q = q.gte("sent_at", sinceIso);
+      // sent_at alone is not a stable sort: a bulk send can write many rows on the
+      // same timestamp, and pageAll would then repeat some rows on one page and
+      // miss others on the next. id breaks the tie.
+      return q.order("sent_at", { ascending: false }).order("id", { ascending: false });
+    },
+    { cap: ANALYTICS_CAP, label: `analytics:${rangeKey}` },
+  );
+  // Past this cap the chart under-counts — flag the scale cliff (move the
+  // aggregation into a Postgres function when this starts firing). "All time"
+  // reaches it first, which is exactly when a silent under-count would be least
+  // noticeable, so the warning names the range.
+  if (logRows.length >= ANALYTICS_CAP) {
+    console.warn(JSON.stringify({ tag: "analytics_truncated", tenantId, cap: ANALYTICS_CAP, range: rangeKey }));
   }
 
+  // Bucket span. For a bounded range it is the range; for "all time" it starts at
+  // the OLDEST row we actually have, so the chart doesn't open with a run of empty
+  // buckets stretching back to whenever the account was created. Rows are
+  // newest-first, so the oldest is last. Fall back to now when the log is empty.
+  const oldestIso = logRows[logRows.length - 1]?.sent_at ?? now.toISOString();
+  const from = since ?? new Date(oldestIso);
+  const spanDays = Math.max(1, Math.ceil((now.getTime() - from.getTime()) / 86400_000));
+  const granularity = granularityFor(spanDays);
+
   const byDay = new Map<string, { sent: number; delivered: number; read: number; failed: number }>();
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(since); d.setDate(since.getDate() + i);
-    byDay.set(d.toISOString().slice(0, 10), { sent: 0, delivered: 0, read: 0, failed: 0 });
+  for (const k of bucketKeys(from, now, granularity)) {
+    byDay.set(k, { sent: 0, delivered: 0, read: 0, failed: 0 });
   }
   const totals = { sent: 0, delivered: 0, read: 0, failed: 0 };
   let sentToday = 0;
-  for (const r of logRows ?? []) {
-    const day = (r.sent_at as string).slice(0, 10);
-    const bucket = byDay.get(day);
+  for (const r of logRows) {
+    if (!r.sent_at) continue;                 // never sent — not a data point
+    const bucket = byDay.get(bucketKey(r.sent_at, granularity));
     const s = r.status as string;
     // read implies delivered implies sent
     const inc = (k: "sent" | "delivered" | "read" | "failed") => { if (bucket) bucket[k]++; totals[k]++; };
@@ -1702,16 +1825,17 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
     else if (s === "delivered") { inc("sent"); inc("delivered"); }
     else if (s === "sent") inc("sent");
     else if (s === "failed") inc("failed");
-    if (s !== "failed" && s !== "skipped" && new Date(r.sent_at as string) >= todayStart) sentToday++;
+    if (s !== "failed" && s !== "skipped" && new Date(r.sent_at) >= todayStart) sentToday++;
   }
 
   // Storyline metrics: engagement, conversation health, automation, growth.
   const countSince = async (table: string, eq: Record<string, unknown> = {}): Promise<number> => {
-    let q = db().from(table).select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", since.toISOString());
+    let q = db().from(table).select("*", { count: "exact", head: true }).eq("tenant_id", tenantId);
+    if (sinceIso) q = q.gte("created_at", sinceIso);
     for (const [k, v] of Object.entries(eq)) q = q.eq(k, v);
     const { count } = await q; return count ?? 0;
   };
-  const [botOn, igConv, webConv, fbConv, flows, flowsActive, sequences, sequencesActive, activeEnrollments, replied14d, aiReplies14d, new14d] = await Promise.all([
+  const [botOn, igConv, webConv, fbConv, flows, flowsActive, sequences, sequencesActive, activeEnrollments, repliedInRange, aiRepliesInRange, newInRange] = await Promise.all([
     countWhere("wa_conversations", { ...t, bot_enabled: true }),
     countWhere("wa_conversations", { ...t, platform: "instagram" }),
     countWhere("wa_conversations", { ...t, platform: "webchat" }),
@@ -1734,12 +1858,13 @@ export async function getAnalytics(tenantId = DEFAULT_TENANT_ID): Promise<Analyt
   }));
 
   return {
-    contacts: { active, optedOut, new14d },
+    range: { key: rangeKey, label: rangeLabel(rangeKey), short: rangeShort(rangeKey), granularity },
+    contacts: { active, optedOut, newInRange },
     campaigns: { total: campaignsTotal, automations },
     // whatsapp = everything not explicitly another platform (covers legacy rows with a null platform).
     conversations: { total: convTotal, active: convActive, escalated: convEscalated, needsReply: convNeedsReply, botOn, whatsapp: Math.max(0, convTotal - igConv - webConv - fbConv), instagram: igConv, webchat: webConv, messenger: fbConv },
     kb: { documents: kbTotal, ready: kbReady },
-    messaging: { sentToday, totals, replied14d, aiReplies14d },
+    messaging: { sentToday, totals, repliedInRange, aiRepliesInRange },
     automation: { flows, flowsActive, sequences, sequencesActive, activeEnrollments },
     recentCampaigns,
     daily: [...byDay.entries()].map(([date, v]) => ({ date, ...v })),

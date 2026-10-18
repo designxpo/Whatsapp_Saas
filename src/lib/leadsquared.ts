@@ -10,6 +10,8 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //   Activity code           — event code of a Custom Activity (e.g. "WhatsApp Message")
 
 import { errorMessage } from "./errors";
+import { pageAll } from "./pagedselect";
+import { crmChatKey, type ChatCrmStatus } from "./crmkey";
 import { db } from "./supabase";
 import { getTenantSetting, getTenantSecret } from "./store";
 import { listIntegrations, getIntegrationSecret, setIntegrationError, type Integration } from "./integrations";
@@ -269,6 +271,7 @@ async function upsertLead(p: { phone: string; name?: string; source?: string; fi
 export async function syncLeadProfile(p: { phone?: string | null; phoneAlt?: string | null; handle?: string | null; email?: string | null; city?: string | null; name?: string | null }, tenantId: string = DEFAULT_TENANT_ID): Promise<void> {
   const c = await resolveLsq(tenantId);
   if (!c) return;
+  if (await lsqPaused(tenantId)) return;
   try {
     const email = (p.email || "").trim();
     const city = (p.city || "").trim();
@@ -343,6 +346,21 @@ export async function updateLeadStage(leadId: string, stage: string, tenantId: s
     const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify([{ Attribute: "ProspectStage", Value: stage }]),
+    });
+    return res.ok;
+  } catch (err) {
+    console.error("[leadsquared] stage update failed:", errorMessage(err));
+    return false;
+  }
+}
+
+export async function setLeadField(leadId: string, attribute: string, value: string, tenantId: string = DEFAULT_TENANT_ID): Promise<boolean> {
+  const c = await resolveLsq(tenantId);
+  if (!c || !leadId || !attribute.trim()) return false;
+  try {
+    const res = await fetch(`${c.host}/v2/LeadManagement.svc/Lead.Update?accessKey=${encodeURIComponent(c.accessKey)}&secretKey=${encodeURIComponent(c.secretKey)}&leadId=${encodeURIComponent(leadId)}`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify([{ Attribute: attribute.trim(), Value: value }]),
     });
     return res.ok;
   } catch (err) {
@@ -450,6 +468,7 @@ export interface CrmLead {
   id: string;
   stage: string | null;
   owner: string | null;
+  ownerEmail: string | null;   // OwnerIdEmailAddress — the join key to a portal member (handover.ts)
   score: number | null;
   source: string | null;
   fields: { label: string; value: string }[];
@@ -548,6 +567,7 @@ export async function fetchLeadDetails(phone: string, tenantId: string = DEFAULT
         id: String(l.ProspectID),
         stage: g("ProspectStage"),
         owner: g("OwnerIdName") ?? g("Owner") ?? g("OwnerName"),
+        ownerEmail: (g("OwnerIdEmailAddress") ?? g("OwnerEmailAddress"))?.toLowerCase() ?? null,
         score: scoreRaw != null && !isNaN(Number(scoreRaw)) ? Number(scoreRaw) : null,
         source: g("Source"),
         fields: extras,
@@ -610,6 +630,37 @@ const RETRIABLE_HTTP = new Set([401, 403, 408, 429, 500, 502, 503, 504]);
 // silently destroyed a day of conversations on the internal build.
 function lsqRejectedInput(body: string): boolean {
   return /IsMXException|MXInvalidActivityException|Invalid event code|invalid or empty|"Status"\s*:\s*"(Failed|Error)"/i.test(body);
+}
+
+// Narrower than lsqRejectedInput: LeadSquared is rejecting the LEAD we pointed
+// at, not the request. Deleting a lead in the CRM leaves every buffered session
+// for it failing with this forever, and unlike a bad event code there is
+// nothing a person can fix — the destination is gone.
+//
+// Kept separate from lsqRejectedInput on purpose. A deactivated activity type
+// rejects pushes for leads that genuinely exist, so the two must never be
+// conflated: one is recoverable and waits, the other is terminal.
+function lsqLeadMissing(body: string): boolean {
+  return /MXInvalidEntityReference|Lead\s*not\s*found/i.test(body);
+}
+
+/**
+ * Does LeadSquared hold a lead for this phone — and did we actually find out?
+ *
+ * getLeadIdByPhone answers null for BOTH "no such lead" and "the lookup was
+ * refused". That conflation is harmless when the answer only gates a retry, and
+ * dangerous the moment it gates a discard: a mis-escaped key or a rate-limit
+ * spike would read as "this person isn't in the CRM" and bin real chat history.
+ *
+ * So this keeps the distinction findLeadId already makes. `known` is false when
+ * every candidate form was rejected, and the caller must then assume nothing.
+ */
+async function lookupLeadDefinitively(phone: string, c: LsqCreds): Promise<{ known: boolean; leadId: string | null }> {
+  try {
+    return { known: true, leadId: await findLeadId(phone, c) };
+  } catch {
+    return { known: false, leadId: null };   // 401 / 429 / unreachable — not an answer
+  }
 }
 
 async function postActivity(c: LsqCreds, leadId: string, note: string): Promise<PushResult> {
@@ -695,6 +746,10 @@ async function tryWaActivity(p: WaActivityInput): Promise<PushResult> {
 // the failure is also stamped on the tenant's integration so Settings shows it.
 export async function pushWaActivity(p: WaActivityInput): Promise<void> {
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  // Paused: park it rather than attempt. Attempting would still create the lead.
+  // Only for a tenant that HAS a CRM — a workspace with none must not fill the
+  // retry queue with rows that can never be delivered.
+  if (await lsqPaused(tid)) { if (await lsqConfigured(tid)) await enqueueCrmSync("wa", { ...p, tenantId: tid }, "sync paused"); return; }
   const r = await tryWaActivity(p);   // resolves creds once; skipped = no CRM for this tenant
   if (r.ok) return;
   console.error(`[leadsquared] activity push failed (${r.retriable ? "queued for retry" : "permanent, dropped"}): ${r.error}`);
@@ -734,6 +789,7 @@ async function tryChatActivity(p: ChatActivityInput): Promise<PushResult> {
 
 export async function pushChatActivity(p: ChatActivityInput): Promise<void> {
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  if (await lsqPaused(tid)) { if (await lsqConfigured(tid)) await enqueueCrmSync("chat", { ...p, tenantId: tid }, "sync paused"); return; }
   const r = await tryChatActivity(p);   // resolves creds once; skipped = no CRM for this tenant
   if (r.ok) return;
   console.error(`[leadsquared] ${p.channel} activity push failed (${r.retriable ? "queued for retry" : "permanent, dropped"}): ${r.error}`);
@@ -804,9 +860,14 @@ export async function enqueueCrmSyncBatch(rows: { kind: "wa" | "chat"; payload: 
 export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ replayed: number; deferred: number; dead: number }> {
   let replayed = 0, deferred = 0, dead = 0;
   try {
-    const { data, error } = await db().from("wa_crm_sync")
+    // A paused tenant's rows stay queued untouched: excluded here, in the query,
+    // so they cannot crowd the batch (see pausedTenantIds).
+    const paused = await pausedTenantIds();
+    let due = db().from("wa_crm_sync")
       .select("*").in("kind", ["wa", "chat"]).eq("status", "pending").lte("next_attempt_at", new Date().toISOString())
       .order("next_attempt_at").limit(limit);   // kind filter: integrations park their own deliveries here (kind 'integration')
+    if (paused.length) due = due.not("tenant_id", "in", `(${paused.join(",")})`);
+    const { data, error } = await due;
     if (error) throw error;
 
     for (const row of (data ?? []) as { id: string; kind: string; payload: unknown; attempts: number; next_attempt_at: string }[]) {
@@ -873,21 +934,33 @@ export async function drainCrmSync(limit = 100, deadlineAt?: number): Promise<{ 
 // worst case it re-posts the already-flushed lines alongside it on the NEXT
 // flush (a rare, explainable duplicate, never silent data loss). Spans ALL
 // tenants like drainCrmSync — each row resolves its own tenant's LSQ creds.
-export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promise<{ flushed: number; deferred: number }> {
-  let flushed = 0, deferred = 0;
-  const perTenant = new Map<string, { flushed: number; deferred: number; lastError: string }>();
-  const tally = (tid: string, key: "flushed" | "deferred", err = "") => {
-    const t = perTenant.get(tid) ?? { flushed: 0, deferred: 0, lastError: "" };
+export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promise<{ flushed: number; deferred: number; discarded: number }> {
+  let flushed = 0, deferred = 0, discarded = 0;
+  const perTenant = new Map<string, { flushed: number; deferred: number; discarded: number; lastError: string }>();
+  const tally = (tid: string, key: "flushed" | "deferred" | "discarded", err = "") => {
+    const t = perTenant.get(tid) ?? { flushed: 0, deferred: 0, discarded: 0, lastError: "" };
     t[key]++; if (err) t.lastError = err;
     perTenant.set(tid, t);
   };
   try {
     const cutoff = new Date(Date.now() - SESSION_GAP_MS).toISOString();
-    const { data, error } = await db().from("wa_crm_session")
-      .select("*").lte("last_message_at", cutoff).order("last_message_at").limit(limit);
+    // Only rows still owed to the CRM. A discarded row (status, see the parity
+    // migration) is terminal — its lead was deleted — and re-reading it every
+    // tick is what kept the health bar red.
+    // Paused tenants' sessions keep buffering — excluded in the query so they
+    // cannot crowd the batch (see pausedTenantIds).
+    const paused = await pausedTenantIds();
+    const excludePaused = <T extends { not: (c: string, op: string, v: string) => T }>(q: T): T =>
+      paused.length ? q.not("tenant_id", "in", `(${paused.join(",")})`) : q;
+    let { data, error } = await excludePaused(db().from("wa_crm_session")
+      .select("*").eq("status", "pending").lte("last_message_at", cutoff).order("last_message_at").limit(limit));
+    if (error && isMissingColumn(error)) {
+      ({ data, error } = await excludePaused(db().from("wa_crm_session")   // status column not applied yet
+        .select("*").lte("last_message_at", cutoff).order("last_message_at").limit(limit)));
+    }
     if (error) throw error;
 
-    for (const row of (data ?? []) as { id: string; tenant_id: string; lead_id: string; lines: string[]; attempts: number; last_message_at: string }[]) {
+    for (const row of (data ?? []) as { id: string; tenant_id: string; lead_id: string; phone: string; lines: string[]; attempts: number; last_message_at: string }[]) {
       if (deadlineAt && Date.now() > deadlineAt) break;
       const lease = new Date(Date.now() + 5 * 60_000).toISOString();
       const claim = await db().from("wa_crm_session")
@@ -903,7 +976,36 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
 
       let note = row.lines.join("\n");
       if (note.length > SESSION_NOTE_CAP) note = "…[earlier messages truncated]…\n" + note.slice(-SESSION_NOTE_CAP);
-      const r = await postActivity(c, row.lead_id, note);
+      let r = await postActivity(c, row.lead_id, note);
+
+      // A PERMANENT rejection is usually a dead RelatedProspectId, not a bad
+      // note. lead_id is captured when the FIRST message of a session arrives
+      // and reused at flush time, which can be hours later — and LeadSquared
+      // merges duplicate leads (a Meta lead-form integration creates a second
+      // lead for the same phone). A merge keeps one ProspectID and discards the
+      // other, and if ours was the discarded one every push for that session
+      // fails forever. Re-resolve and retry ONCE. Only on the non-retriable
+      // path, so the happy case costs no extra LeadSquared call.
+      //
+      // A merge leaves a different LIVE id behind and the retry lands. A DELETE
+      // leaves nothing at all, and that is the terminal case below.
+      let destinationGone = false;
+      if (!r.ok && !r.retriable) {
+        const { known, leadId: fresh } = await lookupLeadDefinitively(row.phone, c);
+        if (fresh && fresh !== row.lead_id) {
+          console.warn(`[leadsquared] stale lead id for ${row.phone.slice(-4)} — LSQ now resolves it to a different lead; retrying`);
+          const retry = await postActivity(c, fresh, note);
+          if (retry.ok) {
+            // Persist it so the next line of this conversation stops using the dead id.
+            await db().from("wa_crm_session").update({ lead_id: fresh }).eq("id", row.id).then(() => {}, () => {});
+            r = retry;
+          }
+        }
+        // Both facts, independently, before anything is given up on: LSQ
+        // rejected the LEAD REFERENCE, and a lookup that genuinely answered
+        // found nobody. Either alone is not enough.
+        destinationGone = known && !fresh && lsqLeadMissing(r.ok ? "" : r.error);
+      }
 
       if (r.ok) {
         const del = await db().from("wa_crm_session").delete().eq("id", row.id).eq("last_message_at", lease);
@@ -912,6 +1014,37 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
         tally(row.tenant_id, "flushed");
         continue;
       }
+
+      // ── Terminal: the lead this session belongs to no longer exists ──────
+      //
+      // Holding assumes somebody can eventually fix the CRM and the backlog
+      // will drain. That fails completely for a DELETED lead: there is no
+      // config to repair and no id to retry against, so the row would sit in
+      // the live queue forever holding the health bar red — and "Retry now"
+      // clears `attempts`, so every click restarted the ramp and the same
+      // error came straight back.
+      //
+      // Marked, never deleted: the lines stay on the row for inspection (and
+      // the 14-day prune below eventually clears them), so this is a terminal
+      // STATE, not data loss.
+      if (destinationGone) {
+        const gone = await db().from("wa_crm_session").update({
+          status: "discarded",
+          last_error: (r.error ?? "lead no longer exists in LeadSquared").slice(0, 500),
+          last_attempt_at: new Date().toISOString(),
+        }).eq("id", row.id).eq("last_message_at", lease);
+        if (gone.error && isMissingColumn(gone.error)) {
+          // Migration not applied — fall through to the ordinary hold rather
+          // than leave the row leased and unreachable.
+          console.error("[leadsquared] cannot discard a deleted-lead session — apply 20261019000000_port_wab_parity.sql");
+        } else {
+          console.warn(`[leadsquared] session for ${row.phone.slice(-4)} discarded — LeadSquared has no lead for this number and the one it was buffered against is gone`);
+          discarded++;
+          tally(row.tenant_id, "discarded");
+          continue;
+        }
+      }
+
       // HOLD, never delete. Deleting on failure is what turned a deactivated
       // LeadSquared activity type into silent data loss: every push failed, the
       // cap was reached, and a day of real conversations was dropped while the
@@ -925,41 +1058,274 @@ export async function flushCrmSessions(limit = 100, deadlineAt?: number): Promis
       const tier = r.retriable ? Math.min(attempts - 1, SESSION_BACKOFF_MIN.length - 1) : SESSION_BACKOFF_MIN.length - 1;
       const nextAt = new Date(Date.now() + SESSION_BACKOFF_MIN[tier] * 60_000).toISOString();
       console.error(`[leadsquared] session flush held (attempt ${attempts}, retrying in ${SESSION_BACKOFF_MIN[tier]}m): ${r.error}`);
-      await db().from("wa_crm_session").update({ attempts, last_message_at: nextAt }).eq("id", row.id).eq("last_message_at", lease);
+      // Persist the reason ON THE ROW. It used to live only in the per-tick
+      // health record, which any successful flush overwrote — so the
+      // explanation for a permanently-stuck row vanished the moment an
+      // unrelated lead pushed fine.
+      const holdRow: Record<string, unknown> = {
+        attempts, last_message_at: nextAt,
+        last_error: (r.error ?? "unknown error").slice(0, 500),
+        last_attempt_at: new Date().toISOString(),
+      };
+      let heldUpd = await db().from("wa_crm_session").update(holdRow).eq("id", row.id).eq("last_message_at", lease);
+      if (heldUpd.error && isMissingColumn(heldUpd.error)) {
+        // Columns not applied yet — the hold itself must still happen, or the
+        // row keeps its lease timestamp and never becomes due again.
+        delete holdRow.last_error; delete holdRow.last_attempt_at;
+        heldUpd = await db().from("wa_crm_session").update(holdRow).eq("id", row.id).eq("last_message_at", lease);
+      }
+      if (heldUpd.error) console.error(`[leadsquared] could not record the hold for row ${row.id}: ${heldUpd.error.message}`);
       deferred++;
       tally(row.tenant_id, "deferred", r.error ?? "unknown error");
     }
+
+    // Housekeeping, as wa_crm_sync does for its dead rows: a discarded session
+    // is kept for a fortnight so the decision can be inspected, then pruned.
+    await db().from("wa_crm_session").delete().eq("status", "discarded")
+      .lt("last_attempt_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+      .then(() => {}, () => {});
   } catch (err) {
     console.error("[leadsquared] flushCrmSessions failed:", errorMessage(err));
   }
   for (const [tid, t] of perTenant) await recordSessionFlushHealth(tid, t);
-  return { flushed, deferred };
+  return { flushed, deferred, discarded };
+}
+
+// 42703 = Postgres undefined_column, PGRST204 = PostgREST's schema-cache miss.
+// Either means "a migration this code knows about has not been applied yet".
+function isMissingColumn(e: { code?: string } | null | undefined): boolean {
+  return e?.code === "42703" || e?.code === "PGRST204";
 }
 
 // Write-path health, per tenant. verifyLsq only proves we can READ from
 // LeadSquared, which is why it stayed green through a total write outage.
 // Persist the last flush result so the status surface can say that pushes are
 // failing, and why. Best-effort: a settings write must never break the flush.
-async function recordSessionFlushHealth(tenantId: string, t: { flushed: number; deferred: number; lastError: string }): Promise<void> {
+async function recordSessionFlushHealth(tenantId: string, t: { flushed: number; deferred: number; discarded: number; lastError: string }): Promise<void> {
+  const now = new Date().toISOString();
   try {
+    // Carry the previous lastOkAt forward. `at` moves on every attempt, so it
+    // answers "when did we last try", not "when did a push last SUCCEED" — and
+    // during an outage the difference between those two is the whole story.
+    // Only a flush that actually delivered something advances lastOkAt.
+    const prev = await db().from("wa_settings").select("value").eq("tenant_id", tenantId).eq("key", "crm_session_flush_health").maybeSingle();
+    const carried = ((prev.data?.value ?? {}) as { lastOkAt?: string }).lastOkAt ?? null;
     await db().from("wa_settings").upsert({
       tenant_id: tenantId, key: "crm_session_flush_health",
-      value: { at: new Date().toISOString(), flushed: t.flushed, deferred: t.deferred, lastError: t.lastError.slice(0, 400) },
-      updated_at: new Date().toISOString(),
+      value: { at: now, flushed: t.flushed, deferred: t.deferred, discarded: t.discarded, lastError: t.lastError.slice(0, 400), lastOkAt: t.flushed > 0 ? now : carried },
+      updated_at: now,
     }, { onConflict: "tenant_id,key" });
   } catch { /* diagnostic only */ }
 }
 
 // How many of this tenant's buffered sessions are stuck, and why.
-export async function crmSessionStats(tenantId: string = DEFAULT_TENANT_ID): Promise<{ held: number; lastError: string }> {
+export async function crmSessionStats(tenantId: string = DEFAULT_TENANT_ID): Promise<{ held: number; lastError: string; heldSince: string | null }> {
+  let held = 0;
+  // Per-row reason — the DURABLE copy. Read in its own try so a missing column,
+  // or anything else going wrong here, degrades to the settings row below
+  // instead of losing the error entirely.
+  let rowError = "", heldSince: string | null = null;
   try {
-    const [{ count }, { data }] = await Promise.all([
-      db().from("wa_crm_session").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gt("attempts", 0),
+    // `status` excludes rows discarded because their lead was deleted. Those are
+    // terminal and need nobody, so counting them is what kept the bar red with an
+    // error that could never clear.
+    const scoped = await db().from("wa_crm_session")
+      .select("last_error, created_at").eq("tenant_id", tenantId).eq("status", "pending").gt("attempts", 0)
+      .order("created_at", { ascending: true }).limit(1);
+    let data: { last_error?: string | null; created_at?: string }[] | null = scoped.data;
+    if (scoped.error && isMissingColumn(scoped.error)) {
+      ({ data } = await db().from("wa_crm_session")   // pre-migration: neither status nor last_error exists
+        .select("created_at").eq("tenant_id", tenantId).gt("attempts", 0)
+        .order("created_at", { ascending: true }).limit(1));
+    }
+    const oldest = (data ?? [])[0] as { last_error?: string | null; created_at?: string } | undefined;
+    rowError = oldest?.last_error ?? "";
+    heldSince = oldest?.created_at ?? null;
+  } catch { /* an unavailable table — fall through */ }
+
+  // Count, plus the per-tick error as a FALLBACK only. That settings row is
+  // rewritten by every flush tick that had work, so one successful push for a
+  // fresh lead blanks it — which is how nine permanently-unsent conversations
+  // read as healthy. The row copy above outranks it.
+  let tickError = "";
+  try {
+    const [pendingHeld, { data }] = await Promise.all([
+      db().from("wa_crm_session").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).eq("status", "pending").gt("attempts", 0),
       db().from("wa_settings").select("value").eq("tenant_id", tenantId).eq("key", "crm_session_flush_health").maybeSingle(),
     ]);
-    const v = (data?.value ?? {}) as { lastError?: string };
-    return { held: count ?? 0, lastError: v.lastError ?? "" };
-  } catch { return { held: 0, lastError: "" }; }
+    held = pendingHeld.error && isMissingColumn(pendingHeld.error)
+      ? ((await db().from("wa_crm_session").select("id", { count: "exact", head: true }).eq("tenant_id", tenantId).gt("attempts", 0)).count ?? 0)
+      : (pendingHeld.count ?? 0);
+    tickError = ((data?.value ?? {}) as { lastError?: string }).lastError ?? "";
+  } catch { return { held, lastError: rowError, heldSince }; }
+
+  return { held, lastError: rowError || tickError, heldSince };
+}
+
+export interface CrmPushHealth {
+  configured: boolean;
+  state: "ok" | "syncing" | "failing" | "off";
+  pending: number;     // queued, will retry on its own
+  dead: number;        // permanently failed — needs a person
+  held: number;        // conversations buffered with a failed attempt behind them
+  lastOkAt: string | null;
+  lastError: string;
+  detail: string;      // one sentence for a human
+}
+
+// Whether chat data is actually reaching LeadSquared right now, for one tenant.
+//
+// DB reads ONLY — no network. verifyLsq() probes LeadSquared over HTTP, which is
+// fine for a settings page but far too heavy for a bar that polls while someone
+// works the inbox. It also answers the wrong question: it proves we can READ
+// from LeadSquared, and it stayed green through a total WRITE outage. What
+// matters here is whether pushes are landing, which is what these counters
+// record.
+export async function crmPushHealth(tenantId: string = DEFAULT_TENANT_ID): Promise<CrmPushHealth> {
+  if (!await lsqConfigured(tenantId)) {
+    return { configured: false, state: "off", pending: 0, dead: 0, held: 0, lastOkAt: null, lastError: "",
+             detail: "LeadSquared isn't configured, so nothing is being pushed." };
+  }
+  const [queue, session] = await Promise.all([crmSyncStats(tenantId), crmSessionStats(tenantId)]);
+  const { pending, dead } = queue;
+  const { held, lastError } = session;
+  const lastOkAt = await lastSuccessfulPushAt(tenantId);
+
+  // A held conversation WITH an error behind it means LeadSquared is rejecting
+  // writes; dead rows mean pushes were abandoned. Either is a real failure a
+  // person has to act on, so they outrank a mere backlog.
+  // A row still held after an hour has already been through the gentle backoff
+  // ramp, so it is not "retrying automatically" in any useful sense — it is
+  // stuck. Treating it as a backlog is how a dead write path reported "syncing"
+  // while nothing moved for a week.
+  const STUCK_MS = 60 * 60_000;
+  const stuck = !!session.heldSince && Date.now() - new Date(session.heldSince).getTime() > STUCK_MS;
+  if ((held > 0 && (lastError || stuck)) || dead > 0) {
+    const why = lastError
+      || (dead > 0 ? `${dead} push${dead === 1 ? "" : "es"} gave up after repeated failures` : "")
+      || `${held} conversation(s) held since ${session.heldSince?.slice(0, 10)} with no reason recorded — apply 20261019000000_port_wab_parity.sql`;
+    return { configured: true, state: "failing", pending, dead, held, lastOkAt, lastError, detail: `Not reaching LeadSquared — ${why}` };
+  }
+  if (pending > 0 || held > 0) {
+    const n = pending + held;
+    return { configured: true, state: "syncing", pending, dead, held, lastOkAt, lastError, detail: `${n} update${n === 1 ? "" : "s"} waiting to sync — retrying automatically.` };
+  }
+  return { configured: true, state: "ok", pending, dead, held, lastOkAt, lastError, detail: "Every chat has been pushed to LeadSquared." };
+}
+
+async function lastSuccessfulPushAt(tenantId: string): Promise<string | null> {
+  try {
+    const { data } = await db().from("wa_settings").select("value").eq("tenant_id", tenantId).eq("key", "crm_session_flush_health").maybeSingle();
+    return ((data?.value ?? {}) as { lastOkAt?: string }).lastOkAt ?? null;
+  } catch { return null; }
+}
+
+// Pull every held conversation back to "due now" so the next cron tick retries
+// the whole backlog at once.
+//
+// Needed because of how the hold works. A PERMANENT rejection — LeadSquared
+// refusing the request itself, e.g. a deactivated activity event code — parks a
+// row at the slowest backoff tier, 24 hours out. That is right while the CRM is
+// still broken and exactly wrong the moment someone fixes it: the operator has
+// just repaired the config and wants their backlog now, not trickling back over
+// the next day. Nothing else can shorten that wait.
+//
+// Sets last_message_at older than the quiet window (that column doubles as the
+// backoff deadline) and clears attempts, so a row that fails again gets the
+// gentle ramp from the start rather than staying pinned at 24h.
+export async function retryHeldCrmSessions(tenantId: string = DEFAULT_TENANT_ID): Promise<{ released: number }> {
+  try {
+    const dueNow = new Date(Date.now() - SESSION_GAP_MS - 60_000).toISOString();
+    // Pending only. A discarded row has no lead left to post to, so releasing it
+    // would resurrect a terminal row, spend a LeadSquared call rediscarding it,
+    // and do that again on every click.
+    const scoped = await db().from("wa_crm_session")
+      .update({ attempts: 0, last_message_at: dueNow })
+      .eq("tenant_id", tenantId).eq("status", "pending").gt("attempts", 0)   // only rows that have actually failed
+      .select("id");
+    let data = scoped.data, error = scoped.error;
+    if (error && isMissingColumn(error)) {
+      ({ data, error } = await db().from("wa_crm_session")   // status column not applied yet
+        .update({ attempts: 0, last_message_at: dueNow })
+        .eq("tenant_id", tenantId).gt("attempts", 0)
+        .select("id"));
+    }
+    if (error) throw error;
+    const released = (data ?? []).length;
+    console.warn(JSON.stringify({ tag: "crm_sessions_released", tenant: tenantId, released }));
+    return { released };
+  } catch (err) {
+    console.error("[leadsquared] retryHeldCrmSessions failed:", errorMessage(err));
+    return { released: 0 };
+  }
+}
+
+// ── Per-conversation push status ──────────────────────────────────────────────
+// The bar at the top of Live Chat answers "is LeadSquared working?". It cannot
+// answer "did THIS chat get through?", which is the question an agent actually
+// has while looking at one conversation — an aggregate backlog reads as busy,
+// whereas "this customer's last four messages never reached their timeline"
+// reads as broken.
+//
+// One query for the whole inbox rather than one per chat: the buffer is small
+// (one row per in-flight conversation, deleted on a successful post) and the
+// list needs every row anyway.
+export interface CrmChatStatuses {
+  configured: boolean;
+  /** Keyed by crmChatKey() — see crmkey.ts for why it is the last 10 digits. */
+  statuses: Record<string, ChatCrmStatus>;
+  /** Why held chats are failing. Recorded per flush, not per row, so it is shared. */
+  lastError: string;
+}
+
+export async function crmChatStatuses(tenantId: string = DEFAULT_TENANT_ID): Promise<CrmChatStatuses> {
+  if (!await lsqConfigured(tenantId)) return { configured: false, statuses: {}, lastError: "" };
+  const statuses: Record<string, ChatCrmStatus> = {};
+
+  // `lines` is deliberately not selected: it is jsonb of up to SESSION_NOTE_CAP
+  // bytes per row and nothing here reads its contents, only whether the row
+  // exists and whether it has failed. Discarded rows (their lead was deleted)
+  // are terminal and owe the chat nothing, so they are not "queued".
+  type SessionRow = { phone: string; attempts: number; last_message_at: string };
+  let sessions: SessionRow[];
+  try {
+    sessions = await pageAll<SessionRow>(
+      () => db().from("wa_crm_session").select("phone, attempts, last_message_at").eq("tenant_id", tenantId).eq("status", "pending").order("phone"),
+      { cap: 20_000, label: "crm_chat_statuses" },
+    );
+  } catch (err) {
+    if (!isMissingColumn(err as { code?: string })) throw err;
+    sessions = await pageAll<SessionRow>(   // status column not applied yet
+      () => db().from("wa_crm_session").select("phone, attempts, last_message_at").eq("tenant_id", tenantId).order("phone"),
+      { cap: 20_000, label: "crm_chat_statuses" },
+    );
+  }
+  for (const s of sessions) {
+    const key = crmChatKey(s.phone);
+    if (!key) continue;
+    const attempts = s.attempts ?? 0;
+    // last_message_at doubles as the backoff deadline once a row has failed, so
+    // "due at" is the same expression either way: the flush picks up rows whose
+    // last_message_at is older than the quiet gap.
+    const due = new Date(s.last_message_at).getTime() + SESSION_GAP_MS;
+    statuses[key] = { state: attempts > 0 ? "held" : "queued", attempts, dueAt: Number.isFinite(due) ? new Date(due).toISOString() : null };
+  }
+
+  // Dead queue rows outrank a buffered one: those pushes were abandoned, so the
+  // chat is missing data that no amount of waiting will deliver.
+  const dead = await pageAll<{ payload: unknown }>(
+    () => db().from("wa_crm_sync").select("payload").eq("tenant_id", tenantId).in("kind", ["wa", "chat"]).eq("status", "dead").order("id"),
+    { cap: 5_000, label: "crm_chat_statuses_dead" },
+  );
+  for (const row of dead) {
+    const p = (row.payload ?? {}) as { phone?: string; handle?: string };
+    const key = crmChatKey(p.phone) || crmChatKey(p.handle ? `handle:${p.handle}` : "");
+    if (!key) continue;
+    statuses[key] = { state: "dead", attempts: 0, dueAt: null };
+  }
+
+  const { lastError } = await crmSessionStats(tenantId);
+  return { configured: true, statuses, lastError };
 }
 
 // Queue health: how much is waiting / dead (optionally for one tenant).
@@ -973,4 +1339,141 @@ export async function crmSyncStats(tenantId?: string): Promise<{ pending: number
     const [p, d] = await Promise.all([base().eq("status", "pending"), base().eq("status", "dead")]);
     return { pending: p.count ?? 0, dead: d.count ?? 0 };
   } catch (err) { return { pending: 0, dead: 0, broken: errorMessage(err) }; }
+}
+
+import type { LsqEvent } from "./lsqwebhook";
+export function lsqTimestamp(raw: unknown): number {
+  const s = String(raw ?? "").trim();
+  if (!s) return 0;
+  return Date.parse(s.replace(" ", "T") + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(s) ? "" : "Z")) || 0;
+}
+export const LEAD_COLUMNS = [
+  "ProspectID", "FirstName", "LastName", "Phone", "Mobile", "EmailAddress",
+  "ProspectStage", "Source", "Owner", "OwnerIdName", "OwnerIdEmailAddress",
+  // mx_City and mx_Course_Interested are what the drip's audience rules are
+  // written against: without them a polled lead fails the day 7, 12 and 18
+  // gates and gets a two-message "four-week" nurture.
+  "mx_City", "mx_Course_Interested", "CreatedOn", "ModifiedOn",
+  // Scores. mx_Lead_Score is the one a counsellor sets by hand (Hot / Warm /
+  // Cold / Junk); the other three are LeadSquared's own numeric scoring.
+  "mx_Lead_Score", "Score", "EngagementScore", "QualityScore01",
+];
+export interface ChangedLead { ev: LsqEvent; modifiedAt: number }
+export async function leadsOnStageSince(
+  stage: string,
+  sinceMs: number,
+  max = 200, tenantId = DEFAULT_TENANT_ID,
+): Promise<{ changed: ChangedLead[]; scanned: number; truncated: boolean; error?: string }> {
+  const empty = { changed: [] as ChangedLead[], scanned: 0, truncated: false };
+  if (!await lsqConfigured(tenantId)) return { ...empty, error: "LeadSquared isn't configured." };
+  if (!stage.trim()) return { ...empty, error: "No stage configured to watch." };
+
+  const { accessKey, secretKey, host } = (await resolveLsq(tenantId))!;
+  const cols = LEAD_COLUMNS.join(",");
+  const changed: ChangedLead[] = [];
+  const seen = new Set<string>();
+  let scanned = 0, truncated = false;
+
+  try {
+    for (let page = 1; page <= 20; page++) {
+      const res = await fetch(`${host}/v2/LeadManagement.svc/Leads.Get?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          Parameter: { LookupName: "ProspectStage", LookupValue: stage.trim() },
+          Columns: { Include_CSV: cols },
+          Paging: { PageIndex: page, PageSize: 200 },
+          Sorting: { ColumnName: "ModifiedOn", Direction: "1" },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return { changed, scanned, truncated, error: `LeadSquared search failed (HTTP ${res.status}).` };
+      const data = await res.json().catch(() => null);
+      const rows = (Array.isArray(data) ? data : (data?.Leads ?? [])) as Record<string, unknown>[];
+      if (!rows.length) break;
+
+      let matchedOnPage = 0;
+      for (const row of rows) {
+        scanned++;
+        const lead = flattenLead(row);
+        const modifiedAt = lsqTimestamp(lead.ModifiedOn);
+        // A lead with no readable ModifiedOn cannot be placed in time. Skipping
+        // it is the safe answer: the alternative is treating it as "just now"
+        // and re-enrolling it on every single pass, forever.
+        if (!modifiedAt || modifiedAt <= sinceMs) continue;
+        matchedOnPage++;
+
+        const phone = (lead.Phone || lead.Mobile || "").replace(/\D/g, "");
+        if (phone.length < 10) continue;
+        const key = phone.slice(-10);
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const name = `${lead.FirstName ?? ""} ${lead.LastName ?? ""}`.trim();
+        const ownerEmail = (lead.OwnerIdEmailAddress || "").trim().toLowerCase();
+        changed.push({
+          modifiedAt,
+          ev: {
+            // Labelled for what it is. The label only affects logging — every
+            // action downstream is driven by the fields — but it is also what
+            // keeps a "created"-triggered lead-welcome from firing on a sweep.
+            event: "stage_changed",
+            phone,
+            name: name || null,
+            email: (lead.EmailAddress || "").trim() || null,
+            ownerEmail: ownerEmail || null,
+            ownerName: (lead.OwnerIdName || "").trim() || null,
+            stage: (lead.ProspectStage || "").trim() || null,
+            leadScore: (lead.mx_Lead_Score || "").trim() || null,
+            leadId: (lead.ProspectID || "").trim() || null,
+            source: (lead.Source || "").trim() || null,
+            course: (lead.mx_Course_Interested || "").trim() || null,
+            city: (lead.mx_City || "").trim() || null,
+          },
+        });
+        if (changed.length >= max) { truncated = true; break; }
+      }
+      // Newest-first means a page with nothing new is past the window, and so
+      // is every page after it.
+      if (truncated || !matchedOnPage || rows.length < 200) break;
+    }
+    changed.sort((a, b) => a.modifiedAt - b.modifiedAt);   // oldest first — the watermark advances monotonically
+    return { changed, scanned, truncated };
+  } catch (err) {
+    return { changed, scanned, truncated, error: errorMessage(err) };
+  }
+}
+
+// Per tenant: lsq_paused is a tenant-scoped setting, and a single cache would let
+// one business's pause silence another's CRM sync. Cached because it is read on
+// EVERY message push; 30s is short enough that another serverless instance picks
+// a change up quickly, and the settings route clears this process's copy at once.
+const PAUSE_TTL_MS = 30_000;
+const pauseCache = new Map<string, { at: number; v: boolean }>();
+
+export async function lsqPaused(tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  const hit = pauseCache.get(tenantId);
+  if (hit && Date.now() - hit.at < PAUSE_TTL_MS) return hit.v;
+  try {
+    const v = (await getTenantSetting(tenantId, "lsq_paused", false)) === true;
+    pauseCache.set(tenantId, { at: Date.now(), v });
+    return v;
+  } catch {
+    return hit?.v ?? false;   // a settings blip must not flip the switch either way
+  }
+}
+
+// Called by the settings route the moment somebody flips the switch, so the
+// change is instant in this process instead of up to the TTL later.
+export function resetLsqPauseCache(tenantId?: string): void {
+  if (tenantId) pauseCache.delete(tenantId); else pauseCache.clear();
+}
+
+// Every tenant that has paused its CRM sync. The two drains span ALL tenants, so
+// they exclude these in the QUERY: checking per row would let a paused tenant
+// with a full batch of due rows crowd everybody else out of every tick.
+async function pausedTenantIds(): Promise<string[]> {
+  try {
+    const { data } = await db().from("wa_settings").select("tenant_id").eq("key", "lsq_paused").eq("value", true);
+    return ((data ?? []) as { tenant_id: string }[]).map(r => r.tenant_id).filter(Boolean);
+  } catch { return []; }
 }

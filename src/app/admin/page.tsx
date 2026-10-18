@@ -55,6 +55,7 @@ const ContactsTab = dynamic(() => import("./_tabs/ContactsTab"), { ssr: false, l
 const PipelineTab = dynamic(() => import("./_tabs/PipelineTab"), { ssr: false, loading: () => tabLoading });
 const SettingsTab = dynamic(() => import("./_tabs/SettingsTab"), { ssr: false, loading: () => tabLoading });
 const SecurityTab = dynamic(() => import("./_tabs/SecurityTab"), { ssr: false, loading: () => tabLoading });
+const TeamProgressTab = dynamic(() => import("./_tabs/TeamProgressTab"), { ssr: false, loading: () => tabLoading });
 
 // Warm a tab's chunk on nav hover/focus so it's in memory by click time (the
 // same import() → same webpack chunk as the dynamic() above, just eager). This
@@ -86,6 +87,7 @@ const PRELOAD: Partial<Record<Tab, () => Promise<unknown>>> = {
   integrations: () => import("./_tabs/IntegrationsTab"),
   settings: () => import("./_tabs/SettingsTab"),
   security: () => import("./_tabs/SecurityTab"),
+  team: () => import("./_tabs/TeamProgressTab"),
 };
 const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 
@@ -103,6 +105,8 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" />, hint: "Everyone who has ever messaged you" },
       { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
       { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" />, hint: "See what's working — messages, replies, sales" },
+      // Only a team lead or an admin ever sees this (tabRoleAllowed filters the nav).
+      { key: "team", label: "Team Progress", icon: <Users className="w-[18px] h-[18px]" />, hint: "Is your team keeping up, and who is behind" },
     ],
   },
   {
@@ -157,7 +161,7 @@ const TAB_TITLES: Record<Tab, string> = {
   home: "Home", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Links & QR Codes",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
-  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security",
+  contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security", team: "Team Progress",
 };
 
 export default function Admin() {
@@ -175,7 +179,7 @@ export default function Admin() {
     const t = new URLSearchParams(window.location.search).get("tab");
     if (t && t in TAB_TITLES) setTab(t as Tab);
   }, []);
-  const [me, setMe] = useState<{ email: string; name: string; role: string; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
+  const [me, setMe] = useState<{ email: string; name: string; role: string; team?: string | null; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
   const [showTour, setShowTour] = useState(false);
@@ -288,7 +292,7 @@ export default function Admin() {
               </div>
               <div className="min-w-0">
                 <p className="text-[12px] font-semibold text-ink-900 truncate leading-tight">{me.name || me.email}</p>
-                <p className="text-[10px] text-ink-400 leading-tight">{me.role === "member" ? "Member" : "Admin"}</p>
+                <p className="text-[10px] text-ink-400 leading-tight">{me.role === "member" ? "Member" : me.role === "lead" ? "Team lead" : "Admin"}</p>
               </div>
             </div>
           )}
@@ -373,6 +377,7 @@ export default function Admin() {
           {tab === "integrations" && <IntegrationsTab goTo={goTo} />}
           {tab === "settings" && <SettingsTab goTo={goTo} />}
           {tab === "security" && <SecurityTab />}
+          {tab === "team" && <TeamProgressTab me={me ? { role: me.role as "admin" | "lead" | "member", team: (me.team ?? null) as import("@/lib/teams").Team | null } : null} goTo={goTo} />}
           </>}
         </main>
       </div>
