@@ -211,6 +211,83 @@ export async function listNewComments(creds: YtCreds, since: Date | null, maxPag
   return out.filter(c => c.id);
 }
 
+// ── Thread follow-ups ────────────────────────────────────────────────────────
+// A reply under a thread never moves the thread: commentThreads order=time sorts
+// by the TOP-LEVEL comment's time (checked on a live channel, 398 threads), so
+// the incremental poll above never sees a reply to an old thread. Threads we
+// have answered are therefore watched directly, by id — up to 50 per call, one
+// quota unit for the lot.
+
+export interface YtReply {
+  id: string;
+  text: string;
+  authorChannelId: string | null;
+  authorName: string;      // display name, normally the "@handle" form
+  publishedAt: string;
+}
+export interface YtThread {
+  id: string;              // the thread id == the top-level comment id (the reply target)
+  videoId: string;
+  channelId: string;       // the channel whose video this thread is on
+  top: YtReply;
+  replies: YtReply[];      // oldest → newest
+  totalReplies: number;
+}
+
+function toReply(c: Record<string, unknown>): YtReply {
+  const s = (c.snippet as Record<string, unknown>) ?? {};
+  return {
+    id: (c.id as string) ?? "",
+    text: (s.textOriginal as string) ?? (s.textDisplay as string) ?? "",
+    authorChannelId: ((s.authorChannelId as Record<string, unknown> | undefined)?.value as string | undefined) ?? null,
+    authorName: (s.authorDisplayName as string) ?? "",
+    publishedAt: (s.publishedAt as string) ?? "",
+  };
+}
+
+/**
+ * Fetch threads by id with their replies. The inline reply list is a subset on
+ * busy threads; `fullFor` names threads whose complete list should be fetched
+ * (comments.list, 1 unit each) — the caller asks only when the count grew.
+ */
+export async function getThreads(creds: YtCreds, ids: string[], fullFor: (t: YtThread) => boolean = () => false): Promise<YtThread[]> {
+  const token = await accessTokenFor(creds);
+  if (!token || !ids.length) return [];
+  const out: YtThread[] = [];
+  for (let i = 0; i < ids.length; i += 50) {
+    const data = await apiGet(token, "commentThreads", { part: "snippet,replies", id: ids.slice(i, i + 50).join(","), textFormat: "plainText", maxResults: "50" });
+    for (const it of (data?.items as Record<string, unknown>[] | undefined) ?? []) {
+      const sn = (it.snippet as Record<string, unknown>) ?? {};
+      const top = toReply((sn.topLevelComment as Record<string, unknown>) ?? {});
+      const inline = (((it.replies as Record<string, unknown> | undefined)?.comments as Record<string, unknown>[] | undefined) ?? []).map(toReply);
+      const thread: YtThread = {
+        id: (it.id as string) ?? top.id,
+        videoId: (sn.videoId as string) ?? "",
+        channelId: (sn.channelId as string) ?? "",
+        top, replies: inline, totalReplies: Number(sn.totalReplyCount ?? inline.length),
+      };
+      if (thread.totalReplies > inline.length && fullFor(thread)) {
+        const full = await apiGet(token, "comments", { part: "snippet", parentId: thread.id, maxResults: "100", textFormat: "plainText" });
+        const all = ((full?.items as Record<string, unknown>[] | undefined) ?? []).map(toReply);
+        if (all.length) thread.replies = all;
+      }
+      thread.replies.sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt));
+      out.push(thread);
+    }
+  }
+  return out;
+}
+
+/** The channel's @handle ("@spiritualtalksofficiall"), or null. channels.list = 1 unit. */
+export async function getChannelHandle(creds: YtCreds): Promise<string | null> {
+  const token = await accessTokenFor(creds);
+  if (!token) return null;
+  const data = await apiGet(token, "channels", { part: "snippet", id: creds.channelId });
+  const sn = ((data?.items as Record<string, unknown>[] | undefined)?.[0]?.snippet as Record<string, unknown> | undefined) ?? {};
+  const h = (sn.customUrl as string | undefined)?.trim();
+  return h ? (h.startsWith("@") ? h : `@${h}`) : null;
+}
+
 export interface YtSendResult { ok: boolean; id?: string; error?: string; blockedBy?: "rate" | "config" }
 
 // Post a public reply under a top-level comment. comments.insert = 50 units.

@@ -19,6 +19,8 @@ vi.mock("../youtube", () => ({
   listNewComments: vi.fn(),
   replyToComment: vi.fn(async () => ({ ok: true, id: "reply-id" })),
   setModeration: vi.fn(async () => ({ ok: true })),
+  getThreads: vi.fn(async () => []),
+  getChannelHandle: vi.fn(async () => "@self"),
 }));
 vi.mock("../channels", () => ({
   listChannels: vi.fn(),
@@ -34,6 +36,9 @@ vi.mock("../ytcomments", () => ({
   claimYtComment: vi.fn(async () => true),
   claimedYtCommentIds: vi.fn(async () => new Set<string>()),
   listYtCommentRules: vi.fn(async () => []),
+  getYtWatch: vi.fn(async () => ({ threads: {}, seeded: true })),
+  saveYtWatch: vi.fn(async () => {}),
+  recentlyAnsweredThreads: vi.fn(async () => []),
   bumpYtRuleMatch: vi.fn(async () => {}),
 }));
 

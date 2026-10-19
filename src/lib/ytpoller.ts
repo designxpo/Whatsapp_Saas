@@ -10,8 +10,12 @@
 
 import { db } from "./supabase";
 import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
-import { youtubeConfigured, listNewComments, replyToComment, setModeration, type YtCreds } from "./youtube";
-import { matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday } from "./ytcomments";
+import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
+import {
+  matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday,
+  getYtWatch, saveYtWatch, recentlyAnsweredThreads,
+} from "./ytcomments";
+import { pickFollowUps, threadHistory, addressTo, watchDue, pruneWatch, WATCH_DAYS } from "./ytfollowups";
 import { pickPublicReply } from "./igcomments";
 import { generateReply } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
@@ -57,7 +61,7 @@ const LOOKBACK_MS = 24 * 3600_000;
  */
 const later = (a: string, b: string | null | undefined): string => (b && Date.parse(b) > Date.parse(a) ? b : a);
 
-async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>): Promise<number> {
+async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[]): Promise<number> {
   const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
   if (!creds.channelId || !creds.refreshToken) return 0;
 
@@ -105,14 +109,8 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   // this tenant may take today. The cap is PLAN-AWARE (getYtDailyReplyCap — higher
   // tiers raise it), shared across the tenant's channels within this run, and
   // decremented as we act. Infinity when the cap is disabled platform-wide.
-  let cap = capCache.get(channel.tenantId);
-  let budget = budgetCache.get(channel.tenantId);
-  if (cap === undefined || budget === undefined) {
-    cap = await getYtDailyReplyCap(channel.tenantId);
-    budget = cap > 0 ? Math.max(0, cap - (await ytActionsUsedToday(channel.tenantId))) : Number.POSITIVE_INFINITY;
-    capCache.set(channel.tenantId, cap);
-    budgetCache.set(channel.tenantId, budget);
-  }
+  let budget = await tenantBudget(channel.tenantId, budgetCache, capCache);
+  const cap = capCache.get(channel.tenantId);
 
   // Oldest → newest so the cursor advances monotonically even if we stop early.
   const ordered = [...comments].reverse();
@@ -147,7 +145,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
       const reply = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
       if (reply) {
         const r = await replyToComment(creds, c.id, reply);
-        if (r.ok) { acted++; lastReplyId = r.id ?? null; }
+        if (r.ok) { acted++; lastReplyId = r.id ?? null; answered.push(c.id); }
         else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] rule reply failed", channel.id, c.id, r.error); }
       }
       if (rule.moderate === "hold_spam") await setModeration(creds, c.id, "heldForReview");
@@ -173,7 +171,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
         );
         if (res.reply && !res.escalate) {
           const r = await replyToComment(creds, c.id, res.reply);
-          if (r.ok) { acted++; lastReplyId = r.id ?? null; }
+          if (r.ok) { acted++; lastReplyId = r.id ?? null; answered.push(c.id); }
           else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] ai reply failed", channel.id, c.id, r.error); }
         } else if (res.escalate) {
           lastError = "The AI declined to answer this comment (not enough in the knowledge base).";
@@ -203,6 +201,104 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   return acted;
 }
 
+// Per-tenant daily reply budget, resolved once per run and shared by every
+// channel and every pass (new comments and follow-ups alike).
+async function tenantBudget(tenantId: string, budgetCache: Map<string, number>, capCache: Map<string, number>): Promise<number> {
+  let cap = capCache.get(tenantId);
+  let budget = budgetCache.get(tenantId);
+  if (cap === undefined || budget === undefined) {
+    cap = await getYtDailyReplyCap(tenantId);
+    budget = cap > 0 ? Math.max(0, cap - (await ytActionsUsedToday(tenantId))) : Number.POSITIVE_INFINITY;
+    capCache.set(tenantId, cap);
+    budgetCache.set(tenantId, budget);
+  }
+  return budget;
+}
+
+// ── Follow-ups in threads the channel already answered ───────────────────────
+// A reply never moves its thread in YouTube's listing (threads sort by the
+// top-level comment's time), so the incremental poll above never sees one. The
+// threads we've replied in are watched by id instead — see ytfollowups.ts for
+// who gets an answer. Runs every tick for lively threads, every 15 min otherwise.
+async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[]): Promise<number> {
+  const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
+  if (!creds.channelId || !creds.refreshToken) return 0;
+  const now = new Date();
+  const nowIso = now.toISOString();
+
+  let w = await getYtWatch(channel.id, channel.tenantId);
+  let dirty = false;
+  // Threads answered this tick join the list.
+  for (const id of answered) { w.threads[id] = { seen: nowIso, active: nowIso }; dirty = true; }
+  // First run: conversations already under way when this shipped.
+  if (!w.seeded) {
+    const since = new Date(now.getTime() - WATCH_DAYS * 86_400_000).toISOString();
+    for (const t of await recentlyAnsweredThreads(channel.tenantId, since)) {
+      if (!w.threads[t.threadId]) w.threads[t.threadId] = { seen: t.at, active: t.at };
+    }
+    w.seeded = true; dirty = true;
+  }
+  const before = Object.keys(w.threads).length;
+  w = pruneWatch(w, now);
+  if (Object.keys(w.threads).length !== before) dirty = true;
+
+  if (!watchDue(w, now)) {
+    if (dirty) await saveYtWatch(channel.id, channel.tenantId, w);
+    return 0;
+  }
+
+  if (!w.handle || now.getTime() - Date.parse(w.handleAt ?? "") > 86_400_000) {
+    w.handle = (await getChannelHandle(creds)) ?? w.handle ?? null;
+    w.handleAt = nowIso;
+  }
+
+  const threads = await getThreads(creds, Object.keys(w.threads), t => t.totalReplies > (w.threads[t.id]?.n ?? 0));
+
+  let aiEnabled = aiEnabledCache.get(channel.tenantId);
+  if (aiEnabled === undefined) { aiEnabled = await isAiEnabled(channel.tenantId); aiEnabledCache.set(channel.tenantId, aiEnabled); }
+  const answering = !!channel.commentAi && aiEnabled;
+  let budget = answering ? await tenantBudget(channel.tenantId, budgetCache, capCache) : 0;
+
+  let acted = 0;
+  for (const t of threads) {
+    // The token can read any public thread; only ever speak on this channel's own.
+    if (t.channelId && t.channelId !== creds.channelId) { delete w.threads[t.id]; continue; }
+    const st = w.threads[t.id];
+    if (!st) continue;
+    let deferred = false;
+    if (answering) {
+      for (const r of pickFollowUps(t, { selfChannelId: creds.channelId, handle: w.handle, seen: st.seen, now })) {
+        if (budget <= 0) { deferred = true; break; }
+        if (!(await claimYtComment(r.id, null, channel.tenantId))) continue;
+        budget -= 1;
+        try {
+          const res = await generateReply(threadHistory(t, creds.channelId, r), undefined, effectiveAgentId(null, channel),
+            channel.tenantId, effectiveKbScope(null, channel), false, undefined, "youtube");
+          if (res.reply && !res.escalate) {
+            const p = await replyToComment(creds, t.id, addressTo(r.authorName, res.reply));
+            if (p.ok) { acted++; st.active = nowIso; }
+            else console.error("[ytpoller] follow-up reply failed", channel.id, r.id, p.error);
+          }
+        } catch (e) {
+          console.error("[ytpoller] follow-up", r.id, e);
+        }
+      }
+    }
+    // Read through everything in the thread — unless the daily cap deferred an
+    // answer, in which case stay put so it's picked up after the reset.
+    const newest = t.replies.reduce((a, r) => later(a, r.publishedAt), st.seen);
+    if (!deferred) st.seen = newest;
+    st.active = later(st.active, newest);
+    st.n = t.totalReplies;
+  }
+  budgetCache.set(channel.tenantId, budget < 0 ? 0 : budget);
+
+  w.checkedAt = nowIso;
+  await saveYtWatch(channel.id, channel.tenantId, w);
+  if (acted) console.log(JSON.stringify({ tag: "yt_followups", channel: channel.id, answered: acted }));
+  return acted;
+}
+
 // Cron entrypoint — poll every connected YouTube channel and act on new comments.
 // Returns the number of replies/moderations performed this tick. Pass a
 // tenantId to poll just that workspace (the portal's "Check now" button, so an
@@ -222,8 +318,12 @@ export async function drainYtComments(tenantId?: string): Promise<number> {
   const capCache = new Map<string, number>();
   let acted = 0;
   for (const ch of channels) {
-    try { acted += await drainChannel(ch, aiEnabledCache, budgetCache, capCache); }
+    const answered: string[] = [];
+    try { acted += await drainChannel(ch, aiEnabledCache, budgetCache, capCache, answered); }
     catch (e) { console.error("[ytpoller] channel", ch.id, e); }
+    // Separate try: a failure on new comments must not stop follow-ups, or the reverse.
+    try { acted += await drainFollowUps(ch, aiEnabledCache, budgetCache, capCache, answered); }
+    catch (e) { console.error("[ytpoller] follow-ups", ch.id, e); }
   }
   return acted;
 }

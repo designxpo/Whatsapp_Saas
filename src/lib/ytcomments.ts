@@ -7,6 +7,7 @@
 // Tenancy: db() uses the service role (RLS bypassed), so EVERY read filters by
 // tenant_id and EVERY write stamps it — app-layer scoping is the real guard.
 
+import type { YtWatch } from "./ytfollowups";
 import { db } from "./supabase";
 import { normalizePublicReplies, matchesKeywords } from "./igcomments";
 import { getPlanLimits } from "./usage";
@@ -142,6 +143,47 @@ export async function claimedYtCommentIds(ids: string[], tenantId: string): Prom
     return new Set(((data ?? []) as { comment_id: string }[]).map(r => r.comment_id));
   } catch {
     return new Set();
+  }
+}
+
+// ── Watched threads (follow-ups) ─────────────────────────────────────────────
+// Per channel, in wa_settings: the threads the channel has replied in, and how
+// far each has been read. Small (≤100 threads) and touched once per check.
+const watchKey = (channelId: string) => `yt_watch:${channelId}`;
+
+export async function getYtWatch(channelId: string, tenantId: string): Promise<YtWatch> {
+  try {
+    const { data } = await db().from("wa_settings").select("value").eq("tenant_id", tenantId).eq("key", watchKey(channelId)).maybeSingle();
+    const v = (data as { value?: YtWatch } | null)?.value;
+    return v && typeof v === "object" && v.threads ? v : { threads: {} };
+  } catch {
+    return { threads: {} };
+  }
+}
+
+export async function saveYtWatch(channelId: string, tenantId: string, w: YtWatch): Promise<void> {
+  await db().from("wa_settings")
+    .upsert({ tenant_id: tenantId, key: watchKey(channelId), value: w, updated_at: new Date().toISOString() }, { onConflict: "tenant_id,key" })
+    .then(() => {}, () => {});
+}
+
+/**
+ * Threads this tenant answered since `sinceIso`, from the claim log — seeds the
+ * watch list the first time, so conversations already under way when this
+ * shipped are picked up too. A reply's id is "<threadId>.<replyId>".
+ */
+export async function recentlyAnsweredThreads(tenantId: string, sinceIso: string): Promise<{ threadId: string; at: string }[]> {
+  try {
+    const { data } = await db().from("wa_yt_comment_log").select("comment_id, created_at")
+      .eq("tenant_id", tenantId).gte("created_at", sinceIso).order("created_at", { ascending: false }).limit(200);
+    const seen = new Map<string, string>();
+    for (const r of (data ?? []) as { comment_id: string; created_at: string }[]) {
+      const threadId = String(r.comment_id).split(".")[0];
+      if (threadId && !seen.has(threadId)) seen.set(threadId, r.created_at);
+    }
+    return [...seen].map(([threadId, at]) => ({ threadId, at }));
+  } catch {
+    return [];
   }
 }
 
