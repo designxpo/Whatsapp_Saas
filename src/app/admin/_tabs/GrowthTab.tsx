@@ -2,6 +2,7 @@
 
 // Growth tools tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
+import { useVocab } from "@/lib/vocab-client";
 import { Copy, Plus, Trash2, TrendingUp, Download, Sparkles, Lightbulb } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -12,6 +13,7 @@ const GROWTH_KINDS: [string, string][] = [["ref_link", "Referral link"], ["qr", 
 const EMPTY_GROWTH = { id: undefined as string | undefined, name: "", kind: "ref_link", slug: "", prefill: "", number: "", igUsername: "", url: "", tag: "", sequenceId: "", active: true };
 
 function GrowthTab() {
+  const { vocab } = useVocab();
   const ask = useConfirm();
   const [tools, setTools] = useState<GrowthRow[]>([]);
   const [seqs, setSeqs] = useState<{ id: string; name: string }[]>([]);
@@ -88,9 +90,9 @@ function GrowthTab() {
             <input className={inp} placeholder="WhatsApp number (e.g. 9198…)" value={form.number} onChange={e => setForm({ ...form, number: e.target.value })} />
             <input className={inp} placeholder="…or Instagram username" value={form.igUsername} onChange={e => setForm({ ...form, igUsername: e.target.value })} />
             <input className={`${inp} col-span-2`} placeholder="…or a full custom URL (overrides the above)" value={form.url} onChange={e => setForm({ ...form, url: e.target.value })} />
-            <input className={inp} placeholder="Tag the contact on opt-in (optional)" value={form.tag} onChange={e => setForm({ ...form, tag: e.target.value })} />
+            <input className={inp} placeholder={`Tag the ${vocab.contact.one.toLowerCase()} on opt-in (optional)`} value={form.tag} onChange={e => setForm({ ...form, tag: e.target.value })} />
             <select className={inp} value={form.sequenceId} onChange={e => setForm({ ...form, sequenceId: e.target.value })}>
-              <option value="">Enroll in sequence: none</option>
+              <option value="">Enroll in {vocab.sequence.one.toLowerCase()}: none</option>
               {seqs.map(s => <option key={s.id} value={s.id}>Enroll: {s.name}</option>)}
             </select>
           </div>

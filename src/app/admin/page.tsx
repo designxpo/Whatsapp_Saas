@@ -10,6 +10,8 @@ import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Y
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { MascotHint } from "@/components/MascotHint";
 import { Mascot } from "@/components/Mascot";
+import { VocabProvider, useVocab } from "@/lib/vocab-client";
+import type { Vocab } from "@/lib/vocab";
 
 // Heavy, self-contained tabs are lazy-loaded (next/dynamic) so each ships as its
 // own chunk instead of bloating the initial admin bundle. ssr:false — the whole
@@ -164,7 +166,21 @@ const TAB_TITLES: Record<Tab, string> = {
   contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security", team: "Team Progress",
 };
 
+// The tabs whose names are the workspace's own nouns (Contacts → Students…).
+// Everything else keeps its product name.
+function tabLabel(tab: Tab, v: Vocab): string {
+  if (tab === "contacts") return v.contact.many;
+  if (tab === "pipeline") return v.pipeline.one;
+  if (tab === "sequences") return v.sequence.many;
+  return TAB_TITLES[tab];
+}
+
 export default function Admin() {
+  return <VocabProvider><AdminShell /></VocabProvider>;
+}
+
+function AdminShell() {
+  const { vocab } = useVocab();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("home");
   // A pending deep-link for Live Chat (set by Home cards / Pipeline / Contacts,
@@ -273,7 +289,7 @@ export default function Admin() {
                       <button onClick={() => goTo(n.key)}
                         onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
                         className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
-                        {n.icon}<span className="truncate">{n.label}</span>
+                        {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
                       </button>
                     </MascotHint>
                   );
@@ -339,7 +355,7 @@ export default function Admin() {
         {/* Topbar */}
         <header className="h-16 shrink-0 bg-white/80 backdrop-blur-xl border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
           <p className="text-[13px] text-ink-400">
-            Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{TAB_TITLES[tab]}</span>
+            Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
           {tabAllowed("broadcast", ent) && (
             <button onClick={() => setTab("broadcast")} className={btnPrimary}>
@@ -349,7 +365,7 @@ export default function Admin() {
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">
-          {roleBlocked ? <AdminOnlyTab title={TAB_TITLES[tab]} goTo={goTo} /> : <>
+          {roleBlocked ? <AdminOnlyTab title={tabLabel(tab, vocab)} goTo={goTo} /> : <>
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
           {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
@@ -407,19 +423,20 @@ function AdminOnlyTab({ title, goTo }: { title: string; goTo: GoTo }) {
 
 // First-login product walkthrough — a short guided tour. Marks the tenant
 // onboarded on finish/skip so it shows once.
-const TOUR_STEPS: { title: string; body: string; tab?: Tab }[] = [
-  { title: "Welcome to Talko AI", body: "Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip sequences, catalog & growth tools. Here's a 60-second tour." },
+const tourSteps = (v: Vocab): { title: string; body: string; tab?: Tab }[] => [
+  { title: "Welcome to Talko AI", body: `Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip ${v.sequence.many.toLowerCase()}, catalog & growth tools. Here's a 60-second tour.` },
   { title: "Connect your channels", body: "Go to Settings to connect a WhatsApp number, and the Instagram section to link an Instagram account. Everything runs from here.", tab: "settings" },
   { title: "Teach the AI", body: "Add your business docs in AI Knowledge Base — the assistant answers customer questions automatically, grounded in your content.", tab: "assistant" },
   { title: "Build chatbot flows", body: "Create drag-and-drop flows for WhatsApp or Instagram, triggered by keywords, comments or ads.", tab: "flows" },
-  { title: "Automate follow-ups", body: "Use Sequences for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.", tab: "sequences" },
+  { title: "Automate follow-ups", body: `Use ${v.sequence.many} for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.`, tab: "sequences" },
   { title: "You're all set", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
 ];
 function Walkthrough({ goTo, role, onDone }: { goTo: (t: Tab) => void; role?: string; onDone: () => void }) {
+  const { vocab } = useVocab();
   const [i, setI] = useState(0);
   // A member's tour skips any step that would land on an admin-only tab, so the
   // walkthrough can never dead-end on the "admin-only" panel.
-  const steps = TOUR_STEPS.filter(st => tabRoleAllowed(st.tab ?? "home", role));
+  const steps = tourSteps(vocab).filter(st => tabRoleAllowed(st.tab ?? "home", role));
   const step = steps[i];
   const finish = async () => { await fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {}); onDone(); };
   const next = () => { const s = steps[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= steps.length) finish(); else setI(i + 1); };
@@ -495,13 +512,14 @@ interface SystemStatus {
 }
 
 function HomeTab({ goTo }: { goTo: GoTo }) {
+  const { vocab } = useVocab();
   const [s, setS] = useState<SystemStatus | null>(null);
   useEffect(() => { fetch("/api/admin/system/status").then(r => r.json()).then(setS).catch(() => undefined); }, []);
 
   const guide: { icon: React.ReactNode; title: string; text: string; cta: string; tab: Tab }[] = [
     { icon: <Database className="w-5 h-5" />, title: "1 · Teach the AI", text: "Upload your business docs (PDF, text, website URL) so the assistant can answer customer questions.", cta: "Add knowledge", tab: "assistant" },
     { icon: <FlaskConical className="w-5 h-5" />, title: "2 · Test it", text: "Ask the assistant questions in the test box — no WhatsApp needed. See whether the answer came from FAQ, cache, or AI.", cta: "Test assistant", tab: "assistant" },
-    { icon: <Users className="w-5 h-5" />, title: "3 · Add contacts", text: "Import a CSV or add contacts with tags and attributes (e.g. city, interest) for targeted broadcasts.", cta: "Import contacts", tab: "contacts" },
+    { icon: <Users className="w-5 h-5" />, title: `3 · Add ${vocab.contact.many.toLowerCase()}`, text: `Import a CSV or add ${vocab.contact.many.toLowerCase()} with tags and attributes (e.g. city, interest) for targeted broadcasts.`, cta: `Import ${vocab.contact.many.toLowerCase()}`, tab: "contacts" },
     { icon: <Send className="w-5 h-5" />, title: "4 · Broadcast", text: "Pick an approved template, choose an audience (all / tag / attribute), and send. Replies land in Live Chat where the AI answers automatically.", cta: "Send a broadcast", tab: "broadcast" },
   ];
 
@@ -541,7 +559,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
       {s && (
         <div className="grid grid-cols-4 gap-3">
           {([
-            { label: "Contacts", value: s.counts.contacts, tab: "contacts" },
+            { label: vocab.contact.many, value: s.counts.contacts, tab: "contacts" },
             { label: "Knowledge docs", value: s.counts.kbDocuments, tab: "assistant" },
             { label: "Conversations", value: s.counts.conversations, tab: "livechat" },
             // "Need attention" counts escalated chats — open Live Chat already
@@ -624,6 +642,7 @@ function GroundingRail({ goTo }: { goTo: GoTo }) {
 }
 
 function HomeRail({ goTo }: { goTo: GoTo }) {
+  const { vocab } = useVocab();
   const a = useAnalytics();
   const t = a?.messaging.totals;
   const pct = (n: number) => t && t.sent ? Math.round((n / t.sent) * 100) : 0;
@@ -647,16 +666,16 @@ function HomeRail({ goTo }: { goTo: GoTo }) {
               <RailBar label="Failed" count={t.failed} pct={pct(t.failed)} color="bg-red-400" />
             </div>}
       </RailCard>
-      <RailCard title="Audience" action="Contacts" onAction={() => goTo("contacts")}>
+      <RailCard title="Audience" action={vocab.contact.many} onAction={() => goTo("contacts")}>
         {!a ? railLoading : <>
-          <StatRow label="Active contacts" value={a.contacts.active} onClick={() => goTo("contacts")} />
+          <StatRow label={`Active ${vocab.contact.many.toLowerCase()}`} value={a.contacts.active} onClick={() => goTo("contacts")} />
           <StatRow label="Opted out" value={a.contacts.optedOut} onClick={() => goTo("optouts")} />
           <StatRow label="Sent today" value={a.messaging.sentToday} />
         </>}
       </RailCard>
       <RailCard title="Quick actions">
         <div className="grid grid-cols-2 gap-1.5">
-          {([["New broadcast", "broadcast"], ["Templates", "templates"], ["Chatbot Flows", "flows"], ["Import contacts", "contacts"], ["WhatsApp Forms", "forms"], ["AI Hub", "aihub"]] as [string, Tab][]).map(([label, tab]) => (
+          {([["New broadcast", "broadcast"], ["Templates", "templates"], ["Chatbot Flows", "flows"], [`Import ${vocab.contact.many.toLowerCase()}`, "contacts"], ["WhatsApp Forms", "forms"], ["AI Hub", "aihub"]] as [string, Tab][]).map(([label, tab]) => (
             <button key={tab + label} onClick={() => goTo(tab)} className="px-2.5 py-2 rounded-control border border-line text-[11px] font-bold text-ink-600 hover:border-brand-500 hover:text-brand-700 text-left">{label}</button>
           ))}
         </div>

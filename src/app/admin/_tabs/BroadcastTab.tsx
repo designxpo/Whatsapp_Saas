@@ -4,6 +4,7 @@ import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-
 // Broadcast tab — manual sends (BroadcastNow), API broadcasting rules, auto-sends
 // (Automations), and the BroadcastRail. Extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
+import { useVocab } from "@/lib/vocab-client";
 import { AlertTriangle, Check, Copy, FlaskConical, Globe, Image as ImageIcon, Loader2, Plus, Send, Trash2, Zap, X } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics, useChannelList } from "../_shared";
@@ -16,6 +17,7 @@ const TIER_LABELS: Record<string, string> = {
 
 // Broadcast: daily limit & number status, sending health, templates, campaigns.
 function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: React.ReactNode }) {
+  const { vocab } = useVocab();
   const a = useAnalytics();
   const [tpls, setTpls] = useState<{ name: string; status: string }[] | null>(null);
   const [camps, setCamps] = useState<{ id: string; name?: string | null; templateName: string; status: string; sentCount: number; totalRecipients: number }[] | null>(null);
@@ -48,7 +50,7 @@ function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: Re
       </RailCard>
       <RailCard title="Sending health" action="Analytics" onAction={() => goTo("analytics")}>
         {!a ? railLoading : <>
-          <StatRow label="Active contacts" value={a.contacts.active} onClick={() => goTo("contacts")} />
+          <StatRow label={`Active ${vocab.contact.many.toLowerCase()}`} value={a.contacts.active} onClick={() => goTo("contacts")} />
           <StatRow label="Opted out (auto-skipped)" value={a.contacts.optedOut} onClick={() => goTo("optouts")} />
           <StatRow label="Failed (14 days)" value={a.messaging.totals.failed} tone={a.messaging.totals.failed > 0 ? "warn" : undefined} />
         </>}
@@ -109,6 +111,7 @@ function BroadcastTab({ goTo }: { goTo: (t: Tab) => void }) {
 }
 
 function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
+  const { vocab } = useVocab();
   const askConfirm = useConfirm();
   // Only to name the sending number in the confirmation. Templates are
   // WABA-scoped, so picking the wrong number is the mistake that reaches every
@@ -395,7 +398,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             ))}
           </div>
         </div>
-      ) : <p className="text-xs text-ink-400">Pick a template above to preview the message your contacts will see.</p>}
+      ) : <p className="text-xs text-ink-400">Pick a template above to preview the message your {vocab.contact.many.toLowerCase()} will see.</p>}
     </div>
   );
 
@@ -416,7 +419,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         <div className="flex gap-2 flex-wrap">
           {(["all", "batch", "tag", "attribute", "recipients"] as const).map(m => (
             <button key={m} onClick={() => setAudMode(m)} className={`px-3 py-1.5 rounded-lg text-sm font-semibold border ${audMode === m ? "border-brand-dark bg-brand-700 text-white" : "border-line text-slate-600"}`}>
-              {m === "all" ? "All contacts" : m === "batch" ? "Batch" : m === "tag" ? "By tag" : m === "attribute" ? "By attribute" : "Paste list"}
+              {m === "all" ? `All ${vocab.contact.many.toLowerCase()}` : m === "batch" ? "Batch" : m === "tag" ? "By tag" : m === "attribute" ? "By attribute" : "Paste list"}
             </button>
           ))}
         </div>
@@ -425,7 +428,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             <option value="">{batches.length ? "Choose a batch…" : "No batches yet — create one in Contacts › Batches"}</option>
             {batches.map(b => (
               <option key={b.id} value={b.id}>
-                {b.name} · {b.size.toLocaleString()} {b.kind === "dynamic" ? "(live filter)" : "contacts"}
+                {b.name} · {b.size.toLocaleString()} {b.kind === "dynamic" ? "(live filter)" : vocab.contact.many.toLowerCase()}
               </option>
             ))}
           </select>
@@ -441,7 +444,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
           ? <textarea className={`${inp} w-full font-mono`} rows={4} placeholder={"919876543210, Asha\n919812345678, Ravi"} value={recipientsText} onChange={e => setRecipientsText(e.target.value)} />
           : (
             <div className="space-y-1">
-              <p className="text-sm text-slate-600">{recipientCount === null ? "—" : <><b className="text-brand-dark">{recipientCount.toLocaleString()}</b> contact{recipientCount === 1 ? "" : "s"} will receive this.</>}</p>
+              <p className="text-sm text-slate-600">{recipientCount === null ? "—" : <><b className="text-brand-dark">{recipientCount.toLocaleString()}</b> {(recipientCount === 1 ? vocab.contact.one : vocab.contact.many).toLowerCase()} will receive this.</>}</p>
               {/* Broadcasts resolve their audience with onlyOptedIn, so anyone
                   without consent is never queued. Say how many that removes
                   here rather than leaving the delivery report to explain it. */}
@@ -923,6 +926,7 @@ function ApiBroadcasting() {
 }
 
 function AutomationsTab() {
+  const { vocab } = useVocab();
   const [list, setList] = useState<{ id: string; name: string | null; templateName: string; autoSendTrigger: string; triggerKey: string | null; delayValue: number; delayUnit: string }[]>([]);
   const [trigger, setTrigger] = useState("api_event");
   const [triggerKey, setTriggerKey] = useState("");
@@ -956,7 +960,7 @@ function AutomationsTab() {
         <p className="text-xs font-bold text-slate-400 uppercase">New automation</p>
         <div className="grid grid-cols-2 gap-2">
           <select className={inp} value={trigger} onChange={e => setTrigger(e.target.value)}>
-            <option value="contact_added">When a contact is added</option>
+            <option value="contact_added">When {/^[aeiou]/i.test(vocab.contact.one) ? "an" : "a"} {vocab.contact.one.toLowerCase()} is added</option>
             <option value="api_event">On API event (named)</option>
           </select>
           <input className={inp} placeholder="event name (for api_event)" value={triggerKey} onChange={e => setTriggerKey(e.target.value)} disabled={trigger !== "api_event"} />

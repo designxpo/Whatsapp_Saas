@@ -5,6 +5,7 @@
 // is attributed. A tenant can run e.g. a PPC number and an organic number
 // side by side, each with its own sources.
 import { useState, useEffect, useCallback } from "react";
+import { useVocab } from "@/lib/vocab-client";
 import { inp, RailCard, StatRow } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 
@@ -18,6 +19,7 @@ interface EntryPoint {
 const EMPTY_DRAFT = { label: "", number: "", handle: "", greeting: "" };
 
 function HandleHubTab() {
+  const { vocab } = useVocab();
   const ask = useConfirm();
   const [entryPoints, setEntryPoints] = useState<EntryPoint[]>([]);
   const [newEp, setNewEp] = useState(EMPTY_DRAFT);
@@ -158,7 +160,7 @@ function HandleHubTab() {
                 </select>
                 <button onClick={() => addSource(ep.id)} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold shrink-0">Add</button>
               </div>
-              <p className="text-[11px] text-slate-400 -mt-2">The name becomes the <b>CRM lead Source</b> for new leads from this link — for paid WhatsApp ads, name it exactly as your dashboard filters on (e.g. <span className="font-mono">ppc-whatsapp</span>).</p>
+              <p className="text-[11px] text-slate-400 -mt-2">The name becomes the <b>CRM lead Source</b> for new {vocab.lead.many.toLowerCase()} from this link — for paid WhatsApp ads, name it exactly as your dashboard filters on (e.g. <span className="font-mono">ppc-whatsapp</span>).</p>
 
               {/* Sources for this number */}
               <div className="space-y-3">
@@ -201,8 +203,8 @@ function HandleHubTab() {
           <ul className="space-y-1.5 text-[11px] text-slate-500 list-disc pl-4">
             <li>Each WhatsApp number is its own <b>entry point</b> — add as many as you run campaigns on.</li>
             <li>Each source under a number gets a unique <b>click-to-chat link + QR</b> pointing at that number.</li>
-            <li>The link carries a hidden code in the prefilled message. When the customer sends it, we tag their contact with the <b>source</b> and count the touch — it never reaches your chatbot.</li>
-            <li>New leads from a source are created in your <b>CRM under that source&apos;s name</b> — so name a paid-ad source exactly as your report expects (e.g. <span className="font-mono">ppc-whatsapp</span>). Organic chats stay the number&apos;s default.</li>
+            <li>The link carries a hidden code in the prefilled message. When the customer sends it, we tag their {vocab.contact.one.toLowerCase()} with the <b>source</b> and count the touch — it never reaches your chatbot.</li>
+            <li>New {vocab.lead.many.toLowerCase()} from a source are created in your <b>CRM under that source&apos;s name</b> — so name a paid-ad source exactly as your report expects (e.g. <span className="font-mono">ppc-whatsapp</span>). Organic chats stay the number&apos;s default.</li>
           </ul>
         </RailCard>
         <RailCard title="Coming with WhatsApp usernames">

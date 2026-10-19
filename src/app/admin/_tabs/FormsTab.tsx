@@ -3,12 +3,14 @@
 // WhatsApp Forms tab (FormsRail + form types + responses + builder) — extracted
 // from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useState, useEffect, useCallback } from "react";
+import { useVocab } from "@/lib/vocab-client";
 import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
+  const { vocab } = useVocab();
   const c = (s: string) => forms.filter(f => f.status === s).length;
   return (
     <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
@@ -17,12 +19,12 @@ function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: s
         <StatRow label="Drafts" value={c("DRAFT")} tone={c("DRAFT") > 0 ? "warn" : undefined} />
         <StatRow label="Deprecated" value={c("DEPRECATED")} />
       </RailCard>
-      <RailCard title="From build to lead">
+      <RailCard title={`From build to ${vocab.lead.one.toLowerCase()}`}>
         <ol className="space-y-1.5 text-[11px] text-slate-500 list-decimal pl-4">
           <li><b>Build</b> — name, title, and fields (text, phone, email, dropdown, date…).</li>
           <li><b>Publish</b> — pushed to Meta; the form opens natively inside WhatsApp.</li>
           <li><b>Use</b> — drag the <b>WhatsApp form</b> block into a chatbot flow.</li>
-          <li><b>Collect</b> — every answer saves to the contact&apos;s attributes automatically.</li>
+          <li><b>Collect</b> — every answer saves to the {vocab.contact.one.toLowerCase()}&apos;s attributes automatically.</li>
         </ol>
         <button onClick={() => goTo("flows")} className="text-[11px] font-bold text-brand-700 flex items-center gap-1">Open Chatbot Flows <ArrowRight className="w-3 h-3" /></button>
       </RailCard>
@@ -96,6 +98,7 @@ function FormResponsesPanel() {
 }
 
 function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const { vocab } = useVocab();
   const ask = useConfirm();
   const [forms, setForms] = useState<WaFormRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -260,7 +263,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2>
-          <p className="text-[13px] text-ink-400">Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat. Answers save to contact attributes automatically.</p>
+          <p className="text-[13px] text-ink-400">Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat. Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</p>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />
@@ -316,7 +319,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 {busy === "draft" ? <Loader2 className="w-4 h-4 animate-spin" /> : null} {editingId ? "Save draft" : "Save as draft"}
               </button>
             </div>
-            <p className="text-[11px] text-ink-400">Forms publish instantly (Meta validates — no review queue). Answers land on the contact as attributes named after each field.</p>
+            <p className="text-[11px] text-ink-400">Forms publish instantly (Meta validates — no review queue). Answers land on the {vocab.contact.one.toLowerCase()} as attributes named after each field.</p>
           </section>
 
           {/* Phone-style preview */}

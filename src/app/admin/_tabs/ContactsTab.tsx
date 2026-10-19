@@ -10,6 +10,7 @@ type BatchDetail = {
   memberTotal: number; offset: number; limit: number;
 };
 import { mapCsvRows, readTable, type ImportRow } from "@/lib/csv-import";
+import { useVocab } from "@/lib/vocab-client";
 import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { inp, type Tab, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
@@ -30,6 +31,9 @@ const LEAD_SOURCES: [string, string][] = [
 
 
 function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const { vocab } = useVocab();
+  const cLc = vocab.contact.one.toLowerCase();
+  const csLc = vocab.contact.many.toLowerCase();
   const [profilePhone, setProfilePhone] = useState<string | null>(null);
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   // "Via" column: which number/account produced the lead (first touch, 0073).
@@ -102,8 +106,8 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   function broadcastSelected() {
     const recipients = contacts.filter(c => selected.has(c.id) && c.status === "active").map(c => ({ phone: c.phone, fullName: c.name }));
-    if (!recipients.length) { setMsg("Select at least one active contact."); return; }
-    sessionStorage.setItem("wa_retarget", JSON.stringify({ note: `Selected contacts (${recipients.length})`, recipients }));
+    if (!recipients.length) { setMsg(`Select at least one active ${cLc}.`); return; }
+    sessionStorage.setItem("wa_retarget", JSON.stringify({ note: `Selected ${csLc} (${recipients.length})`, recipients }));
     goTo("broadcast");
   }
 
@@ -271,7 +275,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="max-w-5xl space-y-4">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h2 className="text-xl font-extrabold text-brand-dark">Contacts <span className="text-sm font-normal text-slate-400">({total.toLocaleString()})</span></h2>
+        <h2 className="text-xl font-extrabold text-brand-dark">{vocab.contact.many} <span className="text-sm font-normal text-slate-400">({total.toLocaleString()})</span></h2>
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <span>Daily quota <span className="ml-1 px-2 py-0.5 rounded-full bg-brand-green/15 text-brand-dark font-bold">{dailyLimit.toLocaleString()}/24h</span></span>
           {quota && <span>Remaining today <b className="text-brand-dark">{Math.max(0, dailyLimit - quota.sentToday).toLocaleString()}</b></span>}
@@ -292,14 +296,14 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
           className={`${toolbarBtn} ${selected.size ? "border-brand-dark text-brand-dark" : ""}`}
           disabled={selected.size === 0} value=""
           onChange={e => { if (e.target.value) addSelectedToBatch(e.target.value); }}
-          title={selected.size ? "Add the selected contacts to a batch" : "Select contacts first"}>
+          title={selected.size ? `Add the selected ${csLc} to a batch` : `Select ${csLc} first`}>
           <option value="">{selected.size ? `Add ${selected.size} to batch…` : "Add to batch"}</option>
           {batches.filter(b => b.kind === "static").map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
         <button onClick={() => setShowBatches(v => !v)} className={`${toolbarBtn} ${showBatches ? "border-brand-dark text-brand-dark" : ""}`}>
           <Users className="w-4 h-4" /> Batches{batches.length ? ` (${batches.length})` : ""}
         </button>
-        <button onClick={() => { setShowAdd(v => !v); setShowImport(false); }} className={toolbarBtn}><Plus className="w-4 h-4" /> Add Contact</button>
+        <button onClick={() => { setShowAdd(v => !v); setShowImport(false); }} className={toolbarBtn}><Plus className="w-4 h-4" /> Add {vocab.contact.one}</button>
         <button onClick={() => { setShowImport(v => !v); setShowAdd(false); }} className={toolbarBtn}><UploadCloud className="w-4 h-4" /> Import</button>
         <button onClick={exportCsv} className={toolbarBtn} title="Export selected (or current view) as CSV"><Download className="w-4 h-4" /> Export</button>
       </div>
@@ -336,12 +340,12 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
 
           {batches.length === 0 ? (
-            <p className="text-xs text-slate-400">No batches yet. Create one, then tick contacts in the table and use <b>Add to batch</b>.</p>
+            <p className="text-xs text-slate-400">No batches yet. Create one, then tick {csLc} in the table and use <b>Add to batch</b>.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-left text-xs">
-                  <tr><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">Contacts</th><th className="px-3 py-2"></th></tr>
+                  <tr><th className="px-3 py-2">Batch</th><th className="px-3 py-2">Type</th><th className="px-3 py-2">{vocab.contact.many}</th><th className="px-3 py-2"></th></tr>
                 </thead>
                 <tbody>
                   {batches.map(b => (
@@ -381,7 +385,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   <div>
                     <p className="text-sm font-bold text-brand-dark">{d.batch.name}</p>
                     <p className="text-[11px] text-slate-500">
-                      {isStatic ? "Static" : "Dynamic (live filter)"} · {d.size.toLocaleString()} contact{d.size === 1 ? "" : "s"}
+                      {isStatic ? "Static" : "Dynamic (live filter)"} · {d.size.toLocaleString()} {d.size === 1 ? cLc : csLc}
                       {d.noConsent !== null && d.noConsent > 0 && <> · <span className="text-amber-700">{d.noConsent.toLocaleString()} not opted in</span></>}
                       {d.marketingReach !== null && <> · will reach <b>{d.marketingReach.toLocaleString()}</b></>}
                     </p>
@@ -417,7 +421,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                       </div>
                     )}
                     {addQuery.trim().length >= 2 && addHits.length === 0 && (
-                      <p className="text-[11px] text-slate-400">No contact matches that. Import them first, then add.</p>
+                      <p className="text-[11px] text-slate-400">Nobody matches that. Import them first, then add.</p>
                     )}
                   </div>
                 ) : (
@@ -427,7 +431,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 )}
 
                 {d.members.length === 0 ? (
-                  <p className="text-xs text-slate-400">No one in this batch yet.{isStatic ? " Search above, or tick contacts in the table and use Add to batch." : ""}</p>
+                  <p className="text-xs text-slate-400">No one in this batch yet.{isStatic ? ` Search above, or tick ${csLc} in the table and use Add to batch.` : ""}</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -587,7 +591,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) onCsvFile(f); }}>
                 <UploadCloud className="w-8 h-8 text-slate-300" />
                 <span className="text-sm font-semibold text-slate-500">Drop an Excel or CSV file here, or click to browse</span>
-                <span className="text-[11px] text-slate-400">.xlsx, .csv, .tsv — we auto-detect the phone, name, email and batch columns; every other column becomes a contact attribute</span>
+                <span className="text-[11px] text-slate-400">.xlsx, .csv, .tsv — we auto-detect the phone, name, email and batch columns; every other column becomes {`an attribute on the ${cLc}`}</span>
                 <input type="file" accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) onCsvFile(f); e.target.value = ""; }} />
               </label>
               <p className="text-[11px] text-slate-400">Duplicates (by phone) are skipped. Tags inside a cell can be separated by <code className="bg-slate-100 px-1 rounded">;</code></p>
@@ -595,7 +599,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
           ) : (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-sm font-bold text-brand-dark">{csvPreview.fileName} — {csvPreview.rows.length.toLocaleString()} contacts ready{csvPreview.skipped > 0 ? `, ${csvPreview.skipped} rows skipped (no valid phone)` : ""}</p>
+                <p className="text-sm font-bold text-brand-dark">{csvPreview.fileName} — {csvPreview.rows.length.toLocaleString()} {csLc} ready{csvPreview.skipped > 0 ? `, ${csvPreview.skipped} rows skipped (no valid phone)` : ""}</p>
                 {(() => {
                   const found = [...new Set(csvPreview.rows.map(r => r.batchName).filter(Boolean))] as string[];
                   const blocked = csvPreview.rows.filter(r => r.blocked).length;
@@ -643,10 +647,10 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </div>
               <label className="mb-3 flex items-start gap-2.5 rounded-lg border border-line bg-canvas p-3 text-xs text-ink-600">
                 <input type="checkbox" checked={importConsent} onChange={e => setImportConsent(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-brand-700" />
-                <span>These contacts <b className="text-brand-dark">opted in</b> to receive WhatsApp messages from us. Required to include them in broadcasts — sending to non-opted-in numbers is the top cause of Meta number bans. Leave unchecked to import them for 1:1 chats only.</span>
+                <span>These {csLc} <b className="text-brand-dark">opted in</b> to receive WhatsApp messages from us. Required to include them in broadcasts — sending to non-opted-in numbers is the top cause of Meta number bans. Leave unchecked to import them for 1:1 chats only.</span>
               </label>
               <button onClick={() => importWithBatches(csvPreview.rows, importConsent)} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
-                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Import {csvPreview.rows.length.toLocaleString()} contacts
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />} Import {csvPreview.rows.length.toLocaleString()} {csLc}
               </button>
             </div>
           )}
@@ -689,7 +693,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <td className="px-3 py-2.5 text-xs text-slate-400">{new Date(c.createdAt).toLocaleDateString()}</td>
               </tr>
             ))}
-            {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">{contacts.length === 0 ? "No contacts yet — Add Contact or Import a list." : "Nothing matches this filter."}</td></tr>}
+            {visible.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-400 text-sm">{contacts.length === 0 ? `No ${vocab.contact.many.toLowerCase()} yet — Add ${vocab.contact.one} or Import a list.` : "Nothing matches this filter."}</td></tr>}
           </tbody>
         </table>
         {profilePhone && <ContactProfile phone={profilePhone} onClose={() => setProfilePhone(null)} onChanged={load} goTo={goTo} />}

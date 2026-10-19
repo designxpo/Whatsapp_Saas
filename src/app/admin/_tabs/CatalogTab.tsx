@@ -6,6 +6,7 @@ import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Searc
 import { inp, ImageUpload, ImgFallback } from "../_shared";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useVocab } from "@/lib/vocab-client";
 
 // ── Catalog (commerce) ────────────────────────────────────────────────────────
 type ProductRow = { id: string; name: string; description: string | null; priceCents: number; currency: string; imageUrl: string | null; retailerId: string | null; metaProductId: string | null; catalogId: string | null; available: boolean; buttonText: string | null; buttonUrl: string | null };
@@ -17,6 +18,9 @@ const EMPTY_PRODUCT = { id: undefined as string | undefined, name: "", descripti
 
 function CatalogTab() {
   const ask = useConfirm();
+  const { vocab } = useVocab();
+  const productLc = vocab.product.one.toLowerCase();
+  const productsLc = vocab.product.many.toLowerCase();
   const [view, setView] = useState<"products" | "orders">("products");
   const [products, setProducts] = useState<ProductRow[]>([]);
   const [form, setForm] = useState<typeof EMPTY_PRODUCT | null>(null);
@@ -59,7 +63,7 @@ function CatalogTab() {
     } finally { setBusy(false); }
   }
   async function remove(id: string) {
-    if (!(await ask({ title: "Delete this product?", tone: "danger", confirmLabel: "Delete product" }))) return;
+    if (!(await ask({ title: `Delete this ${productLc}?`, tone: "danger", confirmLabel: `Delete ${productLc}` }))) return;
     await fetch("/api/admin/products", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
     load();
   }
@@ -69,11 +73,11 @@ function CatalogTab() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
-          <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
+          <p className="text-sm text-slate-500">{vocab.product.many} you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery {vocab.sequence.one.toLowerCase()}.</p>
         </div>
         {view === "products" && <div className="flex items-center gap-2 shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>
-          <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add product</button>
+          <button onClick={() => { setForm({ ...EMPTY_PRODUCT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add {productLc}</button>
         </div>}
       </div>
 
@@ -83,7 +87,7 @@ function CatalogTab() {
         value={view}
         onChange={setView}
         options={[
-          { value: "products", label: "Products", icon: <ShoppingBag className="w-3.5 h-3.5" /> },
+          { value: "products", label: vocab.product.many, icon: <ShoppingBag className="w-3.5 h-3.5" /> },
           { value: "orders", label: "Orders", icon: <Receipt className="w-3.5 h-3.5" /> },
         ]}
       />
@@ -103,7 +107,7 @@ function CatalogTab() {
           <button onClick={() => remove(p.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
+      {!products.length && !form && <p className="text-xs text-ink-400">No {productsLc} yet.</p>}
 
       {form && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4 u-fade-in" onClick={() => setForm(null)}>
@@ -131,7 +135,7 @@ function CatalogTab() {
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={form.available} onChange={e => setForm({ ...form, available: e.target.checked })} /> available</label>
             <div className="flex-1" />
-            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save product"}</button>
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${productLc}`}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}

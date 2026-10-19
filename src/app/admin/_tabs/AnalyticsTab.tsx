@@ -6,6 +6,7 @@ import { RANGES, DEFAULT_RANGE, type RangeKey } from "@/lib/analytics-range";
 // monolithic admin/page.tsx and lazy-loaded as its own chunk. Logic unchanged.
 
 import { useState, useEffect } from "react";
+import { useVocab } from "@/lib/vocab-client";
 import { AlertTriangle, CircleCheck, Database, Loader2, MessageSquare, Send, Sparkles, TrendingUp, Users, Zap } from "lucide-react";
 import { type AnalyticsData, type Conversation } from "../_shared";
 
@@ -100,6 +101,7 @@ function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { lab
 type ExecBrief = { health: "strong" | "steady" | "at-risk"; headline: string; working: string[]; lacking: string[]; steps: { action: string; why: string }[] };
 
 function AnalyticsTab() {
+  const { vocab } = useVocab();
   const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -253,7 +255,7 @@ function AnalyticsTab() {
                 <div className="w-9 h-9 rounded-control bg-white/15 flex items-center justify-center"><Users className="w-[18px] h-[18px]" /></div>
               </div>
               <p className="text-[28px] font-bold mt-3 leading-none tnum">{data.contacts.active.toLocaleString()}</p>
-              <p className="text-[13px] font-medium text-white/80 mt-1.5">Active contacts</p>
+              <p className="text-[13px] font-medium text-white/80 mt-1.5">Active {vocab.contact.many.toLowerCase()}</p>
               <p className="text-[11px] text-white/60 mt-0.5">{data.contacts.optedOut.toLocaleString()} opted out</p>
             </div>
             {cards.map(c => (
@@ -365,7 +367,7 @@ function AnalyticsTab() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               {[
                 { l: "Chatbot flows", v: `${data.automation.flowsActive}/${data.automation.flows}`, s: "active / total" },
-                { l: "Drip sequences", v: `${data.automation.sequencesActive}/${data.automation.sequences}`, s: "active / total" },
+                { l: `Drip ${vocab.sequence.many.toLowerCase()}`, v: `${data.automation.sequencesActive}/${data.automation.sequences}`, s: "active / total" },
                 { l: "Active drips", v: data.automation.activeEnrollments.toLocaleString(), s: "people enrolled" },
                 { l: `AI replies (${data.range.short})`, v: data.messaging.aiRepliesInRange.toLocaleString() },
               ].map(x => (

@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, X, MessageSquare, Sparkles, RefreshCw, Database, Briefcase, LifeBuoy, Compass, MessageCircle, Ban, Hand, Bot, User, type LucideIcon } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useVocab } from "@/lib/vocab-client";
 
 type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
 type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[] };
@@ -31,6 +32,7 @@ const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp", instagram:
 const chanLabel = (p?: string) => CHANNEL_LABEL[p ?? ""] ?? "WhatsApp";
 
 function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; onClose: () => void; onChanged: () => void; goTo: GoTo }) {
+  const { vocab } = useVocab();
   const ask = useConfirm();
   const [p, setP] = useState<LeadProfile | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,9 +80,9 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
     if (!p) return;
     const active = p.contact.status === "active";
     if (active && !(await ask({
-      title: "Opt this contact out?", tone: "caution", confirmLabel: "Opt out",
+      title: `Opt this ${vocab.contact.one.toLowerCase()} out?`, tone: "caution", confirmLabel: "Opt out",
       message: "They stop receiving every broadcast from every number. You can undo this from the Opt-outs tab.",
-      facts: [{ label: "Contact", value: p.contact.name || phone }],
+      facts: [{ label: vocab.contact.one, value: p.contact.name || phone }],
     }))) return;
     setBusy(true);
     try {
@@ -110,7 +112,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
       <aside className="fixed inset-y-0 right-0 w-[460px] max-w-full bg-white border-l border-line shadow-2xl z-50 overflow-y-auto u-slide-in-right">
         {!c ? (notFound ? (
           <div className="p-8 text-center space-y-3">
-            <p className="text-sm text-slate-500">No profile found for this contact yet.</p>
+            <p className="text-sm text-slate-500">No profile found for this {vocab.contact.one.toLowerCase()} yet.</p>
             <button onClick={onClose} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Close</button>
           </div>
         ) : <div className="p-8 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>) : (
@@ -132,11 +134,11 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                   </div>
                 ) : (
                   <>
-                    <p className="text-base font-extrabold text-ink-900 truncate">{c.name || "Unnamed lead"}
+                    <p className="text-base font-extrabold text-ink-900 truncate">{c.name || `Unnamed ${vocab.lead.one.toLowerCase()}`}
                       <button onClick={() => setEdit({ name: c.name, email: c.email ?? "" })} className="ml-2 text-[11px] font-bold text-brand-700 hover:underline">edit</button>
                     </p>
                     <p className="text-xs font-mono text-ink-600">{c.phone}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{c.email || "no email"} · {c.source?.toUpperCase() ?? "—"} · lead since {new Date(c.createdAt).toLocaleDateString()}</p>
+                    <p className="text-[11px] text-slate-400 truncate">{c.email || "no email"} · {c.source?.toUpperCase() ?? "—"} · {vocab.lead.one.toLowerCase()} since {new Date(c.createdAt).toLocaleDateString()}</p>
                   </>
                 )}
               </div>
@@ -215,8 +217,8 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
             {/* Engagement summary */}
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Msgs from lead", value: p?.msgCounts.inbound ?? 0 },
-                { label: "Replies to lead", value: p?.msgCounts.outbound ?? 0 },
+                { label: `Msgs from ${vocab.lead.one.toLowerCase()}`, value: p?.msgCounts.inbound ?? 0 },
+                { label: `Replies to ${vocab.lead.one.toLowerCase()}`, value: p?.msgCounts.outbound ?? 0 },
                 { label: "Campaigns read", value: `${reads}/${p?.campaigns.length ?? 0}` },
               ].map(s => (
                 <div key={s.label} className="bg-canvas rounded-control p-2.5 text-center">
@@ -237,7 +239,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                       <div className="min-w-0">
                         <p className="text-xs font-semibold text-ink-900">
                           {chanLabel(j.platform)}
-                          {i === 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[9px] font-bold align-middle">FIRST CONTACT</span>}
+                          {i === 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[9px] font-bold align-middle">FIRST {vocab.contact.one.toUpperCase()}</span>}
                         </p>
                         <p className="text-[10px] text-slate-400">
                           since {new Date(j.startedAt).toLocaleDateString()}
@@ -261,8 +263,8 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
 
             {/* Lead details (attributes) */}
             <div className="space-y-2">
-              <p className={sectionTitle}>Lead details — collected by AI, flows & forms</p>
-              {leadAttrs.length === 0 && <p className="text-xs text-slate-400">Nothing collected yet — details appear here as the AI, chatbot flows, and WhatsApp forms learn about this lead.</p>}
+              <p className={sectionTitle}>{vocab.lead.one} details — collected by AI, flows & forms</p>
+              {leadAttrs.length === 0 && <p className="text-xs text-slate-400">Nothing collected yet — details appear here as the AI, chatbot flows, and WhatsApp forms learn about this {vocab.lead.one.toLowerCase()}.</p>}
               {leadAttrs.length > 0 && (
                 <div className="border border-line rounded-control divide-y divide-line">
                   {leadAttrs.map(([k, v]) => (
@@ -316,7 +318,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                     {p.messages.map((m, i) => (
                       <div key={i} className="px-3 py-1.5">
                         <p className="text-[10px] font-bold text-slate-400">
-                          {m.role === "user" ? c.name || "Lead" : m.source === "agent" ? "Team" : "AI"} · {new Date(m.createdAt).toLocaleString()}
+                          {m.role === "user" ? c.name || vocab.lead.one : m.source === "agent" ? "Team" : "AI"} · {new Date(m.createdAt).toLocaleString()}
                           {journeyChannels > 1 && m.platform ? <span className="ml-1.5 px-1.5 rounded-full bg-canvas text-slate-500 font-semibold">{chanLabel(m.platform)}</span> : null}
                         </p>
                         <p className="text-xs text-ink-900 line-clamp-2">{m.body}</p>
@@ -331,7 +333,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
             {/* Campaign history */}
             <div className="space-y-2">
               <p className={sectionTitle}>Campaigns received</p>
-              {(p?.campaigns.length ?? 0) === 0 ? <p className="text-xs text-slate-400">No broadcasts sent to this lead yet.</p> : (
+              {(p?.campaigns.length ?? 0) === 0 ? <p className="text-xs text-slate-400">No broadcasts sent to this {vocab.lead.one.toLowerCase()} yet.</p> : (
                 <div className="border border-line rounded-control divide-y divide-line">
                   {p?.campaigns.map((x, i) => (
                     <div key={i} className="px-3 py-1.5 flex items-center justify-between gap-2">

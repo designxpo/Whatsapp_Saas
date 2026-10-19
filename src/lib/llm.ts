@@ -9,6 +9,7 @@ import { syncLeadProfile } from "./leadsquared";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
+import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
 import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
@@ -176,7 +177,7 @@ function toChatTools(fns: AiFunction[]): ChatTool[] | undefined {
 
 // System prompt assembly: active AI Hub agent persona/constraints/product info
 // (falling back to BOT_SYSTEM_PROMPT env, then a safe default) + RAG context.
-function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none", hasCommerce = false, platform: Platform = "whatsapp"): string {
+function systemPrompt(context: string, agent: { persona: string; constraintsText: string; productInfo: string } | null, hasTools: boolean, profile = "", askPhone = false, haveNumber = false, behavior = "", coverage: CoverageBand = "none", hasCommerce = false, platform: Platform = "whatsapp", vocabNote: string | null = null): string {
   // The same assistant answers on WhatsApp, Instagram, Messenger, the website
   // widget and YouTube comments. It used to introduce itself as a "WhatsApp
   // assistant" on every one of them, so a tenant's Instagram customer was told
@@ -188,6 +189,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   ].join("\n");
 
   const parts = [persona];
+  if (vocabNote) parts.push(vocabNote);
   // How strongly the knowledge base actually covers this question. Drives the
   // grounding rules: 'solid' → quote specifics confidently; 'thin' → a single
   // marginal chunk, so answer the general part but DEFER brand specifics rather
@@ -534,7 +536,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   const context = relevant.map((c, i) => `[${i + 1}${c.similarity < 0.55 ? " · weak" : ""}] ${c.content}`).join("\n\n");
   // Zero-cost behaviour read → adapts tone + next step (educate / convert / de-escalate).
   const behavior = behaviorBlock(readBehavior(history));
-  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage, hasCommerce, platform);
+  const system = systemPrompt(context, agent, tools.length > 0, profile, askPhone, !!phone && !askPhone, behavior, coverage, hasCommerce, platform, await getVocabPromptNote(tenantId).catch(() => null));
 
   // Resolve the tenant's OWN chat provider + key (agent.model wins if pinned).
   // Require-own-key: no key → AI is off for this tenant, so escalate to a human.

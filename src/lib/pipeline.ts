@@ -7,6 +7,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { db } from "./supabase";
 import { addContactTag } from "./store";
 import { enroll } from "./sequences";
+import { getIndustryStages } from "./vocabstore";
 import { getLeadIdByPhone, updateLeadStage, lsqConfigured } from "./leadsquared";
 
 export interface PipelineStage {
@@ -49,10 +50,19 @@ const DEFAULT_STAGES: { name: string; color: string; isWon?: boolean; isLost?: b
   { name: "Lost", color: "#ef4444", isLost: true },
 ];
 
+// Won/lost ends keep their fixed green/red; the middle columns cycle these.
+const STAGE_COLORS = ["#64748b", "#0ea5e9", "#8b5cf6", "#f59e0b", "#14b8a6"];
+
 export async function ensureSeeded(tenantId = DEFAULT_TENANT_ID): Promise<PipelineStage[]> {
   const existing = await listStages(tenantId);
   if (existing.length) return existing;
-  const rows = DEFAULT_STAGES.map((d, i) => ({ tenant_id: tenantId, name: d.name, position: i, color: d.color, is_won: !!d.isWon, is_lost: !!d.isLost }));
+  // A workspace that picked an industry gets that industry's columns; the last
+  // two are always the won and lost ends. Anyone else keeps the neutral board.
+  const names = await getIndustryStages(tenantId).catch(() => null);
+  const stagesToSeed = names && names.length >= 3
+    ? names.map((name, i) => ({ name, color: i === names.length - 2 ? "#10b981" : i === names.length - 1 ? "#ef4444" : STAGE_COLORS[i % STAGE_COLORS.length], isWon: i === names.length - 2, isLost: i === names.length - 1 }))
+    : DEFAULT_STAGES;
+  const rows = stagesToSeed.map((d, i) => ({ tenant_id: tenantId, name: d.name, position: i, color: d.color, is_won: !!d.isWon, is_lost: !!d.isLost }));
   await db().from("wa_pipeline_stages").insert(rows).then(() => {}, () => {});
   return listStages(tenantId);
 }

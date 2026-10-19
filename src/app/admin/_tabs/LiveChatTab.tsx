@@ -3,6 +3,7 @@
 // Live Chat: 3-pane chat workspace (conversation list / thread / contact info).
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
+import { useVocab } from "@/lib/vocab-client";
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, History, ArrowRight } from "lucide-react";
 import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
@@ -306,6 +307,7 @@ function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: 
 }
 
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
+  const { vocab } = useVocab();
   const [convos, setConvos] = useState<Conversation[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "needs_reply" | "escalated" | "bot_off">("all");
@@ -492,7 +494,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               configuration of its own. */}
           {stageNames.length > 0 && (
             <select className={`${inp} w-full !py-1.5 text-xs`} value={stageFilter} onChange={e => { setStageFilter(e.target.value); setSelected(null); }}
-              title="Show only leads sitting at one pipeline stage">
+              title={`Show only ${vocab.lead.many.toLowerCase()} sitting at one ${vocab.pipeline.one.toLowerCase()} stage`}>
               <option value="">All stages</option>
               {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
               <option value="__none">No stage set</option>
@@ -531,7 +533,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
                   {stages[c.phone] && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                       style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#64748b" }}
-                      title={`Pipeline stage: ${stages[c.phone].name}`}>{stages[c.phone].name.toUpperCase()}</span>
+                      title={`${vocab.pipeline.one} stage: ${stages[c.phone].name}`}>{stages[c.phone].name.toUpperCase()}</span>
                   )}
                   {c.assignedTo && <span className="text-[9px] font-bold text-brand-700 truncate">@{c.assignedTo}</span>}
                 </div>
@@ -651,6 +653,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
 
 // Middle thread + right contact-info pane for one conversation.
 function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChanged: () => void; goTo: (t: Tab) => void; crm?: CrmChatMap | null; crmError?: string }) {
+  const { vocab } = useVocab();
   const [conv, setConv] = useState<Conversation | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -987,7 +990,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   )}
                   {!contNext && (
                     <p className={`text-[10px] mt-1 text-right ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
-                      {m.role === "user" ? "" : m.source === "bot" ? "AI · " : "agent · "}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {m.role === "user" ? "" : m.source === "bot" ? "AI · " : `${vocab.teamMember.one.toLowerCase()} · `}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                       {multiChannelThread && m.channelId && channelName(m.channelId) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· via {channelName(m.channelId)}</span>}
                     </p>
                   )}
@@ -1168,7 +1171,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                 const firstTouch = ownerHistory[0];
                 return (
                   <div>
-                    <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> Lead journey</p>
+                    <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> {vocab.lead.one} journey</p>
 
                     {offOwnerChannel && (
                       <div className="mb-2 rounded-control border border-amber-200 bg-amber-50 px-2.5 py-2">
@@ -1201,7 +1204,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                             <button
                               disabled={busy}
                               onClick={() => handToTeam(to)}
-                              title={`Move this lead onto ${targets[0].name}, the ${TEAM_SHORT[to]} number. Replies then go out from there.`}
+                              title={`Move this ${vocab.lead.one.toLowerCase()} onto ${targets[0].name}, the ${TEAM_SHORT[to]} number. Replies then go out from there.`}
                               className="w-full px-2.5 py-1.5 rounded-control bg-ink-900 hover:bg-ink-800 text-white text-[11px] font-bold disabled:opacity-60">
                               Hand to {TEAM_SHORT[to]} → {targets[0].name}
                             </button>
@@ -1223,7 +1226,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                       <button
                         disabled={busy}
                         onClick={() => void syncCrmOwner()}
-                        title="Read this lead's owner from LeadSquared and move the chat onto that person's number."
+                        title={`Read this ${vocab.lead.one.toLowerCase()}'s owner from LeadSquared and move the chat onto that person's number.`}
                         className="mb-2 w-full px-2.5 py-1.5 rounded-control border border-line text-[11px] font-semibold text-ink-600 hover:bg-canvas disabled:opacity-60">
                         Sync owner from LeadSquared
                       </button>
@@ -1306,7 +1309,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
               // Only static batches — a dynamic one's membership is its filter,
               // so adding one person would do nothing at send time.
               const addable = allBatches.filter(b => b.kind === "static" && !leadBatches.some(x => x.id === b.id));
-              if (!allBatches.length) return <p className="text-[11px] text-ink-400">No batches yet — create one under Contacts › Batches.</p>;
+              if (!allBatches.length) return <p className="text-[11px] text-ink-400">No batches yet — create one under {vocab.contact.many} › Batches.</p>;
               if (!addable.length) return <p className="text-[11px] text-ink-400">In every batch available.</p>;
               return (
                 <select disabled={batchBusy} value=""
@@ -1315,7 +1318,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                     if (b) leadBatchAction("addToBatch", b.id, b.name);
                   }}
                   className="w-full px-2 py-1.5 rounded-lg border border-line text-xs text-ink-600 disabled:opacity-50">
-                  <option value="">{batchBusy ? "Saving…" : "Add this lead to a batch…"}</option>
+                  <option value="">{batchBusy ? "Saving…" : `Add this ${vocab.lead.one.toLowerCase()} to a batch…`}</option>
                   {addable.map(b => <option key={b.id} value={b.id}>{b.name} · {b.size.toLocaleString()}</option>)}
                 </select>
               );
@@ -1324,7 +1327,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
 
           {contact && contact.tags.length > 0 && (
             <div>
-              <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Contact tags</p>
+              <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">{vocab.contact.one} tags</p>
               <div className="flex gap-1.5 flex-wrap">
                 {contact.tags.map(t => <span key={t} className="px-2 py-0.5 rounded-full bg-canvas text-ink-600 text-[11px] font-semibold">{t}</span>)}
               </div>

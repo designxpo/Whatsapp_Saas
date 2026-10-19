@@ -336,6 +336,14 @@ export async function createTenantFromSignup(p: {
   }).select("id").single();
   if (u.error) throw u.error;
 
+  // The industry picked at signup selects the workspace's vocabulary pack.
+  // Best-effort — a settings hiccup must never fail account creation; the
+  // workspace just starts on neutral wording and can change it in Settings.
+  try {
+    const [{ industryPack }, { setTenantSetting }] = await Promise.all([import("./vocab"), import("./store")]);
+    await setTenantSetting(tenantId, "vocab_industry", industryPack(p.industry).id);
+  } catch { /* neutral wording until chosen in Settings */ }
+
   // Durable consent record (best-effort; survives even if 0060 isn't applied yet).
   if (p.termsVersion) await ownerAudit(email, "signup.terms_accepted", tenantId, `Accepted Terms, Privacy & Acceptable Use — version ${p.termsVersion}`);
 

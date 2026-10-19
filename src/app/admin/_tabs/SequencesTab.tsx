@@ -10,6 +10,14 @@ import { audienceFingerprint, describeAudience as describeSeqAudience } from "@/
 import { LANES, AIDA_STAGES, AIDA_LABELS, type Lane, type AidaStage } from "@/lib/drip-types";
 import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
 import { inp, ChannelSelect, useChannelList, ImageUpload } from "../_shared";
+import { useVocab } from "@/lib/vocab-client";
+
+// The workspace's own nouns, lower-cased for mid-sentence use (1 = singular, N = plural).
+function useWords() {
+  const { vocab } = useVocab();
+  const lc = (x: string) => x.toLowerCase();
+  return { vocab, lead1: lc(vocab.lead.one), leadN: lc(vocab.lead.many), seq1: lc(vocab.sequence.one), seqN: lc(vocab.sequence.many), ct1: lc(vocab.contact.one), ctN: lc(vocab.contact.many) };
+}
 function closeIfDeleted<T extends { id?: string }>(
   set: Dispatch<SetStateAction<T | null>>,
   deletedId: string,
@@ -405,6 +413,7 @@ function SequencePreview({ platform, steps, channelId }: { platform: "whatsapp" 
 // the question flow for the reply. Config in wa_settings via /api/admin/lead-welcome.
 type LeadWelcomeCfg = { enabled: boolean; templateName: string; languageCode: string; nameParam: boolean; flowId: string; trigger: string; sourceContains: string };
 function LeadWelcomePanel() {
+  const { lead1, leadN } = useWords();
   const [cfg, setCfg] = useState<LeadWelcomeCfg | null>(null);
   const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
@@ -427,7 +436,7 @@ function LeadWelcomePanel() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p>
-          <p className="text-[11px] text-ink-400">When a form lead arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply. Cold web leads can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</p>
+          <p className="text-[11px] text-ink-400">When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply. Cold web {leadN} can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</p>
         </div>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => set({ enabled: e.target.checked })} /> On</label>
       </div>
@@ -439,19 +448,19 @@ function LeadWelcomePanel() {
           {flows.map(f => <option key={f.id} value={f.id}>{f.name}{f.active ? "" : " (inactive)"}</option>)}
         </select>
         <select className={`${inp} !py-1.5 text-xs`} value={cfg.trigger === "created" ? "created" : "stage"} onChange={e => set({ trigger: e.target.value === "created" ? "created" : "" })}>
-          <option value="created">Fire on: new lead created</option>
-          <option value="stage">Fire on: lead enters a stage</option>
+          <option value="created">Fire on: new {lead1} created</option>
+          <option value="stage">Fire on: {lead1} enters a stage</option>
         </select>
         {cfg.trigger !== "created" && <input className={`${inp} !py-1.5 text-xs`} placeholder="LSQ stage name (exact)" value={cfg.trigger} onChange={e => set({ trigger: e.target.value })} />}
         <input className={`${inp} !py-1.5 text-xs`} placeholder="Only if Source contains… (optional)" value={cfg.sourceContains} onChange={e => set({ sourceContains: e.target.value })} />
       </div>
       <div className="flex items-center gap-3 flex-wrap">
-        <label className="flex items-center gap-1.5 text-[11px] text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={cfg.nameParam} onChange={e => set({ nameParam: e.target.checked })} /> template uses {"{{1}}"} = lead&apos;s first name</label>
+        <label className="flex items-center gap-1.5 text-[11px] text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={cfg.nameParam} onChange={e => set({ nameParam: e.target.checked })} /> template uses {"{{1}}"} = {lead1}&apos;s first name</label>
         <div className="flex-1" />
         <button onClick={save} disabled={busy} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save"}</button>
         {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
       </div>
-      <p className="text-[11px] text-ink-400">Set the LeadSquared automation for your signup form to POST to the LSQ→portal webhook (see docs/lsq-webhooks.md). Each lead is welcomed once per 30 days; opted-out numbers are skipped.</p>
+      <p className="text-[11px] text-ink-400">Set the LeadSquared automation for your signup form to POST to the LSQ→portal webhook (see docs/lsq-webhooks.md). Each {lead1} is welcomed once per 30 days; opted-out numbers are skipped.</p>
     </div>
   );
 }
@@ -504,6 +513,7 @@ type PollCfg = {
 // are stale. A rebuild that changes nothing should look like one.
 type SeedStep = { id: string; day: number; template: string; params: string[]; audience: SeqAudience; note: string | null };
 function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
+  const { vocab, lead1, leadN, seq1 } = useWords();
   const ask = useConfirm();
   const [cfg, setCfg] = useState<PollCfg | null>(null);
   const [busy, setBusy] = useState(false);
@@ -536,8 +546,8 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
   // sequence, and how many leads one pass can touch.
   async function goLive() {
     const ok = await ask({
-      title: "Start enrolling leads for real?",
-      message: "Leads reaching this stage will be enrolled into the sequence and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning team member's number — visible to your team.",
+      title: `Start enrolling ${leadN} for real?`,
+      message: `${vocab.lead.many} reaching this stage will be enrolled into the ${seq1} and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning ${vocab.teamMember.one.toLowerCase()}'s number — visible to your team.`,
       facts: [
         { label: "Stage watched", value: cfg!.stage || "(none set)" },
         { label: "Per pass, at most", value: String(cfg!.maxPerRun) },
@@ -557,7 +567,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
             <RefreshCw className="w-4 h-4 text-brand-700" /> Stage poll
           </p>
           <p className="text-[11px] text-ink-400">
-            Asks LeadSquared every minute which leads reached the hand-off stage, because LeadSquared has no API for creating an Automation. Runs the same decisions as the webhook, so both together are harmless.
+            Asks LeadSquared every minute which {leadN} reached the hand-off stage, because LeadSquared has no API for creating an Automation. Runs the same decisions as the webhook, so both together are harmless.
           </p>
         </div>
         <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold ${live ? "bg-brand-700 text-white" : cfg.enabled ? "bg-amber-100 text-amber-900" : "bg-canvas text-ink-400 border border-line"}`}>
@@ -632,7 +642,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         </p>
         {!cfg.lastObserved?.length ? (
           <p className="text-[11px] text-ink-400">
-            Nothing yet. A lead has to MOVE onto the stage while the poll is on — leads already sitting there are treated as seen, so switching on never messages the backlog.
+            Nothing yet. A {lead1} has to MOVE onto the stage while the poll is on — {leadN} already sitting there are treated as seen, so switching on never messages the backlog.
           </p>
         ) : (
           <div className="border border-line rounded-control divide-y divide-line">
@@ -649,13 +659,14 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
 
       <p className="text-[11px] text-ink-400">
-        Switching the stage re-seeds: the leads already on it are treated as already seen, so the backlog is never messaged. Only leads who move onto it afterwards are enrolled.
+        Switching the stage re-seeds: the {leadN} already on it are treated as already seen, so the backlog is never messaged. Only {leadN} who move onto it afterwards are enrolled.
       </p>
     </div>
   );
 }
 
 function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
+  const { lead1, leadN, seq1 } = useWords();
   const [drips, setDrips] = useState<{ stage: string; sequenceId: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -679,7 +690,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
         <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by LeadSquared stage</p>
-        <p className="text-[11px] text-ink-400">When a lead&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s sequence — and stop the other stage-managed ones (the lead moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out leads are never enrolled.</p>
+        <p className="text-[11px] text-ink-400">When a {lead1}&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s {seq1} — and stop the other stage-managed ones (the {lead1} moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out {leadN} are never enrolled.</p>
       </div>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
@@ -688,7 +699,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
           <span className="text-[11px] text-ink-400">→</span>
           <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
-            <option value="">Pick a sequence…</option>
+            <option value="">Select {seq1}…</option>
             {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
           </select>
           <button onClick={() => setDrips(a => (a ?? []).filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
@@ -700,7 +711,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
         {clash && <span className="text-[11px] text-red-500">Duplicate stage.</span>}
         {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
       </div>
-      <p className="text-[11px] text-ink-400">Cold leads are usually outside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+      <p className="text-[11px] text-ink-400">Cold {leadN} are usually outside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
   );
 }
@@ -713,6 +724,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
 // had no journey in either lane. A list of sequences cannot show an absence;
 // a grid can.
 function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
+  const { leadN } = useWords();
   const live = seqs.filter(s => s.active);
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-2.5">
@@ -749,7 +761,7 @@ function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
       </div>
       {seqs.some(s => !s.team) && (
         <p className="text-[11px] text-amber-700">
-          {seqs.filter(s => !s.team).length} journey(s) are not filed under a team, so they do not appear above and will reach leads in either lane.
+          {seqs.filter(s => !s.team).length} journey(s) are not filed under a team, so they do not appear above and will reach {leadN} in either lane.
         </p>
       )}
     </div>
@@ -761,6 +773,7 @@ function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
 // a lead moves on one without moving on the other, so one combined screen
 // would force a choice the CRM does not.
 function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
+  const { leadN, seq1 } = useWords();
   const [drips, setDrips] = useState<{ score: string; sequenceId: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -784,7 +797,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
         <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p>
-        <p className="text-[11px] text-ink-400">When someone on your team grades a lead in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s sequence — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out leads are never enrolled.</p>
+        <p className="text-[11px] text-ink-400">When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1} — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out {leadN} are never enrolled.</p>
       </div>
       <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
       {drips.map((d, i) => (
@@ -794,7 +807,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
           <span className="text-[11px] text-ink-400">→</span>
           <select className={`${inp} !py-1.5 text-xs`} value={d.sequenceId}
             onChange={e => setDrips(a => (a ?? []).map((x, j) => (j === i ? { ...x, sequenceId: e.target.value } : x)))}>
-            <option value="">Pick a sequence…</option>
+            <option value="">Select {seq1}…</option>
             {waSeqs.map(s => <option key={s.id} value={s.id}>{s.name}{s.active ? "" : " (inactive)"}</option>)}
           </select>
           <button onClick={() => setDrips(a => (a ?? []).filter((_, j) => j !== i))} className="p-1 text-ink-400 hover:text-red-500 shrink-0"><X className="w-4 h-4" /></button>
@@ -806,7 +819,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
         {clash && <span className="text-[11px] text-red-500">Duplicate score.</span>}
         {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
       </div>
-      <p className="text-[11px] text-ink-400">A team member grading a lead is almost never inside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+      <p className="text-[11px] text-ink-400">Grading {leadN} by hand is almost never inside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
   );
 }
@@ -820,6 +833,7 @@ const LSQ_OPS: [string, string][] = [["eq", "equals"], ["contains", "contains"],
 // principle, undiscoverable in practice.
 const LSQ_FIELDS = ["mx_Lead_Score", "ProspectStage", "Source", "Owner", "OwnerIdName", "mx_City", "CreatedOn", "EmailAddress", "Score", "EngagementScore"];
 function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
+  const { vocab, lead1, leadN, seq1 } = useWords();
   const ask = useConfirm();
   const [conds, setConds] = useState<{ field: string; op: string; value: string }[]>([{ field: "ProspectStage", op: "eq", value: "" }]);
   const [seqId, setSeqId] = useState("");
@@ -832,11 +846,11 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
 
   async function run(action: "preview" | "enroll") {
     if (action === "enroll") {
-      if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to enroll into." }); return; }
+      if (!seqId) { setMsg({ ok: false, text: `Select ${seq1} to enroll into.` }); return; }
       if (!(await ask({
-        title: "Enrol these leads into the drip?", tone: "caution", confirmLabel: "Enrol leads", typeToConfirm: "ENROL",
-        message: "Everyone enrolled starts receiving this sequence's messages on its schedule. Enrolments cannot be un-sent once a message has gone.",
-        facts: [{ label: "Leads", value: preview?.count != null ? `${preview.count.toLocaleString()} matching` : "all matching leads" }],
+        title: `Enrol these ${leadN} into the drip?`, tone: "caution", confirmLabel: `Enrol ${leadN}`, typeToConfirm: "ENROL",
+        message: `Everyone enrolled starts receiving this ${seq1}'s messages on its schedule. Enrolments cannot be un-sent once a message has gone.`,
+        facts: [{ label: vocab.lead.many, value: preview?.count != null ? `${preview.count.toLocaleString()} matching` : `all matching ${leadN}` }],
       }))) return;
     }
     setBusy(action); setMsg(null); if (action === "preview") setPreview(null);
@@ -845,7 +859,7 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
       const d = await res.json();
       if (!res.ok) { setMsg({ ok: false, text: d.error || "Failed" }); return; }
       if (action === "preview") setPreview(d);
-      else setMsg({ ok: true, text: `Enrolled ${d.enrolled} lead(s)${d.skippedOptout ? `, skipped ${d.skippedOptout} opted-out` : ""}${d.truncated ? " (capped at 5000 — refine to reach the rest)" : ""}.` });
+      else setMsg({ ok: true, text: `Enrolled ${d.enrolled} ${d.enrolled === 1 ? lead1 : leadN}${d.skippedOptout ? `, skipped ${d.skippedOptout} opted-out` : ""}${d.truncated ? " (capped at 5000 — refine to reach the rest)" : ""}.` });
     } catch { setMsg({ ok: false, text: "Connection error" }); }
     finally { setBusy(""); }
   }
@@ -854,7 +868,7 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
         <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Run a drip from LeadSquared</p>
-        <p className="text-[11px] text-ink-400">Pull leads matching these conditions and enroll them into a sequence. Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</p>
+        <p className="text-[11px] text-ink-400">Pull {leadN} matching these conditions and enroll them into one of your {vocab.sequence.many.toLowerCase()}. Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</p>
       </div>
       <div className="space-y-1.5">
         {conds.map((c, i) => (
@@ -871,7 +885,7 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
       {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-600">Add at least one <b>equals</b> condition — it anchors the LeadSquared search.</p>}
       <div className="flex items-center gap-2">
         <select className={`${inp} flex-1`} value={seqId} onChange={e => setSeqId(e.target.value)}>
-          <option value="">Enroll into sequence…</option>
+          <option value="">Enroll into {seq1}…</option>
           {seqs.filter(s => s.active).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <button onClick={() => run("preview")} disabled={!hasAnchor || busy !== ""} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0">
@@ -881,9 +895,9 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
           {busy === "enroll" ? <Loader2 className="w-4 h-4 animate-spin" /> : "Enroll"}
         </button>
       </div>
-      {preview && <p className="text-[11px] text-ink-600"><b className="text-brand-700">{preview.count}</b> lead(s) match{preview.truncated ? " (capped at 5000)" : ""} · scanned {preview.scanned}{preview.sample.length ? ` · e.g. ${preview.sample.join(", ")}` : ""}</p>}
+      {preview && <p className="text-[11px] text-ink-600"><b className="text-brand-700">{preview.count}</b> {leadN} match{preview.truncated ? " (capped at 5000)" : ""} · scanned {preview.scanned}{preview.sample.length ? ` · e.g. ${preview.sample.join(", ")}` : ""}</p>}
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">Cold leads (no recent chat) only receive a message if the sequence&apos;s first step is an approved <b>template</b> — the 24h window is closed until they reply. Opt-outs are skipped automatically.</p>
+      <p className="text-[10px] text-ink-400">Cold {leadN} (no recent chat) only receive a message if the {seq1}&apos;s first step is an approved <b>template</b> — the 24h window is closed until they reply. Opt-outs are skipped automatically.</p>
     </div>
   );
 }
@@ -902,6 +916,7 @@ function fmtWhen(s: string | null): string {
 }
 const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-600", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
 function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
+  const { vocab, seq1, ct1, ctN } = useWords();
   const [enr, setEnr] = useState<EnrRow[]>([]);
   const [seqId, setSeqId] = useState("");
   const [phone, setPhone] = useState("");
@@ -921,8 +936,8 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
   }, [seqId, platform]);
 
   async function testEnroll() {
-    if (!seqId) { setMsg({ ok: false, text: "Pick a sequence to test." }); return; }
-    if (!phone.trim()) { setMsg({ ok: false, text: platform === "instagram" ? "Pick an Instagram contact (you can't message a handle)." : "Enter a WhatsApp number to test with." }); return; }
+    if (!seqId) { setMsg({ ok: false, text: `Select ${seq1} to test.` }); return; }
+    if (!phone.trim()) { setMsg({ ok: false, text: platform === "instagram" ? `Pick an Instagram ${ct1} (you can't message a handle).` : "Enter a WhatsApp number to test with." }); return; }
     setBusy("test"); setMsg(null);
     try {
       const res = await fetch("/api/admin/sequences/test-enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sequenceId: seqId, phone }) });
@@ -951,13 +966,13 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => { setSeqId(e.target.value); setPhone(""); setMsg(null); }}>
-          <option value="">Test sequence…</option>
+          <option value="">Test {seq1}…</option>
           {seqs.map(s => <option key={s.id} value={s.id}>{s.name}{!s.active ? " (off)" : ""}</option>)}
         </select>
         {selSeq && <span className={`px-2 py-1.5 rounded-control text-[11px] font-bold shrink-0 ${platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>sends on {platform === "instagram" ? "Instagram" : "WhatsApp"}</span>}
         {seqId && (
           <select className={`${inp} w-48`} value="" onChange={e => { if (e.target.value) setPhone(e.target.value); }}>
-            <option value="">{contacts.length ? "Pick a contact who messaged you…" : "No contacts on this platform yet"}</option>
+            <option value="">{contacts.length ? `Select ${ct1} who messaged you…` : `No ${ctN} on this platform yet`}</option>
             {contacts.map(c => <option key={c.phone} value={c.phone}>{c.name}{c.withinWindow ? " ✅" : ""}</option>)}
           </select>
         )}
@@ -967,12 +982,12 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
-      <p className="text-[10px] text-ink-400">The test sends on the <b>sequence&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> sequence. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
+      <p className="text-[10px] text-ink-400">The test sends on the <b>{seq1}&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> {seq1}. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
       {/* Enrollment monitor */}
       <div className="border border-line rounded-control overflow-hidden">
         <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
-          <div className="col-span-3">Sequence</div><div className="col-span-3">Contact</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
+          <div className="col-span-3">{vocab.sequence.one}</div><div className="col-span-3">{vocab.contact.one}</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
         </div>
         {enr.length === 0 && <p className="px-3 py-3 text-xs text-ink-400">No enrollments yet. Enroll a number above, or wire a trigger (keyword / growth tool) and have someone message you.</p>}
         {enr.map(e => (
@@ -990,6 +1005,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
 }
 
 export default function SequencesTab() {
+  const { vocab, leadN, seq1, seqN, ct1 } = useWords();
   const ask = useConfirm();
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
   const [form, setForm] = useState<SeqDraft | null>(null);
@@ -1006,7 +1022,7 @@ export default function SequencesTab() {
 
   async function save() {
     if (!form) return;
-    if (!form.name.trim()) { setMsg("Give the sequence a name."); return; }
+    if (!form.name.trim()) { setMsg(`Give the ${seq1} a name.`); return; }
     setBusy(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/sequences", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, triggerValue: form.triggerValue || null }) });
@@ -1016,7 +1032,7 @@ export default function SequencesTab() {
   }
   async function remove(id: string) {
     if (!(await ask({
-      title: "Delete this sequence?", tone: "danger", confirmLabel: "Delete sequence",
+      title: `Delete this ${seq1}?`, tone: "danger", confirmLabel: `Delete ${seq1}`,
       message: "Anyone part-way through it stops receiving the rest of its messages.",
     }))) return;
     await fetch("/api/admin/sequences", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
@@ -1031,18 +1047,18 @@ export default function SequencesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> Sequences</h2>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2>
           <p className="text-sm text-slate-500">Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</p>
         </div>
-        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New sequence</button>
+        <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
       </div>
 
       {/* How a sequence actually fires — the part that's easy to miss. */}
       <div className="bg-brand-50/60 border border-brand-700/15 rounded-card p-4 text-[12px] text-ink-700 space-y-1.5">
-        <p className="font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-700" /> How a sequence runs</p>
-        <p><b>1. A trigger enrols someone.</b> A sequence does nothing on its own — it needs an entry point: a <b>keyword</b> they send, a <b>growth tool</b> opt-in, an Instagram <b>story reply</b>, a cart/order event, or the <b>Test</b> box below. Set the trigger on the sequence, then make sure that path exists.</p>
+        <p className="font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-brand-700" /> How your {seqN} run</p>
+        <p><b>1. A trigger enrols someone.</b> Each {seq1} does nothing on its own — it needs an entry point: a <b>keyword</b> they send, a <b>growth tool</b> opt-in, an Instagram <b>story reply</b>, a cart/order event, or the <b>Test</b> box below. Set the trigger on the {seq1}, then make sure that path exists.</p>
         <p><b>2. The schedule sends the steps.</b> A background job runs <b>every ~5 minutes</b> and delivers each step once its wait is up. <b>Step 1&apos;s wait</b> counts from enrolment (0 = send immediately); every later step&apos;s wait counts from the previous step.</p>
-        <p><b>3. The 24-hour rule applies.</b> Plain <b>text/media</b> steps only deliver if the contact messaged you in the last 24h. To reach people outside that window, make the step an approved <b>template</b>.</p>
+        <p><b>3. The 24-hour rule applies.</b> Plain <b>text/media</b> steps only deliver if the {ct1} messaged you in the last 24h. To reach people outside that window, make the step an approved <b>template</b>.</p>
         <p className="text-ink-400">Not sure it&apos;s working? Use <b>Test &amp; monitor</b> below — enroll your own number and click <b>Run due steps now</b>.</p>
       </div>
 
@@ -1057,7 +1073,7 @@ export default function SequencesTab() {
           <button onClick={() => remove(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
-      {!seqs.length && !form && <p className="text-xs text-ink-400">No sequences yet.</p>}
+      {!seqs.length && !form && <p className="text-xs text-ink-400">No {seqN} yet.</p>}
 
       {form && (
         <div ref={editorRef} className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
@@ -1081,11 +1097,11 @@ export default function SequencesTab() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <SeqField label="Which team runs this" hint="Marketing speaks to leads nobody owns yet. Sales speaks to leads a team member already owns. A journey never reaches the other team's leads.">
+            <SeqField label="Which team runs this" hint={`Marketing speaks to ${leadN} nobody owns yet. Sales speaks to ${leadN} someone already owns. A journey never reaches the other team's ${leadN}.`}>
               <select className={`${inp} w-full`} value={form.team ?? ""}
                 onChange={e => setForm({ ...form, team: (e.target.value || null) as Lane | null })}>
                 <option value="">Unassigned — reaches anyone (old behaviour)</option>
-                {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? "Marketing — leads nobody owns yet" : "Sales — leads a team member owns"}</option>)}
+                {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? `Marketing — ${leadN} nobody owns yet` : `Sales — ${leadN} someone owns`}</option>)}
               </select>
             </SeqField>
             <SeqField label="What job it does" hint={form.aidaStage ? AIDA_LABELS[form.aidaStage].job : "Used to show which part of the funnel has no journey yet. It does not change how anything sends."}>
@@ -1097,7 +1113,7 @@ export default function SequencesTab() {
             </SeqField>
           </div>
 
-          <SeqField label="What starts it" hint="A sequence sends nothing until something enrols a contact.">
+          <SeqField label="What starts it" hint="Nothing is sent until something enrols someone.">
             <div className="space-y-1.5">
               {SEQ_TRIGGERS.filter(t => t.platforms.includes(form.platform)).map(t => {
                 const on = form.triggerKind === t.value;
@@ -1181,13 +1197,13 @@ export default function SequencesTab() {
                   enrolment count, and carried through the save untouched. */}
               {st.audience && (
                 <p className="text-[11px] text-ink-600 bg-canvas border border-line rounded-control px-2.5 py-1.5">
-                  <b>Only some leads get this step.</b> {describeSeqAudience(st.audience)}
+                  <b>Only some {leadN} get this step.</b> {describeSeqAudience(st.audience)}
                 </p>
               )}
               {st.action.type === "media" && <SeqMediaPicker action={st.action} onChange={patch => setStepAction(i, patch)} />}
               {willBeSkipped && (
                 <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-2.5 py-1.5 leading-snug">
-                  <b>This step will be skipped.</b> It lands more than 24 hours after the contact
+                  <b>This step will be skipped.</b> It lands more than 24 hours after the {ct1}
                   wrote to you, and WhatsApp only allows an approved template that far out. Change
                   it to a <b>Template</b>, or move it earlier.
                 </p>
@@ -1197,7 +1213,7 @@ export default function SequencesTab() {
           <button onClick={() => setForm({ ...form, steps: [...form.steps, { delayMinutes: 60, action: { type: "text", text: "" } }] })} className="text-xs font-bold text-brand-700 hover:text-brand-600 flex items-center gap-1"><Plus className="w-3.5 h-3.5" /> Add step</button>
 
           <div className="flex items-center gap-2 pt-1">
-            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save sequence"}</button>
+            <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${seq1}`}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             {msg && <span className="text-xs text-red-500">{msg}</span>}
           </div>

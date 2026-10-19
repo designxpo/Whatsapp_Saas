@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, ArrowLeft, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useVocab } from "@/lib/vocab-client";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
 type Integration = {
@@ -70,6 +71,15 @@ function Logo({ kind, logo }: { kind: string; logo: string | null }) {
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const ask = useConfirm();
+  const { vocab } = useVocab();
+  const contactLc = vocab.contact.one.toLowerCase();
+  const contactsLc = vocab.contact.many.toLowerCase();
+  const leadLc = vocab.lead.one.toLowerCase();
+  // Event names that mention the workspace's own nouns follow its vocabulary.
+  const integrationEvents = INTEGRATION_EVENTS.map(e =>
+    e.key === "contact.created" ? { ...e, label: `New ${contactLc} / ${leadLc}` }
+    : e.key === "contact.optout" ? { ...e, label: `${vocab.contact.one} opted out` }
+    : e);
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
@@ -160,7 +170,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="max-w-5xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync leads to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
+        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync {vocab.lead.many.toLowerCase()} to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
       </div>
 
       {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
@@ -205,7 +215,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Imports your product catalog</span>
                 : PAYMENT_KINDS.includes(i.kind)
                 ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends a payment link on checkout</span>
-                : i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{INTEGRATION_EVENTS.find(x => x.key === e)?.label ?? e}</span>)}
+                : i.events.map(e => <span key={e} className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">{integrationEvents.find(x => x.key === e)?.label ?? e}</span>)}
             </div>
             {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
@@ -253,7 +263,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               {form.kind === "leadsquared" && <>
                 <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer">
                   <input type="checkbox" className="accent-brand-700" checked={form.lsqAutoCreate} onChange={e => setForm({ ...form, lsqAutoCreate: e.target.checked })} />
-                  Auto-create a lead for new inbound contacts (off = only sync to existing leads)
+                  Auto-create {vocab.lead.many.toLowerCase()} for new inbound {contactsLc} (off = only sync to existing ones)
                 </label>
                 <p className="text-[11px] text-slate-500">Every chat syncs to the lead’s timeline; stage &amp; owner show in Live Chat. Pipeline stages and CRM drips also use this connection.</p>
               </>}
@@ -269,9 +279,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </>
           )}
           {isEventKind && <div>
-            <label className="text-xs font-bold text-slate-400 uppercase">{isCrm ? "Sync a contact on" : "Send these events"}</label>
+            <label className="text-xs font-bold text-slate-400 uppercase">{isCrm ? `When to sync ${contactsLc}` : "Send these events"}</label>
             <div className="grid grid-cols-2 gap-1.5 mt-1.5">
-              {INTEGRATION_EVENTS.map(e => (
+              {integrationEvents.map(e => (
                 <label key={e.key} className="flex items-center gap-1.5 text-xs text-ink-700 cursor-pointer">
                   <input type="checkbox" className="accent-brand-700" checked={form.events.includes(e.key)} onChange={() => toggleEvent(e.key)} />
                   {e.label}

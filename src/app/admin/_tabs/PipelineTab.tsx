@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink, Check } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useVocab } from "@/lib/vocab-client";
 
 type PStage = { id: string; name: string; position: number; color: string | null; lsqStage: string | null; onEnterTag: string | null; onEnterSequenceId: string | null; isWon: boolean; isLost: boolean };
 type PCard = { contactId: string; name: string; phone: string; tags: string[]; stageId: string; lastMessage: string | null; lastInboundAt: string | null };
@@ -13,6 +14,7 @@ type PCard = { contactId: string; name: string; phone: string; tags: string[]; s
 // One editable stage row in the "Manage stages" panel. Reorder is driven by the
 // parent (onReorder) so the closure over the full stage list stays clean.
 function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PStage; seqs: { id: string; name: string }[]; first: boolean; last: boolean; onReorder: (dir: -1 | 1) => void; onSaved: () => void }) {
+  const { vocab } = useVocab();
   const ask = useConfirm();
   const [s, setS] = useState<PStage>(stage);
   const [busy, setBusy] = useState(false);
@@ -25,8 +27,8 @@ function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PSt
   }
   async function del() {
     if (!(await ask({
-      title: "Delete this pipeline stage?", tone: "danger", confirmLabel: "Delete stage",
-      message: "Its leads stay as contacts but drop off the board, and which stage they were in is not kept.",
+      title: `Delete this ${vocab.pipeline.one.toLowerCase()} stage?`, tone: "danger", confirmLabel: "Delete stage",
+      message: `Its ${vocab.lead.many.toLowerCase()} stay as ${vocab.contact.many.toLowerCase()} but drop off the board, and which stage they were in is not kept.`,
       facts: [{ label: "Stage", value: stage.name }],
     }))) return;
     await fetch("/api/admin/pipeline/stages", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: stage.id }) }).catch(() => {});
@@ -38,8 +40,8 @@ function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PSt
       <input className={`${inp} w-32`} value={s.name} maxLength={40} onChange={e => setS({ ...s, name: e.target.value })} placeholder="Stage name" />
       <input className={`${inp} w-36`} value={s.lsqStage ?? ""} onChange={e => setS({ ...s, lsqStage: e.target.value })} placeholder="LeadSquared stage" title="Maps to a LeadSquared ProspectStage (optional)" />
       <input className={`${inp} w-28`} value={s.onEnterTag ?? ""} onChange={e => setS({ ...s, onEnterTag: e.target.value })} placeholder="Tag on enter" />
-      <select className={`${inp} w-40`} value={s.onEnterSequenceId ?? ""} onChange={e => setS({ ...s, onEnterSequenceId: e.target.value || null })} title="Enrol into this sequence on entry">
-        <option value="">No sequence on enter</option>
+      <select className={`${inp} w-40`} value={s.onEnterSequenceId ?? ""} onChange={e => setS({ ...s, onEnterSequenceId: e.target.value || null })} title={`Enrol into this ${vocab.sequence.one.toLowerCase()} on entry`}>
+        <option value="">No {vocab.sequence.one.toLowerCase()} on enter</option>
         {seqs.map(q => <option key={q.id} value={q.id}>Enrol: {q.name}</option>)}
       </select>
       <label className="flex items-center gap-1 text-[11px] text-ink-500"><input type="checkbox" className="accent-brand-700" checked={s.isWon} onChange={e => setS({ ...s, isWon: e.target.checked, isLost: e.target.checked ? false : s.isLost })} /> won</label>
@@ -54,6 +56,7 @@ function StageRow({ stage, seqs, first, last, onReorder, onSaved }: { stage: PSt
 }
 
 function StageManager({ stages, seqs, onChange }: { stages: PStage[]; seqs: { id: string; name: string }[]; onChange: () => void }) {
+  const { vocab } = useVocab();
   const [adding, setAdding] = useState(false);
   async function addStage() {
     setAdding(true);
@@ -70,7 +73,7 @@ function StageManager({ stages, seqs, onChange }: { stages: PStage[]; seqs: { id
         <p className="text-sm font-bold text-ink-900">Manage stages</p>
         <button onClick={addStage} disabled={adding} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><Plus className="w-3.5 h-3.5" /> Add stage</button>
       </div>
-      <p className="text-[11px] text-ink-400">Columns are your stages. A stage can map to a LeadSquared <b>ProspectStage</b> (synced on move), and fire automation on entry — auto-tag the contact and/or enrol them in a sequence.</p>
+      <p className="text-[11px] text-ink-400">Columns are your stages. A stage can map to a LeadSquared <b>ProspectStage</b> (synced on move), and fire automation on entry — auto-tag the {vocab.contact.one.toLowerCase()} and/or enrol them in a {vocab.sequence.one.toLowerCase()}.</p>
       <div className="space-y-2">
         {stages.map((s, i) => (
           <StageRow key={s.id} stage={s} seqs={seqs} first={i === 0} last={i === stages.length - 1}
@@ -83,6 +86,7 @@ function StageManager({ stages, seqs, onChange }: { stages: PStage[]; seqs: { id
 }
 
 function AddLeadBox({ onPick, onClose }: { onPick: (contactId: string) => void; onClose: () => void }) {
+  const { vocab } = useVocab();
   const [q, setQ] = useState("");
   const [res, setRes] = useState<{ id: string; name: string; phone: string }[]>([]);
   useEffect(() => {
@@ -104,12 +108,13 @@ function AddLeadBox({ onPick, onClose }: { onPick: (contactId: string) => void; 
           <p className="text-[10px] text-ink-400 font-mono truncate">{c.phone}</p>
         </button>
       ))}
-      {q.trim().length >= 2 && !res.length && <p className="text-[11px] text-ink-400 px-2 py-1">No matching contacts.</p>}
+      {q.trim().length >= 2 && !res.length && <p className="text-[11px] text-ink-400 px-2 py-1">No matching {vocab.contact.many.toLowerCase()}.</p>}
     </div>
   );
 }
 
 export default function PipelineTab({ goTo }: { goTo: GoTo }) {
+  const { vocab } = useVocab();
   const [stages, setStages] = useState<PStage[]>([]);
   const [cards, setCards] = useState<PCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,8 +152,8 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><KanbanSquare className="w-5 h-5" /> Sales Pipeline</h2>
-          <p className="text-sm text-slate-500">Drag a lead between stages. Each card is a contact with their latest WhatsApp message — moving it can auto-tag, start a sequence, and sync the stage to LeadSquared. {total} lead{total === 1 ? "" : "s"} on the board.</p>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><KanbanSquare className="w-5 h-5" /> {vocab.pipeline.one}</h2>
+          <p className="text-sm text-slate-500">Drag a {vocab.lead.one.toLowerCase()} between stages. Each card is a {vocab.contact.one.toLowerCase()} with their latest WhatsApp message — moving it can auto-tag, start a {vocab.sequence.one.toLowerCase()}, and sync the stage to LeadSquared. {total} {(total === 1 ? vocab.lead.one : vocab.lead.many).toLowerCase()} on the board.</p>
         </div>
         <button onClick={() => setManage(m => !m)} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> {manage ? "Done" : "Manage stages"}</button>
       </div>
@@ -170,7 +175,7 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                   <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: accent }} />
                   <p className="text-sm font-bold text-ink-900 truncate flex-1">{s.name}{s.isWon && <Check className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-emerald-600" />}{s.isLost && <X className="inline w-3.5 h-3.5 ml-1 align-[-2px] text-red-500" />}</p>
                   <span className="text-[11px] font-bold text-ink-400">{list.length}</span>
-                  <button onClick={() => setAddTo(a => (a === s.id ? null : s.id))} className="p-0.5 text-ink-400 hover:text-brand-700" title="Add a lead here"><Plus className="w-4 h-4" /></button>
+                  <button onClick={() => setAddTo(a => (a === s.id ? null : s.id))} className="p-0.5 text-ink-400 hover:text-brand-700" title={`Add a ${vocab.lead.one.toLowerCase()} here`}><Plus className="w-4 h-4" /></button>
                 </div>
                 <div className="p-2 space-y-2 min-h-[80px] max-h-[calc(100vh-260px)] overflow-y-auto">
                   {addTo === s.id && <AddLeadBox onPick={id => { move(id, s.id); setAddTo(null); }} onClose={() => setAddTo(null)} />}
@@ -195,12 +200,12 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
                       </div>
                     </div>
                   ))}
-                  {!list.length && addTo !== s.id && <p className="text-[11px] text-ink-300 text-center py-4">Drop leads here</p>}
+                  {!list.length && addTo !== s.id && <p className="text-[11px] text-ink-300 text-center py-4">Drop {vocab.lead.many.toLowerCase()} here</p>}
                 </div>
               </div>
             );
           })}
-          {!stages.length && <p className="text-xs text-ink-400">No stages yet — they’ll appear once the pipeline is set up.</p>}
+          {!stages.length && <p className="text-xs text-ink-400">No stages yet — they’ll appear once the {vocab.pipeline.one.toLowerCase()} is set up.</p>}
         </div>
       )}
     </div>

@@ -10,6 +10,7 @@ import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, t
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 import { useConfirm } from "@/components/confirm-dialog";
+import { TerminologyCard } from "./TerminologyCard";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -2080,6 +2081,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       </div>
 
       <UsageCard />
+      {isAdmin && <TerminologyCard />}
       {isAdmin && <ChannelsManager />}
       <QrTool />
       {isAdmin && <TeamManager />}
