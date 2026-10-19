@@ -17,7 +17,7 @@ function closeIfDeleted<T extends { id?: string }>(
   set(f => (f && f.id === deletedId ? null : f));
 }
 type SeqAudience = { attrIn?: Record<string, string[]>; attrNotIn?: Record<string, string[]>; hasTag?: string[]; lacksTag?: string[] } | null;
-// `audience` is carried through the editor untouched. It is set by the RNR
+// `audience` is carried through the editor untouched. It is set by a
 // seeder, there is no editor for it yet, and a save that dropped it would
 // widen a restricted step to the whole enrolment without saying so.
 type StepDraft = { delayMinutes: number; audience?: SeqAudience; action: { type: "text" | "template" | "media"; text?: string; templateName?: string; languageCode?: string; params?: string[]; mediaKind?: "image" | "video" | "document" | "audio"; url?: string; caption?: string } };
@@ -479,7 +479,6 @@ type PollCfg = {
   lastObserved?: { phone: string; stage: string | null; knownStage: string | null; wouldEnroll: string | null; note: string }[];
 };
 
-// Build (or rebuild) the RNR drip from the message library.
 //
 // ── Why this needs a screen at all ────────────────────────────────────────
 //
@@ -1177,7 +1176,7 @@ export default function SequencesTab() {
               </div>
               {st.action.type === "text" && <textarea className={`${inp} w-full`} rows={2} placeholder="Message text (sends inside the 24h window)" value={st.action.text ?? ""} onChange={e => setStepAction(i, { text: e.target.value })} />}
               {st.action.type === "template" && <SeqTemplatePicker channelId={form.channelId} action={st.action} onChange={patch => setStepAction(i, patch)} />}
-              {/* Set by the RNR seeder; there is no editor for it yet. Shown
+              {/* Set by seeding; there is no editor for it yet. Shown
                   so nobody wonders why a step reached fewer people than the
                   enrolment count, and carried through the save untouched. */}
               {st.audience && (

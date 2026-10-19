@@ -27,7 +27,6 @@ import {
   dailySentCount,
 } from "./store";
 import { matchesAudience, parseAudience, describeAudience, type AudienceRule } from "./seqaudience";
-import { recordDripEvent, sendLine, humaniseTemplate } from "./driplog";
 import { resolveCannedParams } from "./canned";
 import { leadTokens, missingTokens } from "./leadtokens";
 import { leadLane, laneAllows, isLane, isAidaStage, type Lane, type AidaStage } from "./lanes";
@@ -69,7 +68,7 @@ export interface Sequence {
   sendStartHour: number | null;
   sendEndHour: number | null;
   // 0103. Refuse to enrol a lead who wrote to us in the last N days — the
-  // brief's "tapped A or B but still RNR → skip". Null = off.
+  // "tapped A or B but still unreachable → skip". Null = off.
   skipIfRecentReplyDays: number | null;
   // 0103. Most automated messages this lead may get in one local day, counted
   // across every journey. Over the cap is DEFERRED, never dropped. Null = off.
@@ -327,7 +326,7 @@ export async function enroll(
   // earlier state. So a lead who reaches Not Reachable, gets the four-week
   // drip, is finally contacted, goes quiet again and is moved back to Not
   // Reachable would be sent the entire sequence a second time, opening with
-  // "greetings from AnalytixLabs" to somebody who has had it already.
+  // "welcome to Acme" to somebody who has had it already.
   //
   // Worse: `stopped` is the status a REPLY sets. Resurrecting that row means
   // a lead who answered, was handed to a counsellor and stopped receiving
@@ -349,8 +348,7 @@ export async function enroll(
 
   // ── One journey at a time ───────────────────────────────────────────────
   //
-  // "One active sequence per lead" is in the RNR checklist, but it is not an
-  // RNR rule: two automated journeys talking to the same person at once is
+  // "One active sequence per lead" is a general rule, not a campaign one: two automated journeys talking to the same person at once is
   // never what anybody meant, and the lead cannot tell that the conflicting
   // messages came from different campaigns.
   //
@@ -381,7 +379,7 @@ export async function enroll(
 
   // ── Do not start a nurture with somebody mid-conversation ───────────────
   //
-  // The brief: "Tapped A or B but still RNR → skip the sequence. Counsellor
+  // The rule: "Already replied → skip the sequence. A person
   // chats instead." A lead who answered the counsellor's own message on day 1
   // or 2 is not silent — they are not answering the PHONE, which is a
   // different problem and not one four weeks of nurture solves.
@@ -595,7 +593,7 @@ async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: Se
     //
     // A token that resolves to nothing is NOT sent as a blank. Meta rejects
     // an empty parameter with #132000, and the times it does not, the lead
-    // reads "Hi , greetings from AnalytixLabs". Skipped with a reason is the
+    // reads "Hi , welcome to Acme". Skipped with a reason is the
     // better failure, and it is visible on the enrolment.
     let params = a.params ?? [];
     if (params.some(p => /\{\w+\}/.test(p ?? ""))) {
@@ -776,7 +774,7 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
 
       // ── Is this step for this lead? ─────────────────────────────────────
       //
-      // Three of the seven RNR messages are not for everybody: the masterclass
+      // Some messages are not for everybody: e.g. an event invitation
       // invitation skips leads who already registered, the results message
       // carries claims that only some programmes can make, and the centre
       // visit is meaningless to an online-only course or a lead in another
@@ -809,20 +807,6 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
 
       // ── Where a drip send is recorded in the CRM ────────────────────────
       //
-      // The drip conversation goes to its OWN LeadSquared field, not to the
-      // main WhatsApp activity timeline (decided 1 October). The timeline is
-      // for conversations a human had; four weeks of automated nurture
-      // buried in it makes the real ones hard to find.
-      //
-      // A skipped step is deliberately not recorded: the lead was never sent
-      // anything, and a log entry saying otherwise is worse than silence.
-      if (res.ok && !skippedFor && (enr.platform as string) !== "instagram") {
-        const a = step.action;
-        const label = a?.type === "template" && a.templateName
-          ? humaniseTemplate(a.templateName)
-          : describeStep(a);
-        void recordDripEvent(enr.phone as string, sendLine(new Date(), label), tenantId);
-      }
       if (skippedFor) {
         console.log(JSON.stringify({
           tag: "sequence_step_skipped", seq: seq.name, step: idx,

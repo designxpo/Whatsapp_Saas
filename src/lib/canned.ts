@@ -1,5 +1,5 @@
 // Canned templates — one-click, pre-approved WhatsApp templates a team member
-// fires from the chat (e.g. RNR, post-call follow-up). Each maps an approved
+// fires from the chat (e.g. follow-up, post-call follow-up). Each maps an approved
 // template + body-variable presets + an optional LeadSquared lead-stage change.
 // Config lives in wa_settings (tenant-scoped, no migration); it's a small
 // admin-managed list per workspace.
@@ -8,12 +8,12 @@ import { getTenantSetting, setTenantSetting } from "./store";
 
 export interface Canned {
   id: string;                 // stable slug
-  label: string;              // button text, e.g. "RNR" / "Post-call follow-up"
+  label: string;              // button text, e.g. "Follow-up" / "Post-call follow-up"
   templateName: string;       // approved template name on the sending number's WABA
   language: string;           // e.g. "en_US"
   params: string[];           // body {{1}},{{2}}… — tokens {agent} {name} {<attr>} or literal text ({counselor} also works, kept for templates saved before the rename)
   headerImageUrl?: string;    // optional header image (not WABA-scoped)
-  stage?: string;             // optional LSQ lead stage to set on send (e.g. "RNR")
+  stage?: string;             // optional LSQ lead stage to set on send (e.g. "Contacted")
 }
 
 const KEY = "canned_templates";

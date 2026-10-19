@@ -27,7 +27,7 @@ deployment, and the webhook handshake. Parts A–E below take it to fully live.
 1. App → **WhatsApp → API Setup** (Meta creates a WABA automatically).
 2. **Add your real phone number** — it must NOT be active on the WhatsApp /
    WA Business app (migrate it off first if it is). Verify with the OTP.
-3. Set the **display name** (e.g. "AnalytixLabs") — approved within hours.
+3. Set the **display name** (e.g. "Acme") — approved within hours.
 4. From the API Setup page note:
    - **Phone number ID** → `META_WA_PHONE_NUMBER_ID`
    - **WhatsApp Business Account ID** → `META_WA_WABA_ID`

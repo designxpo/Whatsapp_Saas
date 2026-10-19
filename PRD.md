@@ -126,7 +126,7 @@ Talko AI is delivered as:
 
 ### 6.2 System Design
 - **Multi-tenant, single codebase.** One workspace (tenant) per business; strict data isolation enforced at the database (Row-Level Security) layer.
-- **Host-based routing** via middleware: marketing site (`www`) vs. product portal (`app`) served from the same Next.js app; supports white-label domains (e.g. `waba.analytixlabs.co.in`).
+- **Host-based routing** via middleware: marketing site (`www`) vs. product portal (`app`) served from the same Next.js app; supports white-label domains (e.g. `app.example.com`).
 - **Channel webhooks** — dedicated inbound webhook routes per channel (WhatsApp / Instagram / Messenger) with **HMAC-SHA256 signature verification**; a web-chat message/poll API for the site widget.
 - **Bring-your-own-Meta-app model** — a tenant can connect their own Meta app + AI key (used for the first enterprise client), or use the platform's shared setup.
 - **Owner control plane** — provisions tenants, billing, and per-plan **feature entitlements** (features are gated/hidden by plan).
@@ -193,7 +193,7 @@ Talko AI is delivered as:
 - **Hosting:** Vercel (production at talkoai.vercel.app), continuous deploy from `main`.
 - **Database:** Supabase (managed Postgres), migrations applied sequentially.
 - **Observability:** Vercel Analytics + Speed Insights; structured logs.
-- **White-label deploys:** client tenants on their own domains (e.g. `waba.analytixlabs.co.in`).
+- **White-label deploys:** client tenants on their own domains (e.g. `app.example.com`).
 
 ---
 

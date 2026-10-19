@@ -66,32 +66,21 @@ describe("the inbound webhook stamps attribution after the contact exists", () =
 
 // ── Lead creation must stay with the activity push ─────────────────────────
 //
-// After 4eea4ed the RNR handoff no longer creates a CRM lead; it is only for
-// somebody a journey was talking to. That is correct, and it makes the
-// activity push at the bottom of the handler the ONLY thing that creates a
-// lead for a first-time message — organic or paid.
-//
-// So an early return added between the two would stop new leads reaching the
-// CRM at all, silently, for everyone. There is exactly one today and it is
-// the opt-out.
+// The activity push at the bottom of the inbound handler is the ONLY thing that
+// creates a CRM lead for a first-time message — organic or paid. So an early
+// return added between the contact upsert and that push would stop new leads
+// reaching the CRM at all, silently, for everyone.
 describe("a first-time message still reaches the thing that creates the lead", () => {
-  const handoffAt = () => src.indexOf("const dripReply = await handleLeadResponse(");
-  const pushAt = () => src.indexOf("pushWaActivity({ phone: from, direction: \"inbound\"");
+  const upsert = () => src.indexOf('await upsertContacts([{ phone: from, name: profileName }], "inbound"');
+  const pushAt = () => src.indexOf('pushWaActivity({ phone: from, direction: "inbound"');
 
   it("found the landmarks — the control", () => {
-    expect(handoffAt()).toBeGreaterThan(0);
-    expect(pushAt()).toBeGreaterThan(handoffAt());
+    expect(upsert()).toBeGreaterThan(0);
+    expect(pushAt()).toBeGreaterThan(upsert());
   });
 
-  it("has exactly one early return between the handoff and the CRM push", () => {
-    const between = src.slice(handoffAt(), pushAt());
-    const returns = [...between.matchAll(/^\s*return;/gm)];
-    expect(returns).toHaveLength(1);
-  });
-
-  it("and that one return is the opt-out", () => {
-    const between = src.slice(handoffAt(), pushAt());
-    const upto = between.slice(0, between.search(/^\s*return;/m));
-    expect(upto).toContain("dripReply.optedOut");
+  it("has no early return between the contact upsert and the CRM push", () => {
+    const between = src.slice(upsert(), pushAt());
+    expect([...between.matchAll(/^\s*return;/gm)]).toHaveLength(0);
   });
 });

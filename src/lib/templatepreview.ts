@@ -1,7 +1,7 @@
 // Showing an operator what the lead will actually receive.
 //
 // A sequence step stores a template NAME and a list of params. The preview
-// used to show exactly that — "📄 rnr_03_about_us, approved template
+// used to show exactly that — "📄 intro_offer, approved template
 // message" — which is the one part of the message the lead never sees.
 // Whether the copy is right, whether the buttons are the ones the router
 // knows, whether a variable landed in the wrong blank: none of it was

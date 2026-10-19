@@ -24,7 +24,6 @@ const h = vi.hoisted(() => ({
   touched: [] as string[],
   receipts: [] as string[],
   flagged: [] as string[],
-  activity: [] as string[],
   contactLookups: 0,
 }));
 
@@ -93,10 +92,7 @@ vi.mock("../channels", () => ({ getChannel: async () => ({ id: "ch1", token: "t"
 // A drip send is recorded in its own CRM field now, not on the WhatsApp
 // activity timeline. The pure helpers stay real so the line format is the
 // one production writes.
-vi.mock("../driplog", async (orig) => ({
-  ...(await orig<typeof import("../driplog")>()),
-  recordDripEvent: async (_phone: string, line: string) => { h.activity.push(line); return true; },
-}));
+
 vi.mock("../leadsquared", () => ({ pushWaActivity: () => { throw new Error("drip traffic must not reach the WhatsApp timeline"); } }));
 vi.mock("../lanes", () => ({
   leadLane: async () => "sales", laneAllows: () => true,
@@ -123,7 +119,7 @@ beforeEach(() => {
   h.seq = { ...SEQ };
   h.steps = [step(0), step(1)];
   h.due = [{ id: "e1", sequence_id: "s1", phone: "919000000001", platform: "whatsapp", current_step: 0, status: "active", next_run_at: "2026-09-30T05:00:00Z", updated_at: "2026-09-30T04:00:00Z", conversation_id: "c1" }];
-  h.updates = []; h.sent = []; h.logged = []; h.flagged = []; h.activity = []; h.contactLookups = 0; h.touched = []; h.receipts = [];
+  h.updates = []; h.sent = []; h.logged = []; h.flagged = []; h.contactLookups = 0; h.touched = []; h.receipts = [];
   h.sendResult = { id: "wamid.1" };
   h.contact = { attributes: {}, tags: [] };
   h.sentToday = 0;
@@ -161,7 +157,6 @@ describe("a step that is not for this lead", () => {
 
     await drainSequences();
 
-    expect(h.activity).toHaveLength(0);
     expect(h.logged).toHaveLength(0);
   });
 
@@ -245,10 +240,6 @@ describe("what we sent is visible where the counsellor looks", () => {
     expect(h.logged).toHaveLength(1);
     expect(h.logged[0].source).toBe("bot");
     expect(h.logged[0].body).toContain("rnr_r0");
-    // The fixture's name is "rnr_r0"; humaniseTemplate strips the real
-    // "rnr_NN_" prefix, which this one does not have. Its behaviour on the
-    // actual template names is pinned in driplog.test.ts.
-    expect(h.activity[0]).toMatch(/→ rnr r0$/);
     // And the receipt Meta's delivery callback matches on — previously
     // never exercised here, because the mock had no such export.
     expect(h.receipts).toEqual(["wamid.1"]);
@@ -295,28 +286,18 @@ describe("a number that is not on WhatsApp", () => {
 describe("the blanks are filled for THIS lead", () => {
   it("resolves {token} params from the contact", () => {
     // A literal here would greet four thousand people by the same name.
-    h.steps = [step(0, null, ["{first_name}", "{course}"])];
-    h.contact = { name: "rahul sharma", attributes: { course: "Data Science" }, tags: [] };
+    h.steps = [step(0, null, ["{first_name}", "{plan}"])];
+    h.contact = { name: "rahul sharma", attributes: { Plan: "Premium" }, tags: [] };
     return drainSequences().then(() => {
-      // "Data Science with GenAI" is the course's name since the 14 Oct
-      // rename; the old spelling on the contact still resolves to it.
-      expect(h.sent[0].params).toEqual(["Rahul", "Data Science with GenAI"]);
+      // first_name is derived and capitalised; {plan} is the contact's own
+      // attribute, read case-insensitively because CRM exports disagree.
+      expect(h.sent[0].params).toEqual(["Rahul", "Premium"]);
     });
-  });
-
-  it("derives the values that are not stored on the lead at all", async () => {
-    // role_1, role_2 and min_ctc come from a table keyed on the course.
-    h.steps = [step(0, null, ["{role_1}", "{min_ctc}"])];
-    h.contact = { name: "Rahul", attributes: { course: "Data Science" }, tags: [] };
-
-    await drainSequences();
-
-    expect(h.sent[0].params).toEqual(["Data Scientist", "₹6 lakh"]);
   });
 
   it("does NOT send when a token resolves to nothing", async () => {
     // Meta rejects an empty parameter with #132000, and the times it does
-    // not, the lead reads "Hi , greetings from AnalytixLabs".
+    // not, the lead reads "Hi , welcome to Acme".
     h.steps = [step(0, null, ["{first_name}"])];
     h.contact = { name: "", attributes: {}, tags: [] };
 

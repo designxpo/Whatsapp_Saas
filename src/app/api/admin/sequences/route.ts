@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       // setSequenceSteps deletes and re-inserts, so a step arriving without
       // an audience is a step that goes to EVERYONE from now on. A client
       // that predates 0103 — a browser tab left open across the deploy —
-      // sends exactly that, and the three restricted RNR steps would quietly
+      // sends exactly that, and the restricted steps would quietly
       // start sending an unverified salary claim to the whole enrolment.
       //
       // `"audience" in step` tells an OMITTED key apart from an explicit

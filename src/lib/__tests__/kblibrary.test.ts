@@ -40,7 +40,7 @@ describe("the spine", () => {
 
   it("covers what leads actually ask about", () => {
     const slugs = KB_AREAS.map(a => a.slug);
-    for (const needed of ["courses", "fees", "centres", "admissions", "placements"]) {
+    for (const needed of ["products", "pricing", "locations", "booking", "outcomes"]) {
       expect(slugs, `no area for ${needed}`).toContain(needed);
     }
   });
@@ -50,9 +50,9 @@ describe("the spine", () => {
   });
 
   it("looks an area up by slug, and refuses an unknown one", () => {
-    expect(areaBySlug("fees")?.title).toBeTruthy();
+    expect(areaBySlug("pricing")?.title).toBeTruthy();
     expect(areaBySlug("not-an-area")).toBeNull();
-    expect(areaBySlug("FEES")?.slug).toBe("fees");     // case is not a new area
+    expect(areaBySlug("PRICING")?.slug).toBe("pricing");     // case is not a new area
   });
 
   it("lists areas for a picker, in a stable order", () => {
@@ -64,23 +64,23 @@ describe("filing an uploaded concept", () => {
   const file = (text: string) => classifyByKeywords(text);
 
   it("files fees talk under fees", () => {
-    expect(file("The course fee is 85,000 INR and EMI options are available.").area).toBe("fees");
+    expect(file("The course fee is 85,000 INR and EMI options are available.").area).toBe("pricing");
   });
 
-  it("files a centre question under centres", () => {
-    expect(file("Our Noida centre runs weekend classroom batches near Sector 2.").area).toBe("centres");
+  it("files a location question under locations", () => {
+    expect(file("Our main branch address is on Station Road, open on weekends, near the metro.").area).toBe("locations");
   });
 
-  it("files placement claims under placements", () => {
-    expect(file("90%+ placement record, with dedicated placement support and partner companies.").area).toBe("placements");
+  it("files result claims under outcomes", () => {
+    expect(file("Customer results speak for themselves: a 90% satisfaction rating, guaranteed outcomes and many testimonials.").area).toBe("outcomes");
   });
 
-  it("files eligibility and batch dates under admissions", () => {
-    expect(file("Eligibility: any graduate. The next batch starts on 2 November; apply online.").area).toBe("admissions");
+  it("files eligibility and booking under booking", () => {
+    expect(file("Eligibility: any adult. The next slot starts on 2 November; book online.").area).toBe("booking");
   });
 
-  it("files a course description under courses", () => {
-    expect(file("The Data Analytics programme covers SQL, Python and Power BI across its syllabus modules.").area).toBe("courses");
+  it("files a product description under products", () => {
+    expect(file("The Premium plan includes three services, with options and variants listed in the product catalogue.").area).toBe("products");
   });
 
   it("refuses to guess when nothing matches", () => {
@@ -93,14 +93,14 @@ describe("filing an uploaded concept", () => {
 
   it("refuses to guess when two areas tie", () => {
     // Equal evidence for two areas is not a 50/50 bet worth taking silently.
-    const r = file("fee fee placement placement");
+    const r = file("fee fee support support");
     expect(r.area).toBeNull();
   });
 
   it("reports a confidence a caller can threshold on", () => {
-    const strong = file("Fees, EMI, instalments, payment plan, scholarship and refund of the course fee.");
+    const strong = file("Fees, EMI, instalments, payment plan, discount and refund of the product price.");
     expect(strong.confidence).toBeGreaterThan(0);
-    expect(strong.area).toBe("fees");
+    expect(strong.area).toBe("pricing");
   });
 });
 
@@ -141,16 +141,16 @@ describe("comparing the facts two concepts state", () => {
 });
 
 describe("reconcile — what an upload is allowed to do to a live answer", () => {
-  const existing = concept({ path: "fees/tuition.md", body: "The fee is ₹85,000 for 6 months.", tags: ["website"] });
+  const existing = concept({ path: "pricing/tuition.md", body: "The fee is ₹85,000 for 6 months.", tags: ["website"] });
 
   it("publishes a concept on a subject nothing covers yet", () => {
-    const r = reconcile(concept({ path: "fees/new.md", body: "Scholarships are available." }), []);
+    const r = reconcile(concept({ path: "pricing/new.md", body: "Scholarships are available." }), []);
     expect(r.action).toBe("publish");
     expect(r.concept.status).toBe("active");
   });
 
   it("merges a restatement that agrees, keeping one canonical concept", () => {
-    const incoming = concept({ path: "fees/tuition.md", body: "Fee: Rs 85,000. Duration 6 months.", tags: ["brochure"], source: "Brochure" });
+    const incoming = concept({ path: "pricing/tuition.md", body: "Fee: Rs 85,000. Duration 6 months.", tags: ["brochure"], source: "Brochure" });
     const r = reconcile(incoming, [existing]);
     expect(r.action).toBe("merge");
     expect(r.concept.status).toBe("active");
@@ -159,13 +159,13 @@ describe("reconcile — what an upload is allowed to do to a live answer", () =>
   it("unions the tags on a merge, so no channel loses access", () => {
     // wa_channels.kb_tag filters on tags. Dropping one would silently cut a
     // number off from knowledge it can reach today.
-    const incoming = concept({ path: "fees/tuition.md", body: "Fee: Rs 85,000.", tags: ["brochure"] });
+    const incoming = concept({ path: "pricing/tuition.md", body: "Fee: Rs 85,000.", tags: ["brochure"] });
     const r = reconcile(incoming, [existing]);
     expect(r.concept.tags.sort()).toEqual(["brochure", "website"]);
   });
 
   it("records every source a merged concept came from", () => {
-    const incoming = concept({ path: "fees/tuition.md", body: "Fee: Rs 85,000.", source: "Brochure" });
+    const incoming = concept({ path: "pricing/tuition.md", body: "Fee: Rs 85,000.", source: "Brochure" });
     const r = reconcile(incoming, [concept({ ...existing, source: "Website export" })]);
     expect(r.concept.sources.sort()).toEqual(["Brochure", "Website export"]);
   });
@@ -175,7 +175,7 @@ describe("reconcile — what an upload is allowed to do to a live answer", () =>
     // change what the bot tells a lead. Where the two sources rank the same,
     // no ranking can settle it and a person decides.
     const sameRank = concept({ ...existing, tags: [], source: "Brochure", sources: ["Brochure"] });
-    const incoming = concept({ path: "fees/tuition.md", body: "The fee is ₹90,000 for 6 months.", source: "Brochure" });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The fee is ₹90,000 for 6 months.", source: "Brochure" });
     const r = reconcile(incoming, [sameRank]);
     expect(r.action).toBe("quarantine");
     expect(r.concept.status).toBe("pending");
@@ -184,21 +184,21 @@ describe("reconcile — what an upload is allowed to do to a live answer", () =>
   it("never lets a contradiction go live on a lower-ranked source", () => {
     // existing is website-tagged; the incoming brochure is outranked, so the
     // published answer stands and the newcomer is filed away, not queued.
-    const incoming = concept({ path: "fees/tuition.md", body: "The fee is ₹90,000 for 6 months.", source: "Brochure" });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The fee is ₹90,000 for 6 months.", source: "Brochure" });
     const r = reconcile(incoming, [existing]);
     expect(r.concept.status).not.toBe("active");
     expect(r.supersede).toEqual([]);
   });
 
   it("leaves the live answer live while the conflict waits", () => {
-    const incoming = concept({ path: "fees/tuition.md", body: "The fee is ₹90,000." });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The fee is ₹90,000." });
     const r = reconcile(incoming, [existing]);
     expect(r.supersede).toEqual([]);                 // nothing is retired on a conflict
     expect(existing.status).toBe("active");          // untouched
   });
 
   it("explains the conflict in terms a person can act on", () => {
-    const incoming = concept({ path: "fees/tuition.md", body: "The fee is ₹90,000." });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The fee is ₹90,000." });
     const r = reconcile(incoming, [existing]);
     expect(r.reason).toMatch(/85000/);
     expect(r.reason).toMatch(/90000/);
@@ -211,7 +211,7 @@ describe("reconcile — what an upload is allowed to do to a live answer", () =>
   });
 
   it("never returns a pending concept as indexable", () => {
-    const incoming = concept({ path: "fees/tuition.md", body: "The fee is ₹90,000." });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The fee is ₹90,000." });
     expect(reconcile(incoming, [existing]).concept.status).not.toBe("active");
   });
 });
@@ -235,17 +235,17 @@ describe("which source wins when two disagree", () => {
   });
 
   it("publishes a better-sourced contradiction and retires the old answer", () => {
-    const livePrice = concept({ path: "fees/tuition.md", body: "The programme fee is ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"] });
-    const incoming = concept({ path: "fees/tuition.md", body: "The programme fee is ₹87,320 for 6 months.", source: "knowledge-base-export-website.md" });
+    const livePrice = concept({ path: "pricing/tuition.md", body: "The programme fee is ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"] });
+    const incoming = concept({ path: "pricing/tuition.md", body: "The programme fee is ₹87,320 for 6 months.", source: "knowledge-base-export-website.md" });
     const r = reconcile(incoming, [livePrice]);
     expect(r.action).toBe("publish");
-    expect(r.supersede).toEqual(["fees/tuition.md"]);
+    expect(r.supersede).toEqual(["pricing/tuition.md"]);
     expect(r.reason).toMatch(/website/i);
   });
 
   it("refuses a worse-sourced contradiction outright, leaving the live answer alone", () => {
-    const liveWeb = concept({ path: "fees/tuition.md", body: "The programme fee is ₹87,320 for 6 months.", source: "knowledge-base-export-website.md", sources: ["knowledge-base-export-website.md"] });
-    const stale = concept({ path: "fees/tuition.md", body: "The programme fee is ₹85,000 for 6 months.", source: "Brochure" });
+    const liveWeb = concept({ path: "pricing/tuition.md", body: "The programme fee is ₹87,320 for 6 months.", source: "knowledge-base-export-website.md", sources: ["knowledge-base-export-website.md"] });
+    const stale = concept({ path: "pricing/tuition.md", body: "The programme fee is ₹85,000 for 6 months.", source: "Brochure" });
     const r = reconcile(stale, [liveWeb]);
     expect(r.action).toBe("supersede-incoming");
     expect(r.supersede).toEqual([]);
@@ -255,14 +255,14 @@ describe("which source wins when two disagree", () => {
   it("still asks a person when two EQUAL sources disagree", () => {
     // Precedence can only settle a conflict between different sources. Two
     // brochures disagreeing is a question about the content, not the ranking.
-    const live = concept({ path: "fees/tuition.md", body: "Fee ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"] });
-    const other = concept({ path: "fees/tuition.md", body: "Fee ₹90,000 for 6 months.", source: "Brochure" });
+    const live = concept({ path: "pricing/tuition.md", body: "Fee ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"] });
+    const other = concept({ path: "pricing/tuition.md", body: "Fee ₹90,000 for 6 months.", source: "Brochure" });
     expect(reconcile(other, [live]).action).toBe("quarantine");
   });
 
   it("does not let precedence override agreement — a restatement still merges", () => {
-    const live = concept({ path: "fees/tuition.md", body: "Fee ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"], tags: ["brochure"] });
-    const web = concept({ path: "fees/tuition.md", body: "The fee is Rs 85,000, over 6 months.", source: "knowledge-base-export-website.md", tags: ["website"] });
+    const live = concept({ path: "pricing/tuition.md", body: "Fee ₹85,000 for 6 months.", source: "Brochure", sources: ["Brochure"], tags: ["brochure"] });
+    const web = concept({ path: "pricing/tuition.md", body: "The fee is Rs 85,000, over 6 months.", source: "knowledge-base-export-website.md", tags: ["website"] });
     const r = reconcile(web, [live]);
     expect(r.action).toBe("merge");
     expect(r.concept.tags.sort()).toEqual(["brochure", "website"]);
@@ -274,25 +274,25 @@ describe("a keyword is a word, not a run of letters", () => {
   // filed with FULL confidence, which is the worst combination: wrong and
   // certain. "fee" sits inside "coffee"; "emi" sits inside "academic".
   it("does not find a fee inside coffee", () => {
-    expect(classifyByKeywords("We serve free coffee in the lounge.").area).not.toBe("fees");
+    expect(classifyByKeywords("We serve free coffee in the lounge.").area).not.toBe("pricing");
   });
 
   it("does not find EMI inside academic", () => {
-    expect(classifyByKeywords("Our academic standards are high.").area).not.toBe("fees");
+    expect(classifyByKeywords("Our academic standards are high.").area).not.toBe("pricing");
   });
 
   it("does not find a job inside jobbing or a role inside enrolled", () => {
-    expect(classifyByKeywords("The student enrolled last week.").area).not.toBe("placements");
+    expect(classifyByKeywords("The student enrolled last week.").area).not.toBe("outcomes");
   });
 
   it("still matches the words it is meant to", () => {
-    expect(classifyByKeywords("The course fee is ₹85,000 with EMI available.").area).toBe("fees");
-    expect(classifyByKeywords("Our Noida centre has a classroom at that address.").area).toBe("centres");
+    expect(classifyByKeywords("The course fee is ₹85,000 with EMI available.").area).toBe("pricing");
+    expect(classifyByKeywords("Our Noida centre has a classroom at that address.").area).toBe("locations");
   });
 
   it("still matches an inflection of a longer stem", () => {
     // "eligib" has to reach "eligibility" without every form being listed.
-    expect(classifyByKeywords("Eligibility: any graduate may apply for admission to the batch.").area).toBe("admissions");
+    expect(classifyByKeywords("Eligibility: any graduate may apply for admission to the batch.").area).toBe("booking");
     expect(classifyByKeywords("We are accredited and our accreditation is current since 2011.").area).toBe("company");
   });
 });
@@ -304,45 +304,45 @@ describe("finding the concept an upload is really about", () => {
   // never met, so the nine-way restatement problem went undetected and the
   // conflict check had almost nothing to check.
   const existing = [
-    concept({ path: "fees/course-investment.md", title: "Course Investment", body: "| Program | Classroom |\n|---|---|\n| **Analytics Edge** | INR 41,300/- |" }),
-    concept({ path: "centres/noida.md", title: "Noida centre", body: "Our Noida centre is in Sector 2." }),
+    concept({ path: "pricing/course-investment.md", title: "Course Investment", body: "| Program | Classroom |\n|---|---|\n| **Analytics Edge** | INR 41,300/- |" }),
+    concept({ path: "locations/noida.md", title: "Noida centre", body: "Our Noida centre is in Sector 2." }),
   ];
 
   it("still matches an identical path", () => {
-    const same = concept({ path: "centres/noida.md", title: "Noida centre", body: "Sector 2, Noida." });
-    expect(relatedConcept(same, existing)?.path).toBe("centres/noida.md");
+    const same = concept({ path: "locations/noida.md", title: "Noida centre", body: "Sector 2, Noida." });
+    expect(relatedConcept(same, existing)?.path).toBe("locations/noida.md");
   });
 
   it("matches a different heading that prices the same programme", () => {
-    const fees = concept({ path: "fees/fees.md", title: "Fees", body: "| Program | Classroom |\n|---|---|\n| **Analytics Edge** | INR 41,300/- |" });
-    expect(relatedConcept(fees, existing)?.path).toBe("fees/course-investment.md");
+    const fees = concept({ path: "pricing/fees.md", title: "Fees", body: "| Program | Classroom |\n|---|---|\n| **Analytics Edge** | INR 41,300/- |" });
+    expect(relatedConcept(fees, existing)?.path).toBe("pricing/course-investment.md");
   });
 
   it("matches a near-identical title in the same area", () => {
-    const near = concept({ path: "centres/our-noida-centre.md", title: "Our Noida Centre", body: "Sector 2." });
-    expect(relatedConcept(near, existing)?.path).toBe("centres/noida.md");
+    const near = concept({ path: "locations/our-noida-centre.md", title: "Our Noida Centre", body: "Sector 2." });
+    expect(relatedConcept(near, existing)?.path).toBe("locations/noida.md");
   });
 
   it("does not match across areas on a coincidental title", () => {
-    const other = concept({ path: "courses/noida.md", title: "Noida centre", body: "x" });
+    const other = concept({ path: "products/noida.md", title: "Noida centre", body: "x" });
     expect(relatedConcept(other, existing)).toBeNull();
   });
 
   it("does not match two concepts that merely share a word", () => {
-    const unrelated = concept({ path: "centres/centre-timings.md", title: "Centre timings", body: "Classes run 10 to 6." });
+    const unrelated = concept({ path: "locations/centre-timings.md", title: "Centre timings", body: "Classes run 10 to 6." });
     expect(relatedConcept(unrelated, existing)).toBeNull();
   });
 
   it("only considers published concepts", () => {
     const pending = [concept({ ...existing[1], status: "pending" })];
-    expect(relatedConcept(concept({ path: "centres/noida.md", title: "Noida centre", body: "x" }), pending)).toBeNull();
+    expect(relatedConcept(concept({ path: "locations/noida.md", title: "Noida centre", body: "x" }), pending)).toBeNull();
   });
 
   it("lets reconcile catch a contradiction under a different heading", () => {
     // The payoff: the brochure saying 38,000 under "Fees" now meets the
     // website saying 41,300 under "Course Investment".
     const cheaper = concept({
-      path: "fees/fees.md", title: "Fees", source: "Brochure",
+      path: "pricing/fees.md", title: "Fees", source: "Brochure",
       body: "| Program | Classroom |\n|---|---|\n| **Analytics Edge** | INR 38,000/- |",
     });
     const live = [concept({ ...existing[0], source: "Brochure", sources: ["Brochure"] })];
@@ -383,22 +383,22 @@ describe("what must never be treated as the same subject", () => {
   // and merging them would have filed one course's fees and syllabus under
   // the other's name. Worse than never matching.
   const live = [
-    concept({ path: "courses/advanced-certification-in-data-science-and-genai.md", title: "Advanced Certification in Data Science & GenAI", body: "Syllabus A." }),
-    concept({ path: "courses/knowledge-base-master-pdf-part-1-of-24.md", title: "KNOWLEDGE_BASE_MASTER.pdf (part 1 of 24)", body: "Fragment one." }),
+    concept({ path: "products/advanced-certification-in-data-science-and-genai.md", title: "Advanced Certification in Data Science & GenAI", body: "Syllabus A." }),
+    concept({ path: "products/knowledge-base-master-pdf-part-1-of-24.md", title: "KNOWLEDGE_BASE_MASTER.pdf (part 1 of 24)", body: "Fragment one." }),
   ];
 
   it("keeps two different certifications apart", () => {
-    const other = concept({ path: "courses/advanced-certification-in-data-analytics-and-ai.md", title: "Advanced Certification in Data Analytics & AI", body: "Syllabus B." });
+    const other = concept({ path: "products/advanced-certification-in-data-analytics-and-ai.md", title: "Advanced Certification in Data Analytics & AI", body: "Syllabus B." });
     expect(relatedConcept(other, live)).toBeNull();
   });
 
   it("keeps the Executive certification apart from the Advanced one", () => {
-    const exec = concept({ path: "courses/executive-certification.md", title: "Executive Certification in Data Science with AI Specialization", body: "Syllabus C." });
+    const exec = concept({ path: "products/executive-certification.md", title: "Executive Certification in Data Science with AI Specialization", body: "Syllabus C." });
     expect(relatedConcept(exec, live)).toBeNull();
   });
 
   it("never folds a numbered split back into its first fragment", () => {
-    const part = concept({ path: "courses/knowledge-base-master-pdf-part-2-of-24.md", title: "KNOWLEDGE_BASE_MASTER.pdf (part 2 of 24)", body: "Fragment two." });
+    const part = concept({ path: "products/knowledge-base-master-pdf-part-2-of-24.md", title: "KNOWLEDGE_BASE_MASTER.pdf (part 2 of 24)", body: "Fragment two." });
     expect(relatedConcept(part, live)).toBeNull();
   });
 
@@ -411,8 +411,8 @@ describe("what must never be treated as the same subject", () => {
   it("refuses to match on boilerplate alone", () => {
     // "Course details" against "Course information" is two generic headings,
     // not one subject.
-    const a = concept({ path: "courses/course-details.md", title: "Course details", body: "x" });
-    const b = [concept({ path: "courses/course-information.md", title: "Course information", body: "y" })];
+    const a = concept({ path: "products/course-details.md", title: "Course details", body: "x" });
+    const b = [concept({ path: "products/course-information.md", title: "Course information", body: "y" })];
     expect(relatedConcept(a, b)).toBeNull();
   });
 });

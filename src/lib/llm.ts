@@ -735,7 +735,7 @@ export async function composeFollowup(
   const convText = transcript.map(m => `${m.role === "user" ? "Customer" : "Us"}: ${m.body.trim()}`).join("\n");
   // The customer's real name comes ONLY from the stored record — this composer
   // gets no "remembered profile" block (unlike generateReply), so left to itself
-  // it improvises a name off the transcript and shortens it ("Priyesh" → "Pri").
+  // it improvises a name off the transcript and shortens it ("Priyanka" → "Pri").
   // Give it the exact name and forbid nicknaming; if we have no usable name (empty,
   // a placeholder, or phone-like), tell it to address no one by name at all.
   const nm = (opts.customerName ?? "").trim();

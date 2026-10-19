@@ -12,15 +12,14 @@
 //
 // reconcile() compares two concepts when they land on the same path, and paths
 // come from headings. The two documents that disagree almost never share a
-// heading — "Fees" and "Course Investment" never collide — so a path-based
-// check reports nothing while the numbers differ. Over the real corpus only 8
-// of 1,515 concepts collided at all.
+// heading — "Fees" and "Plan Investment" never collide — so a path-based
+// check reports nothing while the numbers differ.
 //
-// So the comparison is between FACTS: a programme's price in a named column, a
+// So the comparison is between FACTS: an item's price in a named column, a
 // duration, a placement rate. Those are comparable wherever they were written.
 import { parseTables, tableFacts } from "./okffacts";
 import { sourceRank } from "./kblibrary";
-import { normCourse } from "./leadtokens";
+import { normLabel } from "./leadtokens";
 
 export interface MismatchInput {
   path: string;
@@ -39,7 +38,7 @@ export interface Claim {
 }
 
 export interface Mismatch {
-  /** The thing being described — a programme, or an area for scalar facts. */
+  /** The thing being described — an item, or an area for scalar facts. */
   subject: string;
   /** Which number about it: a fee column, duration_months, placement_pct. */
   field: string;
@@ -51,32 +50,23 @@ export interface Mismatch {
 }
 
 /**
- * One key per programme, however it is spelled.
+ * One key per item, however it is spelled.
  *
- * "Adv. Cert. in Data Analytics & AI" and "Advanced Certification in Data
- * Analytics & AI" are the same course. Split apart, a real conflict between
+ * "Data Analytics & AI Program" and "Data Analytics & AI Programme" are the same
+ * course. Split apart, a real conflict between
  * them reads as two separate facts that each agree with themselves.
  *
- * leadtokens already holds the CRM's spellings, so a known programme collapses
- * to its display name; anything else falls back to a normalised string, which
- * at least makes punctuation and case irrelevant.
+ * Every name is reduced to a normalised string, which makes punctuation and case
+ * irrelevant.
  */
 function subjectKey(name: string): string {
-  // Normalise FIRST and take one path only. An earlier version tried
-  // programmeFor() before falling back to a normalised string, and the two
-  // spellings took different branches — one resolved to "Data Analytics" and
-  // the other to "data analytics and ai", so the conflict between them
-  // disappeared into two separate subjects that each agreed with themselves.
-  const n = normCourse(name)
-    // The qualifier varies between documents and carries no meaning here.
-    .replace(/^(adv|advanced)\s+(cert|certification)\s+(in\s+)?/, "")
-    .replace(/^(exec|executive)\s+(cert|certification)\s+(in\s+)?/, "exec ")
+  // Normalise and take ONE path only: two spellings of the same name must reach the
+  // same key, or the conflict between them disappears into two separate subjects
+  // that each agree with themselves.
+  const n = normLabel(name)
+    // A trailing "program"/"programme" varies between documents and carries no meaning here.
     .replace(/\s+(training\s+)?program(me)?$/, "")
     .trim();
-  // Deliberately NOT routed through programmeFor: it recognises some spellings
-  // and not others, so any branch on it reintroduces exactly the split this
-  // function exists to close. One rule for every name, even if the result is
-  // less pretty than the CRM's own label.
   return n || name.trim();
 }
 
@@ -92,7 +82,7 @@ function claimsFrom(inputs: MismatchInput[]): Map<string, Claim[]> {
 
   for (const c of inputs) {
     for (const t of parseTables(c.body)) {
-      // A table that names programmes prices itself. One that names delivery
+      // A table that names items prices itself. One that names delivery
       // modes needs the course from outside, and the concept's own title is
       // where it lives — that is how the brochure's fees get cross-checked at
       // all. tableFacts yields nothing when neither is available, so a price
@@ -110,12 +100,12 @@ function claimsFrom(inputs: MismatchInput[]): Map<string, Claim[]> {
     //
     // Duration and course fees are deliberately NOT compared this way. They
     // belong to a course, and an area holds many courses — comparing every
-    // duration in "courses" reports 6 against 15 against 8 as a conflict when
-    // it is simply three different programmes.
+    // duration in "plans" reports 6 against 15 against 8 as a conflict when
+    // it is simply three different items.
     const placement = c.body.match(/(\d{1,3})\s*%\s*\+?\s*(?:placement|placed)/i);
-    if (placement) add("AnalytixLabs", "placement_pct", placement[1], c);
+    if (placement) add("the business", "placement_pct", placement[1], c);
     const refund = c.body.match(/(\d{1,3})\s*%\s*(?:fee\s*)?refund/i);
-    if (refund) add("AnalytixLabs", "refund_pct", refund[1], c);
+    if (refund) add("the business", "refund_pct", refund[1], c);
   }
 
   return out;

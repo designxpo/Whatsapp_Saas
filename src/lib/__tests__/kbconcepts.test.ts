@@ -72,7 +72,7 @@ vi.mock("../supabase", () => ({
 vi.mock("../errors", () => ({ errorMessage: (e: unknown) => String(e) }));
 
 const live = (over: Row = {}): Row => ({
-  id: `live${h.seq++}`, path: "fees/tuition-and-emi.md", area: "fees", type: "policy",
+  id: `live${h.seq++}`, path: "pricing/tuition-and-emi.md", area: "pricing", type: "policy",
   title: "Tuition & EMI", body: "The fee is ₹85,000 for 6 months.", tags: ["website"],
   sources: ["Website export"], status: "active", extra: {}, ...over,
 });
@@ -89,7 +89,7 @@ describe("filing an upload into the library", () => {
     expect(r.published).toBe(1);
     expect(r.quarantined).toBe(0);
     expect(h.rows[0].status).toBe("active");
-    expect(h.rows[0].area).toBe("fees");
+    expect(h.rows[0].area).toBe("pricing");
   });
 
   it("files into the fixed spine, never into an area named after the upload", async () => {
@@ -100,8 +100,8 @@ describe("filing an upload into the library", () => {
       { id: "d1", title: "Some Random Export.pdf", tag: "random" },
       "## Our Noida centre\n\nClassroom batches run at the Noida centre address in Sector 2.",
     );
-    expect(h.rows[0].area).toBe("centres");
-    expect(String(h.rows[0].path)).toMatch(/^centres\//);
+    expect(h.rows[0].area).toBe("locations");
+    expect(String(h.rows[0].path)).toMatch(/^locations\//);
   });
 
   it("carries the upload's tag through, so channel scoping survives", async () => {
@@ -209,7 +209,7 @@ describe("resolving a conflict", () => {
   it("approving a pending concept retires the one it replaces", async () => {
     const existing = live();
     h.rows.push(existing);
-    h.rows.push(live({ id: "pend1", path: "fees/tuition-and-emi.md", body: "The fee is ₹90,000.", status: "pending" }));
+    h.rows.push(live({ id: "pend1", path: "pricing/tuition-and-emi.md", body: "The fee is ₹90,000.", status: "pending" }));
     const { approveConcept } = await import("../kbconcepts");
     await approveConcept("pend1");
     expect(h.rows.find(r => r.id === "pend1")!.status).toBe("active");
@@ -218,17 +218,17 @@ describe("resolving a conflict", () => {
 
   it("never leaves two concepts live at one path", async () => {
     h.rows.push(live());
-    h.rows.push(live({ id: "pend1", path: "fees/tuition-and-emi.md", body: "₹90,000.", status: "pending" }));
+    h.rows.push(live({ id: "pend1", path: "pricing/tuition-and-emi.md", body: "₹90,000.", status: "pending" }));
     const { approveConcept, listActiveConcepts } = await import("../kbconcepts");
     await approveConcept("pend1");
     const actives = await listActiveConcepts();
-    expect(actives.filter(c => c.path === "fees/tuition-and-emi.md")).toHaveLength(1);
+    expect(actives.filter(c => c.path === "pricing/tuition-and-emi.md")).toHaveLength(1);
   });
 
   it("rejecting leaves the live answer untouched", async () => {
     const existing = live();
     h.rows.push(existing);
-    h.rows.push(live({ id: "pend1", path: "fees/tuition-and-emi.md", body: "₹90,000.", status: "pending" }));
+    h.rows.push(live({ id: "pend1", path: "pricing/tuition-and-emi.md", body: "₹90,000.", status: "pending" }));
     const { rejectConcept } = await import("../kbconcepts");
     await rejectConcept("pend1");
     expect(h.rows.find(r => r.id === "pend1")!.status).toBe("superseded");
@@ -250,21 +250,21 @@ describe("what the review screen needs", () => {
   });
 
   it("shows a pending concept with no rival as a plain new entry", async () => {
-    h.rows.push(live({ id: "pendB", path: "fees/brand-new.md", status: "pending", review_note: "could not be filed" }));
+    h.rows.push(live({ id: "pendB", path: "pricing/brand-new.md", status: "pending", review_note: "could not be filed" }));
     const { listReviewItems } = await import("../kbconcepts");
     const items = await listReviewItems();
     expect(items[0].live).toBeNull();
   });
 
   it("counts the library by area, so the browser can show sizes", async () => {
-    h.rows.push(live({ id: "a", area: "fees", path: "fees/a.md" }));
-    h.rows.push(live({ id: "b", area: "fees", path: "fees/b.md" }));
-    h.rows.push(live({ id: "c", area: "centres", path: "centres/c.md" }));
-    h.rows.push(live({ id: "d", area: "fees", path: "fees/d.md", status: "pending" }));
+    h.rows.push(live({ id: "a", area: "pricing", path: "pricing/a.md" }));
+    h.rows.push(live({ id: "b", area: "pricing", path: "pricing/b.md" }));
+    h.rows.push(live({ id: "c", area: "locations", path: "locations/c.md" }));
+    h.rows.push(live({ id: "d", area: "pricing", path: "pricing/d.md", status: "pending" }));
     const { conceptAreaSummary } = await import("../kbconcepts");
     const s = await conceptAreaSummary();
-    expect(s.find(x => x.area === "fees")).toMatchObject({ active: 2, pending: 1 });
-    expect(s.find(x => x.area === "centres")).toMatchObject({ active: 1, pending: 0 });
+    expect(s.find(x => x.area === "pricing")).toMatchObject({ active: 2, pending: 1 });
+    expect(s.find(x => x.area === "locations")).toMatchObject({ active: 1, pending: 0 });
   });
 });
 
@@ -299,10 +299,10 @@ describe("editing a concept in the portal", () => {
   });
 
   it("re-addresses the concept when it moves area, so path still means subject", async () => {
-    h.rows.push(live({ id: "e1", path: "fees/tuition-and-emi.md", area: "fees" }));
+    h.rows.push(live({ id: "e1", path: "pricing/tuition-and-emi.md", area: "pricing" }));
     const { updateConcept } = await import("../kbconcepts");
-    const out = await updateConcept("e1", { area: "admissions" });
-    expect(out?.path).toBe("admissions/tuition-and-emi.md");
+    const out = await updateConcept("e1", { area: "booking" });
+    expect(out?.path).toBe("booking/tuition-and-emi.md");
   });
 });
 
@@ -311,7 +311,7 @@ describe("converting an already-uploaded document", () => {
     const { convertDocumentToLibrary } = await import("../kbconcepts");
     const r = await convertDocumentToLibrary("d1");
     expect(r.published).toBeGreaterThan(0);
-    expect(h.rows.some(x => x.area === "fees")).toBe(true);
+    expect(h.rows.some(x => x.area === "pricing")).toBe(true);
   });
 
   it("is safe to run twice — the second pass merges, it does not duplicate", async () => {
@@ -384,16 +384,16 @@ describe("moving a concept onto an occupied address", () => {
     // Two live concepts cannot share a path — the partial unique index says
     // so — and "duplicate key value violates unique constraint" is not a
     // sentence anybody can act on.
-    h.rows.push(live({ id: "m1", path: "fees/tuition.md", area: "fees" }));
-    h.rows.push(live({ id: "m2", path: "centres/tuition.md", area: "centres" }));
+    h.rows.push(live({ id: "m1", path: "pricing/tuition.md", area: "pricing" }));
+    h.rows.push(live({ id: "m2", path: "locations/tuition.md", area: "locations" }));
     const { updateConcept } = await import("../kbconcepts");
-    await expect(updateConcept("m2", { area: "fees" })).rejects.toThrow(/already/i);
+    await expect(updateConcept("m2", { area: "pricing" })).rejects.toThrow(/already/i);
   });
 
   it("allows the move when nothing is in the way", async () => {
-    h.rows.push(live({ id: "m3", path: "centres/batch-dates.md", area: "centres" }));
+    h.rows.push(live({ id: "m3", path: "locations/batch-dates.md", area: "locations" }));
     const { updateConcept } = await import("../kbconcepts");
-    const out = await updateConcept("m3", { area: "admissions" });
-    expect(out?.path).toBe("admissions/batch-dates.md");
+    const out = await updateConcept("m3", { area: "booking" });
+    expect(out?.path).toBe("booking/batch-dates.md");
   });
 });

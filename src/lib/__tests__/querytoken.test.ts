@@ -57,15 +57,6 @@ describe("what it must not treat as a credential", () => {
 });
 
 describe("BOTH authentication paths use it — the mistake made first time", () => {
-  it("the tenant-key path (the LeadSquared nudge button) reads it too", () => {
-    // /api/crm/rnr-nudge authenticates through apiKeyTenant with whatever token
-    // it extracts. Reading searchParams.get("token") there meant a mangled
-    // "?token%3Dabc" arrived as no credential at all and the button got a 401.
-    const route = readFileSync("src/app/api/crm/rnr-nudge/route.ts", "utf8");
-    expect(route).toContain("queryTokenCandidates(req.url)");
-    expect(route).not.toMatch(/searchParams\.get\("token"\)/);
-  });
-
   it("the environment path reads it too", () => {
     // crm.ts is where CRM_PANEL_TOKEN is actually compared, and it did its
     // own parsing. Asserted against the source so the two cannot drift back

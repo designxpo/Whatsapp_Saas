@@ -1,6 +1,6 @@
 // Who a single drip step is for.
 //
-// Most steps go to everyone. Three of the seven in the RNR brief do not:
+// Most steps go to everyone. Some steps are only for part of the audience:
 //
 //   R+5   Free masterclass    only leads not already registered
 //   R+10  Results in numbers  only programmes that carry those terms
@@ -239,7 +239,7 @@ export function describeAudience(rule: AudienceRule | null | undefined, long = f
  * setSequenceSteps deletes and re-inserts, so a step that arrives without an
  * audience is a step that goes to EVERYONE from the next drain onwards. Any
  * client that predates 0103 sends exactly that — a browser tab left open
- * across the deploy is enough — and the three restricted RNR steps would
+ * across the deploy is enough — and the restricted steps would
  * quietly begin sending an unverified salary claim to the whole enrolment.
  *
  * An OMITTED key and an explicit null are therefore different answers:

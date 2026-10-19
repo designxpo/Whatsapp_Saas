@@ -4,11 +4,11 @@ import { parseTables, tableFacts } from "./okffacts";
 //
 // ── Why a fixed spine ────────────────────────────────────────────────────────
 //
-// Ten documents were uploaded by different people at different times and nine
-// of them restate the same body of knowledge: fees appear in 9, eligibility in
-// 9, the centres in 8. Decomposing each upload on its own reproduces that mess
-// one level down — the first dry run produced nine areas named after their
-// source files, one holding 1,338 of 1,515 concepts.
+// Documents get uploaded by different people at different times and most of them
+// restate the same body of knowledge: prices, requirements and locations appear
+// in nearly all of them. Decomposing each upload on its own reproduces that mess
+// one level down — areas named after their source files, one holding most of the
+// concepts.
 //
 // So uploads may NOT invent areas. The library's shape is declared here, once,
 // and an upload is filed INTO it. That single rule is what stops the structure
@@ -37,84 +37,84 @@ export interface KbArea {
 
 export const KB_AREAS: KbArea[] = [
   {
-    slug: "courses",
-    title: "Courses & curriculum",
-    description: "What each programme teaches: syllabus, modules, tools covered, duration, format (online, classroom, hybrid) and who it is for. One concept per programme.",
-    types: ["course"],
-    examples: ["Data Analytics", "Data Science & AI", "Full Stack AI", "GenAI"],
-    keywords: ["course", "programme", "program", "curriculum", "syllabus", "module", "certification", "training", "learn", "topics", "tools", "python", "sql", "power bi", "tableau", "machine learning"],
+    slug: "products",
+    title: "Products & services",
+    description: "What you offer, one concept per product, service or plan: what it is, what is included, options and variants, specifications and who it is for.",
+    types: ["product"],
+    examples: ["Core product", "Add-on service", "Premium plan"],
+    keywords: ["product", "products", "service", "services", "plan", "package", "feature", "features", "included", "includes", "specification", "specifications", "variant", "option", "options", "catalogue", "catalog", "menu", "range", "model", "details"],
   },
   {
-    slug: "fees",
-    title: "Fees & payment",
-    description: "What a programme costs and how it can be paid: fees, instalments, EMI, scholarships, discounts and the refund policy. Keep the figure and its conditions together.",
-    types: ["policy", "fees"],
-    examples: ["Tuition & EMI", "Refund policy", "Scholarships"],
-    keywords: ["fee", "fees", "cost", "price", "pricing", "emi", "instalment", "installment", "payment", "scholarship", "discount", "refund", "inr", "rupees", "₹"],
+    slug: "pricing",
+    title: "Pricing & payment",
+    description: "What things cost and how they can be paid: prices, instalments, EMI, discounts, deposits and the refund policy. Keep the figure and its conditions together.",
+    types: ["policy", "pricing"],
+    examples: ["Plans & pricing", "Refund policy", "Payment options"],
+    keywords: ["fee", "fees", "cost", "price", "pricing", "emi", "instalment", "installment", "payment", "deposit", "discount", "refund", "inr", "rupees", "₹", "invoice", "gst", "tax"],
   },
   {
-    slug: "centres",
-    title: "Centres & locations",
-    description: "The physical centres and how to reach them: addresses, cities served, classroom availability and visiting arrangements. One concept per centre.",
-    types: ["centre"],
-    examples: ["Noida centre", "Gurgaon centre", "Bangalore centre", "Online delivery"],
-    keywords: ["centre", "center", "campus", "classroom", "address", "location", "noida", "gurgaon", "gurugram", "bangalore", "bengaluru", "delhi", "ncr", "visit", "walk in", "metro", "directory", "directories", "branch", "office address", "sector"],
+    slug: "locations",
+    title: "Locations & hours",
+    description: "Where you are and when: addresses, branches or outlets, service areas, opening hours, directions and visiting arrangements. One concept per location.",
+    types: ["location"],
+    examples: ["Main branch", "Service area", "Opening hours"],
+    keywords: ["location", "locations", "address", "branch", "outlet", "store", "office", "campus", "directions", "map", "landmark", "nearby", "opening hours", "open", "closed", "visit", "walk in", "parking", "metro"],
   },
   {
-    slug: "admissions",
-    title: "Admissions & batches",
-    description: "Getting in and getting started: eligibility, prerequisites, the application process, batch dates, schedules and class timings.",
+    slug: "booking",
+    title: "Booking & getting started",
+    description: "How to get started: eligibility and requirements, the booking or ordering process, documents needed, availability, slots, schedules and lead times.",
     types: ["policy", "faq"],
-    examples: ["Eligibility criteria", "Batch dates", "How to apply"],
-    keywords: ["eligibility", "eligible", "admission", "admissions", "admission process", "apply", "application", "enrol", "enroll", "enrollment", "enrolment", "prerequisite", "required document", "documents required", "joining", "batch", "schedule", "timing", "weekend", "weekday", "start date", "intake", "qualification", "graduate"],
+    examples: ["Eligibility & requirements", "Availability & slots", "How to book"],
+    keywords: ["eligibility", "eligible", "requirement", "requirements", "book", "booking", "reserve", "reservation", "appointment", "order", "apply", "application", "sign up", "register", "onboarding", "prerequisite", "documents required", "slot", "availability", "schedule", "timing", "start date", "lead time", "delivery"],
   },
   {
-    slug: "placements",
-    title: "Placements & careers",
-    description: "Career outcomes and the support behind them: placement rates, salary ranges, job roles graduates move into, hiring partners and interview preparation.",
+    slug: "outcomes",
+    title: "Results & outcomes",
+    description: "What customers can expect and the proof behind it: results, success stories, testimonials, guarantees, ratings and case studies.",
     types: ["policy", "faq"],
-    examples: ["Placement outcomes", "Placement support", "Roles & salaries"],
-    keywords: ["placement", "placed", "job", "career", "hiring", "recruiter", "salary", "ctc", "lpa", "package", "interview", "resume", "company", "role", "hike"],
+    examples: ["Customer results", "Guarantees", "Success stories"],
+    keywords: ["result", "results", "outcome", "outcomes", "success", "testimonial", "review", "reviews", "rating", "case study", "guarantee", "guaranteed", "proof", "satisfaction", "track record"],
   },
   {
     slug: "company",
     title: "About the business",
-    description: "Who we are: history, accreditations and affiliations, faculty and trainers, awards, and the claims made about the organisation itself.",
+    description: "Who you are: history, accreditations and certifications, team, awards, and the claims made about the organisation itself.",
     types: ["company"],
-    examples: ["About us", "Accreditations", "Faculty"],
-    keywords: ["analytixlabs", "about us", "founded", "since", "accreditation", "accredited", "affiliat", "faculty", "trainer", "mentor", "award", "recognition", "alumni", "learners trained"],
+    examples: ["About us", "Certifications", "Team"],
+    keywords: ["about us", "founded", "since", "accreditation", "accredited", "certified", "certification", "affiliat", "team", "founder", "award", "recognition", "customers served", "years of experience"],
   },
   {
-    slug: "masterclass",
-    title: "Masterclasses & events",
-    description: "Free sessions, webinars, demo classes and workshops: what they cover, when they run and how to register.",
+    slug: "events",
+    title: "Offers & events",
+    description: "Time-limited things: promotions, seasonal offers, webinars, demos, workshops and open days — what they cover, when they run and how to take part.",
     types: ["event"],
-    examples: ["Masterclass schedule", "How to register"],
-    keywords: ["masterclass", "master class", "webinar", "workshop", "demo class", "free session", "register", "registration", "live session"],
+    examples: ["Current offers", "Upcoming events", "How to register"],
+    keywords: ["offer", "offers", "promotion", "promotions", "event", "events", "webinar", "workshop", "demo", "free session", "open day", "launch", "limited time", "live session"],
   },
   {
     slug: "support",
-    title: "Student support",
-    description: "Help while studying: how doubts are resolved, mentor and trainer access, office hours, escalation routes, and who to contact when something goes wrong.",
+    title: "Customer support",
+    description: "Help after the sale: how problems are resolved, who to contact, support hours, escalation routes, response times and returns or repairs.",
     types: ["policy", "faq"],
-    examples: ["Doubt resolution", "Office hours", "Escalation process"],
-    keywords: ["support", "doubt", "query resolution", "mentor", "office hours", "escalation", "escalate", "helpdesk", "contact", "assistance", "grievance", "complaint", "ticket", "response time"],
+    examples: ["How to get help", "Support hours", "Escalation process"],
+    keywords: ["support", "help", "helpdesk", "contact", "assistance", "escalation", "escalate", "grievance", "complaint", "ticket", "response time", "warranty", "repair", "replacement", "return"],
   },
   {
     slug: "faq",
     title: "Frequently asked questions",
-    description: "Direct answers to questions leads actually ask, where the answer does not belong to one of the areas above. One concept per question, titled as the question.",
+    description: "Direct answers to questions customers actually ask, where the answer does not belong to one of the areas above. One concept per question, titled as the question.",
     types: ["faq"],
-    examples: ["Is the certificate recognised?", "Can I switch batches?"],
+    examples: ["Is this available online?", "Can I change my booking?"],
     keywords: ["faq", "question", "frequently asked", "what is", "how do i", "can i", "do you"],
   },
   {
     slug: "policies",
     title: "Policies & terms",
-    description: "The rules of engagement: terms and conditions, privacy, cancellation, deferral and code of conduct. Not fees — those live under Fees & payment.",
+    description: "The rules of engagement: terms and conditions, privacy, cancellation, rescheduling and code of conduct. Not prices — those live under Pricing & payment.",
     types: ["policy"],
-    examples: ["Terms & conditions", "Privacy policy", "Deferral policy"],
-    keywords: ["policy", "terms", "conditions", "privacy", "cancellation", "deferral", "postpone", "code of conduct", "agreement", "liability"],
+    examples: ["Terms & conditions", "Privacy policy", "Cancellation policy"],
+    keywords: ["policy", "terms", "conditions", "privacy", "cancellation", "cancel", "reschedule", "postpone", "code of conduct", "agreement", "liability"],
   },
 ];
 
@@ -217,7 +217,7 @@ export function comparableFacts(text: string): Facts {
   }
   let rest = t;
   for (const s of scaled) rest = rest.split(s).join(" ");
-  // INR belongs here. Every fee table in this knowledge base writes
+  // INR belongs here. Fee tables commonly write
   // "INR 41,300/-", and a parser that only knew the rupee sign and "Rs."
   // found no money in any of them — so two tables quoting different fees
   // compared as equal and a genuine contradiction merged silently. The same
@@ -253,14 +253,13 @@ export function factsDisagree(a: string, b: string): boolean {
 /**
  * Which source to believe when two disagree, most trusted first.
  *
- * Set by Priyesh on 6 Oct 2026: the website is public and maintained, so it is
- * the most current statement of anything; the brochure is a snapshot that goes
- * stale between printings; the mail templates and the master knowledge base
- * are older still.
+ * The default order: the website is public and maintained, so it is the most
+ * current statement of anything; a brochure is a snapshot that goes stale
+ * between printings; templates and master knowledge bases are older still.
  *
  * Patterns match the document's title OR one of its tags, because the same
  * source arrives under both spellings — "KNOWLEDGE_BASE_MASTER.pdf" tagged
- * "Website" is website material, and "AnalytixLabs FAQ (website)" says so only
+ * "Website" is website material, and "Acme FAQ (website)" says so only
  * in its title.
  */
 export const KB_SOURCE_PRIORITY: { label: string; match: RegExp }[] = [
@@ -304,31 +303,30 @@ export interface Reconciliation {
 /**
  * The published concept an upload is actually about, or null.
  *
- * Path equality alone matched 8 times across 1,515 real concepts, because a
- * path comes from a heading and two documents rarely choose the same one.
- * "Fees" and "Course Investment" are one subject and never met, so the
+ * Path equality alone rarely matches, because a path comes from a heading and
+ * two documents rarely choose the same one. "Fees" and "Plan Investment" are one
+ * subject and never met, so the
  * restatement problem went undetected and the conflict check had almost
  * nothing to check.
  *
  * Three rules, cheapest first, all deterministic and offline:
  *
  *   1. the same path, which is still the common case
- *   2. the same priced programme in the same column — two tables quoting
- *      Analytics Edge's classroom fee are about the same thing however their
+ *   2. the same priced item in the same column — two tables quoting the
+ *      Standard Plan's monthly price are about the same thing however their
  *      headings are worded
  *   3. a near-identical title within one area
  *
- * Area-scoped throughout. "Noida centre" under courses and under centres are
- * different subjects, and matching them would merge a course description into
+ * Area-scoped throughout. "Main branch" under products and under locations are
+ * different subjects, and matching them would merge a product description into
  * an address.
  */
 /**
  * Near-identity, not similarity.
  *
- * At 0.6 this matched "Advanced Certification in Data Analytics & AI" to
- * "Advanced Certification in Data Science & GenAI" — two different courses —
- * because they share "advanced", "certification" and "data". Merging those
- * would have put one course's fees and syllabus under the other's name, which
+ * At 0.6 this matched "Standard Plan Plus" to "Standard Plan Pro" — two different products —
+ * because they share "standard" and "plan". Merging those
+ * would have put one product's price and details under the other's name, which
  * is worse than never matching at all.
  */
 const TITLE_MATCH = 0.85;
@@ -336,13 +334,13 @@ const TITLE_MATCH = 0.85;
 /**
  * Words carrying no distinguishing signal in this domain.
  *
- * Every programme title here contains most of them, so leaving them in means
- * comparing boilerplate and calling it agreement.
+ * Product titles tend to share them, so leaving them in means comparing
+ * boilerplate and calling it agreement.
  */
 const EMPTY_WORDS = new Set([
   "the", "our", "and", "for", "with", "what", "how", "all", "you", "your",
-  "course", "courses", "program", "programme", "programs", "certification",
-  "certificate", "advanced", "adv", "cert", "data", "analytixlabs", "part",
+  "plan", "plans", "package", "product", "products", "service", "services",
+  "standard", "part",
 ]);
 
 const titleTokens = (s: string): Set<string> =>
@@ -359,7 +357,7 @@ const overlap = (a: Set<string>, b: Set<string>): number => {
   return shared / Math.max(a.size, b.size);
 };
 
-/** Priced programme + column, as a comparable key. */
+/** Priced item + column, as a comparable key. */
 function pricedKeys(body: string, title: string): Set<string> {
   const out = new Set<string>();
   for (const t of parseTables(body)) {

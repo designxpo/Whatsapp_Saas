@@ -1,4 +1,3 @@
-import { handleLeadResponse } from "@/lib/rnrhandoff";
 // Generous budget: an inbound voice note does a synchronous transcription AND
 // then an AI reply (in after()) — two sequential model calls that on a slow
 // moment can blow a 60s cap, killing the reply. (The cron is the backstop; this
@@ -18,7 +17,6 @@ import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequenc
 import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
 import { sendText, sendTypingIndicator, downloadMedia, WA_NOT_ON_WHATSAPP } from "@/lib/whatsapp";
 import { markNumberNotOnWhatsApp } from "@/lib/dripstore";
-import { revertDroppedNudge } from "@/lib/rnrdelivery";
 import { transcribeAudio } from "@/lib/voice";
 import { formAnswers, messageText } from "@/lib/wa-message";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -323,22 +321,6 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   conv = await autoHandoverToCounselorLine(conv, channel ?? null);
   const savedInbound = await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
-  const dripReply = await handleLeadResponse(from, text, { channel }, tid);
-  // ONLY an opt-out ends the handler here. A reply the hand-off sent, or a journey
-  // it stopped, does not: the lead's message still has to reach their CRM timeline,
-  // the integrations, and the contact stamping below — a lead's reply to a nurture
-  // is precisely the message the CRM most needs. What a drip reply DOES change is
-  // who answers next, and that is carried by `handledByDrip` further down.
-  if (dripReply.optedOut) {
-    // handleLeadResponse already sent the library's closing line, which ends with
-    // the way back in. Sending a second one would say the same thing twice to
-    // somebody who just asked us to stop.
-    if (!dripReply.replySent) {
-      await sendText(from, "Your enquiry is closed and you won't receive further messages. Reply START if you change your mind.", channel);
-    }
-    return;
-  }
-
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.
   if (answers && Object.keys(answers).length) {
@@ -459,19 +441,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     // If a drip is already driving this contact, stay quiet — no welcome, no AI —
     // so the sequence owns the thread (until it completes) and nothing collides.
     //
-    // This used to ask the database "is this lead mid-journey", which was right
-    // until handleLeadResponse started STOPPING the journey higher up this same
-    // function. By the time we get here the enrolment is stopped, so the query says
-    // false for exactly the person the guard exists to protect: somebody who just
-    // tapped a drip button. What they would get is three messages for one tap — the
-    // acknowledgement already sent, then the welcome greeting, then an AI answer to
-    // "Request a callback" — while a counsellor has been alerted.
-    //
-    // So the question is asked about the moment the message ARRIVED: either a
-    // journey was running and we stopped it, or we sent a canned reply, or they are
-    // still enrolled in something.
-    const inSequence = dripReply.stopped > 0 || !!dripReply.replySent
-      || await hasActiveEnrollment(from, tid).catch(() => false);
+    const inSequence = await hasActiveEnrollment(from, tid).catch(() => false);
 
     // Chatbot flows take precedence: an ad-bound flow (CTWA lead from a campaign
     // with a flow attached), then keyword triggers and in-progress sessions.
@@ -637,23 +607,6 @@ export async function POST(req: Request) {
               // number, and flagging one sends sales chasing a ghost.
               if (Number(e.code) === WA_NOT_ON_WHATSAPP) {
                 await markNumberNotOnWhatsApp(recipient, `Meta ${e.code}: ${reason}`, statusTid).catch(() => false);
-              }
-
-              // ── A dropped RNR nudge has to give the day back ──────────────
-              //
-              // The nudge route stamps "Message A went out" the moment Meta returns
-              // a message id, which is BEFORE Meta decides whether to deliver it.
-              // When it then drops the message — 131049, the marketing frequency cap
-              // — the stamp is a lie that costs the lead the rest of the day and
-              // sends them Message B tomorrow referring to an A they never got.
-              // Retract it here. Not gated on 131049: whatever the code, a message
-              // that failed was not received, so the stamp is wrong either way.
-              const r = await revertDroppedNudge(recipient, new Date(at), reason, statusTid).catch(() => null);
-              if (r?.reverted) {
-                console.warn(JSON.stringify({
-                  tag: "rnr_nudge_dropped", nudge: r.reverted, code: e.code ?? null,
-                  phone: recipient.slice(-4), note: "stamp retracted — the counsellor can send again",
-                }));
               }
             }
           }

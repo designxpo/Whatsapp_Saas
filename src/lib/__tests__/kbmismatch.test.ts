@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest";
 import { findMismatches, type MismatchInput } from "@/lib/kbmismatch";
 
 const c = (over: Partial<MismatchInput> = {}): MismatchInput => ({
-  path: "fees/a.md", source: "Brochure", tags: [], body: "", ...over,
+  path: "pricing/a.md", source: "Brochure", tags: [], body: "", ...over,
 });
 
 const feeTable = (programme: string, classroom: string) => [
@@ -28,8 +28,8 @@ const feeTable = (programme: string, classroom: string) => [
 describe("prices that disagree", () => {
   it("reports one programme priced differently by two sources", () => {
     const m = findMismatches([
-      c({ path: "fees/web.md", source: "knowledge-base-export-website.md", tags: ["website"], body: feeTable("Analytics Edge", "INR 41,300/-") }),
-      c({ path: "fees/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 38,000/-") }),
+      c({ path: "pricing/web.md", source: "knowledge-base-export-website.md", tags: ["website"], body: feeTable("Analytics Edge", "INR 41,300/-") }),
+      c({ path: "pricing/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 38,000/-") }),
     ]);
     expect(m).toHaveLength(1);
     expect(m[0].subject).toMatch(/Analytics Edge/i);
@@ -38,8 +38,8 @@ describe("prices that disagree", () => {
 
   it("says nothing when the sources agree", () => {
     expect(findMismatches([
-      c({ path: "fees/web.md", source: "website", body: feeTable("Analytics Edge", "INR 41,300/-") }),
-      c({ path: "fees/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 41,300/-") }),
+      c({ path: "pricing/web.md", source: "website", body: feeTable("Analytics Edge", "INR 41,300/-") }),
+      c({ path: "pricing/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 41,300/-") }),
     ])).toEqual([]);
   });
 
@@ -59,13 +59,13 @@ describe("prices that disagree", () => {
     ])).toEqual([]);
   });
 
-  it("treats two spellings of one programme as one subject", () => {
-    // "Adv. Cert. in Data Analytics & AI" and "Advanced Certification in Data
-    // Analytics & AI" are the same course. Split apart, a real conflict
-    // between them reads as two separate agreeing facts.
+  it("treats two spellings of one item as one subject", () => {
+    // "Data Analytics & AI Program" and "Data Analytics and AI Programme" are the
+    // same item. Split apart, a real conflict between them reads as two separate
+    // agreeing facts.
     const m = findMismatches([
-      c({ path: "a.md", source: "website", body: feeTable("Adv. Cert. in Data Analytics & AI", "INR 87,320/-") }),
-      c({ path: "b.md", source: "Brochure", body: feeTable("Advanced Certification in Data Analytics & AI", "INR 85,000/-") }),
+      c({ path: "a.md", source: "website", body: feeTable("Data Analytics & AI Program", "INR 87,320/-") }),
+      c({ path: "b.md", source: "Brochure", body: feeTable("Data Analytics and AI Programme", "INR 85,000/-") }),
     ]);
     expect(m).toHaveLength(1);
   });
@@ -93,13 +93,13 @@ describe("prices that disagree", () => {
 
 describe("other facts that disagree", () => {
   it("does NOT report two durations as a conflict", () => {
-    // An area holds many courses. Comparing every duration in "courses"
+    // An area holds many courses. Comparing every duration in "products"
     // reported 6 against 15 against 8 as a contradiction when it was three
     // different programmes — noise that would train people to ignore the
     // report. A duration belongs to a course, and nothing here knows which.
     expect(findMismatches([
-      c({ path: "courses/web.md", source: "website", body: "The course runs 6 months." }),
-      c({ path: "courses/bro.md", source: "Brochure", body: "The course runs 8 months." }),
+      c({ path: "products/web.md", source: "website", body: "The course runs 6 months." }),
+      c({ path: "products/bro.md", source: "Brochure", body: "The course runs 8 months." }),
     ])).toEqual([]);
   });
 
@@ -115,7 +115,7 @@ describe("other facts that disagree", () => {
     // There is one refund rule, not one per area, so these two ARE in
     // conflict even though they sit in different folders.
     const m = findMismatches([
-      c({ path: "fees/a.md", source: "website", body: "We offer a 50% fee refund." }),
+      c({ path: "pricing/a.md", source: "website", body: "We offer a 50% fee refund." }),
       c({ path: "policies/b.md", source: "Brochure", body: "We offer a 25% fee refund." }),
     ]);
     expect(m.some(x => x.field === "refund_pct")).toBe(true);
@@ -124,14 +124,14 @@ describe("other facts that disagree", () => {
 
 describe("what the report tells a person to do", () => {
   const m = () => findMismatches([
-    c({ path: "fees/web.md", source: "knowledge-base-export-website.md", tags: ["website"], body: feeTable("Analytics Edge", "INR 41,300/-") }),
-    c({ path: "fees/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 38,000/-") }),
+    c({ path: "pricing/web.md", source: "knowledge-base-export-website.md", tags: ["website"], body: feeTable("Analytics Edge", "INR 41,300/-") }),
+    c({ path: "pricing/bro.md", source: "Brochure", body: feeTable("Analytics Edge", "INR 38,000/-") }),
   ])[0];
 
   it("names which source said what, and where", () => {
     const byVal = Object.fromEntries(m().claims.map(x => [x.value, x]));
     expect(byVal["41300"].source).toMatch(/website/i);
-    expect(byVal["38000"].path).toBe("fees/bro.md");
+    expect(byVal["38000"].path).toBe("pricing/bro.md");
   });
 
   it("says which value the ranking favours, so the fix is obvious", () => {

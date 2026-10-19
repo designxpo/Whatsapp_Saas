@@ -91,7 +91,7 @@ vi.mock("../model-allowlist", () => ({
 }));
 
 const concept = (over: Record<string, unknown> = {}) => ({
-  id: "k1", path: "fees/tuition.md", area: "fees", type: "policy",
+  id: "k1", path: "pricing/tuition.md", area: "pricing", type: "policy",
   title: "Tuition & EMI", description: null,
   body: "The programme fee is ₹85,000 and EMI instalments are available over six months.",
   tags: ["website"], status: "active", sources: ["Website export"], document_id: "d1", extra: {},
@@ -120,7 +120,7 @@ describe("publishing the library", () => {
     // The quarantine guarantee is worthless if the quarantined thing is
     // retrievable anyway.
     h.concepts.push(concept({ id: "k1", status: "active" }));
-    h.concepts.push(concept({ id: "k2", path: "fees/other.md", status: "pending" }));
+    h.concepts.push(concept({ id: "k2", path: "pricing/other.md", status: "pending" }));
     const { publishConcepts } = await import("../kbpublish");
     await publishConcepts();
     expect(h.written.map(w => w.conceptId)).toEqual(["k1"]);
@@ -154,7 +154,7 @@ describe("publishing the library", () => {
 
   it("reports what it did, so a cron can log it", async () => {
     h.concepts.push(concept());
-    h.concepts.push(concept({ id: "k2", path: "fees/b.md" }));
+    h.concepts.push(concept({ id: "k2", path: "pricing/b.md" }));
     const { publishConcepts } = await import("../kbpublish");
     const r = await publishConcepts();
     expect(r.concepts).toBe(2);

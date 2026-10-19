@@ -165,12 +165,12 @@ export async function conceptMismatches(tenantId = DEFAULT_TENANT_ID): Promise<M
  *
  * Each document is one input. The subject still comes from a table's own rows,
  * so a whole file's worth of text costs nothing in precision — what is being
- * compared is "this programme's classroom fee" either way.
+ * compared is "this item's standard price" either way.
  */
 export async function documentMismatches(tenantId = DEFAULT_TENANT_ID): Promise<Mismatch[]> {
   try {
     const docs = await listDocuments(tenantId);
-    // Sequential on purpose: ten documents at ~1,800 chunks between them is
+    // Sequential on purpose: many documents at thousands of chunks between them is
     // already a heavy read, and firing them together makes a slow page into a
     // burst that competes with the webhooks for the same connection pool.
     const inputs = [];
@@ -458,8 +458,8 @@ const toLibrary = (c: StoredConcept): LibraryConcept => ({
 /**
  * File a document that was uploaded before the library existed.
  *
- * The ten documents already in the system were chunked and embedded months
- * ago, and their original files are long gone from the request that uploaded
+ * Documents already in the system were chunked and embedded before the library
+ * existed, and their original files are long gone from the request that uploaded
  * them — so the text is rebuilt from the chunks, which is exactly what a
  * reprocess already does.
  *

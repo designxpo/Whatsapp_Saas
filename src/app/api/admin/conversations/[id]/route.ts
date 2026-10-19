@@ -269,7 +269,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       logActivity(await currentUser(), "inbox.template", `to ${conv.phone}: ${templateName}`);
       return NextResponse.json({ success: true, messageId: sent.id });
     }
-    // One-click canned template (RNR, post-call follow-up…): resolves {tokens}
+    // One-click canned template (follow-up, post-call follow-up…): resolves {tokens}
     // from the agent + contact, sends the approved template (24h-window safe),
     // logs to LSQ, and optionally moves the lead's stage. Config: Settings.
     if (body.action === "canned" && body.cannedId) {

@@ -1,6 +1,6 @@
 # Alabs Connect
 
-A standalone WhatsApp broadcasting + automation system, extracted from the AnalytixLabs masterclass app. Same engine (campaigns, queue, daily cap, opt-outs, delivered/read tracking, templates, event auto-sends) — but **its own number/WABA, its own database, and a contacts model fed by CSV import + API** (no registration/OTP flow).
+A standalone WhatsApp broadcasting + automation system, extracted from an internal masterclass app. Same engine (campaigns, queue, daily cap, opt-outs, delivered/read tracking, templates, event auto-sends) — but **its own number/WABA, its own database, and a contacts model fed by CSV import + API** (no registration/OTP flow).
 
 ## Capabilities
 - **Broadcast** to all contacts, a tag/segment, or a pasted list — via the admin UI or `POST /api/broadcast`.

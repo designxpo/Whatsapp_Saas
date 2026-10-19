@@ -219,7 +219,7 @@ comment on column wa_sequences.aida_stage is
 -- every enrolment.
 create index if not exists wa_sequences_team_idx on wa_sequences (team) where team is not null;
 
--- 0101_sequence_reply_stop_and_window.sql — two rules the RNR follow-up needs,
+-- 0101_sequence_reply_stop_and_window.sql — two rules a follow-up journey needs,
 -- and that every drip should have had.
 --
 -- ── stop_on_reply ───────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ create index if not exists wa_sequences_team_idx on wa_sequences (team) where te
 -- and the drip carries on delivering "Not sure yet? See how we teach first" on
 -- day 5 to somebody already in a conversation. That is the single worst thing
 -- this engine can do, and it is currently the default for six of the seven
--- messages in the RNR brief.
+-- messages in a journey.
 --
 -- DEFAULT TRUE, deliberately. Stopping when somebody replies is what an
 -- operator assumes is already happening — nobody has ever asked for a drip
@@ -244,7 +244,7 @@ create index if not exists wa_sequences_team_idx on wa_sequences (team) where te
 -- ── send_start_hour / send_end_hour ─────────────────────────────────────────
 --
 -- Steps fire purely on elapsed delay. A lead marked Not Reachable at 23:10
--- gets "greetings from AnalytixLabs" at 23:10 the following night. The brief
+-- gets "welcome to Acme" at 23:10 the following night. The brief
 -- says 10 AM to 8 PM; sales say callbacks only happen 11 AM to 5 PM. Rather
 -- than pick one, the window lives on the sequence so the argument is a setting
 -- rather than a deploy.
@@ -283,12 +283,12 @@ comment on column wa_sequences.send_start_hour is
 comment on column wa_sequences.send_end_hour is
   'Exclusive end hour (1-24, local). 10 and 20 means a step may start at 19:59 but never at 20:00. Steps outside the window are DEFERRED to the next opening, never dropped.';
 
--- 0103_sequence_audience_and_limits.sql — the four rules in the RNR brief that
+-- 0103_sequence_audience_and_limits.sql — the four rules a journey needs that
 -- the engine could not express, plus the flag its "wrong number" rule needs.
 --
 -- ── wa_sequence_steps.audience ──────────────────────────────────────────────
 --
--- Three of the seven RNR messages are not for everyone:
+-- Some messages are not for everyone:
 --
 --   R+5   Free masterclass   only leads not already registered
 --   R+10  Results in numbers only programmes that carry those terms
@@ -308,7 +308,7 @@ comment on column wa_sequences.send_end_hour is
 --
 -- ── wa_sequences.skip_if_recent_reply_days ─────────────────────────────────
 --
--- "Tapped A or B but still RNR → skip the sequence. Counsellor chats instead."
+-- "Already replied → skip the sequence. A person chats instead."
 --
 -- A lead who answered the counsellor's own message on day 1 or 2 is not
 -- silent; they are simply not answering the PHONE. Dripping four weeks of
@@ -319,7 +319,7 @@ comment on column wa_sequences.send_end_hour is
 --
 -- Days rather than a boolean because "has this lead ever written to us" is
 -- the wrong question: an enquiry from four months ago is not a live
--- conversation. The RNR journey uses 3, which covers the two days of call
+-- conversation. A typical journey uses 3, which covers the two days of call
 -- attempts and the day the stage changes.
 --
 -- NULL = off, which is every sequence that exists today.

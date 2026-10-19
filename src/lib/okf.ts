@@ -136,9 +136,8 @@ export function serialiseConcept(c: OkfConcept): string {
 /**
  * A stable address for a concept, derived from its name.
  *
- * "&" becomes "and" rather than vanishing, so "Data Science & AI" and "Data
- * Science and AI" land on the same file instead of two near-identical ones —
- * the same rule leadtokens.ts already uses to match CRM course spellings.
+ * "&" becomes "and" rather than vanishing, so "Pricing & Payment" and "Pricing
+ * and Payment" land on the same file instead of two near-identical ones.
  *
  * Path separators are flattened, so a title can never climb out of the bundle.
  *
@@ -317,8 +316,8 @@ const MAX_CONCEPT_CHARS = 8000;
  *
  * A markdown table has no blank line inside it, so it arrives here as a single
  * paragraph and survives whole. That is load-bearing rather than lucky: half a
- * fee table is a column of figures with no programme beside them, which is
- * exactly how a price gets quoted against the wrong course.
+ * fee table is a column of figures with no item beside them, which is
+ * exactly how a price gets quoted against the wrong product.
  */
 function splitOversized(body: string): string[] {
   const paras = body.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);

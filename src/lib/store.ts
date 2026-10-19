@@ -2005,7 +2005,7 @@ export async function setConversationName(phoneKey: string, name: string, tenant
 // Instagram and Messenger threads are keyed by an opaque id and carry the number
 // in lead_phone, and Live Chat renders each conversation's OWN `name` column
 // (the inbox list never joins contacts, because an Instagram chat has no contact
-// row). Without this the Contacts table reads "Priyesh Mishra" while Live Chat
+// row). Without this the Contacts table reads "Alex Morgan" while Live Chat
 // still reads whatever the chat first captured. Returns how many threads changed.
 export async function renameLeadConversations(phoneKey: string, name: string, tenantId = DEFAULT_TENANT_ID): Promise<number> {
   const key = digits(phoneKey);                     // digits-only, so it is safe to interpolate into .or()

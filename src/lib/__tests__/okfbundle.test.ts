@@ -42,13 +42,13 @@ const read = (b: Buffer) => untar(gunzipSync(b));
 
 describe("the archive is a real tar", () => {
   const files = [
-    { path: "index.md", contents: "# AnalytixLabs knowledge\n\n2 concepts.\n" },
-    { path: "fees/tuition-and-emi.md", contents: "---\ntype: policy\n---\n\nThe fee is ₹85,000.\n" },
+    { path: "index.md", contents: "# Knowledge library\n\n2 concepts.\n" },
+    { path: "pricing/tuition-and-emi.md", contents: "---\ntype: policy\n---\n\nThe fee is ₹85,000.\n" },
   ];
 
   it("round-trips every file, byte for byte", () => {
     const got = read(tarGz(files));
-    expect(got.map(f => f.path)).toEqual(["index.md", "fees/tuition-and-emi.md"]);
+    expect(got.map(f => f.path)).toEqual(["index.md", "pricing/tuition-and-emi.md"]);
     expect(got[1].contents).toBe(files[1].contents);
   });
 
@@ -65,7 +65,7 @@ describe("the archive is a real tar", () => {
   });
 
   it("keeps directory paths intact", () => {
-    expect(read(tarGz(files))[1].path).toBe("fees/tuition-and-emi.md");
+    expect(read(tarGz(files))[1].path).toBe("pricing/tuition-and-emi.md");
   });
 
   it("terminates the archive, so a reader knows where it ends", () => {
@@ -114,10 +114,10 @@ describe("the archive cannot write outside where it is extracted", () => {
   });
 
   it("still accepts an ordinary nested concept path", () => {
-    expect(() => tarGz([{ path: "fees/tuition-and-emi.md", contents: "x" }])).not.toThrow();
+    expect(() => tarGz([{ path: "pricing/tuition-and-emi.md", contents: "x" }])).not.toThrow();
   });
 
   it("allows a dot inside a name, which is not a traversal", () => {
-    expect(() => tarGz([{ path: "fees/adv.cert.md", contents: "x" }])).not.toThrow();
+    expect(() => tarGz([{ path: "pricing/adv.cert.md", contents: "x" }])).not.toThrow();
   });
 });

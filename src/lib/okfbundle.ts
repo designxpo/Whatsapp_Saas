@@ -94,7 +94,7 @@ export async function bundleFiles(tenantId = DEFAULT_TENANT_ID): Promise<{ path:
     body: c.body,
   }));
 
-  const { root, areas } = buildIndexes("AnalytixLabs knowledge", concepts);
+  const { root, areas } = buildIndexes("Knowledge library", concepts);
   return [
     { path: "index.md", contents: root },
     ...Object.entries(areas).map(([path, contents]) => ({ path, contents })),

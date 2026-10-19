@@ -31,7 +31,6 @@ import { stopMarketingEnrollments, enroll, stopEnrollment } from "./sequences";
 import { getLeadWelcome, shouldWelcome, toWaNumber } from "./leadwelcome";
 import { sendTemplateSingle } from "./whatsapp";
 import { getDefaultChannel } from "./channels";
-import { programmeFor, courseFromLabel } from "./leadtokens";
 import type { LsqEvent } from "./lsqwebhook";
 
 const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
@@ -99,47 +98,18 @@ export async function applyLsqLead(ev: LsqEvent, opts: ApplyOptions = {}, tenant
   if (ev.source) attrs.lsq_source = ev.source;
   if (ev.leadScore) attrs.lsq_lead_score = ev.leadScore;
 
-  // ── The course and city the drip is addressed by ──────────────────────────
+  // ── Course and city, when the CRM knows them ─────────────────────────────
   //
-  // Three of the five drip steps are `attrIn` rules over "Product Name" and
-  // "city", and attrIn reads a missing value as "no". So a lead that arrives
-  // without them silently receives day 3 and day 28 and nothing in between —
-  // a four-week nurture that is two messages 25 days apart. That is what was
-  // happening to every lead this path creates.
+  // Audience rules and `{token}` params read these as ordinary contact attributes,
+  // and an `attrIn` rule reads a missing value as "no" — so a lead that arrives
+  // without them would quietly skip every step gated on them.
   //
-  // Two rules, both deliberate:
-  //
-  // FILL-IF-EMPTY. A course the lead told US — through a form or a
-  // conversation — is better evidence than one a counsellor typed into the
-  // CRM months ago, so our own value always wins. This mirrors what the
-  // "Send WhatsApp" button already does with the course it is handed.
-  //
-  // VALIDATED, NOT COPIED. mx_Course_Interested is about four-fifths "66"
-  // and "Select" on this instance — 967 of 1,211 when it was last counted.
-  // Only a value that resolves to a real programme is stamped, so the
-  // attribute never holds something that would read back as "your 66
-  // enquiry". Junk is simply left absent, which fails the gate exactly as it
-  // does today: no worse than now, and honest.
+  // FILL-IF-EMPTY: a value the lead told US (through a form or a flow) is better
+  // evidence than one typed into the CRM months ago, so ours always wins.
   const existingAttrs = (existing?.attributes ?? {}) as Record<string, string>;
-  // LeadSquared's own field first; failing that, the tracked link the lead
-  // originally arrived through. Measured 14 Oct, mx_Course_Interested is
-  // unusable on every one of the 1,000 most recent Not Reachable leads — but
-  // a lead who came in on ppc-wa-ds-delhi told us their course at the click,
-  // and handle_source has been on their contact ever since.
-  // The fallback fires when LeadSquared's value is ABSENT **or UNUSABLE** —
-  // not just absent. 254 of the 1,000 most recent leads hold the literal
-  // "66", which is present, truthy, and worth nothing; a null-check alone
-  // would hand them back to the gate that was already skipping them. That is
-  // the single commonest case this whole mechanism exists for.
-  const labelCourse = courseFromLabel(existingAttrs.handle_source);
-  const rawCourse = (ev.course && programmeFor(ev.course)) ? ev.course : labelCourse;
-  const programme = rawCourse ? programmeFor(rawCourse) : null;
-  if (programme && !String(existingAttrs["Product Name"] ?? "").trim()) {
-    // The CRM's own spelling, not our display name — the audience lists are
-    // built from crmNames, and leadtokens resolves it to prose at send time.
-    attrs["Product Name"] = rawCourse!.trim();
-  }
-  if (ev.city && !String(existingAttrs.city ?? "").trim()) attrs.city = ev.city.trim();
+  const has = (v: unknown) => !!String(v ?? "").trim();
+  if (ev.course && !has(existingAttrs.course)) attrs.course = ev.course.trim();
+  if (ev.city && !has(existingAttrs.city)) attrs.city = ev.city.trim();
 
   if (Object.keys(attrs).length) await setContactAttributes(canonical, attrs, tenantId).catch(() => undefined);
 

@@ -17,7 +17,7 @@ import {
 } from "@/lib/okf";
 
 const concept = (over: Partial<OkfConcept> = {}): OkfConcept => ({
-  path: "courses/data-analytics.md", type: "course", body: "Body text.", ...over,
+  path: "products/data-analytics.md", type: "product", body: "Body text.", ...over,
 });
 
 describe("front matter: what the spec requires", () => {
@@ -65,8 +65,8 @@ describe("front matter: what the spec requires", () => {
 
   it("KEEPS a field the spec does not reserve, because the producer owns those", () => {
     // Dropping these would quietly destroy whatever the author put there.
-    const { concept: c, errors } = parseConcept("courses/da.md",
-      "---\ntype: course\nfee_inr: 85000\nowner: tanvi\n---\n\nBody.");
+    const { concept: c, errors } = parseConcept("products/da.md",
+      "---\ntype: product\nfee_inr: 85000\nowner: tanvi\n---\n\nBody.");
     expect(errors).toEqual([]);
     expect(c?.extra).toEqual({ fee_inr: "85000", owner: "tanvi" });
   });
@@ -92,7 +92,7 @@ describe("serialise and parse are inverses", () => {
   it("round-trips every reserved field and the extras", () => {
     const original = concept({
       title: "Data Analytics", description: "Flagship course.",
-      resource: "https://analytixlabs.co.in/da", tags: ["course", "delhi"],
+      resource: "https://analytixlabs.co.in/da", tags: ["product", "delhi"],
       timestamp: "2026-10-06", extra: { fee_inr: "85000" },
       body: "## Fees\n\n85,000 INR.",
     });
@@ -103,7 +103,7 @@ describe("serialise and parse are inverses", () => {
 
   it("writes type first, so a file is identifiable from its opening lines", () => {
     const out = serialiseConcept(concept());
-    expect(out.split("\n").slice(0, 2)).toEqual(["---", "type: course"]);
+    expect(out.split("\n").slice(0, 2)).toEqual(["---", "type: product"]);
   });
 
   it("omits fields that are empty rather than writing blanks", () => {
@@ -133,27 +133,27 @@ describe("the path is the identity", () => {
 describe("a bundle has to hold together", () => {
   it("passes a clean bundle", () => {
     expect(validateBundle([
-      concept({ path: "courses/da.md" }),
-      concept({ path: "courses/ds.md" }),
+      concept({ path: "products/da.md" }),
+      concept({ path: "products/ds.md" }),
     ])).toEqual([]);
   });
 
   it("catches two concepts claiming the same address", () => {
-    const errs = validateBundle([concept({ path: "courses/da.md" }), concept({ path: "courses/da.md" })]);
-    expect(errs.join(" ")).toMatch(/courses\/da\.md/);
+    const errs = validateBundle([concept({ path: "products/da.md" }), concept({ path: "products/da.md" })]);
+    expect(errs.join(" ")).toMatch(/products\/da\.md/);
   });
 
   it("catches a link that points at no concept", () => {
     const errs = validateBundle([
-      concept({ path: "courses/da.md", body: "See [fees](../fees/tuition.md)." }),
+      concept({ path: "products/da.md", body: "See [fees](../pricing/tuition.md)." }),
     ]);
-    expect(errs.join(" ")).toMatch(/fees\/tuition\.md/);
+    expect(errs.join(" ")).toMatch(/pricing\/tuition\.md/);
   });
 
   it("accepts a link that resolves, relative to the linking file", () => {
     expect(validateBundle([
-      concept({ path: "courses/da.md", body: "See [fees](../fees/tuition.md)." }),
-      concept({ path: "fees/tuition.md" }),
+      concept({ path: "products/da.md", body: "See [fees](../pricing/tuition.md)." }),
+      concept({ path: "pricing/tuition.md" }),
     ])).toEqual([]);
   });
 
@@ -171,23 +171,23 @@ describe("a bundle has to hold together", () => {
 
 describe("index.md — the entry point an agent reads first", () => {
   const concepts = [
-    concept({ path: "courses/da.md", type: "course", title: "Data Analytics", description: "Flagship." }),
-    concept({ path: "courses/ds.md", type: "course", title: "Data Science" }),
-    concept({ path: "fees/refund.md", type: "policy", title: "Refund policy" }),
+    concept({ path: "products/da.md", type: "product", title: "Data Analytics", description: "Flagship." }),
+    concept({ path: "products/ds.md", type: "product", title: "Data Science" }),
+    concept({ path: "pricing/refund.md", type: "policy", title: "Refund policy" }),
   ];
 
   it("lists every concept, grouped by type", () => {
-    const idx = buildIndex("AnalytixLabs knowledge", concepts);
-    expect(idx).toMatch(/## course/);
+    const idx = buildIndex("Knowledge library", concepts);
+    expect(idx).toMatch(/## product/);
     expect(idx).toMatch(/## policy/);
-    expect(idx).toMatch(/\[Data Analytics\]\(courses\/da\.md\)/);
-    expect(idx).toMatch(/\[Refund policy\]\(fees\/refund\.md\)/);
+    expect(idx).toMatch(/\[Data Analytics\]\(products\/da\.md\)/);
+    expect(idx).toMatch(/\[Refund policy\]\(pricing\/refund\.md\)/);
   });
 
   it("carries the one-line description, which is what makes it skimmable", () => {
     // Progressive disclosure: the agent decides what to open from the index
     // alone, so a bare list of links would make it open everything.
-    expect(buildIndex("t", concepts)).toMatch(/\[Data Analytics\]\(courses\/da\.md\) — Flagship\./);
+    expect(buildIndex("t", concepts)).toMatch(/\[Data Analytics\]\(products\/da\.md\) — Flagship\./);
   });
 
   it("falls back to the path when a concept has no title", () => {
@@ -324,7 +324,7 @@ describe("index.md has to stay small enough to be read", () => {
   }));
 
   it("splits into one index per area, with a root index pointing at them", () => {
-    const { root, areas } = buildIndexes("AnalytixLabs knowledge", many);
+    const { root, areas } = buildIndexes("Knowledge library", many);
     expect(Object.keys(areas).sort()).toEqual(["faq/index.md", "website/index.md"]);
     expect(root).toMatch(/\[website\]\(website\/index\.md\)/);
     expect(root).toMatch(/\[faq\]\(faq\/index\.md\)/);
@@ -392,7 +392,7 @@ describe("an address has to fit, and has to be readable", () => {
   });
 
   it("keeps the whole path inside tar's 100-byte name field", () => {
-    expect(`courses/${conceptSlug(long)}.md`.length).toBeLessThanOrEqual(100);
+    expect(`products/${conceptSlug(long)}.md`.length).toBeLessThanOrEqual(100);
   });
 });
 
@@ -411,30 +411,30 @@ describe("tables and the numbers in them", () => {
   it("keeps a table whole inside its concept", () => {
     // Half a fee table is a column of figures with no programme beside them,
     // which is precisely how a price gets quoted against the wrong course.
-    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "fees" });
+    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "pricing" });
     expect(c.body).toContain("| **Adv. Cert. in Data Analytics & AI** | INR 87,320/- | INR 70,800/- |");
     expect(c.body).toContain("| **Analytics Edge** | INR 41,300/- | INR 33,040/- |");
   });
 
   it("lifts the prices into front matter where they can be checked", () => {
-    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "fees" });
+    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "pricing" });
     expect(c.extra?.price_min_inr).toBe("33040");
     expect(c.extra?.price_max_inr).toBe("87320");
   });
 
   it("records the duration and placement rate as fields too", () => {
-    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "fees" });
+    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "pricing" });
     expect(c.extra?.duration_months).toBe("6");
     expect(c.extra?.placement_pct).toBe("90");
   });
 
   it("notes that the concept contains a table", () => {
-    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "fees" });
+    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "pricing" });
     expect(c.extra?.tables).toBe("1");
   });
 
   it("survives the round trip, front matter and table alike", () => {
-    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "fees" });
+    const [c] = decompose({ title: "Brochure" }, feeTable, { type: "policy", area: "pricing" });
     const { concept: back } = parseConcept(c.path, serialiseConcept(c));
     expect(back?.extra?.price_max_inr).toBe("87320");
     expect(back?.body).toContain("| **Analytics Edge** |");

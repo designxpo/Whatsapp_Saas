@@ -36,7 +36,6 @@ import {
   BUSINESS_TZ, partsIn, hourIn, weekdayIn, sameDayIn, instantAt, atHourIn, addDaysIn, startOfDayIn,
 } from "@/lib/businessclock";
 import { withinSendWindow, nextWindowOpening, nextDayOpening, localDayBounds } from "@/lib/seqwindow";
-import { clampToCallHours, callbackAt, DEFAULT_CALL_HOURS } from "@/lib/callbackslot";
 
 const U = (iso: string) => new Date(iso);
 const iso = (d: Date) => d.toISOString();
@@ -211,39 +210,3 @@ describe("the one-a-day cap counts an Indian day", () => {
   });
 });
 
-describe("calling hours are Indian calling hours", () => {
-  it("11:30 in the morning is inside them and is left alone", () => {
-    // OLD on Vercel: hour 6 < 11 → pushed to 11:00 UTC, which is 16:30 IST.
-    const at = U("2026-10-01T06:00:00Z");
-    expect(iso(clampToCallHours(at, DEFAULT_CALL_HOURS))).toBe(iso(at));
-  });
-
-  it("half past nine at night becomes tomorrow at eleven", () => {
-    expect(iso(clampToCallHours(U("2026-10-01T16:00:00Z"), DEFAULT_CALL_HOURS)))
-      .toBe("2026-10-02T05:30:00.000Z");
-  });
-
-  it("half past eight in the morning waits for eleven the same day", () => {
-    expect(iso(clampToCallHours(U("2026-10-01T03:00:00Z"), DEFAULT_CALL_HOURS)))
-      .toBe("2026-10-01T05:30:00.000Z");
-  });
-});
-
-describe("the weekend is the business's weekend", () => {
-  it("counts a Saturday that UTC still thinks is Friday", () => {
-    // 2026-10-02T19:00Z is 00:30 on Saturday 3 October in India, and still
-    // Friday evening in UTC. A lead tapping "this weekend" then means the
-    // Saturday that has just begun for them — 11:00 that same morning.
-    //
-    // Reading the server's clock gives Friday, so the slot slides a whole
-    // week; treating only Sunday as the weekend does the same thing.
-    expect(iso(callbackAt("this weekend", U("2026-10-02T19:00:00Z"), DEFAULT_CALL_HOURS)))
-      .toBe("2026-10-03T05:30:00.000Z");
-  });
-
-  it("a Saturday whose calling hours are over rolls to the NEXT Saturday", () => {
-    // 2026-10-03T13:00Z is 18:30 Saturday in India — past the 17:00 close.
-    expect(iso(callbackAt("this weekend", U("2026-10-03T13:00:00Z"), DEFAULT_CALL_HOURS)))
-      .toBe("2026-10-10T05:30:00.000Z");
-  });
-});

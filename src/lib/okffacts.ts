@@ -2,11 +2,11 @@
 //
 // ── Why this exists ─────────────────────────────────────────────────────────
 //
-// The fee data is tabular: a programme down the side, a delivery mode across
-// the top, a rupee figure in each cell. Flattened into prose and cut into
-// 1,000-character windows, a cell loses its row and its column — the figure
-// survives but "which programme, in which mode" does not, and an assistant
-// reading it can honestly quote 70,800 for the wrong course.
+// Price data is tabular: an item down the side, a variant across the top, a
+// rupee figure in each cell. Flattened into prose and cut into 1,000-character
+// windows, a cell loses its row and its column — the figure survives but "which
+// item, in which variant" does not, and an assistant reading it can honestly
+// quote 70,800 for the wrong one.
 //
 // Lifting those cells into typed front-matter fields changes what can be
 // checked. A price in prose is unverifiable; an answer saying "around 80,000"
@@ -29,7 +29,7 @@ export interface MdTable {
 
 const cells = (line: string): string[] =>
   line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|")
-    // Exports wrap programme names in bold; the asterisks are markup, not name.
+    // Exports wrap item names in bold; the asterisks are markup, not name.
     .map(c => c.trim().replace(/^\*\*(.*)\*\*$/, "$1").replace(/^\*(.*)\*$/, "$1").trim());
 
 const isSeparator = (line: string): boolean => /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(line) && line.includes("-");
@@ -96,7 +96,7 @@ const slug = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 export interface SubjectPrices {
-  /** The row's label — usually a programme, sometimes a delivery mode. */
+  /** The row's label — usually an item, sometimes a variant. */
   subject: string;
   /** Column slug → rupees. A mode that is not offered is simply absent. */
   prices: Record<string, number>;

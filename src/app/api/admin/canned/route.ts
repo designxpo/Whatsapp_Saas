@@ -5,7 +5,7 @@ import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
 
-// GET — the workspace's canned templates (RNR, post-call follow-up, …). Read by
+// GET — the workspace's canned templates (follow-up, post-call follow-up, …). Read by
 // the Live Chat composer (to render one-click buttons) and the Settings editor.
 export async function GET() {
   const tid = await currentTenantId();

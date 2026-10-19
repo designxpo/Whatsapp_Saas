@@ -1,4 +1,11 @@
-// FAQ Router — Layer 1 of the Knowledge Router. Pure in-memory matching against
+// FAQ Router — Layer 1 of the Knowledge Router.
+//
+// The dataset (src/data/faq.json) is deliberately EMPTY. It is one in-memory list
+// shared by every workspace, so any content in it is served to every tenant's
+// customers ahead of that tenant's own knowledge base — it once held a single
+// company's FAQ. Until FAQs are stored per tenant, an empty list keeps this layer
+// inert and lets the router fall through to each tenant's own KB.
+// Pure in-memory matching against
 // the curated FAQ dataset; zero network calls, sub-millisecond, deterministic.
 //
 // Matching tiers (first hit wins):
