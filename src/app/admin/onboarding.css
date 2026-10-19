@@ -1,9 +1,89 @@
 .driver-popover.talko-tour {
   font-family: var(--font-inter), sans-serif;
   color: #0a1a2f;
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 20px;
+  padding: 24px;
   max-width: min(340px, calc(100vw - 24px));
+  box-shadow: 0 16px 48px #0a1a2f26, 0 2px 8px #0a1a2f0d;
+  outline: none;
+}
+
+.driver-fade .driver-popover.talko-tour {
+  animation: talko-tour-enter 240ms ease-out both;
+}
+
+@keyframes talko-tour-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.driver-popover.talko-tour .driver-popover-title {
+  padding-right: 28px;
+  font-size: 19px;
+  line-height: 1.4;
+}
+
+.driver-popover.talko-tour .driver-popover-close-btn {
+  top: 10px;
+  right: 10px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #64748b;
+  font-size: 24px;
+  line-height: 36px;
+  box-shadow: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.driver-popover.talko-tour .driver-popover-close-btn:hover {
+  background: #f1f5f9;
+  color: #0a1a2f;
+}
+
+.driver-popover.talko-tour .driver-popover-close-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.talko-tour .driver-popover-description {
+  display: grid !important;
+  position: relative;
+  margin-top: 10px;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.talko-tour-text-layout,
+.talko-tour-text-typed { grid-area: 1 / 1; }
+.talko-tour-text-typed { position: absolute; inset: 0; }
+.talko-tour-text-layout { visibility: hidden; }
+.talko-tour-text-accessible {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.talko-tour-typing .talko-tour-text-typed::after {
+  content: "";
+  display: inline-block;
+  height: 1em;
+  margin-left: 2px;
+  border-right: 2px solid #047857;
+  vertical-align: -0.1em;
+  animation: talko-tour-caret 700ms step-end infinite;
+}
+
+@keyframes talko-tour-caret { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .driver-fade .driver-popover.talko-tour,
+  .talko-tour-typing .talko-tour-text-typed::after { animation: none; }
+  .driver-popover.talko-tour .driver-popover-close-btn { transition: none; }
 }
 
 .talko-tour .driver-popover-title,

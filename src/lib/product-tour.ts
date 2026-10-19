@@ -1,4 +1,5 @@
 import { driver, type DriveStep } from "driver.js";
+import { typeTourDescription } from "./tour-motion";
 
 export function tourStorageKey(tenantId: string, email: string): string {
   return `talko.onboarding.v1:${encodeURIComponent(tenantId)}:${encodeURIComponent(email.trim().toLowerCase())}`;
@@ -37,15 +38,41 @@ function escapeText(text: string): string {
 
 export function installProductTour({ storageKey, impersonating = false }: { storageKey: string; impersonating?: boolean }) {
   let disposed = false;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let stopTyping = () => {};
+  let focusFrame = 0;
+  const stopMotion = () => {
+    stopTyping();
+    stopTyping = () => {};
+    cancelAnimationFrame(focusFrame);
+  };
   const tour = driver({
-    animate: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    animate: !reducedMotion,
+    smoothScroll: !reducedMotion,
+    stagePadding: 4,
+    stageRadius: 24,
+    popoverOffset: 16,
+    overlayColor: "#0a1a2f",
+    overlayOpacity: 0.48,
     popoverClass: "talko-tour",
     showProgress: true,
     progressText: "{{current}} of {{total}}",
     showButtons: ["previous", "next", "close"],
     prevBtnText: "Previous", nextBtnText: "Next", doneBtnText: "Done",
     allowClose: true, disableActiveInteraction: true,
-    onPopoverRender: ({ closeButton }) => closeButton.setAttribute("aria-label", "Close tour"),
+    onHighlightStarted: stopMotion,
+    onDestroyed: stopMotion,
+    onPopoverRender: ({ closeButton, description, wrapper }) => {
+      stopMotion();
+      closeButton.setAttribute("aria-label", "Close tour");
+      wrapper.tabIndex = -1;
+      stopTyping = typeTourDescription(description, reducedMotion);
+      // Driver focuses the first control (Close) by default. Focus the dialog instead;
+      // keyboard users can still Tab to Close and receive its visible focus indicator.
+      focusFrame = requestAnimationFrame(() => {
+        if (wrapper.isConnected) wrapper.focus({ preventScroll: true });
+      });
+    },
   });
   const start = () => {
     if (disposed || tour.isActive()) return;
@@ -73,6 +100,7 @@ export function installProductTour({ storageKey, impersonating = false }: { stor
     start,
     cleanup: () => {
       disposed = true;
+      stopMotion();
       cancelAnimationFrame(frame);
       window.removeEventListener("resize", close);
       tour.destroy();
