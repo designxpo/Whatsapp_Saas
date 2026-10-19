@@ -2,7 +2,7 @@
 
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
 
@@ -107,6 +107,39 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  // Sync / reprocess run in the background on the server and mark the document
+  // "processing" straight away. Say so on the row the moment it is clicked, then
+  // poll just the document list (not the heavy mismatch scan) until it settles.
+  const [busyDoc, setBusyDoc] = useState<Record<string, "sync" | "reprocess">>({});
+  const [docNote, setDocNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const refreshDocs = useCallback(() =>
+    fetch("/api/admin/kb").then(r => (r.ok ? r.json() : null)).then(d => { if (d) setDocs(d.documents ?? []); }).catch(() => {}), []);
+  const runDocAction = useCallback(async (doc: KbDoc, kind: "sync" | "reprocess") => {
+    setBusyDoc(b => ({ ...b, [doc.id]: kind })); setDocNote(null);
+    try {
+      const r = await fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "sync" ? { resync: doc.id } : { reprocess: doc.id }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || d.error) throw new Error(d.error || "Request failed");
+      setDocNote({ ok: true, text: kind === "sync" ? `Re-crawling “${doc.title}”… this can take up to a minute.` : `Re-processing “${doc.title}”…` });
+      await refreshDocs();
+    } catch (e) {
+      setDocNote({ ok: false, text: e instanceof Error ? e.message : "Request failed" });
+    } finally {
+      setBusyDoc(b => { const n = { ...b }; delete n[doc.id]; return n; });
+    }
+  }, [refreshDocs]);
+  const anyProcessing = docs.some(d => d.status === "processing");
+  const wasProcessing = useRef(false);
+  useEffect(() => {
+    if (!anyProcessing) {
+      if (wasProcessing.current) { wasProcessing.current = false; setDocNote(n => (n?.ok ? { ok: true, text: "Done — the knowledge base is up to date." } : n)); load(); }
+      return;
+    }
+    wasProcessing.current = true;
+    const t = setInterval(refreshDocs, 3000);
+    return () => clearInterval(t);
+  }, [anyProcessing, refreshDocs, load]);
+
   return (
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
@@ -178,6 +211,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
           <span className="text-xs text-slate-400">{docs.length} document{docs.length === 1 ? "" : "s"}</span>
         </div>
         <KbAddForm onAdded={load} disabled={!backendReady} />
+        {docNote && <p role="status" className={`text-xs rounded-lg px-3 py-2 ${docNote.ok ? "bg-brand-50 text-brand-700" : "bg-red-50 text-red-600"}`}>{docNote.text}</p>}
         <div className="divide-y divide-slate-100 border-t border-slate-100 pt-1">
           {docs.map(d => (
             <div key={d.id} className="flex items-center justify-between py-2.5">
@@ -193,8 +227,16 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                   onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   onBlur={e => { const v = e.target.value.trim(); if (v !== (d.tag ?? "")) fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retag: d.id, tag: v || null }) }).then(load).catch(() => {}); }} />
                 <span className={statusBadge(d.status)}>{d.status}</span>
-                {d.sourceType === "url" && <button title="Sync now — re-crawl this page" onClick={() => fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resync: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-slate-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg"><RefreshCw className="w-4 h-4" /></button>}
-                <button title="Reprocess — re-chunk &amp; re-embed with the latest smart chunker (no re-upload)" onClick={() => fetch("/api/admin/kb", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reprocess: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-slate-400 hover:text-brand-700 hover:bg-brand-50 rounded-lg"><Sparkles className="w-4 h-4" /></button>
+                {d.sourceType === "url" && (
+                  <button title={busyDoc[d.id] === "sync" || d.status === "processing" ? "Syncing…" : "Sync now — re-crawl this page"} aria-label="Sync now" disabled={!!busyDoc[d.id] || d.status === "processing"}
+                    onClick={() => runDocAction(d, "sync")} className={`p-1.5 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "sync" || d.status === "processing" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
+                    <RefreshCw className={`w-4 h-4 ${busyDoc[d.id] === "sync" || d.status === "processing" ? "animate-spin" : ""}`} />
+                  </button>
+                )}
+                <button title="Reprocess — re-chunk &amp; re-embed with the latest smart chunker (no re-upload)" aria-label="Reprocess" disabled={!!busyDoc[d.id] || d.status === "processing"}
+                  onClick={() => runDocAction(d, "reprocess")} className={`p-1.5 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "reprocess" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
+                  {busyDoc[d.id] === "reprocess" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                </button>
                 <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
