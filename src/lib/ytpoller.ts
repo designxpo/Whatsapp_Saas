@@ -11,7 +11,7 @@
 import { db } from "./supabase";
 import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, type YtCreds } from "./youtube";
-import { matchYtCommentRule, claimYtComment, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday } from "./ytcomments";
+import { matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday } from "./ytcomments";
 import { pickPublicReply } from "./igcomments";
 import { generateReply } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
@@ -29,14 +29,17 @@ async function getCursor(channelId: string): Promise<Date | null> {
 // last poll actually did. Extra columns land in 0097; the write is best-effort
 // and column-by-column optional so a pre-0097 DB still advances the cursor.
 interface PollOutcome { commentsSeen?: number; repliesPosted?: number; lastReplyId?: string | null; lastError?: string | null }
+// `at` is the comment watermark (a comment's own publish time), not the clock —
+// "last checked" is recorded separately as now.
 async function setCursor(channelId: string, tenantId: string, at: string, o?: PollOutcome): Promise<void> {
-  const row: Record<string, unknown> = { channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at };
+  const now = new Date().toISOString();
+  const row: Record<string, unknown> = { channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: now };
   if (o) {
-    row.last_checked_at = at;
+    row.last_checked_at = now;
     row.comments_seen = o.commentsSeen ?? 0;
     row.replies_posted = o.repliesPosted ?? 0;
     row.last_error = o.lastError ?? null;
-    if (o.lastReplyId) { row.last_reply_id = o.lastReplyId; row.last_reply_at = at; }
+    if (o.lastReplyId) { row.last_reply_id = o.lastReplyId; row.last_reply_at = now; }
   }
   const write = (r: Record<string, unknown>) => db().from("wa_yt_poll_cursor").upsert(r, { onConflict: "channel_id" });
   const { error } = await write(row);
@@ -44,6 +47,15 @@ async function setCursor(channelId: string, tenantId: string, at: string, o?: Po
   // diagnostic columns being absent.
   if (error) await write({ channel_id: channelId, tenant_id: tenantId, last_polled_at: at, updated_at: at }).then(() => {}, () => {});
 }
+
+/** How far behind the watermark each poll re-reads (see drainChannel). */
+const LOOKBACK_MS = 24 * 3600_000;
+/**
+ * The later of two ISO times; a missing one never moves the watermark back.
+ * Compared as instants, not strings: YouTube writes "…:01Z" and toISOString()
+ * writes "…:01.000Z", which sort the wrong way round as text.
+ */
+const later = (a: string, b: string | null | undefined): string => (b && Date.parse(b) > Date.parse(a) ? b : a);
 
 async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>): Promise<number> {
   const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
@@ -62,11 +74,26 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
     return 0;
   }
 
-  const comments = await listNewComments(creds, since, 3);
+  // Re-read a window BEHIND the watermark, and never move the watermark to the
+  // wall clock. A comment can reach the API after a later poll already ran:
+  // YouTube's comment index lags by minutes, and a comment YouTube held for
+  // review only appears once the owner approves it — both arrive carrying their
+  // ORIGINAL publish time. With a "since = last poll time" cursor such a comment
+  // was older than the cursor the moment it became visible, so it was skipped
+  // forever. Already-handled comments in the window are filtered by the claim log.
+  // The floor never reaches before the channel was connected, so connecting a
+  // channel still never answers its existing backlog.
+  const connectedAt = Date.parse(channel.createdAt ?? "") || 0;
+  const floor = new Date(Math.max(since.getTime() - LOOKBACK_MS, connectedAt));
+  const listed = await listNewComments(creds, floor, 3);
+  const claimed = await claimedYtCommentIds(listed.map(c => c.id), channel.tenantId);
+  const comments = listed.filter(c => !claimed.has(c.id));
   if (!comments.length) {
-    await setCursor(channel.id, channel.tenantId, new Date().toISOString(), { commentsSeen: 0, repliesPosted: 0 });
+    await setCursor(channel.id, channel.tenantId, since.toISOString(), { commentsSeen: 0, repliesPosted: 0 });
     return 0;
   }
+  // Loaded once per poll rather than once per comment.
+  const rules = await listYtCommentRules(channel.tenantId).catch(() => undefined);
 
   let acted = 0;
   let lastReplyId: string | null = null;
@@ -98,14 +125,14 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   for (const c of ordered) {
     // Never reply to our own channel's comments (no self-loop) — nothing to do,
     // so it's "handled": advance past it.
-    if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
+    if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) { cursorAt = later(cursorAt, c.publishedAt); continue; }
 
-    const rule = await matchYtCommentRule(c.text, c.videoId, channel.tenantId, channel.id);
+    const rule = await matchYtCommentRule(c.text, c.videoId, channel.tenantId, channel.id, rules);
     const aiWillAnswer = !rule && channel.commentAi && aiEnabled;
     // Take no action → do NOT claim, but DO advance. Claiming here used to burn the
     // comment id permanently, so a rule created afterwards could never fire on a
     // comment the poller had already walked past with nothing to do.
-    if (!rule && !aiWillAnswer) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
+    if (!rule && !aiWillAnswer) { cursorAt = later(cursorAt, c.publishedAt); continue; }
 
     // A quota-consuming action is due. Out of daily budget → STOP here, leaving
     // this comment and every later one for a future tick (cursor stays before it).
@@ -113,7 +140,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
 
     // Idempotency: claim the comment once (whether a rule fires or the AI answers).
     // Already claimed (a prior run) → nothing more to do, advance past it.
-    if (!(await claimYtComment(c.id, rule?.id ?? null, channel.tenantId))) { if (c.publishedAt) cursorAt = c.publishedAt; continue; }
+    if (!(await claimYtComment(c.id, rule?.id ?? null, channel.tenantId))) { cursorAt = later(cursorAt, c.publishedAt); continue; }
     budget -= 1;   // one comment-action spent against the tenant's daily cap
 
     if (rule) {
@@ -126,7 +153,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
       if (rule.moderate === "hold_spam") await setModeration(creds, c.id, "heldForReview");
       else if (rule.moderate === "reject_spam") await setModeration(creds, c.id, "rejected");
       await bumpYtRuleMatch(rule.id, rule.matchCount, channel.tenantId);
-      if (c.publishedAt) cursorAt = c.publishedAt;
+      cursorAt = later(cursorAt, c.publishedAt);
       continue;
     }
 
@@ -156,7 +183,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
         console.error("[ytpoller] ai reply", c.id, e);
       }
     }
-    if (c.publishedAt) cursorAt = c.publishedAt;
+    cursorAt = later(cursorAt, c.publishedAt);
   }
 
   budgetCache.set(channel.tenantId, budget < 0 ? 0 : budget);
@@ -164,13 +191,13 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
   // Cursor: through the newest comment when we finished the batch, or only through
   // the last handled comment when the daily cap deferred the rest.
   let newestSeen = since.toISOString();
-  for (const c of comments) if (c.publishedAt && c.publishedAt > newestSeen) newestSeen = c.publishedAt;
+  for (const c of comments) newestSeen = later(newestSeen, c.publishedAt);
   const finalCursor = capReached ? cursorAt : newestSeen;
   if (capReached && !lastError) {
     lastError = `Daily reply cap reached (${cap}/day) — the rest will be answered automatically after midnight UTC.`;
   }
 
-  await setCursor(channel.id, channel.tenantId, finalCursor || new Date().toISOString(), {
+  await setCursor(channel.id, channel.tenantId, finalCursor || since.toISOString(), {
     commentsSeen: comments.length, repliesPosted: acted, lastReplyId, lastError,
   });
   return acted;

@@ -1907,6 +1907,21 @@ export async function setSetting(key: string, value: unknown): Promise<void> {
 // Per-tenant config and secrets. Secrets (Meta access tokens, API keys) are
 // encrypted at rest via crypto.ts before they ever reach the DB. The wa_settings
 // uniqueness must be (tenant_id, key) — see 0020 constraint migration (pending).
+/**
+ * The workspaces whose `key` setting passes `on`, in ONE query.
+ *
+ * For cron stages that only matter to the few workspaces that opted in: walking
+ * every tenant and reading the setting one by one costs a round trip per tenant
+ * on every tick, inside a 45-second budget shared with message delivery.
+ */
+export async function tenantIdsWithSetting(key: string, on: (value: unknown) => boolean): Promise<string[]> {
+  const { data, error } = await db().from("wa_settings").select("tenant_id, value").eq("key", key);
+  if (error) throw error;
+  return ((data ?? []) as { tenant_id: string | null; value: unknown }[])
+    .filter(r => r.tenant_id && on(r.value))
+    .map(r => r.tenant_id as string);
+}
+
 export async function getTenantSetting<T>(tenantId: string, key: string, fallback: T): Promise<T> {
   const { data } = await tdb(tenantId).from("wa_settings").select("value").eq("key", key).maybeSingle();
   return ((data as { value?: T } | null)?.value as T) ?? fallback;

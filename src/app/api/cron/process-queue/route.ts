@@ -1,5 +1,5 @@
-import { runStagePoll } from "@/lib/stagepoll";
-import { db as stagePollDb } from "@/lib/supabase";
+import { runStagePoll, STAGE_POLL_KEY } from "@/lib/stagepoll";
+import { tenantIdsWithSetting } from "@/lib/store";
 import { accountCanSend as canPollStage } from "@/lib/feature-guard";
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
@@ -101,13 +101,22 @@ export async function POST(req: Request) {
       try { inactiveNudges = await drainInactiveLeads(100); } catch (e) { console.error("[cron] inactivity", e); }
     }
 
-    // Each workspace owns its poll watermark, credentials and observe/apply setting.
+    // LeadSquared stage poll — only for the workspaces that switched it on. Each
+    // owns its poll watermark, credentials and observe/apply setting.
+    //
+    // This used to walk EVERY tenant (an entitlement lookup + a settings read
+    // each) on every tick. Sixteen serial round trips was enough to push the
+    // stages below past DEADLINE: from the deploy that added it, YouTube
+    // comments, Google reviews, URL re-sync and everything after them silently
+    // stopped running. One query for the opted-in few costs nothing.
     if (Date.now() - startedAt < DEADLINE) {
-      const { data: workspaces } = await stagePollDb().from("tenants").select("id");
-      for (const workspace of workspaces ?? []) {
-        if (Date.now() - startedAt >= DEADLINE) break;
-        if (await canPollStage(workspace.id)) await runStagePoll({}, workspace.id).catch(e => console.error("[cron] stage poll", e));
-      }
+      try {
+        const workspaces = await tenantIdsWithSetting(STAGE_POLL_KEY, v => (v as { enabled?: unknown } | null)?.enabled === true);
+        for (const id of workspaces) {
+          if (Date.now() - startedAt >= DEADLINE) break;
+          if (await canPollStage(id)) await runStagePoll({}, id).catch(e => console.error("[cron] stage poll", e));
+        }
+      } catch (e) { console.error("[cron] stage poll", e); }
     }
 
     // Drip sequences — advance due enrollments one step (follow-ups, cart recovery).

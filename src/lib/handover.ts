@@ -28,7 +28,7 @@ import { listChannels } from "./channels";
 import { fetchLeadDetails, lsqConfigured, lsqPaused } from "./leadsquared";
 import {
   assignConversation, reassignConversationChannel, getConversationByPhone,
-  getContactByPhoneLoose, setContactAttributes, getTenantSetting, setTenantSetting,
+  getContactByPhoneLoose, setContactAttributes, getTenantSetting, setTenantSetting, tenantIdsWithSetting,
   type Conversation,
 } from "./store";
 import { db } from "./supabase";
@@ -328,13 +328,18 @@ async function drainCrmOwnerSyncForTenant(tenantId: string, limit: number): Prom
 // `limit` caps the CONVERSATIONS checked in total so one tick stays cheap no
 // matter how many workspaces there are.
 export async function drainCrmOwnerSync(limit = 15): Promise<SweepOutcome> {
-  const { data, error } = await db().from("tenants").select("id");
-  if (error) return { ran: false, checked: 0, moved: 0, reason: error.message };
+  // Only the workspaces that switched the sweep on — one query, rather than a
+  // LeadSquared-config + pause + setting read for every tenant on every tick
+  // (which, inside the cron's shared 45s budget, starves the stages after it).
+  let ids: string[];
+  try { ids = await tenantIdsWithSetting("crm_owner_sync_enabled", v => v === true); }
+  catch (e) { return { ran: false, checked: 0, moved: 0, reason: e instanceof Error ? e.message : String(e) }; }
+  if (!ids.length) return { ran: false, checked: 0, moved: 0, reason: "disabled" };
   let ran = false, checked = 0, moved = 0;
   let reason: string | undefined;
-  for (const t of (data ?? []) as { id: string }[]) {
+  for (const id of ids) {
     if (checked >= limit) break;
-    const r = await drainCrmOwnerSyncForTenant(t.id, limit - checked).catch(e => ({ ran: false, checked: 0, moved: 0, reason: String(e) } as SweepOutcome));
+    const r = await drainCrmOwnerSyncForTenant(id, limit - checked).catch(e => ({ ran: false, checked: 0, moved: 0, reason: String(e) } as SweepOutcome));
     ran = ran || r.ran; checked += r.checked; moved += r.moved;
     if (!r.ran && !reason) reason = r.reason;
   }

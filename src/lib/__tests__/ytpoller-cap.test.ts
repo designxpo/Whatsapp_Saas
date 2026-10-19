@@ -44,6 +44,8 @@ vi.mock("../ytcomments", () => ({
   ytActionsUsedToday: vi.fn(async () => 0),
   matchYtCommentRule: vi.fn(async () => null), // no rule → AI answers (the capped path)
   claimYtComment: vi.fn(async () => true),
+  claimedYtCommentIds: vi.fn(async () => new Set<string>()),
+  listYtCommentRules: vi.fn(async () => []),
   bumpYtRuleMatch: vi.fn(async () => {}),
 }));
 

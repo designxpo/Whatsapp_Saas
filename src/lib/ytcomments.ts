@@ -104,8 +104,9 @@ export async function deleteYtCommentRule(id: string, tenantId: string): Promise
 // win over any-channel; specific-video over all-videos; keyword over catch-all.
 // A rule needs at least one public reply OR a moderation action to be actionable.
 // Returns null when nothing matches (anti-spam default).
-export async function matchYtCommentRule(text: string, videoId: string | null, tenantId: string, channelId?: string | null): Promise<YtCommentRule | null> {
-  const rules = (await listYtCommentRules(tenantId)).filter(r => r.enabled && (r.publicReplies.length > 0 || r.moderate !== "off"));
+export async function matchYtCommentRule(text: string, videoId: string | null, tenantId: string, channelId?: string | null, allRules?: YtCommentRule[]): Promise<YtCommentRule | null> {
+  // `allRules` lets a poll load the tenant's rules once instead of once per comment.
+  const rules = (allRules ?? await listYtCommentRules(tenantId)).filter(r => r.enabled && (r.publicReplies.length > 0 || r.moderate !== "off"));
   const keywordOk = (r: YtCommentRule) => matchesKeywords(text, r.keyword);
   const videoOk = (r: YtCommentRule) => !r.videoId || r.videoId === videoId;
   const channelOk = (r: YtCommentRule) => !r.channelId || !channelId || r.channelId === channelId;
@@ -128,6 +129,20 @@ export async function claimYtComment(commentId: string, ruleId: string | null, t
   const { error } = await db().from("wa_yt_comment_log").insert({ comment_id: commentId, rule_id: ruleId, tenant_id: tenantId });
   if (error) return false;
   return true;
+}
+
+// Which of these comments were already acted on — one query for a whole poll,
+// so re-reading the overlap window behind the cursor costs no extra writes.
+// A lookup failure returns the empty set: claimYtComment's unique insert is
+// still the real guard against a double reply.
+export async function claimedYtCommentIds(ids: string[], tenantId: string): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  try {
+    const { data } = await db().from("wa_yt_comment_log").select("comment_id").eq("tenant_id", tenantId).in("comment_id", ids);
+    return new Set(((data ?? []) as { comment_id: string }[]).map(r => r.comment_id));
+  } catch {
+    return new Set();
+  }
 }
 
 // ── Daily reply cap (shared-quota protection) ────────────────────────────────
