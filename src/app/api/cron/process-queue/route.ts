@@ -60,11 +60,14 @@ export async function POST(req: Request) {
   // see cronstages.ts). `declared` is every stage this tick knows about.
   const declared: string[] = [];
   const ran: string[] = [];
+  const tookMs: Record<string, number> = {};
   async function stage<T>(name: string, fallback: T, fn: () => Promise<T>, budgetStart = startedAt, budget = DEADLINE): Promise<T> {
     declared.push(name);
     if (Date.now() - budgetStart >= budget) return fallback;
     ran.push(name);
+    const t0 = Date.now();
     try { return await fn(); } catch (e) { console.error(`[cron] ${name}`, e); return fallback; }
+    finally { tookMs[name] = Date.now() - t0; }
   }
 
   // Pollers — YouTube comments, Google reviews, URL re-sync and the Instagram
@@ -84,11 +87,12 @@ export async function POST(req: Request) {
     const kbSync = await stage("kbsync", null, () => refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }), pollStart, POLL_BUDGET);
     const igTokens = await stage("igtokens", null, () => sweepIgTokensIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, tookMs: Date.now() - pollStart }));
-    await recordStageTick(ran, [...new Set([...STAGES, ...declared])]);
+    await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 
   try {
     let scheduledFired = 0;
+    const tOpen = Date.now();
     for (const c of await getDueScheduledCampaigns(25)) {
       if (Date.now() - startedAt > DEADLINE) break;
       try { await fireScheduledCampaign(c); scheduledFired++; } catch (e) { console.error("[cron] fire", c.id, e); }
@@ -108,6 +112,7 @@ export async function POST(req: Request) {
       sent += sentInBatch.reduce((a, b) => a + b, 0);
       queuesDrained += batch.length;
     }
+    tookMs.campaigns = Date.now() - tOpen;
 
     let autoSends = { sent: 0, failed: 0 };
     autoSends = await stage("autosends", autoSends, () => drainAutoSends());

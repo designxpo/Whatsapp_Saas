@@ -26,6 +26,8 @@ export interface StageRuns {
   since: string;
   /** Stage name → last time it got its turn. */
   runs: Record<string, string>;
+  /** The latest tick: how long each stage took (ms), and which got no turn. */
+  lastTick?: { at: string; tookMs: Record<string, number>; skipped: string[] };
 }
 
 export interface StarvedStage { stage: string; minutes: number }
@@ -61,10 +63,13 @@ export function starvedStages(rec: StageRuns, expected: string[], now: Date): St
  * fail the engine. Overlapping ticks may lose one stamp to a read-modify-write
  * race; the next tick restamps it, which is far inside STALE_MIN.
  */
-export async function recordStageTick(ran: string[], expected: string[]): Promise<StarvedStage[]> {
+export async function recordStageTick(ran: string[], expected: string[], tookMs: Record<string, number> = {}): Promise<StarvedStage[]> {
   try {
     const now = new Date();
     const rec = mergeRuns(await getSetting<StageRuns | null>(RUNS_KEY, null), ran, now);
+    // Which stage ate the budget is the first question when one is starved —
+    // keep the answer next to the symptom.
+    rec.lastTick = { at: now.toISOString(), tookMs, skipped: expected.filter(s => !ran.includes(s)) };
     await setSetting(RUNS_KEY, rec);
     const starved = starvedStages(rec, expected, now);
     if (starved.length) {
