@@ -322,6 +322,25 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
   const [note, setNote] = useState<string | null>(null);
   const [check, setCheck] = useState<{ ready: boolean; reason: string } | null>(null);
 
+  // Re-file every concept by what it is about. The server works in time-boxed
+  // slices; keep going until it says there is nothing left.
+  const reorganise = async () => {
+    setBusy("reorganise"); setNote("Re-organising…"); setCheck(null);
+    let cursor: string | null = null, areas: string[] = [], moved = 0, kept = 0;
+    try {
+      for (let guard = 0; guard < 200; guard++) {
+        const r: { error?: string; moved?: number; kept?: number; nextCursor?: string | null; areas?: string[] } = await fetch("/api/admin/kb/concepts", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reorganise: true, cursor, areas }),
+        }).then(x => x.json()).catch(() => ({ error: "request failed" }));
+        if (r.error) { setNote(`${r.error} — ${moved} moved so far. Run it again to continue.`); return; }
+        moved += r.moved ?? 0; kept += r.kept ?? 0; areas = r.areas ?? areas;
+        setNote(`Re-organising… ${moved + kept} read, ${moved} moved`);
+        if (!r.nextCursor) { setNote(`Done — ${moved} concept${moved === 1 ? "" : "s"} moved into ${areas.length} subject area${areas.length === 1 ? "" : "s"}, ${kept} already in the right place.`); return; }
+        cursor = r.nextCursor;
+      }
+    } finally { setBusy(""); onChanged(); }
+  };
+
   const post = async (payload: Record<string, unknown>, label: string) => {
     setBusy(label); setNote(null); setCheck(null);
     try {
@@ -344,6 +363,11 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
           className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50 disabled:opacity-50">
           {busy === "convert" ? "Converting…" : `Convert ${docs} document${docs === 1 ? "" : "s"}`}
         </button>
+        <button disabled={!!busy} onClick={reorganise}
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          title="Re-file every concept under subject areas inferred from its content">
+          {busy === "reorganise" ? "Re-organising…" : "Re-organise by content"}
+        </button>
         <button disabled={!!busy} onClick={() => post({ evaluate: true }, "evaluate")}
           className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-line text-slate-700 hover:bg-slate-50 disabled:opacity-50">
           {busy === "evaluate" ? "Comparing…" : "Compare against live answers"}
@@ -356,7 +380,9 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
 
       <p className="text-[11px] text-slate-400">
         Converting reads documents already uploaded and files them into the library. It is safe to run twice — a
-        document restating itself merges rather than duplicating.
+        document restating itself merges rather than duplicating. <b>Re-organise by content</b> re-files everything
+        already in the library under subject areas read from what each concept says — use it if the shelves above
+        don&apos;t match your business.
       </p>
 
       {note && <p className="text-[12px] text-slate-600">{note}</p>}

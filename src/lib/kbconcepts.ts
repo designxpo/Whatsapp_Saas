@@ -496,3 +496,77 @@ export async function convertDocumentToLibrary(docId: string, tenantId = DEFAULT
   }
   return ingestToLibrary({ id: doc.id, title: doc.title, tag: doc.tag ?? null }, text, tenantId);
 }
+
+// ── Re-organise ──────────────────────────────────────────────────────────────
+
+export interface ReorganiseResult {
+  /** Concepts moved to a different area in this slice. */
+  moved: number;
+  /** Concepts left where they were (already right, or no area could be decided). */
+  kept: number;
+  /** Cursor for the next slice, or null when every concept has been read. */
+  nextCursor: string | null;
+  /** Areas created so far; hand back on the next slice so it reuses them. */
+  areas: string[];
+}
+
+/**
+ * Re-file the live library by what each concept is about.
+ *
+ * A library built under an older, fixed shelf list keeps those shelves forever:
+ * converting only re-reads documents, and the classifier prefers EXISTING areas,
+ * so it would keep pouring into the old ones. This starts from a clean slate
+ * (the caller passes no areas) and lets the content decide.
+ *
+ * Sliced and resumable, because a library is thousands of concepts and a request
+ * has about a minute: each call works until its time budget is spent and returns
+ * a cursor. Concepts are visited in id order, which never changes as they move.
+ */
+export async function reorganiseLibrary(
+  tenantId = DEFAULT_TENANT_ID,
+  opts: { cursor?: string | null; areas?: string[]; budgetMs?: number } = {},
+): Promise<ReorganiseResult> {
+  const deadline = Date.now() + (opts.budgetMs ?? 40_000);
+  const areas = new Set((opts.areas ?? []).map(a => areaSlug(a)).filter((a): a is string => !!a));
+  let cursor = opts.cursor ?? null;
+  let moved = 0, kept = 0;
+  const CHUNK = 40;
+
+  for (;;) {
+    let q = tdb(tenantId).from("kb_concepts").select("*").eq("status", "active").order("id", { ascending: true }).limit(CHUNK);
+    if (cursor) q = q.gt("id", cursor);
+    const { data } = await q;
+    const rows = (data ?? []).map(r => map(r as unknown as Record<string, unknown>));
+    if (!rows.length) return { moved, kept, nextCursor: null, areas: [...areas] };
+
+    const decided = await assignAreas(
+      rows.map(c => ({ title: c.title ?? c.path, text: `${c.description ?? ""}\n${c.body}` })),
+      [...areas], tenantId, { minKeywordConfidence: MIN_CONFIDENCE },
+    );
+    for (let i = 0; i < rows.length; i++) {
+      const c = rows[i];
+      const target = decided[i]?.area ?? null;
+      if (target) areas.add(target);
+      if (!target || target === c.area) { kept++; continue; }
+      try {
+        const file = c.path.split("/").pop() ?? `${conceptSlug(c.title ?? "concept")}.md`;
+        const stem = file.replace(/\.md$/, "");
+        let destination = `${target}/${file}`;
+        // A same-named concept already lives there: keep both by numbering this one.
+        for (let n = 2; n < 20; n++) {
+          const { data: clash } = await tdb(tenantId).from("kb_concepts").select("id").eq("path", destination).eq("status", "active").limit(1);
+          if (!(clash ?? []).length) break;
+          destination = `${target}/${stem}-${n}.md`;
+        }
+        await tdb(tenantId).from("kb_concepts").update({ area: target, path: destination, updated_at: new Date().toISOString() }).eq("id", c.id);
+        moved++;
+      } catch (err) {
+        kept++;
+        console.error("[kb] reorganise failed for", c.path, errorMessage(err));
+      }
+    }
+    cursor = rows[rows.length - 1].id;
+    if (rows.length < CHUNK) return { moved, kept, nextCursor: null, areas: [...areas] };
+    if (Date.now() > deadline) return { moved, kept, nextCursor: cursor, areas: [...areas] };
+  }
+}

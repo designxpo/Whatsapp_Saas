@@ -8,7 +8,7 @@
 import { NextResponse, after } from "next/server";
 import {
   listReviewItems, listActiveConcepts, conceptAreaSummary,
-  approveConcept, rejectConcept, updateConcept, convertDocumentToLibrary, conceptMismatches,
+  approveConcept, rejectConcept, updateConcept, convertDocumentToLibrary, conceptMismatches, reorganiseLibrary,
 } from "@/lib/kbconcepts";
 import { publishConcepts } from "@/lib/kbpublish";
 import { runEval, verdict } from "@/lib/kbeval";
@@ -93,6 +93,18 @@ export async function POST(req: Request) {
         await publishConcepts({}, tenantId);
       });
       return NextResponse.json({ success: true, converting: targets.length });
+    }
+
+    // Re-file the whole library by content. Works in slices: the client keeps
+    // calling with the returned cursor + areas until nextCursor is null, and the
+    // vectors are rebuilt once, after the last slice.
+    if (body.reorganise) {
+      const r = await reorganiseLibrary(tenantId, {
+        cursor: typeof body.cursor === "string" ? body.cursor : null,
+        areas: Array.isArray(body.areas) ? (body.areas as unknown[]).map(String) : [],
+      });
+      if (!r.nextCursor) after(() => publishConcepts({}, tenantId));
+      return NextResponse.json(r);
     }
 
     // Compare the library against the document index before trusting it.
