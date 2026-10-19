@@ -13,11 +13,11 @@ import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
 import {
   matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday,
-  getYtWatch, saveYtWatch, recentlyAnsweredThreads,
+  getYtWatch, saveYtWatch, recentlyAnsweredThreads, releaseYtComment,
 } from "./ytcomments";
-import { pickFollowUps, threadHistory, addressTo, watchDue, pruneWatch, WATCH_DAYS } from "./ytfollowups";
+import { pickFollowUps, threadHistory, addressTo, watchDue, pruneWatch, classifyAiReply, WATCH_DAYS } from "./ytfollowups";
 import { pickPublicReply } from "./igcomments";
-import { generateReply } from "./llm";
+import { generateReply, isCannedNonAnswer } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 
 // Per-channel cursor (last successful poll time). Missing table / row → null so a
@@ -61,7 +61,7 @@ const LOOKBACK_MS = 24 * 3600_000;
  */
 const later = (a: string, b: string | null | undefined): string => (b && Date.parse(b) > Date.parse(a) ? b : a);
 
-async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[]): Promise<number> {
+async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[], aiFailing: Set<string>): Promise<number> {
   const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
   if (!creds.channelId || !creds.refreshToken) return 0;
 
@@ -126,7 +126,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
     if (c.authorChannelId && c.authorChannelId === channel.ytChannelId) { cursorAt = later(cursorAt, c.publishedAt); continue; }
 
     const rule = await matchYtCommentRule(c.text, c.videoId, channel.tenantId, channel.id, rules);
-    const aiWillAnswer = !rule && channel.commentAi && aiEnabled;
+    const aiWillAnswer = !rule && channel.commentAi && aiEnabled && !aiFailing.has(channel.tenantId);
     // Take no action → do NOT claim, but DO advance. Claiming here used to burn the
     // comment id permanently, so a rule created afterwards could never fire on a
     // comment the poller had already walked past with nothing to do.
@@ -169,10 +169,18 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
           undefined,
           "youtube",
         );
-        if (res.reply && !res.escalate) {
-          const r = await replyToComment(creds, c.id, res.reply);
+        const verdict = classifyAiReply(res, isCannedNonAnswer);
+        if (verdict === "post") {
+          const r = await replyToComment(creds, c.id, res.reply as string);
           if (r.ok) { acted++; lastReplyId = r.id ?? null; answered.push(c.id); }
           else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] ai reply failed", channel.id, c.id, r.error); }
+        } else if (verdict === "retry") {
+          // The AI is failing (provider down / quota out). Never post its
+          // placeholder; give the comment back so the 24h re-read retries it,
+          // and stop asking the AI for the rest of this run.
+          await releaseYtComment(c.id, channel.tenantId);
+          aiFailing.add(channel.tenantId);
+          lastError = `The AI couldn't answer right now (${res.reason ?? "error"}) — this comment will be retried automatically. Check the AI key's quota/billing if this persists.`;
         } else if (res.escalate) {
           lastError = "The AI declined to answer this comment (not enough in the knowledge base).";
         }
@@ -220,7 +228,7 @@ async function tenantBudget(tenantId: string, budgetCache: Map<string, number>, 
 // top-level comment's time), so the incremental poll above never sees one. The
 // threads we've replied in are watched by id instead — see ytfollowups.ts for
 // who gets an answer. Runs every tick for lively threads, every 15 min otherwise.
-async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[]): Promise<number> {
+async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, boolean>, budgetCache: Map<string, number>, capCache: Map<string, number>, answered: string[], aiFailing: Set<string>): Promise<number> {
   const creds: YtCreds = { channelId: channel.ytChannelId as string, refreshToken: channel.token };
   if (!creds.channelId || !creds.refreshToken) return 0;
   const now = new Date();
@@ -265,8 +273,10 @@ async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, bool
     if (t.channelId && t.channelId !== creds.channelId) { delete w.threads[t.id]; continue; }
     const st = w.threads[t.id];
     if (!st) continue;
-    let deferred = false;
-    if (answering) {
+    // While the AI is failing, hold every thread where it is — nothing is read
+    // past, so whatever is waiting gets answered once the AI is back.
+    let deferred = answering && aiFailing.has(channel.tenantId);
+    if (answering && !deferred) {
       for (const r of pickFollowUps(t, { selfChannelId: creds.channelId, handle: w.handle, seen: st.seen, now })) {
         if (budget <= 0) { deferred = true; break; }
         if (!(await claimYtComment(r.id, null, channel.tenantId))) continue;
@@ -274,10 +284,17 @@ async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, bool
         try {
           const res = await generateReply(threadHistory(t, creds.channelId, r), undefined, effectiveAgentId(null, channel),
             channel.tenantId, effectiveKbScope(null, channel), false, undefined, "youtube");
-          if (res.reply && !res.escalate) {
-            const p = await replyToComment(creds, t.id, addressTo(r.authorName, res.reply));
+          const verdict = classifyAiReply(res, isCannedNonAnswer);
+          if (verdict === "post") {
+            const p = await replyToComment(creds, t.id, addressTo(r.authorName, res.reply as string));
             if (p.ok) { acted++; st.active = nowIso; }
             else console.error("[ytpoller] follow-up reply failed", channel.id, r.id, p.error);
+          } else if (verdict === "retry") {
+            // AI failing: release, keep the thread unread from here, stop for this run.
+            await releaseYtComment(r.id, channel.tenantId);
+            deferred = true;
+            aiFailing.add(channel.tenantId);
+            break;
           }
         } catch (e) {
           console.error("[ytpoller] follow-up", r.id, e);
@@ -311,6 +328,9 @@ export async function drainYtComments(tenantId?: string): Promise<number> {
   } catch { return 0; }
   if (!channels.length) return 0;
   const aiEnabledCache = new Map<string, boolean>();
+  // Tenants whose AI failed this run (provider down, quota out): skip further AI
+  // calls for them, and read nothing past what's waiting.
+  const aiFailing = new Set<string>();
   // Per-tenant remaining daily reply budget + resolved cap, shared across a
   // tenant's channels for this run so they can't each spend the full cap
   // independently (and so one plan lookup serves all the tenant's channels).
@@ -319,10 +339,10 @@ export async function drainYtComments(tenantId?: string): Promise<number> {
   let acted = 0;
   for (const ch of channels) {
     const answered: string[] = [];
-    try { acted += await drainChannel(ch, aiEnabledCache, budgetCache, capCache, answered); }
+    try { acted += await drainChannel(ch, aiEnabledCache, budgetCache, capCache, answered, aiFailing); }
     catch (e) { console.error("[ytpoller] channel", ch.id, e); }
     // Separate try: a failure on new comments must not stop follow-ups, or the reverse.
-    try { acted += await drainFollowUps(ch, aiEnabledCache, budgetCache, capCache, answered); }
+    try { acted += await drainFollowUps(ch, aiEnabledCache, budgetCache, capCache, answered, aiFailing); }
     catch (e) { console.error("[ytpoller] follow-ups", ch.id, e); }
   }
   return acted;

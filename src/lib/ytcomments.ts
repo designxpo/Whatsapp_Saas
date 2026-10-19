@@ -132,6 +132,12 @@ export async function claimYtComment(commentId: string, ruleId: string | null, t
   return true;
 }
 
+// Undo a claim so the comment is tried again — used when the AI failed to
+// produce an answer (provider down, quota exhausted) rather than declining.
+export async function releaseYtComment(commentId: string, tenantId: string): Promise<void> {
+  await db().from("wa_yt_comment_log").delete().eq("comment_id", commentId).eq("tenant_id", tenantId).then(() => {}, () => {});
+}
+
 // Which of these comments were already acted on — one query for a whole poll,
 // so re-reading the overlap window behind the cursor costs no extra writes.
 // A lookup failure returns the empty set: claimYtComment's unique insert is

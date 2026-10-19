@@ -102,6 +102,26 @@ function clean(text: string): string {
   return text.replace(/[​-‍﻿]/g, "").replace(/^(\s*@[\w.-]+\s*)+/, "").trim();
 }
 
+/**
+ * What to do with an AI result on a PUBLIC surface.
+ *
+ * generateReply never returns nothing: when the model errors, runs out of tool
+ * rounds or says nothing, it returns a placeholder ("Thanks for your message! A
+ * team member will get back to you shortly.") — fine in a private chat with a
+ * team behind it, wrong as a public YouTube comment promising a follow-up that
+ * never comes. It went out exactly like that on 2026-10-19 while the workspace's
+ * Gemini key was out of quota.
+ *
+ *   post    — a real answer
+ *   retry   — the AI failed (error / exhausted); release the claim, try later
+ *   skip    — nothing worth saying publicly (declined, or an empty-reply nudge)
+ */
+export function classifyAiReply(res: { reply: string | null; escalate: boolean; reason?: string }, isPlaceholder: (s: string) => boolean): "post" | "retry" | "skip" {
+  if (/generation error|tool loop exhausted/i.test(res.reason ?? "")) return "retry";
+  if (!res.reply || res.escalate || isPlaceholder(res.reply)) return "skip";
+  return "post";
+}
+
 /** Address the reply to its author, as YouTube's own reply button would. */
 export function addressTo(author: string, reply: string): string {
   const name = author.trim();

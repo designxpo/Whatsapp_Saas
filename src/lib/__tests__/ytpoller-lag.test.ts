@@ -28,7 +28,7 @@ vi.mock("../channels", () => ({
   effectiveKbScope: () => ({ tag: null, strict: false }),
 }));
 vi.mock("../messaging-settings", () => ({ isAiEnabled: vi.fn(async () => true) }));
-vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "Jai Mata Di 🙏", escalate: false })) }));
+vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "Jai Mata Di 🙏", escalate: false })) , isCannedNonAnswer: (s: string | null) => s === "Thanks for your message! A team member will get back to you shortly." }));
 vi.mock("../ytcomments", () => ({
   getYtDailyReplyCap: vi.fn(async () => 100),
   ytActionsUsedToday: vi.fn(async () => 0),
@@ -38,6 +38,7 @@ vi.mock("../ytcomments", () => ({
   listYtCommentRules: vi.fn(async () => []),
   getYtWatch: vi.fn(async () => ({ threads: {}, seeded: true })),
   saveYtWatch: vi.fn(async () => {}),
+  releaseYtComment: vi.fn(async () => {}),
   recentlyAnsweredThreads: vi.fn(async () => []),
   bumpYtRuleMatch: vi.fn(async () => {}),
 }));
@@ -45,7 +46,8 @@ vi.mock("../ytcomments", () => ({
 import { drainYtComments } from "../ytpoller";
 import { listNewComments, replyToComment } from "../youtube";
 import { listChannels } from "../channels";
-import { claimedYtCommentIds } from "../ytcomments";
+import { claimedYtCommentIds, releaseYtComment } from "../ytcomments";
+import { generateReply } from "../llm";
 
 const CHANNEL = {
   id: "chan-1", tenantId: "t1", kind: "youtube", active: true, ytChannelId: "UC_self",
@@ -95,5 +97,14 @@ describe("drainYtComments — comments that surface late", () => {
     await drainYtComments();
     const floor = vi.mocked(listNewComments).mock.calls.at(-1)![1] as Date;
     expect(floor.toISOString()).toBe("2026-08-12T15:45:18.379Z");
+  });
+
+  it("does not post a placeholder on a new comment when the AI fails; gives the comment back", async () => {
+    vi.mocked(listNewComments).mockResolvedValue([late] as never);
+    vi.mocked(generateReply).mockResolvedValueOnce({ reply: "Thanks for your message! A team member will get back to you shortly.", escalate: false, reason: "generation error (fallback)" } as never);
+    expect(await drainYtComments()).toBe(0);
+    expect(replyToComment).not.toHaveBeenCalled();
+    expect(releaseYtComment).toHaveBeenCalledWith("late", "t1");
+    expect(String(lastWrite().last_error)).toMatch(/retried automatically/);
   });
 });

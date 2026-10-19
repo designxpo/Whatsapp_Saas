@@ -27,7 +27,7 @@ vi.mock("../channels", () => ({
   effectiveKbScope: () => ({ tag: null, strict: false }),
 }));
 vi.mock("../messaging-settings", () => ({ isAiEnabled: vi.fn(async () => true) }));
-vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "So true — Ma Durga is worshipped across India 🙏", escalate: false })) }));
+vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "So true — Ma Durga is worshipped across India 🙏", escalate: false })) , isCannedNonAnswer: (s: string | null) => s === "Thanks for your message! A team member will get back to you shortly." }));
 vi.mock("../ytcomments", () => ({
   getYtDailyReplyCap: vi.fn(async () => 100),
   ytActionsUsedToday: vi.fn(async () => h.budgetUsed),
@@ -38,6 +38,7 @@ vi.mock("../ytcomments", () => ({
   bumpYtRuleMatch: vi.fn(async () => {}),
   getYtWatch: vi.fn(async () => structuredClone(h.watch)),
   saveYtWatch: vi.fn(async (_c: string, _t: string, w: unknown) => { h.saved.push(structuredClone(w)); }),
+  releaseYtComment: vi.fn(async () => {}),
   recentlyAnsweredThreads: vi.fn(async () => [{ threadId: "T1", at: "2026-10-13T16:25:15Z" }]),
 }));
 
@@ -45,7 +46,7 @@ import { drainYtComments } from "../ytpoller";
 import { getThreads, replyToComment } from "../youtube";
 import { listChannels } from "../channels";
 import { generateReply } from "../llm";
-import { claimYtComment } from "../ytcomments";
+import { claimYtComment, releaseYtComment } from "../ytcomments";
 
 const SELF = "UC_self";
 const CHANNEL = { id: "chan-1", tenantId: "t1", kind: "youtube", active: true, ytChannelId: SELF, token: "rt", commentAi: true, createdAt: "2026-08-12T00:00:00Z" };
@@ -69,6 +70,8 @@ beforeEach(() => {
   vi.mocked(replyToComment).mockClear();
   vi.mocked(generateReply).mockClear();
   vi.mocked(claimYtComment).mockClear();
+  vi.mocked(releaseYtComment).mockClear();
+  vi.mocked(generateReply).mockResolvedValue({ reply: "So true — Ma Durga is worshipped across India 🙏", escalate: false } as never);
 });
 
 describe("drainYtComments — thread follow-ups", () => {
@@ -102,5 +105,15 @@ describe("drainYtComments — thread follow-ups", () => {
     expect(await drainYtComments()).toBe(0);
     expect(replyToComment).not.toHaveBeenCalled();
     expect(lastSaved().threads.T1.seen).toBe("2026-10-13T16:25:15Z");   // unchanged → retried after reset
+  });
+
+  // 2026-10-19: the workspace's Gemini key ran out of quota, generateReply fell
+  // back to its private-chat placeholder, and that went out as a public comment.
+  it("never posts the AI's placeholder when the AI fails — releases and retries later", async () => {
+    vi.mocked(generateReply).mockResolvedValue({ reply: "Thanks for your message! A team member will get back to you shortly.", escalate: false, reason: "generation error (fallback)" } as never);
+    expect(await drainYtComments()).toBe(0);
+    expect(replyToComment).not.toHaveBeenCalled();
+    expect(releaseYtComment).toHaveBeenCalledWith("T1.b", "t1");
+    expect(lastSaved().threads.T1.seen).toBe("2026-10-13T16:25:15Z");   // still unread → answered once the AI is back
   });
 });

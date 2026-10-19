@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mentionsHandle, pickFollowUps, threadHistory, addressTo, watchDue, pruneWatch, MAX_REPLIES_PER_THREAD } from "../ytfollowups";
+import { mentionsHandle, pickFollowUps, threadHistory, addressTo, watchDue, pruneWatch, classifyAiReply, MAX_REPLIES_PER_THREAD } from "../ytfollowups";
 import type { YtReply, YtThread } from "../youtube";
 
 const SELF = "UC_self";
@@ -101,5 +101,18 @@ describe("watch cadence", () => {
   it("forgets threads quiet for a week", () => {
     expect(Object.keys(pruneWatch(w("2026-10-11T00:00:00Z"), NOW).threads)).toEqual([]);
     expect(Object.keys(pruneWatch(w("2026-10-15T00:00:00Z"), NOW).threads)).toEqual(["T1"]);
+  });
+});
+
+describe("classifyAiReply — what may be said in public", () => {
+  const placeholder = (t: string) => t.startsWith("Thanks for your message!");
+  it("posts a real answer", () => { expect(classifyAiReply({ reply: "Jai Mata Di", escalate: false }, placeholder)).toBe("post"); });
+  it("retries when the AI errored, even though a placeholder came back", () => {
+    expect(classifyAiReply({ reply: "Thanks for your message! A team member…", escalate: false, reason: "generation error (fallback)" }, placeholder)).toBe("retry");
+    expect(classifyAiReply({ reply: "x", escalate: false, reason: "tool loop exhausted" }, placeholder)).toBe("retry");
+  });
+  it("skips declines and placeholders", () => {
+    expect(classifyAiReply({ reply: null, escalate: true }, placeholder)).toBe("skip");
+    expect(classifyAiReply({ reply: "Thanks for your message! …", escalate: false, reason: "empty model reply" }, placeholder)).toBe("skip");
   });
 });

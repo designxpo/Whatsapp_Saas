@@ -37,7 +37,7 @@ vi.mock("../channels", () => ({
 }));
 
 vi.mock("../messaging-settings", () => ({ isAiEnabled: vi.fn(async () => true) }));
-vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "Thanks for watching!", escalate: false })) }));
+vi.mock("../llm", () => ({ generateReply: vi.fn(async () => ({ reply: "Thanks for watching!", escalate: false })) , isCannedNonAnswer: (s: string | null) => s === "Thanks for your message! A team member will get back to you shortly." }));
 
 // Force a small cap so the test is fast and deterministic; keep the count + cap
 // helpers mockable so we can simulate "already used N today" and per-plan caps.
@@ -50,6 +50,7 @@ vi.mock("../ytcomments", () => ({
   listYtCommentRules: vi.fn(async () => []),
   getYtWatch: vi.fn(async () => ({ threads: {}, seeded: true })),
   saveYtWatch: vi.fn(async () => {}),
+  releaseYtComment: vi.fn(async () => {}),
   recentlyAnsweredThreads: vi.fn(async () => []),
   bumpYtRuleMatch: vi.fn(async () => {}),
 }));
