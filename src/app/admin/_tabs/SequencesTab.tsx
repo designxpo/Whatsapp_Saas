@@ -537,7 +537,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
   async function goLive() {
     const ok = await ask({
       title: "Start enrolling leads for real?",
-      message: "Leads reaching this stage will be enrolled into the sequence and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning counsellor's number — visible to your team.",
+      message: "Leads reaching this stage will be enrolled into the sequence and will start receiving WhatsApp messages. This also turns on owner sync, which moves live conversations onto the owning team member's number — visible to your team.",
       facts: [
         { label: "Stage watched", value: cfg!.stage || "(none set)" },
         { label: "Per pass, at most", value: String(cfg!.maxPerRun) },
@@ -784,7 +784,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
         <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p>
-        <p className="text-[11px] text-ink-400">When a counsellor grades a lead in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s sequence — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out leads are never enrolled.</p>
+        <p className="text-[11px] text-ink-400">When someone on your team grades a lead in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s sequence — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out leads are never enrolled.</p>
       </div>
       <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
       {drips.map((d, i) => (
@@ -806,7 +806,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
         {clash && <span className="text-[11px] text-red-500">Duplicate score.</span>}
         {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
       </div>
-      <p className="text-[11px] text-ink-400">A counsellor grading a lead is almost never inside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
+      <p className="text-[11px] text-ink-400">A team member grading a lead is almost never inside Meta&apos;s 24h window — make each mapped sequence&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
   );
 }
@@ -1081,11 +1081,11 @@ export default function SequencesTab() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <SeqField label="Which team runs this" hint="Marketing speaks to leads nobody owns yet. Sales speaks to leads a counsellor already has. A journey never reaches the other team's leads.">
+            <SeqField label="Which team runs this" hint="Marketing speaks to leads nobody owns yet. Sales speaks to leads a team member already owns. A journey never reaches the other team's leads.">
               <select className={`${inp} w-full`} value={form.team ?? ""}
                 onChange={e => setForm({ ...form, team: (e.target.value || null) as Lane | null })}>
                 <option value="">Unassigned — reaches anyone (old behaviour)</option>
-                {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? "Marketing — leads nobody owns yet" : "Sales — leads a counsellor owns"}</option>)}
+                {LANES.map(l => <option key={l} value={l}>{l === "marketing" ? "Marketing — leads nobody owns yet" : "Sales — leads a team member owns"}</option>)}
               </select>
             </SeqField>
             <SeqField label="What job it does" hint={form.aidaStage ? AIDA_LABELS[form.aidaStage].job : "Used to show which part of the funnel has no journey yet. It does not change how anything sends."}>

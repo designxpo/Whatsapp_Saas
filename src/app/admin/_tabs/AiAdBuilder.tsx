@@ -297,7 +297,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
 
   const EXAMPLE_PROMPTS = [
     "Promote my Diwali candle sale on WhatsApp — ₹5,000 for a week",
-    "Get more website visitors for my new online course",
+    "Get more website visitors for my new product launch",
     "Test 2 audiences for my dental clinic, ₹8,000 over 10 days",
   ];
 

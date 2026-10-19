@@ -397,7 +397,7 @@ export async function enroll(
     if (Number.isFinite(li) && li >= cutoff) {
       return {
         enrolled: false,
-        reason: `this lead wrote to us within the last ${seq.skipIfRecentReplyDays} day${seq.skipIfRecentReplyDays === 1 ? "" : "s"} — a counsellor should reply, not a drip`,
+        reason: `this lead wrote to us within the last ${seq.skipIfRecentReplyDays} day${seq.skipIfRecentReplyDays === 1 ? "" : "s"} — a person should reply, not a drip`,
       };
     }
   }

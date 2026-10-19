@@ -1090,7 +1090,7 @@ export async function autoHandoverToCounselorLine(
   try {
     await reassignConversationChannel(
       conv.id, incoming.id, "system",
-      `Auto: customer messaged ${incoming.name ?? "this counsellor line"} directly`,
+      `Auto: customer messaged ${incoming.name ?? "this team member's line"} directly`,
       conv.tenantId,
     );
     return { ...conv, channelId: incoming.id };

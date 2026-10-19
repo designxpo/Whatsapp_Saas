@@ -39,7 +39,7 @@ export const SEQ_TRIGGERS: TriggerSpec[] = [
     platforms: ["whatsapp", "instagram"],
     field: {
       label: "Minutes of silence before the first message", placeholder: "60", required: true, numeric: true,
-      help: "Counted from your last message. Left blank it waits 10 minutes. These nudges stop on their own the moment the contact replies or a counsellor takes the chat over.",
+      help: "Counted from your last message. Left blank it waits 10 minutes. These nudges stop on their own the moment the contact replies or a team member takes the chat over.",
     },
   },
   {

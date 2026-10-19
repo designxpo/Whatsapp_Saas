@@ -5,9 +5,9 @@ export type AidaStage = (typeof AIDA_STAGES)[number];
 export const AIDA_LABELS: Record<AidaStage, { label: string; job: string }> = {
   attention: { label: "Attention", job: "Get a stranger to start a conversation." },
   interest:  { label: "Interest",  job: "Hold them — answer the question they actually came with." },
-  desire:    { label: "Desire",    job: "Make them want it. Proof, outcomes, alumni, scarcity." },
+  desire:    { label: "Desire",    job: "Make them want it. Proof, results, customer stories, scarcity." },
   action:    { label: "Action",    job: "Ask for the decision — book the call, take the seat." },
-  retention: { label: "Retention", job: "After they join: onboarding, referrals, the next course." },
+  retention: { label: "Retention", job: "After they join: onboarding, referrals, the next purchase." },
 };
 export const isLane = (v: unknown): v is Lane => typeof v === "string" && (LANES as readonly string[]).includes(v);
 export const isAidaStage = (v: unknown): v is AidaStage =>

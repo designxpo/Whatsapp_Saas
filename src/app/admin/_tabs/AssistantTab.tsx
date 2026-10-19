@@ -248,7 +248,7 @@ function KbAddForm({ onAdded, disabled }: { onAdded: () => void; disabled: boole
         ))}
       </div>
       <input className={`${inp} w-full`} placeholder="Title (optional)" value={title} onChange={e => setTitle(e.target.value)} />
-      <input className={`${inp} w-full`} placeholder="Topic tag (optional, e.g. masterclass-jan) — lets a flow use these docs as its primary knowledge" value={tag} onChange={e => setTag(e.target.value)} />
+      <input className={`${inp} w-full`} placeholder="Topic tag (optional, e.g. spring-launch) — lets a flow use these docs as its primary knowledge" value={tag} onChange={e => setTag(e.target.value)} />
       {mode === "text" && <textarea className={`${inp} w-full`} rows={3} placeholder="Paste business content (FAQ, policies, product info)…" value={text} onChange={e => setText(e.target.value)} />}
       {mode === "url" && <input className={`${inp} w-full`} placeholder="https://yourbusiness.com/faq" value={url} onChange={e => setUrl(e.target.value)} />}
       <div className="flex items-center gap-3">

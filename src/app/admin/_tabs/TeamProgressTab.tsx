@@ -147,7 +147,7 @@ export default function TeamProgressTab({ me, goTo }: { me: { role: Role; team?:
 
       <p className="text-[11px] text-ink-400 leading-relaxed">
         Work is counted by <b>number</b>, not by the &ldquo;Assigned to&rdquo; label — that label is matched by display
-        name and is empty on most chats. Attach each counsellor to their own line in Settings → Team and their name
+        name and is empty on most chats. Attach each team member to their own line in Settings → Team and their name
         appears here.{" "}
         <button onClick={() => goTo("livechat")} className="text-brand-700 font-semibold hover:underline">Open Live Chat</button>
       </p>
