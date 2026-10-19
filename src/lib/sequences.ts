@@ -872,20 +872,32 @@ async function drainInactiveLeadsForTenant(max = 100, tenantId = DEFAULT_TENANT_
   return started;
 }
 
+// Cron entry points find WHICH workspaces have work in one query, then do the
+// per-workspace part only for those. Walking every tenant instead (an
+// entitlement check, a daily-cap count and a query each, serially) cost ~15s a
+// tick with nothing due, and inside the cron's shared 45s budget that starved
+// every stage after it — CRM sync, integration deliveries, owner emails.
 export async function drainSequences(max = 100, tenantId?: string): Promise<number> {
   if (tenantId) return await accountCanSend(tenantId) ? drainSequencesForTenant(max, tenantId) : 0;
-  const { data, error } = await db().from("tenants").select("id");
+  const { data, error } = await db().from("wa_sequence_enrollments").select("tenant_id")
+    .eq("status", "active").lte("next_run_at", new Date().toISOString()).order("next_run_at").limit(max);
   if (error) throw error;
   let count = 0;
-  for (const row of data ?? []) { if (count >= max) break; count += await drainSequences(max - count, row.id); }
+  for (const id of uniqueTenants(data)) { if (count >= max) break; count += await drainSequences(max - count, id); }
   return count;
 }
 
 export async function drainInactiveLeads(max = 100, tenantId?: string): Promise<number> {
   if (tenantId) return await accountCanSend(tenantId) ? drainInactiveLeadsForTenant(max, tenantId) : 0;
-  const { data, error } = await db().from("tenants").select("id");
+  // Only workspaces with a live inactivity journey have anything to do.
+  const { data, error } = await db().from("wa_sequences").select("tenant_id")
+    .eq("trigger_kind", "inactivity").eq("active", true);
   if (error) throw error;
   let count = 0;
-  for (const row of data ?? []) { if (count >= max) break; count += await drainInactiveLeads(max - count, row.id); }
+  for (const id of uniqueTenants(data)) { if (count >= max) break; count += await drainInactiveLeads(max - count, id); }
   return count;
+}
+
+function uniqueTenants(rows: unknown): string[] {
+  return [...new Set(((rows ?? []) as { tenant_id: string | null }[]).map(r => r.tenant_id).filter((t): t is string => !!t))];
 }

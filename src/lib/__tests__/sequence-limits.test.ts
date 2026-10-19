@@ -43,9 +43,10 @@ vi.mock("../supabase", () => {
         // An update that then selects is the atomic claim; it must come back
         // with a row or the engine treats the step as taken by another tick.
         if (st.op === "update") return Promise.resolve({ data: st.claimed ? [{ id: "e1" }] : null, error: null }).then(res);
-        // drainSequences() with no tenant walks the tenants table first.
+        // drainSequences() with no tenant first asks which tenants have due
+        // enrollments, so the fixture rows carry the one tenant they belong to.
         const data = table === "tenants" ? [{ id: "t1" }]
-          : table === "wa_sequence_enrollments" ? h.due
+          : table === "wa_sequence_enrollments" ? (h.due as Record<string, unknown>[]).map(r => ({ tenant_id: "t1", ...r }))
           : table === "wa_sequence_steps" ? h.steps : [];
         return Promise.resolve({ data, error: null, count: data.length }).then(res);
       },

@@ -20,7 +20,7 @@
 // first tenant swept would consume it for everyone. Always the Tenant variants.
 
 import {
-  getTenantSetting, setTenantSetting,
+  getTenantSetting, setTenantSetting, tenantIdsWithSetting,
   resetStaleEscalations, countStaleEscalations,
 } from "./store";
 import { db } from "./supabase";
@@ -133,7 +133,11 @@ export async function sweepTenantEscalations(
 // Cron entry point: every live tenant that has switched the sweep on. One
 // tenant's failure must not stop the others, so each is isolated.
 export async function drainEscalationSweeps(): Promise<{ tenants: number; reset: number }> {
-  const { data: tenants } = await db().from("tenants").select("id").in("status", ["trialing", "active"]);
+  // Only the workspaces that switched it on — one query, not a settings read per
+  // tenant per tick inside the cron's shared deadline.
+  const enabled = await tenantIdsWithSetting(SETTING_KEY, v => (v as { enabled?: unknown } | null)?.enabled === true);
+  if (!enabled.length) return { tenants: 0, reset: 0 };
+  const { data: tenants } = await db().from("tenants").select("id").in("id", enabled).in("status", ["trialing", "active"]);
   let swept = 0, reset = 0;
   for (const t of (tenants ?? []).slice(0, MAX_TENANTS_PER_TICK)) {
     const tenantId = (t as { id: string }).id;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { mergeRuns, starvedStages, STALE_MIN } from "../cronstages";
 
@@ -59,5 +59,17 @@ describe("process-queue route", () => {
   it("keeps the comment and review pollers out of the delivery deadline", () => {
     const afterBlock = code.slice(code.indexOf("after(async"), code.indexOf("try {", code.indexOf("after(async")));
     for (const n of ["ytcomments", "googlereviews", "kbsync", "igtokens"]) expect(afterBlock).toContain(`stage("${n}"`);
+  });
+});
+
+describe("cron-reachable drains", () => {
+  it("never fetch the whole tenants table to loop over it", () => {
+    // drainSequences, drainInactiveLeads, the stage poll and the CRM owner sweep
+    // each did this after the wa-broadcaster port: ~30s of serial per-tenant
+    // round trips a tick, with nothing due. Find the tenants with work first.
+    const dir = join(__dirname, "..");
+    const offenders = readdirSync(dir).filter(f => f.endsWith(".ts"))
+      .filter(f => /from\(\s*["']tenants["']\s*\)\.select\(\s*["']id["']\s*\)\s*;/.test(readFileSync(join(dir, f), "utf8")));
+    expect(offenders).toEqual([]);
   });
 });

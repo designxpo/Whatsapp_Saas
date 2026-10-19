@@ -29,6 +29,9 @@ vi.mock("../store", () => ({
   setTenantSetting: async (t: string, k: string, v: unknown) => {
     h.settings[t] = { ...(h.settings[t] ?? {}), [k]: v };
   },
+  // The cron asks which tenants switched the sweep on in one query.
+  tenantIdsWithSetting: async (k: string, on: (v: unknown) => boolean) =>
+    Object.entries(h.settings).filter(([, s]) => on(s[k])).map(([t]) => t),
   countStaleEscalations: async (t: string) => h.staleCounts[t] ?? 0,
   resetStaleEscalations: async (tenantId: string, days: number, limit: number) => {
     h.resetCalls.push({ tenantId, days, limit });
@@ -37,7 +40,15 @@ vi.mock("../store", () => ({
   },
 }));
 vi.mock("../supabase", () => ({
-  db: () => ({ from: () => ({ select: () => ({ in: () => Promise.resolve({ data: h.tenants, error: null }) }) }) }),
+  // tenants.select("id").in("id", enabled).in("status", live)
+  db: () => ({ from: () => ({ select: () => {
+    let rows = h.tenants;
+    const q = {
+      in: (col: string, vals: string[]) => { if (col === "id") rows = rows.filter(r => vals.includes(r.id)); return q; },
+      then: (ok: (v: unknown) => unknown) => Promise.resolve({ data: rows, error: null }).then(ok),
+    };
+    return q;
+  } }) }),
 }));
 vi.mock("../team", () => ({
   logActivity: (_a: unknown, action: string, detail: string) => { h.activity.push({ action, detail }); },
