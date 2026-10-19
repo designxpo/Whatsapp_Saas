@@ -280,6 +280,14 @@ function YoutubeManager() {
                   {st.lastError && <> · {st.lastError}</>}
                   {!st.lastError && st.lastReplyId && <span className="font-mono"> · last reply id {st.lastReplyId}</span>}
                 </p>}
+            {/* An active channel is checked every few minutes. A last check
+                much older than that means automatic replies are not running —
+                say so here, where the owner is looking, not just in a log. */}
+            {c.active && st?.lastCheckedAt && Date.now() - Date.parse(st.lastCheckedAt) > 30 * 60_000 && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 rounded px-2 py-1 mt-1">
+                Automatic checks are behind — this channel hasn&apos;t been checked for {Math.round((Date.now() - Date.parse(st.lastCheckedAt)) / 3_600_000) || "<1"}h, so new comments aren&apos;t being answered. Use <b>Check now</b> to run one, and let us know if this stays.
+              </p>
+            )}
           </div>
           <button onClick={() => { setForm({ id: c.id, name: c.name, ytChannelId: c.ytChannelId ?? "", token: "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", commentAi: c.commentAi ?? true, active: c.active, isDefault: c.isDefault }); setMsg(null); }}
             className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
