@@ -22,6 +22,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "@xyflow/react": "^12.11.0",
     "cheerio": "^1.2.0",
+    "driver.js": "1.4.0",
     "jose": "^5.9.6",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.469.0",
@@ -37,6 +38,7 @@
     "stripe": "^22.2.1"
   },
   "devDependencies": {
+    "@types/jsdom": "^30.0.0",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^22.10.7",
     "@types/pdf-parse": "^1.1.5",
@@ -47,6 +49,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.1.6",
+    "jsdom": "^29.1.1",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.3",

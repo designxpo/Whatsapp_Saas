@@ -8,7 +8,8 @@ import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimar
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
-import { MascotHint } from "@/components/MascotHint";
+import { ProductTour } from "@/components/ProductTour";
+import { HoverHelp } from "@/components/HoverHelp";
 import { Mascot } from "@/components/Mascot";
 import { VocabProvider, useVocab } from "@/lib/vocab-client";
 import type { Vocab } from "@/lib/vocab";
@@ -96,7 +97,7 @@ const preloadTab = (t: Tab) => { void PRELOAD[t]?.(); };
 // Sidebar nav, grouped by WHAT THE USER IS TRYING TO DO rather than by internal
 // feature area — the old single 13-item "Main Menu" mixed the daily inbox with
 // per-platform setup, so nothing was findable. Each item carries a plain-English
-// `hint` is shown by MascotHint after a few seconds of dwell, so a label
+// `hint` is shown by contextual help after four seconds of dwell, so a label
 // like "Sequences" explains itself to anyone who pauses on it.
 const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React.ReactNode; hint: string }[] }[] = [
   {
@@ -198,7 +199,6 @@ function AdminShell() {
   const [me, setMe] = useState<{ email: string; name: string; role: string; team?: string | null; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);
-  const [showTour, setShowTour] = useState(false);
   // Shown once per full page load when the account isn't in good standing —
   // dismissing it sets state on THIS mounted component, so switching tabs
   // (a setTab call, no remount) never re-triggers it, but a fresh reload does.
@@ -213,11 +213,6 @@ function AdminShell() {
       setMe(u);
       setEnt(d.entitlements ?? null);
       setBanner(d.banner ?? null);
-      // The product owner can browse this app interface (the platform's default
-      // workspace) AND jump to the Owner Portal via the sidebar. When viewing a
-      // specific tenant they're impersonating (tenantId != default).
-      const welcome = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("welcome") === "1";
-      if (d.needsWalkthrough || welcome) setShowTour(true);
     }).catch(() => {});
   }, [router]);
 
@@ -270,7 +265,7 @@ function AdminShell() {
 
         {/* Grouped nav — items the tenant's plan doesn't include are hidden
             entirely (when entitlement enforcement is on; otherwise all show). */}
-        <nav className="flex-1 px-3 py-2 overflow-y-auto">
+        <nav aria-label="Workspace navigation" className="flex-1 px-3 py-2 overflow-y-auto">
           {NAV_GROUPS.map(g => {
             const items = g.items.filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role));
             if (!items.length) return null;
@@ -281,17 +276,11 @@ function AdminShell() {
                 {items.map(n => {
                   const active = tab === n.key;
                   return (
-                    // title= deliberately dropped: the OS tooltip fires at
-                    // ~1s, so keeping it alongside MascotHint would explain
-                    // the same item twice, three seconds apart. MascotHint
-                    // still exposes the hint to screen readers immediately.
-                    <MascotHint key={n.key} text={n.hint}>
-                      <button onClick={() => goTo(n.key)}
-                        onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
-                        className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
-                        {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
-                      </button>
-                    </MascotHint>
+                    <button key={n.key} data-tour-nav={n.key} data-help={n.hint + ". Select this screen to open it and use the available controls."} onClick={() => goTo(n.key)}
+                      onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
+                      className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
+                      {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
+                    </button>
                   );
                 })}
               </div>
@@ -357,11 +346,15 @@ function AdminShell() {
           <p className="text-[13px] text-ink-400">
             Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
-          {tabAllowed("broadcast", ent) && (
-            <button onClick={() => setTab("broadcast")} className={btnPrimary}>
+          <div className="flex items-center gap-2">
+          {me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
+            blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}
+          {tabAllowed("broadcast", ent) && tabRoleAllowed("broadcast", me?.role) && (
+            <button data-help="Choose an approved template and audience, review the message, then send or schedule your broadcast." onClick={() => setTab("broadcast")} className={btnPrimary}>
               <Send className="w-4 h-4" /> New broadcast
             </button>
           )}
+          </div>
         </header>
 
         <main className="flex-1 p-6 overflow-x-hidden">
@@ -397,7 +390,7 @@ function AdminShell() {
           </>}
         </main>
       </div>
-      {showTour && <Walkthrough goTo={goTo} role={me?.role} onDone={() => setShowTour(false)} />}
+      {me && <HoverHelp scope={tab} />}
       {!paywallDismissed && !me?.isPlatformOwner && (() => {
         const a = accountState(ent);
         if (a.active) return null;
@@ -417,45 +410,6 @@ function AdminOnlyTab({ title, goTo }: { title: string; goTo: GoTo }) {
       <h2 className="text-lg font-extrabold text-ink-900">{title} is admin-only</h2>
       <p className="text-sm text-ink-500">Your account is a <b>Member</b>, so this section is hidden. Ask a workspace admin to set it up for you — or to change your role in Settings &rarr; Team.</p>
       <button onClick={() => goTo("home")} className={`${btnPrimary} mx-auto`}>Back to Home</button>
-    </div>
-  );
-}
-
-// First-login product walkthrough — a short guided tour. Marks the tenant
-// onboarded on finish/skip so it shows once.
-const tourSteps = (v: Vocab): { title: string; body: string; tab?: Tab }[] => [
-  { title: "Welcome to Talko AI", body: `Your all-in-one WhatsApp + Instagram platform — AI replies, broadcasts, chatbot flows, drip ${v.sequence.many.toLowerCase()}, catalog & growth tools. Here's a 60-second tour.` },
-  { title: "Connect your channels", body: "Go to Settings to connect a WhatsApp number, and the Instagram section to link an Instagram account. Everything runs from here.", tab: "settings" },
-  { title: "Teach the AI", body: "Add your business docs in AI Knowledge Base — the assistant answers customer questions automatically, grounded in your content.", tab: "assistant" },
-  { title: "Build chatbot flows", body: "Create drag-and-drop flows for WhatsApp or Instagram, triggered by keywords, comments or ads.", tab: "flows" },
-  { title: "Automate follow-ups", body: `Use ${v.sequence.many} for timed drip campaigns, Catalog for in-chat selling, and Growth Tools for opt-in links — all in the sidebar.`, tab: "sequences" },
-  { title: "You're all set", body: "Start a broadcast or send a test message anytime. Need help? Everything has inline guidance." },
-];
-function Walkthrough({ goTo, role, onDone }: { goTo: (t: Tab) => void; role?: string; onDone: () => void }) {
-  const { vocab } = useVocab();
-  const [i, setI] = useState(0);
-  // A member's tour skips any step that would land on an admin-only tab, so the
-  // walkthrough can never dead-end on the "admin-only" panel.
-  const steps = tourSteps(vocab).filter(st => tabRoleAllowed(st.tab ?? "home", role));
-  const step = steps[i];
-  const finish = async () => { await fetch("/api/admin/walkthrough", { method: "POST" }).catch(() => {}); onDone(); };
-  const next = () => { const s = steps[i + 1]; if (s?.tab) goTo(s.tab); if (i + 1 >= steps.length) finish(); else setI(i + 1); };
-  return (
-    <div className="fixed inset-0 z-50 bg-ink-950/40 flex items-center justify-center p-4 u-fade-in">
-      <div className="w-full max-w-md bg-white rounded-card border border-line p-6 space-y-4 u-scale-in">
-        <div className="flex gap-1.5">{steps.map((_, j) => <div key={j} className={`h-1.5 flex-1 rounded-full ${j <= i ? "bg-brand-700" : "bg-line"}`} />)}</div>
-        <div>
-          <h3 className="text-lg font-extrabold text-ink-900">{step.title}</h3>
-          <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{step.body}</p>
-        </div>
-        <div className="flex items-center justify-between pt-1">
-          <button onClick={finish} className="text-xs font-semibold text-ink-400 hover:text-ink-700">Skip tour</button>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-ink-400">{i + 1} / {steps.length}</span>
-            <button onClick={next} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold">{i + 1 >= steps.length ? "Get started" : "Next"}</button>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -566,7 +520,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
             // filtered to exactly that set.
             { label: "Need attention", value: s.counts.needsAttention, tab: "livechat", intent: { filter: "escalated" } },
           ] as { label: string; value: number; tab: Tab; intent?: ChatIntent }[]).map(c => (
-            <button key={c.label} onClick={() => goTo(c.tab, c.intent)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
+            <button key={c.label} data-help-title={c.label} data-help={c.intent ? "Conversations escalated to a human. Select this card to open the inbox filtered to chats needing attention." : `Open ${tabLabel(c.tab, vocab)} to review the records counted here.`} onClick={() => goTo(c.tab, c.intent)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
               <p className={`text-2xl font-extrabold ${c.label === "Need attention" && c.value > 0 ? "text-red-500" : ""}`}>{c.value}</p>
               <p className="text-xs text-slate-500 font-medium">{c.label}</p>
             </button>

@@ -1,0 +1,79 @@
+.driver-popover.talko-tour {
+  font-family: var(--font-inter), sans-serif;
+  color: #0a1a2f;
+  border-radius: 16px;
+  padding: 20px;
+  max-width: min(340px, calc(100vw - 24px));
+}
+
+.talko-tour .driver-popover-title,
+.talko-tour .driver-popover-description,
+.talko-tour .driver-popover-footer button {
+  font-family: inherit;
+}
+
+.talko-tour .driver-popover-footer button {
+  min-height: 44px;
+  border-radius: 10px;
+  padding: 8px 14px;
+  text-shadow: none;
+}
+
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-next-btn {
+  background: #047857;
+  border-color: #047857;
+  color: white;
+}
+
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-next-btn:hover,
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-next-btn:focus,
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-next-btn:active {
+  background: #0a1a2f;
+  border-color: #0a1a2f;
+  color: #fff;
+}
+
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-prev-btn {
+  background: #fff;
+  color: #0a1a2f;
+}
+
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-prev-btn:hover,
+.driver-popover.talko-tour .driver-popover-footer .driver-popover-prev-btn:focus {
+  background: #f4efeb;
+  color: #0a1a2f;
+}
+
+.talko-hover-help {
+  position: fixed;
+  z-index: 1000000001;
+  box-sizing: border-box;
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid #e5dad6;
+  border-radius: 14px;
+  background: #fff;
+  color: #0a1a2f;
+  box-shadow: 0 8px 32px #0a1a2f26;
+  font: 13px/1.6 var(--font-inter, sans-serif);
+}
+
+.talko-hover-help strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.talko-hover-help p { margin: 0; }
+.driver-active .talko-hover-help { display: none; }
+
+@media print {
+  .talko-hover-help { display: none; }
+}
+
+.talko-tour button:focus-visible {
+  outline: 2px solid #047857;
+  outline-offset: 3px;
+}

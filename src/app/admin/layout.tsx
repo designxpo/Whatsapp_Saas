@@ -4,6 +4,8 @@
 // the loader itself — nothing is hardcoded here beyond the site key lookup.
 
 import Script from "next/script";
+import "driver.js/dist/driver.css";
+import "./onboarding.css";
 import { DEFAULT_TENANT_ID, currentTenantId, currentUser } from "@/lib/auth";
 import { getTenantSetting } from "@/lib/store";
 import { getTenant } from "@/lib/tenants";
