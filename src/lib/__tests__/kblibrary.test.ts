@@ -7,7 +7,7 @@
 // that contradicts a live answer is quarantined instead of published.
 import { describe, it, expect } from "vitest";
 import {
-  KB_AREAS, areaBySlug, areaChoices,
+  AREA_HINTS, hintTypes,
   classifyByKeywords, reconcile, comparableFacts, factsDisagree, sourceRank, relatedConcept,
   type LibraryConcept,
 } from "@/lib/kblibrary";
@@ -18,45 +18,34 @@ const concept = (over: Partial<LibraryConcept> = {}): LibraryConcept => ({
   source: "Brochure", ...over,
 });
 
-describe("the spine", () => {
-  it("is a fixed, non-empty list of areas", () => {
-    expect(KB_AREAS.length).toBeGreaterThan(5);
-  });
-
-  it("gives every area a slug, a title and a description", () => {
-    for (const a of KB_AREAS) {
+describe("the fallback hints", () => {
+  // These are NOT the list of areas a workspace may have — areas are inferred from
+  // content (kbareas.ts). They are the offline fallback used when no AI key is set.
+  it("are non-empty and each has a slug, title and description", () => {
+    expect(AREA_HINTS.length).toBeGreaterThan(5);
+    for (const a of AREA_HINTS) {
       expect(a.slug, JSON.stringify(a)).toMatch(/^[a-z][a-z0-9-]*$/);
       expect(a.title.trim().length).toBeGreaterThan(0);
-      // The description is the classifier's signal AND the portal's help text,
-      // so an empty one breaks filing and leaves an uploader with no guidance.
       expect(a.description.trim().length, a.slug).toBeGreaterThan(20);
     }
   });
 
-  it("has no duplicate slugs — the slug is a directory name", () => {
-    const slugs = KB_AREAS.map(a => a.slug);
+  it("have no duplicate slugs — the slug is a directory name", () => {
+    const slugs = AREA_HINTS.map(a => a.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
   });
 
-  it("covers what leads actually ask about", () => {
-    const slugs = KB_AREAS.map(a => a.slug);
-    for (const needed of ["products", "pricing", "locations", "booking", "outcomes"]) {
-      expect(slugs, `no area for ${needed}`).toContain(needed);
+  it("stay industry-neutral — no hint may name a particular business or trade", () => {
+    const text = JSON.stringify(AREA_HINTS).toLowerCase();
+    for (const banned of ["analytix", "placement", "curriculum", "syllabus", "masterclass", "tuition", "noida", "gurgaon", "student"]) {
+      expect(text, `hint mentions "${banned}"`).not.toMatch(new RegExp(`\\b${banned}`));
     }
   });
 
-  it("offers every area an example, so the portal can show what belongs there", () => {
-    for (const a of KB_AREAS) expect(a.examples.length, a.slug).toBeGreaterThan(0);
-  });
-
-  it("looks an area up by slug, and refuses an unknown one", () => {
-    expect(areaBySlug("pricing")?.title).toBeTruthy();
-    expect(areaBySlug("not-an-area")).toBeNull();
-    expect(areaBySlug("PRICING")?.slug).toBe("pricing");     // case is not a new area
-  });
-
-  it("lists areas for a picker, in a stable order", () => {
-    expect(areaChoices().map(c => c.slug)).toEqual(KB_AREAS.map(a => a.slug));
+  it("imply a concept type only for a known hint", () => {
+    expect(hintTypes("pricing")).toContain("pricing");
+    expect(hintTypes("PRICING")).toContain("pricing");        // case is not a new area
+    expect(hintTypes("room-types")).toBeNull();               // any other area is simply inferred
   });
 });
 

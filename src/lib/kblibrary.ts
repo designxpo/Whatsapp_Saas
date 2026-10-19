@@ -1,23 +1,21 @@
 import { parseTables, tableFacts } from "./okffacts";
-// The OKF library: the fixed spine of subject areas, and the rules deciding
-// where an uploaded concept is filed and whether it may go live.
+// The OKF library: the rules deciding where an uploaded concept is filed and
+// whether it may go live.
 //
-// ── Why a fixed spine ────────────────────────────────────────────────────────
+// ── Areas are inferred, not declared ─────────────────────────────────────────
 //
-// Documents get uploaded by different people at different times and most of them
-// restate the same body of knowledge: prices, requirements and locations appear
-// in nearly all of them. Decomposing each upload on its own reproduces that mess
-// one level down — areas named after their source files, one holding most of the
-// concepts.
+// Which subject areas a workspace has is decided by reading its own content —
+// see kbareas.ts. This file holds only AREA_HINTS: coarse, industry-neutral
+// keyword hints used as an OFFLINE FALLBACK when no AI key is configured. They
+// never limit which areas can exist; a workspace's library is whatever its
+// content turned out to be about.
 //
-// So uploads may NOT invent areas. The library's shape is declared here, once,
-// and an upload is filed INTO it. That single rule is what stops the structure
-// depending on who happened to upload what.
-//
-// Each area's `description` does double duty: it is the guidance an uploader
-// reads in the portal, and the signal the classifier files against. Keeping
-// them the same text is deliberate — if the help says one thing and the
-// classifier believes another, uploaders are being misled.
+// Why files are still filed into shelves at all: documents are uploaded by
+// different people at different times and most restate the same knowledge —
+// prices, requirements and locations appear in nearly all of them. Decomposing
+// each upload on its own reproduces that mess one level down (areas named after
+// their source files, one holding most of the concepts). Filing by SUBJECT is
+// what lets two documents that disagree about the same fact meet.
 
 export type ConceptStatus = "active" | "pending" | "superseded";
 
@@ -35,7 +33,8 @@ export interface KbArea {
   keywords: string[];
 }
 
-export const KB_AREAS: KbArea[] = [
+/** Offline fallback hints only — see the header. Never the list of areas a workspace may have. */
+export const AREA_HINTS: KbArea[] = [
   {
     slug: "products",
     title: "Products & services",
@@ -118,16 +117,11 @@ export const KB_AREAS: KbArea[] = [
   },
 ];
 
-const BY_SLUG = new Map(KB_AREAS.map(a => [a.slug, a]));
+const BY_SLUG = new Map(AREA_HINTS.map(a => [a.slug, a]));
 
-/** An area by slug. Case is not a new area; an unknown slug is not an area. */
-export function areaBySlug(slug: string): KbArea | null {
-  return BY_SLUG.get(String(slug ?? "").trim().toLowerCase()) ?? null;
-}
-
-/** The areas, for a portal picker, in declaration order. */
-export function areaChoices(): { slug: string; title: string; description: string; examples: string[] }[] {
-  return KB_AREAS.map(({ slug, title, description, examples }) => ({ slug, title, description, examples }));
+/** The concept types a fallback hint implies, or null for any area it does not know. */
+export function hintTypes(slug: string): string[] | null {
+  return BY_SLUG.get(String(slug ?? "").trim().toLowerCase())?.types ?? null;
 }
 
 // ── Filing ───────────────────────────────────────────────────────────────────
@@ -168,7 +162,7 @@ function keywordRe(kw: string): RegExp {
  */
 export function classifyByKeywords(text: string): { area: string | null; confidence: number } {
   const hay = ` ${String(text ?? "").toLowerCase().replace(/\s+/g, " ")} `;
-  const scores = KB_AREAS.map(a => {
+  const scores = AREA_HINTS.map(a => {
     let score = 0;
     for (const kw of a.keywords) {
       // Count occurrences, so a passage about fees beats one that mentions a

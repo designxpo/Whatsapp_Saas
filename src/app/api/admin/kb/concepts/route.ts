@@ -13,7 +13,7 @@ import {
 import { publishConcepts } from "@/lib/kbpublish";
 import { runEval, verdict } from "@/lib/kbeval";
 import { listDocuments } from "@/lib/store";
-import { areaChoices } from "@/lib/kblibrary";
+import { areaTitle } from "@/lib/kbareas";
 import { libraryLive } from "@/lib/kb";
 import { errorMessage } from "@/lib/errors";
 import { currentTenantId } from "@/lib/auth";
@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // GET — the review queue, the library by area, and (optionally) one area's
-// concepts. `?area=fees` loads a single shelf rather than all 1,500 rows.
+// concepts. `?area=pricing` loads a single shelf rather than all 1,500 rows.
 export async function GET(req: Request) {
   const tenantId = await currentTenantId();
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
@@ -45,7 +45,8 @@ export async function GET(req: Request) {
     ]);
     return NextResponse.json({
       review, areas, concepts, mismatches,
-      spine: areaChoices(),
+      // Titles for the areas that actually exist — there is no fixed list to draw them from.
+      spine: areas.map(a => ({ slug: a.area, title: areaTitle(a.area) })),
       live: libraryLive(),
     });
   } catch (err) {

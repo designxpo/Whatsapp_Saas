@@ -20,7 +20,8 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { tdb } from "./tenantdb";
 import { errorMessage } from "./errors";
 import { decompose, conceptToText, conceptSlug, type OkfConcept } from "./okf";
-import { classifyByKeywords, reconcile, areaBySlug, type LibraryConcept } from "./kblibrary";
+import { reconcile, hintTypes, type LibraryConcept } from "./kblibrary";
+import { assignAreas, areaSlug, areaTitle } from "./kbareas";
 import { getDocument, getChunks, listDocuments } from "./store";
 import { findMismatches, type Mismatch } from "./kbmismatch";
 import { reconstructText } from "./kb";
@@ -238,15 +239,19 @@ export async function updateConcept(id: string, patch: ConceptPatch, tenantId = 
   if (patch.tags !== undefined) row.tags = [...new Set(patch.tags.map(t => t.trim()).filter(Boolean))];
   if (patch.type !== undefined) row.type = patch.type.trim() || current.type;
   if (patch.area !== undefined && patch.area !== current.area) {
-    if (!areaBySlug(patch.area)) throw new Error(`"${patch.area}" is not an area in the library.`);
-    const destination = `${patch.area}/${current.path.split("/").pop()}`;
+    // Areas are created by use, so any sensible name is allowed — but it has to be a
+    // name: it becomes a directory in the concept's path.
+    const target = areaSlug(patch.area);
+    if (!target) throw new Error(`"${patch.area}" is not a usable area name — use a short plain name such as "pricing".`);
+    patch = { ...patch, area: target };
+    const destination = `${target}/${current.path.split("/").pop()}`;
     // Two live concepts cannot share a path, and the database says so as
     // "duplicate key value violates unique constraint" — not a sentence
     // anybody can act on. Checked here so the message names the real problem.
     const { data: clash } = await tdb(tenantId).from("kb_concepts").select("id")
       .eq("path", destination).eq("status", "active").limit(1);
     if ((clash ?? []).some(r => (r as unknown as { id: string }).id !== id)) {
-      throw new Error(`${areaBySlug(patch.area)?.title ?? patch.area} already has a concept at ${destination}. Rename this one first, or merge the two.`);
+      throw new Error(`${areaTitle(target)} already has a concept at ${destination}. Rename this one first, or merge the two.`);
     }
     row.area = patch.area;
     row.path = destination;
@@ -342,6 +347,18 @@ export async function ingestToLibrary(
       type: "knowledge", area: "unfiled",
     });
 
+    // Decide every concept's area in ONE pass, before the loop: the model reads
+    // the workspace's own content and files it under an existing area or proposes
+    // a new one (see kbareas.ts). Batched per document rather than called per
+    // concept, which on a 1,000-concept upload would be a thousand model calls.
+    const existingAreas = (await conceptAreaSummary(tenantId).catch(() => [])).map(a => a.area).filter(a => a !== "unfiled");
+    const candidates = raw.filter(c => c.body.trim().length >= SUBSTANTIVE_BODY_CHARS);
+    const decided = await assignAreas(
+      candidates.map(c => ({ title: c.title ?? doc.title, text: conceptToText(c) })),
+      existingAreas, tenantId, { minKeywordConfidence: MIN_CONFIDENCE },
+    );
+    const assignment = new Map(candidates.map((c, i) => [c, decided[i]] as const));
+
     for (const c of raw) {
       // A header with nothing under it. Storing it adds no answer and fills
       // the review queue with nothing to decide.
@@ -356,8 +373,9 @@ export async function ingestToLibrary(
       try {
       const rendered = conceptToText(c).trim();
 
-      const { area, confidence } = classifyByKeywords(rendered);
-      const placed = area && confidence >= MIN_CONFIDENCE ? area : null;
+      const decision = assignment.get(c);
+      const confidence = decision?.confidence ?? 0;
+      const placed = decision?.area ?? null;
       const filed = placeConcept(c, placed, doc);
 
       // Existing live concept on the same subject, if any.
@@ -438,10 +456,10 @@ function placeConcept(
   doc: { title: string; tag?: string | null },
 ): LibraryConcept {
   const slug = c.path.split("/").pop()?.replace(/\.md$/, "") || conceptSlug(c.title ?? doc.title);
-  const a = area ? areaBySlug(area) : null;
   return {
     path: `${area ?? "unfiled"}/${slug}.md`,
-    type: a?.types[0] ?? c.type,
+    // A fallback hint can imply a type; an inferred area keeps the type the content declared.
+    type: (area ? hintTypes(area)?.[0] : undefined) ?? c.type,
     title: c.title ?? slug,
     body: c.body,
     tags: c.tags ?? [],

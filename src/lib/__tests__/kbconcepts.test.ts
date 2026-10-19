@@ -290,12 +290,18 @@ describe("editing a concept in the portal", () => {
     await expect(updateConcept("e1", { body: "   " })).rejects.toThrow(/body/i);
   });
 
-  it("will not move a concept to an area that does not exist", async () => {
-    // Uploads may not invent areas, and neither may an editor — that rule is
-    // the only thing keeping the library's shape stable.
+  it("lets a concept move to a NEW area — areas are created by use, not declared", async () => {
+    h.rows.push(live({ id: "e1", path: "pricing/tuition-and-emi.md", area: "pricing" }));
+    const { updateConcept } = await import("../kbconcepts");
+    const out = await updateConcept("e1", { area: "Room Types" });
+    expect(out?.area).toBe("room-types");
+    expect(out?.path).toBe("room-types/tuition-and-emi.md");
+  });
+
+  it("refuses an area name with nothing usable in it, because it becomes a directory", async () => {
     h.rows.push(live({ id: "e1" }));
     const { updateConcept } = await import("../kbconcepts");
-    await expect(updateConcept("e1", { area: "not-a-real-area" })).rejects.toThrow(/area/i);
+    await expect(updateConcept("e1", { area: "!!!" })).rejects.toThrow(/usable area name/i);
   });
 
   it("re-addresses the concept when it moves area, so path still means subject", async () => {

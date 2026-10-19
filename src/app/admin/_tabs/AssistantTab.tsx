@@ -6,7 +6,6 @@ import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
 
-import { areaChoices } from "@/lib/kblibrary";
 
 // AI Knowledge Base: answer-engine split, latency/savings, personas, inbox.
 type RouterStatsData = {
@@ -624,14 +623,13 @@ function KbConceptBrowser({ areas, spine }: { areas: AreaCount[]; spine: { slug:
 
 function KbStructureGuide() {
   const [open, setOpen] = useState(false);
-  const areas = areaChoices();
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between text-left group">
         <div className="min-w-0">
-          <p className="text-xs font-bold text-slate-400 uppercase">Recommended structure</p>
+          <p className="text-xs font-bold text-slate-400 uppercase">How the library is organised</p>
           <p className="text-sm text-slate-500 mt-0.5">
-            {areas.length} subject areas. Upload against these and the assistant answers from one place per subject instead of nine.
+            Subject areas are worked out from your own content, so the assistant answers from one place per subject instead of from every document that mentions it.
           </p>
         </div>
         <ChevronRight className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
@@ -639,29 +637,24 @@ function KbStructureGuide() {
 
       {open && (
         <div className="space-y-4 pt-1">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {areas.map(a => (
-              <div key={a.slug} className="rounded-lg border border-line bg-slate-50 p-3">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-sm font-bold text-brand-dark">{a.title}</span>
-                  <code className="text-[10px] text-slate-400">{a.slug}/</code>
-                </div>
-                <p className="text-[11px] leading-snug text-slate-500 mt-1">{a.description}</p>
-                <p className="text-[11px] text-slate-400 mt-1.5">
-                  e.g. {a.examples.slice(0, 3).join(" · ")}
-                </p>
-              </div>
-            ))}
+          <div className="rounded-lg border border-line p-3 space-y-2">
+            <p className="text-xs font-bold text-slate-400 uppercase">Where things get filed</p>
+            <p className="text-[12px] leading-relaxed text-slate-600">
+              When you upload, each piece of content is read and filed under the subject it is about — in <i>your</i> business&apos;s
+              words, not a template. It joins an existing area when it fits and starts a new one only when nothing does, so you end up
+              with a handful of broad areas rather than a folder per file. Areas can be renamed by moving a concept to a differently
+              named one. If no AI key is connected, a simple keyword pass files what it can and leaves the rest unfiled for you to place.
+            </p>
           </div>
 
           <div className="rounded-lg border border-line p-3 space-y-2">
             <p className="text-xs font-bold text-slate-400 uppercase">Uploading for the best answers</p>
             <ul className="text-[12px] leading-relaxed text-slate-600 space-y-1.5">
-              <li><b className="text-brand-dark">Use headings.</b> Every heading becomes one answerable concept. A document with no headings is split mechanically and flagged for review — four of the current ten are in that state.</li>
-              <li><b className="text-brand-dark">Prefer Markdown or text over PDF.</b> PDF extraction loses heading structure, which is why one 174,000-character upload could not be split at all.</li>
-              <li><b className="text-brand-dark">One subject per heading.</b> Keep a figure and its conditions together — a fee separated from what it covers gets quoted without them.</li>
+              <li><b className="text-brand-dark">Use headings.</b> Every heading becomes one answerable concept. A document with no headings is split mechanically and flagged for review.</li>
+              <li><b className="text-brand-dark">Prefer Markdown or text over PDF.</b> PDF extraction loses heading structure, so a long PDF may not split into concepts at all.</li>
+              <li><b className="text-brand-dark">One subject per heading.</b> Keep a figure and its conditions together — a price separated from what it covers gets quoted without them.</li>
               <li><b className="text-brand-dark">Do not re-upload the same knowledge in another format.</b> A second copy does not add anything; it gives the assistant a second answer to choose between.</li>
-              <li><b className="text-brand-dark">Leave out blog and SEO pages.</b> Articles explaining SQL or statistics are not what a sales assistant should answer from, and they currently outnumber the real knowledge.</li>
+              <li><b className="text-brand-dark">Leave out content customers never ask about.</b> Blog and SEO articles are not what a sales assistant should answer from, and they can easily outnumber the real knowledge.</li>
               <li><b className="text-brand-dark">Tag by audience, not by source.</b> The tag decides which numbers may use a document. &ldquo;brochure&rdquo; describes where it came from, which the system already records on its own.</li>
             </ul>
           </div>
