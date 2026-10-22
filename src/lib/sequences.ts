@@ -20,7 +20,7 @@ import {
 import { startOfDayIn } from "./businessclock";
 import { pageAll } from "./pagedselect";
 import { getChannel } from "./channels";
-import { sendText, sendTemplateSingle, sendMedia, WA_NOT_ON_WHATSAPP } from "./whatsapp";
+import { sendText, sendTemplateSingle, sendMedia, renderTemplateBody, WA_NOT_ON_WHATSAPP } from "./whatsapp";
 import { getDailyCap } from "./quota";
 import { sendIgMessage, within24hWindow } from "./instagram";
 import {
@@ -1018,7 +1018,10 @@ async function executeStep(seq: Sequence, enr: Record<string, unknown>, step: Se
       }
       return { ok: false, error: r.error };
     }
-    await logDripSend(enr, seq, describeStep(a), r.id, tenantId);
+    // Store the message the LEAD received, not the template's name. params are
+    // already resolved above; a render miss falls back to the name label.
+    const rendered = await renderTemplateBody(a.templateName, a.languageCode ?? "en_US", params, channel);
+    await logDripSend(enr, seq, rendered ?? describeStep(a), r.id, tenantId);
     return { ok: true };
   }
   if (a.type === "text" || a.type === "media") {

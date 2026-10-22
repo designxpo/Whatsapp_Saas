@@ -4,7 +4,7 @@ import {
   upsertContacts, getOrCreateConversation, appendConvMessage, touchOutbound,
   setBotEnabled, isOptedOut,
 } from "@/lib/store";
-import { sendText, sendTemplateSingle } from "@/lib/whatsapp";
+import { sendText, sendTemplateSingle, renderTemplateBody } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { crmAuthorized } from "@/lib/crm";
 import { pushWaActivity } from "@/lib/leadsquared";
@@ -64,7 +64,10 @@ export async function POST(req: Request) {
       logged = message;
     } else if (templateName) {
       sent = await sendTemplateSingle(phone, templateName, body.templateLang || "en", body.templateParams ?? [], channel);
-      logged = `[template: ${templateName}]${(body.templateParams ?? []).length ? " " + (body.templateParams ?? []).join(" | ") : ""}`;
+      // The thread shows the message the lead received, not just the name. A
+      // render miss (template not found / Graph down) keeps the old label.
+      const rendered = await renderTemplateBody(templateName, body.templateLang || "en", body.templateParams ?? [], channel);
+      logged = rendered ?? `[template: ${templateName}]${(body.templateParams ?? []).length ? " " + (body.templateParams ?? []).join(" | ") : ""}`;
     } else {
       return NextResponse.json({
         error: "24h window closed — pass templateName (an approved template) to reach this lead",

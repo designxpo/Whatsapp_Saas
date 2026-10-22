@@ -65,6 +65,7 @@ const h = vi.hoisted(() => {
     sendText: vi.fn(), sendButtons: vi.fn(), sendList: vi.fn(), sendMedia: vi.fn(),
     sendProduct: vi.fn(), sendProductList: vi.fn(), sendCtaUrl: vi.fn(),
     sendCarouselTemplate: vi.fn(), sendTemplateSingle: vi.fn(), getCreds: vi.fn(),
+    renderTemplateBody: vi.fn(),
   };
   const lsq = { syncLeadProfile: vi.fn(), pushWaActivity: vi.fn() };
   const within24h = vi.fn();
@@ -262,6 +263,7 @@ function resetWorld() {
     "sendProductList", "sendCtaUrl", "sendCarouselTemplate", "sendTemplateSingle",
   ] as const) (h.wa as any)[k].mockResolvedValue({ id: "wamid.test" });
   h.wa.getCreds.mockReturnValue({ token: "tok", phoneId: "ph1", wabaId: "waba1" });
+  h.wa.renderTemplateBody.mockResolvedValue(null);
   h.lsq.syncLeadProfile.mockResolvedValue(undefined);
   h.lsq.pushWaActivity.mockResolvedValue(undefined);
   h.within24h.mockReturnValue(true);

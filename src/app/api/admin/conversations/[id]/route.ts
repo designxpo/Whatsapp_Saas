@@ -8,7 +8,7 @@ import {
   getOwnerHistory, reassignConversationChannel, type ConvStatus,
 } from "@/lib/store";
 import { generateReply } from "@/lib/llm";
-import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction } from "@/lib/whatsapp";
+import { sendText, sendButtons, sendTemplateSingle, sendMedia, sendReaction, renderTemplateBody } from "@/lib/whatsapp";
 import { sendIgMessage, sendIgQuickReplies, sendIgMedia } from "@/lib/instagram";
 import { sendFbMessage, sendFbQuickReplies, sendFbMedia } from "@/lib/messenger";
 import { credsFor, getChannel, listChannels, explicitDefaultChannel, effectiveAgentId, effectiveKbScope } from "@/lib/channels";
@@ -302,7 +302,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         after(() => pushWaActivity({ phone: conv.phone, direction: "outbound", body: `⚠ "${canned.label}" template not sent: ${sent.error}`, via: "agent", tenantId: tid }));
         return NextResponse.json({ error: sent.error }, { status: 502 });
       }
-      const logged = `[${canned.label}]`;
+      // Show the message the lead received. params are resolved above; a
+      // render miss falls back to the canned button's label in brackets.
+      const rendered = await renderTemplateBody(canned.templateName, canned.language, params, channel);
+      const logged = rendered ?? `[${canned.label}]`;
       await appendConvMessage({ conversationId: id, role: "assistant", body: logged, metaId: sent.id, source: "agent", tenantId: tid, channelId: conv.channelId ?? null });
       await touchOutbound(id, logged);
       await stopAllEnrollments(conv.phone, tid);

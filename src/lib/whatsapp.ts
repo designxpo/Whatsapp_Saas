@@ -1,4 +1,5 @@
 import { insertLog, optoutSet, contactVarsByPhones } from "./store";
+import { fillBody } from "./templatepreview";
 import { fillVars, flattenForTemplate } from "./mergefields";
 import { getTrackedUrls, mintLinks } from "./links";
 import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
@@ -970,6 +971,61 @@ export async function fetchTemplates(channel?: ChannelCreds): Promise<WaTemplate
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error?.message || `HTTP ${res.status}`);
   return (data.data ?? []) as WaTemplate[];
+}
+
+// ── Rendering a sent template back into its real text ──────────────────────────
+//
+// A template send stored only the template NAME in the conversation, so Live
+// Chat showed `template "rnr_03_about_us"` where the message body should be —
+// the one part of the message the lead never sees was also the only part the
+// agent saw. This renders the BODY with the step's params filled, exactly as
+// the composer's own preview does, so the thread shows what was delivered.
+//
+// Memoised per WABA with a short TTL: the alternative is one fetchTemplates()
+// per send, which a drip drain would fan into dozens of Graph calls against
+// the same WABA in one tick, straight into the per-WABA rate limit (#80008).
+// The key is the WABA id, which belongs to exactly one tenant, so the cache is
+// tenant-safe — it is not db() tenant data, it is Meta's approved template
+// copy, identical for everyone sending on that WABA. A miss or failure costs
+// nothing: the caller keeps its existing label.
+const TEMPLATE_CACHE_TTL_MS = 5 * 60_000;
+const templateListCache = new Map<string, { at: number; list: WaTemplate[] }>();
+
+async function cachedTemplates(channel?: ChannelCreds): Promise<WaTemplate[]> {
+  const { wabaId } = getCreds(channel);
+  const key = wabaId ?? "env";
+  const hit = templateListCache.get(key);
+  if (hit && Date.now() - hit.at < TEMPLATE_CACHE_TTL_MS) return hit.list;
+  const list = await fetchTemplates(channel);
+  templateListCache.set(key, { at: Date.now(), list });
+  return list;
+}
+
+/**
+ * The BODY of a sent template, with `params` substituted into {{n}} — or null
+ * when the template cannot be found or read. Params must already be resolved
+ * (tokens filled); this does no token resolution of its own.
+ *
+ * Never throws: a logging helper that threw would turn a delivered message into
+ * a failed step. On any error the caller falls back to its own label.
+ */
+export async function renderTemplateBody(
+  templateName: string,
+  languageCode: string | undefined,
+  params: readonly string[],
+  channel?: ChannelCreds,
+): Promise<string | null> {
+  try {
+    const list = await cachedTemplates(channel);
+    const found = list.find(t => t.name === templateName && (!languageCode || t.language === languageCode))
+      ?? list.find(t => t.name === templateName);
+    const body = (found?.components ?? []).find(c => c.type === "BODY") as { text?: string } | undefined;
+    if (!body?.text) return null;
+    const rendered = fillBody(body.text, params, []).trim();
+    return rendered || null;
+  } catch {
+    return null;
+  }
 }
 
 // Send a Meta AUTHENTICATION template carrying an OTP. The code fills the body

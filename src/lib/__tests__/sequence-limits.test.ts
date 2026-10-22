@@ -59,6 +59,10 @@ vi.mock("../supabase", () => {
 vi.mock("../whatsapp", () => ({
   WA_NOT_ON_WHATSAPP: 131026,
   sendTemplateSingle: async (_p: string, name: string, _l: string, params: string[]) => { h.sent.push({ template: name, params }); return h.sendResult; },
+  // The thread now stores the rendered BODY, not the template name. A real
+  // render fills {{n}}; this sentinel stands in for that so the assertions
+  // can prove the conversation got message copy rather than "template \"x\"".
+  renderTemplateBody: async (name: string) => `Rendered body of ${name}`,
   sendText: async () => h.sendResult,
   sendMedia: async () => h.sendResult,
   // Reached through quota.ts, which the drip loop now consults for the daily
@@ -226,7 +230,8 @@ describe("what we sent is visible where the counsellor looks", () => {
     // preview line and no time, which reads like a chat that never happened.
     await drainSequences();
     expect(h.touched).toHaveLength(1);
-    expect(h.touched[0]).toContain("rnr_r0");
+    // The preview line is the rendered copy, not the template's name.
+    expect(h.touched[0]).toContain("Rendered body of rnr_r0");
   });
 
   it("does not touch the inbox row when the send failed", async () => {
@@ -240,7 +245,10 @@ describe("what we sent is visible where the counsellor looks", () => {
 
     expect(h.logged).toHaveLength(1);
     expect(h.logged[0].source).toBe("bot");
-    expect(h.logged[0].body).toContain("rnr_r0");
+    // The conversation shows the message the lead received, not the name of
+    // the template it came from.
+    expect(h.logged[0].body).toBe("Rendered body of rnr_r0");
+    expect(h.logged[0].body).not.toMatch(/^template "/);
     // And the receipt Meta's delivery callback matches on — previously
     // never exercised here, because the mock had no such export.
     expect(h.receipts).toEqual(["wamid.1"]);
