@@ -57,6 +57,7 @@ const h = vi.hoisted(() => {
     getConvHistory: vi.fn(),
     reflagReply: vi.fn(),
     isOptedOut: vi.fn(),
+    isOptedOutStrict: vi.fn(),
     dailySentCount: vi.fn(),
     getTenantSetting: vi.fn(),
     setTenantSetting: vi.fn(),
@@ -251,6 +252,7 @@ function resetWorld() {
   h.store.getConversation.mockResolvedValue(null);
   h.store.getConvHistory.mockResolvedValue([]);
   h.store.isOptedOut.mockResolvedValue(false);
+  h.store.isOptedOutStrict.mockResolvedValue(false);
   h.store.dailySentCount.mockResolvedValue(0);
   h.store.getTenantSetting.mockImplementation(async (_t: string, _k: string, fallback: unknown) => fallback);
   for (const k of [

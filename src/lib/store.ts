@@ -430,6 +430,16 @@ export async function isOptedOut(phone: string, tenantId = DEFAULT_TENANT_ID): P
   return (count ?? 0) > 0;
 }
 
+// isOptedOut reads a failed lookup as "not opted out", which suits a webhook
+// that must keep handling inbound messages. A SENDER must not: this one throws,
+// so an automated send waits rather than reaching someone who said STOP.
+export async function isOptedOutStrict(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+  const { count, error } = await db().from("wa_optouts").select("*", { count: "exact", head: true })
+    .eq("tenant_id", tenantId).eq("phone", last10(phone));
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 // ── Campaigns ─────────────────────────────────────────────────────────────────
 export async function createCampaign(p: Partial<Campaign> & { templateName: string }, tenantId = DEFAULT_TENANT_ID): Promise<Campaign> {
   const { data, error } = await db().from("wa_campaigns").insert({

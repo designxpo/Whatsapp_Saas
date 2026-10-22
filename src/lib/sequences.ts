@@ -30,7 +30,7 @@ import {
 import {
   getConversationByPhone, getOrCreateConversation, getContactByPhoneLoose,
   appendConvMessage, touchOutbound,
-  dailySentCount,
+  dailySentCount, isOptedOutStrict,
 } from "./store";
 import { matchesAudience, parseAudience, describeAudience, type AudienceRule } from "./seqaudience";
 import { resolveCannedParams } from "./canned";
@@ -1102,6 +1102,20 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
           await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped", updated_at: new Date().toISOString() }).eq("id", enr.id as string);
           continue;
         }
+      }
+
+      // ── Never past a STOP ────────────────────────────────────────────────
+      //
+      // The reply check above cannot see an opt-out: the STOP handler
+      // suppresses the number and returns before the message reaches the
+      // conversation, and a number can be suppressed from the portal or the
+      // CRM without replying at all. So the suppression list is read here,
+      // for every journey whatever its stop-on-reply setting. A lookup that
+      // fails throws into the catch below — the step stays due and is
+      // retried, never sent blind.
+      if (await isOptedOutStrict(enr.phone as string, tenantId)) {
+        await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped", last_error: "opted out", updated_at: new Date().toISOString() }).eq("id", enr.id as string);
+        continue;
       }
 
       // ── Hold until the sending window opens ──────────────────────────────

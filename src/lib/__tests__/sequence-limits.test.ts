@@ -25,6 +25,8 @@ const h = vi.hoisted(() => ({
   receipts: [] as string[],
   flagged: [] as string[],
   contactLookups: 0,
+  optedOut: false,
+  optOutLookupFails: false,
 }));
 
 vi.mock("../supabase", () => {
@@ -83,6 +85,7 @@ vi.mock("../store", () => ({
   touchOutbound: async (_id: string, body: string) => { h.touched.push(body); },
   // Read once per pass for the daily-ceiling check (drip-daily-cap.test.ts).
   dailySentCount: async () => 0,
+  isOptedOutStrict: async () => { if (h.optOutLookupFails) throw new Error("db down"); return h.optedOut; },
 }));
 
 // The drip engine reads its send log and flags numbers through dripstore, and
@@ -128,6 +131,7 @@ beforeEach(() => {
   h.sendResult = { id: "wamid.1" };
   h.contact = { attributes: {}, tags: [] };
   h.sentToday = 0;
+  h.optedOut = false; h.optOutLookupFails = false;
 });
 
 /** The final write of the loop — the one carrying current_step / status. */
@@ -350,5 +354,29 @@ describe("the blanks are filled for THIS lead", () => {
     h.contact = null;
     await drainSequences();
     expect(h.sent).toHaveLength(1);
+  });
+});
+
+// ── A lead who replied STOP ──────────────────────────────────────────────────
+//
+// The STOP handler suppresses the number and returns before the reply reaches
+// the conversation, so stop_on_reply never saw it — and this loop never read
+// the opt-out list. A lead already mid-drip kept receiving marketing after
+// "You've been unsubscribed and won't receive further messages."
+describe("a lead who has opted out", () => {
+  it("is sent nothing, and the enrolment is stopped", async () => {
+    h.optedOut = true;
+    await drainSequences();
+    expect(h.sent).toHaveLength(0);
+    expect(h.updates.some(u => u.status === "stopped")).toBe(true);
+    expect(advanceWrite()).toBeUndefined();
+  });
+
+  it("is sent nothing when the opt-out list cannot be read, and is retried rather than advanced", async () => {
+    h.optOutLookupFails = true;
+    await drainSequences();
+    expect(h.sent).toHaveLength(0);
+    expect(h.updates.some(u => u.status === "stopped")).toBe(false);
+    expect(advanceWrite()).toBeUndefined();
   });
 });
