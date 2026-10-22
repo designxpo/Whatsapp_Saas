@@ -116,6 +116,31 @@ describe("enrolment", () => {
     // for their own authenticator and lock the real owner out.
     await expect(beginEnrolment(EMAIL)).rejects.toThrow(/already has two-factor/i);
   });
+  // Every password sign-in before confirmation called beginEnrolment, and it
+  // minted a NEW secret each time. Sign in, scan, sign in again (a refresh, a
+  // second tab, "start again") and the app on the phone holds a secret the
+  // server has already thrown away — every code is "not right" until the
+  // throttle locks the account.
+  it("shows the SAME secret on a second sign-in, so the code already scanned still works", async () => {
+    const first = await beginEnrolment(EMAIL);
+    const second = await beginEnrolment(EMAIL);
+    expect(second.secret).toBe(first.secret);
+    expect((await confirmEnrolment(EMAIL, codeNow(first.secret))).ok).toBe(true);
+  });
+
+  it("mints a fresh secret when the unconfirmed one cannot be decrypted", async () => {
+    await beginEnrolment(EMAIL);
+    H.rows.set(EMAIL, { ...H.rows.get(EMAIL)!, secret: "v1.bad.bad.bad" });
+    const { secret } = await beginEnrolment(EMAIL);
+    expect(decryptSecret(H.rows.get(EMAIL)!.secret as string)).toBe(secret);
+  });
+
+  it("replaces an unconfirmed secret more than a day old", async () => {
+    const first = await beginEnrolment(EMAIL);
+    H.rows.set(EMAIL, { ...H.rows.get(EMAIL)!, updated_at: new Date(Date.now() - 25 * 3600_000).toISOString() });
+    const second = await beginEnrolment(EMAIL);
+    expect(second.secret).not.toBe(first.secret);
+  });
 });
 
 describe("verification", () => {

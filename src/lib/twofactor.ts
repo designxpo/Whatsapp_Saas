@@ -69,6 +69,7 @@ interface Row {
   confirmed_at: string | null;
   backup_codes: string[];
   last_step: number;
+  updated_at?: string | null;
 }
 
 // The specific codes Postgres and PostgREST use for "this table does not exist",
@@ -108,11 +109,28 @@ export async function twoFactorStatus(email: string): Promise<TwoFactorStatus> {
  * second factor of an already-protected account goes through resetTwoFactor,
  * which is an admin action and is logged.
  */
+const ENROL_REUSE_MS = 24 * 3600_000;
+
 export async function beginEnrolment(email: string, accountLabel = email): Promise<{ secret: string; uri: string }> {
   const e = key(email);
   const { row, available } = await readRow(e);
   if (!available) throw new Error("Two-factor storage is unavailable — apply migration 0117_signin_security.sql");
   if (row?.confirmed_at) throw new Error("This account already has two-factor authentication set up");
+
+  // Reuse an unconfirmed secret rather than minting one per sign-in. Every
+  // password sign-in before confirmation lands here, so a refresh or a second
+  // tab used to replace the secret the phone had just scanned — and every code
+  // after that was "not right" until the throttle locked the account. Bounded
+  // to a day so a QR left on a screen, or shown on a call, does not stay valid
+  // indefinitely; updated_at is not touched on reuse, so the day counts from
+  // when the secret was made.
+  const age = row?.updated_at ? Date.now() - Date.parse(row.updated_at) : Infinity;
+  if (row && age < ENROL_REUSE_MS) {
+    // Undecryptable (a rotated key) is not worth stranding someone over: there
+    // is nothing to protect yet, so fall through and mint a fresh one.
+    const reused = (() => { try { return decryptSecret(row.secret); } catch { return null; } })();
+    if (reused) return { secret: reused, uri: provisioningUri(reused, accountLabel) };
+  }
 
   const secret = generateSecret();
   const { error } = await db().from("wa_user_2fa").upsert({
