@@ -377,7 +377,7 @@ function AdminShell() {
           {tab === "aihub" && <AiHubTab goTo={goTo} />}
           {tab === "templates" && <TemplatesTab />}
           {tab === "forms" && <FormsTab goTo={goTo} />}
-          {tab === "analytics" && <AnalyticsTab />}
+          {tab === "analytics" && <AnalyticsTab isAdmin={me?.role === "admin"} />}
           {tab === "contacts" && <ContactsTab goTo={goTo} />}
           {tab === "pipeline" && <PipelineTab goTo={goTo} />}
           {tab === "campaigns" && <CampaignsTab goTo={goTo} />}

@@ -1,4 +1,4 @@
-// Opt-out for recurring lifecycle email (currently: the weekly recap).
+// Opt-out for recurring lifecycle email (the weekly recap, the daily digest).
 //
 // A marketing email needs a working one-click opt-out — not only because
 // CAN-SPAM and GDPR require one, but because Gmail and Yahoo's bulk-sender
@@ -15,7 +15,9 @@ import { getTenantSetting, setTenantSetting } from "./store";
 import { SITE_URL } from "./siteurl";
 
 /** Email streams a recipient can opt out of, independently of each other. */
-export type EmailKind = "weekly_recap";
+export type EmailKind = "weekly_recap" | "daily_digest";
+const KINDS: readonly EmailKind[] = ["weekly_recap", "daily_digest"];
+const isKind = (k: string): k is EmailKind => (KINDS as readonly string[]).includes(k);
 
 const SETTING_PREFIX = "email_optout:";
 
@@ -55,7 +57,7 @@ export function verifyUnsubscribeToken(token: string): { tenantId: string; kind:
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [rawTenant, kind, sig] = parts;
-  if (kind !== "weekly_recap") return null;
+  if (!isKind(kind)) return null;
   // base64url decoding is lenient rather than throwing on malformed input, which
   // is fine — a wrong decode simply produces an id whose HMAC won't match below.
   const tenantId = Buffer.from(rawTenant, "base64url").toString("utf8");

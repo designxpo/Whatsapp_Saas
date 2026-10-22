@@ -644,6 +644,88 @@ function ApiKeysCard() {
 type CannedRow = { id: string; label: string; templateName: string; language: string; params: string[]; headerImageUrl?: string; stage?: string };
 type CannedTpl = { name: string; status: string; language: string; components: { type: string; format?: string; text?: string }[] };
 
+// ── Daily digest — a morning email of what is waiting, to this workspace's admins ──
+type DigestStatus = { enabled: boolean; hour: number; recipients: string[]; unsubscribed: boolean; lastDay: string | null; timezone: string; mailProblem: string | null };
+
+function DailyDigestCard({ isAdmin }: { isAdmin: boolean }) {
+  const [s, setS] = useState<DigestStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/digest").then(r => r.json()).then(d => { if (!d.error) setS(d); }).catch(() => {});
+  }, []);
+
+  async function post(body: Record<string, unknown>) {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await fetch("/api/admin/digest", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      }).then(r => r.json());
+      if (d.error) { setMsg(d.error); return; }
+      if (body.sendNow) {
+        setS(d.status);
+        setMsg(d.sent ? `Sent to ${d.sent} ${d.sent === 1 ? "person" : "people"}.${d.reason ? ` ${d.reason}` : ""}` : (d.reason ?? "Nothing was sent."));
+      } else setS(d);
+    } catch { setMsg("Connection error."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Daily digest</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            One email each morning to this workspace&apos;s admins and owner: chats waiting on a reply and which number they
+            sit on, escalations nobody picked up, and yesterday&apos;s leads, AI replies, opt-outs and failed sends — with an AI
+            read when your AI key is set up. The weekly recap says how the week went; this says what is waiting today.
+          </p>
+        </div>
+        {s === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300 shrink-0" /> : isAdmin && (
+          <button onClick={() => post({ enabled: !s.enabled })} disabled={busy}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold shrink-0 disabled:opacity-60 ${s.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+            {s.enabled ? "ON" : "OFF"}
+          </button>
+        )}
+      </div>
+
+      {s && (
+        <>
+          <div className="flex flex-wrap items-end gap-4 pt-1">
+            <label className="text-[11px]">
+              <span className="block font-bold text-slate-400 uppercase mb-1">Send at</span>
+              <select disabled={!isAdmin || busy} value={s.hour} onChange={e => post({ hour: Number(e.target.value) })}
+                className="border border-line rounded-control px-2 py-1 text-xs">
+                {Array.from({ length: 24 }, (_, h) => <option key={h} value={h}>{`${h % 12 || 12}:00 ${h < 12 ? "AM" : "PM"}`}</option>)}
+              </select>
+              <span className="block text-slate-400 mt-1">{s.timezone} time</span>
+            </label>
+            {isAdmin && (
+              <button onClick={() => post({ sendNow: true })} disabled={busy || s.recipients.length === 0}
+                className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-40">
+                {busy ? "…" : "Send a test now"}
+              </button>
+            )}
+          </div>
+
+          <div className="text-[11px] text-slate-500 border-t border-line pt-2 space-y-0.5">
+            <p>
+              {s.recipients.length
+                ? <>Goes to {s.recipients.join(", ")}</>
+                : <span className="text-amber-700">Nobody in this workspace has an email address to send it to.</span>}
+            </p>
+            <p>{s.lastDay ? `Last sent for ${s.lastDay}.` : "Not sent yet."}</p>
+            {s.unsubscribed && <p className="text-amber-700">Someone unsubscribed from the email link, so it is paused. Switching it on again resumes it.</p>}
+            {s.mailProblem && <p className="text-amber-700">{s.mailProblem}</p>}
+          </div>
+          {msg && <p className="text-[11px] font-semibold text-brand-700">{msg}</p>}
+        </>
+      )}
+    </section>
+  );
+}
+
 // ── Settings: automatic escalation clean-up ───────────────────────────────────
 // Escalated chats pile up because nobody sets the status back once a handoff is
 // dealt with, so the Escalated filter stops meaning "needs a human". This sweep
@@ -2155,6 +2237,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       )}
 
       <EscalationSweepCard isAdmin={isAdmin} />
+
+      <DailyDigestCard isAdmin={isAdmin} />
 
       {/* Off-script nudge — what flows say when a typed reply matches no menu option */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

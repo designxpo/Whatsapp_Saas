@@ -20,7 +20,7 @@ import { SITE_URL } from "@/lib/siteurl";
 
 export const dynamic = "force-dynamic";
 
-const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email" };
+const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email" };
 
 function page(title: string, body: string, status = 200): NextResponse {
   const html = `<!doctype html>

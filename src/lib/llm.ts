@@ -445,6 +445,90 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
   return prev ? `${prev} ${last}`.slice(0, 400) : last;
 }
 
+// ── A follow-up, made to stand on its own ─────────────────────────────────────
+//
+// retrievalQuery() recognises follow-ups by English patterns, so "iski fees
+// kitni hai?" (Hinglish for "what is its fee?") was searched as written — fees
+// of nothing in particular — and, as the raw message, keyed the shared answer
+// cache, where one lead's "fees?" could replay another product's fee answer.
+//
+// The workspace's own model fills the subject in from the earlier turns. It
+// runs only when there IS an earlier turn and the latest message is short or
+// reads as a follow-up; never for an acknowledgement or a yes/no, which a model
+// asked to "complete" will turn into a question nobody asked. No key, a
+// failure, a timeout or an unusable answer all fall back to retrievalQuery(),
+// which is exactly what ran before.
+const ACK_RE = /^\s*(?:ok(?:ay)?|ok+|k+|sure|fine|cool|great|nice|perfect|alright|noted|got it|done|yes|yeah|yep|yup|no|nope|nah|haan|han|ha|ji|theek hai|thik hai|th[ie]k h[ae]i|acc?ha|shukriya|dhanyavaa?d|thanks?|thank\s*you|thanku|thx|ty|bye)(?:[\s,!.]+(?:ok(?:ay)?|thanks?|thank\s*you|sir|ma'?am|mam|ji|so much|a lot|bye|great|hai))*[\s!.,🙏👍]*$/iu;
+const SHORT_WORDS = 8;
+const STANDALONE_MAX = 300;
+// runChat retries a timeout up to four times; a rewrite that slow is worth less
+// than the reply it delays, so it gets one bounded wait.
+const STANDALONE_TIMEOUT_MS = 3000;
+
+function wantsRewrite(history: { role: "user" | "assistant"; body: string }[]): boolean {
+  const userTurns = history.filter(m => m.role === "user" && m.body?.trim());
+  if (userTurns.length < 2) return false;
+  const last = userTurns[userTurns.length - 1].body.trim();
+  if (isGreeting(last) || isLowStakes(last) || ACK_RE.test(last)) return false;
+  return last.split(/\s+/).length <= SHORT_WORDS || FOLLOWUP_OPENER.test(last) || BARE_ASPECT.test(last);
+}
+
+export async function standaloneQuestion(history: { role: "user" | "assistant"; body: string }[], tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+  const fallback = retrievalQuery(history);
+  if (!wantsRewrite(history)) return fallback;
+  const transcript = history.filter(m => m.body?.trim()).slice(-6)
+    .map(m => `${m.role === "user" ? "Customer" : "Us"}: ${m.body.trim().slice(0, 400)}`).join("\n");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const ai = await resolveTenantAi(tenantId);
+    const call = runChat({
+      provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
+      system: [
+        "Rewrite the customer's LATEST message as ONE standalone question in English, for searching a knowledge base.",
+        "Use the earlier messages only to fill in what the latest message refers to (the product, service or topic). Keep names exactly as written.",
+        "If the latest message already stands on its own, return it translated to English if needed, otherwise unchanged.",
+        "Never add a topic the customer did not raise. Output only the question, on one line.",
+      ].join("\n"),
+      turns: [{ role: "user", text: transcript }],
+      maxTokens: 80,
+      timeoutMs: STANDALONE_TIMEOUT_MS,
+    });
+    call.catch(() => {});   // swallow if it loses the timeout race
+    const res = await Promise.race([
+      call,
+      new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("standalone question timed out")), STANDALONE_TIMEOUT_MS); }),
+    ]);
+    const q = (res.text ?? "").trim();
+    if (!q || q.includes("\n") || q.length > STANDALONE_MAX) return fallback;
+    return q;
+  } catch (err) {
+    if (!(err instanceof AiKeyMissingError)) console.error("[llm] standalone question failed (using pattern query):", err instanceof Error ? err.message : err);
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Retrieval for a reply. Searches with the standalone question; if that comes
+// back weak and the pattern query is different, tries that too and keeps
+// whichever found stronger evidence — a wrong rewrite (a subject taken from the
+// wrong earlier turn) can then never cost an answer the old query would have
+// found. The second search only runs on a weak first one.
+export async function retrieveForReply(
+  history: { role: "user" | "assistant"; body: string }[],
+  tenantId: string,
+  primaryKbTag?: string | null | KbScope,
+  query?: string,
+): Promise<{ content: string; similarity: number }[]> {
+  const q = query ?? await standaloneQuestion(history, tenantId);
+  const best = (xs: { similarity: number }[]) => xs.reduce((m, c) => Math.max(m, c.similarity), 0);
+  const first = await retrieve(q, 8, tenantId, primaryKbTag);
+  const pattern = retrievalQuery(history);
+  if (best(first) >= SOLID_SIMILARITY || !pattern || pattern === q) return first;
+  const second = await retrieve(pattern, 8, tenantId, primaryKbTag).catch(() => []);
+  return best(second) > best(first) ? second : first;
+}
+
 // Generates a grounded reply, then screens it through the content-safety layer
 // before any caller can send it. EVERY channel's AI reply (WhatsApp, Instagram,
 // Messenger, web chat, YouTube comments) funnels through this one function, so
@@ -453,7 +537,10 @@ export function retrievalQuery(history: { role: "user" | "assistant"; body: stri
 //
 // A blocked reply becomes an escalation, not silence: the customer's message
 // lands with a human instead of the conversation dead-ending.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
+// `query` is the standalone question when the caller has already worked it out
+// (assistant.ts does, to key the router and the cache by it); omitted, it is
+// worked out here.
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -463,7 +550,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   if (!(await accountCanSend(tenantId))) {
     return { reply: null, escalate: true, reason: "account not in good standing (trial expired, past due, or suspended)", usedChunks: 0 };
   }
-  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform);
+  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform, query);
   if (!result.reply) return result;
   const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });
   if (verdict.allowed) return result;
@@ -472,7 +559,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp"): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -511,7 +598,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   // schedule in another) rather than a thin single-chunk summary.
   let chunks: { content: string; similarity: number }[] = [];
   try {
-    chunks = await retrieve(retrievalQuery(history), 8, tenantId, primaryKbTag);
+    chunks = await retrieveForReply(history, tenantId, primaryKbTag, query);
   } catch (err) {
     console.error("[llm] retrieve failed:", err);
   }
@@ -874,6 +961,9 @@ export interface ConversationBrief {
   highlights: { label: string; value: string }[];   // category-appropriate facets
   nextStep: string;
   talkingPoints: string[];
+  // What we have already told them — the bot's answers, the drips, the team's
+  // own messages — so the reply or call does not repeat it.
+  alreadyTold: string;
 }
 
 export async function generateConversationBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ConversationBrief> {
@@ -903,7 +993,11 @@ export async function generateConversationBrief(context: string, tenantId = "000
     `  Use "Unknown" or "None surfaced" when a chosen facet has no info.\n` +
     `- "nextStep": the single best next action, phrased FOR THIS category (a seeker gets "Answer their question / share the requested chapter", not "qualify their interest").\n` +
     `- "talkingPoints": 2-4 short phrases to open or steer the reply. Use [] for spam.\n` +
-    `Return ONLY JSON: {"category","categoryLabel","priority","summary","highlights":[{"label","value"}],"nextStep","talkingPoints":[]}.`;
+    `- "alreadyTold": what we have ALREADY told them (prices, dates, links, offers — from our replies and the drips), ` +
+    `in one or two sentences, so the reply does not repeat it. "Nothing yet" if we have told them nothing.\n` +
+    `- Use the owner, hand-overs, pipeline/CRM stage and waiting time when choosing the next step — someone ` +
+    `waiting on us for hours needs a reply before anything else.\n` +
+    `Return ONLY JSON: {"category","categoryLabel","priority","summary","highlights":[{"label","value"}],"nextStep","talkingPoints":[],"alreadyTold"}.`;
 
   const res = await runChat({
     provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
@@ -934,6 +1028,7 @@ export async function generateConversationBrief(context: string, tenantId = "000
     highlights,
     nextStep: (parsed.nextStep ?? "").toString().trim() || "Read the thread and reply appropriately.",
     talkingPoints: Array.isArray(parsed.talkingPoints) ? parsed.talkingPoints.map(t => String(t).trim()).filter(Boolean).slice(0, 4) : [],
+    alreadyTold: (parsed.alreadyTold ?? "").toString().trim() || "Nothing yet",
   };
 }
 

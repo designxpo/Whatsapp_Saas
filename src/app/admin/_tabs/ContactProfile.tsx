@@ -11,7 +11,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { useVocab } from "@/lib/vocab-client";
 
 type BriefCategory = "sales" | "support" | "seeker" | "feedback" | "spam" | "general";
-type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[] };
+type ConversationBrief = { category: BriefCategory; categoryLabel: string; priority: "high" | "medium" | "low"; summary: string; highlights: { label: string; value: string }[]; nextStep: string; talkingPoints: string[]; alreadyTold?: string };
 // Category → badge emoji. Priority drives the badge colour (attention signal).
 const CAT_ICON: Record<BriefCategory, LucideIcon> = { sales: Briefcase, support: LifeBuoy, seeker: Compass, feedback: MessageCircle, spam: Ban, general: Hand };
 const PRIO_STYLE: Record<"high" | "medium" | "low", string> = {
@@ -179,6 +179,7 @@ function ContactProfile({ phone, onClose, onChanged, goTo }: { phone: string; on
                       {brief.highlights.map((h, i) => <p key={i}><span className="font-semibold text-slate-500">{h.label}:</span> {h.value}</p>)}
                     </div>
                   )}
+                  {brief.alreadyTold && <p className="text-xs text-ink-700"><span className="font-semibold text-slate-500">Already told:</span> {brief.alreadyTold}</p>}
                   <p className="text-xs text-ink-700"><span className="font-semibold text-brand-700">Next step:</span> {brief.nextStep}</p>
                   {brief.talkingPoints.length > 0 && (
                     <ul className="list-disc pl-4 text-xs text-ink-700 space-y-0.5">

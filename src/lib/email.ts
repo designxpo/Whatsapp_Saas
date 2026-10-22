@@ -13,7 +13,7 @@ let client: Resend | null = null;
 // TypeScript red, not a silently uncategorized "other" row discovered later.
 export type EmailType =
   | "otp" | "invoice" | "dunning_failed" | "dunning_suspended"
-  | "weekly_recap" | "onboarding_nudge" | "affiliate_commission" | "contact_form"
+  | "weekly_recap" | "daily_digest" | "onboarding_nudge" | "affiliate_commission" | "contact_form"
   | "owner_broadcast" | "platform_alert" | "other";
 
 function resend(): Resend {

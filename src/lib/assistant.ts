@@ -2,7 +2,7 @@ import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound, setConversationStatus,
   claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
-import { generateReply } from "./llm";
+import { generateReply, standaloneQuestion } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
 import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech, visionInlineMime } from "./voice";
@@ -154,10 +154,17 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // cache keyed the same way it always was means a channel-scoped answer
     // still cannot be served to a differently-scoped question.
     const kbTag = kbScope.tag;
+    // The latest message as a question that stands on its own ("iski fees?" →
+    // "What are the fees for the Bali tour?"). Worked out once and used for
+    // agent routing, the FAQ, the shared cache — lookup AND write — and
+    // retrieval, so a follow-up is never answered, or cached, as a bare
+    // "fees?". The raw message still drives the memory layer and the language
+    // of the reply. A file turn skips the text layers, so it is not worked out.
+    const question = lastUserMsg && !lastHasMedia ? await standaloneQuestion(history, conv.tenantId) : lastUserMsg;
     let queryEmbedding: number[] | null = null;
     try {
       if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
-        queryEmbedding = await embedQuery(lastUserMsg, conv.tenantId).catch(() => null);
+        queryEmbedding = await embedQuery(question, conv.tenantId).catch(() => null);
         if (queryEmbedding) {
           const pick = await pickAgentForQuery(queryEmbedding, agentId, conv.tenantId);
           if (pick && pick.agentId !== agentId) {
@@ -171,7 +178,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
     if (lastUserMsg && !lastHasMedia) {
-      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag, platform: conv.platform });
+      const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, lookup: question, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag, platform: conv.platform });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
         const sent = await sendReply(routed.answer);
@@ -185,7 +192,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbScope, false, undefined, conv.platform);
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbScope, false, undefined, conv.platform, lastHasMedia ? undefined : question);
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");
@@ -226,7 +233,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
         topSim: result.topSim, sanitizerActions: result.groundingActions,
       }).catch(() => null);
       if (!verdict || verdict.shouldCache) {
-        recordRagAnswer({ phone: conv.phone, question: lastUserMsg, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
+        recordRagAnswer({ phone: conv.phone, question, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
       }
     }
     return { outcome: "sent" };

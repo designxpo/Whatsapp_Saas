@@ -8,7 +8,7 @@ import { RANGES, DEFAULT_RANGE, type RangeKey } from "@/lib/analytics-range";
 import { useState, useEffect } from "react";
 import { useVocab } from "@/lib/vocab-client";
 import { AlertTriangle, CircleCheck, Database, Loader2, MessageSquare, Send, Sparkles, TrendingUp, Users, Zap } from "lucide-react";
-import { type AnalyticsData, type Conversation } from "../_shared";
+import { type AnalyticsData, type Conversation, inp } from "../_shared";
 
 // ── Lightweight SVG charts (no chart library) ────────────────────────────────
 function buildArea(values: number[], w: number, h: number, pad: number) {
@@ -100,7 +100,68 @@ function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { lab
 
 type ExecBrief = { health: "strong" | "steady" | "at-risk"; headline: string; working: string[]; lacking: string[]; steps: { action: string; why: string }[] };
 
-function AnalyticsTab() {
+// ── Ask your data — a question in plain words, answered from read-only counts ──
+// The model only picks among fixed counting tools (askdata-tools.ts), and every
+// count it used is listed under the answer so the figure can be checked.
+type AskStep = { tool: string; description: string };
+const ASK_EXAMPLES = ["How many new leads came in yesterday?", "How many chats are waiting on a reply?", "Leads by source last week"];
+
+function AskDataCard() {
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<{ answer: string; steps: AskStep[] } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function ask(question = q) {
+    if (!question.trim()) return;
+    setQ(question); setBusy(true); setErr(null);
+    try {
+      const d = await fetch("/api/admin/ask-data", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
+      }).then(r => r.json());
+      if (d.error) { setErr(d.error); setRes(null); } else setRes(d);
+    } catch { setErr("Connection error."); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-700" /> Ask your data</p>
+        <p className="text-[11px] text-ink-400">Ask about leads, chats, messages, broadcasts or drips. Every answer shows exactly what was counted.</p>
+      </div>
+      <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
+        <input value={q} onChange={e => setQ(e.target.value)} maxLength={500} placeholder="e.g. How many leads from Instagram last week?"
+          className={`${inp} flex-1 text-sm`} />
+        <button type="submit" disabled={busy || !q.trim()}
+          className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Ask
+        </button>
+      </form>
+      {!res && !err && !busy && (
+        <div className="flex flex-wrap gap-1.5">
+          {ASK_EXAMPLES.map(x => (
+            <button key={x} onClick={() => void ask(x)} className="px-2.5 py-1 rounded-full border border-line text-[11px] text-ink-500 hover:bg-canvas">{x}</button>
+          ))}
+        </div>
+      )}
+      {err && <p className="text-xs text-red-600">{err}</p>}
+      {res && (
+        <div className="space-y-2">
+          <p className="text-sm text-ink-900">{res.answer}</p>
+          {res.steps.length > 0 && (
+            <div className="text-[11px] text-ink-500 border-t border-line pt-2">
+              <p className="font-bold text-ink-400 uppercase tracking-[0.06em] mb-1">How I counted</p>
+              <ul className="space-y-0.5">{res.steps.map((st, i) => <li key={i}>{st.description}</li>)}</ul>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
   const { vocab } = useVocab();
   const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
   const [data, setData] = useState<AnalyticsData | null>(null);
@@ -171,6 +232,7 @@ function AnalyticsTab() {
         </div>
       </div>
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
+      {isAdmin && <AskDataCard />}
       {/* Where chats came from — follows the range picker above. Lives here, not in
           Links & QR Codes, which is for creating links, not reading results. */}
       <TrackedLinkAnalytics range={range} />

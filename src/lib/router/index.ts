@@ -40,7 +40,13 @@ export function routerEnabled(): boolean {
   return process.env.KNOWLEDGE_ROUTER_ENABLED !== "false";
 }
 
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null; platform?: Platform }): Promise<RouteResult> {
+// `lookup` is the standalone question (llm.ts standaloneQuestion) — what the
+// FAQ, the coverage probe and the shared cache are keyed by, so a bare "fees?"
+// cannot match another product's cached answer. `message` stays the raw words:
+// the memory layer recognises "tell me more", and the reply matches its language.
+// `queryEmbedding`, when given, must be the embedding of the lookup.
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; lookup?: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null; platform?: Platform }): Promise<RouteResult> {
+  const lookup = p.lookup?.trim() || p.message;
   const t0 = Date.now();
   const tid = p.tenantId ?? DEFAULT_TENANT_ID;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
@@ -62,14 +68,14 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   logRouterEvent({ event: "MEMORY_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
   // Layer 2 — FAQ index (in-memory, no network)
-  const faqHit = matchFaq(p.message, mem.lastCategory);
+  const faqHit = matchFaq(lookup, mem.lastCategory);
   if (faqHit) {
     // A deflecting FAQ answer (e.g. the "fees" entry that says "contact admissions")
     // must not shadow real KB content. If this tenant's KB covers the question, fall
     // through to RAG so the actual answer is served. The probe is only paid on the
     // rare deflection match, and reuses its embedding for the RAG cache write.
     if (looksLikeDeflection(faqHit.faq.detailedAnswer)) {
-      const cov = await kbCoverage(p.message, tid).catch(() => null);
+      const cov = await kbCoverage(lookup, tid).catch(() => null);
       if (cov?.covered) {
         logRouterEvent({ event: "FAQ_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
         return { ...miss, queryEmbedding: cov.embedding };
@@ -92,13 +98,13 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 
   // Layer 3 — global semantic cache (one embedding call, no generation)
   try {
-    const { hit, embedding } = await cacheLookup(p.message, p.queryEmbedding, tid, p.contactName);
+    const { hit, embedding } = await cacheLookup(lookup, p.queryEmbedding, tid, p.contactName);
     if (hit) {
       // Same guard as the FAQ layer: a previously-cached deflection must not
       // shadow KB content that now answers the question. Reuses the lookup's
       // embedding for the probe, so no extra embedding call.
       if (looksLikeDeflection(hit.answer)) {
-        const cov = await kbCoverage(p.message, tid, embedding).catch(() => null);
+        const cov = await kbCoverage(lookup, tid, embedding).catch(() => null);
         if (cov?.covered) {
           logRouterEvent({ event: "CACHE_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `cache:${hit.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
           return { ...miss, queryEmbedding: embedding };
