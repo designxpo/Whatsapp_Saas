@@ -13,6 +13,12 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // (action.type = 'template'); session text/media only land inside the window.
 
 import { tdb } from "./tenantdb";
+import {
+  rangeStart, isRangeKey, rangeDays, granularityFor, bucketKey, bucketKeys,
+  type RangeKey, type Granularity,
+} from "./analytics-range";
+import { startOfDayIn } from "./businessclock";
+import { pageAll } from "./pagedselect";
 import { getChannel } from "./channels";
 import { sendText, sendTemplateSingle, sendMedia, WA_NOT_ON_WHATSAPP } from "./whatsapp";
 import { getDailyCap } from "./quota";
@@ -493,8 +499,81 @@ export interface EnrollmentRow {
   currentStep: number; status: string; nextRunAt: string | null; lastError: string | null;
   updatedAt: string | null; createdAt: string | null;
 }
-export async function listRecentEnrollments(limit = 100, tenantId = DEFAULT_TENANT_ID): Promise<EnrollmentRow[]> {
-  const { data } = await tdb(tenantId).from("wa_sequence_enrollments").select("*").order("updated_at", { ascending: false }).limit(limit);
+/**
+ * The windows the drip screens can be read over.
+ *
+ * One key wider than RangeKey, and that one key was a bug. The filter bar
+ * offers "Today"; analytics-range does not know it, so rangeStart("today")
+ * found no entry, returned null — the same answer it gives for lifetime — and
+ * the screen silently showed ALL TIME while the dropdown said Today.
+ *
+ * "Today" is the BUSINESS day, not the UTC one. The platform runs UTC and a
+ * workspace runs on its own clock, so a UTC midnight boundary would drop every
+ * enrolment made before it out of "today" — for an IST workspace that is the
+ * whole first half of the morning, missing from the only view that claims to
+ * be live.
+ */
+export type DripRangeKey = RangeKey | "today";
+
+export const DRIP_RANGES: { key: DripRangeKey; label: string }[] = [
+  { key: "all",   label: "All time" },
+  { key: "today", label: "Today" },
+  { key: "7d",    label: "Last 7 days" },
+  { key: "14d",   label: "Last 14 days" },
+  { key: "30d",   label: "Last 30 days" },
+  { key: "90d",   label: "Last 90 days" },
+];
+
+/** Falls back to "all" rather than throwing — but never SILENTLY, see above. */
+export function parseDripRange(v: unknown): DripRangeKey {
+  return v === "today" || isRangeKey(v) ? v : "all";
+}
+
+/** Start of the window, or null for lifetime. */
+export function dripRangeStart(key: DripRangeKey, now = new Date()): Date | null {
+  if (key === "today") return startOfDayIn(now);
+  return rangeStart(key, now);
+}
+
+/** How many days the window spans, for picking a sane chart granularity. */
+export function dripRangeSpanDays(key: DripRangeKey, earliest: Date | null, now = new Date()): number {
+  if (key === "today") return 1;
+  const days = rangeDays(key);
+  if (days !== null) return days;
+  if (!earliest) return 1;
+  return Math.max(1, Math.ceil((now.getTime() - earliest.getTime()) / 86_400_000) + 1);
+}
+
+export interface EnrollmentFilter {
+  sequenceId?: string | null;
+  status?: string | null;
+  platform?: string | null;
+  search?: string | null;
+  range?: DripRangeKey | string | null;
+}
+
+export async function listRecentEnrollments(
+  limit = 50,
+  tenantId = DEFAULT_TENANT_ID,
+  offset = 0,
+  filter?: EnrollmentFilter,
+): Promise<{ data: EnrollmentRow[]; total: number }> {
+  let q = tdb(tenantId).from("wa_sequence_enrollments").select("*", { count: "exact" });
+  if (filter?.sequenceId && filter.sequenceId !== "all") q = q.eq("sequence_id", filter.sequenceId);
+  if (filter?.status && filter.status !== "all") q = q.eq("status", filter.status);
+  if (filter?.platform && filter.platform !== "all") q = q.eq("platform", filter.platform);
+  if (filter?.search?.trim()) {
+    const term = filter.search.trim().replace(/[%_]/g, "\\$&");
+    q = q.ilike("phone", `%${term}%`);
+  }
+  if (filter?.range && filter.range !== "all") {
+    const start = dripRangeStart(parseDripRange(filter.range));
+    if (start) q = q.gte("created_at", start.toISOString());
+  }
+
+  const { data, count } = await q
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
   const rows = (data ?? []) as unknown as Record<string, unknown>[];
   const ids = [...new Set(rows.map(r => r.sequence_id as string))];
   const names = new Map<string, string>();
@@ -502,13 +581,337 @@ export async function listRecentEnrollments(limit = 100, tenantId = DEFAULT_TENA
     const { data: sd } = await tdb(tenantId).from("wa_sequences").select("id,name").in("id", ids);
     for (const s of (sd ?? []) as unknown as Record<string, unknown>[]) names.set(s.id as string, s.name as string);
   }
-  return rows.map(r => ({
-    id: r.id as string, sequenceId: r.sequence_id as string, sequenceName: names.get(r.sequence_id as string) ?? "—",
-    phone: r.phone as string, platform: (r.platform as string) ?? "whatsapp",
-    currentStep: (r.current_step as number) ?? 0, status: (r.status as string) ?? "active",
-    nextRunAt: (r.next_run_at as string | null) ?? null, lastError: (r.last_error as string | null) ?? null,
-    updatedAt: (r.updated_at as string | null) ?? null, createdAt: (r.created_at as string | null) ?? null,
-  }));
+  return {
+    total: count ?? 0,
+    data: rows.map(r => ({
+      id: r.id as string, sequenceId: r.sequence_id as string, sequenceName: names.get(r.sequence_id as string) ?? "—",
+      phone: r.phone as string, platform: (r.platform as string) ?? "whatsapp",
+      currentStep: (r.current_step as number) ?? 0, status: (r.status as string) ?? "active",
+      nextRunAt: (r.next_run_at as string | null) ?? null, lastError: (r.last_error as string | null) ?? null,
+      updatedAt: (r.updated_at as string | null) ?? null, createdAt: (r.created_at as string | null) ?? null,
+    })),
+  };
+}
+
+// ── Drip Analytics ────────────────────────────────────────────────────────────
+export interface DripAnalyticsFilter {
+  sequenceId?: string | null;
+  range?: DripRangeKey | string | null;
+  status?: string | null;
+  platform?: string | null;
+}
+
+export interface DripStepMetric {
+  stepIndex: number;
+  stepNumber: number;
+  type: string;
+  templateName?: string | null;
+  delayMinutes: number;
+  label: string;
+  currentlyOn: number;
+  reachedCount: number;
+  stoppedCount: number;
+  failedCount: number;
+  retentionRate: number;
+}
+
+export interface DripSeqAnalytics {
+  id: string;
+  name: string;
+  platform: "whatsapp" | "instagram";
+  triggerKind: string;
+  triggerValue: string | null;
+  active: boolean;
+  team: string | null;
+  aidaStage: string | null;
+  totalSteps: number;
+  totalEnrolled: number;
+  activeCount: number;
+  completedCount: number;
+  stoppedCount: number;
+  failedCount: number;
+  completionRate: number;
+  stoppedRate: number;
+  failedRate: number;
+  steps: DripStepMetric[];
+  errors: { error: string; count: number }[];
+}
+
+export interface DripOverview {
+  totalEnrolled: number;
+  active: number;
+  completed: number;
+  stopped: number;
+  failed: number;
+  completionRate: number;
+  stoppedRate: number;
+  failedRate: number;
+}
+
+export interface DripAnalyticsSummary {
+  overview: DripOverview;
+  /**
+   * The same five numbers BEFORE the status filter is applied — what the
+   * status pills count. Without them, selecting "Failed" zeroes every other
+   * pill and there is no way to read your way back out.
+   */
+  statusCounts: DripOverview;
+  bySequence: DripSeqAnalytics[];
+  dailyTrend: { date: string; enrolled: number; completed: number; stopped: number; failed: number }[];
+  granularity: Granularity;
+  sequences: { id: string; name: string; platform: string; active: boolean }[];
+  /** True when the scan hit its cap, so the screen can say so instead of lying. */
+  truncated: boolean;
+  scanned: number;
+  filter: {
+    sequenceId: string;
+    range: DripRangeKey;
+    status: string;
+    platform: string;
+  };
+}
+
+/** Runaway guard on the analytics scan, not an expected limit. */
+const DRIP_SCAN_CAP = 50_000;
+
+/**
+ * pageAll() over a tdb() builder.
+ *
+ * tdb() is typed against the generated schema and the drip tables are not in
+ * it, so its builder reports its rows as GenericStringError[]. Every read of
+ * these tables already casts for that reason — listRecentEnrollments above
+ * does it too. One place to do it rather than one per call site.
+ */
+function pagedDripRows(
+  build: () => { range(from: number, to: number): PromiseLike<unknown> },
+  opts: { cap?: number; label?: string } = {},
+): Promise<Record<string, unknown>[]> {
+  return pageAll<Record<string, unknown>>(
+    build as unknown as () => {
+      range(from: number, to: number): PromiseLike<{ data: Record<string, unknown>[] | null; error: unknown }>;
+    },
+    opts,
+  );
+}
+
+function tally(rows: Record<string, unknown>[]): DripOverview {
+  let active = 0, completed = 0, stopped = 0, failed = 0;
+  for (const e of rows) {
+    const s = e.status as string;
+    if (s === "active") active++;
+    else if (s === "completed") completed++;
+    else if (s === "stopped") stopped++;
+    else if (s === "failed") failed++;
+  }
+  const total = rows.length;
+  const concluded = completed + stopped + failed;
+  return {
+    totalEnrolled: total,
+    active, completed, stopped, failed,
+    completionRate: concluded > 0 ? Math.round((completed / concluded) * 100) : 0,
+    stoppedRate: total > 0 ? Math.round((stopped / total) * 100) : 0,
+    failedRate: total > 0 ? Math.round((failed / total) * 100) : 0,
+  };
+}
+
+/**
+ * Funnel and conversion numbers for the drip screens, for ONE tenant.
+ *
+ * Three things this has to get right:
+ *
+ *  • READ EVERYTHING. PostgREST hands back at most 1,000 rows per request and
+ *    says nothing about the rest, so a single select would turn every figure
+ *    on the page into a count of the first thousand enrolments. pageAll()
+ *    pages to the end; DRIP_SCAN_CAP stops a runaway and sets `truncated` so
+ *    the screen can admit it rather than quietly under-report.
+ *
+ *  • "REACHED" MEANS DELIVERED. current_step is the step ABOUT TO BE SENT, not
+ *    the last one sent — drain() only advances it after a successful send, and
+ *    leaves it alone on the final step, flipping status to completed instead.
+ *    Counting `current_step >= stepIndex` would credit every lead with a step
+ *    they were still waiting for, so the funnel reads 100% at every rung and
+ *    shows no drop-off at all: a funnel that cannot fall is not a funnel.
+ *
+ *  • THE STATUS FILTER HAS TO FILTER, not just be echoed back in `filter`.
+ */
+export async function getDripAnalytics(
+  filter: DripAnalyticsFilter = {},
+  tenantId = DEFAULT_TENANT_ID,
+): Promise<DripAnalyticsSummary> {
+  const seqId = filter.sequenceId && filter.sequenceId !== "all" ? filter.sequenceId : "all";
+  const range = parseDripRange(filter.range);
+  const platform = filter.platform && filter.platform !== "all" ? filter.platform : "all";
+  const statusFilter = filter.status && filter.status !== "all" ? filter.status : "all";
+
+  const seqs = await listSequences(tenantId);
+
+  const stepRows = await pagedDripRows(
+    () => {
+      let sq = tdb(tenantId).from("wa_sequence_steps").select("*");
+      if (seqId !== "all") sq = sq.eq("sequence_id", seqId);
+      return sq.order("sequence_id", { ascending: true }).order("step_index", { ascending: true });
+    },
+    { label: "drip_analytics_steps" },
+  );
+
+  const stepsBySeq = new Map<string, SequenceStep[]>();
+  for (const r of stepRows) {
+    const sId = r.sequence_id as string;
+    if (!stepsBySeq.has(sId)) stepsBySeq.set(sId, []);
+    stepsBySeq.get(sId)!.push({
+      id: r.id as string,
+      stepIndex: r.step_index as number,
+      delayMinutes: (r.delay_minutes as number) ?? 0,
+      action: (r.action as SequenceStepAction) ?? { type: "text" },
+      audience: parseAudience(r.audience),
+    });
+  }
+
+  const windowStart = dripRangeStart(range);
+  const scanned = await pagedDripRows(
+    () => {
+      let q = tdb(tenantId)
+        .from("wa_sequence_enrollments")
+        .select("id, sequence_id, platform, current_step, status, last_error, created_at, updated_at");
+      if (windowStart) q = q.gte("created_at", windowStart.toISOString());
+      if (platform !== "all") q = q.eq("platform", platform);
+      if (seqId !== "all") q = q.eq("sequence_id", seqId);
+      // created_at alone is not a stable sort — two enrolments made in the same
+      // millisecond can swap between pages, repeating one row and losing the
+      // other. id breaks the tie.
+      return q.order("created_at", { ascending: false }).order("id", { ascending: true });
+    },
+    { cap: DRIP_SCAN_CAP, label: "drip_analytics_enrollments" },
+  );
+
+  const truncated = scanned.length >= DRIP_SCAN_CAP;
+  const statusCounts = tally(scanned);
+  const allEnrs = statusFilter === "all"
+    ? scanned
+    : scanned.filter(e => (e.status as string) === statusFilter);
+  const overview = tally(allEnrs);
+
+  const targetSeqs = seqId === "all" ? seqs : seqs.filter(s => s.id === seqId);
+  const bySequence: DripSeqAnalytics[] = targetSeqs
+    .filter(s => platform === "all" || s.platform === platform)
+    .map(s => {
+      const sAllEnrs = allEnrs.filter(e => (e.sequence_id as string) === s.id);
+      const t = tally(sAllEnrs);
+      const errorMap = new Map<string, number>();
+
+      for (const e of sAllEnrs) {
+        if (e.last_error && typeof e.last_error === "string") {
+          // One Meta blob per contact would make "top 5" a list of five
+          // one-offs. Collapse the whitespace and clip, so the same failure
+          // groups as the same failure.
+          const key = e.last_error.replace(/\s+/g, " ").trim().slice(0, 240);
+          if (key) errorMap.set(key, (errorMap.get(key) || 0) + 1);
+        }
+      }
+
+      const sTotal = sAllEnrs.length;
+      const steps = stepsBySeq.get(s.id) ?? [];
+      const stepMetrics: DripStepMetric[] = steps.map(st => {
+        let reached = 0, current = 0, stopped = 0, failed = 0;
+        for (const e of sAllEnrs) {
+          const cs = (e.current_step as number) ?? 0;
+          const status = e.status as string;
+          // Delivered: the engine moved PAST this step, or finished the
+          // journey (which leaves current_step parked on the last rung).
+          if (cs > st.stepIndex || status === "completed") reached++;
+          if (cs === st.stepIndex) {
+            if (status === "active") current++;
+            else if (status === "stopped") stopped++;
+            else if (status === "failed") failed++;
+          }
+        }
+        return {
+          stepIndex: st.stepIndex,
+          stepNumber: st.stepIndex + 1,
+          type: st.action.type,
+          templateName: st.action.templateName ?? null,
+          delayMinutes: st.delayMinutes,
+          label: describeStep(st.action),
+          currentlyOn: current,
+          reachedCount: reached,
+          stoppedCount: stopped,
+          failedCount: failed,
+          retentionRate: sTotal > 0 ? Math.round((reached / sTotal) * 100) : 0,
+        };
+      });
+
+      const topErrors = Array.from(errorMap.entries())
+        .map(([error, count]) => ({ error, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5);
+
+      return {
+        id: s.id,
+        name: s.name,
+        platform: s.platform,
+        triggerKind: s.triggerKind,
+        triggerValue: s.triggerValue,
+        active: s.active,
+        team: s.team,
+        aidaStage: s.aidaStage,
+        totalSteps: steps.length,
+        totalEnrolled: sTotal,
+        activeCount: t.active,
+        completedCount: t.completed,
+        stoppedCount: t.stopped,
+        failedCount: t.failed,
+        completionRate: t.completionRate,
+        stoppedRate: t.stoppedRate,
+        failedRate: t.failedRate,
+        steps: stepMetrics,
+        errors: topErrors,
+      };
+    });
+
+  // ── Trend ──
+  // Bucketed, not one row per date that happened to have an enrolment. A dense
+  // map skips quiet days entirely, so a week with one enrolment on Monday and
+  // one on Friday drew two bars side by side as if they were consecutive.
+  const stamps = allEnrs
+    .map(e => e.created_at as string | null)
+    .filter((v): v is string => typeof v === "string" && v.length >= 10);
+  const now = new Date();
+  const earliest = stamps.length ? new Date(stamps.reduce((a, b) => (a < b ? a : b))) : null;
+  const granularity: Granularity = granularityFor(dripRangeSpanDays(range, earliest, now));
+
+  const counts = new Map<string, { enrolled: number; completed: number; stopped: number; failed: number }>();
+  for (const e of allEnrs) {
+    const iso = e.created_at as string | null;
+    if (!iso) continue;
+    const k = bucketKey(iso, granularity);
+    let b = counts.get(k);
+    if (!b) { b = { enrolled: 0, completed: 0, stopped: 0, failed: 0 }; counts.set(k, b); }
+    b.enrolled++;
+    const status = e.status as string;
+    if (status === "completed") b.completed++;
+    else if (status === "stopped") b.stopped++;
+    else if (status === "failed") b.failed++;
+  }
+
+  const from = windowStart ?? earliest;
+  const dailyTrend = from
+    ? bucketKeys(from, now, granularity).map(date => ({
+        date,
+        ...(counts.get(date) ?? { enrolled: 0, completed: 0, stopped: 0, failed: 0 }),
+      }))
+    : [];
+
+  return {
+    overview,
+    statusCounts,
+    bySequence,
+    dailyTrend,
+    granularity,
+    sequences: seqs.map(s => ({ id: s.id, name: s.name, platform: s.platform, active: s.active })),
+    truncated,
+    scanned: scanned.length,
+    filter: { sequenceId: seqId, range, status: statusFilter, platform },
+  };
 }
 
 // ── Execution ─────────────────────────────────────────────────────────────────

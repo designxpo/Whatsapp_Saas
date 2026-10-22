@@ -902,6 +902,527 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
   );
 }
 
+// ── Drip analytics: funnel, drop-off and conversion across every journey ─────
+type DripOverviewPayload = {
+  totalEnrolled: number;
+  active: number;
+  completed: number;
+  stopped: number;
+  failed: number;
+  completionRate: number;
+  stoppedRate: number;
+  failedRate: number;
+};
+
+type DripAnalyticsPayload = {
+  overview: DripOverviewPayload;
+  /** The same numbers before the status filter — what the status pills count. */
+  statusCounts: DripOverviewPayload;
+  bySequence: {
+    id: string;
+    name: string;
+    platform: "whatsapp" | "instagram";
+    triggerKind: string;
+    triggerValue: string | null;
+    active: boolean;
+    team: Lane | null;
+    aidaStage: AidaStage | null;
+    totalSteps: number;
+    totalEnrolled: number;
+    activeCount: number;
+    completedCount: number;
+    stoppedCount: number;
+    failedCount: number;
+    completionRate: number;
+    stoppedRate: number;
+    failedRate: number;
+    steps: {
+      stepIndex: number;
+      stepNumber: number;
+      type: string;
+      templateName: string | null;
+      delayMinutes: number;
+      label: string;
+      currentlyOn: number;
+      reachedCount: number;
+      stoppedCount: number;
+      failedCount: number;
+      retentionRate: number;
+    }[];
+    errors: { error: string; count: number }[];
+  }[];
+  dailyTrend: { date: string; enrolled: number; completed: number; stopped: number; failed: number }[];
+  granularity: "day" | "week" | "month";
+  sequences: { id: string; name: string; platform: string; active: boolean }[];
+  truncated: boolean;
+  scanned: number;
+  filter: { sequenceId: string; range: string; status: string; platform: string };
+};
+
+// One window, named once, used by the dropdown AND by every caption that
+// reports a figure. A period that lives only in a <select> is a number with
+// no shape: "total enrolled: 428" of WHAT span?
+const RANGE_LABELS: Record<string, string> = {
+  all: "all time",
+  today: "today",
+  "7d": "last 7 days",
+  "14d": "last 14 days",
+  "30d": "last 30 days",
+  "90d": "last 90 days",
+};
+const RANGE_ORDER = ["all", "today", "7d", "14d", "30d", "90d"] as const;
+
+// The server already bucketed and zero-filled the series; this only scales it.
+// Zero-filled matters, and a zero bar is drawn as nothing rather than as a
+// stub — a gap in enrolments has to stay a visible gap.
+//
+// It sits inside the hero card rather than in a band of its own: a chart two
+// hundred pixels away from the number it explains is a second thing to read.
+function DripSparkline({
+  trend, granularity,
+}: {
+  trend: DripAnalyticsPayload["dailyTrend"];
+  granularity: DripAnalyticsPayload["granularity"];
+}) {
+  if (!trend.length) return null;
+  const max = Math.max(1, ...trend.map(t => t.enrolled));
+  const unit = granularity === "month" ? "month " : granularity === "week" ? "week of " : "";
+  const fmt = (d: string) =>
+    granularity === "month"
+      ? new Date(`${d}-01T00:00:00Z`).toLocaleDateString(undefined, { month: "short", year: "2-digit", timeZone: "UTC" })
+      : new Date(`${d}T00:00:00Z`).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-end gap-px h-10" role="img" aria-label="Enrolments over the selected window">
+        {trend.map(t => (
+          <div
+            key={t.date}
+            className="flex-1 min-w-px h-full flex items-end"
+            title={`${unit}${fmt(t.date)} — ${t.enrolled} enrolled · ${t.completed} completed · ${t.stopped} stopped · ${t.failed} failed`}
+          >
+            <div
+              className="w-full bg-brand-600 rounded-t-[2px]"
+              style={{ height: t.enrolled === 0 ? 0 : `${Math.max(4, Math.round((t.enrolled / max) * 100))}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[10px] text-ink-400 tnum">
+        <span>{fmt(trend[0].date)}</span>
+        <span>peak {max.toLocaleString()}</span>
+        <span>{fmt(trend[trend.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+
+function fmtDripDelay(min: number): string {
+  if (min <= 0) return "Immediate (0m)";
+  if (min < 60) return `Wait ${min}m`;
+  if (min < 1440) return `Wait ${Math.round(min / 60)}h`;
+  const d = Math.round(min / 1440);
+  return `Wait ${d} day${d === 1 ? "" : "s"}`;
+}
+
+function SeqAnalyticsPanel({
+  seqs,
+  onFilterEnrollments,
+}: {
+  seqs: SeqRow[];
+  onFilterEnrollments?: (filter: { seqId?: string; status?: string }) => void;
+}) {
+  const { vocab, seq1, seqN, ctN } = useWords();
+  const [selectedSeq, setSelectedSeq] = useState<string>("all");
+  const [range, setRange] = useState<string>("all");
+  const [platform, setPlatform] = useState<string>("all");
+  const [status, setStatus] = useState<string>("all");
+  const [data, setData] = useState<DripAnalyticsPayload | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  const loadAnalytics = useCallback(() => {
+    setLoading(true);
+    setErr(null);
+    const params = new URLSearchParams();
+    if (selectedSeq !== "all") params.set("sequenceId", selectedSeq);
+    if (range !== "all") params.set("range", range);
+    if (platform !== "all") params.set("platform", platform);
+    if (status !== "all") params.set("status", status);
+
+    fetch(`/api/admin/sequences/analytics?${params.toString()}`)
+      .then(async r => {
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.error || `HTTP ${r.status}`);
+        }
+        return r.json();
+      })
+      .then(d => setData(d))
+      .catch(e => setErr(e.message || "Failed to load analytics"))
+      .finally(() => setLoading(false));
+  }, [selectedSeq, range, platform, status]);
+
+  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
+
+  const zeroOverview: DripOverviewPayload = {
+    totalEnrolled: 0, active: 0, completed: 0, stopped: 0, failed: 0,
+    completionRate: 0, stoppedRate: 0, failedRate: 0,
+  };
+  const overview = data?.overview ?? zeroOverview;
+  // The pills count the unfiltered cohort on purpose. Counting the FILTERED
+  // one zeroes every pill but the selected one, so once you click "Failed"
+  // the other four read 0 and there is nothing left to click back to.
+  const statusCounts = data?.statusCounts ?? zeroOverview;
+
+  const currentSeq = selectedSeq !== "all"
+    ? data?.bySequence.find(s => s.id === selectedSeq)
+    : data?.bySequence.length === 1
+      ? data.bySequence[0]
+      : null;
+
+  return (
+    <div className="bg-white rounded-card border border-line p-5 space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-extrabold text-ink-900 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-brand-700" /> {vocab.sequence.one} analytics &amp; funnel
+          </h3>
+          <p className="text-xs text-ink-400 mt-0.5 tnum">
+            {seqs.length} {seqs.length === 1 ? seq1 : seqN} · {RANGE_LABELS[range] ?? "all time"}
+            {platform !== "all" ? ` · ${platform === "instagram" ? "Instagram" : "WhatsApp"}` : ""}
+          </p>
+        </div>
+        <button
+          onClick={loadAnalytics}
+          disabled={loading}
+          className="px-2.5 py-1.5 rounded-control border border-line text-xs font-semibold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+          title="Refresh analytics"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-brand-700" : ""}`} /> Refresh
+        </button>
+      </div>
+
+      {/* Filter bar */}
+      <div className="bg-canvas border border-line rounded-control p-3 flex flex-wrap items-center gap-2.5 text-xs">
+        <div className="flex items-center gap-1.5 text-ink-600 font-semibold shrink-0">
+          <Filter className="w-3.5 h-3.5 text-brand-700" /> Filters:
+        </div>
+
+        <select className={`${inp} !py-1 text-xs max-w-xs`} value={selectedSeq} onChange={e => setSelectedSeq(e.target.value)}>
+          <option value="all">All {seqN} ({seqs.length})</option>
+          {seqs.map(s => (
+            <option key={s.id} value={s.id}>{s.name} ({s.platform === "instagram" ? "IG" : "WA"})</option>
+          ))}
+        </select>
+
+        <select className={`${inp} !py-1 text-xs`} value={range} onChange={e => setRange(e.target.value)}>
+          {RANGE_ORDER.map(k => <option key={k} value={k}>{RANGE_LABELS[k]}</option>)}
+        </select>
+
+        <select className={`${inp} !py-1 text-xs`} value={platform} onChange={e => setPlatform(e.target.value)}>
+          <option value="all">All platforms</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="instagram">Instagram</option>
+        </select>
+
+        <div className="h-4 w-px bg-line hidden md:block" />
+
+        <div className="flex items-center gap-1 flex-wrap">
+          {[
+            { id: "all", label: "All statuses", count: statusCounts.totalEnrolled },
+            { id: "active", label: "Active", count: statusCounts.active },
+            { id: "completed", label: "Completed", count: statusCounts.completed },
+            { id: "stopped", label: "Stopped", count: statusCounts.stopped },
+            { id: "failed", label: "Failed", count: statusCounts.failed },
+          ].map(tab => {
+            const isSel = status === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setStatus(tab.id)}
+                className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border transition-all flex items-center gap-1 ${
+                  isSel ? "bg-ink-950 border-ink-950 text-white" : "bg-white border-line text-ink-600 hover:bg-slate-50"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-1.5 rounded-full text-[10px] font-bold ${isSel ? "bg-white/20 text-white" : "bg-slate-100 text-ink-600"}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {(selectedSeq !== "all" || range !== "all" || platform !== "all" || status !== "all") && (
+          <button
+            onClick={() => { setSelectedSeq("all"); setRange("all"); setPlatform("all"); setStatus("all"); }}
+            className="text-[11px] text-brand-700 hover:underline font-semibold ml-auto"
+          >
+            Reset filters
+          </button>
+        )}
+      </div>
+
+      {err && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-control text-xs text-red-600 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" /> {err}
+        </div>
+      )}
+
+      {data?.truncated && (
+        <div className="p-3 bg-amber-50 border border-amber-200 rounded-control text-xs text-amber-800 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          <span>
+            Showing the most recent {data.scanned.toLocaleString()} enrolments — there are more than that in
+            this window. Narrow the date range or pick a single {seq1} for exact figures.
+          </span>
+        </div>
+      )}
+
+      {/* One number is the hero; the four states are support. A row of six
+          equal cards gave the eye nowhere to land. */}
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="lg:col-span-5 bg-canvas border border-line rounded-control p-4 flex flex-col justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-ink-500">
+              Enrolled · {RANGE_LABELS[range] ?? "all time"}
+            </p>
+            <p className="text-[2.5rem] leading-none font-black text-ink-900 mt-1.5 tnum">
+              {overview.totalEnrolled.toLocaleString()}
+            </p>
+            <p className="text-[11px] text-ink-400 mt-1.5">
+              {status === "all"
+                ? `across ${data?.bySequence.length ?? 0} ${(data?.bySequence.length ?? 0) === 1 ? seq1 : seqN}`
+                : `${status} only — of ${statusCounts.totalEnrolled.toLocaleString()} enrolled`}
+            </p>
+          </div>
+          {data && <DripSparkline trend={data.dailyTrend} granularity={data.granularity} />}
+        </div>
+
+        <div className="lg:col-span-7 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {([
+            { key: "active", label: "Active", dot: "bg-blue-500", value: overview.active,
+              note: `${overview.totalEnrolled > 0 ? Math.round((overview.active / overview.totalEnrolled) * 100) : 0}% in progress` },
+            { key: "completed", label: "Completed", dot: "bg-emerald-500", value: overview.completed,
+              note: `${overview.completionRate}% of finished` },
+            { key: "stopped", label: "Stopped", dot: "bg-amber-500", value: overview.stopped,
+              note: `${overview.stoppedRate}% replied or opted out` },
+            { key: "failed", label: "Failed", dot: "bg-red-500", value: overview.failed,
+              note: `${overview.failedRate}% delivery errors` },
+          ] as const).map(c => (
+            <div key={c.key} className="bg-canvas border border-line rounded-lg p-3 flex flex-col justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${c.dot}`} />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-ink-500">{c.label}</span>
+              </div>
+              {/* Ink, not the status hue. Five saturated numbers competed for
+                  the same attention and none of them won it. */}
+              <p className="text-xl font-black text-ink-900 mt-2 tnum">{c.value.toLocaleString()}</p>
+              <p className="text-[10px] text-ink-400 mt-0.5 tnum">{c.note}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {currentSeq ? (
+        <div className="space-y-4 pt-1">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-line">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0">
+                <Workflow className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-ink-900">{currentSeq.name}</h4>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${currentSeq.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>
+                    {currentSeq.platform === "instagram" ? "Instagram" : "WhatsApp"}
+                  </span>
+                  {!currentSeq.active && <span className="text-[10px] font-bold text-red-500">OFF</span>}
+                </div>
+                <p className="text-[11px] text-ink-400">
+                  Trigger: <span className="font-semibold text-ink-600">{triggerLabel(currentSeq.triggerKind)}</span>
+                  {currentSeq.triggerValue ? ` “${currentSeq.triggerValue}”` : ""} · {currentSeq.totalSteps} step{currentSeq.totalSteps === 1 ? "" : "s"} · {currentSeq.totalEnrolled} enrolled
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {selectedSeq !== "all" && seqs.length > 1 && (
+                <button onClick={() => setSelectedSeq("all")} className="text-xs text-brand-700 hover:underline font-semibold">
+                  ← Compare all {seqN}
+                </button>
+              )}
+              {onFilterEnrollments && (
+                <button
+                  onClick={() => onFilterEnrollments({ seqId: currentSeq.id, status })}
+                  className="px-2.5 py-1 rounded-control bg-canvas hover:bg-slate-100 border border-line text-xs font-semibold text-ink-700 flex items-center gap-1"
+                >
+                  View in monitor table ↓
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-400 uppercase tracking-wider">Step-by-step drop-off &amp; retention</span>
+              <span className="text-ink-400 text-[11px]">A step counts as reached once it has actually been sent</span>
+            </div>
+
+            {currentSeq.steps.length === 0 ? (
+              <p className="text-xs text-ink-400 py-4 text-center bg-canvas rounded-control border border-line">
+                No steps configured for this {seq1}.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {currentSeq.steps.map((st, i) => {
+                  const isFirst = i === 0;
+                  const prevStep = isFirst ? null : currentSeq.steps[i - 1];
+                  const dropFromPrev = prevStep && prevStep.reachedCount > 0
+                    ? Math.round(((prevStep.reachedCount - st.reachedCount) / prevStep.reachedCount) * 100)
+                    : 0;
+
+                  return (
+                    <div key={st.stepIndex} className="border border-line rounded-control p-3 bg-white hover:border-slate-300 transition-colors space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="w-6 h-6 rounded-full bg-brand-50 text-brand-700 font-bold flex items-center justify-center text-xs shrink-0">#{st.stepNumber}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">{st.type}</span>
+                          <span className="font-semibold text-ink-900 truncate max-w-xs" title={st.label}>
+                            {st.templateName ? `template "${st.templateName}"` : st.label}
+                          </span>
+                          <span className="text-ink-400 text-[11px]">({fmtDripDelay(st.delayMinutes)})</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0 text-[11px]">
+                          <span className="font-bold text-ink-900">
+                            {st.reachedCount.toLocaleString()} <span className="text-ink-400 font-normal">reached ({st.retentionRate}%)</span>
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-semibold" title="Waiting for this step to send">
+                            {st.currentlyOn} in flight
+                          </span>
+                          {st.stoppedCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 font-semibold" title="Stopped before this step (replied / opted out)">
+                              {st.stoppedCount} stopped
+                            </span>
+                          )}
+                          {st.failedCount > 0 && (
+                            <span className="px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 font-semibold" title="Failed on this step">
+                              {st.failedCount} failed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <div className="w-full bg-canvas rounded-full h-2.5 overflow-hidden flex">
+                          <div
+                            className="bg-brand-600 h-full rounded-full transition-all duration-300"
+                            style={{ width: `${Math.max(1, st.retentionRate)}%` }}
+                            title={`${st.reachedCount} of ${currentSeq.totalEnrolled} reached this step (${st.retentionRate}%)`}
+                          />
+                        </div>
+                        <div className="flex justify-between text-[10px] text-ink-400">
+                          <span>{st.reachedCount} delivered</span>
+                          {!isFirst && dropFromPrev > 0 && (
+                            <span className="text-amber-600 font-medium">▼ {dropFromPrev}% drop-off from step #{st.stepNumber - 1}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {currentSeq.errors.length > 0 && (
+            <div className="border border-red-200 bg-red-50/60 rounded-control p-3 space-y-2">
+              <p className="text-xs font-bold text-red-700 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" /> Delivery failures
+              </p>
+              <div className="divide-y divide-red-200/60 text-xs">
+                {currentSeq.errors.map((er, idx) => (
+                  <div key={idx} className="py-1.5 flex items-center justify-between gap-2">
+                    <span className="text-red-800 truncate font-mono text-[11px]" title={er.error}>{er.error}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px] shrink-0">
+                      {er.count} contact{er.count === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3 pt-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Every {seq1} — comparison</p>
+            <p className="text-[11px] text-ink-400">Click any row to inspect its step drop-off</p>
+          </div>
+
+          {!data?.bySequence.length ? (
+            <p className="text-xs text-ink-400 py-6 text-center bg-canvas rounded-control border border-line">
+              No {seqN} match the current filters.
+            </p>
+          ) : (
+            <div className="border border-line rounded-control overflow-hidden">
+              <div className="grid grid-cols-12 gap-2 px-3 py-2 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
+                <div className="col-span-4 sm:col-span-3">{vocab.sequence.one}</div>
+                <div className="col-span-2 hidden sm:block">Trigger / steps</div>
+                <div className="col-span-2 text-right">Enrolled</div>
+                <div className="col-span-2 text-right">Active</div>
+                <div className="col-span-2 text-right">Stopped</div>
+                <div className="col-span-2 sm:col-span-1 text-right">Done</div>
+              </div>
+
+              <div className="divide-y divide-line text-xs">
+                {data.bySequence.map(seq => (
+                  <div
+                    key={seq.id}
+                    onClick={() => setSelectedSeq(seq.id)}
+                    className="grid grid-cols-12 gap-2 px-3 py-2.5 items-center hover:bg-slate-50 cursor-pointer transition-colors group"
+                  >
+                    <div className="col-span-4 sm:col-span-3 min-w-0">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="font-bold text-ink-900 group-hover:text-brand-700 transition-colors truncate">{seq.name}</span>
+                        {!seq.active && <span className="text-[9px] font-bold text-red-500">OFF</span>}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-ink-400 mt-0.5">
+                        <span className={seq.platform === "instagram" ? "text-pink-600 font-semibold" : "text-emerald-700 font-semibold"}>
+                          {seq.platform === "instagram" ? "IG" : "WA"}
+                        </span>
+                        {seq.team && <span>· {seq.team}</span>}
+                      </div>
+                    </div>
+
+                    <div className="col-span-2 hidden sm:block truncate text-ink-500 text-[11px]">
+                      <span>{triggerLabel(seq.triggerKind)}</span>
+                      <span className="text-ink-400"> · {seq.totalSteps} steps</span>
+                    </div>
+
+                    <div className="col-span-2 text-right font-black text-ink-900 tnum">{seq.totalEnrolled.toLocaleString()}</div>
+                    <div className="col-span-2 text-right tnum">
+                      <span className="font-semibold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-md">{seq.activeCount}</span>
+                    </div>
+                    <div className="col-span-2 text-right tnum">
+                      <span className="font-medium text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md" title="Stopped on reply or action">{seq.stoppedCount}</span>
+                    </div>
+                    <div className="col-span-2 sm:col-span-1 text-right tnum">
+                      <span className="font-bold text-emerald-700">{seq.completedCount}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Test + monitor a drip: enroll one number on demand, force the due steps to run
 // (without waiting for the 5-minute cron), and watch every enrollment's progress
 // + errors. This is what turns "is it even working?" into a yes/no you can see.
@@ -915,16 +1436,52 @@ function fmtWhen(s: string | null): string {
   return diff >= 0 ? `in ${rel}` : `${rel} ago`;
 }
 const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-600", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
-function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
-  const { vocab, seq1, ct1, ctN } = useWords();
+function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filterFromAnalytics?: { seqId?: string; status?: string } | null }) {
+  const { vocab, seq1, seqN, ct1, ctN } = useWords();
   const [enr, setEnr] = useState<EnrRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [perPage, setPerPage] = useState(25);
+  const [offset, setOffset] = useState(0);
   const [seqId, setSeqId] = useState("");
   const [phone, setPhone] = useState("");
   const [busy, setBusy] = useState<"" | "test" | "run" | "refresh">("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [contacts, setContacts] = useState<{ phone: string; name: string; withinWindow: boolean }[]>([]);
-  const loadEnr = useCallback(() => { fetch("/api/admin/sequences/enrollments").then(r => r.json()).then(d => setEnr(d.enrollments ?? [])).catch(() => {}); }, []);
+
+  // Monitor-level filters, independent of the test box above.
+  const [filterSeq, setFilterSeq] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterPlatform, setFilterPlatform] = useState<string>("all");
+  const [search, setSearch] = useState<string>("");
+
+  // "View in monitor table ↓" from the analytics panel lands here.
+  useEffect(() => {
+    if (filterFromAnalytics) {
+      if (filterFromAnalytics.seqId !== undefined) setFilterSeq(filterFromAnalytics.seqId);
+      if (filterFromAnalytics.status !== undefined) setFilterStatus(filterFromAnalytics.status);
+      setOffset(0);
+    }
+  }, [filterFromAnalytics]);
+
+  // Paged on the SERVER. The list used to ask for 100 rows and render all of
+  // them; a workspace with a few thousand enrolments turned the monitor into
+  // the slowest thing on the page and still showed only a prefix.
+  const loadEnr = useCallback((lim = perPage, off = offset) => {
+    const params = new URLSearchParams({ limit: String(lim), offset: String(off) });
+    if (filterSeq !== "all") params.set("sequenceId", filterSeq);
+    if (filterStatus !== "all") params.set("status", filterStatus);
+    if (filterPlatform !== "all") params.set("platform", filterPlatform);
+    if (search.trim()) params.set("search", search.trim());
+    fetch(`/api/admin/sequences/enrollments?${params.toString()}`)
+      .then(r => r.json())
+      .then(d => { setEnr(d.enrollments ?? []); setTotal(d.total ?? 0); })
+      .catch(() => {});
+  }, [perPage, offset, filterSeq, filterStatus, filterPlatform, search]);
   useEffect(() => { loadEnr(); }, [loadEnr]);
+
+  const page = Math.floor(offset / perPage) + 1;
+  const lastPage = Math.max(1, Math.ceil(total / perPage));
+  const hasFilters = filterSeq !== "all" || filterStatus !== "all" || filterPlatform !== "all" || search.trim() !== "";
 
   // The picked sequence drives the platform — and the test sends on THAT platform
   // (a WhatsApp sequence can't reach Instagram). Load valid contacts for it.
@@ -943,7 +1500,7 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
       const res = await fetch("/api/admin/sequences/test-enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sequenceId: seqId, phone }) });
       const d = await res.json();
       setMsg(res.ok ? { ok: true, text: d.note || "Enrolled." } : { ok: false, text: d.error || "Failed" });
-      loadEnr();
+      setOffset(0); loadEnr(perPage, 0);
     } catch { setMsg({ ok: false, text: "Connection error" }); }
     finally { setBusy(""); }
   }
@@ -979,17 +1536,62 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
         <input className={`${inp} w-44`} placeholder={platform === "instagram" ? "IG id — pick a contact ↑" : "WhatsApp number"} value={phone} onChange={e => setPhone(e.target.value)} />
         <button onClick={testEnroll} disabled={busy !== "" || !seqId} className="px-3 py-2 rounded-control border border-brand-700 text-brand-700 text-xs font-bold hover:bg-brand-50 disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "test" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Enroll &amp; send</button>
         <button onClick={runNow} disabled={busy !== ""} className="px-3 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50 shrink-0 flex items-center gap-1.5">{busy === "run" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-3.5 h-3.5" />} Run due steps now</button>
-        <button onClick={loadEnr} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={() => loadEnr()} className="p-2 rounded-control border border-line text-ink-500 hover:bg-canvas shrink-0" title="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
       {msg && <p className={`text-[11px] font-semibold ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
       <p className="text-[10px] text-ink-400">The test sends on the <b>{seq1}&apos;s platform</b> — to test Instagram, pick an <b>Instagram</b> {seq1}. Instagram can only message someone who <b>DMed your IG first</b> (so pick them from the list — you can&apos;t message a @handle). <b>✅</b> = messaged in the last 24h, so a plain <b>text</b> step will deliver; otherwise use an approved <b>template</b> step.</p>
 
+      {/* Monitor filters */}
+      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-line text-xs">
+        <div className="relative flex-1 min-w-[12rem]">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" />
+          <input
+            className={`${inp} w-full !pl-8 !py-1 text-xs`}
+            placeholder={`Search ${ct1} phone number…`}
+            value={search}
+            onChange={e => { setSearch(e.target.value); setOffset(0); }}
+          />
+        </div>
+        <select className={`${inp} !py-1 text-xs`} value={filterSeq} onChange={e => { setFilterSeq(e.target.value); setOffset(0); }}>
+          <option value="all">All {seqN}</option>
+          {seqs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <select className={`${inp} !py-1 text-xs`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setOffset(0); }}>
+          <option value="all">All statuses</option>
+          <option value="active">Active</option>
+          <option value="completed">Completed</option>
+          <option value="stopped">Stopped</option>
+          <option value="failed">Failed</option>
+        </select>
+        <select className={`${inp} !py-1 text-xs`} value={filterPlatform} onChange={e => { setFilterPlatform(e.target.value); setOffset(0); }}>
+          <option value="all">All platforms</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="instagram">Instagram</option>
+        </select>
+        {hasFilters && (
+          <button
+            onClick={() => { setFilterSeq("all"); setFilterStatus("all"); setFilterPlatform("all"); setSearch(""); setOffset(0); }}
+            className="text-xs text-brand-700 hover:underline font-semibold"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
       {/* Enrollment monitor */}
-      <div className="border border-line rounded-control overflow-hidden">
+      <div id="seq-enrollment-monitor" className="border border-line rounded-control overflow-hidden">
         <div className="grid grid-cols-12 gap-2 px-3 py-1.5 bg-canvas text-[10px] font-bold text-ink-400 uppercase">
           <div className="col-span-3">{vocab.sequence.one}</div><div className="col-span-3">{vocab.contact.one}</div><div className="col-span-2">Step</div><div className="col-span-2">Status</div><div className="col-span-2">Next / error</div>
         </div>
-        {enr.length === 0 && <p className="px-3 py-3 text-xs text-ink-400">No enrollments yet. Enroll a number above, or wire a trigger (keyword / growth tool) and have someone message you.</p>}
+        {enr.length === 0 && (
+          <p className="px-3 py-3 text-xs text-ink-400">
+            {hasFilters
+              ? "No enrollments match the current filter."
+              : total === 0
+                ? "No enrollments yet. Enroll a number above, or wire a trigger (keyword / growth tool) and have someone message you."
+                : "No results on this page."}
+          </p>
+        )}
         {enr.map(e => (
           <div key={e.id} className="grid grid-cols-12 gap-2 px-3 py-2 border-t border-line text-[12px] items-center">
             <div className="col-span-3 truncate font-medium text-ink-800">{e.sequenceName}</div>
@@ -999,6 +1601,19 @@ function SeqMonitorPanel({ seqs }: { seqs: SeqRow[] }) {
             <div className="col-span-2 truncate text-[11px]">{e.lastError ? <span className="text-red-600" title={e.lastError}>⚠ {e.lastError}</span> : <span className="text-ink-400">{e.status === "active" ? fmtWhen(e.nextRunAt) : fmtWhen(e.updatedAt)}</span>}</div>
           </div>
         ))}
+        {total > 0 && (
+          <div className="flex items-center justify-between px-3 py-2 border-t border-line text-xs text-ink-500">
+            <span>{offset + 1}–{Math.min(offset + perPage, total)} of {total.toLocaleString()}</span>
+            <div className="flex items-center gap-3">
+              <select className="border border-line rounded-lg px-2 py-1 text-xs" value={perPage} onChange={e => { setPerPage(Number(e.target.value)); setOffset(0); }}>
+                {[25, 50, 100].map(n => <option key={n} value={n}>{n} per page</option>)}
+              </select>
+              <button onClick={() => setOffset(o => Math.max(0, o - perPage))} disabled={page <= 1} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Previous page"><ChevronLeft className="w-4 h-4" /></button>
+              <span className="font-semibold">{page}/{lastPage}</span>
+              <button onClick={() => setOffset(o => o + perPage)} disabled={page >= lastPage} className="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30" title="Next page"><ChevronRight className="w-4 h-4" /></button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1008,6 +1623,7 @@ export default function SequencesTab() {
   const { vocab, leadN, seq1, seqN, ct1 } = useWords();
   const ask = useConfirm();
   const [seqs, setSeqs] = useState<SeqRow[]>([]);
+  const [monitorFilter, setMonitorFilter] = useState<{ seqId?: string; status?: string } | null>(null);
   const [form, setForm] = useState<SeqDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1223,7 +1839,14 @@ export default function SequencesTab() {
       )}
 
       <FunnelCoverage seqs={seqs} />
-      <SeqMonitorPanel seqs={seqs} />
+      <SeqAnalyticsPanel
+        seqs={seqs}
+        onFilterEnrollments={(f) => {
+          setMonitorFilter(f);
+          document.getElementById("seq-enrollment-monitor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+      />
+      <SeqMonitorPanel seqs={seqs} filterFromAnalytics={monitorFilter} />
       <LeadWelcomePanel />
       <StagePollPanel seqs={seqs} />
       <StageDripsPanel seqs={seqs} />
