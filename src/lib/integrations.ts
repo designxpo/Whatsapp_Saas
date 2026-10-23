@@ -14,6 +14,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // tenant — or even block message delivery for the same tenant (see emitEvent).
 
 import { createHmac, randomBytes, randomUUID } from "crypto";
+import { lsqApiHost } from "./lsqhost";
 import { tdb } from "./tenantdb";
 import { db } from "./supabase";
 import { encryptSecret, readSecret } from "./crypto";
@@ -721,8 +722,9 @@ const leadsquaredConnector: Connector = {
   async verify(i, secret) {
     let accessKey = "", secretKey = "";
     try { const k = JSON.parse(secret ?? "") as { accessKey?: string; secretKey?: string }; accessKey = k.accessKey ?? ""; secretKey = k.secretKey ?? ""; } catch { /* missing / non-JSON secret */ }
-    const host = String(i.config.host ?? "").replace(/\/+$/, "");
-    if (!accessKey || !secretKey || !host) return { ok: false, detail: "Add your Access Key, Secret Key and API host." };
+    const host = lsqApiHost(i.config.host);
+    if (!accessKey || !secretKey) return { ok: false, detail: "Add your Access Key, Secret Key and API host." };
+    if (!host) return { ok: false, detail: "The API host must be your LeadSquared API address, e.g. https://api-in21.leadsquared.com." };
     try {
       const res = await fetch(`${host}/v2/LeadManagement.svc/RetrieveLeadByPhoneNumber?accessKey=${encodeURIComponent(accessKey)}&secretKey=${encodeURIComponent(secretKey)}&phone=${encodeURIComponent("+10000000000")}`, { signal: AbortSignal.timeout(8000) });
       if (res.ok) return { ok: true, detail: "Connected — your LeadSquared keys work." };

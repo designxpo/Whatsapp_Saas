@@ -36,7 +36,13 @@ const NO_TOKEN = "No Meta access token saved for this workspace — paste a toke
 
 export async function getAdsToken(tenantId = DEFAULT_TENANT_ID): Promise<string | undefined> {
   const own = (await getTenantSecret(tenantId, TOKEN_SECRET).catch(() => null))?.trim();
-  return own || process.env.META_ADS_ACCESS_TOKEN || process.env.META_WA_ACCESS_TOKEN || undefined;
+  if (own) return own;
+  // The env token is the operator's own, so it is the fallback for the
+  // operator's workspace only. Handed to every tenant, it let any signup point
+  // its Ads tab at an ad account id of its choosing and read — or pause and
+  // re-budget — whatever the operator's token could reach.
+  if (tenantId !== DEFAULT_TENANT_ID) return undefined;
+  return process.env.META_ADS_ACCESS_TOKEN || process.env.META_WA_ACCESS_TOKEN || undefined;
 }
 
 export async function setAdsToken(token: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {

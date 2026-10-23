@@ -19,6 +19,7 @@ vi.mock("../store", () => ({
 vi.mock("../supabase", () => ({ db: () => ({}) }));
 
 import { getAdsToken, setAdsToken, getAdsTokenStatus } from "../ads";
+import { DEFAULT_TENANT_ID } from "../tenant";
 
 const A = "11111111-1111-1111-1111-111111111111";
 const B = "22222222-2222-2222-2222-222222222222";
@@ -50,16 +51,23 @@ describe("ads token — per workspace, env only as the fallback", () => {
     expect(await getAdsToken(A)).toBe("tenant-a-token");
   });
 
-  // Single-tenant deployments and the operator's own account run entirely on
-  // env today — that must keep working untouched.
-  it("falls back to the platform env token for a workspace with none", async () => {
+  // The operator's own workspace runs on env — that must keep working.
+  it("falls back to the platform env token for the operator's workspace", async () => {
     process.env.META_ADS_ACCESS_TOKEN = "platform-token";
-    expect(await getAdsToken(B)).toBe("platform-token");
+    expect(await getAdsToken(DEFAULT_TENANT_ID)).toBe("platform-token");
   });
 
   it("falls back to the WhatsApp system-user token last", async () => {
     process.env.META_WA_ACCESS_TOKEN = "wa-token";
-    expect(await getAdsToken(B)).toBe("wa-token");
+    expect(await getAdsToken(DEFAULT_TENANT_ID)).toBe("wa-token");
+  });
+
+  // The env token is the operator's. Handed to every workspace without a
+  // token of its own, any signup could read and drive the operator's ads.
+  it("never hands the platform token to a customer workspace", async () => {
+    process.env.META_ADS_ACCESS_TOKEN = "platform-token";
+    process.env.META_WA_ACCESS_TOKEN = "wa-token";
+    expect(await getAdsToken(B)).toBeUndefined();
   });
 
   it("returns nothing when neither exists, so callers can say so plainly", async () => {
@@ -70,7 +78,7 @@ describe("ads token — per workspace, env only as the fallback", () => {
     process.env.META_ADS_ACCESS_TOKEN = "platform-token";
     await setAdsToken("tenant-a-token", A);
     await setAdsToken("   ", A);
-    expect(await getAdsToken(A)).toBe("platform-token");
+    expect(await getAdsToken(A)).toBeUndefined();
   });
 
   describe("status for the setup wizard", () => {

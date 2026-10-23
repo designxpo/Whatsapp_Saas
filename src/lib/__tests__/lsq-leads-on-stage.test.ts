@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fakeFetch);
   process.env.LSQ_ACCESS_KEY = "ak";
   process.env.LSQ_SECRET_KEY = "sk";
-  process.env.LSQ_API_HOST = "https://api.test";
+  process.env.LSQ_API_HOST = "https://api-test.leadsquared.com";
   process.env.LSQ_ACTIVITY_CODE = "100";
   vi.resetModules();
 });

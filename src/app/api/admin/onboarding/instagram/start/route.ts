@@ -45,7 +45,12 @@ function fail(message: string): Response {
 // never receive a DM looked exactly like one that works, and the warning read as
 // a footnote to good news. A half-connection has to look like a half-connection.
 export function popupHtml(result: { ok: boolean; warn?: boolean; error?: string; detail?: string }): string {
-  const json = JSON.stringify({ source: "talko-ig-login", ...result });
+  // Inlined into a <script>, where JSON escaping is not enough: an error text
+  // containing </script> (Instagram's error_description comes off the query
+  // string, so anyone can write it into a link) would end the block and run
+  // whatever follows as the signed-in admin. Escaped so no text can close it.
+  const json = JSON.stringify({ source: "talko-ig-login", ...result })
+    .replace(/[<>&\u2028\u2029]/g, c => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
   const safe = (s: string) => s.replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
   const heading = !result.ok ? "Couldn’t connect Instagram"
     : result.warn ? "Connected — but not receiving yet"

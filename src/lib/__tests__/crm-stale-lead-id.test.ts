@@ -59,7 +59,7 @@ vi.mock("../errors", () => ({ errorMessage: (e: unknown) => String(e) }));
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.resetModules();
-  process.env = { ...ENV, LSQ_ACCESS_KEY: "a", LSQ_SECRET_KEY: "b", LSQ_API_HOST: "https://lsq.example.com", LSQ_ACTIVITY_CODE: "210" };
+  process.env = { ...ENV, LSQ_ACCESS_KEY: "a", LSQ_SECRET_KEY: "b", LSQ_API_HOST: "https://api-test.leadsquared.com", LSQ_ACTIVITY_CODE: "210" };
   h.session = { id: "s1", lead_id: "dead-id", phone: "919821253104", lines: ["in: hi"], attempts: 0, last_message_at: "2026-09-02T10:00:00Z" };
   h.postedTo = []; h.postResults = []; h.freshLeadId = null;
   h.leadIdWrites = []; h.deleted = []; h.holds = [];

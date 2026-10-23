@@ -10,6 +10,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 //   Activity code           — event code of a Custom Activity (e.g. "WhatsApp Message")
 
 import { errorMessage } from "./errors";
+import { lsqApiHost } from "./lsqhost";
 import { pageAll } from "./pagedselect";
 import { crmChatKey, type ChatCrmStatus } from "./crmkey";
 import { db } from "./supabase";
@@ -86,7 +87,7 @@ async function noteLsqFailure(tenantId: string, detail: string): Promise<void> {
 function envCfg(): LsqCreds | null {
   const accessKey = process.env.LSQ_ACCESS_KEY ?? "";
   const secretKey = process.env.LSQ_SECRET_KEY ?? "";
-  const host = (process.env.LSQ_API_HOST ?? "").replace(/\/+$/, "");
+  const host = lsqApiHost(process.env.LSQ_API_HOST);
   const activityCode = parseInt(process.env.LSQ_ACTIVITY_CODE ?? "", 10);
   if (!(accessKey && secretKey && host && Number.isFinite(activityCode))) return null;
   return {
@@ -112,7 +113,7 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
       let accessKey = "", secretKey = "";
       try { const k = JSON.parse((await getIntegrationSecret(integ.id, tenantId)) ?? "") as { accessKey?: string; secretKey?: string }; accessKey = k.accessKey ?? ""; secretKey = k.secretKey ?? ""; } catch { /* malformed secret */ }
       const cfg = integ.config as Record<string, unknown>;
-      const host = String(cfg.host ?? "").replace(/\/+$/, "");
+      const host = lsqApiHost(cfg.host);   // anything not LeadSquared reads as unset (lsqhost.ts)
       const activityCode = parseInt(String(cfg.activityCode ?? ""), 10);
       if (accessKey && secretKey && host && Number.isFinite(activityCode)) {
         return {
@@ -132,7 +133,7 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
   try {
     const accessKey = (await getTenantSecret(tenantId, LSQ_KEYS.accessKey)) ?? "";
     const secretKey = (await getTenantSecret(tenantId, LSQ_KEYS.secretKey)) ?? "";
-    const host = ((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.host, null)) ?? "").replace(/\/+$/, "");
+    const host = lsqApiHost(await getTenantSetting<string | null>(tenantId, LSQ_KEYS.host, null));
     const activityCode = parseInt((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.activityCode, null)) ?? "", 10);
     if (accessKey && secretKey && host && Number.isFinite(activityCode)) {
       return {

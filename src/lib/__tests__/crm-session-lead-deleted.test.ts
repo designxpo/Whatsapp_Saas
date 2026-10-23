@@ -76,7 +76,7 @@ const BAD_EVENT_CODE = '{"Status":"Failed","Message":{"Message":"Invalid event c
 const ENV = { ...process.env };
 beforeEach(() => {
   vi.resetModules();
-  process.env = { ...ENV, LSQ_ACCESS_KEY: "a", LSQ_SECRET_KEY: "b", LSQ_API_HOST: "https://lsq.example.com", LSQ_ACTIVITY_CODE: "210" };
+  process.env = { ...ENV, LSQ_ACCESS_KEY: "a", LSQ_SECRET_KEY: "b", LSQ_API_HOST: "https://api-test.leadsquared.com", LSQ_ACTIVITY_CODE: "210" };
   h.session = { id: "s1", lead_id: "deleted-id", phone: "918880440011", lines: ["in: hi"], attempts: 1, last_message_at: "2026-10-05T10:00:00Z" };
   h.postedTo = []; h.postResults = []; h.freshLeadId = null; h.lookupBroken = false;
   h.patches = []; h.deleted = [];

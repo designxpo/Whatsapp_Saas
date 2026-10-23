@@ -72,7 +72,7 @@ beforeEach(() => {
   process.env = { ...ENV };
   if (h.configured) {
     process.env.LSQ_ACCESS_KEY = "a"; process.env.LSQ_SECRET_KEY = "b";
-    process.env.LSQ_API_HOST = "https://api.example.com"; process.env.LSQ_ACTIVITY_CODE = "210";
+    process.env.LSQ_API_HOST = "https://api-test.leadsquared.com"; process.env.LSQ_ACTIVITY_CODE = "210";
   }
   h.syncPending = 0; h.syncDead = 0; h.heldSessions = 0; h.flushHealth = null; h.oldestHeld = null;
   h.lastUpdate = null; h.lastFilter = ""; h.updateShouldFail = false;

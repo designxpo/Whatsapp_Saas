@@ -69,7 +69,7 @@ beforeEach(() => {
   h.sessions.length = 0; h.sync.length = 0; h.settings.length = 0;
   vi.stubEnv("LSQ_ACCESS_KEY", "k");
   vi.stubEnv("LSQ_SECRET_KEY", "s");
-  vi.stubEnv("LSQ_API_HOST", "https://api.example.com");
+  vi.stubEnv("LSQ_API_HOST", "https://api-test.leadsquared.com");
   vi.stubEnv("LSQ_ACTIVITY_CODE", "200");
 });
 

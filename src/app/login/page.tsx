@@ -5,16 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { Loader2, MessageSquare, KeyRound } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { safeNext } from "@/lib/safenext";
 
 type Step = "credentials" | "otp" | "totp" | "forgot" | "reset";
 
 function LoginForm() {
   const router = useRouter();
-  // Optional post-login destination (?next=/support). Same-origin relative
-  // paths only — anything else (external URLs, "//host") falls back to /admin.
-  const rawNext = useSearchParams().get("next") ?? "";
-  // /^\/(?![/\\])/ rejects "//host" AND "/\\host" (URL parsers fold \ into /).
-  const next = /^\/(?![/\\])/.test(rawNext) ? rawNext : "/admin";
+  // Optional post-login destination (?next=/support). Same-origin paths only —
+  // anything else falls back to /admin (safenext.ts).
+  const next = safeNext(useSearchParams().get("next"));
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
