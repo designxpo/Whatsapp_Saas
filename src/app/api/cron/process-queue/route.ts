@@ -25,6 +25,7 @@ import { drainWeeklyRecaps } from "@/lib/weeklyrecap";
 import { drainOwnerEmailCampaigns } from "@/lib/ownerbroadcast";
 import { drainEscalationSweeps } from "@/lib/escalations";
 import { drainDailyDigests } from "@/lib/dailydigest";
+import { drainMetaUsageAlert } from "@/lib/metausage";
 import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
 
@@ -42,7 +43,7 @@ export async function GET(req: Request) {
 const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
-  "ownerbroadcast", "escalationsweeps", "dailydigests", "integrationdeliveries",
+  "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens",
 ];
 
@@ -240,6 +241,12 @@ export async function POST(req: Request) {
     let dailyDigests = { tenants: 0, sent: 0 };
     dailyDigests = await stage("dailydigests", dailyDigests, () => drainDailyDigests());
 
+    // Meta app rate limit — email the platform owner when the app is close to
+    // Meta's application-level block (metausage.ts). The reading comes from
+    // response headers already seen, so this stage makes no Meta call.
+    let metaUsage: { alerted: boolean; pct: number | null } = { alerted: false, pct: null };
+    metaUsage = await stage("metausage", metaUsage, () => drainMetaUsageAlert());
+
     // Integration deliveries — replay webhook / Slack / Teams / HubSpot /
     // Pipedrive events whose delivery failed retriably (endpoint 5xx, rate
     // limit, network), re-sending the SAME envelope so a receiver that dedupes
@@ -261,7 +268,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, dailyDigests, crmSync, crmSessions, crmOwners, integrationDeliveries, adChatsPurged, pollers: "after-response" });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, dailyDigests, metaUsage, crmSync, crmSessions, crmOwners, integrationDeliveries, adChatsPurged, pollers: "after-response" });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
