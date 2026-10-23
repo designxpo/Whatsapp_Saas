@@ -34,12 +34,37 @@ const SECURITY_HEADERS = [
   // blocked." robots.txt (src/app/robots.ts) is what actually keeps /admin,
   // /api etc. out of the index; this header doesn't change that.
   { key: "X-Robots-Tag", value: "index, follow" },
+  // The rest of helmet()'s defaults. This is Next.js, so there is no Express
+  // app to call app.use(helmet()) on; the headers are set here instead. Two of
+  // helmet's defaults would break features and are scoped below (COOP, CORP).
+  { key: "Origin-Agent-Cluster", value: "?1" },
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+  { key: "X-Download-Options", value: "noopen" },
+  { key: "X-XSS-Protection", value: "0" },   // the old XSS auditor caused leaks; helmet turns it off
 ];
+
+// helmet sends Cross-Origin-Opener-Policy: same-origin, which cuts the
+// Facebook SDK popup (Embedded Signup, Messenger) off from the page that
+// opened it; Meta's guidance is same-origin-allow-popups. API routes get none:
+// the Instagram login popup's result page is an /api route that reports back
+// through window.opener, and any COOP on that response severs it.
+const PAGE_ONLY = "/((?!api/).*)";
+const COOP_HEADERS = [{ key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" }];
+
+// helmet also sends Cross-Origin-Resource-Policy: same-origin everywhere,
+// which would block the web-chat widget's loader.js on customer websites. Set
+// only on the signed-in APIs, so no other site can pull their responses in.
+const PRIVATE_API = "/api/(admin|owner)/:path*";
+const CORP_HEADERS = [{ key: "Cross-Origin-Resource-Policy", value: "same-origin" }];
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,    // don't advertise the framework/version
   async headers() {
-    return [{ source: "/:path*", headers: SECURITY_HEADERS }];
+    return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
+      { source: PAGE_ONLY, headers: COOP_HEADERS },
+      { source: PRIVATE_API, headers: CORP_HEADERS },
+    ];
   },
   // Verification builds (`NEXT_DIST_DIR=.next-build npm run build`) write to a
   // separate folder so they can't corrupt a running dev server's .next cache.
