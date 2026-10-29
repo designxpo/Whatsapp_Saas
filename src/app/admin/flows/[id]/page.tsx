@@ -19,7 +19,7 @@ import {
   Image as ImageIcon, HelpCircle, GitBranch, Clock, Tag as TagIcon, Webhook as WebhookIcon,
   ShoppingBag, Bot, Headset, Flag, List as ListIcon, MousePointerClick, Copy, ChevronDown,
   AlertTriangle, X, Layers, BellRing, ClipboardList, LayoutGrid, GalleryHorizontalEnd, LayoutTemplate,
-  UploadCloud, CalendarClock, Check,
+  UploadCloud, CalendarClock, Check, Utensils,
 } from "lucide-react";
 
 type NodeData = Record<string, unknown>;
@@ -64,6 +64,7 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
   webhook: { label: "Webhook", icon: <WebhookIcon className="w-[18px] h-[18px]" />, hint: "Notify your system" },
   agent: { label: "AI agent", icon: <Bot className="w-[18px] h-[18px]" />, hint: "Switch AI persona" },
   book: { label: "Book meeting", icon: <CalendarClock className="w-[18px] h-[18px]" />, hint: "Cal.com slot picker + booking" },
+  booktable: { label: "Book table", icon: <Utensils className="w-[18px] h-[18px]" />, hint: "Restaurant table booking (Mezmitra)" },
   handoff: { label: "Handoff", icon: <Headset className="w-[18px] h-[18px]" />, hint: "Escalate to a human" },
   end: { label: "End", icon: <Flag className="w-[18px] h-[18px]" />, hint: "Close the flow" },
 };
@@ -72,7 +73,7 @@ const TOOLBOX_GROUPS: { group: string; types: string[] }[] = [
   { group: "Send", types: ["message", "template", "sequence", "media", "product", "productlist", "carouseltpl"] },
   { group: "Collect", types: ["buttons", "list", "ask", "waform"] },
   { group: "Logic", types: ["condition", "hours"] },
-  { group: "Actions", types: ["tag", "webhook", "agent", "book", "handoff", "end"] },
+  { group: "Actions", types: ["tag", "webhook", "agent", "book", "booktable", "handoff", "end"] },
 ];
 
 // ── Node chrome ───────────────────────────────────────────────────────────────
@@ -588,6 +589,17 @@ function BookNode({ id, type, selected, data }: NodeProps) {
     </Shell>
   );
 }
+function BookTableNode({ id, type, selected, data }: NodeProps) {
+  const set = useSet(id);
+  return (
+    <Shell id={id} type={type} selected={selected} foot="Asks the number of guests, the day and a free time, then books it in Mezmitra and sends the booking code. Every time shown is a free one from Mezmitra. Link Mezmitra in Integrations first. The → edge runs after a booking.">
+      <textarea className={inp} rows={2} maxLength={300} placeholder="First question (default: How many guests?)" value={str(data.text)} onChange={e => set({ text: e.target.value })} />
+      <input className={inp} placeholder="Outlet name (only if you have several)" value={str(data.outlet)} onChange={e => set({ outlet: e.target.value })} />
+      <input className={inp} placeholder="If booking isn't available, say (optional)" value={str(data.fallback)} onChange={e => set({ fallback: e.target.value })} />
+      <Handle type="source" position={Position.Right} className="!bg-brand-500 !border-white" />
+    </Shell>
+  );
+}
 function EndNode({ id, type, selected }: NodeProps) {
   return <Shell id={id} type={type} selected={selected} foot="Session ends. The next message goes to the AI / can trigger again." />;
 }
@@ -597,7 +609,7 @@ const nodeTypes = {
   media: MediaNode, ask: AskNode, waform: WaFormNode, condition: ConditionNode, hours: HoursNode,
   tag: TagNode, webhook: WebhookNode, product: ProductNode,
   template: TemplateNode, productlist: ProductListNode, carouseltpl: CarouselTemplateNode,
-  agent: AgentNode, book: BookNode, handoff: HandoffNode, end: EndNode,
+  agent: AgentNode, book: BookNode, booktable: BookTableNode, handoff: HandoffNode, end: EndNode,
 };
 
 // ── Edge with an × button to disconnect ───────────────────────────────────────

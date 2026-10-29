@@ -172,7 +172,7 @@ export async function drainAiFollowups(max = 50): Promise<number> {
         const retry = await generateReply(
           history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })),
           phone, effectiveAgentId(convAlloc, channel), tenantId, effectiveKbScope(convAlloc, channel),
-          false, undefined, platform,
+          false, undefined, platform, undefined, { canAct: true },
         );
         // Still nothing usable, or the model wants a human: release the claim and
         // leave it in the human queue rather than sending a third placeholder.

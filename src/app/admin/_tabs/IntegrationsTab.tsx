@@ -10,7 +10,7 @@ import { useVocab } from "@/lib/vocab-client";
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
 type Integration = {
   id: string; kind: string; name: string; active: boolean;
-  config: { url?: string; format?: string }; events: string[];
+  config: { url?: string; format?: string; mezmitraTenant?: string; defaultOutletId?: string | null }; events: string[];
   status: "connected" | "error" | "unverified"; statusDetail: string | null;
   hasSecret: boolean; hasWebhookSecret: boolean; lastEventAt: string | null; createdAt: string;
 };
@@ -24,11 +24,21 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com" };
+const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezmitra (restaurant)" };
 const CRM_KINDS = ["hubspot", "pipedrive", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
 const SCHEDULE_KINDS = ["calcom"];
+const RESTAURANT_KINDS = ["mezmitra"];
+// What Mezmitra sends: each can start an API rule (Broadcast → API rules) that
+// sends an approved template, with {{payload.<field>}} filling its variables.
+const MEZMITRA_EVENTS: { key: string; when: string; fields: string }[] = [
+  { key: "mezmitra.bill.paid", when: "A bill is paid (guest saved with consent)", fields: "outlet_name, invoice_no, total, visit_count, points_balance, review_url, marketing_opt_in" },
+  { key: "mezmitra.reservation.created", when: "A table is booked by phone, by staff or on WhatsApp (Instagram and website-chat bookings are confirmed in that chat, never by WhatsApp to a typed number)", fields: "outlet_name, booking_ref, date, time, party_size, source" },
+  { key: "mezmitra.reservation.reminder", when: "Before the booking (outlet's reminder time)", fields: "outlet_name, booking_ref, date, time, party_size" },
+  { key: "mezmitra.reservation.cancelled", when: "A booking is cancelled", fields: "outlet_name, booking_ref, date, time" },
+  { key: "mezmitra.order.ready", when: "A takeaway order is ready", fields: "outlet_name, order_no, track_url" },
+];
 const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive"];
 const TOKEN_HELP: Record<string, string> = {
   hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
@@ -38,6 +48,7 @@ const TOKEN_HELP: Record<string, string> = {
   shopify: "Shopify → Settings → Apps → Develop apps → create a custom app with read_products, then paste its Admin API access token.",
   woocommerce: "WooCommerce → Settings → Advanced → REST API → add a key with Read access, then paste the Consumer key and secret.",
   calcom: "Cal.com → Settings → Developer → API Keys for the key; the Event Type ID is in the event type's URL (…/event-types/123).",
+  mezmitra: "In Mezmitra: Settings → Talko AI → Connect, then copy the link key. It works once, within a day. Both products link in this one step.",
   leadsquared: "LeadSquared → My Profile → Settings → API and Webhooks for the Access Key & Secret Key; the Activity code is the event code of a Custom Activity (e.g. \"WhatsApp Message\").",
 };
 
@@ -55,6 +66,7 @@ const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "shopify", logo: "https://api.iconify.design/logos:shopify.svg", blurb: "Import your Shopify product catalog." },
   { kind: "woocommerce", logo: "https://api.iconify.design/logos:woocommerce.svg", blurb: "Import your WooCommerce catalog." },
   { kind: "calcom", logo: "https://cdn.simpleicons.org/caldotcom", blurb: "Let customers book meetings via Cal.com." },
+  { kind: "mezmitra", logo: null, blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
   { kind: "slack", logo: "https://api.iconify.design/logos:slack-icon.svg", blurb: "Post events to a Slack channel." },
   { kind: "teams", logo: "https://api.iconify.design/logos:microsoft-teams.svg", blurb: "Post events to a Microsoft Teams channel." },
   { kind: "webhook", logo: "https://api.iconify.design/logos:zapier-icon.svg", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },
@@ -87,8 +99,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const isPayment = PAYMENT_KINDS.includes(form.kind);
   const isStore = STORE_KINDS.includes(form.kind);
   const isSchedule = SCHEDULE_KINDS.includes(form.kind);
+  const isRestaurant = RESTAURANT_KINDS.includes(form.kind);
   const isEventKind = EVENT_KINDS.includes(form.kind);
-  const isToken = isCrm || isPayment || isStore || isSchedule;
+  const isToken = isCrm || isPayment || isStore || isSchedule || isRestaurant;
   const [syncing, setSyncing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -199,7 +212,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   {statusBadge(i.status)}
                   {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
                 </div>
-                <p className="text-[11px] text-slate-500 truncate">{SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · books meetings` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
+                <p className="text-[11px] text-slate-500 truncate">{RESTAURANT_KINDS.includes(i.kind) ? `Mezmitra · ${String(i.config.mezmitraTenant ?? "restaurant")} · live menu + table booking` : SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · books meetings` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
@@ -209,7 +222,13 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-1">
-              {SCHEDULE_KINDS.includes(i.kind)
+              {RESTAURANT_KINDS.includes(i.kind)
+                ? <>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">The AI answers menu and table questions live</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">“Book table” flow step</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Opt-outs sent back to Mezmitra</span>
+                  </>
+                : SCHEDULE_KINDS.includes(i.kind)
                 ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Books meetings from a flow’s “Book meeting” node</span>
                 : STORE_KINDS.includes(i.kind)
                 ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Imports your product catalog</span>
@@ -220,6 +239,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {i.status === "error" && i.statusDetail && <p className="text-[11px] text-red-600">{i.statusDetail}</p>}
             {i.lastEventAt && <p className="text-[10px] text-slate-400">Last event sent {new Date(i.lastEventAt).toLocaleString()}</p>}
             {PAYMENT_KINDS.includes(i.kind) && <PaymentWebhookCard integration={i} onSaved={load} />}
+            {RESTAURANT_KINDS.includes(i.kind) && <MezmitraCard integration={i} onSaved={load} goTo={goTo} />}
           </section>
         ))}
       </div>}
@@ -255,11 +275,12 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <input className={`${inp} w-full`} placeholder="Task category (optional, default 2)" value={form.lsqTaskCategory} onChange={e => setForm({ ...form, lsqTaskCategory: e.target.value })} />
                 <input className={`${inp} w-full`} placeholder="IG handle field (optional, e.g. mx_Instagram)" value={form.lsqIgHandleField} onChange={e => setForm({ ...form, lsqIgHandleField: e.target.value })} />
               </>}
-              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : form.kind === "leadsquared" ? "Secret Key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
+              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : form.kind === "mezmitra" ? "Mezmitra link key (mzk_…)" : form.kind === "leadsquared" ? "Secret Key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
               <p className="text-[11px] text-slate-500">{TOKEN_HELP[form.kind]}</p>
               {isPayment && <p className="text-[11px] text-slate-500">A payment link is sent automatically when a customer checks out an order.</p>}
               {isStore && <p className="text-[11px] text-slate-500">After connecting, hit “Sync now” to import your products into the catalog. One-way; re-sync anytime.</p>}
               {isSchedule && <p className="text-[11px] text-slate-500">Add a “Book meeting” node to a chatbot flow — it shows live Cal.com slots and books the chosen time.</p>}
+              {isRestaurant && <p className="text-[11px] text-slate-500">Once linked, the AI reads the live menu and books tables in Mezmitra, and your catalog here is switched off for chats so there is only one menu. Mezmitra’s bill, booking and order events can start API rules.</p>}
               {form.kind === "leadsquared" && <>
                 <label className="flex items-center gap-1.5 text-xs text-ink-600 cursor-pointer">
                   <input type="checkbox" className="accent-brand-700" checked={form.lsqAutoCreate} onChange={e => setForm({ ...form, lsqAutoCreate: e.target.checked })} />
@@ -278,7 +299,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </p>
             </>
           )}
-          {isEventKind && <div>
+          {isEventKind && !isRestaurant && <div>
             <label className="text-xs font-bold text-slate-400 uppercase">{isCrm ? `When to sync ${contactsLc}` : "Send these events"}</label>
             <div className="grid grid-cols-2 gap-1.5 mt-1.5">
               {integrationEvents.map(e => (
@@ -290,8 +311,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           </div>}
           <div className="flex items-center gap-2">
-            <button onClick={create} disabled={busy || (isEventKind && !form.events.length) || (
-              isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
+            <button onClick={create} disabled={busy || (isEventKind && !isRestaurant && !form.events.length) || (
+              isRestaurant ? !form.token.trim()
+              : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
               : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
               : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
               : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
@@ -320,6 +342,51 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Mezmitra — default outlet + the events Mezmitra sends ─────────────────────
+// The default outlet is used when a guest doesn't name one (multi-outlet
+// restaurants). Events turn into WhatsApp messages through API rules, each with
+// an approved template — nothing is sent until the owner sets one up.
+function MezmitraCard({ integration: i, onSaved, goTo }: { integration: Integration; onSaved: () => void; goTo: (t: Tab) => void }) {
+  const [outlets, setOutlets] = useState<{ id: string; name: string; city: string | null; bookingOn: boolean }[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    fetch(`/api/admin/integrations/${i.id}/outlets`).then(r => r.json())
+      .then(d => { if (d.error) setError(d.error); else setOutlets(d.outlets ?? []); })
+      .catch(() => setError("Couldn't load outlets."));
+  }, [i.id]);
+  const current = i.config.defaultOutletId ?? "";
+  async function pick(id: string) {
+    setSaving(true);
+    await fetch(`/api/admin/integrations/${i.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ defaultOutletId: id || null }) }).catch(() => undefined);
+    setSaving(false); onSaved();
+  }
+  return (
+    <div className="mt-1 rounded-control bg-canvas p-3 space-y-2">
+      {error ? <p className="text-[11px] text-red-600">{error}</p>
+        : outlets === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" />
+        : outlets.length > 1 && (
+          <label className="flex items-center gap-2 text-xs text-ink-700">
+            Default outlet
+            <select className={inp} value={current} disabled={saving} onChange={e => pick(e.target.value)}>
+              <option value="">Ask the guest</option>
+              {outlets.map(o => <option key={o.id} value={o.id}>{o.name}{o.city ? `, ${o.city}` : ""}{o.bookingOn ? "" : " (booking off)"}</option>)}
+            </select>
+          </label>
+        )}
+      {outlets?.length === 1 && !outlets[0].bookingOn && <p className="text-[11px] text-amber-700">Table booking in chat is off — turn it on in Mezmitra (Settings → Talko AI).</p>}
+      <p className="text-[11px] font-bold text-slate-500">Events Mezmitra sends — each can start an API rule with an approved template:</p>
+      <ul className="space-y-1">
+        {MEZMITRA_EVENTS.map(e => (
+          <li key={e.key} className="text-[11px] text-slate-600"><code className="font-mono text-ink-800">{e.key}</code> — {e.when}. <span className="text-slate-400">Fields: {e.fields}</span></li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-slate-500">Review requests are marketing messages: add the condition <code className="font-mono">marketing_opt_in equals true</code> and a frequency cap (e.g. 2160 hours).</p>
+      <button onClick={() => goTo("broadcast")} className="text-[11px] font-bold text-brand-700 hover:underline">Set up API rules →</button>
     </div>
   );
 }

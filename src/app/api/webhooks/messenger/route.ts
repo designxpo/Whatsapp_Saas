@@ -232,7 +232,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // → tenant-global (used to hardcode a null KB scope and skip the pin).
   // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
   // built-in commerce tools; public comment replies never sell.
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger");
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger", undefined, { canAct: !commentId });
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;

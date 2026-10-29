@@ -38,6 +38,7 @@ import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
 import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
+import { continueTableBooking, startTableBooking, type BookTableIO, type BookTableState } from "./flow-booktable";
 import { safeFetch } from "./ssrf";
 import { fillVars, type ContactVars } from "./mergefields";
 
@@ -561,6 +562,18 @@ export function chatFieldPrompt(f: ChatFormField): string {
   return /[?:]\s*$/.test(f.l) ? f.l : `${f.l}?`;
 }
 
+// The "Book table" step's view of a sender + session (lib/flow-booktable.ts).
+function bookTableIO(send: FlowSender, convKey: string, flowId: string, nodeId: string, phone: string, contactName: string | null, tenantId: string, menuNodeId: string | null): BookTableIO {
+  return {
+    kind: send.kind && send.kind !== "dry" ? send.kind : "whatsapp",
+    phone,
+    contactName,
+    text: (body) => send.text(body),
+    list: (body, buttonText, rows) => send.list(body, buttonText, [{ title: buttonText, rows }]),
+    save: (state) => saveSession(convKey, flowId, nodeId, { ...state, ...(menuNodeId ? { menu: menuNodeId } : {}) }, tenantId),
+  };
+}
+
 // Sends nodes starting at `node` until the flow waits for input or ends.
 // `menuNodeId`: the interactive node this run branched from — when the branch
 // dead-ends (no outgoing edge, no explicit End node), the session returns
@@ -784,6 +797,17 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         for (const s of slots) slotMap[s.id] = s.iso;
         await saveSession(convKey, flow.id, cur.id, { step: "pickSlot", slots: slotMap, tz, ...(menuNodeId ? { menu: menuNodeId } : {}) }, tenantId);
         return true;
+      }
+      case "booktable": {
+        // Restaurant table booking through Mezmitra: outlet → guests → day → a
+        // free time → booked. Every option comes from Mezmitra; skips (with the
+        // fallback text) when no restaurant is linked, so the flow continues.
+        if (!isReal) { await send.text("[table booking] would ask the number of guests, the day and a free time, then book it in Mezmitra."); cur = nextNode(g, cur.id); continue; }
+        const who = await getContactByPhone(phone, tenantId).catch(() => null);
+        const r = await startTableBooking(tenantId, bookTableIO(send, convKey, flow.id, cur.id, phone, who?.name ?? null, tenantId, menuNodeId ?? null), { text: str(d.text), outlet: str(d.outlet), fallback: str(d.fallback) });
+        if (r.kind === "waiting") return true;
+        if (r.kind === "skip" && r.message) await send.text(r.message);
+        cur = nextNode(g, cur.id); continue;
       }
       case "agent": {
         // Pin this conversation to a specific AI Hub agent for all future AI replies.
@@ -1269,6 +1293,23 @@ export async function handleFlowMessage(
       // found no session and the flow never continued, forcing a full restart.
       // Restarts stay possible (trigger keywords above), old menus still rewind.
       return false;
+    }
+
+    if (waiting.type === "booktable") {
+      // An old menu tap takes priority over an answer.
+      const rewound = await rewind();
+      if (rewound !== null) return rewound;
+      const io = bookTableIO(send, convKey, flow.id, waiting.id, phone, contact?.name ?? null, tid, str(session.state?.menu) || null);
+      const r = await continueTableBooking(tid, io, (session.state ?? { step: "party" }) as unknown as BookTableState, text);
+      if (r.kind === "not_mine") return false;   // not an answer → let the AI field it
+      if (r.kind === "booked") {
+        // The confirmation went out already; continue with whatever follows the step.
+        await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
+      } else if (r.kind !== "waiting") {
+        await endSession(convKey);
+      }
+      if (isReal) await claimReply(convKey).catch(() => undefined);
+      return true;
     }
 
     if (waiting.type === "book") {

@@ -8,13 +8,15 @@ export type FeatureKey =
   | "ch_whatsapp" | "ch_instagram" | "ch_messenger" | "ch_webchat" | "ch_youtube"
   | "reviews"
   | "ai_autoreply" | "broadcasts" | "flows" | "sequences" | "commerce"
-  | "forms" | "pipeline" | "growth" | "ads" | "aihub" | "crm" | "extension";
+  | "forms" | "pipeline" | "growth" | "ads" | "aihub" | "crm" | "extension"
+  | "restaurant_link";
 
 export const FEATURE_KEYS: FeatureKey[] = [
   "ch_whatsapp", "ch_instagram", "ch_messenger", "ch_webchat", "ch_youtube",
   "reviews",
   "ai_autoreply", "broadcasts", "flows", "sequences", "commerce",
   "forms", "pipeline", "growth", "ads", "aihub", "crm", "extension",
+  "restaurant_link",
 ];
 
 export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> = {
@@ -36,6 +38,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   aihub:        { label: "AI Hub", group: "AI" },
   crm:          { label: "CRM sync", group: "Integrations" },
   extension:    { label: "Browser extension (Talko Copilot)", group: "Integrations" },
+  restaurant_link: { label: "Mezmitra restaurant link (bookings, menu, bill events)", group: "Integrations" },
 };
 
 // Admin tab key → the feature it requires (null = always available / core).

@@ -1447,6 +1447,11 @@ export async function pruneEphemeral(): Promise<{ dedup: number; loginAttempts: 
     const cutoff = new Date(Date.now() - 90 * 24 * 3600_000).toISOString();
     await db().from("wa_moderation_log").delete().lt("created_at", cutoff);
   } catch { /* table missing (pre-0099) */ }
+  try {
+    // API idempotency receipts only need to outlive a caller's retries.
+    const cutoff = new Date(Date.now() - 7 * 24 * 3600_000).toISOString();
+    await db().from("wa_api_event_receipts").delete().lt("created_at", cutoff);
+  } catch { /* table missing (pre-20261029000000) */ }
   return out;
 }
 

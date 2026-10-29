@@ -5,11 +5,13 @@ import {
   CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, WEBHOOK_KINDS, EVENT_KINDS, formatForKind, type IntegrationEvent, type IntegrationKind,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
+import { connectMezmitra } from "@/lib/mezmitra-link";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom"];
+const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom", "mezmitra"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -34,6 +36,14 @@ export async function POST(req: Request) {
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
+  // Mezmitra links both ways in one step (its own module: key check, our API key, the handshake).
+  if (kind === "mezmitra") {
+    const gate = await guardFeature(tid, "restaurant_link"); if (gate) return gate;
+    const r = await connectMezmitra(tid, (b.token ?? "").trim());
+    return r.ok
+      ? NextResponse.json({ success: true, integration: r.integration, secret: null })
+      : NextResponse.json({ error: r.error }, { status: r.status });
+  }
   const events = (Array.isArray(b.events) ? b.events : []).filter(isIntegrationEvent) as IntegrationEvent[];
   if (EVENT_KINDS.includes(kind) && !events.length) return NextResponse.json({ error: "Pick at least one event to send." }, { status: 400 });
 

@@ -12,6 +12,7 @@ import { moderateText } from "./moderation";
 import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
 import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
+import { executeRestaurantTool, isRestaurantTool, RESTAURANT_PROMPT, restaurantLink, restaurantTools } from "./restaurant-tools";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
 export { stripLeadingName, scrubContactEmails } from "./guard/sanitize";
@@ -540,7 +541,11 @@ export async function retrieveForReply(
 // `query` is the standalone question when the caller has already worked it out
 // (assistant.ts does, to key the router and the cache by it); omitted, it is
 // worked out here.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string): Promise<ReplyResult> {
+// `opts.canAct`: this reply is sent to the customer right away (a live auto-reply),
+// so tools that change something — booking or cancelling a table — may run. Drafts
+// for a human, tests, simulators and public comment replies leave it off and get
+// read-only tools: drafting a suggestion must never book anything.
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean } = {}): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -550,7 +555,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
   if (!(await accountCanSend(tenantId))) {
     return { reply: null, escalate: true, reason: "account not in good standing (trial expired, past due, or suspended)", usedChunks: 0 };
   }
-  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform, query);
+  const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform, query, opts);
   if (!result.reply) return result;
   const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });
   if (verdict.allowed) return result;
@@ -559,7 +564,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean } = {}): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -581,17 +586,20 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
+  // A restaurant linked to Mezmitra: the live menu and table booking come from
+  // there, so Talko's own catalog/cart is off for it — one menu, one price list.
+  const restaurant = await restaurantLink(tenantId, platform).catch(() => null);
   // Cross-channel cart: enable the built-in commerce tools only when the caller
   // opts in (IG/Messenger) AND we have a contact key + at least one available
   // product. WhatsApp uses its native catalog cart, so it doesn't opt in.
-  const commerceOn = !!commerce && !!phone;
+  const commerceOn = !!commerce && !!phone && !restaurant;
   const products = commerceOn ? await listProducts(tenantId).catch(() => []) : [];
   const hasCommerce = commerceOn && products.some(p => p.available);
 
   // Configured AI functions + a built-in "remember" tool so the model can
   // persist the customer's name/details, plus the commerce tools when enabled.
   // `functions` stays the configured list (the no-context guard keys off it).
-  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : [])];
+  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : []), ...(restaurant ? restaurantTools(platform, !!opts.canAct) : [])];
 
   // Retrieve business context for the latest question. k=8 gives the model enough
   // material to synthesise an answer that spans several documents (fees in one,
@@ -670,9 +678,10 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
     return media ? { role: "user", text, media } : { role: "user", text: m.body };
   });
 
+  const systemWithTools = restaurant ? `${system}\n\n${RESTAURANT_PROMPT}` : system;
   const systemWithMedia = sawMedia
-    ? system + "\n\nThe customer has attached one or more files (image, PDF, or video). Examine the attached file(s) and answer about what you actually see in them. Never say you cannot open, view, or access files."
-    : system;
+    ? systemWithTools + "\n\nThe customer has attached one or more files (image, PDF, or video). Examine the attached file(s) and answer about what you actually see in them. Never say you cannot open, view, or access files."
+    : systemWithTools;
 
   try {
     let escalateViaFn = false;
@@ -703,6 +712,19 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
             if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name, existingName: contact?.name });
             executed.push(MEMORY_FN);
             results.push({ id: c.id, name: c.name, status: "saved" });
+            continue;
+          }
+          if (restaurant && isRestaurantTool(c.name)) {
+            const r = await executeRestaurantTool(c.name, c.args, {
+              tenantId, platform, canAct: !!opts.canAct,
+              phone: identityIsPhone(platform) ? (phone ?? null) : null,
+              conversationId: commerce?.conversationId ?? null,
+            }, restaurant);
+            // Same as the commerce tools: what the restaurant system said is
+            // grounded; a quoted echo of the model's own words is not.
+            toolFacts.push(r.status.replace(/"[^"]*"/g, '""'));
+            executed.push(c.name);
+            results.push({ id: c.id, name: c.name, status: r.status });
             continue;
           }
           if (hasCommerce && commerce && phone && COMMERCE_FN_NAMES.has(c.name)) {
@@ -737,7 +759,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       // are read straight from the tenant's catalog and cart, so a reply quoting
       // them was otherwise deferred to "our team will share the exact fees".
       let guardContext = payLinks.length ? `${context}\nPayment links: ${payLinks.join(" ")}` : context;
-      if (toolFacts.length) guardContext += `\nFrom our catalog and cart:\n${toolFacts.join("\n")}`;
+      if (toolFacts.length) guardContext += `\nFrom our catalog, cart and restaurant system:\n${toolFacts.join("\n")}`;
       // A reply that stopped at the ceiling ends mid-word — trim it to whole
       // sentences first. If nothing completed this lands on the `!text` fallback
       // below, which is the right outcome: a soft prompt beats half a sentence.
