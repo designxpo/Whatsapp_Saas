@@ -3,7 +3,7 @@
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
+import { AlertTriangle, Check, CircleCheck, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video, X } from "lucide-react";
 import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -88,7 +88,11 @@ function InstagramManager() {
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_IG | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  // One message line with a tone. It used to be a bare string drawn red with a
+  // warning icon, so "@account is connected and receiving." looked like a failure.
+  const [note, setNote] = useState<{ text: string; tone: "ok" | "warn" | "error" } | null>(null);
+  const msg = note?.text ?? null;
+  const setMsg = useCallback((text: string | null, tone: "ok" | "warn" | "error" = "error") => setNote(text ? { text, tone } : null), []);
   // Comment-to-DM rules (multiple rules, per-post, follow-gate)
   const [rules, setRules] = useState<CommentRule[]>([]);
   const [posts, setPosts] = useState<IgPost[]>([]);
@@ -126,7 +130,7 @@ function InstagramManager() {
       .catch(() => ({ channels: [], notice: "Couldn't reach the server." }));
     if (d.notice) setMsg(`Couldn't load your connected accounts: ${d.notice}`);
     setChannels((d.channels ?? []).filter((c: ChannelRow) => c.kind === "instagram"));
-  }, []);
+  }, [setMsg]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json())
@@ -161,8 +165,8 @@ function InstagramManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this account: ${d.webhook.detail}. DMs won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
-      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this account: ${d.webhook.detail}. DMs won't arrive until it's fixed — the access token may be missing messaging permission.`, "warn"); load(); }
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setForm(null); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -190,7 +194,8 @@ function InstagramManager() {
       if (!res.ok) { setMsg(d.error || "Couldn't check this account."); return; }
       const a = d.account as IgHealth;
       setHealth(h => ({ ...h, [a.id]: a }));
-      if (a.status !== "ok") setMsg(a.detail);
+      if (a.status !== "ok") setMsg(a.detail, "warn");
+      else setMsg(`${channels.find(c => c.id === id)?.name ?? "This account"} is connected and receiving.`, "ok");
     } catch { setMsg("Couldn't reach the server to check this account."); }
     finally { setRechecking(null); }
   }
@@ -209,10 +214,10 @@ function InstagramManager() {
 
     const onMessage = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;                     // only our own callback page
-      const d = e.data as { source?: string; ok?: boolean; error?: string; detail?: string } | null;
+      const d = e.data as { source?: string; ok?: boolean; warn?: boolean; error?: string; detail?: string } | null;
       if (!d || d.source !== "talko-ig-login") return;
       cleanup();
-      if (d.ok) { setMsg(d.detail ?? null); setForm(null); load(); }
+      if (d.ok) { setMsg(d.detail ?? "Instagram connected.", d.warn ? "warn" : "ok"); setForm(null); load(); }
       else setMsg(d.error || "Couldn't connect Instagram.");
     };
     // The popup can also be closed by hand, which sends no message — without
@@ -294,10 +299,13 @@ function InstagramManager() {
           Meta's own success screen, and this tab just kept saying "No Instagram
           accounts connected yet" with no reason given. Show it here whenever no
           form owns it. */}
-      {msg && !form && !ruleForm && (
-        <div className="bg-red-50 border border-red-200 rounded-control px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-red-700 leading-snug">{msg}</p>
+      {note && !form && !ruleForm && (
+        <div role={note.tone === "error" ? "alert" : "status"} className={`rounded-control border px-3 py-2.5 flex items-start gap-2 u-fade-in ${note.tone === "ok" ? "bg-emerald-50 border-emerald-200" : note.tone === "warn" ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
+          {note.tone === "ok"
+            ? <CircleCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            : <AlertTriangle className={`w-4 h-4 shrink-0 ${note.tone === "warn" ? "text-amber-600" : "text-red-600"}`} />}
+          <p className={`flex-1 text-xs leading-snug ${note.tone === "ok" ? "text-emerald-800 font-semibold" : note.tone === "warn" ? "text-amber-800" : "text-red-700"}`}>{note.text}</p>
+          <button onClick={() => setNote(null)} aria-label="Dismiss" className="p-0.5 -m-0.5 rounded text-slate-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
         </div>
       )}
 
@@ -352,7 +360,7 @@ function InstagramManager() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. Talko handles the connection and routing.</p>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          {note && <p className={`text-xs ${note.tone === "ok" ? "text-emerald-700" : note.tone === "warn" ? "text-amber-700" : "text-red-500"}`}>{note.text}</p>}
         </div>)}
       </Drawer>
       {!channels.length && !form && (
