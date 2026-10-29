@@ -128,7 +128,7 @@ function AskDataCard() {
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div>
-        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-700" /> Ask your data</p><PageInfo>Ask about leads, chats, messages, broadcasts or drips. Every answer shows exactly what was counted.</PageInfo></div>
+        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-brand-700" /> Ask your data</p><p className="text-xs text-slate-500 mt-0.5">Ask about leads, chats, messages, broadcasts or drips. Every answer shows exactly what was counted.</p>
       </div>
       <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
         <input value={q} onChange={e => setQ(e.target.value)} maxLength={500} placeholder="e.g. How many leads from Instagram last week?"
@@ -219,7 +219,7 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
     <div className="max-w-6xl space-y-5">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2><PageInfo>Messaging performance across WhatsApp &amp; Instagram</PageInfo></div>
+          <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2><p className="text-sm text-slate-500">Messaging performance across WhatsApp &amp; Instagram</p>
         </div>
         {/* The window every figure below is computed over — and the one its labels
             are written from, so a heading and its numbers cannot disagree. */}

@@ -236,7 +236,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
     return (
       <div className="max-w-2xl space-y-5">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> Meta Ads</h2><PageInfo>Run and monitor your Facebook &amp; Instagram ads right here — and see exactly which ad brings WhatsApp leads, not just clicks.</PageInfo></div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Megaphone className="w-5 h-5" /> Meta Ads</h2><PageInfo className="text-sm text-slate-500" lead={<>Run and monitor your Facebook &amp; Instagram ads right here</>}>Run and monitor your Facebook &amp; Instagram ads right here — and see exactly which ad brings WhatsApp leads, not just clicks.</PageInfo>
         </div>
 
         {data.accountId && !data.connected && (
@@ -251,7 +251,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <section className="bg-white rounded-card border border-line p-5 space-y-4">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Connect your ad account</p><PageInfo>Sign in with Meta and pick the ad account — nothing to copy or paste.</PageInfo></div>
+              <p className="text-xs font-bold text-slate-400 uppercase">Connect your ad account</p><p className="text-xs text-slate-500 mt-0.5">Sign in with Meta and pick the ad account — nothing to copy or paste.</p>
             </div>
             <button onClick={() => connectWithMeta()} disabled={busy === "meta"}
               className="px-4 py-2 rounded-lg bg-[#0783fd] hover:bg-[#0668d6] text-white text-sm font-bold flex items-center gap-1.5 disabled:opacity-60 shrink-0">
@@ -277,7 +277,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-brand-700 text-white text-xs font-bold flex items-center justify-center shrink-0">1</div>
             <div className="flex-1 space-y-2">
-              <div className="group flex items-center gap-1.5"><p className="text-sm font-semibold text-ink-900">Paste your ad account ID</p><PageInfo>Open <b>adsmanager.facebook.com</b> — the ID is the number after <code className="bg-canvas px-1 rounded">act=</code> in the address bar.</PageInfo></div>
+              <p className="text-sm font-semibold text-ink-900">Paste your ad account ID</p><p className="text-xs text-slate-500 mt-0.5">Open <b>adsmanager.facebook.com</b> — the ID is the number after <code className="bg-canvas px-1 rounded">act=</code> in the address bar.</p>
               <div className="flex gap-2">
                 <input className={`${inp} flex-1`} placeholder="e.g. 1234567890" value={accountInput} onChange={e => setAccountInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") connect(); }} />
                 <button onClick={connect} disabled={busy === "connect" || !accountInput.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">
@@ -289,13 +289,13 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">2</div>
             <div className="flex-1">
-              <div className="group flex items-center gap-1.5"><p className="text-sm font-semibold text-ink-900">Give the system user access to the ad account</p><PageInfo>In <b>your own</b> Meta Business settings → Users → System users → pick (or add) a system user → Assign assets → <b>Ad accounts</b> → your account → <b>Full control</b>.</PageInfo></div>
+              <p className="text-sm font-semibold text-ink-900">Give the system user access to the ad account</p><p className="text-xs text-slate-500 mt-0.5">In <b>your own</b> Meta Business settings → Users → System users → pick (or add) a system user → Assign assets → <b>Ad accounts</b> → your account → <b>Full control</b>.</p>
             </div>
           </div>
           <div className="flex gap-3">
             <div className="w-7 h-7 rounded-full bg-canvas text-ink-600 text-xs font-bold flex items-center justify-center shrink-0">3</div>
             <div className="flex-1 space-y-2">
-              <div className="group flex items-center gap-1.5"><p className="text-sm font-semibold text-ink-900">Paste that system user&apos;s access token</p><PageInfo>Same screen → <b>Generate new token</b>, tick <code className="bg-canvas px-1 rounded">ads_read</code> and <code className="bg-canvas px-1 rounded">ads_management</code>, and paste the token here. It is encrypted and used only for this workspace&apos;s ads.</PageInfo></div>
+              <p className="text-sm font-semibold text-ink-900">Paste that system user&apos;s access token</p><p className="text-xs text-slate-500 mt-0.5">Same screen → <b>Generate new token</b>, tick <code className="bg-canvas px-1 rounded">ads_read</code> and <code className="bg-canvas px-1 rounded">ads_management</code>, and paste the token here. It is encrypted and used only for this workspace&apos;s ads.</p>
               <div className="flex gap-2">
                 <input className={`${inp} flex-1 font-mono`} type="password" autoComplete="off" placeholder={data.token?.own ? `Saved: ${data.token.hint} — paste a new one to replace it` : "EAAG…"} value={tokenInput} onChange={e => setTokenInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveToken(); }} />
                 <button onClick={saveToken} disabled={busy === "token" || !tokenInput.trim()} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold disabled:opacity-50">

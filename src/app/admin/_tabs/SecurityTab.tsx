@@ -124,7 +124,7 @@ export default function SecurityTab() {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Passkeys</p><PageInfo>Sign in with your fingerprint, face or device PIN — nothing to type, and nothing a fake sign-in page can capture, because your browser only offers a passkey to this exact site.</PageInfo></div>
+            <p className="text-xs font-bold text-slate-400 uppercase">Passkeys</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Sign in with your fingerprint, face or device PIN</>}>Sign in with your fingerprint, face or device PIN — nothing to type, and nothing a fake sign-in page can capture, because your browser only offers a passkey to this exact site.</PageInfo>
           </div>
           {canPasskey && pkAvailable && (
             <button onClick={addPasskey} disabled={busy}

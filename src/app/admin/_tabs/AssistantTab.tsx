@@ -146,7 +146,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo>Teach and test the AI here — knowledge base + dry-run testing. Customer conversations live in <b>Live Chat</b>.</PageInfo></div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo className="text-sm text-slate-500" lead={<>Teach and test the AI here — knowledge base + dry-run testing.</>}>Customer conversations live in <b>Live Chat</b>.</PageInfo>
         </div>
         <span className={statusBadge(enabled ? "active" : enabled === false ? "paused" : "processing")}>
           {enabled === null ? "status unknown" : enabled ? "● live" : "○ paused"}
@@ -533,7 +533,7 @@ function KbReviewQueue({ items, onResolved }: { items: ReviewItem[]; onResolved:
   if (!items.length) {
     return (
       <section className="bg-white rounded-card border border-line p-5">
-        <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Review queue</p><PageInfo>Nothing waiting. Uploads that agree with what is published go live on their own.</PageInfo></div>
+        <p className="text-xs font-bold text-slate-400 uppercase">Review queue</p><p className="text-xs text-slate-500 mt-0.5">Nothing waiting. Uploads that agree with what is published go live on their own.</p>
       </section>
     );
   }

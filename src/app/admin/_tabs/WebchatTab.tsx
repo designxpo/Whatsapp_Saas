@@ -8,7 +8,7 @@ export default function WebchatTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><MessageSquare className="w-5 h-5 text-brand-600" /> Website Web Chat</h2><PageInfo>Add a live-chat bubble to your website with one line of code. Visitor chats land in the same Live Chat inbox and your AI replies instantly — no Meta setup needed.</PageInfo></div>
+        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><MessageSquare className="w-5 h-5 text-brand-600" /> Website Web Chat</h2><PageInfo className="text-sm text-slate-500" lead={<>Add a live-chat bubble to your website with one line of code.</>}>Visitor chats land in the same Live Chat inbox and your AI replies instantly — no Meta setup needed.</PageInfo>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

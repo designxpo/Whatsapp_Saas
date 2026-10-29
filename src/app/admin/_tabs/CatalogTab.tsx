@@ -73,7 +73,7 @@ function CatalogTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo>{vocab.product.many} you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery {vocab.sequence.one.toLowerCase()}.</PageInfo></div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo className="text-sm text-slate-500" lead={<>{vocab.product.many} you can send in chat and sell via in-chat checkout.</>}>Abandoned carts auto-enroll into your cart-recovery {vocab.sequence.one.toLowerCase()}.</PageInfo>
         </div>
         {view === "products" && <div className="flex items-center gap-2 shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>

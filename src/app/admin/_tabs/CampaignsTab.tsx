@@ -188,7 +188,7 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2><PageInfo>Click a campaign for its full dashboard — delivery funnel, clicks, replies, and behavioral retargeting.</PageInfo></div>
+        <h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2><p className="text-sm text-slate-500">Click a campaign for its full dashboard — delivery funnel, clicks, replies, and behavioral retargeting.</p>
       </div>
       <div className="space-y-2">
         {campaigns.map(c => (

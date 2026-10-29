@@ -403,7 +403,7 @@ function EventMessages({ entry }: { entry: CatalogEntry }) {
   return (
     <div className="space-y-3">
       <div>
-        <div className="group flex items-center gap-1.5"><p className="text-sm font-extrabold text-ink-900">Messages</p><PageInfo>Choose what goes out on WhatsApp when each event happens. Use an approved template; for order, payment and booking updates a Utility template is the right category.</PageInfo></div>
+        <p className="text-sm font-extrabold text-ink-900">Messages</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Choose what goes out on WhatsApp when each event happens.</>}>Use an approved template; for order, payment and booking updates a Utility template is the right category.</PageInfo>
       </div>
       {(entry.events ?? []).map(ev => {
         const mine = rules.filter(r => r.eventKey === ev.key);

@@ -15,7 +15,7 @@ function YoutubeTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2><PageInfo>Auto-reply to comments on your videos and moderate spam — grounded in your AI persona and knowledge base. YouTube has no DMs, so this is public replies + moderation only.</PageInfo></div>
+        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2><PageInfo className="text-sm text-slate-500" lead={<>Auto-reply to comments on your videos and moderate spam — grounded in your AI persona and knowledge base.</>}>YouTube has no DMs, so this is public replies + moderation only.</PageInfo>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
@@ -221,7 +221,7 @@ function YoutubeManager() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p><PageInfo>Connect a YouTube channel to auto-reply to comments and moderate spam. Public replies only — YouTube has no DMs.</PageInfo></div>
+          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-600" /> YouTube channels</p><p className="text-xs text-slate-500 mt-0.5">Connect a YouTube channel to auto-reply to comments and moderate spam. Public replies only — YouTube has no DMs.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {!!channels.length && (

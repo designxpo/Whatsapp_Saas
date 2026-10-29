@@ -264,7 +264,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex-1 min-w-0 max-w-4xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2><PageInfo>Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat. Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</PageInfo></div>
+          <h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2><PageInfo className="text-sm text-slate-500" lead={<>Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat.</>}>Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</PageInfo>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />

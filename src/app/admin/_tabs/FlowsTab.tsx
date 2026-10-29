@@ -80,7 +80,7 @@ function FlowsTab() {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-3xl space-y-5">
       <div>
-        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Chatbot Flows</h2><PageInfo>Drag-and-drop conversation flows triggered by keywords (e.g. &quot;hi&quot;, &quot;menu&quot;). Anything a flow can&apos;t handle falls through to the AI assistant — never a dead-end.</PageInfo></div>
+        <h2 className="text-xl font-extrabold text-brand-dark">Chatbot Flows</h2><PageInfo className="text-sm text-slate-500" lead={<>Drag-and-drop conversation flows triggered by keywords (e.g.</>}>&quot;hi&quot;, &quot;menu&quot;). Anything a flow can&apos;t handle falls through to the AI assistant — never a dead-end.</PageInfo>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

@@ -47,7 +47,7 @@ function GrowthTab() {
     <div className="max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Growth Tools</h2><PageInfo>Ref links, QR codes and opt-in widgets that send people into WhatsApp/Instagram with a prefilled message — then start a flow or sequence and tag them.</PageInfo></div>
+          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><TrendingUp className="w-5 h-5" /> Growth Tools</h2><PageInfo className="text-sm text-slate-500" lead={<>Ref links, QR codes and opt-in widgets that send people into WhatsApp/Instagram with a prefilled message</>}>Ref links, QR codes and opt-in widgets that send people into WhatsApp/Instagram with a prefilled message — then start a flow or sequence and tag them.</PageInfo>
         </div>
         <button onClick={() => { setForm({ ...EMPTY_GROWTH }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New tool</button>
       </div>
