@@ -50,8 +50,20 @@ function ago(iso: string | null): string {
   return new Date(iso).toLocaleDateString();
 }
 
+// The company's own logo on a white tile; its initials on its brand colour
+// when it has none, or the file fails to load.
 function Monogram({ e, size = 40 }: { e: CatalogEntry; size?: number }) {
+  const [failed, setFailed] = useState(false);
   const letters = e.name.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+  if (e.logo && !failed) {
+    return (
+      <div className="rounded-xl bg-white border border-line flex items-center justify-center shrink-0 overflow-hidden"
+        style={{ width: size, height: size, padding: size * 0.16 }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={e.logo} alt={`${e.name} logo`} width={size} height={size} className="w-full h-full object-contain" onError={() => setFailed(true)} />
+      </div>
+    );
+  }
   return (
     <div className="rounded-xl flex items-center justify-center text-white font-extrabold shrink-0"
       style={{ width: size, height: size, background: e.color, fontSize: size * 0.36 }} aria-hidden>

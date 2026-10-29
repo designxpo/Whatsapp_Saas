@@ -54,24 +54,24 @@ const TOKEN_HELP: Record<string, string> = {
   leadsquared: "LeadSquared → My Profile → Settings → API and Webhooks for the Access Key & Secret Key; the Activity code is the event code of a Custom Activity (e.g. \"WhatsApp Message\").",
 };
 
-// The catalog of connectable tools, shown as clickable logo cards. `logo` is an
-// explicit, verified-working URL per brand — full-colour Iconify `logos:` marks
-// where available, Simple Icons for the two Iconify lacks (Razorpay, Cal.com).
-// null → a lettered tile (LeadSquared, which no public icon set carries). Both
-// hosts are allowed by the app CSP (frame-ancestors only) and used by the site.
+// The catalog of connectable tools, shown as clickable logo cards. `logo` is the
+// company's own mark, self-hosted under public/integrations (sources:
+// integration-logos.test.ts) — the Iconify `logos:` URLs this used to load
+// stopped resolving, and every card fell back to its letter. null → a lettered
+// tile (Mezmitra, which has no public logo).
 const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
-  { kind: "hubspot", logo: "https://api.iconify.design/logos:hubspot.svg", blurb: "Sync new contacts into HubSpot CRM." },
-  { kind: "pipedrive", logo: "https://api.iconify.design/logos:pipedrive.svg", blurb: "Sync new people into Pipedrive CRM." },
-  { kind: "leadsquared", logo: null, blurb: "Sync every chat to the lead's LeadSquared timeline." },
-  { kind: "razorpay", logo: "https://cdn.simpleicons.org/razorpay", blurb: "Send Razorpay payment links inside the chat." },
-  { kind: "stripe", logo: "https://api.iconify.design/logos:stripe.svg", blurb: "Send Stripe payment links inside the chat." },
-  { kind: "shopify", logo: "https://api.iconify.design/logos:shopify.svg", blurb: "Import your Shopify product catalog." },
-  { kind: "woocommerce", logo: "https://api.iconify.design/logos:woocommerce.svg", blurb: "Import your WooCommerce catalog." },
-  { kind: "calcom", logo: "https://cdn.simpleicons.org/caldotcom", blurb: "Let customers book meetings via Cal.com." },
+  { kind: "hubspot", logo: "/integrations/hubspot.svg", blurb: "Sync new contacts into HubSpot CRM." },
+  { kind: "pipedrive", logo: "/integrations/pipedrive.png", blurb: "Sync new people into Pipedrive CRM." },
+  { kind: "leadsquared", logo: "/integrations/leadsquared.png", blurb: "Sync every chat to the lead's LeadSquared timeline." },
+  { kind: "razorpay", logo: "/integrations/razorpay.svg", blurb: "Send Razorpay payment links inside the chat." },
+  { kind: "stripe", logo: "/integrations/stripe.png", blurb: "Send Stripe payment links inside the chat." },
+  { kind: "shopify", logo: "/integrations/shopify.svg", blurb: "Import your Shopify product catalog." },
+  { kind: "woocommerce", logo: "/integrations/woocommerce.png", blurb: "Import your WooCommerce catalog." },
+  { kind: "calcom", logo: "/integrations/calcom.png", blurb: "Let customers book meetings via Cal.com." },
   { kind: "mezmitra", logo: null, blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
-  { kind: "slack", logo: "https://api.iconify.design/logos:slack-icon.svg", blurb: "Post events to a Slack channel." },
-  { kind: "teams", logo: "https://api.iconify.design/logos:microsoft-teams.svg", blurb: "Post events to a Microsoft Teams channel." },
-  { kind: "webhook", logo: "https://api.iconify.design/logos:zapier-icon.svg", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },
+  { kind: "slack", logo: "/integrations/slack.svg", blurb: "Post events to a Slack channel." },
+  { kind: "teams", logo: "/integrations/teams.svg", blurb: "Post events to a Microsoft Teams channel." },
+  { kind: "webhook", logo: "/integrations/webhook.svg", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },
 ];
 
 // A connector's brand mark — its catalog logo URL, falling back to a lettered tile
@@ -80,7 +80,7 @@ function Logo({ kind, logo }: { kind: string; logo: string | null }) {
   const initial = (KIND_LABELS[kind] ?? kind).replace(/[^A-Za-z]/g, "").slice(0, 1).toUpperCase() || "?";
   const box = "w-10 h-10 rounded-xl bg-brand-50 text-brand-700 flex items-center justify-center font-extrabold text-sm shrink-0";
   if (!logo) return <div className={box}>{initial}</div>;
-  return <ImgFallback url={logo} imgClass="w-10 h-10 rounded-xl bg-canvas object-contain p-2 shrink-0" boxClass={box} icon={initial} />;
+  return <ImgFallback url={logo} imgClass="w-10 h-10 rounded-xl bg-white border border-line object-contain p-1.5 shrink-0" boxClass={box} icon={initial} />;
 }
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {

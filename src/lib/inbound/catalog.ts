@@ -44,8 +44,10 @@ export interface CatalogEntry {
   id: string;
   name: string;
   category: IntegrationCategory;
-  /** Brand colour for the monogram tile. */
+  /** Brand colour for the monogram tile — shown when there is no logo, or it fails to load. */
   color: string;
+  /** The company's own mark, self-hosted under public/integrations (sources: integration-logos.test.ts). */
+  logo?: string;
   blurb: string;
   /** What a business gets from connecting it, in its own words. */
   gives: string[];
@@ -81,7 +83,7 @@ const ORDER_FIELDS = [NAME, p("order_name", "Order number", "#1042"), p("total",
 
 export const CATALOG: CatalogEntry[] = [
   {
-    id: "shopify", name: "Shopify", category: "ecommerce", color: "#5E8E3E", availability: "available",
+    id: "shopify", name: "Shopify", category: "ecommerce", color: "#5E8E3E", logo: "/integrations/shopify.svg", availability: "available",
     blurb: "Order confirmations, shipping updates and abandoned-cart recovery on WhatsApp.",
     gives: [
       "Order confirmed — with the order number, total and status link",
@@ -111,7 +113,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "woocommerce", name: "WooCommerce", category: "ecommerce", color: "#7F54B3", availability: "available",
+    id: "woocommerce", name: "WooCommerce", category: "ecommerce", color: "#7F54B3", logo: "/integrations/woocommerce.png", availability: "available",
     blurb: "Order confirmations and every order-status change from your WordPress store.",
     gives: ["Order received / processing / completed messages", "Failed and cancelled order follow-ups", "Payment link for unpaid orders"],
     docsUrl: "https://woocommerce.com/document/webhooks/",
@@ -131,7 +133,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "shiprocket", name: "Shiprocket", category: "ecommerce", color: "#7350FF", availability: "next",
+    id: "shiprocket", name: "Shiprocket", category: "ecommerce", color: "#7350FF", logo: "/integrations/shiprocket.png", availability: "next",
     blurb: "Shipping updates — picked up, out for delivery, delivered, RTO — for every courier.",
     gives: ["Out-for-delivery and delivered messages", "Failed-delivery and RTO alerts so the buyer can reschedule"],
     pending: "Shiprocket's updates don't include the buyer's phone, so the portal must look each order up with a Shiprocket API user. Coming in the next wave.",
@@ -139,7 +141,7 @@ export const CATALOG: CatalogEntry[] = [
 
   // ── Payments ──────────────────────────────────────────────────────────────
   {
-    id: "razorpay", name: "Razorpay", category: "payments", color: "#0C2451", availability: "available",
+    id: "razorpay", name: "Razorpay", category: "payments", color: "#0C2451", logo: "/integrations/razorpay.svg", availability: "available",
     blurb: "Payment receipts, failed-payment nudges, payment-link and subscription updates on WhatsApp.",
     gives: [
       "A receipt on WhatsApp the moment a payment is captured",
@@ -170,7 +172,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "cashfree", name: "Cashfree", category: "payments", color: "#5C2D91", availability: "next",
+    id: "cashfree", name: "Cashfree", category: "payments", color: "#5C2D91", logo: "/integrations/cashfree.png", availability: "next",
     blurb: "Payment success and failure messages for Cashfree payments and payment links.",
     gives: ["Payment receipts", "Failed and dropped payment nudges"],
     pending: "Cashfree's signature format needs a live sandbox test before we trust it. Next wave.",
@@ -178,7 +180,7 @@ export const CATALOG: CatalogEntry[] = [
 
   // ── Appointments & bookings ───────────────────────────────────────────────
   {
-    id: "calendly", name: "Calendly", category: "scheduling", color: "#006BFF", availability: "available",
+    id: "calendly", name: "Calendly", category: "scheduling", color: "#006BFF", logo: "/integrations/calendly.svg", availability: "available",
     blurb: "Booking confirmations, reschedules and cancellations on WhatsApp, with the meeting link.",
     gives: ["Booking confirmed — with the date, time and join link", "Rescheduled and cancelled notices", "A pending confirmation is cancelled if they cancel first"],
     docsUrl: "https://developer.calendly.com/api-docs",
@@ -199,7 +201,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "calcom", name: "Cal.com", category: "scheduling", color: "#111111", availability: "available",
+    id: "calcom", name: "Cal.com", category: "scheduling", color: "#111111", logo: "/integrations/calcom.png", availability: "available",
     blurb: "Booking confirmations, reschedules and cancellations from Cal.com on WhatsApp.",
     gives: ["Booking confirmed — with the date, time and meeting link", "Rescheduled and cancelled notices"],
     docsUrl: "https://cal.com/docs/developing/guides/automation/webhooks",
@@ -218,7 +220,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "google_calendar", name: "Google Calendar", category: "scheduling", color: "#1A73E8", availability: "next",
+    id: "google_calendar", name: "Google Calendar", category: "scheduling", color: "#1A73E8", logo: "/integrations/google_calendar.svg", availability: "next",
     blurb: "Appointment reminders for events on your Google Calendar.",
     gives: ["Reminders before appointments", "Booking from a WhatsApp chat straight into your calendar"],
     pending: "Google requires the portal to register and verify an OAuth app first.",
@@ -226,7 +228,7 @@ export const CATALOG: CatalogEntry[] = [
 
   // ── Lead sources & forms ──────────────────────────────────────────────────
   {
-    id: "indiamart", name: "IndiaMART", category: "leads", color: "#2E3192", availability: "available",
+    id: "indiamart", name: "IndiaMART", category: "leads", color: "#2E3192", logo: "/integrations/indiamart.png", availability: "available",
     blurb: "Every IndiaMART buyer enquiry greeted on WhatsApp within seconds, with the product they asked about.",
     gives: ["Instant WhatsApp reply to every enquiry — before competitors call", "Enquiries land in Contacts, tagged with the product", "Works with paid IndiaMART seller plans (Lead Manager)"],
     docsUrl: "https://help.indiamart.com/knowledge-base/integration-of-indiamarts-lead-manager-crm-push-api-with-third-party-crms-real-time-push-of-leads/",
@@ -240,7 +242,7 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "typeform", name: "Typeform", category: "leads", color: "#262627", availability: "available",
+    id: "typeform", name: "Typeform", category: "leads", color: "#262627", logo: "/integrations/typeform.png", availability: "available",
     blurb: "Greet everyone who fills your Typeform on WhatsApp, using their answers.",
     gives: ["Instant WhatsApp follow-up to every submission", "Answers available in the message: {{payload.your_field_ref}}"],
     docsUrl: "https://www.typeform.com/developers/webhooks/",
@@ -256,19 +258,19 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "meta_lead_ads", name: "Facebook & Instagram Lead Ads", category: "leads", color: "#0866FF", availability: "next",
+    id: "meta_lead_ads", name: "Facebook & Instagram Lead Ads", category: "leads", color: "#0866FF", logo: "/integrations/meta_lead_ads.svg", availability: "next",
     blurb: "Message every Lead Ad lead on WhatsApp the second they submit the form.",
     gives: ["Instant first message to ad leads", "Lead Ad answers in Contacts"],
     pending: "Each business's Page must grant the portal lead access, which needs Meta app review for that permission.",
   },
   {
-    id: "justdial", name: "JustDial", category: "leads", color: "#FF6F00", availability: "next",
+    id: "justdial", name: "JustDial", category: "leads", color: "#FF6F00", logo: "/integrations/justdial.png", availability: "next",
     blurb: "JustDial enquiries greeted on WhatsApp.",
     gives: ["Instant reply to JustDial leads"],
     pending: "JustDial has no public lead API; it is set up through your JustDial account manager. Use the Webhooks integration with them meanwhile.",
   },
   {
-    id: "google_sheets", name: "Google Sheets", category: "leads", color: "#0F9D58", availability: "next",
+    id: "google_sheets", name: "Google Sheets", category: "leads", color: "#0F9D58", logo: "/integrations/google_sheets.svg", availability: "next",
     blurb: "Send messages from rows in a sheet, and log WhatsApp leads into one.",
     gives: ["A row added → a WhatsApp message", "Every new WhatsApp lead appended to a sheet"],
     pending: "A one-click Google connection needs a verified Google OAuth app. Until then, a sheet can post to the Webhooks integration with a short Apps Script.",
@@ -276,7 +278,7 @@ export const CATALOG: CatalogEntry[] = [
 
   // ── CRM ───────────────────────────────────────────────────────────────────
   {
-    id: "webhook", name: "Incoming webhooks (Zapier, Make, Pabbly, n8n)", category: "automation", color: "#FF4A00", availability: "available",
+    id: "webhook", name: "Incoming webhooks (Zapier, Make, Pabbly, n8n)", category: "automation", color: "#FF4A00", logo: "/integrations/webhook.svg", availability: "available",
     blurb: "Connect any app that can send a webhook: Zapier, Make, Pabbly Connect, n8n, your website form or your own system.",
     gives: ["Greet a new lead on WhatsApp seconds after they fill any form", "Send a message whenever another tool says something happened", "Every person who comes in lands in Contacts, tagged"],
     fields: [
