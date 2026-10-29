@@ -1,4 +1,4 @@
-// Each integration card — the Integrations grid and Incoming events — shows
+// Each integration card — the one Integrations catalog — shows
 // the company's own logo, served from public/integrations. Never hot-linked:
 // the Iconify `logos:` URLs the grid used to load stopped resolving, and every
 // card quietly fell back to its letter.

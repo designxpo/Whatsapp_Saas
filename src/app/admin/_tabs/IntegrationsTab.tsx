@@ -6,7 +6,7 @@ import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
-import InboundIntegrations from "@/components/inbound-integrations";
+import InboundIntegrations, { type ExtraTool, type AccountLink } from "@/components/inbound-integrations";
 import { useVocab } from "@/lib/vocab-client";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
@@ -26,7 +26,7 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezmitra (restaurant)" };
+const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezmitra (restaurant)" };
 const CRM_KINDS = ["hubspot", "pipedrive", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
@@ -181,11 +181,29 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     return <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${map[s]}`}>{label[s]}</span>;
   };
 
+  // What the single catalog needs from this tab: the tools only the portal-side
+  // connection covers, and the account connection for tools the catalog already has.
+  const countOf = (kind: string) => (items ?? []).filter(i => i.kind === kind).length;
+  const extraTools: ExtraTool[] = [
+    { kind: "hubspot", group: "crm" }, { kind: "pipedrive", group: "crm" }, { kind: "leadsquared", group: "crm" },
+    { kind: "stripe", group: "payments" },
+    { kind: "slack", group: "more" }, { kind: "teams", group: "more" }, { kind: "webhook", group: "more" }, { kind: "mezmitra", group: "more" },
+  ].map(x => {
+    const c = CATALOG.find(k => k.kind === x.kind)!;
+    return { kind: x.kind, name: KIND_LABELS[x.kind], logo: c.logo, color: "#334155", blurb: c.blurb, group: x.group as ExtraTool["group"], connected: countOf(x.kind) };
+  });
+  const accountLinks: Record<string, AccountLink> = {
+    shopify: { kind: "shopify", title: "Import your product catalog", blurb: "Bring your Shopify products into Talko so the AI and checkout can use them.", connected: countOf("shopify") },
+    woocommerce: { kind: "woocommerce", title: "Import your product catalog", blurb: "Bring your WooCommerce products into Talko so the AI and checkout can use them.", connected: countOf("woocommerce") },
+    razorpay: { kind: "razorpay", title: "Send payment links in chat", blurb: "Connect your Razorpay keys so Talko can send payment links inside the chat and confirm paid orders.", connected: countOf("razorpay") },
+    calcom: { kind: "calcom", title: "Let customers book meetings", blurb: "Connect Cal.com so a chatbot flow's “Book meeting” step can book real slots.", connected: countOf("calcom") },
+  };
+
   return (
     <div className="max-w-5xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync {vocab.lead.many.toLowerCase()} to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com. Below that, Incoming events turns your store&apos;s orders, payments, bookings and new leads into WhatsApp messages.</p>
+        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let Talko act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p>
       </div>
 
       {msg && !adding && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
@@ -249,25 +267,11 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* LSQ → portal inbound webhook: only meaningful once LSQ is connected */}
       {!!items?.some(i => i.kind === "leadsquared") && <LsqInboundCard />}
 
-      {/* Add an integration — browse the logo catalog; the chosen one opens in a side panel */}
-      <div className="space-y-2">
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Add an integration</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {CATALOG.map(c => {
-            const conns = (items ?? []).filter(i => i.kind === c.kind);
-            return (
-              <button key={c.kind} onClick={() => openSetup(c.kind)} className="text-left bg-white rounded-card border border-line p-4 flex flex-col gap-2 hover:border-brand-500 hover:shadow-sm transition-colors">
-                <div className="flex items-start justify-between gap-2">
-                  <Logo kind={c.kind} logo={c.logo} />
-                  {!!conns.length && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">{conns.length > 1 ? `${conns.length} connected` : "Connected"}</span>}
-                </div>
-                <p className="text-sm font-bold text-ink-900 leading-tight">{KIND_LABELS[c.kind]}</p>
-                <p className="text-[11px] text-slate-500 leading-snug">{c.blurb}</p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* ONE catalog: the incoming-events tools, plus the tools that only act from the
+          portal side. Shopify, WooCommerce, Razorpay and Cal.com are one card each —
+          their account connection (catalog import, payment links, meetings) opens
+          from that card's panel. */}
+      <InboundIntegrations extras={extraTools} accountLinks={accountLinks} onOpenAccount={openSetup} />
 
       <Drawer open={adding} onClose={() => { setAdding(false); setMsg(null); setNewSecret(null); }} width="md"
         title={<span className="flex items-center gap-3"><Logo kind={form.kind} logo={CATALOG.find(c => c.kind === form.kind)?.logo ?? null} />Set up {KIND_LABELS[form.kind]}</span>}
@@ -343,7 +347,6 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       </Drawer>
 
       <div className="border-t border-line pt-5">
-        <InboundIntegrations />
       </div>
     </div>
   );

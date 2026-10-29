@@ -11,10 +11,15 @@
 // ordinary API rules (src/lib/apirules.ts), so they run, cap, delay and report
 // exactly as the rules in Broadcast → API do.
 //
-// Rendered as a section of the Integrations tab, below the outbound
-// connections (CRMs, payment links, catalog import), which are a different
-// thing: those are the portal acting in the tool, these are the tool telling
-// the portal something happened.
+// The one catalog of the Integrations tab. Two directions live here, and each
+// tool appears ONCE:
+//   - the tool tells the portal something happened (this component's panels), and
+//   - the portal acts in the tool (CRM sync, payment links, catalog import,
+//     Slack/Teams/webhook alerts) — set up by the parent tab's own drawer.
+// A tool that does both (Shopify, WooCommerce, Razorpay, Cal.com) is one card
+// whose panel links to its account connection; tools that only do the second
+// are extra cards. Before this there were two grids, and those four tools sat
+// in both.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -52,7 +57,7 @@ function ago(iso: string | null): string {
 
 // The company's own logo on a white tile; its initials on its brand colour
 // when it has none, or the file fails to load.
-function Monogram({ e, size = 40 }: { e: CatalogEntry; size?: number }) {
+function Monogram({ e, size = 40 }: { e: { name: string; logo?: string | null; color: string }; size?: number }) {
   const [failed, setFailed] = useState(false);
   const letters = e.name.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
   if (e.logo && !failed) {
@@ -88,11 +93,22 @@ function CopyField({ label, value, mono = true }: { label: string; value: string
   );
 }
 
-export default function InboundIntegrations() {
+/** A tool the portal acts in (set up by the parent tab), shown as a card of its own. */
+export type ExtraTool = {
+  kind: string; name: string; logo: string | null; color: string; blurb: string;
+  group: "crm" | "payments" | "more"; connected: number;
+};
+/** For a tool in the catalog that ALSO has an account connection: what it adds. */
+export type AccountLink = { kind: string; title: string; blurb: string; connected: number };
+const EXTRA_GROUP_LABELS = { crm: "CRM & sync", more: "Alerts & other tools" } as const;
+
+export default function InboundIntegrations({ extras = [], accountLinks = {}, onOpenAccount }: {
+  extras?: ExtraTool[]; accountLinks?: Record<string, AccountLink>; onOpenAccount?: (kind: string) => void;
+} = {}) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [category, setCategory] = useState<IntegrationCategory | "all">("all");
+  const [category, setCategory] = useState<IntegrationCategory | "all" | "crm" | "more">("all");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
 
@@ -114,12 +130,23 @@ export default function InboundIntegrations() {
     // Connected first, then what can be connected today, then what is coming.
     .sort((a, b) => Number(byKind.has(b.id)) - Number(byKind.has(a.id)) || Number(b.availability !== "next") - Number(a.availability !== "next"));
   const openEntry = open ? CATALOG.find(e => e.id === open) ?? null : null;
+  const q = query.trim().toLowerCase();
+  const visibleExtras = extras
+    .filter(x => category === "all" || x.group === category)
+    .filter(x => !q || `${x.name} ${x.blurb}`.toLowerCase().includes(q))
+    .sort((a, b) => b.connected - a.connected);
+  const chips: (IntegrationCategory | "all" | "crm" | "more")[] = [
+    "all", ...(Object.keys(CATEGORY_LABELS) as IntegrationCategory[]),
+    ...(extras.some(x => x.group === "crm") ? ["crm" as const] : []),
+    ...(extras.some(x => x.group === "more") ? ["more" as const] : []),
+  ];
+  const chipLabel = (c: (typeof chips)[number]) => c === "all" ? "All" : c === "crm" || c === "more" ? EXTRA_GROUP_LABELS[c] : CATEGORY_LABELS[c];
 
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em] flex items-center gap-1.5"><Plug className="w-3.5 h-3.5" /> Incoming events</p>
-        <p className="text-sm text-slate-500">Your tools tell the portal when something happens, and it becomes a WhatsApp message — order confirmations, payment receipts, booking confirmations, an instant reply to every new lead.</p>
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em] flex items-center gap-1.5"><Plug className="w-3.5 h-3.5" /> Add an integration</p>
+        <p className="text-sm text-slate-500">Pick a tool. Most of them tell Talko when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let Talko act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p>
       </div>
 
       {error && <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">{error}</p>}
@@ -127,12 +154,12 @@ export default function InboundIntegrations() {
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input className={`${inp} pl-9 w-60`} placeholder="Search incoming events" value={query} onChange={e => setQuery(e.target.value)} />
+          <input className={`${inp} pl-9 w-60`} placeholder="Search integrations" value={query} onChange={e => setQuery(e.target.value)} />
         </div>
-        {(["all", ...Object.keys(CATEGORY_LABELS)] as (IntegrationCategory | "all")[]).map(c => (
+        {chips.map(c => (
           <button key={c} onClick={() => setCategory(c)}
             className={`px-3 py-1.5 rounded-full text-xs font-bold border ${category === c ? "bg-ink-900 text-white border-ink-900" : "bg-white text-slate-500 border-line hover:text-ink-900"}`}>
-            {c === "all" ? "All" : CATEGORY_LABELS[c]}
+            {chipLabel(c)}
           </button>
         ))}
       </div>
@@ -159,15 +186,35 @@ export default function InboundIntegrations() {
                   ) : null}
                 </div>
                 <p className="text-xs text-slate-500 flex-1">{e.blurb}</p>
+                <div className="flex flex-wrap gap-1">
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends WhatsApp when something happens</span>
+                  {accountLinks[e.id] && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">+ {accountLinks[e.id].title}{accountLinks[e.id].connected ? " ✓" : ""}</span>}
+                </div>
                 {conn && <p className="text-[11px] text-slate-400 flex items-center gap-1"><Clock className="w-3 h-3" /> Last event {ago(conn.lastEventAt)}</p>}
               </button>
             );
           })}
+          {visibleExtras.map(x => (
+            <button key={`extra-${x.kind}`} onClick={() => onOpenAccount?.(x.kind)}
+              className="text-left bg-white border border-line rounded-card p-4 hover:border-brand-500 transition-colors flex flex-col gap-2">
+              <div className="flex items-start gap-3">
+                <Monogram e={x} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-sm text-ink-900 leading-tight">{x.name}</p>
+                  <p className="text-[11px] text-slate-400">{x.group === "payments" ? CATEGORY_LABELS.payments : EXTRA_GROUP_LABELS[x.group]}</p>
+                </div>
+                {x.connected > 0 && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">{x.connected > 1 ? `${x.connected} connected` : "Connected"}</span>}
+              </div>
+              <p className="text-xs text-slate-500 flex-1">{x.blurb}</p>
+            </button>
+          ))}
         </div>
       )}
 
       {openEntry && (
         <IntegrationPanel entry={openEntry} connection={byKind.get(openEntry.id) ?? null}
+          accountLink={accountLinks[openEntry.id]}
+          onOpenAccount={onOpenAccount ? (k) => { setOpen(null); onOpenAccount(k); } : undefined}
           onClose={() => setOpen(null)} onChanged={load} />
       )}
     </div>
@@ -175,8 +222,9 @@ export default function InboundIntegrations() {
 }
 
 // ── One tool: connect it, and say what each of its events should send ───────
-function IntegrationPanel({ entry, connection, onClose, onChanged }: {
-  entry: CatalogEntry; connection: Connection | null; onClose: () => void; onChanged: () => void;
+function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClose, onChanged }: {
+  entry: CatalogEntry; connection: Connection | null; accountLink?: AccountLink; onOpenAccount?: (kind: string) => void;
+  onClose: () => void; onChanged: () => void;
 }) {
   const ask = useConfirm();
   const [values, setValues] = useState<Record<string, string>>({});
@@ -231,6 +279,17 @@ function IntegrationPanel({ entry, connection, onClose, onChanged }: {
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">What you get</p>
             {entry.gives.map(g => <p key={g} className="text-xs text-ink-700 flex items-start gap-2"><CircleCheck className="w-3.5 h-3.5 text-brand-600 shrink-0 mt-0.5" />{g}</p>)}
           </div>
+
+          {/* The same tool, from the other side: the portal acting in it. One card, both jobs. */}
+          {accountLink && onOpenAccount && (
+            <div className="rounded-card border border-line bg-slate-50 p-4 space-y-2">
+              <p className="text-sm font-extrabold text-ink-900">Also connect your {entry.name} account</p>
+              <p className="text-xs text-slate-600">{accountLink.blurb}</p>
+              <button onClick={() => onOpenAccount(accountLink.kind)} className="px-3 py-1.5 rounded-lg border border-line bg-white text-xs font-bold text-ink-800 hover:bg-canvas">
+                {accountLink.connected ? `Manage: ${accountLink.title}` : accountLink.title}
+              </button>
+            </div>
+          )}
 
           {entry.availability === "next" && (
             <p className="text-xs text-slate-600 bg-slate-50 border border-line rounded-control px-3 py-2.5"><b>Coming next.</b> {entry.pending}</p>
