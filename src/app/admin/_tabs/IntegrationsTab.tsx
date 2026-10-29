@@ -58,7 +58,7 @@ const TOKEN_HELP: Record<string, string> = {
 // company's own mark, self-hosted under public/integrations (sources:
 // integration-logos.test.ts) — the Iconify `logos:` URLs this used to load
 // stopped resolving, and every card fell back to its letter. null → a lettered
-// tile (Mezmitra, which has no public logo).
+// tile (none today: Mezmitra's is its app icon, copied from its own repo).
 const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "hubspot", logo: "/integrations/hubspot.svg", blurb: "Sync new contacts into HubSpot CRM." },
   { kind: "pipedrive", logo: "/integrations/pipedrive.png", blurb: "Sync new people into Pipedrive CRM." },
@@ -68,7 +68,7 @@ const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "shopify", logo: "/integrations/shopify.svg", blurb: "Import your Shopify product catalog." },
   { kind: "woocommerce", logo: "/integrations/woocommerce.png", blurb: "Import your WooCommerce catalog." },
   { kind: "calcom", logo: "/integrations/calcom.png", blurb: "Let customers book meetings via Cal.com." },
-  { kind: "mezmitra", logo: null, blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
+  { kind: "mezmitra", logo: "/integrations/mezmitra.svg", blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
   { kind: "slack", logo: "/integrations/slack.svg", blurb: "Post events to a Slack channel." },
   { kind: "teams", logo: "/integrations/teams.svg", blurb: "Post events to a Microsoft Teams channel." },
   { kind: "webhook", logo: "/integrations/webhook.svg", blurb: "Send signed events to Zapier, Make, n8n or any webhook." },

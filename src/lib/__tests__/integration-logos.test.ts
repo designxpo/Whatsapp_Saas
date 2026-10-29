@@ -49,7 +49,7 @@ describe("integration logos", () => {
     const logos = [...TAB.matchAll(/kind: "([a-z]+)", logo: (null|"[^"]*")/g)].map(m => [m[1], m[2]] as const);
     expect(logos.length).toBeGreaterThanOrEqual(12);
     const bad = logos.filter(([kind, l]) => l !== "null" && !existsSync(join(PUBLIC, JSON.parse(l)))
-      || l === "null" && kind !== "mezmitra").map(([kind, l]) => `${kind}: ${l}`);
+      || l === "null").map(([kind, l]) => `${kind}: ${l}`);
     expect(bad).toEqual([]);
   });
 });
