@@ -437,8 +437,7 @@ function LeadWelcomePanel() {
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p>
-          <p className="text-[11px] text-ink-400">When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply. Cold web {leadN} can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Zap className="w-4 h-4 text-brand-700" /> Landing-page form → WhatsApp flow</p><PageInfo>When a form {lead1} arrives from LeadSquared, send an approved <b>template</b> and start your <b>question flow</b> the moment they reply. Cold web {leadN} can&apos;t be messaged free-form — the template opens the 24h window, then the flow runs.</PageInfo></div>
         </div>
         <label className="flex items-center gap-1.5 text-xs font-semibold text-ink-700 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={cfg.enabled} onChange={e => set({ enabled: e.target.checked })} /> On</label>
       </div>
@@ -691,8 +690,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by LeadSquared stage</p>
-        <p className="text-[11px] text-ink-400">When a {lead1}&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s {seq1} — and stop the other stage-managed ones (the {lead1} moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out {leadN} are never enrolled.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by LeadSquared stage</p><PageInfo>When a {lead1}&apos;s LSQ stage changes (via the LSQ→portal webhook), start that stage&apos;s {seq1} — and stop the other stage-managed ones (the {lead1} moved on). Stage names must match LSQ&apos;s ProspectStage exactly (case-insensitive). Opted-out {leadN} are never enrolled.</PageInfo></div>
       </div>
       {drips.map((d, i) => (
         <div key={i} className="flex items-center gap-2 flex-wrap">
@@ -731,8 +729,7 @@ function FunnelCoverage({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-2.5">
       <div>
-        <p className="text-sm font-bold text-ink-900">Funnel coverage</p>
-        <p className="text-[11px] text-ink-400">Each team runs its own full funnel. An empty cell is a stage with nothing sending.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900">Funnel coverage</p><PageInfo>Each team runs its own full funnel. An empty cell is a stage with nothing sending.</PageInfo></div>
       </div>
       <div className="overflow-x-auto">
         <table className="text-[11px] w-full min-w-[520px]">
@@ -798,8 +795,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p>
-        <p className="text-[11px] text-ink-400">When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1} — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out {leadN} are never enrolled.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Auto-drip by lead score</p><PageInfo>When someone on your team grades one of your {leadN} in LeadSquared (the <b>Lead Score</b> field), start that grade&apos;s {seq1} — and stop the other score-managed ones. Needs a LeadSquared automation posting to the portal webhook on a Lead Score change. Opted-out {leadN} are never enrolled.</PageInfo></div>
       </div>
       <datalist id="lsq-scores">{KNOWN_SCORES.map(v => <option key={v} value={v} />)}</datalist>
       {drips.map((d, i) => (
@@ -869,8 +865,7 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Run a drip from LeadSquared</p>
-        <p className="text-[11px] text-ink-400">Pull {leadN} matching these conditions and enroll them into one of your {vocab.sequence.many.toLowerCase()}. Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Database className="w-4 h-4 text-brand-700" /> Run a drip from LeadSquared</p><PageInfo>Pull {leadN} matching these conditions and enroll them into one of your {vocab.sequence.many.toLowerCase()}. Needs ≥1 <b>equals</b> condition (the anchor); the rest refine the list.</PageInfo></div>
       </div>
       <div className="space-y-1.5">
         {conds.map((c, i) => (
@@ -1520,8 +1515,7 @@ function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filter
   return (
     <div className="bg-white rounded-card border border-line p-4 space-y-3">
       <div>
-        <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p>
-        <p className="text-[11px] text-ink-400">Enroll your own number to test a drip, force due steps to send now (instead of waiting up to 5 min for the scheduler), and watch every enrollment below.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><FlaskConical className="w-4 h-4 text-brand-700" /> Test &amp; monitor</p><PageInfo>Enroll your own number to test a drip, force due steps to send now (instead of waiting up to 5 min for the scheduler), and watch every enrollment below.</PageInfo></div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <select className={`${inp} flex-1 min-w-[10rem]`} value={seqId} onChange={e => { setSeqId(e.target.value); setPhone(""); setMsg(null); }}>
@@ -1664,7 +1658,7 @@ export default function SequencesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo></div>
+          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo></div>
         </div>
         <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
       </div>
@@ -1919,7 +1913,7 @@ function CatalogTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo>Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</PageInfo></div>
+          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo>Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</PageInfo></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>

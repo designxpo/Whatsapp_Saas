@@ -21,6 +21,7 @@
 // are extra cards. Before this there were two grids, and those four tools sat
 // in both.
 
+import { PageInfo } from "@/components/PageInfo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Plug, Search, Check, Copy, Loader2, Plus, Trash2, ExternalLink, Pause, Play, AlertTriangle, CircleCheck, Clock,
@@ -402,8 +403,7 @@ function EventMessages({ entry }: { entry: CatalogEntry }) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-sm font-extrabold text-ink-900">Messages</p>
-        <p className="text-[11px] text-slate-500">Choose what goes out on WhatsApp when each event happens. Use an approved template; for order, payment and booking updates a Utility template is the right category.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-sm font-extrabold text-ink-900">Messages</p><PageInfo>Choose what goes out on WhatsApp when each event happens. Use an approved template; for order, payment and booking updates a Utility template is the right category.</PageInfo></div>
       </div>
       {(entry.events ?? []).map(ev => {
         const mine = rules.filter(r => r.eventKey === ev.key);

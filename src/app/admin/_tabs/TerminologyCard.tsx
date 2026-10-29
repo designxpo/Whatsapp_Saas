@@ -2,6 +2,7 @@
 
 // Settings → Terminology: pick the industry pack, then rename any single term.
 // Overrides sit on top of the pack, so switching industry keeps custom names.
+import { PageInfo } from "@/components/PageInfo";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { inp } from "../_shared";
@@ -70,8 +71,7 @@ export function TerminologyCard() {
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-4">
       <div>
-        <p className="text-xs font-bold text-slate-400 uppercase">Terminology</p>
-        <p className="text-xs text-slate-500 mt-0.5">Pick your industry and the dashboard speaks your language — then rename anything that still doesn&apos;t sound like you.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Terminology</p><PageInfo>Pick your industry and the dashboard speaks your language — then rename anything that still doesn&apos;t sound like you.</PageInfo></div>
       </div>
       <select className={`${inp} w-full`} value={industry} onChange={e => { setIndustry(e.target.value); setDraft({}); }} aria-label="Industry">
         {st.industries.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}

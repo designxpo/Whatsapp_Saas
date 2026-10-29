@@ -14,7 +14,7 @@ function InstagramTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Instagram className="w-5 h-5 text-pink-600" /> Instagram</h2><PageInfo>Auto-reply to Instagram DMs with your AI, and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs, one reply per comment).</PageInfo></div>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Instagram className="w-5 h-5 text-pink-600" /> Instagram</h2><PageInfo>Auto-reply to Instagram DMs with your AI, and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs, one reply per comment).</PageInfo></div>
       </div>
 
       {/* What you need to connect */}
@@ -278,8 +278,7 @@ function InstagramManager() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p>
-          <p className="text-xs text-slate-500 mt-0.5">Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-600" /> Instagram</p><PageInfo>Connect an Instagram professional account to auto-reply to DMs and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs).</PageInfo></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={connectWithMeta} disabled={busy} className="px-3 py-1.5 rounded-control bg-gradient-to-r from-[#C13584] to-[#F56040] hover:opacity-90 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">

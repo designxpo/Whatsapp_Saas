@@ -90,15 +90,14 @@ function HandleHubTab() {
     <div className="flex gap-6 items-start">
       <div className="flex-1 min-w-0 max-w-2xl space-y-5">
         <div>
-          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2><PageInfo>Branded WhatsApp entry points — with a tracked link + QR per source, so you know exactly which QR, ad, or post started each conversation. Run this on as many WhatsApp numbers as you like.</PageInfo></div>
+          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2><PageInfo>Branded WhatsApp entry points — with a tracked link + QR per source, so you know exactly which QR, ad, or post started each conversation. Run this on as many WhatsApp numbers as you like.</PageInfo></div>
         </div>
 
         {err && <p className="text-xs text-red-500">{err}</p>}
 
         {/* Add a number */}
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
-          <p className="text-sm font-bold text-ink-900">Add a WhatsApp number</p>
-          <p className="text-[11px] text-slate-500">Each number gets its own set of tracked links — e.g. one entry for your PPC number, another for your organic number.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900">Add a WhatsApp number</p><PageInfo>Each number gets its own set of tracked links — e.g. one entry for your PPC number, another for your organic number.</PageInfo></div>
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
               <span className="text-[11px] text-slate-500">Label</span>

@@ -45,7 +45,7 @@ function OptoutsTab() {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-xl space-y-4">
       <div>
-        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Opt-outs</h2><PageInfo>Numbers that asked to stop hearing from you. Every broadcast, auto-send, and AI reply skips them automatically.</PageInfo></div>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Opt-outs</h2><PageInfo>Numbers that asked to stop hearing from you. Every broadcast, auto-send, and AI reply skips them automatically.</PageInfo></div>
       </div>
       {err && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{err}</div>}
       <div className="flex gap-2">

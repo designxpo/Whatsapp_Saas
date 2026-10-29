@@ -7,6 +7,7 @@
 // /api/admin/meta/create engine the manual builder uses: the first call creates
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video, History, Plus, BrainCircuit, PartyPopper, Lightbulb, Check, RefreshCw } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
@@ -382,8 +383,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
   if (step === "done") return (
     <div className="max-w-lg mx-auto text-center py-16 space-y-4">
       <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto"><CheckCircle2 className="w-7 h-7" /></div>
-      <h2 className="text-xl font-extrabold text-ink-900 flex items-center justify-center gap-2">Your campaign is live <PartyPopper className="w-5 h-5" /></h2>
-      <p className="text-sm text-slate-500">Meta is reviewing it now (usually under an hour), then it starts delivering. Track spend and results on the Meta Ads dashboard.</p>
+      <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-ink-900 flex items-center justify-center gap-2">Your campaign is live <PartyPopper className="w-5 h-5" /></h2><PageInfo>Meta is reviewing it now (usually under an hour), then it starts delivering. Track spend and results on the Meta Ads dashboard.</PageInfo></div>
       {doneWarn && <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-card px-3 py-2">{doneWarn}</p>}
       {liveId && <p className="text-[11px] text-slate-400 font-mono">Campaign {liveId}</p>}
       <button onClick={onClose} className={`${btnPrimary} mx-auto`}>Back to dashboard</button>
@@ -398,8 +398,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
         <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">{step === "brief" ? "Step 1 · Brief" : "Step 2 · Review & approve"}</span>
       </div>
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI campaign builder</h2>
-        <p className="text-sm text-slate-500">Enter your budget and a one-line brief — the AI drafts the whole campaign for you to approve.</p>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI campaign builder</h2><PageInfo>Enter your budget and a one-line brief — the AI drafts the whole campaign for you to approve.</PageInfo></div>
       </div>
       {!hasPage && <div className="bg-amber-50 border border-amber-200 rounded-card px-4 py-3 text-sm text-amber-800">Connect your Facebook Page first (Meta Ads dashboard) — ads need a Page to run from.</div>}
       {msg && <div className="bg-red-50 border border-red-200 rounded-card px-4 py-3 text-sm text-red-700">{msg}</div>}

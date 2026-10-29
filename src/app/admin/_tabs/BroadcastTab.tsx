@@ -545,8 +545,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
-        <p className="text-xs font-bold text-slate-400 uppercase">When they reply — start a flow <span className="text-slate-300 normal-case font-normal">(optional)</span></p>
-        <p className="text-xs text-slate-500">Pick a chatbot flow to run automatically when a recipient replies to this broadcast — a tap on a template button or any message. Their first reply starts it (no trigger keyword needed); it stays armed for 7 days.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">When they reply — start a flow <span className="text-slate-300 normal-case font-normal">(optional)</span></p><PageInfo>Pick a chatbot flow to run automatically when a recipient replies to this broadcast — a tap on a template button or any message. Their first reply starts it (no trigger keyword needed); it stays armed for 7 days.</PageInfo></div>
         <select className={`${inp} w-full`} value={replyFlowId} onChange={e => setReplyFlowId(e.target.value)}>
           <option value="">No flow — replies go to Live Chat / AI as usual</option>
           {flows.filter(f => f.active).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -559,8 +558,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
-        <p className="text-xs font-bold text-slate-400 uppercase">Test before sending</p>
-        <p className="text-xs text-slate-500">Sends this exact message to one number — not saved as a campaign, contact, or log entry.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Test before sending</p><PageInfo>Sends this exact message to one number — not saved as a campaign, contact, or log entry.</PageInfo></div>
         <div className="flex items-center gap-2">
           <input
             className={`${inp} flex-1`} placeholder="919876543210, Name (optional)"
@@ -744,7 +742,7 @@ function ApiBroadcasting() {
     <div className="max-w-4xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><PageInfo>Your systems fire one event — the rules you define here decide what gets sent, to whom, and when.</PageInfo></div>
+          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><PageInfo>Your systems fire one event — the rules you define here decide what gets sent, to whom, and when.</PageInfo></div>
         </div>
         <button onClick={() => openEdit()} className="shrink-0 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> New rule</button>
       </div>
@@ -953,7 +951,7 @@ function AutomationsTab() {
   return (
     <div className="max-w-2xl space-y-5">
       <div>
-        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2><PageInfo>Simple fixed-template triggers (welcome on contact added, legacy named events). For conditional sends with payload variables, windows and caps, use <b>API broadcasting</b>.</PageInfo></div>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2><PageInfo>Simple fixed-template triggers (welcome on contact added, legacy named events). For conditional sends with payload variables, windows and caps, use <b>API broadcasting</b>.</PageInfo></div>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

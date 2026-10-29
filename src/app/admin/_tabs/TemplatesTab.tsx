@@ -433,7 +433,7 @@ function TemplatesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo>Build templates per Meta&apos;s guidelines — text, media headers, buttons, or carousels. Only APPROVED templates can be broadcast.</PageInfo></div>
+          <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo>Build templates per Meta&apos;s guidelines — text, media headers, buttons, or carousels. Only APPROVED templates can be broadcast.</PageInfo></div>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />
@@ -527,8 +527,7 @@ function TemplatesTab() {
 
           <div className="space-y-3">
             <div className="space-y-1">
-              <p className="text-xs font-bold text-slate-400 uppercase">{mode === "carousel" ? "Message bubble (shown above the cards)" : "Message body"}</p>
-              <p className="text-[11px] text-slate-500">The main text your customer reads. Put <span className="font-mono text-slate-600">{"{{1}}"}</span>, <span className="font-mono text-slate-600">{"{{2}}"}</span> where you want fill-in-the-blanks (like a name or date) that you set each time you send.</p>
+              <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">{mode === "carousel" ? "Message bubble (shown above the cards)" : "Message body"}</p><PageInfo>The main text your customer reads. Put <span className="font-mono text-slate-600">{"{{1}}"}</span>, <span className="font-mono text-slate-600">{"{{2}}"}</span> where you want fill-in-the-blanks (like a name or date) that you set each time you send.</PageInfo></div>
               <textarea className={`${inp} w-full`} rows={4} maxLength={1024} placeholder={"e.g. Hi {{1}}, your {{2}} class starts tomorrow at 7 PM — see you there!"} value={bodyText} onChange={e => setBodyText(e.target.value)} />
             </div>
             {templatePlaceholders(bodyText).length > 0 && (
@@ -539,8 +538,7 @@ function TemplatesTab() {
             )}
             {mode === "standard" && (
               <div className="space-y-1">
-                <p className="text-[11px] font-bold text-slate-600">Footer <span className="font-normal text-slate-400">(optional)</span></p>
-                <p className="text-[11px] text-slate-500">A small grey line under the message — usually a sign-off or an opt-out note.</p>
+                <div className="group flex items-center gap-1.5"><p className="text-[11px] font-bold text-slate-600">Footer <span className="font-normal text-slate-400">(optional)</span></p><PageInfo>A small grey line under the message — usually a sign-off or an opt-out note.</PageInfo></div>
                 <input className={`${inp} w-full`} placeholder="e.g. Team YourBrand · Reply STOP to opt out" maxLength={60} value={footerText} onChange={e => setFooterText(e.target.value)} />
               </div>
             )}

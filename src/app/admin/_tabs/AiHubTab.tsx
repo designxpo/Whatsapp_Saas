@@ -172,7 +172,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-3xl space-y-5">
       <div>
-        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI Hub</h2><PageInfo>Three simple things live here: <b>AI agents</b> — who the AI is when it replies, <b>Lead capture</b> — the details it saves mid-chat, and <b>Writing tools</b> — one-tap rewrites for your team in Live Chat.</PageInfo></div>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI Hub</h2><PageInfo>Three simple things live here: <b>AI agents</b> — who the AI is when it replies, <b>Lead capture</b> — the details it saves mid-chat, and <b>Writing tools</b> — one-tap rewrites for your team in Live Chat.</PageInfo></div>
       </div>
 
       <AiKeyCard />
@@ -192,13 +192,11 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
         <div className="grid grid-cols-2 gap-2">
           <button onClick={async () => { const d = await fetch("/api/admin/ai/routing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto: !autoRoute }) }).then(r => r.json()); setAutoRoute(d.auto === true); }}
             className={`text-left rounded-control border p-3 transition-colors ${autoRoute ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
-            <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Auto-routing <span className={autoRoute ? "text-brand-700" : "text-slate-400"}>{autoRoute === null ? "…" : autoRoute ? "ON" : "OFF"}</span></p>
-            <p className="text-[11px] text-slate-500 mt-0.5">Switch to the right agent automatically based on what the customer asks.</p>
+            <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Zap className="w-3.5 h-3.5" /> Auto-routing <span className={autoRoute ? "text-brand-700" : "text-slate-400"}>{autoRoute === null ? "…" : autoRoute ? "ON" : "OFF"}</span></p><PageInfo>Switch to the right agent automatically based on what the customer asks.</PageInfo></div>
           </button>
           <button onClick={async () => { const d = await fetch("/api/admin/ai/routing", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tone: !tone }) }).then(r => r.json()); setTone(d.tone !== false); }}
             className={`text-left rounded-control border p-3 transition-colors ${tone ? "border-brand-500 bg-brand-50" : "border-line hover:border-slate-300"}`}>
-            <p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Drama className="w-3.5 h-3.5" /> Persona tone <span className={tone ? "text-brand-700" : "text-slate-400"}>{tone === null ? "…" : tone ? "ON" : "OFF"}</span></p>
-            <p className="text-[11px] text-slate-500 mt-0.5">Instant FAQ &amp; cached answers are rewritten in the agent&apos;s voice before sending.</p>
+            <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-ink-900 inline-flex items-center gap-1"><Drama className="w-3.5 h-3.5" /> Persona tone <span className={tone ? "text-brand-700" : "text-slate-400"}>{tone === null ? "…" : tone ? "ON" : "OFF"}</span></p><PageInfo>Instant FAQ &amp; cached answers are rewritten in the agent&apos;s voice before sending.</PageInfo></div>
           </button>
         </div>
       </section>

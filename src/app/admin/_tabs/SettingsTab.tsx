@@ -100,8 +100,7 @@ function TeamManager() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Team members</p>
-          <p className="text-xs text-slate-500 mt-0.5">Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…). Optionally group people and numbers into <b>teams</b> so each team only sees its own inbox. All actions are recorded in the activity log.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Team members</p><PageInfo>Everyone gets their own login. Admins can manage numbers, team, and settings; members get everything else (inbox, broadcasts, flows…). Optionally group people and numbers into <b>teams</b> so each team only sees its own inbox. All actions are recorded in the activity log.</PageInfo></div>
         </div>
         <button onClick={() => { setForm({ email: "", name: "", title: "", role: "member", team: null, channelId: null, password: "", active: true }); setMsg(null); }}
           className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add member</button>
@@ -208,8 +207,7 @@ function ActivityLog() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Activity log</p>
-          <p className="text-xs text-slate-500 mt-0.5">Who did what, newest first — logins, broadcasts, template/flow/form changes, inbox replies, settings.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Activity log</p><PageInfo>Who did what, newest first — logins, broadcasts, template/flow/form changes, inbox replies, settings.</PageInfo></div>
         </div>
         <button onClick={load} disabled={refreshing} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} /> Refresh
@@ -324,8 +322,7 @@ function ChannelsManager() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="min-w-[240px]">
-          <p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p>
-          <p className="text-xs text-slate-500 mt-0.5">Connect multiple WhatsApp numbers — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">WhatsApp numbers</p><PageInfo>Connect multiple WhatsApp numbers — each gets its own AI persona, flows, templates, and broadcasts. Inbound routes automatically; replies always leave from the same number.</PageInfo></div>
         </div>
         <div className="flex items-center gap-2 flex-wrap shrink-0">
           {(whatsappSignupReady() || metaPreview()) && (
@@ -611,8 +608,7 @@ function ApiKeysCard() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p>
-      <p className="text-[11px] text-ink-400">Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</p>
+      <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p><PageInfo>Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</PageInfo></div>
       <div className="flex gap-2">
         <input className="flex-1 border border-line rounded-control px-2 py-1.5 text-xs bg-white" placeholder="Key name (e.g. CRM integration)" value={name} onChange={e => setName(e.target.value)} />
         <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0">Create key</button>
@@ -918,8 +914,7 @@ function CannedTemplatesCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p>
-          <p className="text-xs text-slate-500 mt-0.5">Buttons above the Live Chat composer — one tap sends an approved template (works outside the 24h window) and can move the lead&apos;s CRM stage. E.g. Follow-up, post-call follow-up.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Canned templates (one-click sends)</p><PageInfo>Buttons above the Live Chat composer — one tap sends an approved template (works outside the 24h window) and can move the lead&apos;s CRM stage. E.g. Follow-up, post-call follow-up.</PageInfo></div>
         </div>
         <button onClick={() => { setForm({ id: "", label: "", templateName: "", language: "en_US", params: [], stage: "" }); setMsg(null); }}
           className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 shrink-0"><Plus className="w-3.5 h-3.5" /> Add</button>
@@ -1124,8 +1119,7 @@ function OtpServiceCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">OTP service</p>
-          <p className="text-xs text-slate-500 mt-0.5">Your website calls this workspace to send login codes on WhatsApp and verify them, authenticating with a workspace API key. Route different areas to different numbers. Codes are stored only as hashes.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">OTP service</p><PageInfo>Your website calls this workspace to send login codes on WhatsApp and verify them, authenticating with a workspace API key. Route different areas to different numbers. Codes are stored only as hashes.</PageInfo></div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.secretSet ? "bg-brand-100 text-brand-700" : "bg-amber-100 text-amber-700"}`}>{st.secretSet ? "secret set" : "OTP_HASH_SECRET missing"}</span>
@@ -1250,8 +1244,7 @@ function VoiceSettingsCard() {
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div>
-        <h3 className="text-sm font-bold text-ink-900">Voice replies</h3>
-        <p className="text-[12px] text-slate-500">Customers can <span className="font-semibold">send voice notes</span> (auto-transcribed and answered) on WhatsApp &amp; Instagram. Optionally have the AI <span className="font-semibold">reply in voice</span> too.</p>
+        <div className="group flex items-center gap-1.5"><h3 className="text-sm font-bold text-ink-900">Voice replies</h3><PageInfo>Customers can <span className="font-semibold">send voice notes</span> (auto-transcribed and answered) on WhatsApp &amp; Instagram. Optionally have the AI <span className="font-semibold">reply in voice</span> too.</PageInfo></div>
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
         <div>
@@ -1464,8 +1457,7 @@ export function MessengerCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p>
-          <p className="text-xs text-slate-500 mt-0.5">Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook Messenger</p><PageInfo>Connect a Facebook Page to auto-reply to Messenger DMs with your AI — within Meta&apos;s rules (24-hour window, no cold messages). Page DMs land in the same Live Chat inbox.</PageInfo></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {(facebookSignupReady() || metaPreview()) && (
@@ -1809,8 +1801,7 @@ export function WebchatCard() {
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-brand-600" /> Website web chat</p>
-          <p className="text-xs text-slate-500 mt-0.5">Add a live-chat bubble to your website with one line of code. Visitor chats land in the same Live Chat inbox and your AI replies instantly.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><MessageSquare className="w-3.5 h-3.5 text-brand-600" /> Website web chat</p><PageInfo>Add a live-chat bubble to your website with one line of code. Visitor chats land in the same Live Chat inbox and your AI replies instantly.</PageInfo></div>
         </div>
         <button onClick={() => { setForm({ ...BLANK_WC }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New widget</button>
       </div>
@@ -1991,8 +1982,7 @@ function QrTool() {
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div>
-        <p className="text-xs font-bold text-slate-400 uppercase">QR code</p>
-        <p className="text-xs text-slate-500 mt-0.5">Turn a WhatsApp number or any link into a QR — print it on posters, packaging or receipts to bring customers straight into chat.</p>
+        <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">QR code</p><PageInfo>Turn a WhatsApp number or any link into a QR — print it on posters, packaging or receipts to bring customers straight into chat.</PageInfo></div>
       </div>
       <div className="flex gap-2">
         <button onClick={() => setMode("wa")} className={`px-3 py-1.5 rounded-control text-xs font-bold border ${mode === "wa" ? "bg-brand-700 text-white border-brand-700" : "bg-white text-ink-700 border-line hover:bg-canvas"}`}>WhatsApp chat</button>
@@ -2161,7 +2151,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-2xl space-y-5">
       <div>
-        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><PageInfo>WhatsApp numbers, automatic messages, and canned responses.</PageInfo></div>
+        <div className="group flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><PageInfo>WhatsApp numbers, automatic messages, and canned responses.</PageInfo></div>
       </div>
 
       <UsageCard />
@@ -2326,8 +2316,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase">Welcome message</p>
-            <p className="text-xs text-slate-500 mt-0.5">Sent once, the first time a contact ever messages you (before the AI answers).</p>
+            <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Welcome message</p><PageInfo>Sent once, the first time a contact ever messages you (before the AI answers).</PageInfo></div>
           </div>
           {welcome && (
             <button onClick={toggleWelcome} disabled={saving}
@@ -2345,8 +2334,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-bold text-slate-400 uppercase">Away message (outside working hours)</p>
-            <p className="text-xs text-slate-500 mt-0.5">Sent at most once per 12h per conversation. The AI keeps answering either way.</p>
+            <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Away message (outside working hours)</p><PageInfo>Sent at most once per 12h per conversation. The AI keeps answering either way.</PageInfo></div>
           </div>
           {away && (
             <button onClick={toggleAway} disabled={saving}
@@ -2378,8 +2366,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* Quick replies */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
         <div>
-          <p className="text-xs font-bold text-slate-400 uppercase">Quick replies (canned responses)</p>
-          <p className="text-xs text-slate-500 mt-0.5">Available in the Team Inbox composer (<Zap className="w-3.5 h-3.5 inline-block align-middle" /> or type /) and the CRM chat panel.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-xs font-bold text-slate-400 uppercase">Quick replies (canned responses)</p><PageInfo>Available in the Team Inbox composer (<Zap className="w-3.5 h-3.5 inline-block align-middle" /> or type /) and the CRM chat panel.</PageInfo></div>
         </div>
         <div className="flex gap-2">
           <input className={`${inp} w-32`} placeholder="shortcut" value={qrShortcut} onChange={e => setQrShortcut(e.target.value)} />

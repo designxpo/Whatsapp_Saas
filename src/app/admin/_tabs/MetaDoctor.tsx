@@ -5,6 +5,7 @@
 // webhooks aren't working: missing vs SET-BUT-EMPTY env vars, live Graph
 // credential validation, and the exact callback URLs to paste into the Meta
 // app. Tenant admins get a 403 from the API, so the panel renders nothing.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CircleCheck, Loader2, RefreshCw, Stethoscope } from "lucide-react";
 
@@ -33,8 +34,7 @@ export function MetaDoctor() {
     <div className="rounded-card border border-line bg-white p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <div>
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Stethoscope className="w-4 h-4 text-brand-700" /> Meta connection doctor <span className="text-[10px] font-bold text-slate-400 uppercase">owner</span></p>
-          <p className="text-[12px] text-slate-500 mt-0.5">Why “Connect with Facebook” or a webhook isn’t working — env by env, plus a live Graph credential check.</p>
+          <div className="group flex items-center gap-1.5"><p className="text-sm font-bold text-ink-900 flex items-center gap-1.5"><Stethoscope className="w-4 h-4 text-brand-700" /> Meta connection doctor <span className="text-[10px] font-bold text-slate-400 uppercase">owner</span></p><PageInfo>Why “Connect with Facebook” or a webhook isn’t working — env by env, plus a live Graph credential check.</PageInfo></div>
         </div>
         <button onClick={run} disabled={busy} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-run
