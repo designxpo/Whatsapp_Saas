@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
     // RAG fallback — surface the retrieval picture alongside the answer.
     const chunks = await retrieve(question, 6, tid).catch(() => []);
-    const result = await generateReply([{ role: "user", body: question }], undefined, body.agentId ?? null, tid);
+    const result = await generateReply([{ role: "user", body: question }], undefined, body.agentId ?? null, tid, null, false, undefined, "whatsapp", undefined, { unscoped: true });
     if (!result.escalate && result.reply && result.reply.trim() !== FALLBACK_REPLY) {
       void cacheStore(question, result.reply, queryEmbedding, "rag", tid);
     }

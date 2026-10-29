@@ -52,7 +52,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       }
       const agent = await resolveAgent(null, tid).catch(() => null);
       const flow = await getFlow(id, tid).catch(() => null);
-      const result = await generateReply([{ role: "user", body: message }], undefined, null, tid, flow?.primaryKbTag ?? null);
+      const result = await generateReply([{ role: "user", body: message }], undefined, null, tid, flow?.primaryKbTag ?? null, false, undefined, "whatsapp", undefined, { unscoped: true });
       if (result.reply) {
         return NextResponse.json({ outputs: [{ kind: "ai", body: result.reply }], handled: false, note: `Answered by the AI assistant${agent ? ` (${agent.name})` : ""}` });
       }

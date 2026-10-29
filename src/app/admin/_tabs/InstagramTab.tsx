@@ -336,7 +336,7 @@ function InstagramManager() {
               <option value="">AI persona: global default</option>
               {agents.map(a => <option key={a.id} value={a.id}>AI persona: {a.name}</option>)}
             </select>
-            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this account answers from KB docs with this tag first, falling back to the full knowledge base. Tag docs in the AI Knowledge Base tab.">
+            <select className={inp} value={form.kbTag} onChange={e => setForm({ ...form, kbTag: e.target.value })} title="AI on this account answers only from KB docs with this tag. With no tag it reads the whole knowledge base, unless business isolation (AI Hub) is on. Tag docs in the AI Knowledge Base tab.">
               <option value="">Knowledge: global (all docs)</option>
               {kbTags.map(t => <option key={t} value={t}>Knowledge: {t}</option>)}
               {form.kbTag && !kbTags.includes(form.kbTag) && <option value={form.kbTag}>Knowledge: {form.kbTag}</option>}

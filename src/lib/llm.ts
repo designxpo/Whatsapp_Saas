@@ -1,5 +1,5 @@
 import { type KbScope, retrieve } from "./kb";
-import { resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
+import { getAgentById, resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
 import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type ChatMedia } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
 import { downloadRemoteMedia, visionInlineMime } from "./voice";
@@ -9,6 +9,7 @@ import { syncLeadProfile } from "./leadsquared";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
+import { getIsolation, NEUTRAL_AGENT } from "./isolation";
 import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
 import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
@@ -545,7 +546,7 @@ export async function retrieveForReply(
 // so tools that change something — booking or cancelling a table — may run. Drafts
 // for a human, tests, simulators and public comment replies leave it off and get
 // read-only tools: drafting a suggestion must never book anything.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean } = {}): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -564,7 +565,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean } = {}): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -582,8 +583,14 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   const hasVisionMedia = mediaTurns.length > 0;
 
   // Agent persona + function tools (both optional — defaults preserve old behavior).
+  // A partitioned workspace never falls back to another business's persona or
+  // library (isolation.ts). `unscoped` is for the owner's own dry-run tools,
+  // which have no channel to speak for.
+  const iso = opts.unscoped ? { mode: "off" as const, active: false } : await getIsolation(tenantId);
   const [agent, functions] = await Promise.all([
-    resolveAgent(agentId, tenantId).catch(() => null),
+    iso.active
+      ? (agentId ? getAgentById(agentId, tenantId).catch(() => null) : Promise.resolve(null)).then(a => a ?? NEUTRAL_AGENT)
+      : resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
   // A restaurant linked to Mezmitra: the live menu and table booking come from
@@ -606,7 +613,13 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   // schedule in another) rather than a thin single-chunk summary.
   let chunks: { content: string; similarity: number }[] = [];
   try {
-    chunks = await retrieveForReply(history, tenantId, primaryKbTag, query);
+    if (iso.active) {
+      // A channel's tag is a boundary: no tag → nothing to answer from, and a
+      // tag never widens to the other businesses' documents.
+      const sc: KbScope = primaryKbTag && typeof primaryKbTag === "object" ? primaryKbTag : { tag: (primaryKbTag as string | null) ?? null, strict: false };
+      chunks = sc.tag ? await retrieveForReply(history, tenantId, { tag: sc.tag, strict: true }, query) : [];
+      console.log(JSON.stringify({ tag: "isolation", persona: agent === NEUTRAL_AGENT ? "neutral" : "pinned", knowledge: sc.tag ?? "none", chunks: chunks.length }));
+    } else chunks = await retrieveForReply(history, tenantId, primaryKbTag, query);
   } catch (err) {
     console.error("[llm] retrieve failed:", err);
   }
@@ -923,6 +936,8 @@ export async function composeFollowup(
 export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", platform: Platform = "whatsapp"): Promise<string> {
   try {
     if (!(await isToneEnabled(tenantId))) return answer;
+    // Partitioned workspace: a channel with no persona of its own has none to speak in.
+    if (!agentId && (await getIsolation(tenantId)).active) return answer;
     const agent = await resolveAgent(agentId ?? null, tenantId);
     if (!agent?.persona?.trim()) return answer;
 

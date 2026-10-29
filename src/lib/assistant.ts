@@ -2,6 +2,7 @@ import {
   getConversation, getConvHistory, appendConvMessage, touchOutbound, setConversationStatus,
   claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
+import { getIsolation } from "./isolation";
 import { generateReply, standaloneQuestion } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
@@ -161,9 +162,12 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // "fees?". The raw message still drives the memory layer and the language
     // of the reply. A file turn skips the text layers, so it is not worked out.
     const question = lastUserMsg && !lastHasMedia ? await standaloneQuestion(history, conv.tenantId) : lastUserMsg;
+    // Partitioned workspace: personas never cross between channels (no auto-routing) and a
+    // channel with no knowledge tag has no shared FAQ / cache to read (isolation.ts).
+    const iso = await getIsolation(conv.tenantId);
     let queryEmbedding: number[] | null = null;
     try {
-      if (lastUserMsg && await isAutoRouteEnabled(conv.tenantId)) {
+      if (lastUserMsg && !iso.active && await isAutoRouteEnabled(conv.tenantId)) {
         queryEmbedding = await embedQuery(question, conv.tenantId).catch(() => null);
         if (queryEmbedding) {
           const pick = await pickAgentForQuery(queryEmbedding, agentId, conv.tenantId);
@@ -177,7 +181,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     } catch (e) { console.error("[assistant] auto-route:", e); }
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
-    if (lastUserMsg && !lastHasMedia) {
+    if (lastUserMsg && !lastHasMedia && !(iso.active && !kbTag)) {
       const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, lookup: question, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag, platform: conv.platform });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
