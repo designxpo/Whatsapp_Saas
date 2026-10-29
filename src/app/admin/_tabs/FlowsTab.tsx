@@ -2,6 +2,7 @@
 
 // Chatbot Flows tab (+ its sidebar rail) — extracted from admin/page.tsx,
 // lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Trash2 } from "lucide-react";
@@ -79,8 +80,7 @@ function FlowsTab() {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Chatbot Flows</h2>
-        <p className="text-sm text-slate-500">Drag-and-drop conversation flows triggered by keywords (e.g. &quot;hi&quot;, &quot;menu&quot;). Anything a flow can&apos;t handle falls through to the AI assistant — never a dead-end.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Chatbot Flows</h2><PageInfo>Drag-and-drop conversation flows triggered by keywords (e.g. &quot;hi&quot;, &quot;menu&quot;). Anything a flow can&apos;t handle falls through to the AI assistant — never a dead-end.</PageInfo></div>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

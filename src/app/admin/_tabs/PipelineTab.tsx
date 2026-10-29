@@ -2,6 +2,7 @@
 
 // Sales Pipeline — WhatsApp-native Kanban (stage-on-contact). Extracted as its
 // own lazy-loaded tab. Tenant scoping is handled server-side by the APIs.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { KanbanSquare, GripVertical, Plus, Trash2, X, Settings, Loader2, ChevronLeft, ChevronRight, ExternalLink, Check } from "lucide-react";
 import { inp, type GoTo } from "../_shared";
@@ -152,8 +153,7 @@ export default function PipelineTab({ goTo }: { goTo: GoTo }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><KanbanSquare className="w-5 h-5" /> {vocab.pipeline.one}</h2>
-          <p className="text-sm text-slate-500">Drag a {vocab.lead.one.toLowerCase()} between stages. Each card is a {vocab.contact.one.toLowerCase()} with their latest WhatsApp message — moving it can auto-tag, start a {vocab.sequence.one.toLowerCase()}, and sync the stage to LeadSquared. {total} {(total === 1 ? vocab.lead.one : vocab.lead.many).toLowerCase()} on the board.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><KanbanSquare className="w-5 h-5" /> {vocab.pipeline.one}</h2><PageInfo>Drag a {vocab.lead.one.toLowerCase()} between stages. Each card is a {vocab.contact.one.toLowerCase()} with their latest WhatsApp message — moving it can auto-tag, start a {vocab.sequence.one.toLowerCase()}, and sync the stage to LeadSquared. {total} {(total === 1 ? vocab.lead.one : vocab.lead.many).toLowerCase()} on the board.</PageInfo></div>
         </div>
         <button onClick={() => setManage(m => !m)} className="shrink-0 px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Settings className="w-3.5 h-3.5" /> {manage ? "Done" : "Manage stages"}</button>
       </div>

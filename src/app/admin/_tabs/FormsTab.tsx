@@ -2,6 +2,7 @@
 
 // WhatsApp Forms tab (FormsRail + form types + responses + builder) — extracted
 // from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { useVocab } from "@/lib/vocab-client";
 import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshCw, Trash2, X, Calendar } from "lucide-react";
@@ -263,8 +264,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex-1 min-w-0 max-w-4xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2>
-          <p className="text-[13px] text-ink-400">Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat. Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-semibold text-ink-900">WhatsApp Forms</h2><PageInfo>Native forms that open inside WhatsApp — collect name, email, choices and dates without the customer leaving the chat. Answers save to {vocab.contact.one.toLowerCase()} attributes automatically.</PageInfo></div>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />

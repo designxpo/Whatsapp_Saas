@@ -1,4 +1,5 @@
 "use client";
+import { PageInfo } from "@/components/PageInfo";
 import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
 
 // Broadcast tab — manual sends (BroadcastNow), API broadcasting rules, auto-sends
@@ -743,8 +744,7 @@ function ApiBroadcasting() {
     <div className="max-w-4xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2>
-          <p className="text-sm text-slate-500">Your systems fire one event — the rules you define here decide what gets sent, to whom, and when.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">API broadcasting</h2><PageInfo>Your systems fire one event — the rules you define here decide what gets sent, to whom, and when.</PageInfo></div>
         </div>
         <button onClick={() => openEdit()} className="shrink-0 px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2"><Plus className="w-4 h-4" /> New rule</button>
       </div>
@@ -953,8 +953,7 @@ function AutomationsTab() {
   return (
     <div className="max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2>
-        <p className="text-sm text-slate-500">Simple fixed-template triggers (welcome on contact added, legacy named events). For conditional sends with payload variables, windows and caps, use <b>API broadcasting</b>.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Auto-sends</h2><PageInfo>Simple fixed-template triggers (welcome on contact added, legacy named events). For conditional sends with payload variables, windows and caps, use <b>API broadcasting</b>.</PageInfo></div>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">

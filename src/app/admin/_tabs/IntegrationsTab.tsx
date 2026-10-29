@@ -1,6 +1,7 @@
 "use client";
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
@@ -202,8 +203,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="max-w-5xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let Talko act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2><PageInfo><p>Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let Talko act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p><p>Pick a tool below. Most tell Talko when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let Talko act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p></PageInfo></div>
       </div>
 
       {msg && !adding && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}

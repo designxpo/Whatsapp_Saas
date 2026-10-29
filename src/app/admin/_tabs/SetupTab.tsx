@@ -1,6 +1,7 @@
 "use client";
 
 // Setup & status tab — extracted from admin/page.tsx, lazy-loaded.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshCw, X } from "lucide-react";
 import { type Tab } from "../_shared";
@@ -59,8 +60,7 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="max-w-3xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup &amp; status</h2>
-          <p className="text-sm text-slate-500">Connect your channels and AI, then confirm each one is live. Every step is checked in real time.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ListChecks className="w-5 h-5" /> Setup &amp; status</h2><PageInfo>Connect your channels and AI, then confirm each one is live. Every step is checked in real time.</PageInfo></div>
         </div>
         <button onClick={load} disabled={busy} className="shrink-0 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60">
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check

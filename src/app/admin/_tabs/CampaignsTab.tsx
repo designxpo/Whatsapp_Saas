@@ -2,6 +2,7 @@
 
 // Campaign history + detail dashboard (funnel, clicks, replies) — extracted from
 // admin/page.tsx, lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, ArrowLeft, BarChart3, Check, ChevronRight, CircleCheck, Loader2, MessageSquare, MousePointerClick, Reply } from "lucide-react";
 import { type Tab } from "../_shared";
@@ -187,8 +188,7 @@ function CampaignsTab({ goTo }: { goTo: (t: Tab) => void }) {
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2>
-        <p className="text-sm text-slate-500">Click a campaign for its full dashboard — delivery funnel, clicks, replies, and behavioral retargeting.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Campaign history</h2><PageInfo>Click a campaign for its full dashboard — delivery funnel, clicks, replies, and behavioral retargeting.</PageInfo></div>
       </div>
       <div className="space-y-2">
         {campaigns.map(c => (

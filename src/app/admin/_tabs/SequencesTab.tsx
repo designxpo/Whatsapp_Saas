@@ -1,4 +1,5 @@
 "use client";
+import { PageInfo } from "@/components/PageInfo";
 import { previewParts, type TemplateComponent } from "@/lib/templatepreview";
 import { useState, useEffect, useCallback, useRef, Fragment, type Dispatch, type SetStateAction } from "react";
 import { Loader2, Send, Users, History, Zap, Ban, LogOut, UploadCloud, Check, Trash2, Plus, Bot, MessageSquare, Facebook, Database, Sparkles, ShieldCheck, ArrowRight, Globe, FileText, BarChart3, LayoutTemplate, FlaskConical, Home, CircleCheck, Settings, Tag, UserCheck, RefreshCw, Image as ImageIcon, Video, Phone, Smartphone, Link2, Copy, X, GalleryHorizontalEnd, Star, Filter, Download, ChevronLeft, ChevronRight, ArrowLeft, MousePointerClick, Reply, AlertTriangle, ClipboardList, ExternalLink, Search, Megaphone, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, MapPin, Instagram, Workflow, ShoppingBag, TrendingUp, Mic, Paperclip, KanbanSquare, GripVertical, SmilePlus, KeyRound, Building2} from "lucide-react";
@@ -1663,8 +1664,7 @@ export default function SequencesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2>
-          <p className="text-sm text-slate-500">Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Workflow className="w-5 h-5" /> {vocab.sequence.many}</h2><PageInfo>Timed multi-step follow-ups. Triggered by keywords, opt-ins, story replies, abandoned carts, and more — they run automatically and respect the 24-hour window.</PageInfo></div>
         </div>
         <button onClick={() => { setForm({ ...EMPTY_SEQ }); setMsg(null); }} className="shrink-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New {seq1}</button>
       </div>
@@ -1919,8 +1919,7 @@ function CatalogTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2>
-          <p className="text-sm text-slate-500">Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><ShoppingBag className="w-5 h-5" /> Catalog</h2><PageInfo>Products you can send in chat and sell via in-chat checkout. Abandoned carts auto-enroll into your cart-recovery sequence.</PageInfo></div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={makeCheckout} disabled={checkoutBusy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas flex items-center gap-1.5 disabled:opacity-60"><Workflow className="w-3.5 h-3.5" /> {checkoutBusy ? "Creating…" : "Create checkout flow"}</button>

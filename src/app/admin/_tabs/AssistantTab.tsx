@@ -2,6 +2,7 @@
 
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
@@ -145,8 +146,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex-1 min-w-0 max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2>
-          <p className="text-sm text-slate-500">Teach and test the AI here — knowledge base + dry-run testing. Customer conversations live in <b>Live Chat</b>.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Bot className="w-5 h-5" /> AI Knowledge Base</h2><PageInfo>Teach and test the AI here — knowledge base + dry-run testing. Customer conversations live in <b>Live Chat</b>.</PageInfo></div>
         </div>
         <span className={statusBadge(enabled ? "active" : enabled === false ? "paused" : "processing")}>
           {enabled === null ? "status unknown" : enabled ? "● live" : "○ paused"}

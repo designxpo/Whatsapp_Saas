@@ -1,4 +1,5 @@
 "use client";
+import { PageInfo } from "@/components/PageInfo";
 import TrackedLinkAnalytics from "./TrackedLinkAnalytics";
 import { RANGES, DEFAULT_RANGE, type RangeKey } from "@/lib/analytics-range";
 
@@ -219,8 +220,7 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
     <div className="max-w-6xl space-y-5">
       <div className="flex items-end justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2>
-          <p className="text-[13px] text-ink-400">Messaging performance across WhatsApp &amp; Instagram</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-semibold text-ink-900">Analytics overview</h2><PageInfo>Messaging performance across WhatsApp &amp; Instagram</PageInfo></div>
         </div>
         {/* The window every figure below is computed over — and the one its labels
             are written from, so a heading and its numbers cannot disagree. */}

@@ -2,6 +2,7 @@
 
 // AI Hub tab (agents, function-calling, prompts, key) + its sidebar rail —
 // extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2, Zap, Drama } from "lucide-react";
 import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiPromptT, RailCard, StatRow } from "../_shared";
@@ -171,8 +172,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI Hub</h2>
-        <p className="text-sm text-slate-500">Three simple things live here: <b>AI agents</b> — who the AI is when it replies, <b>Lead capture</b> — the details it saves mid-chat, and <b>Writing tools</b> — one-tap rewrites for your team in Live Chat.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Sparkles className="w-5 h-5" /> AI Hub</h2><PageInfo>Three simple things live here: <b>AI agents</b> — who the AI is when it replies, <b>Lead capture</b> — the details it saves mid-chat, and <b>Writing tools</b> — one-tap rewrites for your team in Live Chat.</PageInfo></div>
       </div>
 
       <AiKeyCard />

@@ -146,7 +146,6 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
     <div className="space-y-3">
       <div>
         <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em] flex items-center gap-1.5"><Plug className="w-3.5 h-3.5" /> Add an integration</p>
-        <p className="text-sm text-slate-500">Pick a tool. Most of them tell Talko when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let Talko act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p>
       </div>
 
       {error && <p className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">{error}</p>}
@@ -169,7 +168,7 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
           {visible.map(e => {
             const conn = byKind.get(e.id);
             return (
-              <button key={e.id} onClick={() => setOpen(e.id)}
+              <button key={e.id} onClick={() => setOpen(e.id)} title={e.blurb}
                 className="text-left bg-white border border-line rounded-card p-4 hover:border-brand-500 transition-colors flex flex-col gap-2">
                 <div className="flex items-start gap-3">
                   <Monogram e={e} />
@@ -185,17 +184,12 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Coming next</span>
                   ) : null}
                 </div>
-                <p className="text-xs text-slate-500 flex-1">{e.blurb}</p>
-                <div className="flex flex-wrap gap-1">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700">Sends WhatsApp when something happens</span>
-                  {accountLinks[e.id] && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">+ {accountLinks[e.id].title}{accountLinks[e.id].connected ? " ✓" : ""}</span>}
-                </div>
                 {conn && <p className="text-[11px] text-slate-400 flex items-center gap-1"><Clock className="w-3 h-3" /> Last event {ago(conn.lastEventAt)}</p>}
               </button>
             );
           })}
           {visibleExtras.map(x => (
-            <button key={`extra-${x.kind}`} onClick={() => onOpenAccount?.(x.kind)}
+            <button key={`extra-${x.kind}`} onClick={() => onOpenAccount?.(x.kind)} title={x.blurb}
               className="text-left bg-white border border-line rounded-card p-4 hover:border-brand-500 transition-colors flex flex-col gap-2">
               <div className="flex items-start gap-3">
                 <Monogram e={x} />
@@ -205,7 +199,6 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
                 </div>
                 {x.connected > 0 && <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">{x.connected > 1 ? `${x.connected} connected` : "Connected"}</span>}
               </div>
-              <p className="text-xs text-slate-500 flex-1">{x.blurb}</p>
             </button>
           ))}
         </div>

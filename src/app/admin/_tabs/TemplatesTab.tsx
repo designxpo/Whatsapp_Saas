@@ -2,6 +2,7 @@
 
 // WhatsApp message templates (builder + library) — extracted from admin/page.tsx,
 // lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Copy, FileText, GalleryHorizontalEnd, Loader2, MessageSquare, MousePointerClick, Phone, Plus, RefreshCw, Star, Trash2, UploadCloud, Video, Image as ImageIcon, Link2, X, Sparkles, Pencil } from "lucide-react";
 import { inp, ChannelSelect } from "../_shared";
@@ -432,8 +433,7 @@ function TemplatesTab() {
     <div className="max-w-5xl space-y-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2>
-          <p className="text-sm text-slate-500">Build templates per Meta&apos;s guidelines — text, media headers, buttons, or carousels. Only APPROVED templates can be broadcast.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Template Messages</h2><PageInfo>Build templates per Meta&apos;s guidelines — text, media headers, buttons, or carousels. Only APPROVED templates can be broadcast.</PageInfo></div>
         </div>
         <div className="flex gap-2 shrink-0 items-center">
           <ChannelSelect value={channelId} onChange={setChannelId} allLabel="Number: default" className={`${inp} !py-2 text-xs`} />

@@ -4,6 +4,7 @@
 // its own set of per-source tracked links + QR codes, so every chat's origin
 // is attributed. A tenant can run e.g. a PPC number and an organic number
 // side by side, each with its own sources.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { useVocab } from "@/lib/vocab-client";
 import { inp, RailCard, StatRow } from "../_shared";
@@ -89,8 +90,7 @@ function HandleHubTab() {
     <div className="flex gap-6 items-start">
       <div className="flex-1 min-w-0 max-w-2xl space-y-5">
         <div>
-          <h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2>
-          <p className="text-sm text-slate-500">Branded WhatsApp entry points — with a tracked link + QR per source, so you know exactly which QR, ad, or post started each conversation. Run this on as many WhatsApp numbers as you like.</p>
+          <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2><PageInfo>Branded WhatsApp entry points — with a tracked link + QR per source, so you know exactly which QR, ad, or post started each conversation. Run this on as many WhatsApp numbers as you like.</PageInfo></div>
         </div>
 
         {err && <p className="text-xs text-red-500">{err}</p>}

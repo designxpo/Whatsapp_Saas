@@ -3,6 +3,7 @@
 // Settings: workspace rail + plan/usage, WhatsApp numbers, team, activity log,
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
+import { PageInfo } from "@/components/PageInfo";
 import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
@@ -2160,8 +2161,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Settings</h2>
-        <p className="text-sm text-slate-500">WhatsApp numbers, automatic messages, and canned responses.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><PageInfo>WhatsApp numbers, automatic messages, and canned responses.</PageInfo></div>
       </div>
 
       <UsageCard />

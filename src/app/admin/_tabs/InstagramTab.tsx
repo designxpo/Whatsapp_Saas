@@ -1,6 +1,7 @@
 "use client";
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
@@ -13,8 +14,7 @@ function InstagramTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Instagram className="w-5 h-5 text-pink-600" /> Instagram</h2>
-        <p className="text-sm text-slate-500">Auto-reply to Instagram DMs with your AI, and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs, one reply per comment).</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Instagram className="w-5 h-5 text-pink-600" /> Instagram</h2><PageInfo>Auto-reply to Instagram DMs with your AI, and turn post comments into DMs — all within Meta&apos;s rules (24-hour window, no cold DMs, one reply per comment).</PageInfo></div>
       </div>
 
       {/* What you need to connect */}

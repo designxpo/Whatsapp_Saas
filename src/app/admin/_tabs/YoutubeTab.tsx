@@ -3,6 +3,7 @@
 // YouTube (dedicated section) — a third comment-automation channel alongside
 // Instagram & Facebook. YouTube has no DMs, so automation here is public-reply +
 // moderation only. Mirrors InstagramTab's reply-only mode.
+import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert, RefreshCw } from "lucide-react";
 import { inp, type ChannelRow } from "../_shared";
@@ -14,8 +15,7 @@ function YoutubeTab() {
   return (
     <div className="max-w-3xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2>
-        <p className="text-sm text-slate-500">Auto-reply to comments on your videos and moderate spam — grounded in your AI persona and knowledge base. YouTube has no DMs, so this is public replies + moderation only.</p>
+        <div className="flex items-center gap-1.5"><h2 className="text-xl font-extrabold text-brand-dark flex items-center gap-2"><Youtube className="w-5 h-5 text-red-600" /> YouTube</h2><PageInfo>Auto-reply to comments on your videos and moderate spam — grounded in your AI persona and knowledge base. YouTube has no DMs, so this is public replies + moderation only.</PageInfo></div>
       </div>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
