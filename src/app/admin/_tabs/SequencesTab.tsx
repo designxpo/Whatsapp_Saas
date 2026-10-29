@@ -11,6 +11,7 @@ import { LANES, AIDA_STAGES, AIDA_LABELS, type Lane, type AidaStage } from "@/li
 import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
 import { inp, ChannelSelect, useChannelList, ImageUpload } from "../_shared";
 import { useVocab } from "@/lib/vocab-client";
+import { Drawer } from "@/components/overlay";
 
 // The workspace's own nouns, lower-cased for mid-sentence use (1 = singular, N = plural).
 function useWords() {
@@ -1658,7 +1659,6 @@ export default function SequencesTab() {
   const setStep = (i: number, patch: Partial<StepDraft>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, ...patch } : s) } : f);
   const setStepAction = (i: number, patch: Partial<StepDraft["action"]>) => setForm(f => f ? { ...f, steps: f.steps.map((s, j) => j === i ? { ...s, action: { ...s.action, ...patch } } : s) } : f);
 
-  const editorRef = useRevealOnOpen(!!form);
   return (
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
@@ -1691,8 +1691,8 @@ export default function SequencesTab() {
       ))}
       {!seqs.length && !form && <p className="text-xs text-ink-400">No {seqN} yet.</p>}
 
-      {form && (
-        <div ref={editorRef} className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit sequence" : "New sequence"}>
+        {form && (<div className="flex flex-col xl:flex-row gap-5">
           <div className="flex-1 min-w-0 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <SeqField label="Name it" hint="Only you see this.">
@@ -1835,8 +1835,8 @@ export default function SequencesTab() {
           </div>
           </div>
           <SequencePreview platform={form.platform} steps={form.steps} channelId={form.channelId} />
-        </div>
-      )}
+        </div>)}
+      </Drawer>
 
       <FunnelCoverage seqs={seqs} />
       <SeqAnalyticsPanel
@@ -1915,7 +1915,6 @@ function CatalogTab() {
     load();
   }
 
-  const editorRef = useRevealOnOpen(!!form);
   return (
     <div className="max-w-5xl space-y-5">
       <div className="flex items-center justify-between">
@@ -1944,8 +1943,8 @@ function CatalogTab() {
       ))}
       {!products.length && !form && <p className="text-xs text-ink-400">No products yet.</p>}
 
-      {form && (
-        <div ref={editorRef} className="bg-white rounded-card border-2 border-brand-700/30 p-4 flex flex-col xl:flex-row gap-5">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit product" : "Add product"}>
+        {form && (<div className="flex flex-col xl:flex-row gap-5">
           <div className="flex-1 space-y-2 min-w-0">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -1993,25 +1992,10 @@ function CatalogTab() {
                 : <>Native catalog card shows WhatsApp’s own “View” button. Add a button link above to send a custom card with your label instead.</>}
             </p>
           </div>
-        </div>
-      )}
+        </div>)}
+      </Drawer>
     </div>
   );
 }
 
 // ── Sales Pipeline (Kanban; stage-on-contact) ─────────────────────────────────
-
-function useRevealOnOpen<T extends HTMLElement = HTMLDivElement>(open: boolean) {
-  const ref = useRef<T | null>(null);
-  const wasOpen = useRef(false);
-  useEffect(() => {
-    // Only on the transition into open. Reacting to every render would drag
-    // the page back to the top of the form on every keystroke.
-    if (open && !wasOpen.current && ref.current) {
-      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      ref.current.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-    }
-    wasOpen.current = open;
-  }, [open]);
-  return ref;
-}

@@ -6,6 +6,7 @@ import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Se
 import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
@@ -326,8 +327,8 @@ function InstagramManager() {
         </div>
       );})}
 
-      {form && (
-        <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit Instagram account" : "Connect an Instagram account"}>
+        {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. @yourbrand" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Instagram account id (IG professional id)" value={form.igUserId} onChange={e => setForm({ ...form, igUserId: e.target.value.trim() })} />
@@ -353,8 +354,8 @@ function InstagramManager() {
           </div>
           <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. Talko handles the connection and routing.</p>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!channels.length && !form && (
         <div className="text-xs text-ink-400 space-y-1">
           <p>No Instagram accounts connected yet.</p>
@@ -477,8 +478,8 @@ function InstagramManager() {
           </div>
         )}
 
-        {ruleForm && (
-          <div className="border-2 border-pink-500/30 rounded-control p-3 space-y-2">
+        <Drawer open={!!ruleForm} onClose={() => setRuleForm(null)} width="lg" title="Comment auto-reply rule">
+          {ruleForm && (<div className="space-y-3">
             {channels.length > 1 && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="px-2 py-1 rounded-control bg-pink-50 text-pink-600 font-bold flex items-center gap-1"><Instagram className="w-3.5 h-3.5" /> {channels.find(c => c.id === ruleForm.channelId)?.name ?? "Account"}</span>
@@ -584,8 +585,8 @@ function InstagramManager() {
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
             {msg && <p className="text-xs text-red-500">{msg}</p>}
-          </div>
-        )}
+          </div>)}
+        </Drawer>
       </div>
       </>
       )}

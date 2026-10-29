@@ -14,6 +14,7 @@ import { useVocab } from "@/lib/vocab-client";
 import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight, Users } from "lucide-react";
 import { inp, type Tab, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
+import { Drawer, Modal } from "@/components/overlay";
 
 type ContactRow = { id: string; phone: string; name: string; email: string | null; tags: string[]; status: string; source: string | null; channelId?: string | null; createdAt: string };
 
@@ -308,8 +309,8 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <button onClick={exportCsv} className={toolbarBtn} title="Export selected (or current view) as CSV"><Download className="w-4 h-4" /> Export</button>
       </div>
 
-      {showBatches && (
-        <div className="bg-white rounded-card border border-line p-5 space-y-4">
+      <Drawer open={showBatches} onClose={() => setShowBatches(false)} width="xl" title="Batches">
+        {showBatches && (<div className="space-y-3">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <p className="text-sm font-bold text-brand-dark">Batches</p>
@@ -476,8 +477,9 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </div>
             );
           })()}
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Drawer>
 
       {showFilter && (() => {
         const chip = "px-2.5 py-1.5 rounded-lg border border-line text-xs font-semibold text-slate-500 hover:bg-slate-50";
@@ -570,19 +572,20 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
         );
       })()}
 
-      {showAdd && (
-        <div className="bg-white rounded-card border border-line p-4 flex items-end gap-2 flex-wrap">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} size="sm" title="Add a contact">
+        {showAdd && (<div className="space-y-3">
           <div><p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Mobile *</p><input className={inp} placeholder="919876543210" value={addPhone} onChange={e => setAddPhone(e.target.value)} /></div>
           <div><p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Name</p><input className={inp} placeholder="Asha Verma" value={addName} onChange={e => setAddName(e.target.value)} /></div>
           <div><p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Tags</p><input className={inp} placeholder="leads; webinar-june" value={addTags} onChange={e => setAddTags(e.target.value)} /></div>
           <button onClick={addContact} disabled={importing} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save
           </button>
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Modal>
 
-      {showImport && (
-        <div className="bg-white rounded-card border border-line p-4 space-y-3">
+      <Drawer open={showImport} onClose={() => setShowImport(false)} width="lg" title="Import contacts">
+        {showImport && (<div className="space-y-3">
           <p className="text-[11px] font-bold text-slate-400 uppercase">Bulk import — upload a CSV, columns are mapped automatically</p>
           {!csvPreview ? (
             <>
@@ -654,8 +657,9 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </button>
             </div>
           )}
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Drawer>
 
       {msg && <p className="text-xs text-slate-500">{msg}</p>}
 

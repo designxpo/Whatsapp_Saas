@@ -456,12 +456,14 @@ function PaywallModal({ state, message, onClose }: { state: AccountState; messag
 
 // ── Home: setup checklist + how the platform works ───────────────────────────
 interface SetupStep { ok: boolean; label: string; detail: string }
+// The setup checklist (steps … live) is sent to the platform owner only;
+// counts and router go to everyone.
 interface SystemStatus {
-  steps: Record<string, SetupStep>;
-  completed: number;
-  totalRequired: number;
-  live: boolean;
-  router: { enabled: boolean; faqEntries: number };
+  steps?: Record<string, SetupStep>;
+  completed?: number;
+  totalRequired?: number;
+  live?: boolean;
+  router?: { enabled: boolean; faqEntries: number };
   counts: { contacts: number; kbDocuments: number; conversations: number; needsAttention: number };
 }
 
@@ -542,7 +544,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
         </div>
       </section>
 
-      {s?.router.enabled && (
+      {s?.router?.enabled && (
         <p className="text-xs text-slate-400 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Knowledge Router active — {s.router.faqEntries} FAQs answer instantly before the AI is called.</p>
       )}
     </div>

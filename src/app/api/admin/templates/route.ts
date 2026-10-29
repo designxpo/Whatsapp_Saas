@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchTemplates, createTemplate, deleteTemplate, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
+import { fetchTemplates, createTemplate, editTemplate, deleteTemplate, EDITABLE_TEMPLATE_STATUSES, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
 import { credsFor, explicitDefaultChannel, type ChannelCreds } from "@/lib/channels";
-import { setTemplateMeta, siteUrl, trackingOrigin, type TrackedUrl } from "@/lib/links";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { setTemplateMeta, getTrackedUrls, siteUrl, trackingOrigin, type TrackedUrl } from "@/lib/links";
+import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -114,6 +114,62 @@ export async function POST(req: Request) {
   }
   logActivity(await currentUser(), "template.create", `${name} (${r.status ?? "PENDING"})`);
   return NextResponse.json({ success: true, id: r.id, status: r.status, clickTracking: trackedUrls.length > 0 });
+}
+
+// A link button that already carries a tracked /r/{{1}} link (click tracking
+// was on when it was created).
+const isTrackedLink = (b: TemplateButton) => b.type === "URL" && /\/r\/\{\{1\}\}$/.test(b.url.trim());
+
+// PATCH — edit an existing template in place. Body: { id, channelId?,
+// category?, bodyText, footerText?, exampleValues?, header…, buttons?,
+// carouselCards? } — the same fields as POST, minus name and language, which
+// Meta never lets change.
+//
+// The template is looked up on the workspace's own WABA rather than trusted
+// from the request: its name, language and status come from Meta, so an edit
+// can't rename anything or reach a template on another account.
+export async function PATCH(req: Request) {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  let body: Omit<CreateTemplateInput, "name" | "language" | "category"> & { id?: string; channelId?: string | null; category?: string };
+  try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
+  if (!body.id || !/^\d+$/.test(body.id)) return NextResponse.json({ error: "id required" }, { status: 400 });
+  if (!body.bodyText?.trim()) return NextResponse.json({ error: "bodyText is required" }, { status: 400 });
+
+  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const resolved = await tenantChannel(tid, body.channelId);
+  if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
+  const channel = resolved.channel;
+
+  let current;
+  try {
+    current = (await fetchTemplates(channel)).find(t => t.id === body.id);
+  } catch (err) {
+    return NextResponse.json({ error: `Could not load templates: ${err instanceof Error ? err.message : err}` }, { status: 502 });
+  }
+  if (!current) return NextResponse.json({ error: "That template isn't on this number's WhatsApp account any more — refresh the list." }, { status: 404 });
+  if (!EDITABLE_TEMPLATE_STATUSES.includes(current.status)) {
+    return NextResponse.json({ error: `Meta only allows editing an approved, rejected or paused template. This one is ${current.status.toLowerCase()} — wait for Meta's decision.` }, { status: 409 });
+  }
+
+  // Click tracking maps each tracked button by its POSITION to the real URL.
+  // Moving, adding or removing a tracked button would send every click to the
+  // wrong page, so an edit must leave them where they are.
+  const tracked = await getTrackedUrls(current.name, tid);
+  const trackedNow = (body.buttons ?? []).flatMap((b, i) => (isTrackedLink(b) ? [i] : []));
+  if (tracked.length && tracked.map(t => t.index).join(",") !== trackedNow.join(",")) {
+    return NextResponse.json({ error: "This template has click-tracked link buttons. Keep them in the same place, or duplicate the template to change them." }, { status: 400 });
+  }
+
+  // Category can change only while the template is not approved (Meta's rule).
+  const category = body.category && body.category !== current.category && current.status !== "APPROVED" ? body.category : undefined;
+  const r = await editTemplate(current.id!, {
+    ...body,
+    name: current.name, language: current.language,
+    category: current.category as CreateTemplateInput["category"],
+  }, { category }, channel);
+  if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
+  logActivity(await currentUser(), "template.edit", `${current.name} (${current.language}, was ${current.status})`);
+  return NextResponse.json({ success: true, name: current.name, wasStatus: current.status });
 }
 
 // DELETE — remove a template by name. Body: { name, channelId? }

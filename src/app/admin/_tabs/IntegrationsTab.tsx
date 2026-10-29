@@ -2,9 +2,11 @@
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
 import { useState, useEffect, useCallback } from "react";
-import { Copy, Loader2, Trash2, ArrowLeft, Check, X } from "lucide-react";
+import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
 import { type Tab, inp, ImgFallback } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
+import InboundIntegrations from "@/components/inbound-integrations";
 import { useVocab } from "@/lib/vocab-client";
 
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
@@ -183,10 +185,10 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="max-w-5xl space-y-5">
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2>
-        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync {vocab.lead.many.toLowerCase()} to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com.</p>
+        <p className="text-sm text-slate-500">Connect the tools you already use — no code required. Send events to Zapier/Make/n8n/Slack/Teams, sync {vocab.lead.many.toLowerCase()} to HubSpot, Pipedrive or LeadSquared, take payments via Razorpay or Stripe, import a Shopify/WooCommerce catalog, or let customers book via Cal.com. Below that, Incoming events turns your store&apos;s orders, payments, bookings and new leads into WhatsApp messages.</p>
       </div>
 
-      {msg && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
+      {msg && !adding && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
 
       {newSecret && (
         <div className="bg-amber-50 border border-amber-200 rounded-card p-4 space-y-1.5">
@@ -247,17 +249,43 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* LSQ → portal inbound webhook: only meaningful once LSQ is connected */}
       {!!items?.some(i => i.kind === "leadsquared") && <LsqInboundCard />}
 
-      {/* Add an integration — browse the logo catalog, then set up the chosen one */}
-      {adding ? (
-        <section className="bg-white rounded-card border border-line p-5 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <Logo kind={form.kind} logo={CATALOG.find(c => c.kind === form.kind)?.logo ?? null} />
-            <div className="min-w-0 flex-1">
-              <h3 className="text-sm font-bold text-ink-900 truncate">Set up {KIND_LABELS[form.kind]}</h3>
-              <p className="text-[11px] text-slate-500 truncate">{CATALOG.find(c => c.kind === form.kind)?.blurb}</p>
-            </div>
-            <button onClick={() => { setAdding(false); setMsg(null); setNewSecret(null); }} className="text-[11px] font-bold text-brand-700 hover:underline flex items-center gap-0.5 shrink-0"><ArrowLeft className="w-3.5 h-3.5" /> All integrations</button>
+      {/* Add an integration — browse the logo catalog; the chosen one opens in a side panel */}
+      <div className="space-y-2">
+        <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Add an integration</p>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {CATALOG.map(c => {
+            const conns = (items ?? []).filter(i => i.kind === c.kind);
+            return (
+              <button key={c.kind} onClick={() => openSetup(c.kind)} className="text-left bg-white rounded-card border border-line p-4 flex flex-col gap-2 hover:border-brand-500 hover:shadow-sm transition-colors">
+                <div className="flex items-start justify-between gap-2">
+                  <Logo kind={c.kind} logo={c.logo} />
+                  {!!conns.length && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">{conns.length > 1 ? `${conns.length} connected` : "Connected"}</span>}
+                </div>
+                <p className="text-sm font-bold text-ink-900 leading-tight">{KIND_LABELS[c.kind]}</p>
+                <p className="text-[11px] text-slate-500 leading-snug">{c.blurb}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Drawer open={adding} onClose={() => { setAdding(false); setMsg(null); setNewSecret(null); }} width="md"
+        title={<span className="flex items-center gap-3"><Logo kind={form.kind} logo={CATALOG.find(c => c.kind === form.kind)?.logo ?? null} />Set up {KIND_LABELS[form.kind]}</span>}
+        subtitle={CATALOG.find(c => c.kind === form.kind)?.blurb}
+        footer={
+          <div className="flex items-center gap-2">
+            <button onClick={create} disabled={busy || (isEventKind && !isRestaurant && !form.events.length) || (
+              isRestaurant ? !form.token.trim()
+              : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
+              : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
+              : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
+              : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
+              : !form.url.trim()
+            )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
+            <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
           </div>
+        }>
+        <div className="space-y-3">
           <input className={`${inp} w-full`} placeholder={isToken ? `Name (e.g. ${KIND_LABELS[form.kind]})` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           {isToken ? (
             <div className="space-y-2">
@@ -310,38 +338,13 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               ))}
             </div>
           </div>}
-          <div className="flex items-center gap-2">
-            <button onClick={create} disabled={busy || (isEventKind && !isRestaurant && !form.events.length) || (
-              isRestaurant ? !form.token.trim()
-              : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
-              : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
-              : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
-              : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
-              : !form.url.trim()
-            )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
-            <button onClick={() => { setAdding(false); setMsg(null); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Cancel</button>
-          </div>
-        </section>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.06em]">Add an integration</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {CATALOG.map(c => {
-              const conns = (items ?? []).filter(i => i.kind === c.kind);
-              return (
-                <button key={c.kind} onClick={() => openSetup(c.kind)} className="text-left bg-white rounded-card border border-line p-4 flex flex-col gap-2 hover:border-brand-500 hover:shadow-sm transition-colors">
-                  <div className="flex items-start justify-between gap-2">
-                    <Logo kind={c.kind} logo={c.logo} />
-                    {!!conns.length && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">{conns.length > 1 ? `${conns.length} connected` : "Connected"}</span>}
-                  </div>
-                  <p className="text-sm font-bold text-ink-900 leading-tight">{KIND_LABELS[c.kind]}</p>
-                  <p className="text-[11px] text-slate-500 leading-snug">{c.blurb}</p>
-                </button>
-              );
-            })}
-          </div>
+          {msg && !msg.ok && <p className="text-[13px] font-medium text-red-600"><X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />{msg.text}</p>}
         </div>
-      )}
+      </Drawer>
+
+      <div className="border-t border-line pt-5">
+        <InboundIntegrations />
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAler
 import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
 
 function YoutubeTab() {
   return (
@@ -296,8 +297,8 @@ function YoutubeManager() {
         );
       })}
 
-      {form && (
-        <div className="border-2 border-red-500/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit YouTube channel" : "Connect a YouTube channel"}>
+        {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. My Channel" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="YouTube channel id (UC…)" value={form.ytChannelId} onChange={e => setForm({ ...form, ytChannelId: e.target.value.trim() })} />
@@ -322,8 +323,8 @@ function YoutubeManager() {
           </div>
           <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Comments are polled every few minutes (YouTube has no live webhook) and paced to stay within the daily limit.</p>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!channels.length && !form && <p className="text-xs text-ink-400">No YouTube channels connected yet.</p>}
 
       {/* Comment automation — public reply + moderation */}
@@ -375,8 +376,8 @@ function YoutubeManager() {
           </div>
         )}
 
-        {ruleForm && (
-          <div className="border-2 border-red-500/30 rounded-control p-3 space-y-2">
+        <Drawer open={!!ruleForm} onClose={() => setRuleForm(null)} width="lg" title="Comment auto-reply rule">
+          {ruleForm && (<div className="space-y-3">
             {channels.length > 1 && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="px-2 py-1 rounded-control bg-red-50 text-red-600 font-bold flex items-center gap-1"><Youtube className="w-3.5 h-3.5" /> {channels.find(c => c.id === ruleForm.channelId)?.name ?? "Channel"}</span>
@@ -459,8 +460,8 @@ function YoutubeManager() {
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
             {msg && <p className="text-xs text-red-500">{msg}</p>}
-          </div>
-        )}
+          </div>)}
+        </Drawer>
       </div>
     </section>
   );

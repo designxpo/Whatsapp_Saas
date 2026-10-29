@@ -8,6 +8,7 @@ import { ArrowRight, Check, ClipboardList, ExternalLink, Loader2, Plus, RefreshC
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, btnPrimary, RailCard, StatRow, ChannelSelect } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
 
 function FormsRail({ goTo, forms }: { goTo: (t: Tab) => void; forms: { status: string }[] }) {
   const { vocab } = useVocab();
@@ -281,8 +282,8 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
       {msg && <div className="bg-brand-50 border border-brand-100 rounded-control px-4 py-3 text-sm text-brand-900">{msg}</div>}
 
-      {showBuilder && (
-        <div className="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
+      <Drawer open={showBuilder} onClose={() => setShowBuilder(false)} width="xl" title="WhatsApp form">
+        {showBuilder && (<div className="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
           <section className="bg-white rounded-card border border-line p-5 space-y-4">
             <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{editingId ? "Edit form" : cloneNote ? "Edit a copy" : "New form"}</p>
             {cloneNote && <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">Editing a copy of <b>{cloneNote}</b>. Published forms can&apos;t be changed on WhatsApp, so this saves as a <b>new</b> form.</p>}
@@ -347,8 +348,9 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Drawer>
 
       <div className="bg-white rounded-card border border-line divide-y divide-line">
         {forms.map(f => (

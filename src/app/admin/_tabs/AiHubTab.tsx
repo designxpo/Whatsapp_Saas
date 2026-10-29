@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2, Zap, Drama } from "lucide-react";
 import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiPromptT, RailCard, StatRow } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
 
 function AiHubRail({ goTo, agents, fns, prompts, autoRoute, tone }: { goTo: (t: Tab) => void; agents: AiAgentT[]; fns: AiFunctionT[]; prompts: AiPromptT[]; autoRoute: boolean | null; tone: boolean | null }) {
   return (
@@ -222,8 +223,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
         ))}
         {agents.length === 0 && !agentFormOpen && <p className="text-center text-slate-400 text-sm py-4">No agents yet — hit <b>New agent</b>, describe the job in one line, and Generate writes the personality for you.</p>}
-        {agentFormOpen && (
-        <div className="border-t border-slate-100 pt-3 space-y-3">
+        <Drawer open={agentFormOpen} onClose={() => setAgentFormOpen(false)} width="lg" title="AI agent">
+        {agentFormOpen && (<div className="space-y-3">
           <div className="space-y-1.5">
             <p className="text-[11px] font-bold text-ink-700">1 · Who is this agent?</p>
             <input className={`${inp} w-full`} placeholder="Name — e.g. Maya" value={agent.name} onChange={e => setAgent({ ...agent, name: e.target.value })} />
@@ -255,8 +256,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600"><input type="checkbox" checked={agent.active} onChange={e => setAgent({ ...agent, active: e.target.checked })} /> make this the default agent</label>
             <button onClick={() => { setAgent(EMPTY_AGENT); setAgentFormOpen(false); }} className="text-xs text-slate-400 font-bold">cancel</button>
           </div>
-        </div>
-        )}
+        </div>)}
+        </Drawer>
       </section>
       </>}
 
@@ -286,8 +287,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           </div>
         ))}
-        {fn && (
-          <div className="border-t border-slate-100 pt-3 space-y-2">
+        <Drawer open={!!fn} onClose={() => setFn(null)} width="lg" title="AI function">
+          {fn && (<div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <input className={inp} placeholder="function_name (e.g. capture_lead)" value={fn.name} onChange={e => setFn({ ...fn, name: e.target.value })} />
               <input className={inp} placeholder="Webhook URL (optional)" value={fn.webhookUrl ?? ""} onChange={e => setFn({ ...fn, webhookUrl: e.target.value || null })} />
@@ -310,8 +311,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
               <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600"><input type="checkbox" checked={fn.active} onChange={e => setFn({ ...fn, active: e.target.checked })} /> active</label>
               <button onClick={() => setFn(null)} className="text-xs text-slate-400 font-bold">cancel</button>
             </div>
-          </div>
-        )}
+          </div>)}
+        </Drawer>
       </section>
 
       </>}

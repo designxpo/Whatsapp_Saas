@@ -81,3 +81,17 @@ export function bodyParameters(values: string[], tokens: string[]): BodyParam[] 
   });
   return out;
 }
+
+/**
+ * Why a body's variables would be refused, or null. Meta accepts {{1}}, {{2}}…
+ * or lowercase_with_underscores names, never both in one template. Anything
+ * else — "{{Student Name}}" — is not a variable to us either (PLACEHOLDER
+ * reads only \w+), so no sample is sent and Meta rejects the submission.
+ */
+export function bodyVariableError(bodyText: string): string | null {
+  const bad = [...bodyText.matchAll(/\{\{([^{}]*)\}\}/g)].map(m => m[1]).find(v => !/^\s*(\d+|[a-z][a-z0-9_]*)\s*$/.test(v));
+  if (bad !== undefined) return `"{{${bad}}}" isn't a valid variable — use {{1}}, {{2}}… or lowercase_with_underscores like {{student_name}}.`;
+  const tokens = templatePlaceholders(bodyText);
+  if (isNamedFormat(tokens) && tokens.some(t => /^\d+$/.test(t))) return "Use either numbered variables ({{1}}) or named ones ({{student_name}}) in a template, not both.";
+  return null;
+}

@@ -4,7 +4,7 @@ import { fillVars, flattenForTemplate } from "./mergefields";
 import { getTrackedUrls, mintLinks } from "./links";
 import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
-import { templatePlaceholders, bodyParameters } from "./template-params";
+import { templatePlaceholders, bodyParameters, isNamedFormat, bodyVariableError } from "./template-params";
 import { moderateText, collectStrings } from "./moderation";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
@@ -804,16 +804,25 @@ function buttonPayload(b: TemplateButton): Record<string, unknown> {
 
 // Assembles the components array exactly as Meta's message_templates endpoint
 // expects: HEADER → BODY → FOOTER → BUTTONS, or BODY + CAROUSEL for carousels.
+// The body component with Meta's sample values. NAMED templates pair each
+// sample with its name; POSITIONAL ones send them in order.
+function bodyComponent(bodyText: string, exampleValues: string[] | undefined): Record<string, unknown> {
+  const tokens = templatePlaceholders(bodyText);
+  if (!tokens.length || !exampleValues?.length) return { type: "BODY", text: bodyText };
+  if (isNamedFormat(tokens)) {
+    return { type: "BODY", text: bodyText, example: { body_text_named_params: tokens.map((t, i) => ({ param_name: t, example: exampleValues[i] ?? "" })) } };
+  }
+  return { type: "BODY", text: bodyText, example: { body_text: [exampleValues] } };
+}
+
 function buildTemplateComponents(input: CreateTemplateInput): { components?: Record<string, unknown>[]; error?: string } {
   const components: Record<string, unknown>[] = [];
+  const varError = bodyVariableError(input.bodyText);
+  if (varError) return { error: varError };
 
   if (input.carouselCards?.length) {
     if (input.carouselCards.length < 2 || input.carouselCards.length > 10) return { error: "Carousel needs 2–10 cards" };
-    const hasVars = /\{\{\d+\}\}/.test(input.bodyText);
-    components.push({
-      type: "BODY", text: input.bodyText,
-      ...(hasVars && input.exampleValues?.length ? { example: { body_text: [input.exampleValues] } } : {}),
-    });
+    components.push(bodyComponent(input.bodyText, input.exampleValues));
     const cards = [];
     for (const card of input.carouselCards) {
       if (!card.headerHandle) return { error: "Every carousel card needs an uploaded image/video" };
@@ -844,11 +853,7 @@ function buildTemplateComponents(input: CreateTemplateInput): { components?: Rec
     components.push({ type: "HEADER", format: headerType, example: { header_handle: [input.headerHandle] } });
   }
 
-  const hasVars = /\{\{\d+\}\}/.test(input.bodyText);
-  components.push({
-    type: "BODY", text: input.bodyText,
-    ...(hasVars && input.exampleValues?.length ? { example: { body_text: [input.exampleValues] } } : {}),
-  });
+  components.push(bodyComponent(input.bodyText, input.exampleValues));
   if (input.footerText?.trim()) components.push({ type: "FOOTER", text: input.footerText.trim().slice(0, 60) });
 
   if (input.buttons?.length) {
@@ -879,13 +884,57 @@ export async function createTemplate(input: CreateTemplateInput, channel?: Chann
     const res = await fetch(`${GRAPH}/${wabaId}/message_templates`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ name: input.name, language: input.language, category: input.category, components }),
+      body: JSON.stringify({
+        name: input.name, language: input.language, category: input.category, components,
+        ...(isNamedFormat(templatePlaceholders(input.bodyText)) ? { parameter_format: "NAMED" } : {}),
+      }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return { id: data.id as string, status: (data.status as string) ?? "PENDING" };
     return { error: data?.error?.error_user_msg || data?.error?.message || `HTTP ${res.status}` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Meta lets a template be edited only in these states. */
+export const EDITABLE_TEMPLATE_STATUSES = ["APPROVED", "REJECTED", "PAUSED"];
+
+/**
+ * Edits an existing template in place: POST /{template-id}. Meta replaces
+ * EVERY component with the ones sent, so the whole template goes, not a diff.
+ * Name and language can never change; category only while it is not APPROVED.
+ * An approved template can be edited once a day and 10 times in 30 days, and
+ * each edit goes back through Meta's review.
+ */
+export async function editTemplate(
+  templateId: string,
+  input: CreateTemplateInput,
+  opts: { category?: string },
+  channel?: ChannelCreds,
+): Promise<{ success: boolean; error?: string }> {
+  const { token } = getCreds(channel);
+  if (!token) return { success: false, error: "Missing META_WA_ACCESS_TOKEN" };
+  if (!/^\d+$/.test(templateId)) return { success: false, error: "Invalid template id" };
+  const built = buildTemplateComponents(input);
+  if (built.error || !built.components) return { success: false, error: built.error ?? "Invalid template" };
+  // An edit goes through the same content safety filter as a new template —
+  // otherwise editing an approved template would be the way around it.
+  const visible = collectStrings(built.components).join("\n");
+  if (visible && !(await moderateText(visible, { surface: "broadcast_media" })).allowed) {
+    return { success: false, error: "Blocked by the content safety filter — revise the template copy." };
+  }
+  try {
+    const res = await fetch(`${GRAPH}/${templateId}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ components: built.components, ...(opts.category ? { category: opts.category } : {}) }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data?.success !== false) return { success: true };
+    return { success: false, error: data?.error?.error_user_msg || data?.error?.message || `HTTP ${res.status}` };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
 

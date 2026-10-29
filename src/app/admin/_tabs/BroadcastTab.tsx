@@ -9,6 +9,7 @@ import { AlertTriangle, Check, Copy, FlaskConical, Globe, Image as ImageIcon, Lo
 import { adminFetch } from "@/lib/adminfetch";
 import { type Tab, inp, railLoading, RailCard, StatRow, RailBar, ChannelSelect, ImageUpload, useAnalytics, useChannelList } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer } from "@/components/overlay";
 
 const TIER_LABELS: Record<string, string> = {
   TIER_50: "50 / day", TIER_250: "250 / day", TIER_1K: "1,000 / day",
@@ -764,8 +765,8 @@ function ApiBroadcasting() {
         </p>
       </section>
 
-      {editing && (
-        <section className="bg-white rounded-card border-2 border-brand-dark/30 p-5 space-y-4">
+      <Drawer open={!!editing} onClose={() => setEditing(null)} width="lg" title={editing?.id ? "Edit rule" : "New rule"}>
+        {editing && (<section className="space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">{editing.id ? "Edit rule" : "New rule"}</p>
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Rule name, e.g. Demo booked → confirmation" value={editing.name} onChange={e => setEd({ name: e.target.value })} />
@@ -864,8 +865,8 @@ function ApiBroadcasting() {
             </div>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </section>
-      )}
+        </section>)}
+      </Drawer>
 
       <div className="space-y-2">
         {rules.map(r => (

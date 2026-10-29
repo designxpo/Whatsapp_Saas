@@ -11,6 +11,7 @@ import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launc
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
 import { useConfirm } from "@/components/confirm-dialog";
 import { TerminologyCard } from "./TerminologyCard";
+import { Drawer } from "@/components/overlay";
 
 function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   const [teamCount, setTeamCount] = useState<number | null>(null);
@@ -136,8 +137,8 @@ function TeamManager() {
         </div>
       ))}
 
-      {form && (
-        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit team member" : "Add team member"}>
+        {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="email@company.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} disabled={!!form.id} />
             <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -169,8 +170,8 @@ function TeamManager() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!users.length && !form && !notice && <p className="text-xs text-ink-400">No members yet — only the owner account can log in.</p>}
     </section>
   );
@@ -370,8 +371,8 @@ function ChannelsManager() {
 
       {profileFor && <BusinessProfileEditor key={profileFor.id} channelId={profileFor.id} name={profileFor.name} coex={profileFor.coex} onClose={() => setProfileFor(null)} />}
 
-      {form && (
-        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="lg" title={form?.id ? "Edit WhatsApp number" : "Connect a WhatsApp number"}>
+        {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. Sales India" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Phone Number ID (Meta → API Setup)" value={form.phoneId} onChange={e => setForm({ ...form, phoneId: e.target.value.trim() })} />
@@ -409,8 +410,8 @@ function ChannelsManager() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!channels.length && !form && !envMode && <p className="text-xs text-ink-400">No numbers connected yet.</p>}
     </section>
   );
@@ -935,8 +936,8 @@ function CannedTemplatesCard() {
       ))}
       {!list.length && !form && <p className="text-xs text-ink-400">None yet — add “Follow-up” and “Post-call follow-up” to give your team one-click sends.</p>}
 
-      {form && (
-        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="md" title="Quick-reply template">
+        {form && (<div className="space-y-3">
           {channels.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-bold text-ink-400 uppercase tracking-wide shrink-0">Browse templates on</span>
@@ -973,8 +974,9 @@ function CannedTemplatesCard() {
             <button onClick={submitForm} disabled={busy || !form.templateName} className="px-4 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : form.id ? "Save changes" : "Add canned template"}</button>
             <button onClick={() => { setForm(null); setMsg(null); }} className="px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas">Cancel</button>
           </div>
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Drawer>
       {msg && <p className="text-xs text-red-500">{msg}</p>}
     </section>
   );
@@ -1513,8 +1515,8 @@ export function MessengerCard() {
         </div>
       ))}
 
-      {form && (
-        <div className="border-2 border-blue-500/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit Facebook Page" : "Connect a Facebook Page"}>
+        {form && (<div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Label, e.g. Main Page" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
             <input className={inp} placeholder="Facebook Page ID" value={form.pageId} onChange={e => setForm({ ...form, pageId: e.target.value.trim() })} />
@@ -1539,8 +1541,8 @@ export function MessengerCard() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet — add one above to auto-reply to Page messages.</p>}
 
       {/* Comment-to-DM + comment-reply automation both need Advanced Access on
@@ -1633,8 +1635,8 @@ export function MessengerCard() {
           </div>
         )}
 
-        {ruleForm && (
-          <div className="border-2 border-blue-500/30 rounded-control p-3 space-y-2">
+        <Drawer open={!!ruleForm} onClose={() => setRuleForm(null)} width="lg" title="Comment auto-reply rule">
+          {ruleForm && (<div className="space-y-3">
             {pages.length > 1 && (
               <div className="flex items-center gap-2 text-xs">
                 <span className="px-2 py-1 rounded-control bg-blue-50 text-blue-600 font-bold flex items-center gap-1"><Facebook className="w-3.5 h-3.5" /> {pages.find(c => c.id === ruleForm.channelId)?.name ?? "Page"}</span>
@@ -1730,8 +1732,8 @@ export function MessengerCard() {
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
             {msg && <p className="text-xs text-red-500">{msg}</p>}
-          </div>
-        )}
+          </div>)}
+        </Drawer>
       </div>
       </>
       )}
@@ -1834,8 +1836,8 @@ export function WebchatCard() {
         </div>
       ))}
 
-      {form && (
-        <div className="border-2 border-brand-700/30 rounded-control p-3 space-y-2">
+      <Drawer open={!!form} onClose={() => setForm(null)} width="xl" title={form?.id ? "Edit web chat widget" : "New web chat widget"}>
+        {form && (<div className="space-y-3">
           <input className={`${inp} w-full`} placeholder="Widget name, e.g. Marketing site" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase mb-1">Allowed website origins (one per line — blank = allow anywhere)</p>
@@ -1969,8 +1971,8 @@ export function WebchatCard() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           {msg && <p className="text-xs text-red-500">{msg}</p>}
-        </div>
-      )}
+        </div>)}
+      </Drawer>
       {!list.length && !form && <p className="text-xs text-ink-400">No web-chat widget yet. Create one to get a copy-paste embed snippet.</p>}
     </section>
   );

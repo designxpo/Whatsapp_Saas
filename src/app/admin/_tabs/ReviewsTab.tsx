@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Star, Sparkles, Copy, Check, Trash2, Loader2, RefreshCw, Plus, SlidersHorizontal, Send, MapPin, Link2, Unlink } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { Drawer, Modal } from "@/components/overlay";
 
 type ReplyStatus = "none" | "draft" | "posted";
 type Review = {
@@ -234,8 +235,8 @@ export default function ReviewsTab() {
       </div>
 
       {/* Settings */}
-      {showSettings && (
-        <div className="rounded-card border border-line bg-white p-4 space-y-3">
+      <Drawer open={showSettings} onClose={() => setShowSettings(false)} width="md" title="Review settings">
+        {showSettings && (<div className="space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Reply settings</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="text-xs font-semibold text-ink-700 space-y-1 block">
@@ -260,12 +261,13 @@ export default function ReviewsTab() {
             <button onClick={saveSettings} disabled={savingSettings} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{savingSettings ? "Saving…" : "Save settings"}</button>
             <button onClick={() => setShowSettings(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Drawer>
 
       {/* Add review */}
-      {showAdd && (
-        <div className="rounded-card border-2 border-brand-500/30 bg-white p-4 space-y-3">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} size="md" title="Add a review">
+        {showAdd && (<div className="space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Add a review</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <input className={`${inp} w-full`} placeholder="Reviewer name (optional)" value={addForm.author} onChange={e => setAddForm({ ...addForm, author: e.target.value })} />
@@ -277,8 +279,9 @@ export default function ReviewsTab() {
             <button onClick={addReview} disabled={busy === "add"} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy === "add" ? "Adding…" : "Add review"}</button>
             <button onClick={() => setShowAdd(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-        </div>
-      )}
+        </div>)}
+        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+      </Modal>
 
       {msg && <p className="text-xs text-red-500">{msg}</p>}
 
