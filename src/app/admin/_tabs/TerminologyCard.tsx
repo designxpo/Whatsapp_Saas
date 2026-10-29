@@ -2,6 +2,7 @@
 
 // Settings → Terminology: pick the industry pack, then rename any single term.
 // Overrides sit on top of the pack, so switching industry keeps custom names.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -23,7 +24,8 @@ export function TerminologyCard() {
   const [industry, setIndustry] = useState("generic");
   const [draft, setDraft] = useState<VocabOverrides>({});
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
 
   const load = useCallback(() => {
     fetch("/api/admin/vocab").then(r => r.json()).then((d: State & { error?: string }) => {
@@ -62,7 +64,7 @@ export function TerminologyCard() {
       const r = await fetch("/api/admin/vocab", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ industry, overrides }) });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Could not save");
-      setSt(s => (s ? { ...s, ...d } : s)); setDraft(d.overrides); setMsg("Saved — your dashboard now uses these words.");
+      setSt(s => (s ? { ...s, ...d } : s)); setDraft(d.overrides); setMsg("Saved — your dashboard now uses these words.", "ok");
       reload();
     } catch (e) { setMsg(e instanceof Error ? e.message : "Could not save"); }
     finally { setBusy(false); }
@@ -89,7 +91,7 @@ export function TerminologyCard() {
       <div className="flex items-center gap-3">
         <button onClick={save} disabled={busy} className="px-4 py-2 rounded-full text-xs font-bold bg-brand-700 text-white disabled:opacity-60">{busy ? "Saving…" : "Save terminology"}</button>
         {draft && Object.keys(draft).length > 0 && <button onClick={() => setDraft({})} className="text-xs text-slate-500 underline">Reset to {pack.label} defaults</button>}
-        {msg && <span className="text-xs text-slate-500">{msg}</span>}
+        <Notice notice={note} />
       </div>
     </section>
   );

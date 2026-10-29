@@ -1,9 +1,10 @@
 "use client";
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
-import { AlertTriangle, Check, CircleCheck, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video, X } from "lucide-react";
+import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
 import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -88,11 +89,8 @@ function InstagramManager() {
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_IG | null>(null);
   const [busy, setBusy] = useState(false);
-  // One message line with a tone. It used to be a bare string drawn red with a
-  // warning icon, so "@account is connected and receiving." looked like a failure.
-  const [note, setNote] = useState<{ text: string; tone: "ok" | "warn" | "error" } | null>(null);
+  const [note, setMsg] = useNotice();
   const msg = note?.text ?? null;
-  const setMsg = useCallback((text: string | null, tone: "ok" | "warn" | "error" = "error") => setNote(text ? { text, tone } : null), []);
   // Comment-to-DM rules (multiple rules, per-post, follow-gate)
   const [rules, setRules] = useState<CommentRule[]>([]);
   const [posts, setPosts] = useState<IgPost[]>([]);
@@ -299,15 +297,7 @@ function InstagramManager() {
           Meta's own success screen, and this tab just kept saying "No Instagram
           accounts connected yet" with no reason given. Show it here whenever no
           form owns it. */}
-      {note && !form && !ruleForm && (
-        <div role={note.tone === "error" ? "alert" : "status"} className={`rounded-control border px-3 py-2.5 flex items-start gap-2 u-fade-in ${note.tone === "ok" ? "bg-emerald-50 border-emerald-200" : note.tone === "warn" ? "bg-amber-50 border-amber-200" : "bg-red-50 border-red-200"}`}>
-          {note.tone === "ok"
-            ? <CircleCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-            : <AlertTriangle className={`w-4 h-4 shrink-0 ${note.tone === "warn" ? "text-amber-600" : "text-red-600"}`} />}
-          <p className={`flex-1 text-xs leading-snug ${note.tone === "ok" ? "text-emerald-800 font-semibold" : note.tone === "warn" ? "text-amber-800" : "text-red-700"}`}>{note.text}</p>
-          <button onClick={() => setNote(null)} aria-label="Dismiss" className="p-0.5 -m-0.5 rounded text-slate-400 hover:text-ink-900"><X className="w-3.5 h-3.5" /></button>
-        </div>
-      )}
+      {!form && !ruleForm && <Notice notice={note} variant="banner" onClose={() => setMsg(null)} />}
 
       {channels.map(c => {
         const h = health[c.id];
@@ -360,7 +350,7 @@ function InstagramManager() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. Talko handles the connection and routing.</p>
-          {note && <p className={`text-xs ${note.tone === "ok" ? "text-emerald-700" : note.tone === "warn" ? "text-amber-700" : "text-red-500"}`}>{note.text}</p>}
+          <Notice notice={note} />
         </div>)}
       </Drawer>
       {!channels.length && !form && (

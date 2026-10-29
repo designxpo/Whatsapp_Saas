@@ -3,6 +3,7 @@
 // Settings: workspace rail + plan/usage, WhatsApp numbers, team, activity log,
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -255,7 +256,8 @@ function ChannelsManager() {
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   const [profileFor, setProfileFor] = useState<{ id: string; name: string; coex: boolean } | null>(null);
 
   const load = useCallback(async () => {
@@ -283,7 +285,7 @@ function ChannelsManager() {
         // Saved, but Meta refused the WABA webhook subscription — inbound messages
         // won't arrive until it succeeds. Switch the form to edit mode (so a re-save
         // fixes the SAME number, never a duplicate) and surface the reason.
-        setMsg(`Saved, but Meta wouldn't finish connecting this number: ${d.webhook.detail} — inbound messages won't arrive until it's fixed. Check the access token has full messaging permission, then re-save.`);
+        setMsg(`Saved, but Meta wouldn't finish connecting this number: ${d.webhook.detail} — inbound messages won't arrive until it's fixed. Check the access token has full messaging permission, then re-save.`, "warn");
         setForm(f => (f ? { ...f, id: d.channel?.id ?? f.id, token: "" } : f));
         load();
       }
@@ -303,7 +305,7 @@ function ChannelsManager() {
   // variant "new" = fresh number; "coex" = keep using the WhatsApp Business
   // phone app on the number (QR-scan flow) and ADD the API/portal on top.
   async function connectWithMeta(variant: "new" | "coex" = "new") {
-    if (!whatsappSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${whatsappSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`); return; }
+    if (!whatsappSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${whatsappSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). Owner: run Setup → Meta connection doctor for the full diagnosis. For now, use “Add manually”.`, "warn"); return; }
     setBusy(true); setMsg(null);
     try {
       const { code, wabaId, phoneNumberId } = await launchWhatsAppSignup(variant);
@@ -313,7 +315,7 @@ function ChannelsManager() {
       });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Connection failed");
-      else { setForm(null); if (d.notice) setMsg(d.notice); load(); }
+      else { setForm(null); if (d.notice) setMsg(d.notice, "warn"); else setMsg("WhatsApp number connected.", "ok"); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }
   }
@@ -342,7 +344,7 @@ function ChannelsManager() {
         </div>
       </div>
 
-      {msg && !form && <p className="text-xs text-red-500">{msg}</p>}
+      {!form && <Notice notice={note} variant="banner" onClose={() => setMsg(null)} />}
 
       {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
 
@@ -407,7 +409,7 @@ function ChannelsManager() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save number"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          <Notice notice={note} />
         </div>)}
       </Drawer>
       {!channels.length && !form && !envMode && <p className="text-xs text-ink-400">No numbers connected yet.</p>}
@@ -431,7 +433,8 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
   const [photoUrl, setPhotoUrl] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -440,9 +443,9 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
         if (d.profile) {
           setP({ about: d.profile.about ?? "", description: d.profile.description ?? "", email: d.profile.email ?? "", address: d.profile.address ?? "", vertical: d.profile.vertical ?? "", website: (d.profile.websites ?? [])[0] ?? "" });
           setPhotoUrl(d.profile.profilePictureUrl ?? "");
-        } else if (d.notice) setMsg(d.notice);
+        } else if (d.notice) setMsg(d.notice, "warn");
       }).catch(() => setMsg("Could not load profile")).finally(() => setLoading(false));
-  }, [channelId]);
+  }, [channelId, setMsg]);
 
   async function saveFields() {
     setBusy(true); setMsg(null);
@@ -452,7 +455,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
         body: JSON.stringify({ channelId, about: p.about, description: p.description, email: p.email, address: p.address, vertical: p.vertical, websites: p.website ? [p.website] : [] }),
       });
       const d = await res.json();
-      setMsg(res.ok ? "Saved" : (d.error || "Save failed"));
+      setMsg(res.ok ? "Saved" : (d.error || "Save failed"), res.ok ? "ok" : "error");
     } finally { setBusy(false); }
   }
 
@@ -465,7 +468,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
       const res = await fetch("/api/admin/channels/profile", { method: "POST", body: fd });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Photo upload failed"); return; }
-      setMsg("Photo updated — refreshing…");
+      setMsg("Photo updated — refreshing…", "ok");
       const r = await fetch(`/api/admin/channels/profile?channelId=${encodeURIComponent(channelId)}`).then(x => x.json()).catch(() => null);
       if (r?.profile?.profilePictureUrl) setPhotoUrl(r.profile.profilePictureUrl);
     } finally { setBusy(false); }
@@ -513,7 +516,7 @@ function BusinessProfileEditor({ channelId, name, coex, onClose }: { channelId: 
           {!coex && (
             <div className="flex items-center gap-3">
               <button onClick={saveFields} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save profile"}</button>
-              {msg && <p className={`text-xs ${/fail|error|invalid|required|missing/i.test(msg) ? "text-red-500" : "text-emerald-600"}`}>{msg}</p>}
+              <Notice notice={note} />
             </div>
           )}
         </>
@@ -648,7 +651,8 @@ type DigestStatus = { enabled: boolean; hour: number; recipients: string[]; unsu
 function DailyDigestCard({ isAdmin }: { isAdmin: boolean }) {
   const [s, setS] = useState<DigestStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
 
   useEffect(() => {
     fetch("/api/admin/digest").then(r => r.json()).then(d => { if (!d.error) setS(d); }).catch(() => {});
@@ -663,7 +667,7 @@ function DailyDigestCard({ isAdmin }: { isAdmin: boolean }) {
       if (d.error) { setMsg(d.error); return; }
       if (body.sendNow) {
         setS(d.status);
-        setMsg(d.sent ? `Sent to ${d.sent} ${d.sent === 1 ? "person" : "people"}.${d.reason ? ` ${d.reason}` : ""}` : (d.reason ?? "Nothing was sent."));
+        setMsg(d.sent ? `Sent to ${d.sent} ${d.sent === 1 ? "person" : "people"}.${d.reason ? ` ${d.reason}` : ""}` : (d.reason ?? "Nothing was sent."), d.sent ? "ok" : "warn");
       } else setS(d);
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
@@ -717,7 +721,7 @@ function DailyDigestCard({ isAdmin }: { isAdmin: boolean }) {
             {s.unsubscribed && <p className="text-amber-700">Someone unsubscribed from the email link, so it is paused. Switching it on again resumes it.</p>}
             {s.mailProblem && <p className="text-amber-700">{s.mailProblem}</p>}
           </div>
-          {msg && <p className="text-[11px] font-semibold text-brand-700">{msg}</p>}
+          <Notice notice={note} />
         </>
       )}
     </section>
@@ -738,7 +742,8 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
   const ask = useConfirm();
   const [s, setS] = useState<SweepStatus | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
 
   const load = useCallback(() => {
     fetch("/api/admin/escalation-sweep").then(r => r.json()).then(d => { if (!d.error) setS(d); }).catch(() => {});
@@ -770,7 +775,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ runNow: true }),
       }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setS(d.status); setMsg(`Reset ${d.reset} chat(s).`); }
+      else { setS(d.status); setMsg(`Reset ${d.reset} chat(s).`, "ok"); }
     } finally { setBusy(false); }
   }
 
@@ -837,7 +842,7 @@ function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
             </p>
             {s.dueNow === 0 && <p className="text-slate-400">Nothing is old enough yet. If migration 0103 was just applied, existing chats are dated from the customer&apos;s last message.</p>}
           </div>
-          {msg && <p className="text-[11px] font-semibold text-brand-700">{msg}</p>}
+          <Notice notice={note} />
         </>
       )}
     </section>
@@ -1222,7 +1227,8 @@ function VoiceSettingsCard() {
   const [mode, setMode] = useState<"off" | "mirror" | "always">("off");
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
 
   const load = useCallback(() => {
     fetch("/api/admin/voice").then(r => r.json()).then((d: VoiceState) => { setSt(d); setMode(d.mode ?? "off"); }).catch(() => {});
@@ -1233,7 +1239,7 @@ function VoiceSettingsCard() {
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, openaiKey: key }) }).then(r => r.json());
-      setMsg(d.error ? d.error : "Saved.");
+      setMsg(d.error ? d.error : "Saved.", d.error ? "error" : "ok");
       if (!d.error) { setKey(""); load(); }
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
@@ -1268,7 +1274,7 @@ function VoiceSettingsCard() {
           : "Incoming voice notes are transcribed by your AI (Gemini does this natively). Replying in voice uses OpenAI text-to-speech, so add an OpenAI key above to enable it."}
       </p>
       {needsKey && <p className="text-[12px] font-medium text-amber-600">Add an OpenAI voice key to enable spoken replies — until then replies stay as text.</p>}
-      {msg && <p className={`text-[12px] font-medium ${msg === "Saved." ? "text-emerald-700" : "text-red-600"}`}>{msg}</p>}
+      <Notice notice={note} />
       <div className="flex items-center gap-2">
         <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save"}</button>
         {st?.keySet && <button onClick={async () => { await fetch("/api/admin/voice", { method: "DELETE" }); load(); }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Remove key</button>}
@@ -1314,7 +1320,8 @@ export function MessengerCard() {
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   // Multi-Page picker for "Connect with Facebook" (shown when the login has >1 Page).
   const [pagePick, setPagePick] = useState<{ id: string; name: string }[] | null>(null);
   // Comment-to-DM rules
@@ -1363,8 +1370,8 @@ export function MessengerCard() {
       const res = await fetch("/api/admin/channels/messenger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, agentId: form.agentId || null, kbTag: form.kbTag || null }) });
       const d = await res.json();
       if (!res.ok) setMsg(d.error || "Save failed");
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`); load(); }
-      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setForm(null); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`, "warn"); load(); }
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setForm(null); load(); }
       else { setForm(null); load(); }
     } finally { setBusy(false); }
   }
@@ -1374,7 +1381,7 @@ export function MessengerCard() {
   // exposes more than one Page, we re-run it with the chosen pageId (a fresh
   // code, no re-consent) so Page tokens never reach the browser.
   async function connectWithFacebook(pageId?: string) {
-    if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`); return; }
+    if (!facebookSignupReady()) { setMsg(`Not enabled yet — this deployment is missing ${facebookSignupMissing().join(" + ")} (an EMPTY value counts as missing; NEXT_PUBLIC_* vars are baked in at build time, so redeploy after setting them). For now, use “Add Page” to paste a token.`, "warn"); return; }
     setBusy(true); setMsg(null);
     try {
       // Picking a Page must NOT re-run the login: the SDK returns its cached
@@ -1397,10 +1404,10 @@ export function MessengerCard() {
         // error line, so support cannot see it either.
         d.diagnostic?.scopes?.length ? `Granted: ${d.diagnostic.scopes.join(", ")}.` : "",
       ].filter(Boolean).join(" "));
-      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`); setPagePick(null); load(); }
+      else if (d.webhook && !d.webhook.ok) { setMsg(`Connected, but Meta wouldn't finish the webhook: ${d.webhook.detail}. Messages won't arrive until it's fixed — check the Page's messaging permission.`, "warn"); setPagePick(null); load(); }
       // Partial success: Page DMs are live, comment events are not.
-      else if (d.webhook?.degraded) { setMsg(d.webhook.detail); setPagePick(null); load(); }
-      else { setPagePick(null); load(); }
+      else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setPagePick(null); load(); }
+      else { setMsg("Facebook Page connected and receiving messages.", "ok"); setPagePick(null); load(); }
     } catch (e) { setMsg(e instanceof Error ? e.message : "Connection cancelled"); }
     finally { setBusy(false); }
   }
@@ -1476,12 +1483,7 @@ export function MessengerCard() {
           "Connect with Facebook" opens no form — so every failure of the one-click
           path was written into a branch React never mounted, leaving the tenant
           with Meta's own success screen and an empty card. */}
-      {msg && !form && (
-        <div className="rounded-control border border-red-200 bg-red-50 px-3 py-2.5 flex items-start gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-red-700 leading-snug">{msg}</p>
-        </div>
-      )}
+      {!form && <Notice notice={note} variant="banner" onClose={() => setMsg(null)} />}
 
       {pagePick && (
         <div className="rounded-control border border-line bg-canvas p-3 space-y-2">
@@ -1533,7 +1535,7 @@ export function MessengerCard() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save Page"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          <Notice notice={note} />
         </div>)}
       </Drawer>
       {!pages.length && !form && <p className="text-xs text-ink-400">No Facebook Pages connected yet — add one above to auto-reply to Page messages.</p>}
@@ -1724,7 +1726,7 @@ export function MessengerCard() {
               <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
-            {msg && <p className="text-xs text-red-500">{msg}</p>}
+            <Notice notice={note} />
           </div>)}
         </Drawer>
       </div>

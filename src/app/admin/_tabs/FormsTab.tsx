@@ -2,6 +2,7 @@
 
 // WhatsApp Forms tab (FormsRail + form types + responses + builder) — extracted
 // from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { useVocab } from "@/lib/vocab-client";
@@ -113,7 +114,8 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     { type: "phone", label: "Mobile number", required: true, options: "" },
   ]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   const [channelId, setChannelId] = useState<string | null>(null);   // which number's WABA
   const [editingId, setEditingId] = useState<string | null>(null);   // editing a draft in place
   const [cloneNote, setCloneNote] = useState<string | null>(null);   // editing a copy of a published form
@@ -155,9 +157,9 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Failed"); return; }
-      if (d.validationErrors?.length) setMsg(`Saved as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`);
-      else if (d.publishError) setMsg(`Saved — publishing failed: ${d.publishError}`);
-      else setMsg(d.status === "PUBLISHED" ? "Updated & published" : "Draft updated");
+      if (d.validationErrors?.length) setMsg(`Saved as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`, "warn");
+      else if (d.publishError) setMsg(`Saved — publishing failed: ${d.publishError}`, "warn");
+      else setMsg(d.status === "PUBLISHED" ? "Updated & published" : "Draft updated", "ok");
       resetBuilder();
       load();
     } finally { setBusy(null); }
@@ -171,7 +173,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     try {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, rename: next.trim(), channelId }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed"); load(); }
+      if (!res.ok) setMsg(d.error || "Rename failed"); else { setMsg("Renamed", "ok"); load(); }
     } finally { setBusy(null); }
   }
 
@@ -202,9 +204,9 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Failed"); return; }
-      if (d.validationErrors?.length) setMsg(`Created as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`);
-      else if (d.publishError) setMsg(`Created as draft — publishing failed: ${d.publishError}`);
-      else setMsg(d.status === "PUBLISHED" ? "Published — the form is live. Use it from the WhatsApp form block in your chatbot flows." : "Draft created — publish when ready.");
+      if (d.validationErrors?.length) setMsg(`Created as draft, but Meta flagged: ${d.validationErrors.join(" · ")}`, "warn");
+      else if (d.publishError) setMsg(`Created as draft — publishing failed: ${d.publishError}`, "warn");
+      else setMsg(d.status === "PUBLISHED" ? "Published — the form is live. Use it from the WhatsApp form block in your chatbot flows." : "Draft created — publish when ready.", "ok");
       resetBuilder();
       load();
     } finally { setBusy(null); }
@@ -215,7 +217,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
     try {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, publish: true, channelId }) });
       const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Publish failed"); else setMsg("Published — the form is live.");
+      if (!res.ok) setMsg(d.error || "Publish failed"); else setMsg("Published — the form is live.", "ok");
       load();
     } finally { setBusy(null); }
   }
@@ -234,10 +236,10 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       const res = await fetch("/api/admin/waforms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: f.id, publishToAll: true, channelId }) });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Publish to all failed"); return; }
-      if (!d.total) { setMsg("No other numbers connected — this is the only WABA, so the form already works everywhere it can."); return; }
+      if (!d.total) { setMsg("No other numbers connected — this is the only WABA, so the form already works everywhere it can.", "info"); return; }
       const failed = (d.publishedTo ?? []).filter((r: { error?: string }) => r.error);
       setMsg(`Published to ${d.count}/${d.total} other number${d.total !== 1 ? "s" : ""}.`
-        + (failed.length ? ` Failed: ${failed.map((r: { channel: string; error: string }) => `${r.channel} — ${r.error}`).join(" · ")}` : " Flows can now send this form natively from any number."));
+        + (failed.length ? ` Failed: ${failed.map((r: { channel: string; error: string }) => `${r.channel} — ${r.error}`).join(" · ")}` : " Flows can now send this form natively from any number."), failed.length ? "warn" : "ok");
       load();
     } finally { setBusy(null); }
   }
@@ -280,7 +282,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <FormResponsesPanel />
 
       {notice && <div className="bg-amber-50 border border-amber-200 rounded-control px-4 py-3 text-sm text-amber-800">{notice}</div>}
-      {msg && <div className="bg-brand-50 border border-brand-100 rounded-control px-4 py-3 text-sm text-brand-900">{msg}</div>}
+      <Notice notice={note} variant="banner" onClose={() => setMsg(null)} />
 
       <Drawer open={showBuilder} onClose={() => setShowBuilder(false)} width="xl" title="WhatsApp form">
         {showBuilder && (<div className="grid lg:grid-cols-[1fr_290px] gap-4 items-start">
@@ -349,7 +351,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           </div>
         </div>)}
-        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+        <Notice notice={note} className="mt-3" />
       </Drawer>
 
       <div className="bg-white rounded-card border border-line divide-y divide-line">

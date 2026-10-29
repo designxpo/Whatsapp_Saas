@@ -8,6 +8,7 @@
 // credentials belong to them whatever their role, so this tab carries no entry
 // in TAB_MIN_ROLE and is visible to everyone.
 
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser";
@@ -34,7 +35,8 @@ export default function SecurityTab() {
   const [twoFa, setTwoFa] = useState<TwoFa | null>(null);
   const [canPasskey, setCanPasskey] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
 
   // Authenticator enrolment, in-page.
   const [qr, setQr] = useState("");
@@ -65,7 +67,7 @@ export default function SecurityTab() {
       if (!res.ok) { setMsg(d.error || "Could not add that passkey"); return; }
       // A device-bound passkey disappears with the device, and this is the only
       // moment anyone is thinking about it.
-      if (!d.backedUp) setMsg("Added — but this one lives only on this device. If you lose it, you'll sign in with your password instead.");
+      if (!d.backedUp) setMsg("Added — but this one lives only on this device. If you lose it, you'll sign in with your password instead.", "warn");
       load();
     } catch (err) {
       const name = err instanceof Error ? err.name : "";
@@ -218,7 +220,7 @@ export default function SecurityTab() {
           </div>
         )}
 
-        {msg && <p className="text-xs text-ink-900 bg-canvas rounded-control px-3 py-2">{msg}</p>}
+        <Notice notice={note} variant="banner" />
       </section>
     </div>
   );

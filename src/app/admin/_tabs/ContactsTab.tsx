@@ -2,6 +2,7 @@
 
 // Contacts: table + filters + CSV import/export, with the shared ContactProfile
 // drawer. Extracted from admin/page.tsx, lazy-loaded. Pure relocation.
+import { Notice, useNotice } from "@/components/Notice";
 import { useState, useEffect, useCallback } from "react";
 type AudienceBatch = { id: string; name: string; description: string | null; kind: "static" | "dynamic"; size: number; archivedAt: string | null };
 type BatchDetail = {
@@ -72,7 +73,8 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [applied, setApplied] = useState<AdvFilters>(EMPTY_ADV);  // active (drives the query)
   const [importing, setImporting] = useState(false);
   const [importConsent, setImportConsent] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   const [quota, setQuota] = useState<{ sentToday: number } | null>(null);
 
   const dailyLimit = parseInt(process.env.NEXT_PUBLIC_WA_DAILY_LIMIT ?? "900", 10);
@@ -128,7 +130,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
       const d = await res.json();
       setMsg(res.ok
         ? `Imported ${d.inserted}, skipped ${d.skipped} (duplicates)${d.invalid ? `, ${d.invalid} invalid number${d.invalid === 1 ? "" : "s"}` : ""}.${consent ? "" : " Marked not-opted-in — excluded from broadcasts until they opt in."}`
-        : (d.error || "Import failed"));
+        : (d.error || "Import failed"), res.ok ? "ok" : "error");
       if (res.ok) { setCsvPreview(null); setAddPhone(""); setAddName(""); setAddTags(""); load(); }
       return res.ok;
     } finally { setImporting(false); }
@@ -160,7 +162,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const openBatchDetail = useCallback(async (id: string, offset = 0) => {
     const d = await fetch(`/api/admin/batches/${id}?offset=${offset}&limit=50`).then(r => r.json()).catch(() => null);
     if (d?.batch) { setOpenBatch(d); setBatchOffset(offset); } else setMsg("Could not load that batch.");
-  }, []);
+  }, [setMsg]);
 
   useEffect(() => {
     const q = addQuery.trim();
@@ -192,14 +194,14 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
     });
     const d = await res.json();
     if (!res.ok) { setMsg(d.error || "Could not create the batch"); return; }
-    setNewBatchName(""); setMsg(`Batch "${name}" created.`); loadBatches();
+    setNewBatchName(""); setMsg(`Batch "${name}" created.`, "ok"); loadBatches();
   }
 
   async function addSelectedToBatch(id: string) {
     if (!selected.size) return;
     const d = await batchAction(id, { action: "addMembers", contactIds: [...selected] });
     if (d) {
-      setMsg(`Added ${d.added} of ${d.requested} to the batch${d.added < d.requested ? " (the rest were already in it)" : ""}.`);
+      setMsg(`Added ${d.added} of ${d.requested} to the batch${d.added < d.requested ? " (the rest were already in it)" : ""}.`, "ok");
       setSelected(new Set());
     }
   }
@@ -221,7 +223,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
   async function importWithBatches(all: ImportRow[], consent: boolean) {
     const usable = skipBlocked ? all.filter(r => !r.blocked) : all;
     const heldBack = all.length - usable.length;
-    if (!usable.length) { setMsg("Every row in this file is marked blocked — nothing to import."); return false; }
+    if (!usable.length) { setMsg("Every row in this file is marked blocked — nothing to import.", "warn"); return false; }
 
     const named = usable.filter(r => r.batchName);
     if (!named.length) return importRows(usable, consent);
@@ -236,7 +238,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
       notes.push(`${name || "no batch"}: ${group.length}`);
     }
     setMsg(`Imported ${usable.length} across ${groups.size} batch(es) — ${notes.join(", ")}.`
-      + (heldBack ? ` ${heldBack} blocked row(s) skipped.` : ""));
+      + (heldBack ? ` ${heldBack} blocked row(s) skipped.` : ""), heldBack ? "warn" : "ok");
     loadBatches();
     return allOk;
   }
@@ -364,7 +366,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                             method: "POST", headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ action: "archive" }),
                           });
-                          setMsg(res.ok ? `Archived "${b.name}".` : "Could not archive that batch");
+                          setMsg(res.ok ? `Archived "${b.name}".` : "Could not archive that batch", res.ok ? "ok" : "error");
                           if (res.ok) loadBatches();
                         }} className="text-xs font-bold text-slate-400 hover:text-red-600">Archive</button>
                       </td>
@@ -411,7 +413,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                               <button disabled={already}
                                 onClick={async () => {
                                   const r = await batchAction(d.batch.id, { action: "addMembers", contactIds: [c.id] });
-                                  if (r) { setMsg(r.added ? `Added ${c.name || c.phone}.` : `${c.name || c.phone} was already in this batch.`); setAddQuery(""); }
+                                  if (r) { setMsg(r.added ? `Added ${c.name || c.phone}.` : `${c.name || c.phone} was already in this batch.`, r.added ? "ok" : "info"); setAddQuery(""); }
                                 }}
                                 className="px-2.5 py-1 rounded-lg bg-brand-700 text-white text-[11px] font-bold disabled:opacity-40 shrink-0">
                                 {already ? "In batch" : "Add"}
@@ -452,7 +454,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
                               <td className="px-3 py-2 text-right">
                                 <button onClick={async () => {
                                   const r = await batchAction(d.batch.id, { action: "removeMembers", contactIds: [m.id] });
-                                  if (r) setMsg(`Removed ${m.name || m.phone} from ${d.batch.name}.`);
+                                  if (r) setMsg(`Removed ${m.name || m.phone} from ${d.batch.name}.`, "ok");
                                 }} className="text-xs font-bold text-slate-400 hover:text-red-600">Remove</button>
                               </td>
                             )}
@@ -478,7 +480,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             );
           })()}
         </div>)}
-        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+        <Notice notice={note} className="mt-3" />
       </Drawer>
 
       {showFilter && (() => {
@@ -581,7 +583,7 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Save
           </button>
         </div>)}
-        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+        <Notice notice={note} className="mt-3" />
       </Modal>
 
       <Drawer open={showImport} onClose={() => setShowImport(false)} width="lg" title="Import contacts">
@@ -658,10 +660,10 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             </div>
           )}
         </div>)}
-        {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
+        <Notice notice={note} className="mt-3" />
       </Drawer>
 
-      {msg && <p className="text-xs text-slate-500">{msg}</p>}
+      <Notice notice={note} />
 
       <div className="bg-white rounded-card border border-line overflow-hidden">
         <table className="w-full text-sm">

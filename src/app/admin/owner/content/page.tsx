@@ -8,6 +8,7 @@
 // invisible. Reviewing the draft itself stays in the PR, where a diff and
 // line comments beat anything built here — merging IS publishing.
 
+import { Notice, useNotice } from "@/components/Notice";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Play, RefreshCw, Search } from "lucide-react";
 import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone } from "../_ui";
@@ -33,7 +34,7 @@ export default function ContentPage() {
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState<"" | "dry" | "full">("");
-  const [note, setNote] = useState<string | null>(null);
+  const [note, setNote] = useNotice();
 
   const load = useCallback(async () => {
     try {
@@ -55,7 +56,7 @@ export default function ContentPage() {
       const j = await r.json();
       setNote(r.ok && !j.error
         ? `Started. A crawl takes 15–30 minutes${dryRun ? "" : ", and drafting adds a few more"} — this page won't update until it files its report.`
-        : j.error || "Couldn't start the run.");
+        : j.error || "Couldn't start the run.", r.ok && !j.error ? "ok" : "error");
     } catch { setNote("Couldn't reach the server."); }
     finally { setBusy(""); }
   }
@@ -87,7 +88,7 @@ export default function ContentPage() {
       </header>
 
       {err && <div className="bg-red-50 border border-red-200 rounded-card px-4 py-3 text-sm text-red-700">{err}</div>}
-      {note && <div className="bg-brand-50 border border-brand-100 rounded-card px-4 py-3 text-[13px] text-brand-800">{note}</div>}
+      <Notice notice={note} variant="banner" onClose={() => setNote(null)} />
 
       {d && !d.githubConfigured && (
         // Two separate things break without a token, and the difference

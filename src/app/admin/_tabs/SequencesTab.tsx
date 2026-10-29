@@ -1,4 +1,5 @@
 "use client";
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { previewParts, type TemplateComponent } from "@/lib/templatepreview";
 import { useState, useEffect, useCallback, useRef, Fragment, type Dispatch, type SetStateAction } from "react";
@@ -419,7 +420,7 @@ function LeadWelcomePanel() {
   const [cfg, setCfg] = useState<LeadWelcomeCfg | null>(null);
   const [flows, setFlows] = useState<{ id: string; name: string; active: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
   useEffect(() => { fetch("/api/admin/lead-welcome").then(r => r.json()).then(d => setCfg(d.config ?? null)).catch(() => setCfg(null)); }, []);
   useEffect(() => { fetch("/api/admin/flows").then(r => r.json()).then(d => setFlows((d.flows ?? []).filter((f: { platform?: string }) => !f.platform || f.platform === "whatsapp" || f.platform === "all"))).catch(() => {}); }, []);
 
@@ -428,7 +429,7 @@ function LeadWelcomePanel() {
     setBusy(true); setMsg(null);
     try {
       const d = await fetch("/api/admin/lead-welcome", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cfg) }).then(r => r.json());
-      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved ✓"); }
+      if (d.error) setMsg(d.error); else { setCfg(d.config); setMsg("Saved", "ok"); }
     } finally { setBusy(false); }
   }
   if (!cfg) return null;
@@ -459,7 +460,7 @@ function LeadWelcomePanel() {
         <label className="flex items-center gap-1.5 text-[11px] text-ink-600 cursor-pointer"><input type="checkbox" className="accent-brand-700" checked={cfg.nameParam} onChange={e => set({ nameParam: e.target.checked })} /> template uses {"{{1}}"} = {lead1}&apos;s first name</label>
         <div className="flex-1" />
         <button onClick={save} disabled={busy} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save"}</button>
-        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+        <Notice notice={note} />
       </div>
       <p className="text-[11px] text-ink-400">Set the LeadSquared automation for your signup form to POST to the LSQ→portal webhook (see docs/lsq-webhooks.md). Each {lead1} is welcomed once per 30 days; opted-out numbers are skipped.</p>
     </div>
@@ -518,7 +519,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
   const ask = useConfirm();
   const [cfg, setCfg] = useState<PollCfg | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
 
   const load = useCallback(() => {
     fetch("/api/admin/stage-poll").then(r => r.json()).then(d => setCfg(d.poll ?? null)).catch(() => {});
@@ -532,7 +533,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
       }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setCfg(d.poll ?? null); setMsg(note ?? "Saved ✓"); }
+      else { setCfg(d.poll ?? null); setMsg(note ?? "Saved", "ok"); }
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
   }
@@ -623,7 +624,7 @@ function StagePollPanel({ seqs }: { seqs: SeqRow[] }) {
         >
           Run a pass now
         </button>
-        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+        <Notice notice={note} />
       </div>
 
       <div className="text-[11px] text-ink-400 flex flex-wrap gap-x-4 gap-y-0.5">
@@ -670,7 +671,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   const { lead1, leadN, seq1 } = useWords();
   const [drips, setDrips] = useState<{ stage: string; sequenceId: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
 
   useEffect(() => { fetch("/api/admin/stage-drips").then(r => r.json()).then(d => setDrips(d.drips ?? [])).catch(() => setDrips([])); }, []);
 
@@ -680,7 +681,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/stage-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.stage.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
+      else { setDrips(d.drips ?? []); setMsg("Saved", "ok"); }
     } finally { setBusy(false); }
   }
 
@@ -709,7 +710,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
         <button onClick={() => setDrips(a => [...(a ?? []), { stage: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add stage rule</button>
         <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
         {clash && <span className="text-[11px] text-red-500">Duplicate stage.</span>}
-        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+        <Notice notice={note} />
       </div>
       <p className="text-[11px] text-ink-400">Cold {leadN} are usually outside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>
@@ -775,7 +776,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
   const { leadN, seq1 } = useWords();
   const [drips, setDrips] = useState<{ score: string; sequenceId: string }[] | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
 
   useEffect(() => { fetch("/api/admin/lead-score-drips").then(r => r.json()).then(d => setDrips(d.drips ?? [])).catch(() => setDrips([])); }, []);
 
@@ -785,7 +786,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
     try {
       const d = await fetch("/api/admin/lead-score-drips", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ drips: drips.filter(x => x.score.trim() && x.sequenceId) }) }).then(r => r.json());
       if (d.error) setMsg(d.error);
-      else { setDrips(d.drips ?? []); setMsg("Saved ✓"); }
+      else { setDrips(d.drips ?? []); setMsg("Saved", "ok"); }
     } finally { setBusy(false); }
   }
 
@@ -815,7 +816,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
         <button onClick={() => setDrips(a => [...(a ?? []), { score: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add score rule</button>
         <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
         {clash && <span className="text-[11px] text-red-500">Duplicate score.</span>}
-        {msg && <span className="text-[11px] text-ink-500">{msg}</span>}
+        <Notice notice={note} />
       </div>
       <p className="text-[11px] text-ink-400">Grading {leadN} by hand is almost never inside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
     </div>

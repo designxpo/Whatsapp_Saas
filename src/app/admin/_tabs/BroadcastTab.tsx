@@ -1,4 +1,5 @@
 "use client";
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { templatePlaceholders, paramCount, isNamedFormat } from "@/lib/template-params";
 
@@ -141,7 +142,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
   const [manualTemplate, setManualTemplate] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useNotice();
   const [error, setError] = useState<string | null>(null);
   const [retargetNote, setRetargetNote] = useState<string | null>(null);
   const [testPhone, setTestPhone] = useState("");
@@ -273,7 +274,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       // log where nobody saw it.
       if (!r.ok) setError(r.error);
       else if (!r.data.success) setError(r.data.error || r.data.message || "Failed");
-      else setResult(r.data.error ? `${r.data.message ?? ""} — ${r.data.error}`.trim() : r.data.message ?? null);
+      else setResult(r.data.error ? `${r.data.message ?? ""} — ${r.data.error}`.trim() : r.data.message ?? "Broadcast sent.", r.data.error ? "warn" : "ok");
     } catch { setError("Connection error"); }
     finally { setSending(false); }
   }
@@ -600,7 +601,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
       </section>
 
       {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>}
-      {result && <div className="bg-brand-green/10 border border-brand-green/40 rounded-lg px-4 py-3 text-sm text-brand-dark font-semibold">{result}</div>}
+      <Notice notice={result} variant="banner" />
 
       <button onClick={send} disabled={sending} className="w-full py-3 rounded-card bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60">
         {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />} {scheduleMode === "later" ? "Schedule broadcast" : "Send broadcast"}

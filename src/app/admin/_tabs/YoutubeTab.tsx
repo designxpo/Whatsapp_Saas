@@ -3,6 +3,7 @@
 // YouTube (dedicated section) — a third comment-automation channel alongside
 // Instagram & Facebook. YouTube has no DMs, so automation here is public-reply +
 // moderation only. Mirrors InstagramTab's reply-only mode.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert, RefreshCw } from "lucide-react";
@@ -73,7 +74,8 @@ function YoutubeManager() {
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_YT | null>(null);
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [note, setMsg] = useNotice();
+  const msg = note?.text ?? null;
   const [rules, setRules] = useState<YtRule[]>([]);
   const [videos, setVideos] = useState<YtVideo[]>([]);
   const [videosError, setVideosError] = useState<string | null>(null);
@@ -116,7 +118,7 @@ function YoutubeManager() {
     if (connected === "pick" && channelId) setOauthPickerId(channelId);
     if (error) setMsg(YT_ERROR_MESSAGES[error] || "Something went wrong connecting YouTube.");
     if (connected || error) window.history.replaceState(null, "", window.location.pathname);
-  }, [load]);
+  }, [load, setMsg]);
 
   useEffect(() => {
     if (!oauthPickerId) { setOauthOptions([]); return; }
@@ -125,7 +127,7 @@ function YoutubeManager() {
       .then(r => r.json())
       .then(d => { setOauthOptions(d.channels ?? []); if (d.error) setMsg(d.error); })
       .finally(() => setOauthLoading(false));
-  }, [oauthPickerId]);
+  }, [oauthPickerId, setMsg]);
 
   async function pickOauthChannel(opt: { id: string; title: string }) {
     if (!oauthPickerId) return;
@@ -178,7 +180,7 @@ function YoutubeManager() {
       if (!res.ok) setMsg(d.error || "Check failed");
       else setMsg(d.acted > 0
         ? `Checked — replied to ${d.acted} comment${d.acted === 1 ? "" : "s"}.`
-        : "Checked — nothing new to reply to. Only comments posted after a rule was saved are picked up.");
+        : "Checked — nothing new to reply to. Only comments posted after a rule was saved are picked up.", "ok");
       loadStatus();
     } finally { setChecking(false); }
   }
@@ -236,6 +238,8 @@ function YoutubeManager() {
           <button onClick={() => { setForm({ ...EMPTY_YT }); setMsg(null); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add manually</button>
         </div>
       </div>
+
+      {!form && !ruleForm && <Notice notice={note} variant="banner" onClose={() => setMsg(null)} />}
 
       {/* OAuth channel picker — shown once, right after "Connect with Google",
           when that Google login manages more than one channel (a content
@@ -321,7 +325,7 @@ function YoutubeManager() {
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
           <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Comments are polled every few minutes (YouTube has no live webhook) and paced to stay within the daily limit.</p>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          <Notice notice={note} />
         </div>)}
       </Drawer>
       {!channels.length && !form && <p className="text-xs text-ink-400">No YouTube channels connected yet.</p>}
@@ -458,7 +462,7 @@ function YoutubeManager() {
               <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
-            {msg && <p className="text-xs text-red-500">{msg}</p>}
+            <Notice notice={note} />
           </div>)}
         </Drawer>
       </div>

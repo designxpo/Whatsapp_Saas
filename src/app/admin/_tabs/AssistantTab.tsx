@@ -2,6 +2,7 @@
 
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
+import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
@@ -361,13 +362,13 @@ export default AssistantTab;
 
 function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => void }) {
   const [busy, setBusy] = useState("");
-  const [note, setNote] = useState<string | null>(null);
+  const [notice, setNote] = useNotice();
   const [check, setCheck] = useState<{ ready: boolean; reason: string } | null>(null);
 
   // Re-file every concept by what it is about. The server works in time-boxed
   // slices; keep going until it says there is nothing left.
   const reorganise = async () => {
-    setBusy("reorganise"); setNote("Re-organising…"); setCheck(null);
+    setBusy("reorganise"); setNote("Re-organising…", "info"); setCheck(null);
     let cursor: string | null = null, areas: string[] = [], moved = 0, kept = 0;
     try {
       for (let guard = 0; guard < 200; guard++) {
@@ -376,8 +377,8 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
         }).then(x => x.json()).catch(() => ({ error: "request failed" }));
         if (r.error) { setNote(`${r.error} — ${moved} moved so far. Run it again to continue.`); return; }
         moved += r.moved ?? 0; kept += r.kept ?? 0; areas = r.areas ?? areas;
-        setNote(`Re-organising… ${moved + kept} read, ${moved} moved`);
-        if (!r.nextCursor) { setNote(`Done — ${moved} concept${moved === 1 ? "" : "s"} moved into ${areas.length} subject area${areas.length === 1 ? "" : "s"}, ${kept} already in the right place.`); return; }
+        setNote(`Re-organising… ${moved + kept} read, ${moved} moved`, "info");
+        if (!r.nextCursor) { setNote(`Done — ${moved} concept${moved === 1 ? "" : "s"} moved into ${areas.length} subject area${areas.length === 1 ? "" : "s"}, ${kept} already in the right place.`, "ok"); return; }
         cursor = r.nextCursor;
       }
     } finally { setBusy(""); onChanged(); }
@@ -391,7 +392,7 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
       }).then(x => x.json()).catch(() => ({ error: "request failed" }));
       if (r.error) { setNote(r.error); return; }
       if (r.verdict) setCheck(r.verdict);
-      if (r.converting) setNote(`Converting ${r.converting} document${r.converting === 1 ? "" : "s"} in the background. Reload in a minute.`);
+      if (r.converting) setNote(`Converting ${r.converting} document${r.converting === 1 ? "" : "s"} in the background. Reload in a minute.`, "info");
       onChanged();
     } finally { setBusy(""); }
   };
@@ -427,7 +428,7 @@ function KbLibraryActions({ docs, onChanged }: { docs: number; onChanged: () => 
         don&apos;t match your business.
       </p>
 
-      {note && <p className="text-[12px] text-slate-600">{note}</p>}
+      <Notice notice={notice} />
 
       {check && (
         <div className={`rounded-lg border px-3 py-2 ${check.ready ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
