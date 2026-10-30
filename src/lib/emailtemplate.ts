@@ -83,7 +83,16 @@ export interface EmailLineItem {
   strong?: boolean;
 }
 
+/**
+ * White-label: an email sent to a partner's customer carries the partner's
+ * name and logo instead of Talko's, and drops Talko's site links. Leave it out
+ * and the email is exactly Talko's. Pass the partner's own address as siteUrl
+ * so every link leads to their portal.
+ */
+export interface EmailBrand { name: string; logoUrl: string | null }
+
 export interface EmailOptions {
+  brand?: EmailBrand;
   /** Inbox preview line. Say something the subject doesn't — never repeat it. */
   preheader: string;
   heading: string;
@@ -246,6 +255,14 @@ function codePanel(code: string, caption?: string): string {
 const LOGO_W = 133;
 const LOGO_H = 34;
 
+// A partner's logo (any proportions, so only the height is fixed), or its name
+// as text when it has none.
+function brandMark(b: EmailBrand): string {
+  return b.logoUrl
+    ? `<img src="${escapeHtml(b.logoUrl)}" height="${LOGO_H}" alt="${escapeHtml(b.name)}" style="display:block;border:0;outline:none;height:${LOGO_H}px;width:auto;max-width:220px;font-family:${FONT};font-size:17px;font-weight:800;color:${INK};text-decoration:none;">`
+    : `<span style="font-family:${FONT};font-size:17px;line-height:${LOGO_H}px;font-weight:800;color:${INK};">${escapeHtml(b.name)}</span>`;
+}
+
 export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; text: string } {
   const logo = `${siteUrl}/brand/talko-logo.png`;
   const hAlign = o.headerAlign === "center" ? "center" : "left";
@@ -304,7 +321,7 @@ export function renderEmail(o: EmailOptions, siteUrl: string): { html: string; t
                 <tr>
                   <td bgcolor="#ffffff" style="background-color:#ffffff;border-radius:10px;padding:9px 14px;">
                     <a href="${escapeHtml(siteUrl)}" style="text-decoration:none;">
-                      <img src="${escapeHtml(logo)}" width="${LOGO_W}" height="${LOGO_H}" alt="Talko AI" style="display:block;border:0;outline:none;width:${LOGO_W}px;height:${LOGO_H}px;font-family:${FONT};font-size:17px;font-weight:800;color:${BRAND};text-decoration:none;">
+                      ${o.brand ? brandMark(o.brand) : `<img src="${escapeHtml(logo)}" width="${LOGO_W}" height="${LOGO_H}" alt="Talko AI" style="display:block;border:0;outline:none;width:${LOGO_W}px;height:${LOGO_H}px;font-family:${FONT};font-size:17px;font-weight:800;color:${BRAND};text-decoration:none;">`}
                     </a>
                   </td>
                 </tr>
@@ -431,12 +448,13 @@ ${button(o.cta, siteUrl)}
           <tr>
             <td align="center" style="padding:20px 24px 8px;">
               <p class="t-muted" style="margin:0;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
-                Talko AI by PM Technologies<br>
+                ${o.brand ? `${escapeHtml(o.brand.name)}<br>
+                ${o.addressLines?.length ? `${o.addressLines.map(escapeHtml).join("<br>")}<br>` : ""}${o.unsubscribeHref ? `<a href="${escapeHtml(o.unsubscribeHref)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>` : ""}` : `Talko AI by PM Technologies<br>
                 ${o.addressLines?.length ? `${o.addressLines.map(escapeHtml).join("<br>")}<br>` : ""}
                 <a href="${escapeHtml(siteUrl)}/guides" style="color:${MUTED};text-decoration:underline;">Guides</a> &nbsp;·&nbsp;
                 <a href="${escapeHtml(siteUrl)}/status" style="color:${MUTED};text-decoration:underline;">Status</a> &nbsp;·&nbsp;
                 <a href="${escapeHtml(siteUrl)}/contact" style="color:${MUTED};text-decoration:underline;">Contact</a>${o.unsubscribeHref ? ` &nbsp;·&nbsp;
-                <a href="${escapeHtml(o.unsubscribeHref)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>` : ""}
+                <a href="${escapeHtml(o.unsubscribeHref)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>` : ""}`}
               </p>
             </td>
           </tr>
@@ -488,7 +506,7 @@ ${button(o.cta, siteUrl)}
   if (o.secondary) lines.push(`${o.secondary.label}: ${absolute(o.secondary.href, siteUrl)}`);
   lines.push("", "—");
   if (o.disclaimer) lines.push(o.disclaimer, "");
-  lines.push(o.footerReason, "Talko AI by PM Technologies");
+  lines.push(o.footerReason, o.brand ? o.brand.name : "Talko AI by PM Technologies");
   if (o.addressLines?.length) lines.push(...o.addressLines);
   if (o.unsubscribeHref) lines.push(`Unsubscribe: ${o.unsubscribeHref}`);
 

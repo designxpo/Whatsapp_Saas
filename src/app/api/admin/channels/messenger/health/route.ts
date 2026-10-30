@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { brandForTenant } from "@/lib/brand-server";
+import { brandJson } from "@/lib/whitelabel";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listChannels, getChannel, resolvePageId, subscribePageToApp, type Channel } from "@/lib/channels";
 import { fbTokenInfo, pageSubscribedFields, FB_COMMENT_SCOPE } from "@/lib/embeddedsignup";
@@ -107,7 +109,7 @@ export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const channels = (await listChannels(tenantId)).filter(c => c.kind === "messenger" && c.active);
-  return NextResponse.json({ accounts: await Promise.all(channels.map(report)) });
+  return NextResponse.json(brandJson({ accounts: await Promise.all(channels.map(report)) }, await brandForTenant(tenantId)));
 }
 
 export async function POST(req: Request) {
@@ -125,5 +127,5 @@ export async function POST(req: Request) {
   const sub = await subscribePageToApp(ch.pageId, ch.token);
   const after = await report(ch);
   logActivity(await currentUser(), "channel.recheck", `${ch.name} (Page ${ch.pageId}) — ${after.status}${sub.ok ? "" : `; resubscribe failed: ${sub.detail}`}`);
-  return NextResponse.json({ account: after, resubscribe: sub });
+  return NextResponse.json(brandJson({ account: after, resubscribe: sub }, await brandForTenant(tenantId)));
 }

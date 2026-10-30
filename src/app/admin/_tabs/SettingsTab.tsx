@@ -3,6 +3,7 @@
 // Settings: workspace rail + plan/usage, WhatsApp numbers, team, activity log,
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
+import { useBrand } from "@/components/BrandContext";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
@@ -585,6 +586,8 @@ function UsageCard() {
 // Developer API keys — mint per-tenant keys for the public API (/api/broadcast,
 // /api/events, /api/contacts). The full key is shown once on creation.
 function ApiKeysCard() {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   const ask = useConfirm();
   const [keys, setKeys] = useState<{ id: string; name: string; prefix: string; lastUsedAt: string | null; revoked: boolean }[]>([]);
   const [name, setName] = useState("");
@@ -611,7 +614,7 @@ function ApiKeysCard() {
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
-      <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Keys for calling the Talko API from your own systems.</>}>Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</PageInfo>
+      <p className="text-xs font-bold text-slate-400 uppercase">API access (developers)</p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Keys for calling the {who} API from your own systems.</>}>Use a key as <code className="font-mono">Authorization: Bearer ak_live_…</code> to call <code className="font-mono">/api/broadcast</code>, <code className="font-mono">/api/events</code> and <code className="font-mono">/api/contacts</code>. Each key is scoped to this workspace.</PageInfo>
       <div className="flex gap-2">
         <input className="flex-1 border border-line rounded-control px-2 py-1.5 text-xs bg-white" placeholder="Key name (e.g. CRM integration)" value={name} onChange={e => setName(e.target.value)} />
         <button onClick={create} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold shrink-0">Create key</button>

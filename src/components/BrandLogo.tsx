@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useBrand } from "./BrandContext";
 
 // Aspect ratio of the cropped lockup artwork (viewBox "8 58.5 432 110").
 // Both <img> dimensions are pinned from this so the logo renders at an identical
@@ -20,6 +21,20 @@ export function BrandLogo({
   height = 32, className = "", fallback, suffix = false,
 }: { height?: number; className?: string; fallback: React.ReactNode; suffix?: boolean }) {
   const [failed, setFailed] = useState(false);
+  const brand = useBrand();
+  // A partner's portal shows the partner's logo, or its name when it has none.
+  // Talko's own pages never reach this branch.
+  if (brand.partnerId) {
+    if (!brand.logoUrl || failed) {
+      return <span className={`font-extrabold text-ink-900 leading-none truncate ${className}`} style={{ fontSize: Math.round(height * 0.5) }}>{brand.name}</span>;
+    }
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img src={brand.logoUrl} alt={brand.name} height={height}
+        style={{ height, width: "auto", objectFit: "contain", display: "block" }}
+        className={className} onError={() => setFailed(true)} />
+    );
+  }
   if (failed) return <>{fallback}</>;
   const width = Math.round(height * LOGO_RATIO);
   return (

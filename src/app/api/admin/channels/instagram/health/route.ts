@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { brandForTenant } from "@/lib/brand-server";
+import { brandJson } from "@/lib/whitelabel";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { listChannels, getChannel, resolveIgAccountId, igWebhookFields, subscribeIgToApp, type Channel } from "@/lib/channels";
 import { getTenantSetting, hasCommentConversation } from "@/lib/store";
@@ -108,7 +110,7 @@ export async function GET() {
   const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
   const channels = (await listChannels(tenantId)).filter(c => c.kind === "instagram" && c.active);
   const accounts = await Promise.all(channels.map(report));
-  return NextResponse.json({ accounts });
+  return NextResponse.json(brandJson({ accounts }, await brandForTenant(tenantId)));
 }
 
 export async function POST(req: Request) {
@@ -132,5 +134,5 @@ export async function POST(req: Request) {
   const sub = await subscribeIgToApp(ch.igUserId, ch.token);
   const after = await report(ch);
   logActivity(await currentUser(), "channel.recheck", `${ch.name} (IG ${ch.igUserId}) — ${after.status}${sub.ok ? "" : `; resubscribe failed: ${sub.detail}`}`);
-  return NextResponse.json({ account: after, resubscribe: sub });
+  return NextResponse.json(brandJson({ account: after, resubscribe: sub }, await brandForTenant(tenantId)));
 }

@@ -19,6 +19,9 @@
 //   • The day is the BUSINESS day (businessclock.ts): Vercel runs on UTC, and
 //     "send at 9" must mean 9 where the business is.
 
+import { applyEmailBrand } from "./email-brand";
+import { brandForTenant } from "./brand-lookup";
+import { TALKO_BRAND, type Brand } from "./whitelabel";
 import { db } from "./supabase";
 import {
   getTenantSetting, setTenantSetting, tenantIdsWithSetting,
@@ -91,7 +94,7 @@ function factLines(n: DigestNumbers): string[] {
   ];
 }
 
-export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null): { subject: string; html: string; text: string; unsub: string } {
+export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null, brand: Brand = TALKO_BRAND): { subject: string; html: string; text: string; unsub: string; fromName?: string } {
   const subject = `Today: ${n.waiting.total} waiting on a reply, ${n.yesterday.newLeads} new leads yesterday`;
   const stats: EmailStat[] = [
     { value: String(n.waiting.total), label: "waiting on a reply", delta: n.waiting.oldestHours != null ? `oldest ${age(n.waiting.oldestHours)}` : undefined },
@@ -103,7 +106,8 @@ export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline
     `Yesterday: ${n.yesterday.aiReplies} AI replies, ${n.yesterday.escalations} escalations, ${n.yesterday.optOuts} opt-outs, ${n.yesterday.failedSends} failed sends. ${n.inDrips} people are in drips right now.`,
   ];
   const unsub = unsubscribeUrl(tenantId, "daily_digest");
-  const { html, text } = renderEmail({
+  // White-label: a partner's customer gets this in the partner's brand.
+  const mail = applyEmailBrand(brand, {
     preheader: `${n.day} · what is waiting on your team this morning.`,
     heading: "Your morning digest",
     paragraphs,
@@ -112,8 +116,9 @@ export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline
     cta: { label: "Open your inbox", href: "/login" },
     footerReason: "You're getting this because an admin switched on the daily digest for your workspace. Once a day, never more.",
     unsubscribeHref: unsub,
-  }, SITE_URL);
-  return { subject, html, text, unsub };
+  }, SITE_URL, subject);
+  const { html, text } = renderEmail(mail.opts, mail.siteUrl);
+  return { subject: mail.subject, html, text, unsub: mail.opts.unsubscribeHref ?? unsub, ...(mail.fromName ? { fromName: mail.fromName } : {}) };
 }
 
 async function sendTo(tenantId: string, to: string[], now: number): Promise<number> {
@@ -123,10 +128,10 @@ async function sendTo(tenantId: string, to: string[], now: number): Promise<numb
   const ai = await generateExecutiveBrief(factLines(numbers).join("\n"), tenantId)
     .then(b => ({ headline: b.headline, steps: b.steps.slice(0, 3) }))
     .catch(() => null);
-  const mail = renderDigest(numbers, tenantId, ai);
+  const mail = renderDigest(numbers, tenantId, ai, await brandForTenant(tenantId));
   let sent = 0;
   for (const addr of to) {
-    const r = await sendEmail({ to: addr, subject: mail.subject, html: mail.html, text: mail.text, unsubscribeUrl: mail.unsub, type: "daily_digest", tenantId })
+    const r = await sendEmail({ to: addr, subject: mail.subject, html: mail.html, text: mail.text, unsubscribeUrl: mail.unsub, type: "daily_digest", tenantId, ...(mail.fromName ? { fromName: mail.fromName } : {}) })
       .catch(() => ({ ok: false }));
     if (r.ok) sent++;
   }

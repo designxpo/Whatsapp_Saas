@@ -15,6 +15,7 @@
 import { db } from "./supabase";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { errorMessage } from "./errors";
+import { checkBrandSettings, type BrandSettings } from "./whitelabel";
 
 export type PartnerKind = "private" | "reseller";
 export type PartnerTier = "standard" | "pro";
@@ -32,6 +33,8 @@ export interface Partner {
   setupFeeCents: number; monthlyFeeCents: number; depositCents: number;
   wholesalePct: number | null; graceDays: number;
   notes: string | null; createdAt: string; updatedAt: string;
+  /** What the partner's portal shows instead of Talko (Phase 2). */
+  brand: BrandSettings;
 }
 
 export interface PartnerWorkspace {
@@ -77,6 +80,7 @@ export interface PartnerInput {
   contactName?: string | null; contactEmail?: string | null; contactPhone?: string | null;
   allowedPlans?: string[]; setupFeeCents?: number; monthlyFeeCents?: number; depositCents?: number;
   wholesalePct?: number | null; graceDays?: number; notes?: string | null;
+  brand?: BrandSettings;
 }
 
 type Checked = { ok: true; row: Record<string, unknown> } | { ok: false; error: string };
@@ -165,6 +169,12 @@ export function checkPartnerInput(p: PartnerInput, existing?: Pick<Partner, "kin
     if (!Number.isInteger(p.graceDays) || p.graceDays < 0 || p.graceDays > 60) return { ok: false, error: "Grace days must be between 0 and 60." };
     row.grace_days = p.graceDays;
   }
+  if (p.brand !== undefined) {
+    if (!p.brand || typeof p.brand !== "object") return { ok: false, error: "Brand settings must be an object." };
+    const b = checkBrandSettings(p.brand);
+    if (!b.ok) return { ok: false, error: b.error };
+    row.brand = b.brand;
+  }
   return { ok: true, row };
 }
 
@@ -203,6 +213,7 @@ function mapPartner(r: Record<string, unknown>): Partner {
     wholesalePct: r.wholesale_pct == null ? null : Number(r.wholesale_pct),
     graceDays: Number(r.grace_days ?? 7), notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+    brand: (r.brand as BrandSettings | null) ?? {},
   };
 }
 

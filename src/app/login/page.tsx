@@ -5,12 +5,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser";
 import { Loader2, MessageSquare, KeyRound } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
+import { useBrand } from "@/components/BrandContext";
 import { safeNext } from "@/lib/safenext";
 
 type Step = "credentials" | "otp" | "totp" | "forgot" | "reset";
 
 function LoginForm() {
   const router = useRouter();
+  // Talko unless this form sits inside a partner's portal (app/partner-login).
+  const brand = useBrand();
   // Optional post-login destination (?next=/support). Same-origin paths only —
   // anything else falls back to /admin (safenext.ts).
   const next = safeNext(useSearchParams().get("next"));
@@ -151,10 +154,10 @@ function LoginForm() {
                 <div className="w-12 h-12 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 flex items-center justify-center">
                   <MessageSquare className="w-6 h-6 text-white" />
                 </div>
-                <h1 className="text-xl font-bold text-ink-900">Talko AI</h1>
+                <h1 className="text-xl font-bold text-ink-900">{brand.name}</h1>
               </>
             } />
-            <p className="text-sm text-ink-400">AI conversations for WhatsApp &amp; Instagram</p>
+            {brand.tagline && <p className="text-sm text-ink-400">{brand.tagline}</p>}
           </div>
 
           {notice && <p className="text-sm text-emerald-700 bg-emerald-50 rounded-control px-3 py-2">{notice}</p>}
@@ -188,7 +191,9 @@ function LoginForm() {
           </form>
           <button type="button" onClick={() => { setStep("forgot"); setError(null); setNotice(null); setForgotEmail(user); }}
             className="w-full text-xs text-ink-400 hover:text-ink-900">Forgot your password?</button>
-          <p className="text-center text-xs text-ink-400">Don&apos;t have an account? <a href="/signup" className="font-semibold text-brand-700 hover:underline">Start free trial</a></p>
+          {brand.partnerId
+            ? (brand.supportEmail && <p className="text-center text-xs text-ink-400">Need an account? <a href={`mailto:${brand.supportEmail}`} className="font-semibold text-brand-700 hover:underline">Contact {brand.name}</a></p>)
+            : <p className="text-center text-xs text-ink-400">Don&apos;t have an account? <a href="/signup" className="font-semibold text-brand-700 hover:underline">Start free trial</a></p>}
         </div>
       )}
 

@@ -4,6 +4,7 @@
 // Lazy-loaded by the dashboard shell so this ~1.8k-line feature ships as its own
 // chunk instead of bloating the initial admin bundle. Logic is unchanged.
 
+import { useBrand } from "@/components/BrandContext";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
@@ -46,6 +47,7 @@ function deliveryPill(d?: Delivery): { cls: string; label: string } {
 }
 
 function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const brand = useBrand();
   const ask = useConfirm();
   const [data, setData] = useState<AdsData | null>(null);
   const [preset, setPreset] = useState<"today" | "last_7d" | "last_30d">("last_7d");
@@ -261,7 +263,7 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
           {acctPick && (
             <div className="rounded-control border border-line bg-canvas p-3 space-y-2">
-              <p className="text-xs font-bold text-ink-700">Which ad account should Talko manage?</p>
+              <p className="text-xs font-bold text-ink-700">Which ad account should {brand.partnerId ? brand.name : "Talko"} manage?</p>
               <div className="flex flex-wrap gap-2">
                 {acctPick.map(a => (
                   <button key={a.id} onClick={() => connectWithMeta(a.id)} disabled={busy === "meta"}

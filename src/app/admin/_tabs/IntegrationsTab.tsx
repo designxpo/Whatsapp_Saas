@@ -1,6 +1,7 @@
 "use client";
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
+import { useBrand } from "@/components/BrandContext";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
@@ -87,6 +88,8 @@ function Logo({ kind, logo }: { kind: string; logo: string | null }) {
 }
 
 function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   const ask = useConfirm();
   const { vocab } = useVocab();
   const contactLc = vocab.contact.one.toLowerCase();
@@ -196,16 +199,16 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     return { kind: x.kind, name: KIND_LABELS[x.kind], logo: c.logo, color: "#334155", blurb: c.blurb, group: x.group as ExtraTool["group"], connected: countOf(x.kind) };
   });
   const accountLinks: Record<string, AccountLink> = {
-    shopify: { kind: "shopify", title: "Import your product catalog", blurb: "Bring your Shopify products into Talko so the AI and checkout can use them.", connected: countOf("shopify") },
-    woocommerce: { kind: "woocommerce", title: "Import your product catalog", blurb: "Bring your WooCommerce products into Talko so the AI and checkout can use them.", connected: countOf("woocommerce") },
-    razorpay: { kind: "razorpay", title: "Send payment links in chat", blurb: "Connect your Razorpay keys so Talko can send payment links inside the chat and confirm paid orders.", connected: countOf("razorpay") },
+    shopify: { kind: "shopify", title: "Import your product catalog", blurb: `Bring your Shopify products into ${who} so the AI and checkout can use them.`, connected: countOf("shopify") },
+    woocommerce: { kind: "woocommerce", title: "Import your product catalog", blurb: `Bring your WooCommerce products into ${who} so the AI and checkout can use them.`, connected: countOf("woocommerce") },
+    razorpay: { kind: "razorpay", title: "Send payment links in chat", blurb: `Connect your Razorpay keys so ${who} can send payment links inside the chat and confirm paid orders.`, connected: countOf("razorpay") },
     calcom: { kind: "calcom", title: "Let customers book meetings", blurb: "Connect Cal.com so a chatbot flow's “Book meeting” step can book real slots.", connected: countOf("calcom") },
   };
 
   return (
     <div className="max-w-5xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2><PageInfo className="text-sm text-slate-500" lead={<>Connect the tools you already use — no code required.</>}><p>Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let Talko act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p><p>Pick a tool below. Most tell Talko when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let Talko act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p></PageInfo>
+        <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2><PageInfo className="text-sm text-slate-500" lead={<>Connect the tools you already use — no code required.</>}><p>Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let {who} act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p><p>Pick a tool below. Most tell {who} when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let {who} act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p></PageInfo>
       </div>
 
       {msg && !adding && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}

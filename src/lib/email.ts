@@ -27,6 +27,8 @@ export interface SendEmailResult { ok: boolean; error?: string }
 
 export interface SendEmailOptions {
   to: string;
+  /** White-label: the sender name a partner's customer sees ("Bright Dental <no-reply@…>"). Omitted = Talko's sender, unchanged. */
+  fromName?: string;
   subject: string;
   html: string;
   replyTo?: string;
@@ -85,7 +87,8 @@ async function logSend(opts: SendEmailOptions, resendId: string | null, status: 
 
 export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult> {
   try {
-    const from = process.env.RESEND_FROM_EMAIL || "Talko AI <no-reply@thetalko.in>";
+    const sender = process.env.RESEND_FROM_EMAIL || "Talko AI <no-reply@thetalko.in>";
+    const from = opts.fromName ? `${opts.fromName.replace(/[<>"\r\n]/g, "").trim()} <${sender.match(/<([^>]+)>/)?.[1] ?? sender}>` : sender;
     const headers: Record<string, string> = {};
     if (opts.unsubscribeUrl) {
       headers["List-Unsubscribe"] = `<${opts.unsubscribeUrl}>`;

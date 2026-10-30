@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { brandForTenant } from "@/lib/brand-server";
+import { brandCopy } from "@/lib/whitelabel";
 import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { supportDeskTenantId } from "@/lib/supportdesk";
 import { listUsers, saveUser, deleteUser, logActivity } from "@/lib/team";
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
     // wa_users.email is unique across ALL workspaces — surface that plainly
     // instead of the misleading migration hint (a 23505 is not a schema gap).
     if (/duplicate key|23505/i.test(msg) && /email/i.test(msg)) {
-      return NextResponse.json({ error: "A member with this email already exists (here or in another workspace) — every member email must be unique across Talko AI." }, { status: 409 });
+      return NextResponse.json({ error: brandCopy("A member with this email already exists (here or in another workspace) — every member email must be unique across Talko AI.", await brandForTenant(tid)) }, { status: 409 });
     }
     return NextResponse.json({ error: `${msg} — is migration 0014_team.sql applied?` }, { status: 500 });
   }

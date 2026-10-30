@@ -6,7 +6,7 @@
 // "</script><script>…" ended the block and ran the rest as that admin.
 import { describe, it, expect, vi } from "vitest";
 vi.mock("@/lib/auth", () => ({ requireRoleAdmin: async () => true, currentUser: async () => null }));
-import { popupHtml } from "@/app/api/admin/onboarding/instagram/start/route";
+import { popupHtml } from "@/lib/igpopup";
 
 const ATTACK = "</script><script>fetch('/api/admin/team',{method:'POST'})</script>";
 

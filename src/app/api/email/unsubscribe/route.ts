@@ -17,13 +17,17 @@
 import { NextResponse } from "next/server";
 import { verifyUnsubscribeToken, setUnsubscribed } from "@/lib/emailprefs";
 import { SITE_URL } from "@/lib/siteurl";
+import { requestBrand } from "@/lib/brand-server";
+import { TALKO_BRAND, brandCopy, type Brand } from "@/lib/whitelabel";
 
 export const dynamic = "force-dynamic";
 
 const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email" };
 
-function page(title: string, body: string, status = 200): NextResponse {
-  const html = `<!doctype html>
+// White-label: on a partner's address (where its emails' unsubscribe links
+// point) the page carries the partner's name and links stay on that address.
+function renderPage(brand: Brand, title: string, body: string, status = 200): NextResponse {
+  let html = `<!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${title} — Talko AI</title>
@@ -47,10 +51,13 @@ function page(title: string, body: string, status = 200): NextResponse {
   }
 </style>
 </head><body><div class="card">${body}</div></body></html>`;
+  if (brand.partnerId) html = brandCopy(html.split(SITE_URL).join("").replace(/href=""/g, 'href="/login"'), brand);
   return new NextResponse(html, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }
 
 export async function GET(req: Request) {
+  const { brand } = await requestBrand().catch(() => ({ brand: TALKO_BRAND }));
+  const page = (t: string, b: string, st?: number) => renderPage(brand, t, b, st);
   const token = new URL(req.url).searchParams.get("t") ?? "";
   const claim = verifyUnsubscribeToken(token);
   if (!claim) {
@@ -75,6 +82,8 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const { brand } = await requestBrand().catch(() => ({ brand: TALKO_BRAND }));
+  const page = (t: string, b: string, st?: number) => renderPage(brand, t, b, st);
   // Token can arrive in the form body (our confirm page) or the query string
   // (a provider's one-click button, which POSTs to the header URL as-is).
   let token = new URL(req.url).searchParams.get("t") ?? "";

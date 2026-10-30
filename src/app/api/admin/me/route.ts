@@ -1,4 +1,6 @@
 import { NextResponse, after } from "next/server";
+import { brandForTenant } from "@/lib/brand-server";
+import { brandCopy } from "@/lib/whitelabel";
 import { currentUser, isPlatformOwnerEmail } from "@/lib/auth";
 import { kickIfStalled } from "@/lib/cronwatchdog";
 import { getTenant, type Tenant } from "@/lib/tenants";
@@ -36,7 +38,7 @@ export async function GET() {
     const hasChannel = await hasActiveChannel(user.tenantId).catch(() => true);
     if (!hasChannel) {
       banner = {
-        id: "setup-nudge", title: "Finish setting up Talko AI",
+        id: "setup-nudge", title: brandCopy("Finish setting up Talko AI", await brandForTenant(user.tenantId)),
         body: "Connect a channel to start getting AI replies — head to Setup & status to pick up where you left off.",
         level: "warning", pinned: true, active: true, createdAt: new Date().toISOString(),
       };

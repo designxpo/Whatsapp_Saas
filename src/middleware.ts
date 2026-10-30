@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { partnerSlugFromHost, whiteLabelConfig } from "@/lib/whitelabel";
 
 const COOKIE = "wa_admin_session";
 const AFFILIATE_COOKIE = "wa_affiliate_session";
@@ -119,6 +120,35 @@ export async function middleware(req: NextRequest) {
   // keep serving everything on a single host. Shared machine/public paths are
   // exempt so webhooks, the widget and QR/campaign short-links work on both. ──
   const host = req.headers.get("host") ?? req.nextUrl.host;
+
+  // ── Partner portals (white-label). Off unless WHITE_LABEL_ENABLED=1, and
+  // never true for Talko's own hosts (app, www, the bare domain: whitelabel.ts),
+  // so nothing below runs for the current portal. A partner's address serves
+  // only the portal: Talko's marketing site, owner console, system setup,
+  // billing, support desk and affiliate programme don't exist there, and its
+  // sign-in is a separate branded page, so Talko's own /login stays as it is. ──
+  const partnerSlug = partnerSlugFromHost(host, whiteLabelConfig());
+  if (partnerSlug && !isSharedPath(pathname)) {
+    const url = req.nextUrl.clone();
+    if (pathname === "/" || pathname === "/signup" || (pathname === "/login" && ok)) {
+      url.pathname = ok ? "/admin" : "/login";
+      url.search = "";
+      return noStore(NextResponse.redirect(url));
+    }
+    if (pathname === "/login") {
+      url.pathname = "/partner-login";
+      return noStore(NextResponse.rewrite(url));
+    }
+    if (pathname.startsWith("/admin/billing")) {
+      url.pathname = "/admin";
+      url.search = "";
+      return noStore(NextResponse.redirect(url));
+    }
+    const talkoOnly = pathname.startsWith("/admin/owner") || pathname.startsWith("/admin/setup")
+      || pathname.startsWith("/support") || pathname.startsWith("/affiliate") || pathname.startsWith("/partner-login");
+    if (talkoOnly || !isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
+  }
+
   const splitOn = !!APP_HOST && !!MARKETING_HOST
     && (host === APP_HOST || host === MARKETING_HOST || host === `www.${MARKETING_HOST}`);
   if (splitOn && !isSharedPath(pathname)) {

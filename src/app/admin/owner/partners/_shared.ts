@@ -9,6 +9,12 @@ export type PartnerRow = {
   contactName: string | null; contactEmail: string | null; contactPhone: string | null;
   allowedPlans: string[]; setupFeeCents: number; monthlyFeeCents: number; depositCents: number;
   wholesalePct: number | null; graceDays: number; notes: string | null; createdAt: string; workspaceCount?: number;
+  brand?: BrandSettings;
+};
+
+export type BrandSettings = {
+  displayName?: string | null; logoUrl?: string | null; color?: string | null; tagline?: string | null;
+  supportEmail?: string | null; termsUrl?: string | null; privacyUrl?: string | null;
 };
 
 export const KIND_LABEL: Record<PartnerKind, string> = { private: "Private Label", reseller: "Reseller" };

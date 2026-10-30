@@ -13,6 +13,7 @@
 // without needing a separate cleanup job — the small number of settings rows
 // this adds (one per tenant per week) is negligible at any realistic scale.
 
+import { brandEmail } from "./email-brand";
 import { db } from "./supabase";
 import { claimTenantSettingOnce, releaseTenantSetting } from "./store";
 import { sendEmail } from "./email";
@@ -161,7 +162,8 @@ export async function drainWeeklyRecaps(): Promise<number> {
       ? `Your week: ${plural(now.conversations, "conversation", "conversations")}, ${plural(now.leads, "new lead", "new leads")}`
       : `Your week: ${plural(now.conversations, "conversation", "conversations")}, ${plural(now.aiReplies, "AI reply", "AI replies")}`;
 
-    const { html, text } = renderEmail({
+    // White-label: a partner's customer gets this in the partner's brand.
+    const mail = await brandEmail(tenantId, {
       preheader: `${label} · your Talko AI recap, and the one thing worth doing next.`,
       heading: "Your week on Talko AI",
       paragraphs: [`Here's what ran on autopilot between ${label}.`],
@@ -171,9 +173,10 @@ export async function drainWeeklyRecaps(): Promise<number> {
       secondary,
       footerReason: "You're getting this because you own a Talko AI workspace. It's a weekly summary, sent once a week and never more.",
       unsubscribeHref: unsub,
-    }, SITE_URL);
+    }, SITE_URL, subject);
+    const { html, text } = renderEmail(mail.opts, mail.siteUrl);
 
-    const result = await sendEmail({ to: ownerEmail, subject, html, text, unsubscribeUrl: unsub, type: "weekly_recap", tenantId });
+    const result = await sendEmail({ to: ownerEmail, subject: mail.subject, html, text, unsubscribeUrl: mail.opts.unsubscribeHref ?? unsub, type: "weekly_recap", tenantId, ...(mail.fromName ? { fromName: mail.fromName } : {}) });
     if (result.ok) {
       sent++;
     } else {

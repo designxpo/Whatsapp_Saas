@@ -4,6 +4,7 @@
 // AI-drafted replies. Reviews are added manually / pasted for now; a live Google
 // Business Profile connection (auto-fetch + one-tap post) lands in Phase 2. The
 // auto(4–5★)/draft(1–3★) policy is surfaced per review via the auto threshold.
+import { useBrand } from "@/components/BrandContext";
 import { useState, useEffect, useCallback } from "react";
 import { Star, Sparkles, Copy, Check, Trash2, Loader2, RefreshCw, Plus, SlidersHorizontal, Send, MapPin, Link2, Unlink } from "lucide-react";
 import { inp } from "../_shared";
@@ -46,6 +47,8 @@ function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
 }
 
 export default function ReviewsTab() {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   const ask = useConfirm();
   const [reviews, setReviews] = useState<Review[]>([]);
   const [settings, setSettings] = useState<Settings>({ autoMinStars: 4, signature: "", tone: "" });
@@ -250,7 +253,7 @@ export default function ReviewsTab() {
             </label>
             <label className="text-xs font-semibold text-ink-700 space-y-1 block">
               Signature (optional)
-              <input className={`${inp} w-full`} placeholder="— Team Talko" maxLength={120} value={settingsForm.signature} onChange={e => setSettingsForm({ ...settingsForm, signature: e.target.value })} />
+              <input className={`${inp} w-full`} placeholder={`— Team ${who}`} maxLength={120} value={settingsForm.signature} onChange={e => setSettingsForm({ ...settingsForm, signature: e.target.value })} />
             </label>
           </div>
           <label className="text-xs font-semibold text-ink-700 space-y-1 block">

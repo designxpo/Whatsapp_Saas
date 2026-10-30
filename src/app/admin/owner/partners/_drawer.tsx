@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
 import { Drawer, Panel, Badge, Spinner, SearchInput, ConfirmDialog, money, ago, useDebounced, type ConfirmCfg } from "../_ui";
-import { KIND_LABEL, STATUS_TONE, type PartnerRow, type PartnerStatus } from "./_shared";
+import { KIND_LABEL, STATUS_TONE, type BrandSettings, type PartnerRow, type PartnerStatus } from "./_shared";
 
 type Workspace = { id: string; name: string; company: string | null; plan: string; status: string; paymentStatus: string | null; createdAt: string };
 type AuditRow = { actor: string; action: string; tenantId: string | null; detail: string; at: string };
@@ -102,6 +102,8 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
             <p className="text-[11px] text-ink-600 mt-2">Pausing or closing records the decision. From Phase 4, a paused partner&apos;s workspaces pause too.</p>
           </Panel>
 
+          <BrandPanel partner={p} onSaved={async () => { await load(); onChanged(); }} />
+
           <Panel title="Deal">
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
               <Row k="Setup fee" v={money(p.setupFeeCents)} />
@@ -185,4 +187,71 @@ function StatusButton({ label, busy, onClick }: { label: string; busy: boolean; 
 
 function Row({ k, v }: { k: string; v: string }) {
   return (<><dt className="text-ink-600">{k}</dt><dd className="text-ink-900 font-semibold text-right">{v}</dd></>);
+}
+
+// What the partner's portal shows instead of Talko. The preview is the sidebar
+// header their customers will see. Saved settings reach the live portal within
+// a minute (the brand is cached for 60 seconds).
+const BRAND_FIELDS: { key: keyof BrandSettings; label: string; placeholder: string }[] = [
+  { key: "displayName", label: "Name shown to customers", placeholder: "Defaults to the partner's name" },
+  { key: "logoUrl", label: "Logo image link (https)", placeholder: "https://…/logo.png" },
+  { key: "color", label: "Brand colour", placeholder: "#0d6efd" },
+  { key: "tagline", label: "Tagline under the logo", placeholder: "Optional" },
+  { key: "supportEmail", label: "Support email customers see", placeholder: "Defaults to the contact email" },
+  { key: "termsUrl", label: "Terms link (https)", placeholder: "Optional" },
+  { key: "privacyUrl", label: "Privacy policy link (https)", placeholder: "Optional" },
+];
+
+function BrandPanel({ partner, onSaved }: { partner: PartnerRow; onSaved: () => Promise<void> }) {
+  const [form, setForm] = useState<BrandSettings>(partner.brand ?? {});
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [logoFailed, setLogoFailed] = useState(false);
+  useEffect(() => { setForm(partner.brand ?? {}); }, [partner.brand]);
+  useEffect(() => { setLogoFailed(false); }, [form.logoUrl]);
+
+  async function save() {
+    setBusy(true); setNote(null);
+    try {
+      const r = await fetch(`/api/owner/partners/${partner.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ brand: form }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) setNote({ ok: false, text: j.error || `Couldn't save (HTTP ${r.status})` });
+      else { setNote({ ok: true, text: "Saved. The portal shows it within a minute." }); await onSaved(); }
+    } catch { setNote({ ok: false, text: "Couldn't reach the server." }); }
+    finally { setBusy(false); }
+  }
+
+  const name = form.displayName?.trim() || partner.name;
+  const inp = "w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900";
+  return (
+    <Panel title="Brand" action={<a href={`https://${partner.slug}.thetalko.in`} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 hover:underline">{partner.slug}.thetalko.in ↗</a>}>
+      <div className="space-y-3">
+        <div className="rounded-control border border-line bg-white px-4 py-3">
+          <p className="text-[10px] font-bold text-ink-400 uppercase tracking-wide mb-2">Preview</p>
+          {form.logoUrl && !logoFailed
+            // eslint-disable-next-line @next/next/no-img-element
+            ? <img src={form.logoUrl} alt={name} style={{ height: 28, width: "auto" }} onError={() => setLogoFailed(true)} />
+            : <p className="text-[15px] font-extrabold" style={{ color: form.color || undefined }}>{name}</p>}
+          {form.tagline && <p className="text-[10px] text-ink-400 mt-1.5">{form.tagline}</p>}
+          {form.logoUrl && logoFailed && <p className="text-[11px] text-amber-700 mt-1">That logo link doesn&apos;t load an image.</p>}
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {BRAND_FIELDS.map(f => (
+            <label key={f.key} className={f.key === "logoUrl" || f.key === "tagline" ? "col-span-2" : ""}>
+              <span className="block text-[11px] font-bold text-ink-600 mb-1">{f.label}</span>
+              <input className={inp} value={form[f.key] ?? ""} placeholder={f.placeholder}
+                onChange={e => setForm({ ...form, [f.key]: e.target.value })} />
+            </label>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save brand"}</button>
+          {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
+        </div>
+        <p className="text-[11px] text-ink-600">
+          {partner.tier === "pro" ? "Pro: no \"Powered by Talko\" line on their website chat." : "Standard: their website chat keeps a small \"Powered by Talko AI\" line."}
+        </p>
+      </div>
+    </Panel>
+  );
 }

@@ -12,6 +12,8 @@
 // sight, and HTML-only mail also scores worse with spam filters — a code that
 // lands in junk reads to the user as a login that's simply broken.
 
+import { brandForEmail } from "./brand-lookup";
+import { TALKO_BRAND, brandCopy, brandJson, partnerOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
 import { createHash } from "crypto";
 import { db } from "./supabase";
 import { newOtpCode, safeEqual, otpPepper } from "./otp";
@@ -51,7 +53,7 @@ export interface OtpEmailContent { subject: string; html: string; text: string }
 // and ignoring it is the whole fix; an unwanted sign-in code means someone else
 // already has the password; an unwanted reset code means someone is trying to
 // take the account from an owner who still has it.
-export function composeOtpEmail(purpose: EmailOtpPurpose, code: string): OtpEmailContent {
+export function composeOtpEmail(purpose: EmailOtpPurpose, code: string, brand: Brand = TALKO_BRAND): OtpEmailContent {
   // Typed rather than inferred so the branch that has no `secondary` link and
   // the branch that does are still one shape at the render call below.
   const copy: {
@@ -98,18 +100,27 @@ export function composeOtpEmail(purpose: EmailOtpPurpose, code: string): OtpEmai
         footerReason: "You're getting this because someone signed in to a Talko AI account with this email address from a device we didn't recognise. It's sent only when that happens — there's nothing recurring to unsubscribe from.",
       };
 
+  // White-label: a partner's customer gets the same email in the partner's
+  // name, with links to the partner's address. Talko's brand changes nothing.
+  const partner = brand.partnerId && brand.slug ? brand : null;
+  if (partner) {
+    Object.assign(copy, brandJson(copy, partner));
+    copy.secondary = partner.supportEmail ? { label: copy.secondary?.label ?? "Contact us", href: `mailto:${partner.supportEmail}` } : undefined;
+  }
+
   const { html, text } = renderEmail({
+    ...(partner ? { brand: { name: partner.name, logoUrl: partner.logoUrl } } : {}),
     // The code in the preview line so it can be read from the notification
     // without opening anything. It stays out of the plain-text part (the shell
     // builds that from the other fields), which keeps the code appearing exactly
     // once there — no ambiguity about which four digits to type.
-    preheader: `${code} is your Talko AI code — good for ${EMAIL_OTP_EXPIRY_MINUTES} minutes.`,
+    preheader: brandCopy(`${code} is your Talko AI code — good for ${EMAIL_OTP_EXPIRY_MINUTES} minutes.`, brand),
     heading: copy.heading,
     paragraphs: copy.paragraphs,
     codeBlock: { code, caption: `This code expires in ${EMAIL_OTP_EXPIRY_MINUTES} minutes and can only be used once.` },
     // The one line an OTP email has to carry: code phishing works by asking the
     // victim to read the digits out, so say plainly that nobody legitimate will.
-    highlight: "Talko AI will never ask you for this code — not by email, phone, WhatsApp or chat. Anyone who does is trying to get into your account.",
+    highlight: brandCopy("Talko AI will never ask you for this code — not by email, phone, WhatsApp or chat. Anyone who does is trying to get into your account.", brand),
     // Deliberately no CTA. The code is typed back into the tab that asked for
     // it, so any button here would point at a page that can't consume it — and
     // "click this link to verify" is the exact shape of the phishing mail we're
@@ -117,7 +128,7 @@ export function composeOtpEmail(purpose: EmailOtpPurpose, code: string): OtpEmai
     // report link is the only concession, and it never signs anyone in.
     ...(copy.secondary ? { secondary: copy.secondary } : {}),
     footerReason: copy.footerReason,
-  }, SITE_URL);
+  }, partner ? partnerOrigin(partner.slug!, whiteLabelConfig()) : SITE_URL);
 
   return { subject: copy.subject, html, text };
 }
@@ -157,8 +168,11 @@ export async function sendEmailOtp(rawEmail: string, purpose: EmailOtpPurpose): 
     return { ok: false, error: "Code request not allowed right now" };
   }
 
-  const mail = composeOtpEmail(purpose, code);
-  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text, type: "otp" });
+  // A signup has no workspace yet, so it is always Talko's; sign-in and reset
+  // codes go out in the brand of the workspace the address belongs to.
+  const brand = purpose === "signup" ? TALKO_BRAND : await brandForEmail(email);
+  const mail = composeOtpEmail(purpose, code, brand);
+  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text, type: "otp", ...(brand.partnerId ? { fromName: brand.name } : {}) });
   if (!sent.ok) return { ok: false, error: sent.error || "Failed to send email" };
   return { ok: true };
 }

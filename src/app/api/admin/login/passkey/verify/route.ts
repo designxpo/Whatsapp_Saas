@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { loginHostRefusal } from "@/lib/brand-server";
 import { verifyAuthenticationResponse } from "@simplewebauthn/server";
 import { cookies } from "next/headers";
 import { createSession, liveSessionUser, SESSION_COOKIE } from "@/lib/auth";
@@ -70,6 +71,8 @@ export async function POST(req: Request) {
   // account still exists or what it may now do.
   const user = await liveSessionUser(stored.email);
   if (!user) return NextResponse.json({ error: "This account is no longer active." }, { status: 403 });
+  const wrongAddress = await loginHostRefusal(user, req.headers.get("host"));   // white-label; null while it's off
+  if (wrongAddress) return NextResponse.json({ error: wrongAddress }, { status: 403 });
 
   // Synced passkeys legitimately never advance their counter, so this is
   // recorded rather than policed — a stalled counter is normal, not a clone.

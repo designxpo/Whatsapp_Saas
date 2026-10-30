@@ -6,6 +6,7 @@ import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from 
 import { isTrustedDevice, DEVICE_COOKIE } from "@/lib/devices";
 import { sendEmailOtp } from "@/lib/emailotp";
 import { twoFactorStatus } from "@/lib/twofactor";
+import { loginHostRefusal } from "@/lib/brand-server";
 
 // Accounts that skip the new-device email OTP entirely — e.g. a platform
 // reviewer test login (Meta App Review, etc.) that must work from an unknown
@@ -46,6 +47,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
   await clearLoginFailures(key);
+
+  // White-label: a partner's address admits only that partner's users, and
+  // Talko's address sends a partner's users to theirs. Null (allowed) for
+  // everyone while white-label is off. Checked before any code is sent.
+  const wrongAddress = await loginHostRefusal(user, req.headers.get("host"));
+  if (wrongAddress) return NextResponse.json({ error: wrongAddress }, { status: 403 });
 
   // Credentials are correct. If this browser has already completed an OTP
   // challenge for this email, sign in immediately as before. Otherwise this is

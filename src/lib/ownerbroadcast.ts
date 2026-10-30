@@ -13,6 +13,7 @@
 // free — the campaign's delivery report is a filter on the log, not a second
 // tracking table.
 
+import { whiteLabelConfig } from "./whitelabel";
 import { db } from "./supabase";
 import { sendEmail } from "./email";
 import { renderEmail } from "./emailtemplate";
@@ -84,6 +85,7 @@ export async function resolveAudience(mode: AudienceMode): Promise<Recipient[]> 
   else if (mode === "suspended") q = q.or("status.eq.suspended,status.eq.cancelled,payment_status.eq.past_due");
   const { data, error } = await q;
   if (error) throw error;
+  const partnerOwned = await partnerWorkspaceIds();
 
   // Two tenants can share an owner email (an agency running several
   // workspaces). One email per address — the DB's unique constraint would
@@ -92,7 +94,7 @@ export async function resolveAudience(mode: AudienceMode): Promise<Recipient[]> 
   const out: Recipient[] = [];
   for (const r of data ?? []) {
     const email = ((r.owner_email as string) ?? "").trim().toLowerCase();
-    if (!email || seen.has(email)) continue;
+    if (!email || seen.has(email) || partnerOwned.has(r.id as string)) continue;
     seen.add(email);
     out.push({
       tenantId: r.id as string, email,
@@ -101,6 +103,19 @@ export async function resolveAudience(mode: AudienceMode): Promise<Recipient[]> 
     });
   }
   return out;
+}
+
+// White-label: a partner's customers never hear from Talko directly; these
+// announcements are in Talko's name. Empty while white-label is off, and on any
+// error (such as the partner migration not being applied yet), so the audience
+// is exactly what it was.
+async function partnerWorkspaceIds(): Promise<Set<string>> {
+  if (!whiteLabelConfig().enabled) return new Set();
+  try {
+    const { data, error } = await db().from("tenants").select("id").not("partner_id", "is", null);
+    if (error) throw error;
+    return new Set((data ?? []).map(r => r.id as string));
+  } catch { return new Set(); }
 }
 
 /** Recipient count for a segment, for the composer's "this will go to N" line. */

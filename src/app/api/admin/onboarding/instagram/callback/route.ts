@@ -1,11 +1,13 @@
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { brandForTenant } from "@/lib/brand-server";
+import { brandCopy } from "@/lib/whitelabel";
 import { guardFeature } from "@/lib/feature-guard";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
 import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp, findInstagramChannelId } from "@/lib/channels";
 import { igRedirectUri, verifyState, exchangeIgCode, igLongLivedToken, IG_COMMENT_SCOPE, igScopesKey } from "@/lib/iglogin";
 import { setTenantSetting } from "@/lib/store";
-import { popupHtml } from "../start/route";
+import { popupHtml } from "@/lib/igpopup";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -122,7 +124,7 @@ export async function GET(req: Request) {
     const commentsGranted = granted?.length ? granted.includes(IG_COMMENT_SCOPE) : null;
     console.log(TAG, "connected", { tenantId, channelId: channel.id, igUserId: channel.igUserId, granted, commentsGranted, webhook: webhook.ok ? (webhook.degraded ? "degraded" : "full") : webhook.detail });
 
-    if (!webhook.ok) return html({ ok: true, warn: true, detail: `The account is saved, but Meta refused to switch on message delivery, so no DM will reach Talko yet: ${webhook.detail}` });
+    if (!webhook.ok) return html({ ok: true, warn: true, detail: brandCopy(`The account is saved, but Meta refused to switch on message delivery, so no DM will reach Talko yet: ${webhook.detail}`, await brandForTenant(tenantId)) });
     if (webhook.degraded) return html({ ok: true, warn: true, detail: webhook.detail });
     if (commentsGranted === false) {
       return html({ ok: true, warn: true, detail: `@${live.username ?? live.id} is connected and DMs will arrive — but comment access wasn't granted, so comment-to-DM and comment-reply rules can never fire on this account. Connect it again and leave every permission switched on at Instagram's screen.` });

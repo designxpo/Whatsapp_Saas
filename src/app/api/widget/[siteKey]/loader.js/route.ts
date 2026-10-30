@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getChannelBySiteKey, sanitizeWidgetConfig } from "@/lib/channels";
+import { brandForTenant } from "@/lib/brand-lookup";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
   // Pull the widget's look & feel (sanitized — color is injected into CSS).
   const ch = await getChannelBySiteKey(siteKey).catch(() => null);
   const wc = sanitizeWidgetConfig(ch?.widgetConfig);
+  // White-label: a Pro partner's widgets drop the "Powered by" line (their
+  // plan includes that). Talko's own and Standard partners' widgets keep it,
+  // byte for byte. brandForTenant is Talko while white-label is off.
+  const brand = await brandForTenant(ch?.tenantId);
+  const powLine = brand.partnerId && !brand.poweredBy ? "" : "    '<div class=\"twc-pow\">Powered by Talko AI</div>' +\n";
   const cfg = JSON.stringify({
     siteKey, base,
     color: wc.color || "#0783fd",
@@ -132,7 +138,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  var panel = document.createElement('div'); panel.className = 'twc-panel';\n" +
 "  panel.innerHTML = '<div class=\"twc-head\"><div class=\"twc-av\">' + avInner + '</div><div class=\"twc-meta\"><div class=\"twc-ttl\"></div><div class=\"twc-sub\"><span class=\"twc-dot\"></span><span class=\"twc-subt\"></span></div></div><button class=\"twc-close\" aria-label=\"Close\">&times;</button></div>' +\n" +
 "    '<div class=\"twc-body\"></div>' +\n" +
-"    '<div class=\"twc-pow\">Powered by Talko AI</div>' +\n" +
+powLine +
 "    '<div class=\"twc-foot\"><input type=\"text\" placeholder=\"Type a message...\" /><button class=\"twc-send\" aria-label=\"Send\">' + SEND_SVG + '</button></div>';\n" +
 "  document.body.appendChild(btn); document.body.appendChild(panel);\n" +
 "  panel.querySelector('.twc-ttl').textContent = CFG.title;\n" +

@@ -1,6 +1,7 @@
 "use client";
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
+import { useBrand } from "@/components/BrandContext";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
@@ -12,6 +13,8 @@ import { Drawer } from "@/components/overlay";
 
 // Dedicated Instagram section (its own nav tab).
 function InstagramTab() {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   return (
     <div className="max-w-3xl space-y-5">
       <div>
@@ -24,7 +27,7 @@ function InstagramTab() {
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>An Instagram <b>Professional</b> account (Business or Creator), <b>linked to a Facebook Page</b>. In the IG app: Settings → Account type → switch to Professional, then link your Page.</span></li>
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>In <b>Instagram → Settings → Messages → Connected Tools</b>, turn ON <i>“Allow access to messages”</i> so the API can read/reply to DMs.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Grab two things to paste below: the <b>Instagram account id</b> (the professional account / IGSID) and an <b>access token</b> with messaging access. The Page id is optional — Talko sets up the connection and routing automatically.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">3</span><span>Grab two things to paste below: the <b>Instagram account id</b> (the professional account / IGSID) and an <b>access token</b> with messaging access. The Page id is optional — {who} sets up the connection and routing automatically.</span></li>
         </ol>
         <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up on Meta&apos;s rules (enforced automatically): you can only DM someone within <b>24 hours</b> of their last message, never cold-DM, and a comment reply is a single message. Staying inside these keeps the account safe from blocks.</p>
       </section>
@@ -83,6 +86,8 @@ function rulePublicRepliesOf(r: { publicReplies?: string[]; publicReply?: string
 }
 
 function InstagramManager() {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   const ask = useConfirm();
   const [channels, setChannels] = useState<ChannelRow[]>([]);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
@@ -349,7 +354,7 @@ function InstagramManager() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save account"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. Talko handles the connection and routing.</p>
+          <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Needs an IG <b>professional</b> account linked to a Facebook Page, and an access token with messaging access. {who} handles the connection and routing.</p>
           <Notice notice={note} />
         </div>)}
       </Drawer>

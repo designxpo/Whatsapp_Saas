@@ -3,6 +3,7 @@
 // YouTube (dedicated section) — a third comment-automation channel alongside
 // Instagram & Facebook. YouTube has no DMs, so automation here is public-reply +
 // moderation only. Mirrors InstagramTab's reply-only mode.
+import { useBrand } from "@/components/BrandContext";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
@@ -13,6 +14,8 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
 
 function YoutubeTab() {
+  const brand = useBrand();
+  const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   return (
     <div className="max-w-3xl space-y-5">
       <div>
@@ -23,7 +26,7 @@ function YoutubeTab() {
         <p className="text-xs font-bold text-slate-400 uppercase">Before you connect</p>
         <ol className="space-y-2 text-sm text-ink-700">
           <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">1</span><span>A <b>YouTube channel</b> you manage, on a Google account with access to reply to and moderate its comments.</span></li>
-          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>Click <b>Connect with Google</b> below and approve access on that Google account. That&apos;s it — Talko handles the API access and permissions for you.</span></li>
+          <li className="flex gap-2.5"><span className="shrink-0 w-5 h-5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold flex items-center justify-center">2</span><span>Click <b>Connect with Google</b> below and approve access on that Google account. That&apos;s it — {who} handles the API access and permissions for you.</span></li>
         </ol>
         <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Heads-up: YouTube has no new-comment webhook, so new comments are polled every few minutes (not instant), and the daily API quota caps total replies. We rotate reply variants and pace per hour to keep the channel safe from spam strikes.</p>
       </section>

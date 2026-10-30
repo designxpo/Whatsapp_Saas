@@ -8,6 +8,7 @@
 // the send itself then fails, the claim is released so a later tick retries
 // instead of silently losing the nudge forever.
 
+import { brandEmail } from "./email-brand";
 import { db } from "./supabase";
 import { claimTenantSettingOnce, releaseTenantSetting } from "./store";
 import { tenantsWithActiveChannel } from "./channels";
@@ -45,7 +46,8 @@ export async function drainOnboardingNudges(): Promise<number> {
     // No unsubscribe link: this is a single onboarding message tied to an
     // account the recipient created, not a recurring stream — there is nothing
     // to unsubscribe FROM. It never sends twice (the claim above guarantees it).
-    const { html, text } = renderEmail({
+    // White-label: a partner's customer gets this in the partner's brand.
+    const mail = await brandEmail(tenantId, {
       preheader: "Your workspace is ready — it just needs one channel connected before it can reply to anyone.",
       heading: "Your Talko AI workspace is waiting on one thing",
       paragraphs: [
@@ -61,15 +63,17 @@ export async function drainOnboardingNudges(): Promise<number> {
       cta: { label: "Connect your first channel", href: "/login" },
       secondary: { label: "Read the getting-started guide", href: "/guides/getting-started" },
       footerReason: "You're getting this once because you created a Talko AI workspace and haven't connected a channel yet. We won't send it again.",
-    }, SITE_URL);
+    }, SITE_URL, "One step left to switch on Talko AI");
+    const { html, text } = renderEmail(mail.opts, mail.siteUrl);
 
     const result = await sendEmail({
       to: ownerEmail,
-      subject: "One step left to switch on Talko AI",
+      subject: mail.subject,
       html,
       text,
       type: "onboarding_nudge",
       tenantId,
+      ...(mail.fromName ? { fromName: mail.fromName } : {}),
     });
     if (result.ok) {
       sent++;
