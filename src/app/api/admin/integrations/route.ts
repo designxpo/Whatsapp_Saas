@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import {
   listIntegrations, createIntegration, isIntegrationEvent,
-  CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, WEBHOOK_KINDS, EVENT_KINDS, formatForKind, type IntegrationEvent, type IntegrationKind,
+  CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, WEBHOOK_KINDS, EVENT_KINDS, formatForKind, freshsalesBase, type IntegrationEvent, type IntegrationKind,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
 import { connectMezmitra } from "@/lib/mezmitra-link";
@@ -11,7 +11,7 @@ import { guardFeature } from "@/lib/feature-guard";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom", "mezmitra"];
+const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom", "mezmitra"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqWaHandleField?: string; lsqAutoCreate?: boolean };
+  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; fsDomain?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqWaHandleField?: string; lsqAutoCreate?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
@@ -84,6 +84,13 @@ export async function POST(req: Request) {
     if (!accessKey || !secretKey || !host || !activityCode) return NextResponse.json({ error: "Add your Access Key, Secret Key, API host and Activity code." }, { status: 400 });
     config = { host, activityCode, taskCategory: (b.lsqTaskCategory ?? "").trim() || null, igHandleField: (b.lsqIgHandleField ?? "").trim() || null, waHandleField: (b.lsqWaHandleField ?? "").trim() || null, autoCreate: !!b.lsqAutoCreate };
     secretInput = JSON.stringify({ accessKey, secretKey });
+  } else if (kind === "freshsales") {
+    // The bundle alias says where the account lives; only Freshsales hosts are
+    // accepted, since the API key is sent there.
+    secretInput = (b.token ?? "").trim();
+    const base = freshsalesBase(b.fsDomain);
+    if (!base || !secretInput) return NextResponse.json({ error: "Add your Freshsales bundle alias (yourcompany.myfreshworks.com) and API key." }, { status: 400 });
+    config = { domain: new URL(base).hostname };
   } else if (CRM_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
     if (!secretInput) return NextResponse.json({ error: "Paste your API token to connect." }, { status: 400 });

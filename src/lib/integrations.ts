@@ -56,9 +56,10 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 //   webhook    — signed outbound HTTP (Zapier/Make/Slack/Teams)
 //   hubspot    — sync contacts into HubSpot (private-app token)
 //   pipedrive  — sync persons into Pipedrive (API token)
+//   freshsales — sync contacts into Freshsales (bundle alias + API key)
 //   razorpay   — generate payment links (key id + secret)
 //   stripe     — generate payment links (secret key)
-export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "leadsquared" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom" | "mezmitra";
+export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "freshsales" | "leadsquared" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom" | "mezmitra";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
 // Webhook-style kinds POST to a URL. slack/teams are webhooks with the format
@@ -71,7 +72,7 @@ export function formatForKind(kind: IntegrationKind): WebhookFormat {
 // CRM kinds. Most authenticate with a single pasted token; LeadSquared takes an
 // Access Key + Secret Key (kept together in the encrypted secret) and is handled
 // specially by the create route.
-export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive", "leadsquared"];
+export const CRM_KINDS: IntegrationKind[] = ["hubspot", "pipedrive", "freshsales", "leadsquared"];
 // Payment kinds expose createPaymentLink() instead of subscribing to events.
 export const PAYMENT_KINDS: IntegrationKind[] = ["razorpay", "stripe"];
 // Store kinds expose fetchProducts() for one-way catalog import.
@@ -82,13 +83,14 @@ export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom"];
 // and opt-outs sent back. One per tenant; linked by pasting a Mezmitra link key.
 export const RESTAURANT_KINDS: IntegrationKind[] = ["mezmitra"];
 // Event-driven kinds — their `events` subscription matters; action kinds ignore it.
-export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "mezmitra"];
+export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "mezmitra"];
 export const KIND_LABELS: Record<IntegrationKind, string> = {
   webhook: "Webhook (Zapier / Make / n8n)",
   slack: "Slack",
   teams: "Microsoft Teams",
   hubspot: "HubSpot",
   pipedrive: "Pipedrive",
+  freshsales: "Freshsales",
   leadsquared: "LeadSquared",
   razorpay: "Razorpay",
   stripe: "Stripe",
@@ -219,11 +221,44 @@ export function hubspotContactProps(data: Record<string, unknown>): Record<strin
   return props;
 }
 
-// Pipedrive person body from an event payload.
+// The phone number a CRM may file for this event, as "+<digits>", or "" when
+// the payload has none. An escalation carries conv.phone, which for an
+// Instagram or web chat is an account id or "web:<uuid>" — digits a CRM would
+// otherwise store as somebody's phone number.
+export function crmPhone(data: Record<string, unknown>): string {
+  const raw = String(data.phone ?? "").replace(/[\s().-]/g, "");
+  return /^\+?\d{8,15}$/.test(raw) ? `+${raw.replace(/\D/g, "")}` : "";
+}
+
+// Pipedrive person body from an event payload (API v2: `phones`, not v1's `phone`).
 export function pipedrivePersonBody(data: Record<string, unknown>): Record<string, unknown> {
-  const phone = String(data.phone ?? "").trim();
+  const phone = crmPhone(data);
   const name = (data.name as string)?.trim() || phone || "WhatsApp lead";
-  return { name, phone: [{ value: phone, primary: true, label: "mobile" }] };
+  return { name, phones: phone ? [{ value: phone, primary: true, label: "mobile" }] : [] };
+}
+
+// The Freshsales API base for a pasted bundle alias, or null when it is not a
+// Freshsales address — the API key is sent there, so nothing else is accepted.
+// "acme.myfreshworks.com" → https://acme.myfreshworks.com/crm/sales/api;
+// older accounts live at <x>.freshsales.io/api.
+export function freshsalesBase(input: unknown): string | null {
+  let raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  if (!/^https?:\/\//.test(raw)) raw = `https://${raw}`;
+  let host: string;
+  try { host = new URL(raw).hostname; } catch { return null; }
+  if (/^[a-z0-9][a-z0-9-]*\.myfreshworks\.com$/.test(host)) return `https://${host}/crm/sales/api`;
+  if (/^[a-z0-9][a-z0-9-]*\.freshsales\.io$/.test(host)) return `https://${host}/api`;
+  return null;
+}
+
+// Freshsales contact fields. last_name is required, so a one-word name goes there.
+export function freshsalesContact(data: Record<string, unknown>): Record<string, unknown> {
+  const phone = crmPhone(data);
+  const parts = String(data.name ?? "").trim().split(/\s+/).filter(Boolean);
+  const names = parts.length > 1 ? { first_name: parts[0], last_name: parts.slice(1).join(" ") } : { last_name: parts[0] || phone || "WhatsApp lead" };
+  const email = String(data.email ?? "").trim();
+  return { ...names, mobile_number: phone, ...(email ? { emails: [{ value: email, is_primary: true }] } : {}) };
 }
 
 // ── Store import helpers (pure) ───────────────────────────────────────────────
@@ -551,31 +586,83 @@ const hubspotConnector: Connector = {
 };
 
 // ── Pipedrive — sync persons (API token) ──────────────────────────────────────
-const PIPEDRIVE_API = "https://api.pipedrive.com/v1";
+// Persons on API v2: Pipedrive took the v1 persons endpoints out of support on
+// 1 Aug 2026 (developers.pipedrive.com/changelog). users/me has no v2 and was
+// not deprecated. The token travels in the x-api-token header — the official
+// client's way — so it stays out of URLs and logs.
+const PIPEDRIVE_API = "https://api.pipedrive.com";
+const pipedriveHeaders = (token: string) => ({ "x-api-token": token, Accept: "application/json" });
+const last10 = (s: string) => s.replace(/\D/g, "").slice(-10);
 const pipedriveConnector: Connector = {
   async verify(_i, secret) {
     if (!secret) return { ok: false, detail: "Paste your Pipedrive API token first." };
     try {
-      const res = await fetch(`${PIPEDRIVE_API}/users/me?api_token=${encodeURIComponent(secret)}`, { signal: AbortSignal.timeout(8000) });
+      const res = await fetch(`${PIPEDRIVE_API}/api/v1/users/me`, { headers: pipedriveHeaders(secret), signal: AbortSignal.timeout(8000) });
       if (res.ok) return { ok: true, detail: "Connected — your Pipedrive token works." };
       if (res.status === 401) return { ok: false, detail: "Pipedrive rejected the token — copy it from Settings → Personal preferences → API." };
       return { ok: false, detail: `Pipedrive returned HTTP ${res.status}. Check the token and try again.` };
     } catch { return { ok: false, detail: "Couldn't reach Pipedrive — check your connection and try again." }; }
   },
   async deliver(_i, secret, envelope) {
-    const phone = String(envelope.data.phone ?? "").trim();
+    const phone = crmPhone(envelope.data);
     if (!secret || !phone) return;
-    const q = `api_token=${encodeURIComponent(secret)}`;
-    const search = await fetch(`${PIPEDRIVE_API}/persons/search?term=${encodeURIComponent(phone)}&fields=phone&exact_match=false&limit=1&${q}`, { signal: AbortSignal.timeout(6000) });
-    if (search.ok) {
-      const found = (await search.json().catch(() => null)) as { data?: { items?: unknown[] } } | null;
-      if (found?.data?.items?.length) return; // already a person — no dupe
-    }
-    const res = await fetch(`${PIPEDRIVE_API}/persons?${q}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(6000),
+    const search = await fetch(`${PIPEDRIVE_API}/api/v2/persons/search?term=${encodeURIComponent(last10(phone))}&fields=phone&limit=10`, {
+      headers: pipedriveHeaders(secret), signal: AbortSignal.timeout(6000),
+    });
+    // A failed search must not fall through to a create: that is how a
+    // retried delivery would add the same person twice.
+    if (!search.ok) throw new Error(`Pipedrive HTTP ${search.status}`);
+    const found = (await search.json().catch(() => null)) as { data?: { items?: { item?: { phones?: unknown[] } }[] } } | null;
+    const same = (found?.data?.items ?? []).some(it => {
+      const phones = (it.item?.phones ?? []).map(p => (typeof p === "string" ? p : String((p as { value?: string })?.value ?? "")));
+      return !phones.length || phones.some(p => last10(p) === last10(phone));
+    });
+    if (same) return; // already a person — no dupe
+    const res = await fetch(`${PIPEDRIVE_API}/api/v2/persons`, {
+      method: "POST", headers: { ...pipedriveHeaders(secret), "Content-Type": "application/json" }, signal: AbortSignal.timeout(6000),
       body: JSON.stringify(pipedrivePersonBody(envelope.data)),
     });
     if (!res.ok) throw new Error(`Pipedrive HTTP ${res.status}`);
+  },
+};
+
+// ── Freshsales — sync contacts (bundle alias + API key) ───────────────────────
+// Freshsales cannot look a contact up by phone, so the sync UPSERTS on
+// mobile_number — which works where the account has made mobile a unique field.
+// Where it has not (a 400/422), a new lead is created plainly, once; any other
+// event is skipped rather than creating a duplicate contact each time.
+// developers.freshworks.com/crm/api — "Authorization: Token token=<key>".
+const freshsalesHeaders = (key: string) => ({ Authorization: `Token token=${key}`, Accept: "application/json", "Content-Type": "application/json" });
+const freshsalesConnector: Connector = {
+  async verify(i, secret) {
+    const base = freshsalesBase(i.config.domain);
+    if (!base) return { ok: false, detail: "Add your Freshsales bundle alias (yourcompany.myfreshworks.com)." };
+    if (!secret) return { ok: false, detail: "Paste your Freshsales API key first." };
+    try {
+      const res = await fetch(`${base}/selector/owners`, { headers: freshsalesHeaders(secret), redirect: "error", signal: AbortSignal.timeout(8000) });
+      if (res.ok) return { ok: true, detail: "Connected — your Freshsales key works." };
+      if (res.status === 401) return { ok: false, detail: "Freshsales rejected the API key — copy it from Settings → API Settings." };
+      if (res.status === 404) return { ok: false, detail: "No Freshsales account answers at that bundle alias — copy it from Settings → API Settings." };
+      return { ok: false, detail: `Freshsales returned HTTP ${res.status}. Check the bundle alias and key.` };
+    } catch { return { ok: false, detail: "Couldn't reach Freshsales — check the bundle alias and try again." }; }
+  },
+  async deliver(i, secret, envelope) {
+    const base = freshsalesBase(i.config.domain);
+    const phone = crmPhone(envelope.data);
+    if (!base || !secret || !phone) return;
+    const contact = freshsalesContact(envelope.data);
+    const up = await fetch(`${base}/contacts/upsert`, {
+      method: "POST", headers: freshsalesHeaders(secret), redirect: "error", signal: AbortSignal.timeout(6000),
+      body: JSON.stringify({ unique_identifier: { mobile_number: phone }, contact }),
+    });
+    if (up.ok) return;
+    if (up.status !== 400 && up.status !== 422) throw new Error(`Freshsales HTTP ${up.status}`);
+    if (envelope.event !== "contact.created") return; // can't match on mobile here — never duplicate on later events
+    const res = await fetch(`${base}/contacts`, {
+      method: "POST", headers: freshsalesHeaders(secret), redirect: "error", signal: AbortSignal.timeout(6000),
+      body: JSON.stringify({ contact }),
+    });
+    if (!res.ok) throw new Error(`Freshsales HTTP ${res.status}`);
   },
 };
 
@@ -796,6 +883,7 @@ const CONNECTORS: Record<IntegrationKind, Connector> = {
   teams: webhookConnector,   // webhook with format pre-set to "teams"
   hubspot: hubspotConnector,
   pipedrive: pipedriveConnector,
+  freshsales: freshsalesConnector,
   leadsquared: leadsquaredConnector,
   razorpay: razorpayConnector,
   stripe: stripeConnector,

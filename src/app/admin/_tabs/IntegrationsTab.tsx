@@ -27,8 +27,8 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezmitra (restaurant)" };
-const CRM_KINDS = ["hubspot", "pipedrive", "leadsquared"];
+const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", freshsales: "Freshsales", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezmitra (restaurant)" };
+const CRM_KINDS = ["hubspot", "pipedrive", "freshsales", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
 const SCHEDULE_KINDS = ["calcom"];
@@ -42,10 +42,11 @@ const MEZMITRA_EVENTS: { key: string; when: string; fields: string }[] = [
   { key: "mezmitra.reservation.cancelled", when: "A booking is cancelled", fields: "outlet_name, booking_ref, date, time" },
   { key: "mezmitra.order.ready", when: "A takeaway order is ready", fields: "outlet_name, order_no, track_url" },
 ];
-const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive"];
+const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales"];
 const TOKEN_HELP: Record<string, string> = {
   hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
   pipedrive: "Pipedrive → Settings → Personal preferences → API → copy your personal API token.",
+  freshsales: "Freshsales → your profile picture → Settings → API Settings: copy the Bundle alias and Your API key. Contacts are matched on mobile number, so make Mobile a unique field (Admin settings → Contact fields) to avoid duplicates.",
   razorpay: "Razorpay → Settings → API Keys → generate keys, then paste the Key ID and Key Secret.",
   stripe: "Stripe → Developers → API keys → copy your Secret key (sk_live_… or sk_test_…).",
   shopify: "Shopify → Settings → Apps → Develop apps → create a custom app with read_products, then paste its Admin API access token.",
@@ -63,6 +64,7 @@ const TOKEN_HELP: Record<string, string> = {
 const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "hubspot", logo: "/integrations/hubspot.svg", blurb: "Sync new contacts into HubSpot CRM." },
   { kind: "pipedrive", logo: "/integrations/pipedrive.png", blurb: "Sync new people into Pipedrive CRM." },
+  { kind: "freshsales", logo: "/integrations/freshsales.png", blurb: "Sync new contacts into Freshsales CRM." },
   { kind: "leadsquared", logo: "/integrations/leadsquared.png", blurb: "Sync every chat to the lead's LeadSquared timeline." },
   { kind: "razorpay", logo: "/integrations/razorpay.svg", blurb: "Send Razorpay payment links inside the chat." },
   { kind: "stripe", logo: "/integrations/stripe.png", blurb: "Send Stripe payment links inside the chat." },
@@ -97,7 +99,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     : e);
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
+  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
   const isCrm = CRM_KINDS.includes(form.kind);
   const isPayment = PAYMENT_KINDS.includes(form.kind);
   const isStore = STORE_KINDS.includes(form.kind);
@@ -128,7 +130,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       else {
         setNewSecret(d.secret ?? null);
         setMsg({ ok: true, text: "Added. Hit Test to confirm it's connected." });
-        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
+        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
         setAdding(false);
         load();
       }
@@ -172,7 +174,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   // Clicking a catalog card opens the setup form for THAT connector (kind fixed).
   function openSetup(kind: string) {
-    setForm({ kind, name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
+    setForm({ kind, name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
     setMsg(null); setNewSecret(null); setAdding(true);
   }
 
@@ -186,7 +188,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   // connection covers, and the account connection for tools the catalog already has.
   const countOf = (kind: string) => (items ?? []).filter(i => i.kind === kind).length;
   const extraTools: ExtraTool[] = [
-    { kind: "hubspot", group: "crm" }, { kind: "pipedrive", group: "crm" }, { kind: "leadsquared", group: "crm" },
+    { kind: "hubspot", group: "crm" }, { kind: "pipedrive", group: "crm" }, { kind: "freshsales", group: "crm" }, { kind: "leadsquared", group: "crm" },
     { kind: "stripe", group: "payments" },
     { kind: "slack", group: "more" }, { kind: "teams", group: "more" }, { kind: "webhook", group: "more" }, { kind: "mezmitra", group: "more" },
   ].map(x => {
@@ -283,6 +285,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
               : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
               : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
               : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
+              : form.kind === "freshsales" ? (!form.token.trim() || !form.fsDomain.trim())
               : isCrm || isPayment ? (!form.token.trim() || (form.kind === "razorpay" && !form.keyId.trim()))
               : !form.url.trim()
             )} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Add integration"}</button>
@@ -300,6 +303,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <input className={`${inp} w-full`} placeholder="Consumer key (ck_…)" value={form.consumerKey} onChange={e => setForm({ ...form, consumerKey: e.target.value })} />
               </>}
               {form.kind === "calcom" && <input className={`${inp} w-full`} placeholder="Event Type ID (e.g. 123)" value={form.eventTypeId} onChange={e => setForm({ ...form, eventTypeId: e.target.value })} />}
+              {form.kind === "freshsales" && <input className={`${inp} w-full`} placeholder="Bundle alias (yourcompany.myfreshworks.com)" value={form.fsDomain} onChange={e => setForm({ ...form, fsDomain: e.target.value })} />}
               {form.kind === "leadsquared" && <>
                 <input className={`${inp} w-full`} placeholder="Access Key" value={form.lsqAccessKey} onChange={e => setForm({ ...form, lsqAccessKey: e.target.value })} />
                 <input className={`${inp} w-full`} placeholder="API host (e.g. https://api-in21.leadsquared.com)" value={form.lsqHost} onChange={e => setForm({ ...form, lsqHost: e.target.value })} />
@@ -307,7 +311,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 <input className={`${inp} w-full`} placeholder="Task category (optional, default 2)" value={form.lsqTaskCategory} onChange={e => setForm({ ...form, lsqTaskCategory: e.target.value })} />
                 <input className={`${inp} w-full`} placeholder="IG handle field (optional, e.g. mx_Instagram)" value={form.lsqIgHandleField} onChange={e => setForm({ ...form, lsqIgHandleField: e.target.value })} />
               </>}
-              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : form.kind === "mezmitra" ? "Mezmitra link key (mzk_…)" : form.kind === "leadsquared" ? "Secret Key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
+              <input className={`${inp} w-full`} type="password" placeholder={form.kind === "razorpay" ? "Razorpay Key Secret" : form.kind === "stripe" ? "Stripe secret key (sk_…)" : form.kind === "shopify" ? "Admin API access token" : form.kind === "woocommerce" ? "Consumer secret (cs_…)" : form.kind === "calcom" ? "Cal.com API key" : form.kind === "freshsales" ? "Freshsales API key" : form.kind === "mezmitra" ? "Mezmitra link key (mzk_…)" : form.kind === "leadsquared" ? "Secret Key" : `${KIND_LABELS[form.kind]} API token`} value={form.token} onChange={e => setForm({ ...form, token: e.target.value })} />
               <p className="text-[11px] text-slate-500">{TOKEN_HELP[form.kind]}</p>
               {isPayment && <p className="text-[11px] text-slate-500">A payment link is sent automatically when a customer checks out an order.</p>}
               {isStore && <p className="text-[11px] text-slate-500">After connecting, hit “Sync now” to import your products into the catalog. One-way; re-sync anytime.</p>}

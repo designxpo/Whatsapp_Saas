@@ -104,13 +104,14 @@ describe("hubspotContactProps", () => {
 });
 
 describe("pipedrivePersonBody", () => {
-  it("builds a person with a primary phone", () => {
-    const b = pipedrivePersonBody({ phone: "+15551234567", name: "Asha" }) as { name: string; phone: { value: string; primary: boolean }[] };
+  it("builds an API v2 person with a primary phone (`phones`, not v1's `phone`)", () => {
+    const b = pipedrivePersonBody({ phone: "+15551234567", name: "Asha" }) as { name: string; phones: { value: string; primary: boolean }[] };
     expect(b.name).toBe("Asha");
-    expect(b.phone[0]).toMatchObject({ value: "+15551234567", primary: true });
+    expect(b.phones[0]).toMatchObject({ value: "+15551234567", primary: true });
+    expect(b).not.toHaveProperty("phone");
   });
   it("falls back to the phone, then a generic name", () => {
-    expect((pipedrivePersonBody({ phone: "+199" }) as { name: string }).name).toBe("+199");
+    expect((pipedrivePersonBody({ phone: "15551234567" }) as { name: string }).name).toBe("+15551234567");
     expect((pipedrivePersonBody({}) as { name: string }).name).toBe("WhatsApp lead");
   });
 });
