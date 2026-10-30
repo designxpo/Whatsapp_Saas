@@ -60,6 +60,17 @@ describe("process-queue route", () => {
     const afterBlock = code.slice(code.indexOf("after(async"), code.indexOf("try {", code.indexOf("after(async")));
     for (const n of ["ytcomments", "googlereviews", "kbsync", "igtokens"]) expect(afterBlock).toContain(`stage("${n}"`);
   });
+
+  it("refreshes the owner console's fleet figures itself, not only from GitHub", () => {
+    // tenant_metrics was refreshed only by a GitHub job whose copy of
+    // CRON_SECRET went stale on 2026-10-03: from then on every tenant's Health,
+    // Contacts and Last inbound stayed frozen, and new tenants never got any.
+    // pg_cron carries the live secret and drives this route.
+    const afterBlock = code.slice(code.indexOf("after(async"), code.indexOf("try {", code.indexOf("after(async")));
+    expect(afterBlock).toContain('stage("tenantmetrics"');
+    expect(code).toMatch(/async function sweepTenantMetricsIfDue\([\s\S]*?getSetting<string>\("tenant_metrics_sweep_at"/);
+    expect(code).toMatch(/backfillMetricsRows\(\)[\s\S]*?refreshTenantMetrics\(/);
+  });
 });
 
 describe("cron-reachable drains", () => {

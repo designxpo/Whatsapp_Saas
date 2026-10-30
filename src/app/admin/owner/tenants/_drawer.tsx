@@ -9,9 +9,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, Loader2, Save, Trash2, Mail, Phone } from "lucide-react";
-import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
+import { FEATURE_KEYS, FEATURE_META, consoleStatus } from "@/lib/entitlement-registry";
 import {
-  Drawer, Badge, Panel, Spinner, money, compact, ago, until,
+  Drawer, Badge, Panel, Spinner, money, compact, ago, trialText,
   STATUS_TONE, PAYMENT_TONE, type ConfirmCfg,
 } from "../_ui";
 
@@ -219,10 +219,11 @@ export function TenantDrawer({ id, onClose, onChanged, setConfirm }: {
                 </Labelled>
               </div>
               <div className="mt-3 flex items-center justify-between gap-2 text-[12px]">
-                <span className="text-ink-600">Currently {money(t.amountCents, t.currency)}/mo · trial {t.trialEndsAt ? until(t.trialEndsAt) : "—"}</span>
+                <span className="text-ink-600">Currently {money(t.amountCents, t.currency)}/mo · {t.trialEndsAt ? trialText(t.trialEndsAt) : "no trial date"}</span>
                 <div className="flex gap-1">
-                  <Badge tone={STATUS_TONE[t.status] ?? "muted"}>{t.status}</Badge>
-                  <Badge tone={PAYMENT_TONE[t.paymentStatus] ?? "muted"}>{t.paymentStatus.replace("_", " ")}</Badge>
+                  {/* What the tenant is actually in: an ended trial is locked, though its stored status still says "trialing". */}
+                  <Badge tone={STATUS_TONE[consoleStatus(t)] ?? "muted"}>{consoleStatus(t).replace("_", " ")}</Badge>
+                  {consoleStatus(t) !== "trial_ended" && <Badge tone={PAYMENT_TONE[t.paymentStatus] ?? "muted"}>{t.paymentStatus.replace("_", " ")}</Badge>}
                 </div>
               </div>
               <Labelled label="Owner notes" className="mt-3">

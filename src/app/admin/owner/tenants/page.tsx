@@ -14,9 +14,10 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Users, Filter, X, Loader2, AlertTriangle } from "lucide-react";
 import { QUEUES, QUEUE_BY_KEY } from "@/lib/ownerqueues";
+import { consoleStatus } from "@/lib/entitlement-registry";
 import {
   Panel, Table, Th, Td, Badge, EmptyState, Spinner, SearchInput, ConfirmDialog,
-  money, compact, ago, until, useDebounced, useLatest,
+  money, compact, ago, trialText, useDebounced, useLatest,
   STATUS_TONE, PAYMENT_TONE, type ConfirmCfg,
 } from "../_ui";
 import { TenantDrawer } from "./_drawer";
@@ -204,6 +205,9 @@ function TenantsInner() {
             {rows.map(t => {
               const m = t.metrics;
               const bad = m?.waQuality === "RED" || m?.waHealth === "FLAGGED" || m?.waHealth === "RESTRICTED";
+              // What the tenant is actually in: an ended trial is locked, though its stored status still says "trialing".
+              const shown = consoleStatus(t);
+              const ended = shown === "trial_ended";
               return (
                 <tr key={t.id} className="hover:bg-canvas cursor-pointer" onClick={() => setParam("open", t.id)}>
                   <Td><input type="checkbox" checked={picked.has(t.id)} onClick={e => e.stopPropagation()}
@@ -221,8 +225,8 @@ function TenantsInner() {
                   </Td>
                   <Td>
                     <div className="flex flex-col gap-0.5 items-start">
-                      <Badge tone={STATUS_TONE[t.status] ?? "muted"}>{t.status}</Badge>
-                      {t.paymentStatus !== t.status && <Badge tone={PAYMENT_TONE[t.paymentStatus] ?? "muted"}>{t.paymentStatus.replace("_", " ")}</Badge>}
+                      <Badge tone={STATUS_TONE[shown] ?? "muted"} title={ended ? "Sending and automations are blocked until they choose a plan. They can still sign in and read their data." : undefined}>{shown.replace("_", " ")}</Badge>
+                      {t.paymentStatus !== t.status && !ended && <Badge tone={PAYMENT_TONE[t.paymentStatus] ?? "muted"}>{t.paymentStatus.replace("_", " ")}</Badge>}
                     </div>
                   </Td>
                   <Td align="right" nums>{t.amountCents ? money(t.amountCents, t.currency) : "—"}</Td>
@@ -241,8 +245,8 @@ function TenantsInner() {
                   <Td><span className="text-[12px] text-ink-600">{m?.lastInboundAt ? ago(m.lastInboundAt) : "—"}</span></Td>
                   <Td>
                     <span className="text-[12px] text-ink-600">{ago(t.createdAt)}</span>
-                    {t.trialEndsAt && t.paymentStatus === "trialing" && (
-                      <p className="text-[10px] text-amber-600">trial {until(t.trialEndsAt)}</p>
+                    {t.trialEndsAt && (t.paymentStatus === "trialing" || ended) && (
+                      <p className={`text-[10px] ${ended ? "text-red-600" : "text-amber-600"}`}>{trialText(t.trialEndsAt)}</p>
                     )}
                   </Td>
                 </tr>

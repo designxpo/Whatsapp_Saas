@@ -8,11 +8,11 @@ export const dynamic = "force-dynamic";
 
 // Owner-console fleet metrics sweep.
 //
-// Deliberately NOT a stage inside /api/cron/process-queue. That route is already
-// deadline-saturated (DEADLINE = 45s across ~20 stages, each conditional on the
-// remaining budget), so a fleet sweep appended there would simply be starved by
-// the message-delivery stages in front of it — and message delivery must always
-// win. This gets its own invocation and its own budget.
+// Kept out of process-queue's 45s delivery DEADLINE, where message delivery
+// must always win. Since this route's GitHub trigger went stale (2026-10-03),
+// the same sweep also runs every 30 minutes in process-queue's after-response
+// pollers, which have a budget of their own and are driven by pg_cron. This
+// route remains for a manual or GitHub-triggered run.
 //
 // The sweep is a round-robin: it always takes the least-recently-refreshed rows,
 // so every tenant is reached eventually and nothing starves. Fully idempotent —

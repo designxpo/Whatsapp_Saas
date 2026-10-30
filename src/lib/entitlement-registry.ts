@@ -128,3 +128,12 @@ export function accountState(ent: Entitlements | null | undefined): { state: Acc
     return { state: "trial_expired", active: false, message: "Your free trial has ended. Choose a plan to keep using Talko AI." };
   return { state: "ok", active: true, message: "" };
 }
+
+// The status the owner console shows for a tenant. A trial that runs out is
+// never rewritten in the database: the rule above works it out live, and that
+// is what locks the workspace, so `tenants.status` keeps saying "trialing".
+// Read through the same rule, so the console says what the tenant is in.
+export function consoleStatus(t: { status: string; paymentStatus: string; trialEndsAt: string | null }): string {
+  const a = accountState({ status: t.status, paymentStatus: t.paymentStatus, trialEndsAt: t.trialEndsAt, enforcing: true } as Entitlements);
+  return a.state === "trial_expired" ? "trial_ended" : t.status;
+}

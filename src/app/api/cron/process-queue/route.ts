@@ -32,6 +32,7 @@ import { drainDailyDigests } from "@/lib/dailydigest";
 import { drainMetaUsageAlert } from "@/lib/metausage";
 import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
+import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -48,7 +49,7 @@ const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
-  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling",
+  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "tenantmetrics",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -95,7 +96,9 @@ export async function POST(req: Request) {
     // White-label billing: partners' prepaid monthly charges, and the payment
     // links they send their own customers. Returns at once while white-label is off.
     const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling(), domains: await drainPendingDomains(), metaApps: await drainPartnerMetaChecks() }), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, tookMs: Date.now() - pollStart }));
+    // Last, so the owner console's figures can never take a turn from the pollers above.
+    const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 
@@ -305,4 +308,20 @@ async function sweepIgTokensIfDue(deadlineAt: number): Promise<{ due: boolean; r
   await setSetting("ig_token_sweep_at", new Date().toISOString());
   const r = await sweepInstagramTokens(deadlineAt);
   return { due: true, refreshed: r.refreshed, failed: r.failed };
+}
+
+// The owner console's fleet figures (tenant_metrics: Health, Contacts, Last
+// inbound), at most every 30 minutes. Their own GitHub job authenticates with
+// the same stale copy of CRON_SECRET, so from 2026-10-03 every figure froze and
+// no tenant who signed up after that ever got any. Same cure as the Instagram
+// sweep: ride the pg_cron-driven engine. /api/cron/tenant-metrics still works
+// for a manual or GitHub run; the sweep is idempotent, so both are harmless.
+const METRICS_EVERY_MS = 30 * 60_000;
+async function sweepTenantMetricsIfDue(deadlineAt: number): Promise<{ due: boolean; seeded?: number; refreshed?: number; failed?: number }> {
+  const last = Date.parse(await getSetting<string>("tenant_metrics_sweep_at", ""));
+  if (Number.isFinite(last) && Date.now() - last < METRICS_EVERY_MS) return { due: false };
+  await setSetting("tenant_metrics_sweep_at", new Date().toISOString());
+  const seeded = await backfillMetricsRows();
+  const r = await refreshTenantMetrics(2000, deadlineAt);
+  return { due: true, seeded, refreshed: r.refreshed, failed: r.failed };
 }

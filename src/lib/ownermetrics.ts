@@ -202,8 +202,22 @@ export async function refreshTenantMetrics(limit = 2000, deadlineAt?: number, co
  */
 export async function backfillMetricsRows(): Promise<number> {
   const { data, error } = await db().rpc("owner_backfill_metrics");
-  if (error) { console.error("[ownermetrics] backfill failed (is 0106 applied?):", error.message); return 0; }
-  return Number(data ?? 0);
+  if (!error) return Number(data ?? 0);
+  // Production has 0106 without this one function (PGRST202, found 2026-10-30),
+  // so for months no new tenant got a row and the sweep never reached them. Do
+  // the same insert here: the newest tenants first, since they're the ones a
+  // missing seed leaves out.
+  console.warn("[ownermetrics] owner_backfill_metrics unavailable, seeding directly:", error.message);
+  const { data: tenants } = await db().from("tenants").select("id").order("created_at", { ascending: false }).limit(1000);
+  const ids = ((tenants ?? []) as { id: string }[]).map(t => t.id);
+  if (!ids.length) return 0;
+  const { data: have } = await db().from("tenant_metrics").select("tenant_id").in("tenant_id", ids);
+  const seeded = new Set(((have ?? []) as { tenant_id: string }[]).map(m => m.tenant_id));
+  const missing = ids.filter(id => !seeded.has(id)).map(id => ({ tenant_id: id, refreshed_at: new Date(0).toISOString() }));
+  if (!missing.length) return 0;
+  const { error: upErr } = await db().from("tenant_metrics").upsert(missing, { onConflict: "tenant_id", ignoreDuplicates: true });
+  if (upErr) { console.error("[ownermetrics] backfill failed:", upErr.message); return 0; }
+  return missing.length;
 }
 
 /**

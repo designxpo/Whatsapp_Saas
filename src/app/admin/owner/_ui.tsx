@@ -39,6 +39,11 @@ export function ago(iso: string | null | undefined): string {
   return `${Math.round(d / 30)}mo ago`;
 }
 
+/** A trial's end, either side of it: "trial ends in 44h" / "trial ended 3d ago". */
+export function trialText(iso: string): string {
+  return Date.parse(iso) < Date.now() ? `trial ended ${ago(iso)}` : `trial ends ${until(iso)}`;
+}
+
 /** Forward-looking twin of `ago` — "in 2 days", for trials. */
 export function until(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -71,7 +76,7 @@ export function Badge({ tone = "muted", children, title }: { tone?: Tone; childr
 }
 
 export const STATUS_TONE: Record<string, Tone> = {
-  active: "ok", trialing: "info", suspended: "bad", cancelled: "muted",
+  active: "ok", trialing: "info", trial_ended: "bad", suspended: "bad", cancelled: "muted",
 };
 export const PAYMENT_TONE: Record<string, Tone> = {
   active: "ok", trialing: "info", past_due: "bad", cancelled: "muted", none: "muted",
