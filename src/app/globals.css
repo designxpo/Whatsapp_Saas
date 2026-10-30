@@ -129,6 +129,11 @@ button.w-full:not([disabled]):not(.no-press):active { scale: .985; }
 .ov-modal { opacity: 0; transform: translateY(8px) scale(.97); transition: opacity .15s ease-in, transform .15s ease-in; }
 .ov-modal[data-shown] { opacity: 1; transform: none; transition: opacity .2s var(--ease-out), transform .3s var(--ease-out); }
 
+/* Small panels anchored to a control (the alerts bell) grow out of it — the
+   corner nearest the trigger is their origin — and shrink back into it. */
+.ov-pop { opacity: 0; transform: translateY(-4px) scale(.96); transform-origin: top right; transition: opacity .12s ease-in, transform .12s ease-in; pointer-events: none; }
+.ov-pop[data-shown] { opacity: 1; transform: none; transition: opacity .16s var(--ease-out), transform .22s var(--ease-out); pointer-events: auto; }
+
 /* ── Sidebar: the active pill glides to the section picked ──────────────────
    Where you went is shown, not just where you are. Text colour moves on the
    same curve and timing, so the label turns white as the pill arrives under
@@ -227,7 +232,7 @@ button.w-full:not([disabled]):not(.no-press):active { scale: .985; }
   /* Reveal-on-scroll must never leave content hidden when motion is reduced. */
   [data-reveal] { opacity: 1 !important; transform: none !important; }
   /* Overlays appear in place with a short fade — no travel, still feedback. */
-  .ov-drawer:not([data-dragging]), .ov-modal { transform: none !important; }
+  .ov-drawer:not([data-dragging]), .ov-modal, .ov-pop { transform: none !important; }
   .ov-drawer:not([data-dragging]), .ov-modal { opacity: 0; transition: opacity .16s ease !important; }
   .ov-drawer[data-shown], .ov-modal[data-shown] { opacity: 1; }
   .ov-scrim { transition: opacity .16s ease !important; }

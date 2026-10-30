@@ -76,6 +76,12 @@ export async function respondToConversation(conversationId: string, opts: { inbo
   if (process.env.LLM_BOT_ENABLED === "false") return { outcome: "skipped", detail: "bot disabled" };
   // Tenant-wide AI switch (Settings → AI auto-replies) — a human turned the AI off.
   if (!(await isAiEnabled(conv.tenantId))) return { outcome: "skipped", detail: "AI replies switched off" };
+  // This is the WhatsApp reply pipeline — it sends with sendText/sendMedia to
+  // conv.phone. Instagram, Messenger and web chat reply through their own
+  // paths (inline, and replybackstop.ts from the cron). Without this the
+  // sweep, which covers every channel, generated an AI reply for an unanswered
+  // Instagram chat every minute and tried to WhatsApp it to an Instagram id.
+  if (conv.platform !== "whatsapp") return { outcome: "skipped", detail: `platform ${conv.platform}` };
   if (!conv.botEnabled || conv.status === "paused") return { outcome: "skipped", detail: `bot off / ${conv.status}` };
 
   // 24h customer-service window — free-form text only allowed within it.
@@ -131,7 +137,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     // "mirror" the customer when they sent a voice note). WhatsApp only; falls
     // back to a text message whenever speech synthesis isn't available/configured.
     const voiceMode = await getVoiceReplyMode(conv.tenantId).catch(() => "off" as const);
-    const speakReply = conv.platform !== "instagram" && shouldSpeak(voiceMode, !!opts.inboundWasVoice);
+    const speakReply = shouldSpeak(voiceMode, !!opts.inboundWasVoice);   // WhatsApp only, by the guard above
     const sendReply = async (body: string): Promise<{ id?: string; error?: string }> => {
       if (speakReply) {
         const v = await synthesizeSpeech(body, conv.tenantId);

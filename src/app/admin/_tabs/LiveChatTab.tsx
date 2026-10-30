@@ -13,6 +13,7 @@ import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
 import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
 import { TEAM_SHORT, nextTeam, type Team } from "@/lib/team-vocab";
 import { EmptyState } from "../_shared";
+import { ChatNotes } from "@/components/chat-notes";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
 // One step in a lead's ownership trail (which number owned it, and who moved it).
@@ -1125,6 +1126,8 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   />
                 </div>
               </div>
+
+              <ChatNotes conversationId={conv.id} />
 
               <div>
                 <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><UserCheck className="w-3.5 h-3.5" /> Assigned to</p>

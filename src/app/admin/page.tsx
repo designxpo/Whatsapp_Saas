@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSlidingPill, useScrolled } from "@/lib/use-nav-motion";
+import { useInboxAlerts } from "@/lib/use-inbox-alerts";
+import { AlertsBell } from "@/components/alerts-bell";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -243,6 +245,9 @@ function AdminShell() {
   const navList = useRef<HTMLDivElement>(null);
   const pill = useSlidingPill(navList, tab, [ent, me?.role]);
   const scrolled = useScrolled();
+  // Chats waiting for a person: the bell, the tab title, a chime and desktop
+  // notifications, on every screen (lib/use-inbox-alerts.ts).
+  const alerts = useInboxAlerts(chat => goTo("livechat", { openPhone: chat.phone }));
 
   return (
     <ConfirmProvider>
@@ -289,6 +294,9 @@ function AdminShell() {
                       onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
                       className={`nav-item relative w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left ${active ? "text-white" : "text-ink-600 hover:bg-canvas"}`}>
                       {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
+                      {n.key === "livechat" && alerts.count > 0 && (
+                        <span aria-label={`${alerts.count} waiting`} className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold leading-5 text-center tabular-nums">{alerts.count > 99 ? "99+" : alerts.count}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -357,6 +365,7 @@ function AdminShell() {
             Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
           <div className="flex items-center gap-2">
+          <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} />
           {me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
             blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}
           {tabAllowed("broadcast", ent) && tabRoleAllowed("broadcast", me?.role) && (

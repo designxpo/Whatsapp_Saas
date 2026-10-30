@@ -1568,17 +1568,73 @@ export async function conversationsNeedingReply(limit = 20): Promise<Conversatio
 // mid-flight (e.g. the serverless function timed out during a slow transcription
 // + reply), so nothing was ever sent and conversationsNeedingReply can't see it.
 // Quiet for ≥ minAgeMs so we never race a reply that's still being generated live.
-export async function conversationsAwaitingReply(limit = 20, minAgeMs = 120_000): Promise<Conversation[]> {
+export interface WaitingChat {
+  id: string; name: string; phone: string; platform: ConvPlatform;
+  preview: string; lastInboundAt: string;
+  /** Why it needs a person: handed over, a person took it, the AI is off, or nobody answered. */
+  reason: "escalated" | "bot_off" | "ai_off" | "unanswered";
+}
+
+/** How long the AI gets before an unanswered chat is a person's to pick up. */
+export const UNANSWERED_AFTER_MS = 120_000;
+
+/**
+ * Chats waiting for a PERSON in one business — what agent alerts announce.
+ * Not every new message: the AI answers most within seconds, and alerting on
+ * those is noise. Waiting means: still needs a reply, from the last 24 hours,
+ * and either handed to the team, taken over by a person, the AI is off, or
+ * nobody has answered for UNANSWERED_AFTER_MS. `channelIds` is the team scope
+ * (visibleChannelIds): null sees every number, [] sees none. db() is the
+ * service client, so the tenant filter is what keeps businesses apart.
+ */
+export async function waitingForTeam(opts: { tenantId: string; channelIds: string[] | null; aiOn: boolean; limit?: number; now?: number }): Promise<{ count: number; chats: WaitingChat[] }> {
+  if (opts.channelIds && opts.channelIds.length === 0) return { count: 0, chats: [] };
+  const now = opts.now ?? Date.now();
+  const since = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const stale = new Date(now - UNANSWERED_AFTER_MS).toISOString();
+  const build = (cols: string, countOnly: boolean) => {
+    let q = db().from("wa_conversations").select(cols, countOnly ? { count: "exact", head: true } : undefined)
+      .eq("tenant_id", opts.tenantId)
+      .eq("needs_reply", true).in("status", ["active", "escalated"]).gte("last_inbound_at", since);
+    if (opts.channelIds) q = q.in("channel_id", opts.channelIds);
+    // With the AI off every chat needs a person; otherwise only these.
+    if (opts.aiOn) q = q.or(`status.eq.escalated,bot_enabled.eq.false,last_inbound_at.lte."${stale}"`);
+    return q;
+  };
+  const [counted, listed] = await Promise.all([
+    build("id", true),
+    build("id,name,phone,platform,last_message,last_inbound_at,status,bot_enabled", false)
+      .order("last_inbound_at", { ascending: false }).limit(opts.limit ?? 20),
+  ]);
+  const chats = ((listed.data ?? []) as unknown as Record<string, unknown>[]).map(r => ({
+    id: r.id as string, name: (r.name as string) ?? "", phone: r.phone as string,
+    platform: ((r.platform as ConvPlatform) ?? "whatsapp"),
+    preview: ((r.last_message as string) ?? "").slice(0, 140), lastInboundAt: r.last_inbound_at as string,
+    reason: (r.status === "escalated" ? "escalated" : r.bot_enabled === false ? "bot_off" : !opts.aiOn ? "ai_off" : "unanswered") as WaitingChat["reason"],
+  }));
+  return { count: counted.count ?? chats.length, chats };
+}
+
+export async function conversationsAwaitingReply(
+  limit = 20, minAgeMs = 120_000,
+  // `platforms`: only these channels. `newestFirst`: the most recent first, so
+  // chats the caller will keep skipping (and which therefore stay "awaiting")
+  // sink instead of taking every slot ahead of ones it can answer.
+  // `excludeComments`: leave out comment threads, which are answered in public.
+  opts: { platforms?: Conversation["platform"][]; newestFirst?: boolean; excludeComments?: boolean } = {},
+): Promise<Conversation[]> {
   const now = Date.now();
   const windowStart = new Date(now - 24 * 60 * 60 * 1000).toISOString();   // still in the 24h window
   const cutoff = new Date(now - minAgeMs).toISOString();                   // settled for ≥ minAgeMs
-  const { data } = await db().from("wa_conversations").select("*")
+  let q = db().from("wa_conversations").select("*")
     // active + escalated both qualify — an escalated chat keeps the bot helping
     // until a human takes over (which flips bot_enabled off, excluding it here).
     .in("status", ["active", "escalated"]).eq("bot_enabled", true)
     .gte("last_inbound_at", windowStart)
-    .lte("last_inbound_at", cutoff)
-    .order("last_inbound_at", { ascending: true }).limit(200);
+    .lte("last_inbound_at", cutoff);
+  if (opts.platforms?.length) q = q.in("platform", opts.platforms);
+  if (opts.excludeComments) q = q.or("is_comment.is.null,is_comment.eq.false");
+  const { data } = await q.order("last_inbound_at", { ascending: !opts.newestFirst }).limit(200);
   const rows = (data ?? []).map(r => mapConversation(r as Record<string, unknown>));
   // Unanswered = no outbound yet, or the customer messaged after our last reply.
   // (ISO timestamps compare correctly as strings.)
@@ -2181,4 +2237,56 @@ export async function getFormLinks(sourceFormId: string, tenantId = DEFAULT_TENA
       name: (r.name as string) ?? null, status: (r.status as string) ?? null,
     }));
   } catch { return []; }
+}
+
+// ── Private team notes on a conversation (20261030120000) ─────────────────────
+// Their own table so they can never reach the customer, the AI or the CRM —
+// see the migration. db() is the service client: every query names its
+// tenant, and the route checks the conversation is in the person's team scope.
+
+export interface ConversationNote {
+  id: string;
+  authorEmail: string;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
+export const NOTE_MAX = 2000;
+
+const mapNote = (r: Record<string, unknown>): ConversationNote => ({
+  id: r.id as string, authorEmail: r.author_email as string, authorName: (r.author_name as string) ?? "",
+  body: r.body as string, createdAt: r.created_at as string,
+});
+
+/** One conversation's notes, oldest first. Empty before the migration, rather than an error. */
+export async function listConversationNotes(tenantId: string, conversationId: string): Promise<ConversationNote[]> {
+  const { data, error } = await db().from("wa_conversation_notes").select("*")
+    .eq("tenant_id", tenantId).eq("conversation_id", conversationId).order("created_at", { ascending: true }).limit(200);
+  if (error) return [];
+  return ((data ?? []) as Record<string, unknown>[]).map(mapNote);
+}
+
+export async function addConversationNote(tenantId: string, conversationId: string, author: { email: string; name?: string }, body: string): Promise<ConversationNote> {
+  const text = body.trim().slice(0, NOTE_MAX);
+  if (!text) throw new Error("A note needs some text.");
+  const { data, error } = await db().from("wa_conversation_notes")
+    .insert({ tenant_id: tenantId, conversation_id: conversationId, author_email: author.email, author_name: author.name ?? "", body: text })
+    .select("*").single();
+  if (error) {
+    if (/wa_conversation_notes/.test(error.message) && /exist|schema cache/.test(error.message)) {
+      throw new Error("Team notes need migration 20261030120000_conversation_notes.sql — apply it in Supabase, then try again.");
+    }
+    throw new Error(error.message);
+  }
+  return mapNote(data as Record<string, unknown>);
+}
+
+/** Delete a note — its author's, or anyone's for an admin. False when there was nothing of theirs to delete. */
+export async function deleteConversationNote(tenantId: string, conversationId: string, noteId: string, by: { email: string; isAdmin: boolean }): Promise<boolean> {
+  let q = db().from("wa_conversation_notes").delete().eq("tenant_id", tenantId).eq("id", noteId).eq("conversation_id", conversationId);
+  if (!by.isAdmin) q = q.eq("author_email", by.email);
+  const { data, error } = await q.select("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).length > 0;
 }

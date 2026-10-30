@@ -17,6 +17,7 @@ import { drainAbandonedCarts } from "@/lib/commerce";
 import { drainIntegrationDeliveries } from "@/lib/integrations";
 import { refreshDueUrlDocuments } from "@/lib/kb";
 import { respondToConversation } from "@/lib/assistant";
+import { answerUnanswered, SETTLE_MS } from "@/lib/replybackstop";
 import { purgeOldAdChats } from "@/lib/adchats";
 import { drainYtComments } from "@/lib/ytpoller";
 import { drainGoogleReviews } from "@/lib/reviewpoller";
@@ -175,13 +176,25 @@ export async function POST(req: Request) {
     let aiReplies = 0;
     if (process.env.LLM_BOT_ENABLED !== "false") {
       await stage("aireplies", undefined, async () => {
-        for (const c of await conversationsAwaitingReply(20)) {
+        for (const c of await conversationsAwaitingReply(20, 120_000, { platforms: ["whatsapp"] })) {
           if (Date.now() - startedAt > DEADLINE) break;
           try {
             await reflagReply(c.id);
             const r = await respondToConversation(c.id);
             if (r.outcome === "sent" || r.outcome === "escalated") aiReplies++;
           } catch (e) { console.error("[cron] aiReply", c.id, e); }
+        }
+        // The same safety net for Instagram, Messenger and the website chat,
+        // which answer inline: a failed inline reply left the lead in silence.
+        // Only once the inline attempt is certainly over (SETTLE_MS), one
+        // attempt per unanswered message (src/lib/replybackstop.ts).
+        for (const c of await conversationsAwaitingReply(20, SETTLE_MS, { platforms: ["instagram", "messenger", "webchat"], newestFirst: true, excludeComments: true })) {
+          if (Date.now() - startedAt > DEADLINE) break;
+          try {
+            const r = await answerUnanswered(c.id);
+            if (r.outcome === "sent" || r.outcome === "escalated") aiReplies++;
+            if (r.outcome === "failed") console.error("[cron] backstop", c.platform, c.id, r.detail);
+          } catch (e) { console.error("[cron] backstop", c.id, e); }
         }
       });
     }

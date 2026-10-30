@@ -223,6 +223,11 @@ export async function endSession(convKey: string): Promise<void> {
   await db().from("wa_flow_sessions").delete().eq("conversation_id", convKey);
 }
 
+/** Whether a chatbot flow is mid-conversation here (an expired session counts as over). */
+export async function inFlow(convKey: string, tenantId: string): Promise<boolean> {
+  return (await getSession(convKey, tenantId)) !== null;
+}
+
 // ── Sender abstraction: real WhatsApp vs dry-run simulator ───────────────────
 export interface FlowSender {
   // Which channel this sender talks to — lets nodes that only exist on one
