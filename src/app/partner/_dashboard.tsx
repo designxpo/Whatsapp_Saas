@@ -5,7 +5,7 @@
 // the API answers only for this partner's workspaces and accounts.
 
 import { useCallback, useEffect, useState } from "react";
-import { LogOut, Plus, Users, Building2, Palette, IndianRupee, LayoutDashboard, RefreshCw, Wallet, Copy } from "lucide-react";
+import { LogOut, Plus, Users, Building2, Palette, IndianRupee, LayoutDashboard, RefreshCw, Wallet, Copy, Plug } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { useBrand } from "@/components/BrandContext";
 import { Notice, useNotice } from "@/components/Notice";
@@ -27,7 +27,7 @@ type Me = {
   estimate: { feeCents: number; workspacesCents: number; totalCents: number; live: number; sharePct: number | null };
 };
 type Workspace = { id: string; name: string; company: string | null; plan: string; status: string; paymentStatus: string | null; createdAt: string };
-type Tab = "overview" | "customers" | "billing" | "team" | "brand" | "prices";
+type Tab = "overview" | "customers" | "billing" | "team" | "brand" | "meta" | "prices";
 
 const inp = "w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900";
 const btn = "px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60";
@@ -66,6 +66,7 @@ export function PartnerDashboard() {
     { key: "billing", label: "Billing", icon: <Wallet className="w-4 h-4" />, show: true },
     { key: "team", label: "Team", icon: <Users className="w-4 h-4" />, show: true },
     { key: "brand", label: "Brand", icon: <Palette className="w-4 h-4" />, show: true },
+    { key: "meta", label: "Meta app", icon: <Plug className="w-4 h-4" />, show: true },
     { key: "prices", label: "Prices", icon: <IndianRupee className="w-4 h-4" />, show: me?.partner.kind === "reseller" },
   ];
   const owner = me?.user.role === "owner";
@@ -105,6 +106,7 @@ export function PartnerDashboard() {
             {tab === "billing" && <Billing me={me} owner={owner} onChanged={loadMe} />}
             {tab === "team" && <Team me={me} owner={owner} />}
             {tab === "brand" && <BrandTab me={me} owner={owner} onSaved={loadMe} />}
+            {tab === "meta" && <MetaAppTab owner={owner} />}
             {tab === "prices" && me.partner.kind === "reseller" && <Prices me={me} owner={owner} onSaved={loadMe} />}
           </>
         )}
@@ -674,6 +676,64 @@ function DnsRecords({ rows }: { rows: { type?: string; name?: string; value?: st
       <table className="w-full text-[11px]"><thead><tr className="text-ink-400 text-left"><th className="pr-2">Type</th><th className="pr-2">Name</th><th>Value</th></tr></thead>
         <tbody>{rows.map((r, i) => <tr key={i} className="border-t border-line"><td className="py-1 pr-2 font-bold">{r.type}</td><td className="py-1 pr-2 break-all">{r.name}</td><td className="py-1 font-mono break-all">{r.value}</td></tr>)}</tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Meta app ────────────────────────────────────────────────────────────────
+
+function MetaAppTab({ owner }: { owner: boolean }) {
+  const [d, setD] = useState<{ app: { appId: string | null; igAppId: string | null; fbConfigId: string | null; active: boolean; status: string; problems: string[]; hasSecrets: boolean }; setup: { instagramRedirects: string[]; jsSdkDomains: string[] } } | null>(null);
+  const [f, setF] = useState({ appId: "", appSecret: "", igAppId: "", igAppSecret: "", fbConfigId: "" });
+  const [busy, setBusy] = useState(false);
+  const [note, say] = useNotice();
+  const load = useCallback(async () => {
+    const r = await call("/api/partner/meta");
+    if (!r.ok) { say(String(r.data.error)); return; }
+    const j = r.data as never as NonNullable<typeof d>;
+    setD(j); setF(x => ({ ...x, appId: j.app.appId ?? "", igAppId: j.app.igAppId ?? "", fbConfigId: j.app.fbConfigId ?? "" }));
+  }, [say]);
+  useEffect(() => { load(); }, [load]);
+  async function save() {
+    setBusy(true); say(null);
+    const r = await call("/api/partner/meta", "PUT", f);
+    setBusy(false);
+    if (!r.ok) { say(String(r.data.error)); return; }
+    say(`Saved: ${String(r.data.appName ?? "your app")}. Talko switches it on once it's approved and checked.`, "ok"); setF(x => ({ ...x, appSecret: "", igAppSecret: "" })); load();
+  }
+  if (!d) return <div className="flex justify-center py-16"><Spinner /></div>;
+  return (
+    <div className="space-y-4">
+      <Notice notice={note} variant="banner" onClose={() => say(null)} />
+      <Panel title="Status">
+        <p className="text-[13px] text-ink-700">{d.app.active
+          ? <>Your customers connect Instagram and Facebook through <b>your</b> app, so Meta&apos;s screens show your name.</>
+          : d.app.hasSecrets ? "Saved. Talko switches it on once your app passes Meta's review and Talko's check." : "Not set up. Until it is, Meta's screens show \"Talko.AI\" when your customers connect."}</p>
+        {d.app.problems.length > 0 && <ul className="list-disc pl-4 mt-2 text-[12px] text-red-600">{d.app.problems.map(x => <li key={x}>{x}</li>)}</ul>}
+        <p className="text-[12px] text-ink-600 mt-2">Covers Instagram and Facebook Pages. WhatsApp and Meta Ads always connect through Talko&apos;s app.</p>
+      </Panel>
+      <Panel title="Your app's details">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input className={inp} disabled={!owner} placeholder="App ID" value={f.appId} onChange={e => setF({ ...f, appId: e.target.value })} />
+          <input className={inp} disabled={!owner} type="password" placeholder={d.app.hasSecrets ? "App Secret (saved)" : "App Secret"} value={f.appSecret} onChange={e => setF({ ...f, appSecret: e.target.value })} />
+          <input className={inp} disabled={!owner} placeholder="Instagram App ID" value={f.igAppId} onChange={e => setF({ ...f, igAppId: e.target.value })} />
+          <input className={inp} disabled={!owner} type="password" placeholder={d.app.igAppId ? "Instagram App Secret (saved)" : "Instagram App Secret"} value={f.igAppSecret} onChange={e => setF({ ...f, igAppSecret: e.target.value })} />
+          <input className={`${inp} sm:col-span-2`} disabled={!owner} placeholder="Facebook Login for Business configuration ID" value={f.fbConfigId} onChange={e => setF({ ...f, fbConfigId: e.target.value })} />
+        </div>
+        {owner ? <button onClick={save} disabled={busy || !f.appId} className={`${btn} mt-3`}>{busy ? "Checking with Meta…" : "Save"}</button> : <p className="text-[12px] text-ink-600 mt-2">Only an owner can enter these.</p>}
+        <p className="text-[12px] text-ink-600 mt-2">Secrets are checked with Meta, stored encrypted and never shown again.</p>
+      </Panel>
+      <Panel title="Set up your Meta app">
+        <ol className="list-decimal pl-4 space-y-1.5 text-[13px] text-ink-700">
+          <li>Create a Business app in your own Meta business account and complete Business Verification.</li>
+          <li>Instagram → API setup with Instagram login → add the redirect URL{d.setup.instagramRedirects.length > 1 ? "s" : ""} {d.setup.instagramRedirects.map((x, i) => <span key={x}>{i > 0 && " and "}<code className="break-all bg-canvas px-1 rounded">{x}</code></span>)}</li>
+          <li>Facebook Login for Business → allow the JavaScript SDK domain{d.setup.jsSdkDomains.length > 1 ? "s" : ""} {d.setup.jsSdkDomains.map((x, i) => <span key={x}>{i > 0 && " and "}<code className="bg-canvas px-1 rounded">{x}</code></span>)}, and create a configuration with the Page messaging permissions.</li>
+          <li>App roles → add Talko as an Administrator (Talko sets up and checks your webhooks).</li>
+          <li>App settings → Basic: your own privacy policy, terms and data-deletion instructions URLs.</li>
+          <li>Pass Meta App Review for the same permissions, recorded on your portal, and switch the app to Live.</li>
+          <li>Enter the details above. Talko switches it on after a check.</li>
+        </ol>
+      </Panel>
     </div>
   );
 }

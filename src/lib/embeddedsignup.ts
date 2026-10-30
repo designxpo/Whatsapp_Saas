@@ -55,9 +55,10 @@ export function describeOauthError(err: { message?: string; code?: number; error
 }
 
 // Exchange the Embedded Signup authorization code for a business access token.
-export async function exchangeSignupCode(code: string): Promise<ExchangeResult> {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
+// `app`: a white-label partner's own Meta app (Phase 5); left out = Talko's from the env.
+export async function exchangeSignupCode(code: string, app?: { appId: string; appSecret: string }): Promise<ExchangeResult> {
+  const appId = app?.appId ?? process.env.META_APP_ID;
+  const appSecret = app?.appSecret ?? process.env.META_APP_SECRET;
   if (!appId || !appSecret) return { ok: false, error: "META_APP_ID / META_APP_SECRET not configured" };
   if (!code) return { ok: false, error: "Missing signup code" };
 
@@ -90,9 +91,9 @@ export async function exchangeSignupCode(code: string): Promise<ExchangeResult> 
 // Exchange a short-lived USER token (from plain FB.login) for a long-lived one.
 // Page tokens derived from a long-lived user token are themselves long-lived
 // (effectively non-expiring), which is what a stored Messenger channel needs.
-export async function exchangeForLongLivedToken(shortToken: string): Promise<ExchangeResult> {
-  const appId = process.env.META_APP_ID;
-  const appSecret = process.env.META_APP_SECRET;
+export async function exchangeForLongLivedToken(shortToken: string, app?: { appId: string; appSecret: string }): Promise<ExchangeResult> {
+  const appId = app?.appId ?? process.env.META_APP_ID;
+  const appSecret = app?.appSecret ?? process.env.META_APP_SECRET;
   if (!appId || !appSecret) return { ok: false, error: "META_APP_ID / META_APP_SECRET not configured" };
   if (!shortToken) return { ok: false, error: "Missing token" };
 

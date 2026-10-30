@@ -1,6 +1,7 @@
 import { runStagePoll, STAGE_POLL_KEY } from "@/lib/stagepoll";
 import { drainPartnerBilling, drainCustomerBilling } from "@/lib/partner-billing";
 import { drainPendingDomains } from "@/lib/partner-domains";
+import { drainPartnerMetaChecks } from "@/lib/partner-meta";
 import { tenantIdsWithSetting } from "@/lib/store";
 import { accountCanSend as canPollStage } from "@/lib/feature-guard";
 export const maxDuration = 300;
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
     const igTokens = await stage("igtokens", null, () => sweepIgTokensIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // White-label billing: partners' prepaid monthly charges, and the payment
     // links they send their own customers. Returns at once while white-label is off.
-    const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling(), domains: await drainPendingDomains() }), pollStart, POLL_BUDGET);
+    const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling(), domains: await drainPendingDomains(), metaApps: await drainPartnerMetaChecks() }), pollStart, POLL_BUDGET);
     console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });

@@ -27,6 +27,8 @@ const ACTION_LABEL: Record<string, string> = {
   "billing.customer_settings": "Customer billing settings", "billing.customer_link": "Customer payment link sent", "billing.customer_paid": "Customer paid",
   "billing.customer_unpaid": "Customer paused for non-payment",
   "domain.added": "Portal domain added", "domain.verified": "Portal domain live", "domain.removed": "Portal domain removed",
+  "meta.app_saved": "Meta app saved", "meta.app_on": "Customers moved to the partner's Meta app", "meta.app_off": "Customers moved to Talko's Meta app",
+  "meta.webhooks_subscribed": "Meta webhooks set up", "meta.app_ok": "Meta app check passed", "meta.app_problem": "Meta app check failed",
   "email_domain.added": "Sending domain added", "email_domain.verified": "Sending domain verified", "email_domain.removed": "Sending domain removed",
 };
 
@@ -121,6 +123,8 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
           <DealPanel partner={p} onSaved={async () => { await load(); onChanged(); }} />
 
           <DomainsPanel partnerId={p.id} pro={p.tier === "pro"} />
+
+          <MetaAppPanel partnerId={p.id} />
 
           <Panel title={`Workspaces (${workspaces.length})`}>
             <div className="space-y-3">
@@ -543,6 +547,78 @@ function DomainsPanel({ partnerId, pro }: { partnerId: string; pro: boolean }) {
                 <button onClick={() => act("POST", { kind: "email", domain: mail }, "ea", "Added. Ask the partner to add the DNS records shown.")} disabled={!mail || busy === "ea" || !d.resend} className="px-3 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold disabled:opacity-60 shrink-0">Add</button></div>
             )}
           </div>
+          {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// The partner's own Meta app (Phase 5). Talko keeps the switch: credentials are
+// saved here or by the partner, but only the owner turns the app on, sets up
+// its webhooks, and the daily check reports here.
+type MetaApp = { appId: string | null; igAppId: string | null; fbConfigId: string | null; active: boolean; status: "none" | "ok" | "problem"; problems: string[]; checkedAt: string | null; hasSecrets: boolean };
+type MetaSetup = { instagramRedirects: string[]; jsSdkDomains: string[]; webhooks: Record<string, string>; verifyToken: string | null; adminCheck: boolean };
+
+const Codes = ({ items }: { items: string[] }) => <>{items.map((x, i) => <span key={x}>{i > 0 && " and "}<code className="break-all">{x}</code></span>)}</>;
+
+function MetaAppPanel({ partnerId }: { partnerId: string }) {
+  const [app, setApp] = useState<MetaApp | null>(null);
+  const [setup, setSetup] = useState<MetaSetup | null>(null);
+  const [f, setF] = useState({ appId: "", appSecret: "", igAppId: "", igAppSecret: "", fbConfigId: "" });
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/owner/partners/${partnerId}/meta`);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { setNote({ ok: false, text: j.error || "Couldn't load." }); return; }
+    setApp(j.app); setSetup(j.setup);
+    setF(x => ({ ...x, appId: j.app.appId ?? "", igAppId: j.app.igAppId ?? "", fbConfigId: j.app.fbConfigId ?? "" }));
+  }, [partnerId]);
+  useEffect(() => { load(); }, [load]);
+  async function post(body: Record<string, unknown>, key: string, done: (j: Record<string, unknown>) => string) {
+    setBusy(key); setNote(null);
+    const r = await fetch(`/api/owner/partners/${partnerId}/meta`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(null);
+    if (!r.ok || j.error) { setNote({ ok: false, text: j.error || `Failed (HTTP ${r.status})` }); return; }
+    setNote({ ok: true, text: done(j) }); await load();
+  }
+  const inp = "w-full border border-line rounded-control px-3 py-1.5 text-sm bg-white text-ink-900";
+  const tone = app?.status === "ok" ? "ok" : app?.status === "problem" ? "bad" : "muted";
+  return (
+    <Panel title="Own Meta app" action={app && <Badge tone={app.active ? tone : "muted"}>{app.active ? (app.status === "problem" ? "On · problem" : "On") : app.hasSecrets ? "Saved, off" : "Not set up"}</Badge>}>
+      {!app || !setup ? <Spinner /> : (
+        <div className="space-y-3 text-[13px]">
+          <p className="text-ink-600">With it on, this partner&apos;s customers connect Instagram and Facebook Pages through the partner&apos;s app, so Meta&apos;s screens show the partner&apos;s name. WhatsApp and Meta Ads always use Talko&apos;s app. Switching off affects new connections; ones already made keep working.</p>
+          {app.problems.length > 0 && <ul className="list-disc pl-4 text-red-600 text-[12px]">{app.problems.map(x => <li key={x}>{x}</li>)}</ul>}
+          {app.hasSecrets && (
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => post({ active: !app.active }, "act", () => app.active ? "Switched off: customers connect through Talko's app." : "Switched on.")} disabled={busy === "act"}
+                className={`px-3 py-1.5 rounded-control text-xs font-bold ${app.active ? "border border-line bg-white text-ink-700 hover:bg-canvas" : "bg-brand-700 text-white hover:bg-brand-600"}`}>{app.active ? "Move customers back to Talko's app" : "Switch on"}</button>
+              <button onClick={() => post({ subscribe: true }, "sub", j => ((j.results as { object: string; ok: boolean }[]) ?? []).map(r => `${r.object} ${r.ok ? "✓" : "✗"}`).join(" · "))} disabled={busy === "sub"} className="px-3 py-1.5 rounded-control border border-line bg-white text-xs font-bold hover:bg-canvas">Set up webhooks</button>
+              <button onClick={() => post({ check: true }, "chk", () => "Checked.")} disabled={busy === "chk"} className="px-3 py-1.5 rounded-control border border-line bg-white text-xs font-bold hover:bg-canvas">Check now</button>
+              {app.checkedAt && <span className="text-[11px] text-ink-400 self-center">last checked {ago(app.checkedAt)}</span>}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <input className={inp} placeholder="App ID" value={f.appId} onChange={e => setF({ ...f, appId: e.target.value })} />
+            <input className={inp} type="password" placeholder={app.hasSecrets ? "App Secret (saved)" : "App Secret"} value={f.appSecret} onChange={e => setF({ ...f, appSecret: e.target.value })} />
+            <input className={inp} placeholder="Instagram App ID" value={f.igAppId} onChange={e => setF({ ...f, igAppId: e.target.value })} />
+            <input className={inp} type="password" placeholder={app.igAppId ? "Instagram App Secret (saved)" : "Instagram App Secret"} value={f.igAppSecret} onChange={e => setF({ ...f, igAppSecret: e.target.value })} />
+            <input className={`${inp} col-span-2`} placeholder="Facebook Login for Business configuration ID (Pages)" value={f.fbConfigId} onChange={e => setF({ ...f, fbConfigId: e.target.value })} />
+          </div>
+          <button onClick={() => post(f, "save", j => `Saved: ${String(j.appName ?? "app")}. Switch it on when ready.`)} disabled={busy === "save" || !f.appId} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy === "save" ? "Checking with Meta…" : "Save app"}</button>
+          <details className="text-[12px] text-ink-600">
+            <summary className="cursor-pointer font-bold text-ink-700">What the partner sets in its Meta app</summary>
+            <ul className="list-disc pl-4 mt-1 space-y-1">
+              <li>Instagram → API setup with Instagram login → redirect URLs: <Codes items={setup.instagramRedirects} /></li>
+              <li>Facebook Login for Business → Allowed domains for the JavaScript SDK: <Codes items={setup.jsSdkDomains} />, and a configuration with the Page permissions; its ID goes above.</li>
+              <li>App roles → add Talko&apos;s account as an Administrator{setup.adminCheck ? " (checked daily)" : " (set TALKO_META_ADMIN_ID to check it daily)"}.</li>
+              <li>Webhooks: Talko sets these with &ldquo;Set up webhooks&rdquo;. If Meta wants one added by hand: <code className="break-all">{setup.webhooks.messenger}</code> (Pages) and <code className="break-all">{setup.webhooks.instagram}</code> (Instagram){setup.verifyToken && <>, verify token <code className="break-all">{setup.verifyToken}</code></>}.</li>
+              <li>Meta App Review for the same permissions Talko uses, recorded on the partner&apos;s portal, then Live mode.</li>
+            </ul>
+          </details>
           {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
         </div>
       )}

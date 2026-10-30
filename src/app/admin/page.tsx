@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { useBrand } from "@/components/BrandContext";
 import { brandCopy } from "@/lib/whitelabel";
+import { setPartnerMetaApp } from "@/lib/embedded-signup-client";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
@@ -216,6 +217,9 @@ function AdminShell() {
   useEffect(() => {
     fetch("/api/admin/me").then(r => r.json()).then(d => {
       const u = d.user ?? null;
+      // White-label: connect through the partner's own Meta app (only set for
+      // a partner workspace whose partner has one switched on).
+      if (d.metaApp?.appId) setPartnerMetaApp({ appId: d.metaApp.appId, fbConfigId: d.metaApp.fbConfigId ?? null });
       setMe(u);
       setEnt(d.entitlements ?? null);
       setBanner(d.banner ?? null);

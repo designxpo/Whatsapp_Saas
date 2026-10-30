@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { metaCredsForTenant } from "@/lib/partner-meta";
 import { brandForTenant } from "@/lib/brand-server";
 import { brandCopy } from "@/lib/whitelabel";
 import { currentUser, isPlatformOwnerEmail } from "@/lib/auth";
@@ -47,5 +48,9 @@ export async function GET() {
 
   // Entitlements are resolved server-side and never throw (fail-open).
   const entitlements = await getEntitlements(user.tenantId).catch(() => null);
-  return NextResponse.json({ user: { ...user, isPlatformOwner }, needsWalkthrough, banner, entitlements });
+  // White-label: the partner's own Meta app (public ids only) when its
+  // customers connect through it; absent for everyone else.
+  const partnerApp = await metaCredsForTenant(user.tenantId).catch(() => null);
+  const metaApp = partnerApp ? { appId: partnerApp.appId, fbConfigId: partnerApp.fbConfigId } : undefined;
+  return NextResponse.json({ user: { ...user, isPlatformOwner }, needsWalkthrough, banner, entitlements, ...(metaApp ? { metaApp } : {}) });
 }

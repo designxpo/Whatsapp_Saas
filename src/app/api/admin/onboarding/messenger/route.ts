@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { metaCredsForTenant } from "@/lib/partner-meta";
 import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { exchangeSignupCode, exchangeForLongLivedToken, resolveFacebookPages, grantedScopes, noGrantMessage, FB_COMMENT_SCOPE, fbScopesKey } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp, findMessengerChannelId } from "@/lib/channels";
@@ -77,9 +78,13 @@ export async function POST(req: Request) {
   }
   if (!fresh && !body.code && !parked) return NextResponse.json({ error: "Missing Facebook login" }, { status: 400 });
 
+  // White-label: a partner workspace signs in through the partner's own Meta
+  // app when one is switched on; everyone else through Talko's, as before.
+  const partnerApp = await metaCredsForTenant(tenantId);
+  const app = partnerApp ? { appId: partnerApp.appId, appSecret: partnerApp.appSecret } : undefined;
   const ex = parked ? { ok: true as const, token: parked, error: undefined }
            : fresh  ? { ok: true as const, token: fresh, error: undefined }
-                    : await exchangeSignupCode(body.code!);
+                    : await exchangeSignupCode(body.code!, app);
   if (!ex.ok || !ex.token) {
     console.error(TAG, "token exchange failed", { tenantId, error: ex.error });
     // Meta's own code/subcode/trace goes to the tenant too. Without it this
@@ -95,7 +100,7 @@ export async function POST(req: Request) {
   // and then never wired in, so every Page connected through the popup was stored
   // with a token that expires. Best-effort: a no-op for a system-user token, and
   // a failure here must never block a connect that would otherwise work.
-  const long = await exchangeForLongLivedToken(ex.token).catch(() => ({ ok: false } as const));
+  const long = await exchangeForLongLivedToken(ex.token, app).catch(() => ({ ok: false } as const));
   const token = ("token" in long && long.ok && long.token) ? long.token : ex.token;
   if (!("token" in long && long.ok)) console.warn(TAG, "long-lived upgrade skipped", { tenantId });
 

@@ -1,4 +1,5 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
+import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/partner-meta";
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, getChannelById, repairIgChannelId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
@@ -29,7 +30,9 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  if (mode === "subscribe" && constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)) {
+  // White-label: a partner's own Meta app subscribes with ?app=<partner id> and its own token.
+  const partnerApp = url.searchParams.get("app");
+  if (mode === "subscribe" && (partnerApp ? await partnerVerifyTokenOk(partnerApp, token) : constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN))) {
     return new NextResponse(challenge ?? "", { status: 200 });
   }
   return new NextResponse("Forbidden", { status: 403 });
@@ -45,7 +48,13 @@ export async function POST(req: Request) {
   // this, every real IG event fails signature → 401 and never reaches the portal.
   const sig = req.headers.get("x-hub-signature-256");
   const igSecret = process.env.META_INSTAGRAM_APP_SECRET;
-  if (!((igSecret && verifyMetaSignature(raw, sig, igSecret)) || verifyMetaSignature(raw, sig, process.env.META_APP_SECRET))) {
+  // White-label: events from a partner's own Meta app carry ?app=<partner id>
+  // and are verified with that app's secret only. Unmarked events are verified
+  // exactly as before.
+  const partnerApp = new URL(req.url).searchParams.get("app");
+  if (partnerApp) {
+    if (!(await verifyPartnerWebhook(partnerApp, raw, sig, "instagram"))) return new NextResponse("Invalid signature", { status: 401 });
+  } else if (!((igSecret && verifyMetaSignature(raw, sig, igSecret)) || verifyMetaSignature(raw, sig, process.env.META_APP_SECRET))) {
     // This 401 used to be silent, which is the worst possible place for silence:
     // Meta keeps delivering, we keep rejecting, and in the portal it looks like
     // the account simply never receives a message. The usual cause is
@@ -77,6 +86,8 @@ export async function POST(req: Request) {
         changes: Array.isArray(e.changes) ? e.changes.length : 0,
       })),
     });
+    // A partner app's events reach only that partner's own workspaces.
+    const scope = partnerApp ? partnerScope(partnerApp) : null;
     for (const entry of body.entry ?? []) {
       // entry.id is the IG professional account id → resolves the tenant's channel.
       const igId = String(entry.id ?? "");
@@ -85,7 +96,8 @@ export async function POST(req: Request) {
       // giving up, so an already-connected account starts working on its next
       // message instead of needing someone to notice and reconnect.
       const direct = await getChannelByIgId(igId);
-      const channel = direct ?? (await repairIgChannelId(igId));
+      const found = direct ?? (await repairIgChannelId(igId));
+      const channel = found && scope && !(await scope(found.tenantId)) ? null : found;
       routed.push({ igAccountId: igId, matched: !!(channel && channel.active), repaired: !direct && !!channel });
       if (!channel || !channel.active) {
         console.warn(`[ig webhook] received events for IG account ${entry.id} but no ACTIVE Instagram channel matches that account id — check the Instagram channel in the portal (and that its token hasn't expired).`);

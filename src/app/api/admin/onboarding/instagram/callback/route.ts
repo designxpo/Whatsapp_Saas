@@ -1,4 +1,5 @@
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { metaCredsForTenant } from "@/lib/partner-meta";
 import { brandForTenant } from "@/lib/brand-server";
 import { brandCopy } from "@/lib/whitelabel";
 import { guardFeature } from "@/lib/feature-guard";
@@ -57,7 +58,10 @@ export async function GET(req: Request) {
     return html({ ok: false, error: `That connect link is no longer valid (${st.reason}). Start again from the Instagram page.` });
   }
 
-  const short = await exchangeIgCode(code, igRedirectUri(req.url));
+  // Same app as /start chose: the partner's own when switched on, else Talko's.
+  const partnerApp = await metaCredsForTenant(tenantId);
+  const igApp = partnerApp?.igAppId && partnerApp.igAppSecret ? { appId: partnerApp.igAppId, appSecret: partnerApp.igAppSecret } : undefined;
+  const short = await exchangeIgCode(code, igRedirectUri(req.url, igApp), igApp);
   if (!short.ok || !short.token) {
     console.error(TAG, "code exchange failed", { tenantId, error: short.error });
     return html({ ok: false, error: short.error || "Instagram wouldn't exchange the login code." });
@@ -67,7 +71,7 @@ export async function GET(req: Request) {
   // The short-lived token dies within the hour. Storing it would hand every
   // tenant a channel that stops working the same afternoon, so the long-lived
   // exchange is required, not an optimisation.
-  const long = await igLongLivedToken(short.token);
+  const long = await igLongLivedToken(short.token, igApp);
   if (!long.ok || !long.token) {
     console.error(TAG, "long-lived exchange failed", { tenantId, error: long.error });
     return html({ ok: false, error: `Instagram gave us a token that expires within the hour and wouldn't upgrade it (${long.error}). Nothing was saved.` });

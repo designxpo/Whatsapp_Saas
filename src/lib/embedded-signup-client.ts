@@ -16,6 +16,17 @@ const APP_ID = process.env.NEXT_PUBLIC_META_APP_ID;
 const WA_CONFIG_ID = process.env.NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID;
 const IG_CONFIG_ID = process.env.NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID;
 const FB_CONFIG_ID = process.env.NEXT_PUBLIC_META_MESSENGER_CONFIG_ID;
+
+// White-label (Phase 5): on a partner workspace whose partner has its own Meta
+// app switched on, the portal sets this from /api/admin/me before any connect,
+// so the Facebook Page dialog shows the partner's app. WhatsApp signup and Meta
+// Ads stay on Talko's app (their configurations live there); the legacy
+// Instagram config is off, since Instagram connects through the partner's
+// Instagram login instead. Unset (everyone else) = Talko's app, as before.
+let partnerApp: { appId: string; fbConfigId: string | null } | null = null;
+export function setPartnerMetaApp(app: { appId: string; fbConfigId: string | null } | null): void { partnerApp = app; }
+const appId = () => partnerApp?.appId ?? APP_ID;
+const fbConfigId = () => (partnerApp ? partnerApp.fbConfigId ?? undefined : FB_CONFIG_ID);
 const ADS_CONFIG_ID = process.env.NEXT_PUBLIC_META_ADS_CONFIG_ID;
 
 interface FbLoginResponse { authResponse?: { code?: string; accessToken?: string } | null; status?: string }
@@ -37,8 +48,8 @@ declare global {
 }
 
 export const whatsappSignupReady = () => !!APP_ID && !!WA_CONFIG_ID;
-export const instagramSignupReady = () => !!APP_ID && !!IG_CONFIG_ID;
-export const facebookSignupReady = () => !!APP_ID && !!FB_CONFIG_ID;
+export const instagramSignupReady = () => !partnerApp && !!APP_ID && !!IG_CONFIG_ID;
+export const facebookSignupReady = () => !!appId() && !!fbConfigId();
 export const adsSignupReady = () => !!APP_ID && !!ADS_CONFIG_ID;
 
 // Which NEXT_PUBLIC_* values are absent (unset OR empty — both are baked into
@@ -47,8 +58,9 @@ export const whatsappSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !WA_CONFIG_ID && "NEXT_PUBLIC_META_EMBEDDED_SIGNUP_CONFIG_ID"].filter(Boolean) as string[];
 export const instagramSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !IG_CONFIG_ID && "NEXT_PUBLIC_META_INSTAGRAM_CONFIG_ID"].filter(Boolean) as string[];
-export const facebookSignupMissing = (): string[] =>
-  [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_MESSENGER_CONFIG_ID"].filter(Boolean) as string[];
+export const facebookSignupMissing = (): string[] => partnerApp
+  ? (partnerApp.fbConfigId ? [] : ["the partner app's Facebook Login for Business configuration ID"])
+  : [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !FB_CONFIG_ID && "NEXT_PUBLIC_META_MESSENGER_CONFIG_ID"].filter(Boolean) as string[];
 export const adsSignupMissing = (): string[] =>
   [!APP_ID && "NEXT_PUBLIC_META_APP_ID", !ADS_CONFIG_ID && "NEXT_PUBLIC_META_ADS_CONFIG_ID"].filter(Boolean) as string[];
 
@@ -59,23 +71,29 @@ export const adsSignupMissing = (): string[] =>
 export const metaPreview = () => process.env.NEXT_PUBLIC_META_PREVIEW === "1";
 
 let sdkPromise: Promise<void> | null = null;
-function loadSdk(): Promise<void> {
+let initedFor: string | null = null;
+// One SDK, initialised for the app the next dialog belongs to. Everyone but a
+// partner workspace with its own app only ever uses Talko's, so it is
+// initialised once, exactly as before.
+function loadSdk(forApp: string | undefined = APP_ID): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(new Error("Not in a browser"));
-  if (window.FB) return Promise.resolve();
-  if (!APP_ID) return Promise.reject(new Error("NEXT_PUBLIC_META_APP_ID is not set"));
-  if (sdkPromise) return sdkPromise;
+  if (!forApp) return Promise.reject(new Error("NEXT_PUBLIC_META_APP_ID is not set"));
+  const init = () => {
+    if (initedFor === forApp) return;
+    window.FB!.init({ appId: forApp, autoLogAppEvents: true, xfbml: false, version: GRAPH_VERSION });
+    initedFor = forApp;
+  };
+  if (window.FB) { init(); return Promise.resolve(); }
+  if (sdkPromise) return sdkPromise.then(init);
   sdkPromise = new Promise<void>((resolve, reject) => {
-    window.fbAsyncInit = () => {
-      window.FB!.init({ appId: APP_ID!, autoLogAppEvents: true, xfbml: false, version: GRAPH_VERSION });
-      resolve();
-    };
+    window.fbAsyncInit = () => resolve();
     const s = document.createElement("script");
     s.src = "https://connect.facebook.net/en_US/sdk.js";
     s.async = true; s.defer = true; s.crossOrigin = "anonymous";
     s.onerror = () => { sdkPromise = null; reject(new Error("Failed to load the Facebook SDK")); };
     document.body.appendChild(s);
   });
-  return sdkPromise;
+  return sdkPromise.then(init);
 }
 
 // Signup flavours:
@@ -194,14 +212,15 @@ export async function launchInstagramSignup(): Promise<{ code: string }> {
 // it, so this token is in the browser for exactly one POST and the PAGE tokens
 // still never are.
 export async function launchFacebookSignup(): Promise<{ token: string }> {
-  await loadSdk();
-  if (!FB_CONFIG_ID) throw new Error("Facebook Page sign-up is not configured yet");
+  await loadSdk(appId());
+  const configId = fbConfigId();
+  if (!configId) throw new Error("Facebook Page sign-up is not configured yet");
   return new Promise((resolve, reject) => {
     window.FB!.login((response) => {
       const token = response?.authResponse?.accessToken;
       if (!token) return reject(new Error("Sign-in was cancelled, or no Page access was granted"));
       resolve({ token });
-    }, { config_id: FB_CONFIG_ID });
+    }, { config_id: configId });
   });
 }
 

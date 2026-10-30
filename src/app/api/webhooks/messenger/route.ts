@@ -1,4 +1,5 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
+import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/partner-meta";
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
@@ -29,7 +30,10 @@ export async function GET(req: Request) {
   const mode = url.searchParams.get("hub.mode");
   const token = url.searchParams.get("hub.verify_token");
   const challenge = url.searchParams.get("hub.challenge");
-  const ok = constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)
+  // White-label: a partner's own Meta app subscribes with ?app=<partner id> and its own token.
+  const partnerApp = url.searchParams.get("app");
+  const ok = partnerApp ? await partnerVerifyTokenOk(partnerApp, token)
+          : constEq(token ?? "", process.env.META_WEBHOOK_VERIFY_TOKEN)
           || constEq(token ?? "", process.env.META_WA_WEBHOOK_VERIFY_TOKEN);
   if (mode === "subscribe" && ok) {
     return new NextResponse(challenge ?? "", { status: 200 });
@@ -41,7 +45,11 @@ export async function GET(req: Request) {
 // X-Hub-Signature-256 with the app secret. entry.id is the Page id.
 export async function POST(req: Request) {
   const raw = await req.text();
-  if (!verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
+  // White-label: a partner app's events (?app=<partner id>) are verified with that app's secret; the rest exactly as before.
+  const partnerApp = new URL(req.url).searchParams.get("app");
+  if (partnerApp
+    ? !(await verifyPartnerWebhook(partnerApp, raw, req.headers.get("x-hub-signature-256"), "messenger"))
+    : !verifyMetaSignature(raw, req.headers.get("x-hub-signature-256"), process.env.META_APP_SECRET)) {
     return new NextResponse("Invalid signature", { status: 401 });
   }
   // Real traffic doubles as a clock for the background engine (cronwatchdog.ts).
@@ -49,8 +57,11 @@ export async function POST(req: Request) {
 
   try {
     const body = JSON.parse(raw);
+    // A partner app's events reach only that partner's own workspaces.
+    const scope = partnerApp ? partnerScope(partnerApp) : null;
     for (const entry of body.entry ?? []) {
-      const channel = await getChannelByPageId(String(entry.id ?? ""));
+      const found = await getChannelByPageId(String(entry.id ?? ""));
+      const channel = found && scope && !(await scope(found.tenantId)) ? null : found;
       if (!channel || !channel.active) {
         // Events ARE arriving but nothing stores them — almost always the cause of
         // "Facebook 0" in Live Chat: no active Messenger channel matches this Page.

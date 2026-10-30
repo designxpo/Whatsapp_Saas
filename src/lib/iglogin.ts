@@ -48,6 +48,13 @@ export const igScopesKey = (channelId: string) => `ig_scopes:${channelId}`;
 export const igAppId = () => (process.env.META_INSTAGRAM_APP_ID || "").trim();
 const igAppSecret = () => (process.env.META_INSTAGRAM_APP_SECRET || "").trim();
 
+/**
+ * White-label (Phase 5): a partner's own Instagram app. Every function below
+ * takes it as an optional last argument; left out, it is Talko's app from the
+ * env, exactly as before.
+ */
+export interface IgApp { appId: string; appSecret: string }
+
 export function igLoginReady(): boolean {
   return !!igAppId() && !!igAppSecret();
 }
@@ -61,8 +68,10 @@ export function igLoginMissing(): string[] {
 // byte-identical between /start and /callback. Deriving it from the incoming
 // request keeps preview deployments working; the env var pins it when the app
 // sits behind a proxy that rewrites the host.
-export function igRedirectUri(requestUrl: string): string {
-  const pinned = (process.env.META_INSTAGRAM_REDIRECT_URI || "").trim();
+export function igRedirectUri(requestUrl: string, app?: IgApp): string {
+  // A partner's own app always returns to the partner's address (the request's
+  // own origin), never to Talko's pinned one.
+  const pinned = app ? "" : (process.env.META_INSTAGRAM_REDIRECT_URI || "").trim();
   if (pinned) return pinned.replace(/\/+$/, "");
   return `${new URL(requestUrl).origin}/api/admin/onboarding/instagram/callback`;
 }
@@ -103,9 +112,9 @@ export function verifyState(state: string, tenantId: string, nowMs: number): { o
 }
 
 // ── OAuth ─────────────────────────────────────────────────────────────────────
-export function igAuthorizeUrl(redirectUri: string, state: string): string {
+export function igAuthorizeUrl(redirectUri: string, state: string, app?: IgApp): string {
   const u = new URL(`${AUTH_HOST}/oauth/authorize`);
-  u.searchParams.set("client_id", igAppId());
+  u.searchParams.set("client_id", app?.appId ?? igAppId());
   u.searchParams.set("redirect_uri", redirectUri);
   u.searchParams.set("response_type", "code");
   u.searchParams.set("scope", IG_SCOPES.join(","));
@@ -116,12 +125,12 @@ export function igAuthorizeUrl(redirectUri: string, state: string): string {
 export interface IgTokenResult { ok: boolean; token?: string; userId?: string; permissions?: string[]; expiresIn?: number; error?: string }
 
 /** Authorization code → SHORT-lived Instagram user token (about an hour). */
-export async function exchangeIgCode(code: string, redirectUri: string): Promise<IgTokenResult> {
+export async function exchangeIgCode(code: string, redirectUri: string, app?: IgApp): Promise<IgTokenResult> {
   if (!igLoginReady()) return { ok: false, error: `Instagram login isn't configured — missing ${igLoginMissing().join(" + ")}` };
   try {
     const body = new URLSearchParams({
-      client_id: igAppId(),
-      client_secret: igAppSecret(),
+      client_id: app?.appId ?? igAppId(),
+      client_secret: app?.appSecret ?? igAppSecret(),
       grant_type: "authorization_code",
       redirect_uri: redirectUri,
       // Instagram appends #_ to the code in the browser fragment; strip it.
@@ -149,12 +158,12 @@ export async function exchangeIgCode(code: string, redirectUri: string): Promise
  * round trip: the short token dies within the hour, so storing it would give
  * every tenant a channel that stops working the same afternoon.
  */
-export async function igLongLivedToken(shortToken: string): Promise<IgTokenResult> {
-  if (!igAppSecret()) return { ok: false, error: "META_INSTAGRAM_APP_SECRET is not set" };
+export async function igLongLivedToken(shortToken: string, app?: IgApp): Promise<IgTokenResult> {
+  if (!(app?.appSecret ?? igAppSecret())) return { ok: false, error: "META_INSTAGRAM_APP_SECRET is not set" };
   try {
     const u = new URL(`${GRAPH}/access_token`);
     u.searchParams.set("grant_type", "ig_exchange_token");
-    u.searchParams.set("client_secret", igAppSecret());
+    u.searchParams.set("client_secret", app?.appSecret ?? igAppSecret());
     u.searchParams.set("access_token", shortToken);
     const r = await fetch(u, { cache: "no-store" });
     const j = await r.json().catch(() => null) as { access_token?: string; expires_in?: number; error?: { message?: string } } | null;

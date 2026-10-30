@@ -3,6 +3,7 @@ import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth
 import { guardFeature } from "@/lib/feature-guard";
 import { igLoginReady, igLoginMissing, igRedirectUri, igAuthorizeUrl, signState, IG_SCOPES } from "@/lib/iglogin";
 import { popupHtml } from "@/lib/igpopup";
+import { metaCredsForTenant } from "@/lib/partner-meta";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +24,17 @@ export async function GET(req: Request) {
     return fail(body.error ?? "Instagram isn't included in your plan.");
   }
 
-  if (!igLoginReady()) {
+  // White-label: a partner workspace connects through the partner's own
+  // Instagram app when the partner has one switched on; everyone else through
+  // Talko's, exactly as before.
+  const partnerApp = await metaCredsForTenant(tenantId);
+  const igApp = partnerApp?.igAppId && partnerApp.igAppSecret ? { appId: partnerApp.igAppId, appSecret: partnerApp.igAppSecret } : undefined;
+  if (!igApp && !igLoginReady()) {
     return fail(`Instagram connect isn't switched on for this deployment yet — missing ${igLoginMissing().join(" + ")}. Use “Add manually” meanwhile.`);
   }
 
-  const redirectUri = igRedirectUri(req.url);
-  const url = igAuthorizeUrl(redirectUri, signState(tenantId, Date.now()));
+  const redirectUri = igRedirectUri(req.url, igApp);
+  const url = igAuthorizeUrl(redirectUri, signState(tenantId, Date.now()), igApp);
   console.log("[ig-login] start", { tenantId, redirectUri, scopes: IG_SCOPES });
   return NextResponse.redirect(url, 302);
 }
