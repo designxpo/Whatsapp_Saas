@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, Check, Pencil, X } from "lucide-react";
-import { Drawer, Badge, Panel, Spinner, Table, Th, Td, money, ago, PAYMENT_TONE, STATUS_TONE, type Tone } from "../_ui";
+import { Drawer, Badge, Panel, Spinner, Table, Th, Td, money, ago, PAYMENT_TONE, STATUS_TONE, type Tone, Placeholder, openRow } from "../_ui";
 
 type Detail = {
   affiliate: { id: string; name: string; email: string; phone: string | null; code: string; commissionPct: number; status: string; payoutMethod: string | null; createdAt: string };
@@ -112,7 +112,7 @@ export function AffiliateDrawer({ id, onClose, onChanged }: { id: string; onClos
       </div>
     )}>
       {err && <div className="bg-red-50 border border-red-200 rounded-card px-3 py-2 text-[13px] text-red-700">{err}</div>}
-      {!d && !err && <div className="flex justify-center py-10"><Spinner /></div>}
+      {!d && !err && <Placeholder />}
 
       {d && (
         <>
@@ -146,14 +146,16 @@ export function AffiliateDrawer({ id, onClose, onChanged }: { id: string; onClos
               <Table head={
                 <tr><Th w="28px" /><Th>Company</Th><Th>Plan</Th><Th align="right">Charge</Th><Th align="right">Commission</Th><Th>Status</Th><Th align="right">Date</Th></tr>
               }>
-                {d.commissions.map(c => (
-                  <tr key={c.id} className={c.status === "pending" ? "hover:bg-canvas cursor-pointer" : ""}
-                    onClick={() => {
-                      if (c.status !== "pending") return;
-                      setSelected(s => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; });
-                    }}>
-                    <Td>{c.status === "pending" && (
-                      <input type="checkbox" checked={selected.has(c.id)} onChange={() => {}} className="pointer-events-none" />
+                {d.commissions.map(c => {
+                  const pending = c.status === "pending";
+                  const toggle = () => setSelected(s => { const n = new Set(s); n.has(c.id) ? n.delete(c.id) : n.add(c.id); return n; });
+                  return (
+                  <tr key={c.id} {...(pending ? openRow(toggle) : {})}>
+                    <Td>{pending && (
+                      // A real checkbox: Tab reaches it and Space ticks it. The row
+                      // still toggles on a click; the box's own click stays its own.
+                      <input type="checkbox" checked={selected.has(c.id)} onChange={toggle} onClick={e => e.stopPropagation()}
+                        aria-label={`Select the ${c.company || "unnamed"} commission`} className="accent-brand-700" />
                     )}</Td>
                     <Td>{c.company || "—"}</Td>
                     <Td>{c.plan}</Td>
@@ -162,7 +164,8 @@ export function AffiliateDrawer({ id, onClose, onChanged }: { id: string; onClos
                     <Td><Badge tone={COMMISSION_TONE[c.status]}>{c.status}</Badge></Td>
                     <Td align="right" nums>{ago(c.paidAt ?? c.createdAt)}</Td>
                   </tr>
-                ))}
+                  );
+                })}
               </Table>
             )}
           </Panel>

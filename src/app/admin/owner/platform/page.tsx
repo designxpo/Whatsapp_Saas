@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Megaphone, Loader2, ScrollText } from "lucide-react";
-import { Panel, Table, Th, Td, Badge, EmptyState, Spinner, SearchInput, ago, useDebounced } from "../_ui";
+import { Panel, Table, Th, Td, Badge, EmptyState, Spinner, SearchInput, ago, useDebounced, Placeholder } from "../_ui";
 
 type Flag = { key: string; enabled: boolean; description: string | null };
 type Entry = { id: string; actorEmail: string; action: string; tenantId: string | null; detail: string; at: string };
@@ -153,7 +153,7 @@ function AuditLog() {
         </select>
       </div>
 
-      {rows === null && <div className="flex justify-center py-12"><Spinner /></div>}
+      {rows === null && <Placeholder framed={false} />}
       {rows?.length === 0 && <EmptyState mood="searching" title="Nothing matches" body="Try a different search or clear the action filter." />}
 
       {rows && rows.length > 0 && (

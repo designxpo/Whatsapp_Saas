@@ -47,6 +47,10 @@ const MODAL_EXIT_MS = 170;
 
 const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+// Overlays open on top of each other (a confirmation over a side panel). Only
+// the topmost one answers Escape and keeps Tab: one Escape used to close both.
+const openStack: object[] = [];
+
 function useOverlay(open: boolean, mounted: boolean, onClose: () => void) {
   const panel = useRef<HTMLDivElement>(null);
   // The latest onClose, read when needed. Callers pass a fresh arrow on every
@@ -58,10 +62,15 @@ function useOverlay(open: boolean, mounted: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open || !mounted) return;
     const onClose = () => close.current();
+    const me = {};
+    openStack.push(me);
     // Whatever had focus, so closing puts the keyboard back where it was.
     const restoreTo = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Not ours if it's under another overlay, or a dialog above it (the
+      // shared confirmation listens on document, so it runs first) took it.
+      if (openStack[openStack.length - 1] !== me || e.defaultPrevented) return;
+      if (e.key === "Escape") { e.preventDefault(); onClose(); }
       if (e.key !== "Tab" || !panel.current) return;
       // Keep Tab inside: the page behind is still there, and reaching it by
       // keyboard would act on something the person cannot see.
@@ -82,6 +91,7 @@ function useOverlay(open: boolean, mounted: boolean, onClose: () => void) {
       (first ?? panel.current)?.focus({ preventScroll: true });
     }, 30);
     return () => {
+      openStack.splice(openStack.indexOf(me), 1);
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
       clearTimeout(t);
@@ -131,12 +141,18 @@ interface OverlayProps {
   children: React.ReactNode;
 }
 
-/** A panel that slides in from the right: forms, editors and detail views. */
-export function Drawer({ open, onClose, title, subtitle, footer, children, width = "lg" }: OverlayProps & { width?: keyof typeof WIDTHS }) {
+/**
+ * A panel that slides in from the right: forms, editors and detail views.
+ * `actions` sit in the header beside ✕; `surface="canvas"` lays the body out as
+ * white cards on the page grey, the owner console's detail views.
+ */
+export function Drawer({ open, onClose, title, subtitle, footer, children, width = "lg", actions, surface = "white" }: OverlayProps & {
+  width?: keyof typeof WIDTHS; actions?: React.ReactNode; surface?: "white" | "canvas";
+}) {
   const { mounted, shown } = usePresence(open, DRAWER_EXIT_MS);
   const panel = useOverlay(open, mounted, onClose);
   const titleId = useId();
-  const view = useHeld({ title, subtitle, footer, children }, open);
+  const view = useHeld({ title, subtitle, footer, children, actions }, open);
   const body = useScrollEdges();
   const scrim = useRef<HTMLDivElement>(null);
 
@@ -210,11 +226,12 @@ export function Drawer({ open, onClose, title, subtitle, footer, children, width
           className={`ov-grab flex items-start gap-3 px-5 py-4 border-b shrink-0 transition-colors ${body.edges.above ? "border-line" : "border-transparent"}`}>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-base font-extrabold text-ink-900 leading-tight">{view.title}</h2>
-            {view.subtitle && <p className="text-xs text-slate-500 mt-0.5">{view.subtitle}</p>}
+            {view.subtitle && <div className="text-xs text-slate-500 mt-0.5">{view.subtitle}</div>}
           </div>
+          {view.actions && <div className="flex items-center gap-2 shrink-0">{view.actions}</div>}
           <button onClick={onClose} aria-label="Close" className="p-1.5 -m-1 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-ink-900"><X className="w-4 h-4" /></button>
         </header>
-        <div ref={body.ref} onScroll={body.onScroll} className="flex-1 overflow-y-auto overscroll-contain px-5 py-4"><div>{view.children}</div></div>
+        <div ref={body.ref} onScroll={body.onScroll} className={`flex-1 overflow-y-auto overscroll-contain px-5 py-4 ${surface === "canvas" ? "bg-canvas" : ""}`}><div className={surface === "canvas" ? "space-y-4" : undefined}>{view.children}</div></div>
         {view.footer && <footer className={`px-5 py-3 border-t bg-white shrink-0 flex items-center gap-2 transition-colors ${body.edges.below ? "border-line" : "border-transparent"}`}>{view.footer}</footer>}
       </aside>
     </>,

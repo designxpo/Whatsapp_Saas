@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, AlertTriangle } from "lucide-react";
-import { MetricTile, Panel, Table, Th, Td, Spinner, EmptyState, money, compact } from "../_ui";
+import { MetricTile, Panel, Table, Th, Td, Spinner, EmptyState, money, compact, Placeholder } from "../_ui";
 
 type Payload = {
   stats: { total: number; active: number; trialing: number; suspended: number; mrrCents: number };
@@ -72,7 +72,7 @@ export default function RevenuePage() {
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{err}</span>
         </div>
       )}
-      {loading && !d && <div className="flex justify-center py-16"><Spinner /></div>}
+      {loading && !d && <Placeholder />}
 
       {d && (
         <>

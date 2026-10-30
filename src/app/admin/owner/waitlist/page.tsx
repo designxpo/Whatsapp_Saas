@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Inbox, Mail, Trash2 } from "lucide-react";
-import { Panel, Badge, EmptyState, Spinner, ConfirmDialog, ago, type ConfirmCfg, type Tone } from "../_ui";
+import { Panel, Badge, EmptyState, Spinner, ConfirmDialog, ago, type ConfirmCfg, type Tone, Placeholder } from "../_ui";
 
 type Row = {
   id: string; name: string; email: string; phone: string | null; company: string | null;
@@ -66,7 +66,7 @@ export default function WaitlistPage() {
           ))}
         </div>
 
-        {rows === null && <div className="flex justify-center py-16"><Spinner /></div>}
+        {rows === null && <Placeholder framed={false} />}
         {rows !== null && !visible.length && (
           <EmptyState icon={<Inbox className="w-5 h-5" />}
             title={filter ? `Nothing marked ${filter}` : "No submissions yet"}

@@ -17,7 +17,7 @@ import { QUEUES, QUEUE_BY_KEY } from "@/lib/ownerqueues";
 import { consoleStatus } from "@/lib/entitlement-registry";
 import {
   Panel, Table, Th, Td, Badge, EmptyState, Spinner, SearchInput, ConfirmDialog,
-  money, compact, ago, trialText, useDebounced, useLatest,
+  money, compact, ago, trialText, useDebounced, useLatest, openRow, Placeholder,
   STATUS_TONE, PAYMENT_TONE, type ConfirmCfg,
 } from "../_ui";
 import { TenantDrawer } from "./_drawer";
@@ -44,7 +44,7 @@ const SORTS = [
 const sel = "border border-line rounded-control px-2 py-2 text-xs bg-white text-ink-900";
 
 export default function TenantsPage() {
-  return <Suspense fallback={<div className="flex justify-center py-16"><Spinner /></div>}><TenantsInner /></Suspense>;
+  return <Suspense fallback={<Placeholder />}><TenantsInner /></Suspense>;
 }
 
 function TenantsInner() {
@@ -180,7 +180,7 @@ function TenantsInner() {
           </div>
         )}
 
-        {loading && <div className="flex justify-center py-16"><Spinner /></div>}
+        {loading && <Placeholder framed={false} />}
 
         {!loading && !rows.length && !err && (
           <EmptyState icon={<Users className="w-5 h-5" />}
@@ -209,7 +209,7 @@ function TenantsInner() {
               const shown = consoleStatus(t);
               const ended = shown === "trial_ended";
               return (
-                <tr key={t.id} className="hover:bg-canvas cursor-pointer" onClick={() => setParam("open", t.id)}>
+                <tr key={t.id} {...openRow(() => setParam("open", t.id))} aria-label={`Open ${t.company || t.name}`}>
                   <Td><input type="checkbox" checked={picked.has(t.id)} onClick={e => e.stopPropagation()}
                     onChange={e => setPicked(s => { const n = new Set(s); e.target.checked ? n.add(t.id) : n.delete(t.id); return n; })}
                     className="accent-brand-700" aria-label={`Select ${t.company || t.name}`} /></Td>

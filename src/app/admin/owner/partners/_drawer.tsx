@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Plus, Trash2 } from "lucide-react";
-import { Drawer, Panel, Badge, Spinner, SearchInput, ConfirmDialog, money, ago, useDebounced, type ConfirmCfg } from "../_ui";
+import { Drawer, Panel, Badge, Spinner, SearchInput, ConfirmDialog, money, ago, useDebounced, type ConfirmCfg, Placeholder } from "../_ui";
 import { KIND_LABEL, STATUS_TONE, type BrandSettings, type PartnerRow, type PartnerStatus } from "./_shared";
 
 type Workspace = { id: string; name: string; company: string | null; plan: string; status: string; paymentStatus: string | null; createdAt: string };
@@ -91,7 +91,7 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
     <Drawer open onClose={onClose} title={p?.name ?? "Partner"}
       subtitle={p ? <>{KIND_LABEL[p.kind]} · <span className="capitalize">{p.tier}</span> · {p.slug}.thetalko.in</> : null}
       actions={p && <Badge tone={STATUS_TONE[p.status]}><span className="capitalize">{p.status}</span></Badge>}>
-      {!p && !error && <div className="flex justify-center py-10"><Spinner /></div>}
+      {!p && !error && <Placeholder />}
       {error && <p className="text-xs text-red-600 flex items-start gap-1.5"><AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-px" />{error}</p>}
       {p && (
         <>

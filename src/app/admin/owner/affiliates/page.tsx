@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, AlertTriangle, Handshake } from "lucide-react";
-import { Panel, Table, Th, Td, Spinner, EmptyState, MetricTile, money, compact } from "../_ui";
+import { Panel, Table, Th, Td, Spinner, EmptyState, MetricTile, money, compact, Placeholder, openRow } from "../_ui";
 import { AffiliateDrawer } from "./_drawer";
 
 type AffiliateStat = {
@@ -57,7 +57,7 @@ export default function AffiliatesPage() {
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{err}</span>
         </div>
       )}
-      {loading && !affiliates && <div className="flex justify-center py-16"><Spinner /></div>}
+      {loading && !affiliates && <Placeholder />}
 
       {affiliates && (
         <>
@@ -78,7 +78,7 @@ export default function AffiliatesPage() {
                     <Th align="right">Converted</Th><Th align="right">Pending</Th><Th align="right">Paid</Th><Th align="right">Lifetime</Th></tr>
                 }>
                   {affiliates.map(a => (
-                    <tr key={a.affiliateId} className="hover:bg-canvas cursor-pointer" onClick={() => setOpenId(a.affiliateId)}>
+                    <tr key={a.affiliateId} {...openRow(() => setOpenId(a.affiliateId))} aria-label={`Open ${a.name}`}>
                       <Td><span className="font-bold text-ink-900">{a.name}</span><br /><span className="text-ink-400 text-[11px]">{a.email}</span></Td>
                       <Td><code className="text-[11px] bg-canvas border border-line rounded px-1.5 py-0.5">{a.code}</code></Td>
                       <Td align="right" nums>{a.commissionPct}%</Td>

@@ -17,7 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle2, RefreshCw, Radio } from "lucide-react";
 import { QUEUES, QUEUE_GROUPS, QUEUE_BY_KEY } from "@/lib/ownerqueues";
-import { MetricTile, QueueCard, Panel, Badge, Spinner, money, compact, ago } from "./_ui";
+import { MetricTile, QueueCard, Panel, Badge, Spinner, money, compact, ago, Placeholder } from "./_ui";
 
 type QueueCount = { queue: string; count: number; oldest: string | null };
 type Payload = {
@@ -95,7 +95,7 @@ export default function TodayPage() {
         </div>
       )}
 
-      {loading && !d && <div className="flex justify-center py-16"><Spinner /></div>}
+      {loading && !d && <Placeholder />}
 
       {notSetUp && (
         <Panel>

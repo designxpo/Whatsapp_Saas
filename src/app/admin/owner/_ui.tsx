@@ -10,9 +10,10 @@
 // 700/800 are used elsewhere in the app but were never defined, so they silently
 // emit no colour — nothing here uses them.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { X, Loader2, Search, Check } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Loader2, Search, Check } from "lucide-react";
 import { Mascot, type Mood } from "@/components/Mascot";
+import { Drawer as Sheet, Modal } from "@/components/overlay";
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,24 @@ export function EmptyState({ icon, title, body, mood }: {
 
 export const Spinner = () => <Loader2 className="w-4 h-4 animate-spin text-ink-400" />;
 
+/**
+ * What a screen shows while its data loads: the shape of the content, not a
+ * lone spinner in empty space (Apple, Loading: "show something as soon as
+ * possible"). `framed` puts it on a card, for screens that have none yet.
+ */
+export function Placeholder({ rows = 5, framed = true }: { rows?: number; framed?: boolean }) {
+  const widths = ["92%", "76%", "84%", "62%", "88%", "70%", "80%"];
+  return (
+    <div role="status" aria-label="Loading" className={`space-y-3 p-4 ${framed ? "bg-white rounded-card border border-line" : ""}`}>
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-3 animate-pulse">
+          <div className="h-3 rounded-full bg-line" style={{ width: widths[i % widths.length] }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Panel({ title, action, children, dense }: { title?: string; action?: ReactNode; children: ReactNode; dense?: boolean }) {
   return (
     <section className="bg-white rounded-card border border-line overflow-hidden">
@@ -126,7 +145,7 @@ export function MetricTile({ label, value, sub, tone, onClick }: {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick}
-      className={`text-left bg-white rounded-card border border-line px-4 py-3 w-full ${onClick ? "hover:border-brand-500 transition-colors" : ""}`}>
+      className={`text-left bg-white rounded-card border border-line px-4 py-3 w-full ${onClick ? "hover:border-brand-500 hover:shadow-sm transition-[border-color,box-shadow]" : ""}`}>
       <p className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.06em]">{label}</p>
       <p className={`text-2xl font-extrabold tabular-nums leading-tight mt-0.5 ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-600" : "text-ink-900"}`}>{value}</p>
       {sub && <p className="text-[11px] text-ink-600 mt-0.5">{sub}</p>}
@@ -148,7 +167,7 @@ export function QueueCard({ title, why, count, oldest, severity, stale, onClick 
   const stripe = clear ? "bg-emerald-400" : severity === "critical" ? "bg-red-500" : severity === "warn" ? "bg-amber-400" : "bg-brand-500";
   return (
     <button onClick={onClick} disabled={clear}
-      className={`relative text-left bg-white rounded-card border border-line pl-4 pr-3 py-3 w-full overflow-hidden transition-colors ${clear ? "opacity-60" : "hover:border-brand-500"}`}>
+      className={`relative text-left bg-white rounded-card border border-line pl-4 pr-3 py-3 w-full overflow-hidden transition-[border-color,box-shadow] ${clear ? "opacity-60" : "hover:border-brand-500 hover:shadow-sm"}`}>
       <span className={`absolute inset-y-0 left-0 w-1 ${stripe}`} />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
@@ -170,37 +189,41 @@ export function QueueCard({ title, why, count, oldest, severity, stale, onClick 
 }
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
-// Same grammar as ContactProfile's slide-over, so the two feel like one product.
-// A drawer rather than a page so the operator never loses their place in a list.
+// The portal's own side panel (components/overlay.tsx), so the console moves the
+// way the rest of the product does: it leaves the way it came, turns round if
+// reopened mid-exit, can be swiped away by its header, keeps Tab inside and
+// hands focus back to whatever opened it. A drawer rather than a page so the
+// operator never loses their place in a list.
+//
+// Owner pages render a drawer only while it is open and drop it on close, which
+// would cut the exit off. So a close asked for here (✕, Escape, the backdrop, a
+// swipe) plays the exit first, then tells the page.
 
-export function Drawer({ open, onClose, title, subtitle, actions, children, width = "w-[560px]" }: {
+const EXIT_MS = { drawer: 300, modal: 170 };   // overlay.tsx DRAWER_EXIT_MS / MODAL_EXIT_MS
+
+function useExitThen(onDone: () => void, ms: number): [boolean, () => void] {
+  const [leaving, setLeaving] = useState(false);
+  const done = useRef(onDone);
+  done.current = onDone;
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const leave = useCallback(() => {
+    setLeaving(true);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => done.current(), ms);
+  }, [ms]);
+  return [leaving, leave];
+}
+
+export function Drawer({ open, onClose, title, subtitle, actions, children }: {
   open: boolean; onClose: () => void; title: ReactNode; subtitle?: ReactNode;
-  actions?: ReactNode; children: ReactNode; width?: string;
+  actions?: ReactNode; children: ReactNode;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [open, onClose]);
-  if (!open) return null;
+  const [leaving, leave] = useExitThen(onClose, EXIT_MS.drawer);
   return (
-    <>
-      <div className="fixed inset-0 bg-ink-950/20 backdrop-blur-[2px] z-40 u-fade-in" onClick={onClose} />
-      <aside className={`fixed inset-y-0 right-0 ${width} max-w-full bg-canvas border-l border-line shadow-2xl z-50 flex flex-col u-slide-in-right`}>
-        <header className="shrink-0 bg-white border-b border-line px-5 py-3.5 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-[15px] font-extrabold text-ink-900 truncate">{title}</h2>
-            {subtitle && <div className="text-[12px] text-ink-600 mt-0.5">{subtitle}</div>}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {actions}
-            <button onClick={onClose} aria-label="Close" className="p-1.5 rounded-control hover:bg-canvas text-ink-600"><X className="w-4 h-4" /></button>
-          </div>
-        </header>
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">{children}</div>
-      </aside>
-    </>
+    <Sheet open={open && !leaving} onClose={leave} title={title} subtitle={subtitle} actions={actions} surface="canvas">
+      {children}
+    </Sheet>
   );
 }
 
@@ -222,31 +245,20 @@ export function ConfirmDialog({ cfg, onDone }: { cfg: ConfirmCfg; onDone: () => 
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onDone(); };
-    window.addEventListener("keydown", h);
-    return () => window.removeEventListener("keydown", h);
-  }, [busy, onDone]);
+  const [leaving, leave] = useExitThen(onDone, EXIT_MS.modal);
   const locked = !!cfg.requireTyping && typed.trim() !== cfg.requireTyping;
+  // Nothing closes it while the action runs: its result belongs in this dialog.
+  const cancel = () => { if (!busy) leave(); };
   return (
-    <div className="fixed inset-0 z-[60] bg-ink-950/40 flex items-center justify-center p-4 u-fade-in" onClick={() => !busy && onDone()}>
-      <div className="w-full max-w-md bg-white rounded-card border border-line p-5 space-y-3 u-scale-in" onClick={e => e.stopPropagation()}>
-        <h3 className="text-base font-extrabold text-ink-900">{cfg.title}</h3>
-        <div className="text-[13px] text-ink-600 leading-relaxed">{cfg.message}</div>
-        {cfg.requireTyping && (
-          <input autoFocus value={typed} onChange={e => setTyped(e.target.value)}
-            placeholder={cfg.requireTyping}
-            className="w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900" />
-        )}
-        {err && <p className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">{err}</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <button onClick={onDone} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
+    <Modal open={!leaving} onClose={cancel} title={cfg.title} size="sm"
+      footer={
+        <div className="flex justify-end gap-2 w-full">
+          <button onClick={cancel} disabled={busy} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60">Cancel</button>
           <button
             onClick={async () => {
               setBusy(true); setErr(null);
-              try { await cfg.onConfirm(); onDone(); }
-              catch (e) { setErr(e instanceof Error ? e.message : "That didn't work."); }
-              finally { setBusy(false); }
+              try { await cfg.onConfirm(); setBusy(false); leave(); }
+              catch (e) { setErr(e instanceof Error ? e.message : "That didn't work."); setBusy(false); }
             }}
             disabled={busy || locked}
             className="px-3 py-1.5 rounded-control bg-red-600 hover:bg-red-500 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-1.5">
@@ -254,12 +266,22 @@ export function ConfirmDialog({ cfg, onDone }: { cfg: ConfirmCfg; onDone: () => 
             {cfg.confirmLabel ?? "Confirm"}
           </button>
         </div>
+      }>
+      <div className="space-y-3">
+        <div className="text-[13px] text-ink-600 leading-relaxed">{cfg.message}</div>
+        {cfg.requireTyping && (
+          <input value={typed} onChange={e => setTyped(e.target.value)} placeholder={cfg.requireTyping} aria-label={`Type ${cfg.requireTyping} to confirm`}
+            className="w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900" />
+        )}
+        {err && <p role="alert" className="text-[12px] text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">{err}</p>}
       </div>
-    </div>
+    </Modal>
   );
 }
 
 // ── Table ─────────────────────────────────────────────────────────────────────
+
+export { openRow } from "./_row";
 
 export function Table({ head, children }: { head: ReactNode; children: ReactNode }) {
   return (

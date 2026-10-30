@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Mail, MailCheck, MailOpen, MailX, MailWarning, Send, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
-import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone } from "../_ui";
+import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone, Placeholder } from "../_ui";
 
 type Row = {
   id: string; tenantId: string | null; company: string | null;
@@ -185,7 +185,7 @@ export default function EmailsPage() {
           <span className="ml-auto text-[11px] text-ink-400">{total.toLocaleString()} total</span>
         </div>
 
-        {rows === null && <div className="flex justify-center py-16"><Spinner /></div>}
+        {rows === null && <Placeholder framed={false} />}
         {rows !== null && !rows.length && (
           <EmptyState icon={<Mail className="w-5 h-5" />}
             title={type || status || q || campaignId ? "Nothing matches these filters" : "No emails sent yet"}

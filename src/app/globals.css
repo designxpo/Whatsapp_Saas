@@ -138,7 +138,7 @@ button.w-full:not([disabled]):not(.no-press):active { scale: .985; }
    Where you went is shown, not just where you are. Text colour moves on the
    same curve and timing, so the label turns white as the pill arrives under
    it rather than before. */
-.nav-pill { transition: transform .32s var(--ease-out), height .32s var(--ease-out); }
+.nav-pill { transition: transform .32s var(--ease-out), height .32s var(--ease-out), width .32s var(--ease-out); }
 .nav-pill:not([data-ready]) { transition: none; }
 .nav-item { transition: color .32s var(--ease-out), background-color .15s ease; }
 

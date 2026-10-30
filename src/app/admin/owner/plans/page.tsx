@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Save, Loader2, AlertTriangle } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
-import { Panel, Spinner, Badge, money, compact } from "../_ui";
+import { Panel, Spinner, Badge, money, compact, Placeholder } from "../_ui";
 
 type Plan = {
   id: string; key: string; name: string; priceCents: number; currency: string; interval: string;
@@ -89,7 +89,7 @@ export default function PlansPage() {
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{err}</span>
         </div>
       )}
-      {plans === null && <div className="flex justify-center py-16"><Spinner /></div>}
+      {plans === null && <Placeholder />}
 
       {plans && (
         <>

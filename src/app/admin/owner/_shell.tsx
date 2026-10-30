@@ -7,7 +7,7 @@
 // drilling into a queue. The old portal held all six sections in one component's
 // useState, so no view had an address.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -15,6 +15,8 @@ import {
   TrendingUp, LogIn, LogOut, Settings, Search, CornerDownLeft, Loader2, Handshake, FileText, Mail, Building2,
 } from "lucide-react";
 import { Badge, useDebounced, useLatest } from "./_ui";
+import { usePresence } from "@/lib/use-presence";
+import { useSlidingPill } from "@/lib/use-nav-motion";
 
 const NAV = [
   { href: "/admin/owner", label: "Today", icon: LayoutDashboard, exact: true },
@@ -34,6 +36,11 @@ export function OwnerShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The active pill glides to the section picked, as in the workspace sidebar.
+  // A column on desktop and a row on phones, so it follows both axes.
+  const navList = useRef<HTMLDivElement>(null);
+  const activeHref = NAV.find(n => (n.exact ? pathname === n.href : pathname.startsWith(n.href)))?.href ?? "";
+  const pill = useSlidingPill(navList, activeHref, [], "xy");
 
   // ⌘K / Ctrl-K from anywhere in the console. "/" too, unless the operator is
   // already typing into something.
@@ -64,31 +71,35 @@ export function OwnerShell({ children }: { children: ReactNode }) {
             <kbd className="text-[10px] font-bold text-ink-400 bg-canvas border border-line rounded px-1">⌘K</kbd>
           </button>
 
-          <nav className="flex md:flex-col gap-1 overflow-x-auto pb-2 md:pb-0">
-            {NAV.map(n => {
-              const A = n.icon;
-              const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
-              return (
-                <Link key={n.href} href={n.href}
-                  className={`flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold whitespace-nowrap transition ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-white"}`}>
-                  <A className="w-4 h-4 shrink-0" /> {n.label}
-                </Link>
-              );
-            })}
+          <nav aria-label="Owner console" className="overflow-x-auto pb-2 md:pb-0">
+            <div ref={navList} className="relative flex md:flex-col gap-1">
+              <span aria-hidden className="nav-pill absolute left-0 top-0 rounded-control bg-ink-950" style={pill.style} data-ready={pill.ready || undefined} />
+              {NAV.map(n => {
+                const A = n.icon;
+                const active = n.href === activeHref;
+                return (
+                  <Link key={n.href} href={n.href} data-nav-key={n.href} aria-current={active ? "page" : undefined}
+                    className={`nav-item relative flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold whitespace-nowrap ${active ? "text-white" : "text-ink-600 hover:bg-white"}`}>
+                    <A className="w-4 h-4 shrink-0" /> {n.label}
+                  </Link>
+                );
+              })}
+            </div>
           </nav>
 
-          <div className="hidden md:flex flex-col gap-1 mt-4 pt-4 border-t border-line">
-            <a href="/admin" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white"><LogIn className="w-4 h-4" /> App dashboard</a>
-            <a href="/admin/setup" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white"><Settings className="w-4 h-4" /> System setup</a>
+          {/* Shown on phones too: a smaller screen keeps every function, just laid out as a row. */}
+          <div className="flex md:flex-col gap-1 mt-2 pt-2 md:mt-4 md:pt-4 border-t border-line overflow-x-auto">
+            <a href="/admin" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white whitespace-nowrap"><LogIn className="w-4 h-4" /> App dashboard</a>
+            <a href="/admin/setup" className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white whitespace-nowrap"><Settings className="w-4 h-4" /> System setup</a>
             <button onClick={async () => { await fetch("/api/admin/logout", { method: "POST" }).catch(() => {}); router.push("/login"); }}
-              className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white"><LogOut className="w-4 h-4" /> Log out</button>
+              className="flex items-center gap-2 rounded-control px-3 py-2 text-xs font-bold text-ink-600 hover:bg-white whitespace-nowrap"><LogOut className="w-4 h-4" /> Log out</button>
           </div>
         </aside>
 
         <div className="flex-1 min-w-0">{children}</div>
       </div>
 
-      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </main>
   );
 }
@@ -101,8 +112,17 @@ export function OwnerShell({ children }: { children: ReactNode }) {
 
 type Hit = { id: string; company: string | null; name: string; ownerEmail: string | null; plan: string; status: string };
 
-function CommandPalette({ onClose }: { onClose: () => void }) {
+// Moves like the portal's pop-ups (globals.css "Overlays"): rises in, sinks
+// back out, and turns round if reopened mid-exit. Focus returns to whatever
+// opened it. The field is a combobox, so a screen reader hears the list and
+// which result Enter will open.
+const PALETTE_EXIT_MS = 170;
+
+function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
+  const { mounted, shown } = usePresence(open, PALETTE_EXIT_MS);
+  const listId = useId();
+  const restoreTo = useRef<HTMLElement | null>(null);
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[]>([]);
   const [busy, setBusy] = useState(false);
@@ -110,6 +130,18 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   const debounced = useDebounced(q, 200);
   const latest = useLatest();
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Every open starts clean, and closing hands focus back.
+  useEffect(() => {
+    if (open) {
+      restoreTo.current = document.activeElement as HTMLElement | null;
+      setQ(""); setHits([]); setSel(0);
+    } else if (restoreTo.current) {
+      const el = restoreTo.current;
+      restoreTo.current = null;
+      if (document.contains(el)) requestAnimationFrame(() => el.focus({ preventScroll: true }));
+    }
+  }, [open]);
 
   useEffect(() => {
     if (debounced.trim().length < 2) { setHits([]); return; }
@@ -128,6 +160,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
   }, [router, onClose]);
 
   useEffect(() => {
+    if (!open) return;
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") { onClose(); return; }
       if (e.key === "ArrowDown") { e.preventDefault(); setSel(s => Math.min(s + 1, hits.length - 1)); }
@@ -136,20 +169,26 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, [hits, sel, go, onClose]);
+  }, [open, hits, sel, go, onClose]);
 
+  if (!mounted) return null;
+  const state = shown ? { "data-shown": "" } : {};
   return (
-    <div className="fixed inset-0 z-[70] bg-ink-950/40 flex items-start justify-center p-4 pt-[12vh] u-fade-in" onClick={onClose}>
-      <div className="w-full max-w-xl bg-white rounded-card border border-line shadow-2xl overflow-hidden u-scale-in" onClick={e => e.stopPropagation()}>
+    <div className="ov-frame fixed inset-0 z-[70] flex items-start justify-center p-4 pt-[12vh]" {...state}>
+      <div className="ov-scrim fixed inset-0 bg-ink-950/40" {...state} onClick={onClose} aria-hidden />
+      <div role="dialog" aria-modal="true" aria-label="Find a tenant" {...state}
+        className="ov-modal relative w-full max-w-xl bg-white rounded-card border border-line shadow-2xl overflow-hidden">
         <div className="flex items-center gap-2 px-4 border-b border-line">
           <Search className="w-4 h-4 text-ink-400 shrink-0" />
           <input autoFocus value={q} onChange={e => setQ(e.target.value)}
+            role="combobox" aria-label="Find a tenant" aria-expanded={hits.length > 0} aria-controls={listId}
+            aria-activedescendant={hits[sel] ? `${listId}-${sel}` : undefined} aria-autocomplete="list"
             placeholder="Company, email, phone, or workspace slug…"
             className="flex-1 py-3.5 text-sm bg-transparent text-ink-900 placeholder:text-ink-400 outline-none" />
           {busy && <Loader2 className="w-4 h-4 animate-spin text-ink-400 shrink-0" />}
         </div>
 
-        <div ref={listRef} className="max-h-80 overflow-y-auto">
+        <div ref={listRef} id={listId} role="listbox" aria-label="Matching tenants" className="max-h-80 overflow-y-auto">
           {q.trim().length < 2 && (
             <p className="px-4 py-6 text-[13px] text-ink-600">Type at least two characters. Searches company name, owner email, phone and slug.</p>
           )}
@@ -157,7 +196,7 @@ function CommandPalette({ onClose }: { onClose: () => void }) {
             <p className="px-4 py-6 text-[13px] text-ink-600">No tenant matches “{q.trim()}”.</p>
           )}
           {hits.map((h, i) => (
-            <button key={h.id} onMouseEnter={() => setSel(i)} onClick={() => go(h)}
+            <button key={h.id} id={`${listId}-${i}`} role="option" aria-selected={i === sel} tabIndex={-1} onMouseEnter={() => setSel(i)} onClick={() => go(h)}
               className={`w-full text-left px-4 py-2.5 flex items-center gap-3 border-b border-line last:border-0 ${i === sel ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="min-w-0 flex-1">
                 <p className="text-[13px] font-bold text-ink-900 truncate">{h.company || h.name}</p>

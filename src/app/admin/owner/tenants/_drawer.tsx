@@ -12,8 +12,7 @@ import { LogIn, Loader2, Save, Trash2, Mail, Phone } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META, consoleStatus } from "@/lib/entitlement-registry";
 import {
   Drawer, Badge, Panel, Spinner, money, compact, ago, trialText,
-  STATUS_TONE, PAYMENT_TONE, type ConfirmCfg,
-} from "../_ui";
+  STATUS_TONE, PAYMENT_TONE, type ConfirmCfg, Placeholder } from "../_ui";
 
 type Detail = {
   tenant: Record<string, unknown> & {
@@ -105,7 +104,7 @@ export function TenantDrawer({ id, onClose, onChanged, setConfirm }: {
       )}>
 
       {err && <div className="bg-red-50 border border-red-200 rounded-control px-3 py-2.5 text-[13px] text-red-700">{err}</div>}
-      {!d && !err && <div className="flex justify-center py-16"><Spinner /></div>}
+      {!d && !err && <Placeholder />}
 
       {d && t && draft && (
         <>

@@ -11,7 +11,7 @@
 import { Notice, useNotice } from "@/components/Notice";
 import { useCallback, useEffect, useState } from "react";
 import { ExternalLink, Play, RefreshCw, Search } from "lucide-react";
-import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone } from "../_ui";
+import { Panel, Badge, EmptyState, Spinner, MetricTile, ago, type Tone, Placeholder } from "../_ui";
 
 type Gap = {
   topic: string; label: string; covered: string[]; examples: string[];
@@ -61,7 +61,7 @@ export default function ContentPage() {
     finally { setBusy(""); }
   }
 
-  if (!d && !err) return <Spinner />;
+  if (!d && !err) return <Placeholder rows={6} />;
   const report = d?.report ?? null;
   const pages = report?.crawled.reduce((n, c) => n + c.pages, 0) ?? 0;
   const clean = report?.gaps.filter(g => !g.penalties.length).length ?? 0;

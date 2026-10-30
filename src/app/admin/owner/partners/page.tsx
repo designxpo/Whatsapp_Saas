@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, AlertTriangle, Building2, Plus } from "lucide-react";
-import { Panel, Table, Th, Td, Spinner, EmptyState, MetricTile, Badge, Drawer, money, compact } from "../_ui";
+import { Panel, Table, Th, Td, Spinner, EmptyState, MetricTile, Badge, Drawer, money, compact, Placeholder, openRow } from "../_ui";
 import { PartnerDrawer } from "./_drawer";
 import { KIND_LABEL, STATUS_TONE, type PartnerKind, type PartnerRow, type PartnerTier } from "./_shared";
 
@@ -74,7 +74,7 @@ export default function PartnersPage() {
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{err}</span>
         </div>
       )}
-      {loading && !partners && <div className="flex justify-center py-16"><Spinner /></div>}
+      {loading && !partners && <Placeholder />}
 
       {partners && (
         <>
@@ -94,7 +94,7 @@ export default function PartnersPage() {
                   <tr><Th>Partner</Th><Th>Kind</Th><Th>Status</Th><Th align="right">Live / paused</Th><Th align="right">Available</Th><Th align="right">Earned 30d</Th><Th align="right">Alerts</Th></tr>
                 }>
                   {partners.map(p => (
-                    <tr key={p.id} className="hover:bg-canvas cursor-pointer" onClick={() => setOpenId(p.id)}>
+                    <tr key={p.id} {...openRow(() => setOpenId(p.id))} aria-label={`Open ${p.name}`}>
                       <Td><span className="font-bold text-ink-900">{p.name}</span><br /><span className="text-ink-400 text-[11px]">{p.customDomain && p.domainStatus === "verified" ? p.customDomain : `${p.slug}.thetalko.in`}</span></Td>
                       <Td>{KIND_LABEL[p.kind]} <span className="text-ink-400 capitalize">· {p.tier}</span></Td>
                       <Td>

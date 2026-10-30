@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { MetricTile, Panel, Spinner, Badge, ago, compact } from "../_ui";
+import { MetricTile, Panel, Spinner, Badge, ago, compact, Placeholder } from "../_ui";
 import { MetaDoctor } from "../../_tabs/MetaDoctor";
 
 type Payload = {
@@ -60,7 +60,7 @@ export default function HealthPage() {
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /><span>{err}</span>
         </div>
       )}
-      {loading && !d && <div className="flex justify-center py-16"><Spinner /></div>}
+      {loading && !d && <Placeholder />}
 
       {d && (
         <>

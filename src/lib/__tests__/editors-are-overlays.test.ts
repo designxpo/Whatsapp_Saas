@@ -42,7 +42,7 @@ describe("editors open as overlays", () => {
   });
 
   it("overlays close on Escape and the backdrop, and hold the page still", () => {
-    expect(OVERLAY).toMatch(/e\.key === "Escape"\) onClose\(\)/);
+    expect(OVERLAY).toMatch(/e\.key === "Escape"\) \{ e\.preventDefault\(\); onClose\(\); \}/);
     expect((OVERLAY.match(/onClick=\{onClose\}/g) ?? []).length).toBeGreaterThanOrEqual(4);
     expect(OVERLAY).toMatch(/document\.body\.style\.overflow = "hidden"/);
   });
