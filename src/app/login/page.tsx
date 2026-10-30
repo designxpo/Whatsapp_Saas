@@ -16,7 +16,12 @@ function LoginForm() {
   const brand = useBrand();
   // Optional post-login destination (?next=/support). Same-origin paths only —
   // anything else falls back to /admin (safenext.ts).
-  const next = safeNext(useSearchParams().get("next"));
+  const params = useSearchParams();
+  const next = safeNext(params.get("next"));
+  // A new workspace owner arrives from their welcome email with ?setup=<email>:
+  // open straight on "set a password", which emails them a code. Nothing
+  // changes for anyone who comes without it.
+  const setupEmail = params.get("setup");
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -36,6 +41,9 @@ function LoginForm() {
 
   // Forgotten password.
   const [forgotEmail, setForgotEmail] = useState("");
+  useEffect(() => {
+    if (setupEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(setupEmail)) { setStep("forgot"); setForgotEmail(setupEmail); }
+  }, [setupEmail]);
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
@@ -251,7 +259,7 @@ function LoginForm() {
           <div className="flex flex-col items-center text-center gap-3">
             {logo}
             <div>
-              <h1 className="text-lg font-bold text-ink-900">Reset your password</h1>
+              <h1 className="text-lg font-bold text-ink-900">{setupEmail ? "Set your password" : "Reset your password"}</h1>
               <p className="text-sm text-ink-400">We&apos;ll email a one-time code to your account address.</p>
             </div>
           </div>

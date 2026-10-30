@@ -126,6 +126,36 @@ export const currentAffiliate = cache(async (): Promise<AffiliateSessionUser | n
   return verifyAffiliateSession(token);
 });
 
+// ── Partner sessions (white-label partner dashboard) ──────────────────────
+// Separate from both the workspace session and the affiliate session: its own
+// cookie, its own JWT purpose, its own payload. A partner's staff account can
+// never be used as a workspace login, or the reverse. The token carries the
+// account's token_version, so a removal or "sign out everywhere" kills it
+// (checked against the database in partner-portal.ts on every request).
+export const PARTNER_SESSION_COOKIE = "wa_partner_session";
+export const PARTNER_SESSION_PURPOSE = "partner_session";
+
+export interface PartnerSessionClaims { userId: string; partnerId: string; email: string; tokenVersion: number }
+
+export async function createPartnerSession(c: PartnerSessionClaims): Promise<string> {
+  return new SignJWT({ sub: c.userId, pid: c.partnerId, email: c.email, v: c.tokenVersion, purpose: PARTNER_SESSION_PURPOSE })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(secret());
+}
+
+export async function verifyPartnerSessionToken(token: string | undefined): Promise<PartnerSessionClaims | null> {
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, secret());
+    if (payload.purpose !== PARTNER_SESSION_PURPOSE || typeof payload.sub !== "string" || typeof payload.pid !== "string") return null;
+    return { userId: payload.sub, partnerId: payload.pid, email: typeof payload.email === "string" ? payload.email : "", tokenVersion: typeof payload.v === "number" ? payload.v : 0 };
+  } catch {
+    return null;
+  }
+}
+
 export async function verifySession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   try {

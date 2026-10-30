@@ -35,6 +35,8 @@ export interface Partner {
   notes: string | null; createdAt: string; updatedAt: string;
   /** What the partner's portal shows instead of Talko (Phase 2). */
   brand: BrandSettings;
+  /** Reseller's own monthly price per plan key, in rupee cents (Phase 3). */
+  resalePrices: Record<string, number>;
 }
 
 export interface PartnerWorkspace {
@@ -214,6 +216,7 @@ function mapPartner(r: Record<string, unknown>): Partner {
     graceDays: Number(r.grace_days ?? 7), notes: (r.notes as string | null) ?? null,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
     brand: (r.brand as BrandSettings | null) ?? {},
+    resalePrices: (r.resale_prices as Record<string, number> | null) ?? {},
   };
 }
 

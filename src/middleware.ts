@@ -4,6 +4,7 @@ import { partnerSlugFromHost, whiteLabelConfig } from "@/lib/whitelabel";
 
 const COOKIE = "wa_admin_session";
 const AFFILIATE_COOKIE = "wa_affiliate_session";
+const PARTNER_COOKIE = "wa_partner_session";
 
 // ── Host split: marketing site vs app portal on one deployment ───────────────
 // Both hosts point at this single Vercel project. Set these to the bare
@@ -98,6 +99,24 @@ function noStore(res: NextResponse): NextResponse {
 }
 
 // Affiliate attribution: a `?ref=CODE` on any page load is captured into a
+// Partner dashboard session (white-label): same secret, its own purpose claim,
+// so neither a workspace nor an affiliate session can pass for it. Coarse, like
+// validAffiliate: partner-portal.ts currentPartner() does the real check
+// (account active, token version, the partner's own address).
+async function validPartner(token: string | undefined): Promise<boolean> {
+  if (!token) return false;
+  const s = process.env.ADMIN_JWT_SECRET;
+  if (!s || s.length < 32) return false;
+  try {
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
+    return payload.purpose === "partner_session";
+  } catch {
+    return false;
+  }
+}
+
+const isPartnerDashboard = (p: string) => p === "/partner" || p.startsWith("/partner/");
+
 // 30-day cookie, later read once by /api/signup so a signup completed days or
 // weeks after the click still gets attributed. Stamped onto every response
 // this middleware returns (not just one branch) since Next has no single
@@ -144,6 +163,17 @@ export async function middleware(req: NextRequest) {
       url.search = "";
       return noStore(NextResponse.redirect(url));
     }
+    // The partner's own dashboard: its sign-in and invite pages are open,
+    // everything else needs a partner session.
+    if (isPartnerDashboard(pathname)) {
+      if (pathname === "/partner/login" || pathname === "/partner/setup") return noStore(NextResponse.next());
+      if (!(await validPartner(req.cookies.get(PARTNER_COOKIE)?.value))) {
+        url.pathname = "/partner/login";
+        url.search = "";
+        return noStore(NextResponse.redirect(url));
+      }
+      return noStore(NextResponse.next());
+    }
     const talkoOnly = pathname.startsWith("/admin/owner") || pathname.startsWith("/admin/setup")
       || pathname.startsWith("/support") || pathname.startsWith("/affiliate") || pathname.startsWith("/partner-login");
     if (talkoOnly || !isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
@@ -174,6 +204,17 @@ export async function middleware(req: NextRequest) {
       // Deeper portal pages don't exist on the marketing host.
       if (isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
     }
+  }
+
+  // Partner dashboard APIs (white-label). Sign-in and invite acceptance are
+  // pre-auth; the rest need a partner session. All are cookie-authenticated,
+  // so all get the CSRF check. The routes themselves confirm the session
+  // belongs to this address (partner-portal.ts currentPartner).
+  if (pathname.startsWith("/api/partner/")) {
+    if (csrfBlocked(req)) return NextResponse.json({ error: "Cross-site request blocked" }, { status: 403 });
+    const open = pathname === "/api/partner/login" || pathname === "/api/partner/setup" || pathname === "/api/partner/logout";
+    if (!open && !(await validPartner(req.cookies.get(PARTNER_COOKIE)?.value))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.next();
   }
 
   // /api/admin/login AND /api/admin/login/verify-otp are both pre-auth steps of

@@ -18,6 +18,10 @@ const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
 const ACTION_LABEL: Record<string, string> = {
   "partner.created": "Partner created", "partner.updated": "Details changed", "partner.status": "Status changed",
   "workspace.added": "Workspace added", "workspace.removed": "Workspace removed",
+  "workspace.created": "Customer workspace created", "workspace.plan": "Plan changed",
+  "workspace.paused": "Workspace paused", "workspace.resumed": "Workspace resumed",
+  "staff.invited": "Login invited", "staff.reinvited": "Invitation resent", "staff.joined": "Login set up", "staff.removed": "Login removed",
+  "prices.updated": "Prices changed",
 };
 
 export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
@@ -101,6 +105,8 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
             </div>
             <p className="text-[11px] text-ink-600 mt-2">Pausing or closing records the decision. From Phase 4, a paused partner&apos;s workspaces pause too.</p>
           </Panel>
+
+          <AccountsPanel partnerId={p.id} slug={p.slug} />
 
           <BrandPanel partner={p} onSaved={async () => { await load(); onChanged(); }} />
 
@@ -252,6 +258,64 @@ function BrandPanel({ partner, onSaved }: { partner: PartnerRow; onSaved: () => 
           {partner.tier === "pro" ? "Pro: no \"Powered by Talko\" line on their website chat." : "Standard: their website chat keeps a small \"Powered by Talko AI\" line."}
         </p>
       </div>
+    </Panel>
+  );
+}
+
+// The partner's own dashboard logins. You invite the first owner here; from
+// then on the partner's owners invite and remove their own staff.
+type Account = { id: string; email: string; name: string; role: "owner" | "staff"; invitePending: boolean; lastLoginAt: string | null };
+
+function AccountsPanel({ partnerId, slug }: { partnerId: string; slug: string }) {
+  const [users, setUsers] = useState<Account[] | null>(null);
+  const [setupNeeded, setSetupNeeded] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/owner/partners/${partnerId}/users`);
+    const j = await r.json().catch(() => ({}));
+    if (j.setupNeeded) { setSetupNeeded(j.error); setUsers([]); return; }
+    setUsers(j.users ?? []);
+  }, [partnerId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function invite(body: Record<string, string>, done: string) {
+    setBusy(true); setNote(null);
+    const r = await fetch(`/api/owner/partners/${partnerId}/users`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok || j.error) { setNote({ ok: false, text: j.error || `Failed (HTTP ${r.status})` }); return; }
+    setNote({ ok: true, text: done }); setEmail(""); setName(""); load();
+  }
+
+  const inp = "w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900";
+  return (
+    <Panel title="Partner dashboard logins" action={<span className="text-[11px] text-ink-600">{slug}.thetalko.in/partner</span>}>
+      {setupNeeded ? <p className="text-[12px] text-amber-700">{setupNeeded}</p> : !users ? <Spinner /> : (
+        <div className="space-y-3">
+          {!users.length && <p className="text-[13px] text-ink-600">No logins yet. Invite the partner&apos;s first owner; they invite their own staff after that.</p>}
+          {users.map(u => (
+            <div key={u.id} className="flex items-center justify-between gap-3 text-[13px]">
+              <span className="min-w-0 truncate"><b className="text-ink-900">{u.name || u.email}</b> <span className="text-ink-400">{u.name ? u.email : ""} · {u.role}</span></span>
+              {u.invitePending
+                ? <button onClick={() => invite({ resend: u.id }, `A new link was sent to ${u.email}.`)} className="text-[11px] font-bold text-brand-700 hover:underline shrink-0">Invited · resend</button>
+                : <span className="text-[11px] text-ink-400 shrink-0">{u.lastLoginAt ? `last in ${ago(u.lastLoginAt)}` : "active"}</span>}
+            </div>
+          ))}
+          <div className="grid grid-cols-5 gap-2 pt-1">
+            <input className={`${inp} col-span-2`} placeholder="Name" value={name} onChange={e => setName(e.target.value)} />
+            <input className={`${inp} col-span-3`} type="email" placeholder="Owner's email" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => invite({ email, name }, `Invitation sent to ${email}.`)} disabled={busy || !email}
+              className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Sending…" : "Invite an owner"}</button>
+            {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }

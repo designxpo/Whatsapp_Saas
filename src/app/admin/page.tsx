@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
 import { useBrand } from "@/components/BrandContext";
+import { brandCopy } from "@/lib/whitelabel";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
@@ -339,7 +340,7 @@ function AdminShell() {
           if (a.active) return null;
           return (
             <div className="shrink-0 px-6 py-2 text-[12px] font-semibold text-center bg-red-50 text-red-700 border-b border-red-200 flex items-center justify-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {a.message}
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {brandCopy(a.message, brand)}
               {brand.partnerId
                 ? (brand.supportEmail && <a href={`mailto:${brand.supportEmail}`} className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Contact {brand.name}</a>)
                 : <a href="/admin/billing" className="px-2 py-0.5 rounded-control bg-red-600 text-white text-[11px] font-bold hover:bg-red-700">Manage billing</a>}
@@ -462,7 +463,7 @@ function PaywallModal({ state, message, onClose }: { state: AccountState; messag
         </div>
         <div>
           <h3 className="text-lg font-extrabold text-ink-900">{PAYWALL_COPY[state].title}</h3>
-          <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{message} Your data is safe and nothing is deleted — pick a plan to pick up right where you left off.</p>
+          <p className="text-sm text-ink-500 mt-1.5 leading-relaxed">{brandCopy(message, brand)} Your data is safe and nothing is deleted — pick a plan to pick up right where you left off.</p>
         </div>
         <div className="flex items-center justify-between pt-1">
           <button onClick={onClose} className="text-xs font-semibold text-ink-400 hover:text-ink-700">Maybe later</button>
