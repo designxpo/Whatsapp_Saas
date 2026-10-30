@@ -40,6 +40,26 @@ export default {
       boxShadow: {
         float: "0 8px 24px rgba(0,0,0,0.12)",
       },
+      // Large type tightens as it grows (letters read too far apart otherwise);
+      // body sizes are left alone. Values from Inter's own dynamic metrics,
+      // -0.0223 + 0.185·e^(-0.1745·px). A tracking-* utility still wins.
+      fontSize: {
+        xl: ["1.25rem", { lineHeight: "1.75rem", letterSpacing: "-0.017em" }],
+        "2xl": ["1.5rem", { lineHeight: "2rem", letterSpacing: "-0.019em" }],
+        "3xl": ["1.875rem", { lineHeight: "2.25rem", letterSpacing: "-0.021em" }],
+        "4xl": ["2.25rem", { lineHeight: "2.5rem", letterSpacing: "-0.022em" }],
+        "5xl": ["3rem", { lineHeight: "1", letterSpacing: "-0.022em" }],
+      },
+      // `scale` joins every transition utility, so the global press-in
+      // (globals.css) eases on buttons that already declare transition-colors
+      // instead of snapping.
+      transitionProperty: {
+        DEFAULT: "color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, scale",
+        colors: "color, background-color, border-color, text-decoration-color, fill, stroke, scale",
+        opacity: "opacity, scale",
+        shadow: "box-shadow, scale",
+        transform: "transform, scale",
+      },
     },
   },
   plugins: [],

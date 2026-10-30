@@ -21,6 +21,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Send, ShieldAlert, X } from "lucide-react";
+import { usePresence } from "@/lib/use-presence";
 
 export type ConfirmTone =
   | "danger"    // destroys or removes something
@@ -118,6 +119,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
 
   const locked = !!pending?.typeToConfirm && typed.trim() !== pending.typeToConfirm;
 
+  // It leaves the way it came (the overlay curves in globals.css), still
+  // showing what it asked while it goes — the request itself is already gone.
+  const { mounted, shown } = usePresence(!!pending, 170);
+  const held = useRef<Pending | null>(null);
+  if (pending) held.current = pending;
+  const view = pending ?? held.current;
+  const state = shown ? { "data-shown": "" } : {};
+
   // Escape always cancels; Tab is trapped inside the panel so the underlying
   // page — which still holds the button that opened this — can't be reached and
   // clicked past the dialog.
@@ -144,20 +153,21 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   // Focus lands on Cancel, never on the action. A dialog that opens with the
   // destructive button focused turns the stray Enter keypress it exists to
   // prevent into a single extra keystroke.
+  // Once it is on screen: the dialog mounts a frame after the request arrives.
   useEffect(() => {
-    if (!pending) return;
+    if (!pending || !mounted) return;
     (pending.typeToConfirm ? inputRef.current : cancelRef.current)?.focus();
-  }, [pending]);
+  }, [pending, mounted]);
 
-  const tone = TONES[pending?.tone ?? "danger"];
+  const tone = TONES[view?.tone ?? "danger"];
 
   return (
     <ConfirmContext.Provider value={ask}>
       {children}
-      {pending && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {mounted && view && (
+        <div className="ov-frame fixed inset-0 z-[100] flex items-center justify-center p-4" {...state}>
           <div
-            className="absolute inset-0 bg-ink-950/45 u-fade-in"
+            className="ov-scrim absolute inset-0 bg-ink-950/45" {...state}
             onClick={() => close(false)}
           />
           <div
@@ -165,15 +175,16 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             role="alertdialog"
             aria-modal="true"
             aria-labelledby="confirm-title"
-            className="relative w-full max-w-[420px] bg-white rounded-card shadow-float border border-line overflow-hidden u-scale-in"
+            {...state}
+            className="ov-modal relative w-full max-w-[420px] bg-white rounded-card shadow-float border border-line overflow-hidden"
           >
             <div className="p-5 pb-4 flex gap-3.5">
               <span className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center ${tone.ring}`}>
                 {tone.icon}
               </span>
               <div className="min-w-0 flex-1 space-y-1.5">
-                <h2 id="confirm-title" className="text-[15px] font-bold text-ink-900 leading-snug">{pending.title}</h2>
-                {pending.message && <div className="text-[13px] text-ink-600 leading-relaxed">{pending.message}</div>}
+                <h2 id="confirm-title" className="text-[15px] font-bold text-ink-900 leading-snug">{view.title}</h2>
+                {view.message && <div className="text-[13px] text-ink-600 leading-relaxed">{view.message}</div>}
               </div>
               <button
                 onClick={() => close(false)}
@@ -187,9 +198,9 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
             {/* The facts of the action. Anything that would make the user stop
                 — the number it leaves from, how many people it reaches — belongs
                 here, where it is read, rather than in the sentence above. */}
-            {pending.facts && pending.facts.length > 0 && (
+            {view.facts && view.facts.length > 0 && (
               <dl className={`mx-5 mb-4 rounded-control border bg-canvas divide-y divide-line ${tone.wash}`}>
-                {pending.facts.map(f => (
+                {view.facts.map(f => (
                   <div key={f.label} className="flex items-baseline gap-3 px-3 py-2">
                     <dt className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-ink-400">{f.label}</dt>
                     <dd className="min-w-0 flex-1 text-right text-[12.5px] font-semibold text-ink-900 break-words">{f.value}</dd>
@@ -198,10 +209,10 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               </dl>
             )}
 
-            {pending.typeToConfirm && (
+            {view.typeToConfirm && (
               <div className="mx-5 mb-4 space-y-1.5">
                 <label htmlFor="confirm-type" className="block text-[12px] text-ink-600">
-                  Type <b className="font-mono font-bold text-ink-900">{pending.typeToConfirm}</b> to continue
+                  Type <b className="font-mono font-bold text-ink-900">{view.typeToConfirm}</b> to continue
                 </label>
                 <input
                   id="confirm-type"
@@ -222,14 +233,14 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
                 onClick={() => close(false)}
                 className="px-3.5 py-2 rounded-control border border-line bg-white text-[13px] font-bold text-ink-600 hover:bg-canvas"
               >
-                {pending.cancelLabel ?? "Cancel"}
+                {view.cancelLabel ?? "Cancel"}
               </button>
               <button
                 onClick={() => { setWorking(true); close(true); }}
                 disabled={locked || working}
                 className={`px-3.5 py-2 rounded-control text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed ${tone.btn}`}
               >
-                {pending.confirmLabel ?? "Confirm"}
+                {view.confirmLabel ?? "Confirm"}
               </button>
             </div>
           </div>

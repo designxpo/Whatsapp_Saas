@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSlidingPill, useScrolled } from "@/lib/use-nav-motion";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -237,6 +238,12 @@ function AdminShell() {
     router.push("/login");
   }
 
+  // The sidebar's active pill glides to the section picked; the top bar's
+  // edge shows once the page scrolls under it (lib/use-nav-motion.ts).
+  const navList = useRef<HTMLDivElement>(null);
+  const pill = useSlidingPill(navList, tab, [ent, me?.role]);
+  const scrolled = useScrolled();
+
   return (
     <ConfirmProvider>
     <div className="min-h-screen flex bg-canvas">
@@ -266,6 +273,8 @@ function AdminShell() {
         {/* Grouped nav — items the tenant's plan doesn't include are hidden
             entirely (when entitlement enforcement is on; otherwise all show). */}
         <nav aria-label="Workspace navigation" className="flex-1 px-3 py-2 overflow-y-auto">
+          <div ref={navList} className="relative">
+          <span aria-hidden className="nav-pill absolute left-0 right-0 top-0 rounded-full bg-ink-950" style={pill.style} data-ready={pill.ready || undefined} />
           {NAV_GROUPS.map(g => {
             const items = g.items.filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role));
             if (!items.length) return null;
@@ -276,9 +285,9 @@ function AdminShell() {
                 {items.map(n => {
                   const active = tab === n.key;
                   return (
-                    <button key={n.key} data-tour-nav={n.key} data-help={n.hint + ". Select this screen to open it and use the available controls."} onClick={() => goTo(n.key)}
+                    <button key={n.key} data-tour-nav={n.key} data-nav-key={n.key} aria-current={active ? "page" : undefined} data-help={n.hint + ". Select this screen to open it and use the available controls."} onClick={() => goTo(n.key)}
                       onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
-                      className={`w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left transition-colors ${active ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>
+                      className={`nav-item relative w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left ${active ? "text-white" : "text-ink-600 hover:bg-canvas"}`}>
                       {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
                     </button>
                   );
@@ -287,6 +296,7 @@ function AdminShell() {
             </div>
             );
           })}
+          </div>
         </nav>
 
         <div className="p-3 border-t border-line space-y-1">
@@ -342,7 +352,7 @@ function AdminShell() {
           </div>
         )}
         {/* Topbar */}
-        <header className="h-16 shrink-0 bg-white/80 backdrop-blur-xl border-b border-line flex items-center justify-between px-6 sticky top-0 z-10">
+        <header className="glass-bar h-16 shrink-0 border-b flex items-center justify-between px-6 sticky top-0 z-10" data-scrolled={scrolled || undefined}>
           <p className="text-[13px] text-ink-400">
             Talko AI <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
