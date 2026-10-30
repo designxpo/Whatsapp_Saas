@@ -9,7 +9,7 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-08-15";
+export const LEGAL_VERSION = "2026-10-30";
 export const LEGAL_EFFECTIVE = "15 August 2026";
 
 export const LEGAL_META = {
@@ -159,8 +159,8 @@ const PRIVACY_DOC: LegalDoc = {
       p(`Requests from public authorities. We may disclose personal information to courts, regulators, law-enforcement or other public authorities where we are legally required to do so. We assess each request for legal validity and scope, disclose only what the request compels rather than the wider account, keep a record of what was disclosed and to whom, and notify the affected business unless we are legally prohibited from doing so. We have not received a national-security request for personal information.`),
     ] },
     { heading: "7. Google API Services", blocks: [
-      p(`Where you connect a YouTube channel, ${C}'s use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy (https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Data obtained through YouTube API Services is also subject to the Google Privacy Policy (https://policies.google.com/privacy), and your use of a connected YouTube channel is subject to the YouTube Terms of Service (https://www.youtube.com/t/terms).`),
-      p(`We use YouTube API Services and Google Business Profile data only to provide the comment-automation, moderation and review-reply features you enable for your own connected channel and Business Profile — never to serve ads, to train generalised AI or machine-learning models, or for any purpose you have not requested. Access tokens are stored encrypted and are used solely on your instructions.`),
+      p(`Where you connect a YouTube channel or a Google Business Profile, ${C}'s use and transfer to any other app of information received from Google APIs will adhere to the Google API Services User Data Policy (https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Data obtained through YouTube API Services is also subject to the Google Privacy Policy (https://policies.google.com/privacy), and your use of a connected YouTube channel is subject to the YouTube Terms of Service (https://www.youtube.com/t/terms).`),
+      p(`We use YouTube API Services and Google Business Profile data only to provide the comment-automation, moderation and review-reply features you enable for your own connected channel and Business Profile — never to serve ads, to train generalised AI or machine-learning models, or for any purpose you have not requested. Access tokens are stored encrypted and are used solely on your instructions. You can disconnect a channel or Business Profile from the Service at any time, and revoke the Service's access in your Google Account (https://myaccount.google.com/permissions).`),
     ] },
     { heading: "8. Browser extension (Talko Copilot)", blocks: [
       p(`Talko Copilot is our optional Chrome extension. It is a client of your own ${C} workspace: it communicates only with our API over HTTPS, using a workspace API key you create and paste in yourself, and it sends nothing to any third party.`),
