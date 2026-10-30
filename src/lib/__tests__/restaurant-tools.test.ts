@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // The AI's restaurant tools must never let a booking, a time or a price come
-// from anywhere but Mezmitra. Mezmitra is mocked here; the pure helpers
+// from anywhere but Mezvaan. Mezvaan is mocked here; the pure helpers
 // (time matching, outlet picking) stay real.
 
 const calls: { fn: string; args: unknown[] }[] = [];
@@ -65,7 +65,7 @@ describe("restaurant tools", () => {
     expect(r.status).toMatch(/Chicken Tikka — ₹320 \(non-veg\) — not available right now/);
   });
 
-  it("books only a time Mezmitra offered, under the WhatsApp sender's own number", async () => {
+  it("books only a time Mezvaan offered, under the WhatsApp sender's own number", async () => {
     bookResult = { ok: true, data: { id: "r1", ref: "BK7Q4M2X", outlet_id: "o1", outlet_name: "Courtyard", slot_start: "2026-11-07T14:30:00.000Z", date: "2026-11-07", time: "8:00 pm", party_size: 2, status: "booked" } };
     const r = await executeRestaurantTool(RESTAURANT_FNS.book, { date: "2026-11-07", time: "8 pm", party_size: "2", name: "Asha", phone: "9000000000" }, wa, link);
     expect(r.status).toMatch(/^Booked\. Code BK7Q4M2X/);
@@ -80,7 +80,7 @@ describe("restaurant tools", () => {
     expect(r.status).toContain("7:30 pm, 8:00 pm");
   });
 
-  it("does not claim a booking Mezmitra refused", async () => {
+  it("does not claim a booking Mezvaan refused", async () => {
     bookResult = { ok: false, status: 409, code: "slot_unavailable", message: "That time is not available." };
     const r = await executeRestaurantTool(RESTAURANT_FNS.book, { date: "2026-11-07", time: "8:00 pm", party_size: 2, name: "Asha" }, wa, link);
     expect(r.status).not.toMatch(/^Booked/);

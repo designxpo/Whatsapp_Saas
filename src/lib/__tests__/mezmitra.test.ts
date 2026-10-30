@@ -34,7 +34,7 @@ describe("mezmitraBase", () => {
 });
 
 describe("matchOfferedTime", () => {
-  it("matches only times Mezmitra offered", () => {
+  it("matches only times Mezvaan offered", () => {
     expect(matchOfferedTime("8:00 pm", SLOTS, "Asia/Kolkata")?.start).toBe("2026-11-07T14:30:00.000Z");
     expect(matchOfferedTime("8pm", SLOTS, "Asia/Kolkata")?.start).toBe("2026-11-07T14:30:00.000Z");
     expect(matchOfferedTime("20:00", SLOTS, "Asia/Kolkata")?.start).toBe("2026-11-07T14:30:00.000Z");

@@ -593,7 +593,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       : resolveAgent(agentId, tenantId).catch(() => null),
     listFunctions(true, tenantId).catch(() => [] as Awaited<ReturnType<typeof listFunctions>>),
   ]);
-  // A restaurant linked to Mezmitra: the live menu and table booking come from
+  // A restaurant linked to Mezvaan: the live menu and table booking come from
   // there, so Talko's own catalog/cart is off for it — one menu, one price list.
   const restaurant = await restaurantLink(tenantId, platform).catch(() => null);
   // Cross-channel cart: enable the built-in commerce tools only when the caller

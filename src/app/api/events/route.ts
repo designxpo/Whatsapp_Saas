@@ -14,7 +14,7 @@ import { claimIdempotency, completeIdempotency, readIdempotencyKey, requestHash 
 //
 // Idempotency-Key (optional): a retry with the same key and body gets the first
 // answer back and schedules nothing — so a caller that lost our response (a
-// timeout, a dropped connection) can safely send again. Mezmitra always sends one.
+// timeout, a dropped connection) can safely send again. Mezvaan always sends one.
 export async function POST(req: Request) {
   const tenantId = await apiKeyTenant(req);
   if (!tenantId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

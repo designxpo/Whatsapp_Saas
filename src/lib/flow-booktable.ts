@@ -4,9 +4,9 @@ import { matchSlot } from "./integrations";
 import type { Platform } from "./channel-label";
 
 // The flow "Book table" step: a fixed, AI-free booking conversation against a
-// Mezmitra restaurant — outlet (if several) → number of guests → day → a free
-// time → booked. Every option shown is one Mezmitra returned, and the booking
-// is confirmed only when Mezmitra answers with a booking code. Nothing here is
+// Mezvaan restaurant — outlet (if several) → number of guests → day → a free
+// time → booked. Every option shown is one Mezvaan returned, and the booking
+// is confirmed only when Mezvaan answers with a booking code. Nothing here is
 // written by a model, so nothing here can be made up.
 
 export interface BookTableIO {

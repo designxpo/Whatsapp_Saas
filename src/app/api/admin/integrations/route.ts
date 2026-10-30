@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
-  // Mezmitra links both ways in one step (its own module: key check, our API key, the handshake).
+  // Mezvaan links both ways in one step (its own module: key check, our API key, the handshake).
   if (kind === "mezmitra") {
     const gate = await guardFeature(tid, "restaurant_link"); if (gate) return gate;
     const r = await connectMezmitra(tid, (b.token ?? "").trim());

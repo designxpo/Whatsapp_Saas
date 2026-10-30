@@ -38,7 +38,7 @@ export const FEATURE_META: Record<FeatureKey, { label: string; group: string }> 
   aihub:        { label: "AI Hub", group: "AI" },
   crm:          { label: "CRM sync", group: "Integrations" },
   extension:    { label: "Browser extension (Talko Copilot)", group: "Integrations" },
-  restaurant_link: { label: "Mezmitra restaurant link (bookings, menu, bill events)", group: "Integrations" },
+  restaurant_link: { label: "Mezvaan restaurant link (bookings, menu, bill events)", group: "Integrations" },
 };
 
 // Admin tab key → the feature it requires (null = always available / core).

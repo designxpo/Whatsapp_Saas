@@ -804,10 +804,10 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         return true;
       }
       case "booktable": {
-        // Restaurant table booking through Mezmitra: outlet → guests → day → a
-        // free time → booked. Every option comes from Mezmitra; skips (with the
+        // Restaurant table booking through Mezvaan: outlet → guests → day → a
+        // free time → booked. Every option comes from Mezvaan; skips (with the
         // fallback text) when no restaurant is linked, so the flow continues.
-        if (!isReal) { await send.text("[table booking] would ask the number of guests, the day and a free time, then book it in Mezmitra."); cur = nextNode(g, cur.id); continue; }
+        if (!isReal) { await send.text("[table booking] would ask the number of guests, the day and a free time, then book it in Mezvaan."); cur = nextNode(g, cur.id); continue; }
         const who = await getContactByPhone(phone, tenantId).catch(() => null);
         const r = await startTableBooking(tenantId, bookTableIO(send, convKey, flow.id, cur.id, phone, who?.name ?? null, tenantId, menuNodeId ?? null), { text: str(d.text), outlet: str(d.outlet), fallback: str(d.fallback) });
         if (r.kind === "waiting") return true;

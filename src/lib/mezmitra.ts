@@ -1,18 +1,18 @@
 import crypto from "crypto";
 import { errorMessage } from "./errors";
 
-// Mezmitra — the restaurant system (menu, tables, bookings, bills). A tenant
-// that runs both products links them once (Integrations → Mezmitra); after that
+// Mezvaan — the restaurant system (menu, tables, bookings, bills). A tenant
+// that runs both products links them once (Integrations → Mezvaan); after that
 // the AI and the "Book table" flow step read the live menu and book tables
-// through Mezmitra's /v1/talko/* API, and Mezmitra sends bill/booking/order
+// through Mezvaan's /v1/talko/* API, and Mezvaan sends bill/booking/order
 // events to /api/events.
 //
-// Ownership is strict: Mezmitra owns the menu, prices, tables and bookings, so
+// Ownership is strict: Mezvaan owns the menu, prices, tables and bookings, so
 // nothing here copies them. Every answer about them comes from a live call.
 //
-// Where Mezmitra lives is SERVER config (MEZMITRA_API_URL), never a tenant
+// Where Mezvaan lives is SERVER config (MEZMITRA_API_URL), never a tenant
 // setting: a tenant cannot point the link at another host, so the key and
-// guests' numbers only ever travel to our own Mezmitra deployment. Every call
+// guests' numbers only ever travel to our own Mezvaan deployment. Every call
 // is bounded (8 s), never follows a redirect, and never throws.
 
 export type MezResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string };
@@ -27,12 +27,12 @@ export function mezmitraBase(): string | null {
   } catch { return null; }
 }
 
-// A Mezmitra link key: mzk_ + 32 random bytes, base64url.
+// A Mezvaan link key: mzk_ + 32 random bytes, base64url.
 export const LINK_KEY_RE = /^mzk_[A-Za-z0-9_-]{43}$/;
 
 async function call<T>(key: string, method: "GET" | "POST", path: string, body?: unknown, headers: Record<string, string> = {}): Promise<MezResult<T>> {
   const base = mezmitraBase();
-  if (!base) return { ok: false, status: 0, code: "not_configured", message: "The Mezmitra link isn't set up on this server." };
+  if (!base) return { ok: false, status: 0, code: "not_configured", message: "The Mezvaan link isn't set up on this server." };
   try {
     const res = await fetch(`${base}${path}`, {
       method,
@@ -44,9 +44,9 @@ async function call<T>(key: string, method: "GET" | "POST", path: string, body?:
     const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     if (res.ok) return { ok: true, data: (json ?? {}) as T };
     const err = (json?.error ?? {}) as { code?: string; message?: string };
-    return { ok: false, status: res.status, code: err.code ?? `http_${res.status}`, message: err.message ?? `Mezmitra answered HTTP ${res.status}` };
+    return { ok: false, status: res.status, code: err.code ?? `http_${res.status}`, message: err.message ?? `Mezvaan answered HTTP ${res.status}` };
   } catch (err) {
-    return { ok: false, status: 0, code: "unreachable", message: `Couldn't reach Mezmitra: ${errorMessage(err)}`.slice(0, 200) };
+    return { ok: false, status: 0, code: "unreachable", message: `Couldn't reach Mezvaan: ${errorMessage(err)}`.slice(0, 200) };
   }
 }
 
@@ -56,8 +56,8 @@ export interface MezWhoami { tenant: { id: string; name: string; slug: string };
 
 export const whoami = (key: string) => call<MezWhoami>(key, "GET", "/v1/talko/whoami");
 
-// Completes a pending link: hands Mezmitra our API key (so it can send events)
-// and the secret we sign opt-out webhooks with. Mezmitra accepts this once.
+// Completes a pending link: hands Mezvaan our API key (so it can send events)
+// and the secret we sign opt-out webhooks with. Mezvaan accepts this once.
 export const completeLink = (key: string, p: { apiKey: string; webhookSecret: string; account: string }) =>
   call<{ ok: boolean; webhook_path: string }>(key, "POST", "/v1/talko/link", { api_key: p.apiKey, webhook_secret: p.webhookSecret, account: p.account });
 
@@ -90,7 +90,7 @@ export type ChatChannel = "whatsapp" | "instagram" | "messenger" | "webchat";
 // a model that calls the tool twice, a retry after a timeout) gets the first
 // answer back, not a second booking. Scoped to a 10-minute window: a guest who
 // cancels and books the same table again later makes a fresh request, not a
-// replay of the cancelled one. (Mezmitra also returns an existing identical
+// replay of the cancelled one. (Mezvaan also returns an existing identical
 // booking, so a retry across the window's edge still books once.)
 export function bookingKey(tenantId: string, p: { outletId: string; slotStart: string; partySize: number; phone: string }, now = Date.now()): string {
   const window = Math.floor(now / 600_000);
@@ -153,9 +153,9 @@ export function matchOfferedTime(input: string, slots: { start: string; label: s
   return hits.length === 1 ? hits[0] : null;
 }
 
-// The phone Mezmitra should book under: on WhatsApp the sender's own number
+// The phone Mezvaan should book under: on WhatsApp the sender's own number
 // (verified by WhatsApp), elsewhere whatever the guest typed. Digits only, with
-// a leading + so Mezmitra stores it as E.164.
+// a leading + so Mezvaan stores it as E.164.
 export function bookingPhone(raw: string): string | null {
   const d = (raw || "").replace(/\D/g, "");
   if (d.length === 10) return `+91${d}`;

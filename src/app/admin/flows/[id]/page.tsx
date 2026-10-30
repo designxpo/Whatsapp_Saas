@@ -64,7 +64,7 @@ const BLOCKS: Record<string, { label: string; icon: React.ReactNode; hint: strin
   webhook: { label: "Webhook", icon: <WebhookIcon className="w-[18px] h-[18px]" />, hint: "Notify your system" },
   agent: { label: "AI agent", icon: <Bot className="w-[18px] h-[18px]" />, hint: "Switch AI persona" },
   book: { label: "Book meeting", icon: <CalendarClock className="w-[18px] h-[18px]" />, hint: "Cal.com slot picker + booking" },
-  booktable: { label: "Book table", icon: <Utensils className="w-[18px] h-[18px]" />, hint: "Restaurant table booking (Mezmitra)" },
+  booktable: { label: "Book table", icon: <Utensils className="w-[18px] h-[18px]" />, hint: "Restaurant table booking (Mezvaan)" },
   handoff: { label: "Handoff", icon: <Headset className="w-[18px] h-[18px]" />, hint: "Escalate to a human" },
   end: { label: "End", icon: <Flag className="w-[18px] h-[18px]" />, hint: "Close the flow" },
 };
@@ -592,7 +592,7 @@ function BookNode({ id, type, selected, data }: NodeProps) {
 function BookTableNode({ id, type, selected, data }: NodeProps) {
   const set = useSet(id);
   return (
-    <Shell id={id} type={type} selected={selected} foot="Asks the number of guests, the day and a free time, then books it in Mezmitra and sends the booking code. Every time shown is a free one from Mezmitra. Link Mezmitra in Integrations first. The → edge runs after a booking.">
+    <Shell id={id} type={type} selected={selected} foot="Asks the number of guests, the day and a free time, then books it in Mezvaan and sends the booking code. Every time shown is a free one from Mezvaan. Link Mezvaan in Integrations first. The → edge runs after a booking.">
       <textarea className={inp} rows={2} maxLength={300} placeholder="First question (default: How many guests?)" value={str(data.text)} onChange={e => set({ text: e.target.value })} />
       <input className={inp} placeholder="Outlet name (only if you have several)" value={str(data.outlet)} onChange={e => set({ outlet: e.target.value })} />
       <input className={inp} placeholder="If booking isn't available, say (optional)" value={str(data.fallback)} onChange={e => set({ fallback: e.target.value })} />

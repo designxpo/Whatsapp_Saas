@@ -5,7 +5,7 @@ import { outlets } from "@/lib/mezmitra";
 
 export const dynamic = "force-dynamic";
 
-// GET — the linked Mezmitra restaurant's outlets, live, for picking which one the
+// GET — the linked Mezvaan restaurant's outlets, live, for picking which one the
 // AI and the "Book table" step use when the guest doesn't name one.
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });

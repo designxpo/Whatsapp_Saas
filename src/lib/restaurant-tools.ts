@@ -4,15 +4,15 @@ import * as mez from "./mezmitra";
 import { mezmitraLink } from "./integrations";
 import { checkFeature } from "./entitlements";
 
-// AI tools for a restaurant linked to Mezmitra. The model never knows the menu,
+// AI tools for a restaurant linked to Mezvaan. The model never knows the menu,
 // prices, opening hours or free tables by itself: it calls these, and every
-// answer comes live from Mezmitra. What a tool returns joins the grounding
+// answer comes live from Mezvaan. What a tool returns joins the grounding
 // firewall's allow-set (toolFacts in llm.ts), so a price or time the tools gave
 // survives it, and one they didn't give is stripped or deferred.
 //
 // Safety rules enforced HERE, not left to the prompt:
-//   • A booking is "confirmed" only when Mezmitra answered 201 with a code.
-//   • Only times Mezmitra offered can be booked (matchOfferedTime).
+//   • A booking is "confirmed" only when Mezvaan answered 201 with a code.
+//   • Only times Mezvaan offered can be booked (matchOfferedTime).
 //   • Listing or cancelling someone's bookings needs a phone number WhatsApp
 //     verified — so those tools exist only on WhatsApp, with the sender's own
 //     number, never one typed into the chat.

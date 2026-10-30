@@ -6,8 +6,8 @@ import { getTenant } from "@/lib/tenants";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/integrations/mezmitra/ping — Mezmitra's "Test connection". Confirms
-// the API key Mezmitra holds still works and the plan still includes the link,
+// GET /api/integrations/mezmitra/ping — Mezvaan's "Test connection". Confirms
+// the API key Mezvaan holds still works and the plan still includes the link,
 // without sending anything to anyone. Auth: Bearer <ak_live_… key>.
 export async function GET(req: Request) {
   const tenantId = await apiKeyTenant(req);

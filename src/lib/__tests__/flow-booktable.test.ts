@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// The flow "Book table" step: every option shown comes from Mezmitra, and the
-// booking is confirmed only when Mezmitra returns a code.
+// The flow "Book table" step: every option shown comes from Mezvaan, and the
+// booking is confirmed only when Mezvaan returns a code.
 
 let slots: { start: string; label: string }[] = [];
 let bookResult: unknown = null;

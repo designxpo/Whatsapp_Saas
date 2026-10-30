@@ -27,7 +27,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       // The link key, its API key and what it may receive are fixed by the handshake;
       // to change them, disconnect and connect again. Only the default outlet is editable.
       if (b.token !== undefined || b.events !== undefined || b.webhookSecret !== undefined || b.url !== undefined) {
-        return NextResponse.json({ error: "Disconnect and connect again to change the Mezmitra link." }, { status: 400 });
+        return NextResponse.json({ error: "Disconnect and connect again to change the Mezvaan link." }, { status: 400 });
       }
       if (b.defaultOutletId !== undefined) {
         if (b.defaultOutletId !== null && !/^[0-9a-f-]{36}$/i.test(b.defaultOutletId)) return NextResponse.json({ error: "Pick an outlet." }, { status: 400 });
@@ -67,7 +67,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const existing = await getIntegration(id, tid);
-    // Mezmitra: also revoke the API key it holds and tell it to stop, so neither side keeps access.
+    // Mezvaan: also revoke the API key it holds and tell it to stop, so neither side keeps access.
     if (existing?.kind === "mezmitra") await disconnectMezmitra(tid, existing);
     await deleteIntegration(id, tid);
     return NextResponse.json({ success: true });

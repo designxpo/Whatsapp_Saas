@@ -80,7 +80,7 @@ export const STORE_KINDS: IntegrationKind[] = ["shopify", "woocommerce"];
 // Scheduling kinds back the flow "Book meeting" node (slots + booking via API).
 export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom"];
 // Restaurant system: live menu + table booking for the AI and flows (lib/mezmitra.ts),
-// and opt-outs sent back. One per tenant; linked by pasting a Mezmitra link key.
+// and opt-outs sent back. One per tenant; linked by pasting a Mezvaan link key.
 export const RESTAURANT_KINDS: IntegrationKind[] = ["mezmitra"];
 // Event-driven kinds — their `events` subscription matters; action kinds ignore it.
 export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "mezmitra"];
@@ -97,7 +97,7 @@ export const KIND_LABELS: Record<IntegrationKind, string> = {
   shopify: "Shopify",
   woocommerce: "WooCommerce",
   calcom: "Cal.com",
-  mezmitra: "Mezmitra (restaurant)",
+  mezmitra: "Mezvaan (restaurant)",
 };
 
 // A product pulled from an external store, normalized for wa_products import.
@@ -397,14 +397,14 @@ async function getSecret(id: string, tenantId: string): Promise<string | null> {
   return readSecret((data as { secret?: string } | null)?.secret ?? null);
 }
 
-// The signing secret a connection keeps for webhooks WE send (Mezmitra's opt-out
+// The signing secret a connection keeps for webhooks WE send (Mezvaan's opt-out
 // webhook). Decrypted server-side only.
 export async function getIntegrationWebhookSecret(id: string, tenantId: string): Promise<string | null> {
   const { data } = await tdb(tenantId).from("wa_integrations").select("webhook_secret").eq("id", id).maybeSingle();
   return readSecret((data as { webhook_secret?: string } | null)?.webhook_secret ?? null);
 }
 
-// The tenant's live Mezmitra link and its key, or null. Used by the AI tools and
+// The tenant's live Mezvaan link and its key, or null. Used by the AI tools and
 // the "Book table" flow step; a paused or errored link still answers (the call
 // itself reports a revoked key), a deleted one doesn't.
 export async function mezmitraLink(tenantId: string): Promise<{ integration: Integration; key: string } | null> {
@@ -847,21 +847,21 @@ const leadsquaredConnector: Connector = {
   },
 };
 
-// ── Mezmitra — the restaurant system (menu, tables, bookings) ─────────────────
-// The secret is the Mezmitra link key (mzk_…); Mezmitra's address is server
-// config (MEZMITRA_API_URL), never the tenant's. verify() asks Mezmitra who the
-// key belongs to; deliver() tells Mezmitra a guest opted out, signed with the
+// ── Mezvaan — the restaurant system (menu, tables, bookings) ─────────────────
+// The secret is the Mezvaan link key (mzk_…); Mezvaan's address is server
+// config (MEZMITRA_API_URL), never the tenant's. verify() asks Mezvaan who the
+// key belongs to; deliver() tells Mezvaan a guest opted out, signed with the
 // secret we gave it when linking, so it stops marketing to them too.
 const mezmitraConnector: Connector = {
   async verify(_i, secret) {
-    if (!secret) return { ok: false, detail: "Paste the link key from Mezmitra (Settings → Talko AI)." };
+    if (!secret) return { ok: false, detail: "Paste the link key from Mezvaan (Settings → Talko AI)." };
     const res = await mezWhoami(secret);
     if (res.ok) {
       return res.data.link.status === "active"
-        ? { ok: true, detail: `Connected to ${res.data.tenant.name} on Mezmitra.` }
-        : { ok: false, detail: "The link isn't finished on Mezmitra's side — remove this connection and paste a new key." };
+        ? { ok: true, detail: `Connected to ${res.data.tenant.name} on Mezvaan.` }
+        : { ok: false, detail: "The link isn't finished on Mezvaan's side — remove this connection and paste a new key." };
     }
-    if (res.status === 401) return { ok: false, detail: "Mezmitra no longer accepts this key (it was disconnected there, or the plan changed). Make a new key in Mezmitra and connect again." };
+    if (res.status === 401) return { ok: false, detail: "Mezvaan no longer accepts this key (it was disconnected there, or the plan changed). Make a new key in Mezvaan and connect again." };
     return { ok: false, detail: res.message };
   },
   async deliver(i, _secret, envelope) {
