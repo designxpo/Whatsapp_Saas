@@ -23,6 +23,7 @@
 // onboarding was on the wrong product.
 
 import { createHmac, timingSafeEqual } from "crypto";
+import { partnerHostKind, whiteLabelConfig } from "./whitelabel";
 
 const AUTH_HOST = "https://www.instagram.com";
 const TOKEN_HOST = "https://api.instagram.com";
@@ -69,9 +70,11 @@ export function igLoginMissing(): string[] {
 // request keeps preview deployments working; the env var pins it when the app
 // sits behind a proxy that rewrites the host.
 export function igRedirectUri(requestUrl: string, app?: IgApp): string {
-  // A partner's own app always returns to the partner's address (the request's
-  // own origin), never to Talko's pinned one.
-  const pinned = app ? "" : (process.env.META_INSTAGRAM_REDIRECT_URI || "").trim();
+  // White-label: a connect started on a partner's address (or through its own
+  // app) returns to that address, where the customer is signed in, never to
+  // Talko's pinned one. Talko's own addresses keep the pin.
+  const onPartner = !!app || !!partnerHostKind(new URL(requestUrl).host, whiteLabelConfig());
+  const pinned = onPartner ? "" : (process.env.META_INSTAGRAM_REDIRECT_URI || "").trim();
   if (pinned) return pinned.replace(/\/+$/, "");
   return `${new URL(requestUrl).origin}/api/admin/onboarding/instagram/callback`;
 }

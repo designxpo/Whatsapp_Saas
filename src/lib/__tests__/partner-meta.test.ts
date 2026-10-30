@@ -130,9 +130,16 @@ describe("which app a workspace connects through", () => {
   it("Talko's Instagram app, unchanged, when no partner app is passed", () => {
     vi.stubEnv("META_INSTAGRAM_APP_ID", "555000555");
     vi.stubEnv("META_INSTAGRAM_REDIRECT_URI", "https://app.thetalko.in/api/admin/onboarding/instagram/callback");
+    vi.stubEnv("NEXT_PUBLIC_APP_HOST", "app.thetalko.in");
+    const talko = "https://app.thetalko.in/api/admin/onboarding/instagram/start";
+    expect(igRedirectUri(talko)).toBe("https://app.thetalko.in/api/admin/onboarding/instagram/callback");
+    expect(new URL(igAuthorizeUrl(igRedirectUri(talko), "s")).searchParams.get("client_id")).toBe("555000555");
+    // Started on a partner's address, it comes back there, where the customer is signed in.
     const req = "https://brightdental.thetalko.in/api/admin/onboarding/instagram/start";
-    expect(igRedirectUri(req)).toBe("https://app.thetalko.in/api/admin/onboarding/instagram/callback");
-    expect(new URL(igAuthorizeUrl(igRedirectUri(req), "s")).searchParams.get("client_id")).toBe("555000555");
+    expect(igRedirectUri(req)).toBe("https://brightdental.thetalko.in/api/admin/onboarding/instagram/callback");
+    vi.stubEnv("WHITE_LABEL_ENABLED", "");
+    expect(igRedirectUri(req)).toBe("https://app.thetalko.in/api/admin/onboarding/instagram/callback");   // white-label off: exactly as before
+    vi.stubEnv("WHITE_LABEL_ENABLED", "1");
     // A partner's app returns to the partner's own address with its own id.
     const app = { appId: "9876543210", appSecret: "x" };
     expect(igRedirectUri(req, app)).toBe("https://brightdental.thetalko.in/api/admin/onboarding/instagram/callback");
