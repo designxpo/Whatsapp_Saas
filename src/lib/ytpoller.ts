@@ -8,6 +8,7 @@
 // fetched. Everything no-ops safely when YouTube isn't configured (Phase 1a is
 // dormant until the OAuth client is approved) or the tables don't exist yet.
 
+import { partnerYtRemaining } from "./partner-quotas";
 import { db } from "./supabase";
 import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
@@ -220,7 +221,11 @@ async function tenantBudget(tenantId: string, budgetCache: Map<string, number>, 
     capCache.set(tenantId, cap);
     budgetCache.set(tenantId, budget);
   }
-  return budget;
+  // White-label: a partner's workspaces share one daily cap on Talko's YouTube
+  // quota, recounted at each channel's turn (replies are logged as they go).
+  // Infinity for anyone not on a partner: no read at all while white-label is
+  // off, one small read while it is on.
+  return Math.min(budget, await partnerYtRemaining(tenantId));
 }
 
 // ── Follow-ups in threads the channel already answered ───────────────────────

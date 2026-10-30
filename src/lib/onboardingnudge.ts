@@ -73,7 +73,7 @@ export async function drainOnboardingNudges(): Promise<number> {
       text,
       type: "onboarding_nudge",
       tenantId,
-      ...(mail.fromName ? { fromName: mail.fromName } : {}),
+      ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}),
     });
     if (result.ok) {
       sent++;

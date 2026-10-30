@@ -3,8 +3,19 @@
 // what it was; once it is on, each address admits only its own users.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const { brandForSlug, brandForTenant } = vi.hoisted(() => ({ brandForSlug: vi.fn(), brandForTenant: vi.fn() }));
-vi.mock("../brand-lookup", () => ({ brandForSlug, brandForTenant, brandForEmail: vi.fn() }));
+const { brandForSlug, brandForTenant, brandForDomain } = vi.hoisted(() => ({ brandForSlug: vi.fn(), brandForTenant: vi.fn(), brandForDomain: vi.fn() }));
+// brandForHost resolves a host exactly as the real one does, over the mocked lookups.
+vi.mock("../brand-lookup", async () => {
+  const wl = await vi.importActual<typeof import("../whitelabel")>("../whitelabel");
+  return {
+    brandForSlug, brandForTenant, brandForDomain, brandForEmail: vi.fn(),
+    brandForHost: async (host: string | null) => {
+      const k = wl.partnerHostKind(host, wl.whiteLabelConfig());
+      if (!k) return { brand: null, partnerHost: false };
+      return { brand: "slug" in k ? await brandForSlug(k.slug) : await brandForDomain(k.domain), partnerHost: true };
+    },
+  };
+});
 vi.mock("../auth", () => ({ isPlatformOwnerEmail: (e: string) => e === "owner@talko.test" }));
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 
@@ -15,7 +26,7 @@ const BRIGHT = { ...TALKO_BRAND, partnerId: "p1", slug: "brightdental", name: "B
 const OTHER = { ...TALKO_BRAND, partnerId: "p2", slug: "other", name: "Other Co" };
 const member = { email: "asha@bright.example", tenantId: "t1" };
 
-beforeEach(() => { brandForSlug.mockReset(); brandForTenant.mockReset(); });
+beforeEach(() => { brandForSlug.mockReset(); brandForTenant.mockReset(); brandForDomain.mockReset(); });
 afterEach(() => vi.unstubAllEnvs());
 
 describe("loginHostRefusal", () => {
@@ -61,6 +72,27 @@ describe("loginHostRefusal", () => {
     it("sends a partner's user from Talko's address to their own", async () => {
       brandForTenant.mockResolvedValue(BRIGHT);
       expect(await loginHostRefusal(member, "app.thetalko.in")).toBe("Your workspace signs in at https://brightdental.thetalko.in.");
+    });
+
+    it("sends them to the partner's own domain once it's verified", async () => {
+      brandForTenant.mockResolvedValue({ ...BRIGHT, domain: "portal.brightdental.in" });
+      expect(await loginHostRefusal(member, "app.thetalko.in")).toBe("Your workspace signs in at https://portal.brightdental.in.");
+    });
+
+    it("treats a partner's own domain like its sub-address", async () => {
+      brandForDomain.mockResolvedValue(BRIGHT); brandForTenant.mockResolvedValue(BRIGHT);
+      expect(await loginHostRefusal(member, "portal.brightdental.in")).toBeNull();
+      brandForTenant.mockResolvedValue(OTHER);
+      expect(await loginHostRefusal(member, "portal.brightdental.in")).toMatch(/isn't part of Bright Dental/);
+      brandForDomain.mockResolvedValue(null);   // not verified / unknown domain
+      expect(await loginHostRefusal(member, "portal.unknown.in")).toMatch(/isn't active/);
+    });
+
+    it("never treats Vercel previews or localhost as a partner domain", async () => {
+      brandForTenant.mockResolvedValue(TALKO_BRAND);
+      expect(await loginHostRefusal(member, "talko-git-main.vercel.app")).toBeNull();
+      expect(await loginHostRefusal(member, "localhost:3000")).toBeNull();
+      expect(brandForDomain).not.toHaveBeenCalled();
     });
   });
 });

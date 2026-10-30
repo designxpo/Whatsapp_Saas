@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createPartnerSession, PARTNER_SESSION_COOKIE } from "@/lib/auth";
 import { verifyPartnerLogin } from "@/lib/partner-portal";
-import { partnerSlugFromHost, whiteLabelConfig } from "@/lib/whitelabel";
+import { brandForHost } from "@/lib/brand-lookup";
 import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from "@/lib/loginthrottle";
 import { readJson } from "@/lib/partner-api";
 
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 // POST { email, password } — sign in to the partner dashboard on this
 // partner's own address. Throttled like the workspace login.
 export async function POST(req: Request) {
-  const slug = partnerSlugFromHost(req.headers.get("host"), whiteLabelConfig());
-  if (!slug) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const here = (await brandForHost(req.headers.get("host"))).brand;
+  if (!here?.partnerId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const slug = here.partnerId;
   const body = await readJson<{ email?: string; password?: string }>(req);
   const email = (body?.email ?? "").trim();
   const password = body?.password ?? "";
@@ -21,7 +22,7 @@ export async function POST(req: Request) {
   const gate = await loginThrottle(key);
   if (!gate.allowed) return NextResponse.json({ error: "Too many failed attempts. Try again later." }, { status: 429, headers: { "Retry-After": String(gate.retryAfterSec ?? 900) } });
 
-  const ok = await verifyPartnerLogin(slug, email, password).catch(() => null);
+  const ok = await verifyPartnerLogin(here.partnerId, email, password).catch(() => null);
   if (!ok) {
     await recordLoginFailure(key);
     return NextResponse.json({ error: "That email and password don't match." }, { status: 401 });

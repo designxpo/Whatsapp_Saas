@@ -176,7 +176,7 @@ export async function drainWeeklyRecaps(): Promise<number> {
     }, SITE_URL, subject);
     const { html, text } = renderEmail(mail.opts, mail.siteUrl);
 
-    const result = await sendEmail({ to: ownerEmail, subject: mail.subject, html, text, unsubscribeUrl: mail.opts.unsubscribeHref ?? unsub, type: "weekly_recap", tenantId, ...(mail.fromName ? { fromName: mail.fromName } : {}) });
+    const result = await sendEmail({ to: ownerEmail, subject: mail.subject, html, text, unsubscribeUrl: mail.opts.unsubscribeHref ?? unsub, type: "weekly_recap", tenantId, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) });
     if (result.ok) {
       sent++;
     } else {

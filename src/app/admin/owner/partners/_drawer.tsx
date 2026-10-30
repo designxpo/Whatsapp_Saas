@@ -26,6 +26,8 @@ const ACTION_LABEL: Record<string, string> = {
   "billing.suspended": "Workspaces paused for balance", "billing.topup_link": "Payment link created", "billing.razorpay_connected": "Own Razorpay connected",
   "billing.customer_settings": "Customer billing settings", "billing.customer_link": "Customer payment link sent", "billing.customer_paid": "Customer paid",
   "billing.customer_unpaid": "Customer paused for non-payment",
+  "domain.added": "Portal domain added", "domain.verified": "Portal domain live", "domain.removed": "Portal domain removed",
+  "email_domain.added": "Sending domain added", "email_domain.verified": "Sending domain verified", "email_domain.removed": "Sending domain removed",
 };
 
 export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
@@ -116,17 +118,9 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
 
           <BrandPanel partner={p} onSaved={async () => { await load(); onChanged(); }} />
 
-          <Panel title="Deal">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
-              <Row k="Setup fee" v={money(p.setupFeeCents)} />
-              <Row k={p.kind === "private" ? "Brand fee, monthly" : "Platform fee, monthly"} v={money(p.monthlyFeeCents)} />
-              <Row k="Deposit" v={money(p.depositCents)} />
-              {p.kind === "reseller" && <Row k="Wholesale" v={`${p.wholesalePct ?? 0}% of list price`} />}
-              <Row k="Grace before pause" v={`${p.graceDays} days`} />
-              <Row k="Plans" v={p.allowedPlans.join(", ") || "None"} />
-              <Row k="Contact" v={[p.contactName, p.contactEmail, p.contactPhone].filter(Boolean).join(" · ") || "Not set"} />
-            </dl>
-          </Panel>
+          <DealPanel partner={p} onSaved={async () => { await load(); onChanged(); }} />
+
+          <DomainsPanel partnerId={p.id} pro={p.tier === "pro"} />
 
           <Panel title={`Workspaces (${workspaces.length})`}>
             <div className="space-y-3">
@@ -388,6 +382,168 @@ function BillingPanel({ partnerId, onChanged }: { partnerId: string; onChanged: 
               ))}
             </ul>
           )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// The deal: fees, share, plans, grace and billing day, editable at any time.
+// Changes apply from the next charge; nothing already charged is recalculated.
+function DealPanel({ partner, onSaved }: { partner: PartnerRow; onSaved: () => Promise<void> }) {
+  const [editing, setEditing] = useState(false);
+  const [plans, setPlans] = useState<{ key: string; name: string }[]>([]);
+  const toR = (c: number) => String(Math.round(c / 100));
+  const [f, setF] = useState({
+    setup: toR(partner.setupFeeCents), monthly: toR(partner.monthlyFeeCents), deposit: toR(partner.depositCents),
+    pct: String(partner.wholesalePct ?? ""), grace: String(partner.graceDays), day: String(partner.billingDay ?? 1),
+    yt: String(partner.ytDailyCap ?? 300), allowed: partner.allowedPlans,
+  });
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    if (!editing || plans.length) return;
+    fetch("/api/owner/plans").then(r => r.json()).then(j => setPlans((j.plans ?? []).filter((p: { key: string }) => p.key !== "trial"))).catch(() => {});
+  }, [editing, plans.length]);
+
+  async function save() {
+    setBusy(true); setNote(null);
+    const cents = (v: string) => Math.round((Number(v.replace(/[,\s₹]/g, "")) || 0) * 100);
+    const body: Record<string, unknown> = {
+      setupFeeCents: cents(f.setup), monthlyFeeCents: cents(f.monthly), depositCents: cents(f.deposit),
+      graceDays: Number(f.grace), billingDay: Number(f.day), ytDailyCap: Number(f.yt), allowedPlans: f.allowed,
+    };
+    if (partner.kind === "reseller") body.wholesalePct = Number(f.pct);
+    const r = await fetch(`/api/owner/partners/${partner.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok || j.error) { setNote({ ok: false, text: j.error || `Failed (HTTP ${r.status})` }); return; }
+    setNote({ ok: true, text: "Saved. Applies from the next charge." }); setEditing(false); await onSaved();
+  }
+
+  const inp = "w-full border border-line rounded-control px-3 py-1.5 text-sm bg-white text-ink-900";
+  const field = (label: string, key: keyof typeof f, suffix?: string) => (
+    <label className="text-[12px]"><span className="block font-bold text-ink-600 mb-1">{label}</span>
+      <span className="flex items-center gap-1"><input className={inp} inputMode="numeric" value={f[key] as string} onChange={e => setF({ ...f, [key]: e.target.value })} />{suffix && <span className="text-ink-600 shrink-0">{suffix}</span>}</span>
+    </label>
+  );
+  return (
+    <Panel title="Deal" action={!editing && <button onClick={() => setEditing(true)} className="text-[11px] font-bold text-brand-700 hover:underline">Edit</button>}>
+      {!editing ? (
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
+          <Row k="Setup fee" v={money(partner.setupFeeCents)} />
+          <Row k={partner.kind === "private" ? "Brand fee, monthly" : "Platform fee, monthly"} v={money(partner.monthlyFeeCents)} />
+          <Row k="Deposit" v={money(partner.depositCents)} />
+          {partner.kind === "reseller" && <Row k="Wholesale" v={`${partner.wholesalePct ?? 0}% of list price`} />}
+          <Row k="Grace before pause" v={`${partner.graceDays} days`} />
+          <Row k="Billing day" v={`${partner.billingDay ?? 1} of each month`} />
+          <Row k="YouTube replies a day" v={partner.ytDailyCap ? String(partner.ytDailyCap) : "No partner cap"} />
+          <Row k="Plans" v={partner.allowedPlans.join(", ") || "None"} />
+          <Row k="Contact" v={[partner.contactName, partner.contactEmail, partner.contactPhone].filter(Boolean).join(" · ") || "Not set"} />
+        </dl>
+      ) : (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            {field("Setup fee", "setup", "₹")}
+            {field(partner.kind === "private" ? "Brand fee / month" : "Platform fee / month", "monthly", "₹")}
+            {field("Deposit", "deposit", "₹")}
+            {partner.kind === "reseller" && field("Wholesale share", "pct", "%")}
+            {field("Grace days", "grace")}
+            {field("Billing day (1–28)", "day")}
+            {field("YouTube replies / day", "yt")}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {plans.map(p => {
+              const on = f.allowed.includes(p.key);
+              return <button key={p.key} type="button" onClick={() => setF({ ...f, allowed: on ? f.allowed.filter(x => x !== p.key) : [...f.allowed, p.key] })}
+                className={`px-3 py-1 rounded-full border text-xs font-bold ${on ? "bg-brand-50 text-brand-700 border-brand-100" : "bg-white text-ink-600 border-line"}`}>{p.name}</button>;
+            })}
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save deal"}</button>
+            <button onClick={() => setEditing(false)} className="px-3 py-1.5 text-xs font-bold text-ink-600">Cancel</button>
+          </div>
+        </div>
+      )}
+      {note && <p className={`text-[12px] mt-2 ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
+    </Panel>
+  );
+}
+
+// The partner's own portal domain (Vercel) and sending domain (Resend).
+type DomainInfo = {
+  portal: { domain: string | null; status: string; detail: { records?: { type: string; name: string; value: string }[]; problem?: string | null; checkedAt?: string } };
+  email: { name: string | null; status: string | null; records: { record?: string; name?: string; type?: string; value?: string; status?: string }[] };
+  vercel: boolean; resend: boolean;
+};
+
+function DomainsPanel({ partnerId, pro }: { partnerId: string; pro: boolean }) {
+  const [d, setD] = useState<DomainInfo | null>(null);
+  const [portal, setPortal] = useState("");
+  const [mail, setMail] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/owner/partners/${partnerId}/domains`);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { setNote({ ok: false, text: j.error || "Couldn't load domains." }); return; }
+    setD(j);
+  }, [partnerId]);
+  useEffect(() => { load(); }, [load]);
+  async function act(method: string, body: Record<string, unknown>, key: string, done: string) {
+    setBusy(key); setNote(null);
+    const r = await fetch(`/api/owner/partners/${partnerId}/domains`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(null);
+    if (!r.ok || j.error) { setNote({ ok: false, text: j.error || `Failed (HTTP ${r.status})` }); return; }
+    setNote({ ok: true, text: done }); await load();
+  }
+  const inp = "w-full border border-line rounded-control px-3 py-1.5 text-sm bg-white text-ink-900";
+  const statusTone = (s: string | null) => s === "verified" ? "ok" : s === "error" || s === "failed" ? "bad" : "warn";
+  const records = (rows: { type?: string; name?: string; value?: string }[]) => (
+    <table className="w-full text-[11px] mt-2"><tbody>
+      {rows.map((r, i) => <tr key={i} className="border-t border-line"><td className="py-1 pr-2 font-bold">{r.type}</td><td className="py-1 pr-2 break-all">{r.name}</td><td className="py-1 break-all font-mono">{r.value}</td></tr>)}
+    </tbody></table>
+  );
+  return (
+    <Panel title="Own domains" action={!pro && <span className="text-[11px] text-ink-600">Usually a Pro feature</span>}>
+      {!d ? <Spinner /> : (
+        <div className="space-y-4">
+          <div>
+            <p className="text-[12px] font-bold text-ink-900 mb-1">Portal address {d.portal.domain && <Badge tone={statusTone(d.portal.status)}>{d.portal.status}</Badge>}</p>
+            {!d.vercel && <p className="text-[12px] text-amber-700">Needs VERCEL_TOKEN and VERCEL_PROJECT_ID in Vercel&apos;s environment.</p>}
+            {d.portal.domain ? (
+              <>
+                <p className="text-[13px] text-ink-700">{d.portal.domain}{d.portal.detail.problem ? <span className="text-amber-700"> · {d.portal.detail.problem}</span> : ""}</p>
+                {d.portal.status !== "verified" && d.portal.detail.records && records(d.portal.detail.records)}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => act("POST", { kind: "portal", recheck: true }, "pc", "Checked.")} disabled={busy === "pc"} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold hover:bg-canvas">Check now</button>
+                  <button onClick={() => act("DELETE", { kind: "portal" }, "pr", "Removed.")} disabled={busy === "pr"} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold text-red-600 hover:bg-red-50">Remove</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex gap-2"><input className={inp} placeholder="portal.theirbrand.com" value={portal} onChange={e => setPortal(e.target.value)} />
+                <button onClick={() => act("POST", { kind: "portal", domain: portal }, "pa", "Added. Ask the partner to add the DNS record shown.")} disabled={!portal || busy === "pa" || !d.vercel} className="px-3 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold disabled:opacity-60 shrink-0">Add</button></div>
+            )}
+          </div>
+          <div className="border-t border-line pt-3">
+            <p className="text-[12px] font-bold text-ink-900 mb-1">Sending domain {d.email.name && <Badge tone={statusTone(d.email.status)}>{d.email.status ?? "pending"}</Badge>}</p>
+            {!d.resend && <p className="text-[12px] text-amber-700">Needs RESEND_API_KEY.</p>}
+            {d.email.name ? (
+              <>
+                <p className="text-[13px] text-ink-700">Emails to their customers go from no-reply@{d.email.name}{d.email.status === "verified" ? "" : " once verified"}.</p>
+                {d.email.status !== "verified" && records(d.email.records)}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => act("POST", { kind: "email", recheck: true }, "ec", "Checked.")} disabled={busy === "ec"} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold hover:bg-canvas">Check now</button>
+                  <button onClick={() => act("DELETE", { kind: "email" }, "er", "Removed.")} disabled={busy === "er"} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold text-red-600 hover:bg-red-50">Remove</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex gap-2"><input className={inp} placeholder="theirbrand.com" value={mail} onChange={e => setMail(e.target.value)} />
+                <button onClick={() => act("POST", { kind: "email", domain: mail }, "ea", "Added. Ask the partner to add the DNS records shown.")} disabled={!mail || busy === "ea" || !d.resend} className="px-3 py-1.5 rounded-control bg-brand-700 text-white text-xs font-bold disabled:opacity-60 shrink-0">Add</button></div>
+            )}
+          </div>
+          {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
         </div>
       )}
     </Panel>

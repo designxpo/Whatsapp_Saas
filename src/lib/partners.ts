@@ -43,6 +43,10 @@ export interface Partner {
   graceUntil: string | null; setupPaidAt: string | null;
   razorpay: { keyId: string | null; connected: boolean };
   customerBilling: CustomerBilling;
+  // Phase 6: own portal domain, own sending domain, shared-quota cap.
+  customDomain: string | null; domainStatus: "none" | "pending" | "verified" | "error"; domainDetail: Record<string, unknown>;
+  emailDomain: { id?: string; name?: string; status?: string; records?: unknown[] };
+  ytDailyCap: number;
 }
 
 export interface CustomerBilling { autoLinks: boolean; graceDays: number; autoPause: boolean }
@@ -92,6 +96,7 @@ export interface PartnerInput {
   allowedPlans?: string[]; setupFeeCents?: number; monthlyFeeCents?: number; depositCents?: number;
   wholesalePct?: number | null; graceDays?: number; notes?: string | null;
   brand?: BrandSettings;
+  billingDay?: number; ytDailyCap?: number;
 }
 
 type Checked = { ok: true; row: Record<string, unknown> } | { ok: false; error: string };
@@ -180,6 +185,14 @@ export function checkPartnerInput(p: PartnerInput, existing?: Pick<Partner, "kin
     if (!Number.isInteger(p.graceDays) || p.graceDays < 0 || p.graceDays > 60) return { ok: false, error: "Grace days must be between 0 and 60." };
     row.grace_days = p.graceDays;
   }
+  if (p.billingDay !== undefined) {
+    if (!Number.isInteger(p.billingDay) || p.billingDay < 1 || p.billingDay > 28) return { ok: false, error: "The billing day must be between 1 and 28." };
+    row.billing_day = p.billingDay;
+  }
+  if (p.ytDailyCap !== undefined) {
+    if (!Number.isInteger(p.ytDailyCap) || p.ytDailyCap < 0 || p.ytDailyCap > 100_000) return { ok: false, error: "The YouTube daily cap must be a whole number." };
+    row.yt_daily_cap = p.ytDailyCap;
+  }
   if (p.brand !== undefined) {
     if (!p.brand || typeof p.brand !== "object") return { ok: false, error: "Brand settings must be an object." };
     const b = checkBrandSettings(p.brand);
@@ -234,6 +247,11 @@ function mapPartner(r: Record<string, unknown>): Partner {
       connected: !!((r.razorpay as { secretEnc?: string } | null)?.secretEnc),
     },
     customerBilling: { ...CUSTOMER_BILLING_DEFAULTS, ...((r.customer_billing as Partial<CustomerBilling> | null) ?? {}) },
+    customDomain: (r.custom_domain as string | null) ?? null,
+    domainStatus: ((r.domain_status as string) ?? "none") as Partner["domainStatus"],
+    domainDetail: (r.domain_detail as Record<string, unknown> | null) ?? {},
+    emailDomain: (r.email_domain as Partner["emailDomain"] | null) ?? {},
+    ytDailyCap: Number(r.yt_daily_cap ?? 300),
   };
 }
 

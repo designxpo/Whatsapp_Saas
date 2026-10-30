@@ -18,6 +18,10 @@ type Me = {
     id: string; name: string; slug: string; kind: "private" | "reseller"; tier: string; status: string; monthlyFeeCents: number; wholesalePct: number | null;
     brand: Record<string, string | null>; resalePrices: Record<string, number>;
     billingState: "ok" | "grace" | "suspended"; graceUntil: string | null; setupPaid: boolean; availableCents: number;
+    domains: {
+      portal: { domain: string; status: string; records: { type?: string; name?: string; value?: string }[] } | null;
+      email: { name: string; status: string; records: { type?: string; name?: string; value?: string }[] } | null;
+    };
   };
   plans: Plan[];
   estimate: { feeCents: number; workspacesCents: number; totalCents: number; live: number; sharePct: number | null };
@@ -428,7 +432,26 @@ function BrandTab({ me, owner, onSaved }: { me: Me; owner: boolean; onSaved: () 
           <Notice notice={note} />
         </div>
       </Panel>
-      <p className="text-[12px] text-ink-600">Your portal: <b>https://{me.partner.slug}.thetalko.in</b>. Your customers sign in there.</p>
+      <p className="text-[12px] text-ink-600">Your portal: <b>https://{me.partner.domains?.portal?.status === "verified" ? me.partner.domains.portal.domain : `${me.partner.slug}.thetalko.in`}</b>. Your customers sign in there.</p>
+      {(me.partner.domains?.portal || me.partner.domains?.email) && (
+        <Panel title="Your own domains">
+          <div className="space-y-3 text-[13px]">
+            {me.partner.domains.portal && (
+              <div>
+                <p><b>{me.partner.domains.portal.domain}</b> · {me.partner.domains.portal.status === "verified" ? <span className="text-emerald-700 font-bold">live</span> : <span className="text-amber-700">waiting for DNS</span>}</p>
+                {me.partner.domains.portal.status !== "verified" && <DnsRecords rows={me.partner.domains.portal.records} />}
+              </div>
+            )}
+            {me.partner.domains.email && (
+              <div>
+                <p>Emails from <b>no-reply@{me.partner.domains.email.name}</b> · {me.partner.domains.email.status === "verified" ? <span className="text-emerald-700 font-bold">verified</span> : <span className="text-amber-700">waiting for DNS</span>}</p>
+                {me.partner.domains.email.status !== "verified" && <DnsRecords rows={me.partner.domains.email.records} />}
+              </div>
+            )}
+            <p className="text-[12px] text-ink-600">Add these records at your domain provider. They are checked automatically every few minutes.</p>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
@@ -642,5 +665,15 @@ function CustomerBillingSettings({ b, owner, onSaved }: { b: BillingData; owner:
         )}
       </div>
     </Panel>
+  );
+}
+
+function DnsRecords({ rows }: { rows: { type?: string; name?: string; value?: string }[] }) {
+  return (
+    <div className="overflow-x-auto mt-1">
+      <table className="w-full text-[11px]"><thead><tr className="text-ink-400 text-left"><th className="pr-2">Type</th><th className="pr-2">Name</th><th>Value</th></tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i} className="border-t border-line"><td className="py-1 pr-2 font-bold">{r.type}</td><td className="py-1 pr-2 break-all">{r.name}</td><td className="py-1 font-mono break-all">{r.value}</td></tr>)}</tbody>
+      </table>
+    </div>
   );
 }

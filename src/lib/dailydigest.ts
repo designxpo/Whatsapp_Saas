@@ -94,7 +94,7 @@ function factLines(n: DigestNumbers): string[] {
   ];
 }
 
-export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null, brand: Brand = TALKO_BRAND): { subject: string; html: string; text: string; unsub: string; fromName?: string } {
+export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null, brand: Brand = TALKO_BRAND): { subject: string; html: string; text: string; unsub: string; fromName?: string; fromEmail?: string } {
   const subject = `Today: ${n.waiting.total} waiting on a reply, ${n.yesterday.newLeads} new leads yesterday`;
   const stats: EmailStat[] = [
     { value: String(n.waiting.total), label: "waiting on a reply", delta: n.waiting.oldestHours != null ? `oldest ${age(n.waiting.oldestHours)}` : undefined },
@@ -118,7 +118,7 @@ export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline
     unsubscribeHref: unsub,
   }, SITE_URL, subject);
   const { html, text } = renderEmail(mail.opts, mail.siteUrl);
-  return { subject: mail.subject, html, text, unsub: mail.opts.unsubscribeHref ?? unsub, ...(mail.fromName ? { fromName: mail.fromName } : {}) };
+  return { subject: mail.subject, html, text, unsub: mail.opts.unsubscribeHref ?? unsub, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) };
 }
 
 async function sendTo(tenantId: string, to: string[], now: number): Promise<number> {
@@ -131,7 +131,7 @@ async function sendTo(tenantId: string, to: string[], now: number): Promise<numb
   const mail = renderDigest(numbers, tenantId, ai, await brandForTenant(tenantId));
   let sent = 0;
   for (const addr of to) {
-    const r = await sendEmail({ to: addr, subject: mail.subject, html: mail.html, text: mail.text, unsubscribeUrl: mail.unsub, type: "daily_digest", tenantId, ...(mail.fromName ? { fromName: mail.fromName } : {}) })
+    const r = await sendEmail({ to: addr, subject: mail.subject, html: mail.html, text: mail.text, unsubscribeUrl: mail.unsub, type: "daily_digest", tenantId, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) })
       .catch(() => ({ ok: false }));
     if (r.ok) sent++;
   }

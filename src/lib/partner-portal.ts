@@ -23,7 +23,8 @@ import { listPlans, type Plan } from "./plans";
 import { getEntitlements } from "./entitlements";
 import { renderEmail } from "./emailtemplate";
 import { sendEmail } from "./email";
-import { brandFromPartner, partnerOrigin, partnerSlugFromHost, whiteLabelConfig, type Brand } from "./whitelabel";
+import { brandFromPartner, brandOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
+import { brandForHost } from "./brand-lookup";
 
 export type PartnerRole = "owner" | "staff";
 export interface PartnerUser {
@@ -116,20 +117,20 @@ export async function currentPartner(): Promise<PartnerContext | null> {
   if (!cfg.enabled) return null;
   const claims = await verifyPartnerSessionToken((await cookies()).get(PARTNER_SESSION_COOKIE)?.value);
   if (!claims) return null;
-  const slug = partnerSlugFromHost((await headers()).get("host"), cfg);
-  if (!slug) return null;
+  const here = await brandForHost((await headers()).get("host"));
+  if (!here.brand?.partnerId) return null;
   try {
     const { data: u } = await db().from("wa_partner_users").select("*").eq("id", claims.userId).maybeSingle();
     if (!u || u.active === false || u.partner_id !== claims.partnerId || (u.token_version ?? 0) !== claims.tokenVersion) return null;
     const partner = await getPartner(claims.partnerId);
-    if (!partner || partner.status === "closed" || partner.slug !== slug) return null;
+    if (!partner || partner.status === "closed" || partner.id !== here.brand.partnerId) return null;
     return { user: mapUser(u as Record<string, unknown>), tokenVersion: claims.tokenVersion, partner, brand: brandFromPartner(partner) };
   } catch { return null; }
 }
 
 /** Email + password for one partner's dashboard. Null on any mismatch. */
-export async function verifyPartnerLogin(slug: string, email: string, password: string): Promise<{ user: PartnerUser; tokenVersion: number } | null> {
-  const { data: p } = await db().from("wa_partners").select("id,status").eq("slug", slug).maybeSingle();
+export async function verifyPartnerLogin(partnerId: string, email: string, password: string): Promise<{ user: PartnerUser; tokenVersion: number } | null> {
+  const { data: p } = await db().from("wa_partners").select("id,status").eq("id", partnerId).maybeSingle();
   if (!p || p.status === "closed") return null;
   const { data: u } = await db().from("wa_partner_users").select("*")
     .eq("partner_id", p.id).ilike("email", email.trim()).maybeSingle();
@@ -181,15 +182,15 @@ export async function resendPartnerInvite(partner: Partner, userId: string, acto
   return { ok: true };
 }
 
-/** Accept an invitation on `slug`'s address: checked before anything is written. */
-export async function acceptPartnerInvite(token: string, password: string, slug: string): Promise<{ user?: PartnerUser; tokenVersion?: number; partnerId?: string; error?: string }> {
+/** Accept an invitation on its own partner's address: checked before anything is written. */
+export async function acceptPartnerInvite(token: string, password: string, hostPartnerId: string): Promise<{ user?: PartnerUser; tokenVersion?: number; partnerId?: string; error?: string }> {
   if (password.length < MIN_PASSWORD) return { error: `Use at least ${MIN_PASSWORD} characters.` };
   if (!token) return { error: "This link isn't valid." };
   const { data: u } = await db().from("wa_partner_users").select("*").eq("setup_token_hash", sha(token)).maybeSingle();
   if (!u || u.active === false) return { error: "This link isn't valid. Ask for a new invitation." };
   if (!u.setup_expires_at || Date.parse(u.setup_expires_at as string) < Date.now()) return { error: "This link has expired. Ask for a new invitation." };
   const partner = await getPartner(u.partner_id as string);
-  if (!partner || partner.slug !== slug || partner.status === "closed") return { error: "This invitation is for a different address." };
+  if (!partner || partner.id !== hostPartnerId || partner.status === "closed") return { error: "This invitation is for a different address." };
   const version = ((u.token_version as number) ?? 0) + 1;
   const { error } = await db().from("wa_partner_users").update({
     password_hash: hashPassword(password), setup_token_hash: null, setup_expires_at: null,
@@ -319,7 +320,7 @@ export async function setResalePrices(partner: Partner, input: unknown, actor: s
 
 // ── Emails ──────────────────────────────────────────────────────────────────
 
-function origin(partner: Partner): string { return partnerOrigin(partner.slug, whiteLabelConfig()); }
+function origin(partner: Partner): string { return brandOrigin(brandFromPartner(partner), whiteLabelConfig()); }
 
 async function sendStaffInvite(partner: Partner, user: PartnerUser, token: string) {
   const brand = brandFromPartner(partner);
@@ -334,7 +335,7 @@ async function sendStaffInvite(partner: Partner, user: PartnerUser, token: strin
     cta: { label: "Set your password", href: `/partner/setup?token=${encodeURIComponent(token)}` },
     footerReason: `You're getting this because you were invited to the ${brand.name} partner dashboard.`,
   }, origin(partner));
-  await sendEmail({ to: user.email, subject: `Set up your ${brand.name} partner dashboard`, html, text, type: "other", fromName: brand.name })
+  await sendEmail({ to: user.email, subject: `Set up your ${brand.name} partner dashboard`, html, text, type: "other", fromName: brand.name, fromEmail: brand.emailFrom ?? undefined })
     .catch(e => console.error("[partner] invite email failed", e));
 }
 
@@ -351,6 +352,6 @@ async function sendWorkspaceWelcome(partner: Partner, email: string, name: strin
     cta: { label: "Set your password", href: `/login?setup=${encodeURIComponent(email)}` },
     footerReason: `You're getting this because ${brand.name} created a workspace for you.`,
   }, origin(partner));
-  await sendEmail({ to: email, subject: `Your ${company} workspace is ready`, html, text, type: "other", fromName: brand.name })
+  await sendEmail({ to: email, subject: `Your ${company} workspace is ready`, html, text, type: "other", fromName: brand.name, fromEmail: brand.emailFrom ?? undefined })
     .catch(e => console.error("[partner] welcome email failed", e));
 }

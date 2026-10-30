@@ -13,7 +13,7 @@
 // lands in junk reads to the user as a login that's simply broken.
 
 import { brandForEmail } from "./brand-lookup";
-import { TALKO_BRAND, brandCopy, brandJson, partnerOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
+import { TALKO_BRAND, brandCopy, brandJson, brandOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
 import { createHash } from "crypto";
 import { db } from "./supabase";
 import { newOtpCode, safeEqual, otpPepper } from "./otp";
@@ -128,7 +128,7 @@ export function composeOtpEmail(purpose: EmailOtpPurpose, code: string, brand: B
     // report link is the only concession, and it never signs anyone in.
     ...(copy.secondary ? { secondary: copy.secondary } : {}),
     footerReason: copy.footerReason,
-  }, partner ? partnerOrigin(partner.slug!, whiteLabelConfig()) : SITE_URL);
+  }, partner ? brandOrigin(partner, whiteLabelConfig()) : SITE_URL);
 
   return { subject: copy.subject, html, text };
 }
@@ -172,7 +172,7 @@ export async function sendEmailOtp(rawEmail: string, purpose: EmailOtpPurpose): 
   // codes go out in the brand of the workspace the address belongs to.
   const brand = purpose === "signup" ? TALKO_BRAND : await brandForEmail(email);
   const mail = composeOtpEmail(purpose, code, brand);
-  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text, type: "otp", ...(brand.partnerId ? { fromName: brand.name } : {}) });
+  const sent = await sendEmail({ to: email, subject: mail.subject, html: mail.html, text: mail.text, type: "otp", ...(brand.partnerId ? { fromName: brand.name, fromEmail: brand.emailFrom ?? undefined } : {}) });
   if (!sent.ok) return { ok: false, error: sent.error || "Failed to send email" };
   return { ok: true };
 }

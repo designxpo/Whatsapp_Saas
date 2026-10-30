@@ -4,7 +4,7 @@ import { listPlans } from "@/lib/plans";
 import { partnerWorkspaces } from "@/lib/partners";
 import { monthlyEstimate } from "@/lib/partner-portal";
 import { available, billingPeriod, listCustomerInvoices, listLedger, MIN_TOPUP_CENTS } from "@/lib/partner-billing";
-import { partnerOrigin, whiteLabelConfig } from "@/lib/whitelabel";
+import { brandFromPartner, brandOrigin, whiteLabelConfig } from "@/lib/whitelabel";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +24,7 @@ export async function GET() {
       estimateCents: est.totalCents, minTopupCents: MIN_TOPUP_CENTS,
       ledger, invoices,
       razorpay: partner.razorpay, customerBilling: partner.customerBilling,
-      webhookUrl: `${partnerOrigin(partner.slug, whiteLabelConfig())}/api/webhooks/partner-razorpay/${partner.id}`,
+      webhookUrl: `${brandOrigin(brandFromPartner(partner), whiteLabelConfig())}/api/webhooks/partner-razorpay/${partner.id}`,
     });
   });
 }

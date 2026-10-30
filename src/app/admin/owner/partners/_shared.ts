@@ -10,6 +10,10 @@ export type PartnerRow = {
   allowedPlans: string[]; setupFeeCents: number; monthlyFeeCents: number; depositCents: number;
   wholesalePct: number | null; graceDays: number; notes: string | null; createdAt: string; workspaceCount?: number;
   brand?: BrandSettings;
+  // Phases 4 and 6.
+  balanceCents?: number; billingState?: "ok" | "grace" | "suspended"; billingDay?: number; setupPaidAt?: string | null;
+  customDomain?: string | null; domainStatus?: string; ytDailyCap?: number;
+  stats?: { live: number; paused: number; revenue30dCents: number; alerts: number };
 };
 
 export type BrandSettings = {

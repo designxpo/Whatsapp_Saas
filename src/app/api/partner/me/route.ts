@@ -22,6 +22,10 @@ export async function GET() {
         billingState: partner.billingState, graceUntil: partner.graceUntil,
         setupPaid: !!partner.setupPaidAt || partner.setupFeeCents === 0,
         availableCents: partner.balanceCents - partner.depositCents,
+        domains: {
+          portal: partner.customDomain ? { domain: partner.customDomain, status: partner.domainStatus, records: (partner.domainDetail as { records?: unknown[] }).records ?? [] } : null,
+          email: partner.emailDomain?.name ? { name: partner.emailDomain.name, status: partner.emailDomain.status ?? "pending", records: partner.emailDomain.records ?? [] } : null,
+        },
       },
       brand,
       plans: sellable,

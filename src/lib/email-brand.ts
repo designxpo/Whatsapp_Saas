@@ -12,9 +12,9 @@
 import type { EmailOptions } from "./emailtemplate";
 import { brandForTenant } from "./brand-lookup";
 import { SITE_URL } from "./siteurl";
-import { brandCopy, brandJson, partnerOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
+import { brandCopy, brandJson, brandOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
 
-export interface BrandedEmail { opts: EmailOptions; siteUrl: string; subject: string; fromName?: string }
+export interface BrandedEmail { opts: EmailOptions; siteUrl: string; subject: string; fromName?: string; fromEmail?: string }
 
 // Paths a partner's address actually serves (middleware.ts).
 const PORTAL_LINK = /^\/(login|admin)(\/|\?|$)/;
@@ -22,7 +22,7 @@ const PORTAL_LINK = /^\/(login|admin)(\/|\?|$)/;
 /** Pure: an email for this brand. */
 export function applyEmailBrand(brand: Brand, opts: EmailOptions, siteUrl: string, subject: string): BrandedEmail {
   if (!brand.partnerId || !brand.slug) return { opts, siteUrl, subject };
-  const site = partnerOrigin(brand.slug, whiteLabelConfig());
+  const site = brandOrigin(brand, whiteLabelConfig());
   // Words only: links and the unsubscribe token are never rewritten as text.
   const { cta, secondary, unsubscribeHref, ...words } = opts;
   const keep = (l?: { label: string; href: string }) =>
@@ -35,7 +35,7 @@ export function applyEmailBrand(brand: Brand, opts: EmailOptions, siteUrl: strin
     // The unsubscribe endpoint is an API route, served on every address.
     unsubscribeHref: unsubscribeHref?.startsWith(SITE_URL) ? site + unsubscribeHref.slice(SITE_URL.length) : unsubscribeHref,
   };
-  return { opts: branded, siteUrl: site, subject: brandCopy(subject, brand), fromName: brand.name };
+  return { opts: branded, siteUrl: site, subject: brandCopy(subject, brand), fromName: brand.name, ...(brand.emailFrom ? { fromEmail: brand.emailFrom } : {}) };
 }
 
 /** The same, for whatever brand a workspace shows (Talko while white-label is off). */

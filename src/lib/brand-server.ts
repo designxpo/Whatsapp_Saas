@@ -8,10 +8,10 @@
 
 import { headers } from "next/headers";
 import { isPlatformOwnerEmail } from "./auth";
-import { brandForSlug, brandForTenant } from "./brand-lookup";
-import { TALKO_BRAND, partnerSlugFromHost, partnerOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
+import { brandForHost, brandForTenant } from "./brand-lookup";
+import { TALKO_BRAND, brandOrigin, partnerHostKind, whiteLabelConfig, type Brand } from "./whitelabel";
 
-export { brandForSlug, brandForTenant, brandForEmail } from "./brand-lookup";
+export { brandForSlug, brandForTenant, brandForEmail, brandForHost } from "./brand-lookup";
 
 async function requestHost(): Promise<string | null> {
   const h = await headers();
@@ -20,33 +20,33 @@ async function requestHost(): Promise<string | null> {
 
 /**
  * The brand for the current request's address. `unknown` is true on an
- * address shaped like a partner's that no open partner owns; pages show 404.
+ * address shaped like a partner's (a sub-address, or a non-Talko domain) that
+ * no open partner owns; pages show 404.
  */
 export async function requestBrand(): Promise<{ brand: Brand; unknown: boolean }> {
-  const slug = partnerSlugFromHost(await requestHost(), whiteLabelConfig());
-  if (!slug) return { brand: TALKO_BRAND, unknown: false };
-  const brand = await brandForSlug(slug);
-  return brand ? { brand, unknown: false } : { brand: TALKO_BRAND, unknown: true };
+  const r = await brandForHost(await requestHost());
+  if (!r.partnerHost) return { brand: TALKO_BRAND, unknown: false };
+  return r.brand ? { brand: r.brand, unknown: false } : { brand: TALKO_BRAND, unknown: true };
 }
 
 /**
- * Who may sign in at an address. Null = allowed. A partner's address admits
- * only users of that partner's workspaces; Talko's address sends a partner's
- * users to their own address. Does nothing while white-label is off.
+ * Who may sign in at an address. Null = allowed. A partner's address (its
+ * sub-address or its own domain) admits only users of that partner's
+ * workspaces; Talko's address sends a partner's users to their own address.
+ * Does nothing while white-label is off.
  */
 export async function loginHostRefusal(user: { email: string; tenantId: string }, host: string | null): Promise<string | null> {
   const cfg = whiteLabelConfig();
   if (!cfg.enabled) return null;
-  const slug = partnerSlugFromHost(host, cfg);
-  if (slug) {
-    const here = await brandForSlug(slug);
-    if (!here) return "This address isn't active.";
+  const here = await brandForHost(host);
+  if (here.partnerHost) {
+    if (!here.brand) return "This address isn't active.";
     if (isPlatformOwnerEmail(user.email)) return "The platform owner signs in at the main Talko address.";
     const theirs = await brandForTenant(user.tenantId);
-    return theirs.partnerId === here.partnerId ? null : `This account isn't part of ${here.name}.`;
+    return theirs.partnerId === here.brand.partnerId ? null : `This account isn't part of ${here.brand.name}.`;
   }
   const theirs = await brandForTenant(user.tenantId);
-  return theirs.partnerId && theirs.slug ? `Your workspace signs in at ${partnerOrigin(theirs.slug, cfg)}.` : null;
+  return theirs.partnerId && theirs.slug ? `Your workspace signs in at ${brandOrigin(theirs, cfg)}.` : null;
 }
 
 /**
@@ -60,7 +60,7 @@ export async function sessionHostCheck(user: { email: string; tenantId: string }
   const host = await requestHost();
   const refusal = await loginHostRefusal(user, host);
   if (!refusal) return null;
-  if (partnerSlugFromHost(host, cfg)) return "notfound";
+  if (partnerHostKind(host, cfg)) return "notfound";
   const theirs = await brandForTenant(user.tenantId);
-  return theirs.slug ? `${partnerOrigin(theirs.slug, cfg)}/login` : null;
+  return theirs.slug ? `${brandOrigin(theirs, cfg)}/login` : null;
 }

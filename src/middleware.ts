@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
-import { partnerSlugFromHost, whiteLabelConfig } from "@/lib/whitelabel";
+import { partnerHostKind, whiteLabelConfig } from "@/lib/whitelabel";
 
 const COOKIE = "wa_admin_session";
 const AFFILIATE_COOKIE = "wa_affiliate_session";
@@ -146,8 +146,11 @@ export async function middleware(req: NextRequest) {
   // only the portal: Talko's marketing site, owner console, system setup,
   // billing, support desk and affiliate programme don't exist there, and its
   // sign-in is a separate branded page, so Talko's own /login stays as it is. ──
-  const partnerSlug = partnerSlugFromHost(host, whiteLabelConfig());
-  if (partnerSlug && !isSharedPath(pathname)) {
+  // A partner address is its `<slug>.<base>` or, from Phase 6, its own domain
+  // (any host that isn't Talko's: whitelabel.ts isTalkoHost). Whether the
+  // partner exists is checked by the pages themselves (404 when it doesn't).
+  const partnerHost = partnerHostKind(host, whiteLabelConfig());
+  if (partnerHost && !isSharedPath(pathname)) {
     const url = req.nextUrl.clone();
     if (pathname === "/" || pathname === "/signup" || (pathname === "/login" && ok)) {
       url.pathname = ok ? "/admin" : "/login";

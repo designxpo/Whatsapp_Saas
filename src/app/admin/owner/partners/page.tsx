@@ -42,6 +42,8 @@ export default function PartnersPage() {
 
   const live = (partners ?? []).filter(p => p.status === "active");
   const workspaces = (partners ?? []).reduce((n, p) => n + (p.workspaceCount ?? 0), 0);
+  const revenue30 = (partners ?? []).reduce((n, p) => n + (p.stats?.revenue30dCents ?? 0), 0);
+  const attention = (partners ?? []).filter(p => p.billingState === "grace" || p.billingState === "suspended" || (p.stats?.alerts ?? 0) > 0).length;
 
   return (
     <div className="space-y-5">
@@ -78,9 +80,9 @@ export default function PartnersPage() {
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <MetricTile label="Partners" value={compact(partners.length)} sub={`${compact(live.length)} active`} />
-            <MetricTile label="Private Label" value={compact(partners.filter(p => p.kind === "private").length)} />
-            <MetricTile label="Partner workspaces" value={compact(workspaces)} />
-            <MetricTile label="Monthly fees (active)" value={money(live.reduce((s, p) => s + p.monthlyFeeCents, 0))} sub="Before per-workspace charges" />
+            <MetricTile label="Partner workspaces" value={compact(workspaces)} sub={`${compact(partners.filter(p => p.kind === "private").length)} Private Label partners`} />
+            <MetricTile label="Earned, last 30 days" value={money(revenue30)} sub="taken from partner balances" />
+            <MetricTile label="Need attention" value={compact(attention)} tone={attention ? "warn" : undefined} sub="balance short, paused or quality alerts" />
           </div>
 
           <Panel dense>
@@ -89,16 +91,24 @@ export default function PartnersPage() {
                   body="Create a Private Label company or a reseller, then link its workspaces." />
               : (
                 <Table head={
-                  <tr><Th>Partner</Th><Th>Kind</Th><Th>Status</Th><Th align="right">Workspaces</Th><Th align="right">Monthly fee</Th><Th align="right">Setup fee</Th></tr>
+                  <tr><Th>Partner</Th><Th>Kind</Th><Th>Status</Th><Th align="right">Live / paused</Th><Th align="right">Available</Th><Th align="right">Earned 30d</Th><Th align="right">Alerts</Th></tr>
                 }>
                   {partners.map(p => (
                     <tr key={p.id} className="hover:bg-canvas cursor-pointer" onClick={() => setOpenId(p.id)}>
-                      <Td><span className="font-bold text-ink-900">{p.name}</span><br /><span className="text-ink-400 text-[11px]">{p.slug}.thetalko.in</span></Td>
+                      <Td><span className="font-bold text-ink-900">{p.name}</span><br /><span className="text-ink-400 text-[11px]">{p.customDomain && p.domainStatus === "verified" ? p.customDomain : `${p.slug}.thetalko.in`}</span></Td>
                       <Td>{KIND_LABEL[p.kind]} <span className="text-ink-400 capitalize">· {p.tier}</span></Td>
-                      <Td><Badge tone={STATUS_TONE[p.status]}><span className="capitalize">{p.status}</span></Badge></Td>
-                      <Td align="right" nums>{compact(p.workspaceCount ?? 0)}</Td>
-                      <Td align="right" nums>{money(p.monthlyFeeCents)}</Td>
-                      <Td align="right" nums>{money(p.setupFeeCents)}</Td>
+                      <Td>
+                        <span className="flex flex-wrap gap-1">
+                          <Badge tone={STATUS_TONE[p.status]}><span className="capitalize">{p.status}</span></Badge>
+                          {p.billingState === "grace" && <Badge tone="warn">Balance short</Badge>}
+                          {p.billingState === "suspended" && <Badge tone="bad">Paused for balance</Badge>}
+                          {!p.setupPaidAt && p.setupFeeCents > 0 && p.status !== "closed" && <Badge tone="info">Setup unpaid</Badge>}
+                        </span>
+                      </Td>
+                      <Td align="right" nums>{compact(p.stats?.live ?? 0)} / {compact(p.stats?.paused ?? 0)}</Td>
+                      <Td align="right" nums className={(p.balanceCents ?? 0) - (p.depositCents ?? 0) < 0 ? "text-red-600 font-bold" : ""}>{money(Math.max(0, (p.balanceCents ?? 0) - (p.depositCents ?? 0)))}</Td>
+                      <Td align="right" nums>{money(p.stats?.revenue30dCents ?? 0)}</Td>
+                      <Td align="right" nums className={(p.stats?.alerts ?? 0) > 0 ? "text-amber-700 font-bold" : "text-ink-400"}>{p.stats?.alerts ?? 0}</Td>
                     </tr>
                   ))}
                 </Table>

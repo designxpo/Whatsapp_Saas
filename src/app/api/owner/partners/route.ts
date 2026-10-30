@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isPlatformOwner, currentUser } from "@/lib/auth";
 import { listPartners, createPartner, isPartnerSchemaMissing, PARTNER_SCHEMA_HINT, PARTNER_DEFAULTS, type PartnerInput } from "@/lib/partners";
 import { errorMessage } from "@/lib/errors";
+import { ownerPartnerStats, type PartnerStats } from "@/lib/partner-billing";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,10 @@ export const dynamic = "force-dynamic";
 // New partner form starts from. Owner only.
 export async function GET() {
   if (!(await isPlatformOwner())) return NextResponse.json({ error: "Owner only" }, { status: 403 });
-  try { return NextResponse.json({ partners: await listPartners(), defaults: PARTNER_DEFAULTS }); }
+  try {
+    const [partners, stats] = await Promise.all([listPartners(), ownerPartnerStats().catch(() => ({} as Record<string, PartnerStats>))]);
+    return NextResponse.json({ partners: partners.map(p => ({ ...p, stats: stats[p.id] ?? { live: 0, paused: 0, revenue30dCents: 0, alerts: 0 } })), defaults: PARTNER_DEFAULTS });
+  }
   catch (err) {
     if (isPartnerSchemaMissing(err)) return NextResponse.json({ partners: [], defaults: PARTNER_DEFAULTS, setupNeeded: PARTNER_SCHEMA_HINT });
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

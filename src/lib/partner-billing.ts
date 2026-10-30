@@ -30,7 +30,7 @@ import { listPlans, type Plan } from "./plans";
 import { createTalkoPaymentLink, razorpayConfigured } from "./razorpay";
 import { renderEmail } from "./emailtemplate";
 import { sendEmail } from "./email";
-import { brandFromPartner, partnerOrigin, whiteLabelConfig } from "./whitelabel";
+import { brandFromPartner, brandOrigin, whiteLabelConfig } from "./whitelabel";
 
 const DAY = 86_400_000;
 const IST = 5.5 * 3_600_000;
@@ -203,7 +203,7 @@ export async function chargeWorkspaceStart(
 
 // ── Adding money ────────────────────────────────────────────────────────────
 
-const origin = (p: Partner) => partnerOrigin(p.slug, whiteLabelConfig());
+const origin = (p: Partner) => brandOrigin(brandFromPartner(p), whiteLabelConfig());
 
 export async function createTopup(partner: Partner, amountCents: number, actor: { email: string; name?: string }): Promise<{ url?: string; error?: string }> {
   if (!razorpayConfigured()) return { error: "Online payment isn't switched on yet. Contact Talko to add money by bank transfer." };
@@ -451,4 +451,40 @@ async function notifyOwners(partner: Partner, subject: string, heading: string, 
   for (const o of owners) {
     await sendEmail({ to: o.email, subject, html, text, type: "other", fromName: "Talko partner billing" }).catch(() => undefined);
   }
+}
+
+// ── Owner control room ──────────────────────────────────────────────────────
+
+export interface PartnerStats { live: number; paused: number; revenue30dCents: number; alerts: number }
+
+/**
+ * Per partner: live and paused workspaces, what Talko took from its balance in
+ * the last 30 days, and quality alerts on its customers' WhatsApp numbers
+ * (from the owner console's fleet metrics). A few queries in total, not a set
+ * per partner. Tolerates the billing migration not being applied yet.
+ */
+export async function ownerPartnerStats(): Promise<Record<string, PartnerStats>> {
+  const out: Record<string, PartnerStats> = {};
+  const get = (id: string) => (out[id] ??= { live: 0, paused: 0, revenue30dCents: 0, alerts: 0 });
+  const { data: ts } = await db().from("tenants").select("id,partner_id,status").not("partner_id", "is", null);
+  const owner = new Map<string, string>();
+  for (const t of (ts ?? []) as { id: string; partner_id: string; status: string }[]) {
+    owner.set(t.id, t.partner_id);
+    if (t.status === "suspended" || t.status === "cancelled") get(t.partner_id).paused++; else get(t.partner_id).live++;
+  }
+  try {
+    const since = new Date(Date.now() - 30 * DAY).toISOString();
+    const { data: led } = await db().from("wa_partner_ledger").select("partner_id,amount_cents").lt("amount_cents", 0).gte("created_at", since);
+    for (const l of (led ?? []) as { partner_id: string; amount_cents: number }[]) get(l.partner_id).revenue30dCents += -Number(l.amount_cents);
+  } catch { /* billing migration not applied yet */ }
+  if (owner.size) {
+    try {
+      const { data: m } = await db().from("tenant_metrics").select("tenant_id,wa_quality,marketing_paused").in("tenant_id", [...owner.keys()]);
+      for (const r of (m ?? []) as { tenant_id: string; wa_quality: string | null; marketing_paused: boolean | null }[]) {
+        const bad = r.marketing_paused || (r.wa_quality && !/^green|high$/i.test(r.wa_quality));
+        if (bad) get(owner.get(r.tenant_id)!).alerts++;
+      }
+    } catch { /* fleet metrics not set up */ }
+  }
+  return out;
 }

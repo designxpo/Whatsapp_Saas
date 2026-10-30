@@ -26,6 +26,10 @@ export interface Brand {
   privacyUrl: string | null;
   /** Pro partners hide the "Powered by Talko" line. */
   poweredBy: boolean;
+  /** The partner's own verified portal domain (portal.theirbrand.com), if any (Phase 6). */
+  domain?: string | null;
+  /** The partner's own verified sending address (no-reply@theirbrand.com), if any (Phase 6). */
+  emailFrom?: string | null;
 }
 
 export const TALKO_BRAND: Brand = {
@@ -57,6 +61,32 @@ const RESERVED = new Set([
 ]);
 const LABEL_RE = /^[a-z0-9]([a-z0-9-]{0,38}[a-z0-9])?$/;
 
+const cleanHost = (host: string) => host.toLowerCase().trim().replace(/:\d+$/, "").replace(/\.$/, "");
+
+/**
+ * Hosts that always mean Talko: the base domain and every name under it (a
+ * partner's `<slug>.<base>` is resolved separately), Talko's configured hosts,
+ * Vercel previews and local development. Anything else that reaches this
+ * deployment can only be a domain someone added to the Vercel project: a
+ * partner's own domain (Phase 6).
+ */
+export function isTalkoHost(host: string, cfg: WhiteLabelConfig, env: Record<string, string | undefined> = process.env): boolean {
+  const h = cleanHost(host);
+  if (!h || h === cfg.baseDomain || h.endsWith(`.${cfg.baseDomain}`)) return true;
+  if (h === "localhost" || h.startsWith("127.") || h === "0.0.0.0" || h.endsWith(".vercel.app") || h.endsWith(".local")) return true;
+  const own = [env.NEXT_PUBLIC_APP_HOST, env.NEXT_PUBLIC_MARKETING_HOST, ...(env.TALKO_EXTRA_HOSTS ?? "").split(",")]
+    .map(x => (x ?? "").trim().toLowerCase()).filter(Boolean);
+  return own.some(o => h === o || h === `www.${o}`);
+}
+
+/** What a request host is for white-label: a partner's sub-address, a possible partner domain, or Talko (null). */
+export function partnerHostKind(host: string | null | undefined, cfg: WhiteLabelConfig): { slug: string } | { domain: string } | null {
+  if (!cfg.enabled || !host) return null;
+  const slug = partnerSlugFromHost(host, cfg);
+  if (slug) return { slug };
+  return isTalkoHost(host, cfg) ? null : { domain: cleanHost(host) };
+}
+
 /** The partner slug a request host points at, or null for Talko. */
 export function partnerSlugFromHost(host: string | null | undefined, cfg: WhiteLabelConfig): string | null {
   if (!cfg.enabled || !host) return null;
@@ -70,6 +100,11 @@ export function partnerSlugFromHost(host: string | null | undefined, cfg: WhiteL
 
 export function partnerOrigin(slug: string, cfg: WhiteLabelConfig): string {
   return `https://${slug}.${cfg.baseDomain}`;
+}
+
+/** Where a partner's portal lives: its own verified domain, else `<slug>.<base>`. */
+export function brandOrigin(brand: Pick<Brand, "slug" | "domain">, cfg: WhiteLabelConfig): string {
+  return brand.domain ? `https://${brand.domain}` : partnerOrigin(brand.slug ?? "", cfg);
 }
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
@@ -98,9 +133,14 @@ export function checkBrandSettings(b: BrandSettings): { ok: true; brand: BrandSe
 }
 
 /** A partner record plus its stored brand settings → the brand its portal shows. */
-export function brandFromPartner(p: { id: string; slug: string; name: string; tier: string; contactEmail?: string | null; brand?: BrandSettings | null }): Brand {
+export function brandFromPartner(p: {
+  id: string; slug: string; name: string; tier: string; contactEmail?: string | null; brand?: BrandSettings | null;
+  customDomain?: string | null; domainStatus?: string | null; emailDomain?: { name?: string; status?: string } | null;
+}): Brand {
   const b = p.brand ?? {};
   return {
+    domain: p.customDomain && p.domainStatus === "verified" ? p.customDomain.toLowerCase() : null,
+    emailFrom: p.emailDomain?.name && p.emailDomain.status === "verified" ? `no-reply@${p.emailDomain.name}` : null,
     partnerId: p.id,
     slug: p.slug,
     name: b.displayName || p.name,
