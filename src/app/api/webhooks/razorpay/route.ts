@@ -31,7 +31,16 @@ export async function POST(req: Request) {
       const pl = event.payload?.payment_link?.entity;
       const pay = event.payload?.payment?.entity;
       const linkId = pl?.id as string | undefined;
-      if (linkId) {
+      const notes = (pl?.notes ?? {}) as Record<string, string>;
+      if (linkId && notes.kind === "partner_topup" && notes.partner_id) {
+        // White-label partner adding money to its prepaid balance. Credited
+        // exactly once per link (partner-billing.ts creditTopup).
+        const { creditTopup } = await import("@/lib/partner-billing");
+        await creditTopup({
+          partnerId: notes.partner_id, linkId,
+          amountCents: typeof pl?.amount_paid === "number" ? (pl.amount_paid as number) : typeof pay?.amount === "number" ? (pay.amount as number) : 0,
+        });
+      } else if (linkId) {
         await markOrderPaid({
           paymentRef: linkId,                                             // == wa_orders.payment_ref (checkoutCart stored link.id)
           providerPaymentId: (pay?.id as string | undefined) ?? linkId,

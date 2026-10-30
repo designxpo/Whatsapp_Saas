@@ -220,6 +220,13 @@ export async function createPartnerWorkspace(partner: Partner, input: Parameters
   const c = checkNewWorkspace(input, partner.allowedPlans);
   if (!c.ok) return { error: c.error };
   const v = c.v;
+  // Prepaid (Phase 4): the setup fee is paid, and the balance covers this
+  // workspace for the rest of the billing period, before anything is created.
+  const billing = await import("./partner-billing");
+  if (partner.setupFeeCents > 0 && !partner.setupPaidAt) return { error: "Add money to pay your setup fee first (Billing tab)." };
+  if (partner.billingState === "suspended") return { error: "Your balance is short and your workspaces are paused. Add money first (Billing tab)." };
+  const pre = await billing.chargeWorkspaceStart(partner, { tenantId: "check", plan: v.plan, actor, check: true });
+  if (!pre.ok) return { error: pre.error };
   const { data: taken } = await db().from("wa_users").select("id").ilike("email", v.ownerEmail).maybeSingle();
   if (taken) return { error: "That email already has an account. Use a different email for this customer." };
 
@@ -248,8 +255,15 @@ export async function createPartnerWorkspace(partner: Partner, input: Parameters
     await db().from("tenants").delete().eq("id", tenantId).eq("partner_id", partner.id);
     throw uErr;
   }
+  const charged = await billing.chargeWorkspaceStart(partner, { tenantId, plan: v.plan, actor });
+  if (!charged.ok) {
+    // The balance changed between the check and the charge: undo, charge nothing.
+    await db().from("wa_users").delete().eq("tenant_id", tenantId);
+    await db().from("tenants").delete().eq("id", tenantId).eq("partner_id", partner.id);
+    return { error: charged.error };
+  }
   await sendWorkspaceWelcome(partner, v.ownerEmail, v.ownerName, v.company);
-  await partnerAudit(partner.id, actor, "workspace.created", tenantId, `${v.company} · ${v.plan}`);
+  await partnerAudit(partner.id, actor, "workspace.created", tenantId, `${v.company} · ${v.plan}${charged.amountCents ? ` · ₹${charged.amountCents / 100} for the rest of the month` : ""}`);
   return { tenantId };
 }
 
@@ -258,6 +272,10 @@ export async function setPartnerWorkspacePlan(partner: Partner, tenantId: string
   const ws = await getPartnerWorkspace(partner.id, tenantId);
   if (!ws) return { error: "That workspace isn't one of yours." };
   if (ws.plan === plan) return { ok: true };
+  // Moving up mid-period pays the difference for the rest of it (prepaid).
+  // Moving down takes effect from the next bill; nothing is refunded.
+  const up = await (await import("./partner-billing")).chargeWorkspaceStart(partner, { tenantId, plan, fromPlan: ws.plan, actor });
+  if (!up.ok) return { error: up.error };
   const { error } = await db().from("tenants").update({ plan }).eq("id", tenantId).eq("partner_id", partner.id);
   if (error) throw error;
   await partnerAudit(partner.id, actor, "workspace.plan", tenantId, `${ws.plan} → ${plan}`);
@@ -270,7 +288,13 @@ export async function setPartnerWorkspacePaused(partner: Partner, tenantId: stri
   if (!ws) return { error: "That workspace isn't one of yours." };
   const status = paused ? "suspended" : "active";
   if (ws.status === status) return { ok: true };
-  const { error } = await db().from("tenants").update({ status }).eq("id", tenantId).eq("partner_id", partner.id);
+  // A pause records its cause, and a partner can lift only its own (or an
+  // unpaid-customer one): never a pause for its own balance or one by Talko.
+  const { data: cur } = await db().from("tenants").select("partner_pause").eq("id", tenantId).eq("partner_id", partner.id).maybeSingle();
+  const cause = (cur as { partner_pause?: string | null } | null)?.partner_pause ?? null;
+  if (!paused && cause === "billing") return { error: "This workspace is paused because your balance is short. Add money and it resumes." };
+  if (!paused && cause === "talko") return { error: "Talko paused your partner account. Contact Talko." };
+  const { error } = await db().from("tenants").update({ status, partner_pause: paused ? "partner" : null }).eq("id", tenantId).eq("partner_id", partner.id);
   if (error) throw error;
   await partnerAudit(partner.id, actor, paused ? "workspace.paused" : "workspace.resumed", tenantId);
   return { ok: true };

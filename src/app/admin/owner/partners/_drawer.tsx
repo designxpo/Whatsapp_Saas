@@ -22,6 +22,10 @@ const ACTION_LABEL: Record<string, string> = {
   "workspace.paused": "Workspace paused", "workspace.resumed": "Workspace resumed",
   "staff.invited": "Login invited", "staff.reinvited": "Invitation resent", "staff.joined": "Login set up", "staff.removed": "Login removed",
   "prices.updated": "Prices changed",
+  "billing.setup_paid": "Setup fee paid", "billing.recovered": "Bill paid, workspaces resumed", "billing.grace": "Balance short, grace started",
+  "billing.suspended": "Workspaces paused for balance", "billing.topup_link": "Payment link created", "billing.razorpay_connected": "Own Razorpay connected",
+  "billing.customer_settings": "Customer billing settings", "billing.customer_link": "Customer payment link sent", "billing.customer_paid": "Customer paid",
+  "billing.customer_unpaid": "Customer paused for non-payment",
 };
 
 export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
@@ -105,6 +109,8 @@ export function PartnerDrawer({ id, onClose, onChanged }: { id: string; onClose:
             </div>
             <p className="text-[11px] text-ink-600 mt-2">Pausing or closing records the decision. From Phase 4, a paused partner&apos;s workspaces pause too.</p>
           </Panel>
+
+          <BillingPanel partnerId={p.id} onChanged={async () => { await load(); onChanged(); }} />
 
           <AccountsPanel partnerId={p.id} slug={p.slug} />
 
@@ -314,6 +320,74 @@ function AccountsPanel({ partnerId, slug }: { partnerId: string; slug: string })
               className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Sending…" : "Invite an owner"}</button>
             {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
           </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// Prepaid balance (white-label Phase 4). A credit here, e.g. a bank transfer
+// you received, pays the setup fee and any overdue month, then resumes.
+type LedgerLine = { kind: string; amountCents: number; balanceAfterCents: number; description: string; at: string };
+type BillingInfo = { balanceCents: number; depositCents: number; availableCents: number; state: string; graceUntil: string | null; setupPaidAt: string | null; setupFeeCents: number; billingDay: number; ledger: LedgerLine[] };
+
+function BillingPanel({ partnerId, onChanged }: { partnerId: string; onChanged: () => Promise<void> }) {
+  const [b, setB] = useState<BillingInfo | null>(null);
+  const [setupNeeded, setSetupNeeded] = useState<string | null>(null);
+  const [amount, setAmount] = useState("");
+  const [why, setWhy] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(async () => {
+    const r = await fetch(`/api/owner/partners/${partnerId}/billing`);
+    const j = await r.json().catch(() => ({}));
+    if (j.setupNeeded) { setSetupNeeded(j.error); return; }
+    if (r.ok) setB(j);
+  }, [partnerId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function adjust(sign: 1 | -1) {
+    setBusy(true); setNote(null);
+    const cents = Math.round((Number(amount.replace(/[,\s₹]/g, "")) || 0) * 100) * sign;
+    const r = await fetch(`/api/owner/partners/${partnerId}/billing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amountCents: cents, description: why }) });
+    const j = await r.json().catch(() => ({}));
+    setBusy(false);
+    if (!r.ok || j.error) { setNote({ ok: false, text: j.error || `Failed (HTTP ${r.status})` }); return; }
+    setNote({ ok: true, text: sign > 0 ? "Credited." : "Debited." }); setAmount(""); setWhy(""); await load(); await onChanged();
+  }
+
+  const inp = "w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900";
+  const tone = b?.state === "ok" ? "ok" : b?.state === "grace" ? "warn" : "bad";
+  return (
+    <Panel title="Prepaid balance" action={b && <Badge tone={tone}><span className="capitalize">{b.state === "ok" ? "In good standing" : b.state === "grace" ? "Short, in grace" : "Paused for balance"}</span></Badge>}>
+      {setupNeeded ? <p className="text-[12px] text-amber-700">{setupNeeded}</p> : !b ? <Spinner /> : (
+        <div className="space-y-3">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
+            <Row k="Balance" v={money(b.balanceCents)} />
+            <Row k="Available (after deposit)" v={money(b.availableCents)} />
+            <Row k="Setup fee" v={b.setupPaidAt ? `Paid ${ago(b.setupPaidAt)}` : `${money(b.setupFeeCents)} due`} />
+            <Row k="Billing day" v={`${b.billingDay} of each month`} />
+            {b.graceUntil && b.state === "grace" && <Row k="Grace ends" v={new Date(b.graceUntil).toLocaleDateString("en-IN")} />}
+          </dl>
+          <div className="grid grid-cols-5 gap-2">
+            <input className={`${inp} col-span-2`} inputMode="numeric" placeholder="₹ amount" value={amount} onChange={e => setAmount(e.target.value)} />
+            <input className={`${inp} col-span-3`} placeholder="Reason, e.g. NEFT received 30 Oct" value={why} onChange={e => setWhy(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => adjust(1)} disabled={busy || !amount || !why} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">Credit</button>
+            <button onClick={() => adjust(-1)} disabled={busy || !amount || !why} className="px-3 py-1.5 rounded-control border border-line bg-white text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60">Debit</button>
+            {note && <p className={`text-[12px] ${note.ok ? "text-emerald-700" : "text-red-600"}`}>{note.text}</p>}
+          </div>
+          {!!b.ledger.length && (
+            <ul className="space-y-1 max-h-48 overflow-y-auto border-t border-line pt-2">
+              {b.ledger.map((l, i) => (
+                <li key={i} className="flex justify-between gap-3 text-[12px]">
+                  <span className="truncate text-ink-700">{l.description || l.kind} <span className="text-ink-400">· {ago(l.at)}</span></span>
+                  <span className={`tabular-nums shrink-0 ${l.amountCents >= 0 ? "text-emerald-700 font-bold" : "text-ink-900"}`}>{l.amountCents >= 0 ? "+" : "−"}{money(Math.abs(l.amountCents))}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
     </Panel>

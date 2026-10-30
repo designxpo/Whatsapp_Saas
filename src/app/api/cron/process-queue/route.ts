@@ -1,4 +1,5 @@
 import { runStagePoll, STAGE_POLL_KEY } from "@/lib/stagepoll";
+import { drainPartnerBilling, drainCustomerBilling } from "@/lib/partner-billing";
 import { tenantIdsWithSetting } from "@/lib/store";
 import { accountCanSend as canPollStage } from "@/lib/feature-guard";
 export const maxDuration = 300;
@@ -45,7 +46,7 @@ const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
-  "ytcomments", "googlereviews", "kbsync", "igtokens",
+  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -89,7 +90,10 @@ export async function POST(req: Request) {
     const googleReviews = await stage("googlereviews", 0, () => drainGoogleReviews(), pollStart, POLL_BUDGET);
     const kbSync = await stage("kbsync", null, () => refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }), pollStart, POLL_BUDGET);
     const igTokens = await stage("igtokens", null, () => sweepIgTokensIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, tookMs: Date.now() - pollStart }));
+    // White-label billing: partners' prepaid monthly charges, and the payment
+    // links they send their own customers. Returns at once while white-label is off.
+    const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling() }), pollStart, POLL_BUDGET);
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 

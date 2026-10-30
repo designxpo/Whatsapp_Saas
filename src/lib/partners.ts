@@ -37,7 +37,16 @@ export interface Partner {
   brand: BrandSettings;
   /** Reseller's own monthly price per plan key, in rupee cents (Phase 3). */
   resalePrices: Record<string, number>;
+  // Phase 4 billing. The partner's Razorpay secrets are never mapped here, so
+  // they can't reach an API response; partner-billing.ts reads them directly.
+  balanceCents: number; billingDay: number; billingState: "ok" | "grace" | "suspended";
+  graceUntil: string | null; setupPaidAt: string | null;
+  razorpay: { keyId: string | null; connected: boolean };
+  customerBilling: CustomerBilling;
 }
+
+export interface CustomerBilling { autoLinks: boolean; graceDays: number; autoPause: boolean }
+export const CUSTOMER_BILLING_DEFAULTS: CustomerBilling = { autoLinks: false, graceDays: 7, autoPause: false };
 
 export interface PartnerWorkspace {
   id: string; name: string; company: string | null; plan: string;
@@ -217,6 +226,14 @@ function mapPartner(r: Record<string, unknown>): Partner {
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
     brand: (r.brand as BrandSettings | null) ?? {},
     resalePrices: (r.resale_prices as Record<string, number> | null) ?? {},
+    balanceCents: Number(r.balance_cents ?? 0), billingDay: Number(r.billing_day ?? 1),
+    billingState: ((r.billing_state as string) ?? "ok") as Partner["billingState"],
+    graceUntil: (r.grace_until as string | null) ?? null, setupPaidAt: (r.setup_paid_at as string | null) ?? null,
+    razorpay: {
+      keyId: ((r.razorpay as { keyId?: string } | null)?.keyId) ?? null,
+      connected: !!((r.razorpay as { secretEnc?: string } | null)?.secretEnc),
+    },
+    customerBilling: { ...CUSTOMER_BILLING_DEFAULTS, ...((r.customer_billing as Partial<CustomerBilling> | null) ?? {}) },
   };
 }
 
@@ -286,7 +303,15 @@ export async function setPartnerStatus(id: string, status: PartnerStatus, actor:
   }
   const { data, error } = await db().from("wa_partners").update({ status, updated_at: new Date().toISOString() }).eq("id", id).select().single();
   if (error) throw error;
-  await partnerAudit(id, actor, "partner.status", null, `${existing.status} → ${status}`);
+  // Pausing a partner pauses all its customers' workspaces (cause 'talko');
+  // un-pausing lifts exactly those, never a pause the partner or its balance put on.
+  let detail = `${existing.status} → ${status}`;
+  try {
+    const billing = await import("./partner-billing");
+    if (status === "paused") detail += ` · ${await billing.pausePartnerWorkspaces(id, "talko")} workspaces paused`;
+    else if (existing.status === "paused") detail += ` · ${await billing.resumePartnerWorkspaces(id, "talko")} workspaces resumed`;
+  } catch (e) { detail += ` · workspaces unchanged (${errorMessage(e)})`; }
+  await partnerAudit(id, actor, "partner.status", null, detail);
   return { partner: mapPartner(data as Record<string, unknown>) };
 }
 

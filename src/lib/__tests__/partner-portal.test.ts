@@ -91,7 +91,7 @@ describe("only its own workspaces", () => {
     rows.tenants = { id: "t1", name: "Smile", company: "Smile", plan: "growth", status: "active", created_at: "2026-10-30" };
     expect((await setPartnerWorkspacePaused(PARTNER, "t1", true, "a@b.co")).ok).toBe(true);
     const up = calls.find(c => c.table === "tenants" && c.op === "update")!;
-    expect(up.payload).toEqual({ status: "suspended" });
+    expect(up.payload).toEqual({ status: "suspended", partner_pause: "partner" });   // a pause records its cause (Phase 4)
     expect(up.filters).toEqual(expect.arrayContaining([["eq", "id", "t1"], ["eq", "partner_id", "p1"]]));
   });
   it("refuses another partner's workspace without writing", async () => {

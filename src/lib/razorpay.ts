@@ -182,3 +182,23 @@ export function verifyRazorpayWebhook(rawBody: string, signature: string, secret
   const expBuf = Buffer.from(expected);
   return sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
 }
+
+// A one-off hosted payment link on Talko's own account (white-label partners
+// adding money to their prepaid balance). `notes` come back on the
+// payment_link.paid webhook, which is how /api/webhooks/razorpay knows what
+// the payment was for.
+export async function createTalkoPaymentLink(p: {
+  amountCents: number; description: string; notes: Record<string, string>;
+  callbackUrl?: string; customer?: { name?: string; email?: string; contact?: string };
+}): Promise<{ id: string; url: string }> {
+  const d = await rzp<{ id: string; short_url: string }>("/payment_links", {
+    method: "POST",
+    body: JSON.stringify({
+      amount: Math.round(p.amountCents), currency: "INR", accept_partial: false,
+      description: p.description.slice(0, 2048), notes: p.notes, reminder_enable: true,
+      ...(p.customer ? { customer: p.customer, notify: { email: !!p.customer.email, sms: false } } : {}),
+      ...(p.callbackUrl ? { callback_url: p.callbackUrl, callback_method: "get" } : {}),
+    }),
+  });
+  return { id: d.id, url: d.short_url };
+}

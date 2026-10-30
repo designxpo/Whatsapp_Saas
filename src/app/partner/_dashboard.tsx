@@ -5,7 +5,7 @@
 // the API answers only for this partner's workspaces and accounts.
 
 import { useCallback, useEffect, useState } from "react";
-import { LogOut, Plus, Users, Building2, Palette, IndianRupee, LayoutDashboard, RefreshCw } from "lucide-react";
+import { LogOut, Plus, Users, Building2, Palette, IndianRupee, LayoutDashboard, RefreshCw, Wallet, Copy } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { useBrand } from "@/components/BrandContext";
 import { Notice, useNotice } from "@/components/Notice";
@@ -14,12 +14,16 @@ import { Panel, Table, Th, Td, Badge, MetricTile, Drawer, EmptyState, Spinner, C
 type Plan = { key: string; name: string; listCents: number; limits: Record<string, number> };
 type Me = {
   user: { id: string; email: string; name: string; role: "owner" | "staff" };
-  partner: { id: string; name: string; slug: string; kind: "private" | "reseller"; tier: string; status: string; monthlyFeeCents: number; wholesalePct: number | null; brand: Record<string, string | null>; resalePrices: Record<string, number> };
+  partner: {
+    id: string; name: string; slug: string; kind: "private" | "reseller"; tier: string; status: string; monthlyFeeCents: number; wholesalePct: number | null;
+    brand: Record<string, string | null>; resalePrices: Record<string, number>;
+    billingState: "ok" | "grace" | "suspended"; graceUntil: string | null; setupPaid: boolean; availableCents: number;
+  };
   plans: Plan[];
   estimate: { feeCents: number; workspacesCents: number; totalCents: number; live: number; sharePct: number | null };
 };
 type Workspace = { id: string; name: string; company: string | null; plan: string; status: string; paymentStatus: string | null; createdAt: string };
-type Tab = "overview" | "customers" | "team" | "brand" | "prices";
+type Tab = "overview" | "customers" | "billing" | "team" | "brand" | "prices";
 
 const inp = "w-full border border-line rounded-control px-3 py-2 text-sm bg-white text-ink-900";
 const btn = "px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60";
@@ -55,6 +59,7 @@ export function PartnerDashboard() {
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] = [
     { key: "overview", label: "Overview", icon: <LayoutDashboard className="w-4 h-4" />, show: true },
     { key: "customers", label: me?.partner.kind === "private" ? "Workspaces" : "Customers", icon: <Building2 className="w-4 h-4" />, show: true },
+    { key: "billing", label: "Billing", icon: <Wallet className="w-4 h-4" />, show: true },
     { key: "team", label: "Team", icon: <Users className="w-4 h-4" />, show: true },
     { key: "brand", label: "Brand", icon: <Palette className="w-4 h-4" />, show: true },
     { key: "prices", label: "Prices", icon: <IndianRupee className="w-4 h-4" />, show: me?.partner.kind === "reseller" },
@@ -88,8 +93,12 @@ export function PartnerDashboard() {
         {!me ? <div className="flex justify-center py-16"><Spinner /></div> : (
           <>
             {me.partner.status === "paused" && <Notice variant="banner" notice={{ tone: "warn", text: "Your partner account is paused. Your customers' workspaces keep their data. Contact Talko to resume." }} />}
+            {me.partner.billingState === "grace" && <Notice variant="banner" notice={{ tone: "warn", text: `Your balance doesn't cover this month's bill. Add money${me.partner.graceUntil ? ` by ${new Date(me.partner.graceUntil).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}` : ""} or your customers' workspaces pause.` }} />}
+            {me.partner.billingState === "suspended" && <Notice variant="banner" notice={{ tone: "error", text: "Your customers' workspaces are paused because your balance is short. Add money on the Billing tab and they resume straight away." }} />}
+            {!me.partner.setupPaid && <Notice variant="banner" notice={{ tone: "info", text: "Add money on the Billing tab to pay your setup fee. You can add customers once it's paid." }} />}
             {tab === "overview" && <Overview me={me} goTo={setTab} />}
             {tab === "customers" && <Customers me={me} onChanged={loadMe} />}
+            {tab === "billing" && <Billing me={me} owner={owner} onChanged={loadMe} />}
             {tab === "team" && <Team me={me} owner={owner} />}
             {tab === "brand" && <BrandTab me={me} owner={owner} onSaved={loadMe} />}
             {tab === "prices" && me.partner.kind === "reseller" && <Prices me={me} owner={owner} onSaved={loadMe} />}
@@ -276,6 +285,7 @@ function WorkspaceDrawer({ me, id, onClose, onChanged }: { me: Me; id: string; o
               </ul>
             )}
           </Panel>
+          {me.partner.kind === "reseller" && <CustomerPayment id={id} />}
           <Panel title={paused ? "Paused" : "Pause"}>
             <p className="text-[13px] text-ink-600 mb-3">{paused
               ? "Sending and automations are stopped. Its users can still sign in and see their data."
@@ -466,5 +476,171 @@ function Prices({ me, owner, onSaved }: { me: Me; owner: boolean; onSaved: () =>
       </div>
       <p className="text-[12px] text-ink-600">Prices are per workspace per month, before GST. You pay Talko {share}% of list price per live workspace{share < (me.partner.wholesalePct ?? 50) ? ", your volume rate" : ""}.</p>
     </div>
+  );
+}
+
+// ── Customer payment (resellers, through their own Razorpay) ────────────────
+
+function CustomerPayment({ id }: { id: string }) {
+  const [busy, setBusy] = useState(false);
+  const [link, setLink] = useState<{ url?: string; status?: string } | null>(null);
+  const [note, say] = useNotice();
+  async function send() {
+    setBusy(true); say(null);
+    const r = await call(`/api/partner/workspaces/${id}/invoice`, "POST", {});
+    setBusy(false);
+    if (!r.ok) { say(String(r.data.error)); return; }
+    setLink(r.data as { url?: string; status?: string });
+  }
+  return (
+    <Panel title="This month's payment">
+      <p className="text-[13px] text-ink-600 mb-3">Sends your customer a Razorpay payment link at your price for their plan, from your own Razorpay account.</p>
+      {link?.url ? (
+        <div className="space-y-2">
+          <p className="text-[13px]">{link.status === "paid" ? <b className="text-emerald-700">Paid</b> : "Sent. Your customer also got it by email."}</p>
+          <div className="flex items-center gap-2"><input readOnly className={inp} value={link.url} /><button onClick={() => navigator.clipboard?.writeText(link.url!)} className="p-2 rounded-control border border-line hover:bg-canvas" aria-label="Copy link"><Copy className="w-4 h-4" /></button></div>
+        </div>
+      ) : <button onClick={send} disabled={busy} className={btn}>{busy ? "Creating…" : "Send payment link"}</button>}
+      <div className="mt-2"><Notice notice={note} /></div>
+    </Panel>
+  );
+}
+
+// ── Billing ─────────────────────────────────────────────────────────────────
+
+type LedgerRow = { kind: string; amountCents: number; balanceAfterCents: number; description: string; at: string };
+type Invoice = { id: string; tenantId: string; period: string; amountCents: number; status: string; url: string | null; paidAt: string | null };
+type BillingData = {
+  balanceCents: number; depositCents: number; availableCents: number; setupFeeCents: number; setupPaid: boolean;
+  state: "ok" | "grace" | "suspended"; graceUntil: string | null; billingDay: number; period: string; nextBillAt: string;
+  estimateCents: number; minTopupCents: number; ledger: LedgerRow[]; invoices: Invoice[];
+  razorpay: { keyId: string | null; connected: boolean }; customerBilling: { autoLinks: boolean; graceDays: number; autoPause: boolean };
+  webhookUrl: string;
+};
+
+function Billing({ me, owner, onChanged }: { me: Me; owner: boolean; onChanged: () => void }) {
+  const [b, setB] = useState<BillingData | null>(null);
+  const [amount, setAmount] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, say] = useNotice();
+  const load = useCallback(async () => {
+    const r = await call("/api/partner/billing");
+    if (!r.ok) { say(String(r.data.error)); return; }
+    const d = r.data as unknown as BillingData;
+    setB(d);
+    setAmount(a => a || String(Math.max(d.minTopupCents, (d.setupPaid ? 0 : d.setupFeeCents) + d.estimateCents - Math.max(0, d.availableCents)) / 100));
+  }, [say]);
+  useEffect(() => { load(); }, [load]);
+  // Back from Razorpay: the webhook credits the balance within a few seconds.
+  useEffect(() => {
+    if (typeof window === "undefined" || !new URLSearchParams(window.location.search).has("paid")) return;
+    say("Payment received. Your balance updates within a minute.", "ok");
+    const t = setInterval(() => { load(); onChanged(); }, 5000);
+    const stop = setTimeout(() => clearInterval(t), 60_000);
+    return () => { clearInterval(t); clearTimeout(stop); };
+  }, [load, onChanged, say]);
+
+  async function topup() {
+    setBusy("topup"); say(null);
+    const r = await call("/api/partner/billing/topup", "POST", { amountCents: Math.round((Number(amount.replace(/[,\s₹]/g, "")) || 0) * 100) });
+    setBusy(null);
+    if (!r.ok) { say(String(r.data.error)); return; }
+    window.location.href = String(r.data.url);
+  }
+
+  if (!b) return <div className="flex justify-center py-16"><Spinner /></div>;
+  const kind = (k: string) => ({ topup: "Money added", setup: "Setup fee", monthly: "Monthly bill", prorata: "Part month", adjust: "Adjustment", refund: "Refund" } as Record<string, string>)[k] ?? k;
+  return (
+    <div className="space-y-5">
+      <Notice notice={note} variant="banner" onClose={() => say(null)} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <MetricTile label="Available to spend" value={money(Math.max(0, b.availableCents))} tone={b.availableCents < b.estimateCents ? "warn" : undefined} />
+        <MetricTile label="Deposit held" value={money(b.depositCents)} sub="refundable when you leave" />
+        <MetricTile label="Next bill" value={money(b.estimateCents)} sub={`on ${new Date(b.nextBillAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`} />
+        <MetricTile label="Setup fee" value={b.setupPaid ? "Paid" : money(b.setupFeeCents)} sub={b.setupPaid ? undefined : "taken from your first payment"} />
+      </div>
+
+      <Panel title="Add money">
+        {owner ? (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ink-600">₹</span>
+              <input className={`${inp} w-40`} inputMode="numeric" value={amount} onChange={e => setAmount(e.target.value)} />
+              <button onClick={topup} disabled={busy === "topup"} className={btn}>{busy === "topup" ? "Opening Razorpay…" : "Pay with Razorpay"}</button>
+            </div>
+            <p className="text-[12px] text-ink-600">Prepaid: bills are taken from this balance, so you never owe anything. If it runs short, your customers&apos; workspaces pause after a grace period and resume as soon as you add money.</p>
+          </div>
+        ) : <p className="text-[13px] text-ink-600">Only an owner can add money.</p>}
+      </Panel>
+
+      <Panel title="History" dense>
+        {!b.ledger.length ? <p className="p-4 text-[13px] text-ink-600">Nothing yet.</p> : (
+          <Table head={<tr><Th>Date</Th><Th>What</Th><Th align="right">Amount</Th><Th align="right">Balance</Th></tr>}>
+            {b.ledger.map((l, i) => (
+              <tr key={i}>
+                <Td>{new Date(l.at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</Td>
+                <Td><b className="text-ink-900">{kind(l.kind)}</b> <span className="text-ink-600">{l.description}</span></Td>
+                <Td align="right" nums className={l.amountCents >= 0 ? "text-emerald-700 font-bold" : ""}>{l.amountCents >= 0 ? "+" : "−"}{money(Math.abs(l.amountCents))}</Td>
+                <Td align="right" nums>{money(l.balanceAfterCents)}</Td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </Panel>
+
+      {me.partner.kind === "reseller" && <CustomerBillingSettings b={b} owner={owner} onSaved={load} />}
+    </div>
+  );
+}
+
+function CustomerBillingSettings({ b, owner, onSaved }: { b: BillingData; owner: boolean; onSaved: () => void }) {
+  const [keys, setKeys] = useState({ keyId: b.razorpay.keyId ?? "", keySecret: "", webhookSecret: "" });
+  const [cb, setCb] = useState(b.customerBilling);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, say] = useNotice();
+  async function connect() {
+    setBusy("keys"); say(null);
+    const r = await call("/api/partner/billing/razorpay", "PUT", keys);
+    setBusy(null);
+    if (!r.ok) { say(String(r.data.error)); return; }
+    say("Razorpay connected.", "ok"); setKeys({ ...keys, keySecret: "", webhookSecret: "" }); onSaved();
+  }
+  async function saveSettings() {
+    setBusy("settings"); say(null);
+    const r = await call("/api/partner/billing/settings", "PATCH", cb);
+    setBusy(null);
+    say(r.ok ? "Saved." : String(r.data.error), r.ok ? "ok" : "error");
+    if (r.ok) onSaved();
+  }
+  const paid = b.invoices.filter(i => i.status === "paid").length;
+  return (
+    <Panel title="Billing your customers (your own Razorpay)">
+      <div className="space-y-4">
+        <Notice notice={note} />
+        <div className="space-y-2">
+          <p className="text-[13px] text-ink-600">{b.razorpay.connected ? <>Connected: <b>{b.razorpay.keyId}</b>. Your customers pay you directly; Talko never touches that money.</> : "Connect your Razorpay account to send your customers monthly payment links."}</p>
+          {owner && (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input className={inp} placeholder="Key ID (rzp_live_…)" value={keys.keyId} onChange={e => setKeys({ ...keys, keyId: e.target.value })} />
+                <input className={inp} type="password" placeholder="Key Secret" value={keys.keySecret} onChange={e => setKeys({ ...keys, keySecret: e.target.value })} />
+                <input className={inp} type="password" placeholder="Webhook secret (you choose)" value={keys.webhookSecret} onChange={e => setKeys({ ...keys, webhookSecret: e.target.value })} />
+              </div>
+              <p className="text-[12px] text-ink-600">In Razorpay → Settings → Webhooks, add <code className="bg-canvas px-1 rounded">{b.webhookUrl}</code> with the event <b>payment_link.paid</b> and the same webhook secret.</p>
+              <button onClick={connect} disabled={busy === "keys"} className={btn}>{busy === "keys" ? "Checking…" : b.razorpay.connected ? "Update keys" : "Connect Razorpay"}</button>
+            </>
+          )}
+        </div>
+        {b.razorpay.connected && (
+          <div className="space-y-2 border-t border-line pt-3">
+            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" disabled={!owner} checked={cb.autoLinks} onChange={e => setCb({ ...cb, autoLinks: e.target.checked })} /> Send every live customer a payment link at the start of each month</label>
+            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" disabled={!owner} checked={cb.autoPause} onChange={e => setCb({ ...cb, autoPause: e.target.checked })} /> Pause a customer whose link is unpaid after
+              <input className={`${inp} w-16 py-1`} inputMode="numeric" disabled={!owner} value={cb.graceDays} onChange={e => setCb({ ...cb, graceDays: Number(e.target.value) || 0 })} /> days</label>
+            {owner && <button onClick={saveSettings} disabled={busy === "settings"} className={btn}>{busy === "settings" ? "Saving…" : "Save"}</button>}
+            <p className="text-[12px] text-ink-600">This month: {b.invoices.filter(i => i.period === b.invoices[0]?.period).length} links sent, {paid} paid in total.</p>
+          </div>
+        )}
+      </div>
+    </Panel>
   );
 }
