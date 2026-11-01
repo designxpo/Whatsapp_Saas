@@ -63,17 +63,61 @@ export async function recordCommentReply(r: {
   }
 }
 
-export async function listCommentReplies(tenantId: string, q: { platform: ReplyPlatform; channelId?: string | null; before?: string | null; limit?: number }): Promise<{ replies: CommentReply[]; setupNeeded?: string }> {
-  const limit = Math.min(Math.max(q.limit ?? 30, 1), 100);
-  let query = tdb(tenantId).from(TABLE).select("*").eq("platform", q.platform).order("created_at", { ascending: false }).limit(limit);
+/** A past reply found on the platform (comment-history.ts), with its own posting time. */
+export interface ImportedReply {
+  platform: ReplyPlatform; parentCommentId: string; commentText: string | null; commentAuthor: string | null;
+  postId: string | null; replyId: string; replyText: string; source: ReplySource; createdAt: string;
+}
+
+/** Add past replies; ones already in the log are left as they are. Returns how many were new. */
+export async function importCommentReplies(tenantId: string, channelId: string, rows: ImportedReply[]): Promise<number> {
+  const clean = rows.filter(r => r.replyId && r.parentCommentId && r.replyText?.trim() && !Number.isNaN(Date.parse(r.createdAt)));
+  if (!clean.length) return 0;
+  const { data, error } = await tdb(tenantId).from(TABLE).upsert(clean.map(r => ({
+    channel_id: channelId, platform: r.platform, parent_comment_id: r.parentCommentId,
+    comment_text: r.commentText?.slice(0, 4000) ?? null, comment_author: r.commentAuthor?.slice(0, 200) || null,
+    post_id: r.postId, reply_id: r.replyId, reply_text: r.replyText.slice(0, 9000), source: r.source, created_at: r.createdAt,
+  })), { onConflict: "platform,reply_id", ignoreDuplicates: true }).select("id");
+  if (error) throw new Error(error.message);
+  return (data ?? []).length;
+}
+
+export const RANGES = [7, 30, 90, 365] as const;
+const PAGE = 25;
+
+/** "<created_at>|<id>": where the next page starts. Ties on time are broken by id, so nothing is skipped. */
+function parseCursor(c: string | null | undefined): { at: string; id: string } | null {
+  const [at, id] = (c ?? "").split("|");
+  return at && id && !Number.isNaN(Date.parse(at)) && /^[0-9a-f-]{36}$/i.test(id) ? { at, id } : null;
+}
+
+/**
+ * One page (25) of a platform's replies within the last `days`, newest first.
+ * Keyset paging on (created_at, id) — every page costs the same however deep —
+ * and the total is counted only for the first page.
+ */
+export async function listCommentReplies(tenantId: string, q: { platform: ReplyPlatform; channelId?: string | null; days?: number | null; cursor?: string | null }): Promise<{ replies: CommentReply[]; next: string | null; total?: number; setupNeeded?: string }> {
+  const days = RANGES.includes(q.days as never) ? q.days! : 30;
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const at = parseCursor(q.cursor);
+  let query = tdb(tenantId).from(TABLE).select("*").eq("platform", q.platform).gte("created_at", since)
+    .order("created_at", { ascending: false }).order("id", { ascending: false }).limit(PAGE + 1);
   if (q.channelId) query = query.eq("channel_id", q.channelId);
-  if (q.before) query = query.lt("created_at", q.before);
+  if (at) query = query.or(`created_at.lt."${at.at}",and(created_at.eq."${at.at}",id.lt.${at.id})`);
   const { data, error } = await query;
   if (error) {
-    if (missingTable(error.message)) return { replies: [], setupNeeded: SETUP_HINT };
+    if (missingTable(error.message)) return { replies: [], next: null, setupNeeded: SETUP_HINT };
     throw new Error(error.message);
   }
-  return { replies: ((data ?? []) as unknown as Record<string, unknown>[]).map(map) };
+  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map(map);
+  const replies = rows.slice(0, PAGE);
+  const last = replies[replies.length - 1];
+  const next = rows.length > PAGE && last ? `${last.createdAt}|${last.id}` : null;
+  if (at) return { replies, next };
+  let count = tdb(tenantId).from(TABLE).select("id", { count: "exact", head: true }).eq("platform", q.platform).gte("created_at", since);
+  if (q.channelId) count = count.eq("channel_id", q.channelId);
+  const { count: total } = await count;
+  return { replies, next, total: total ?? replies.length };
 }
 
 async function load(tenantId: string, id: string): Promise<{ row?: CommentReply; channel?: Channel; error?: string }> {

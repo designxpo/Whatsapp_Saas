@@ -287,6 +287,46 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
   } catch { return []; }
 }
 
+// ── Reading past comments (for importing earlier replies) ──────────────────
+export interface IgCommentNode { id: string; text: string; username: string; fromId: string | null; timestamp: string; replies: IgCommentNode[] }
+
+/** The account's own @username, to recognise its comments among others'. */
+export async function getIgUsername(creds: IgCreds): Promise<string | null> {
+  try {
+    const r = await fetch(`${GRAPH}/me?fields=username`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    return r.ok && j.username ? String(j.username) : null;
+  } catch { return null; }
+}
+
+/** One page of the account's posts, newest first. */
+export async function listIgMediaPage(creds: IgCreds, after: string | null): Promise<{ media: { id: string; timestamp: string }[]; next: string | null; error?: string }> {
+  try {
+    const q = new URLSearchParams({ fields: "id,timestamp", limit: "25", ...(after ? { after } : {}) });
+    const r = await fetch(`${GRAPH}/${creds.igUserId}/media?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { media: [], next: null, error: j.error?.message || `HTTP ${r.status}` };
+    const media = ((j.data ?? []) as Record<string, unknown>[]).map(m => ({ id: String(m.id), timestamp: String(m.timestamp ?? "") }));
+    return { media, next: j.paging?.next ? (j.paging?.cursors?.after ?? null) : null };
+  } catch (e) { return { media: [], next: null, error: e instanceof Error ? e.message : "Instagram error" }; }
+}
+
+/** One page of a post's comments, each with its replies. */
+export async function listIgCommentsPage(creds: IgCreds, mediaId: string, after: string | null): Promise<{ comments: IgCommentNode[]; next: string | null; error?: string }> {
+  const node = (c: Record<string, unknown>): IgCommentNode => ({
+    id: String(c.id ?? ""), text: String(c.text ?? ""), username: String(c.username ?? (c.from as { username?: string } | undefined)?.username ?? ""),
+    fromId: ((c.from as { id?: string } | undefined)?.id) ?? null, timestamp: String(c.timestamp ?? ""),
+    replies: (((c.replies as { data?: Record<string, unknown>[] } | undefined)?.data) ?? []).map(node),
+  });
+  try {
+    const q = new URLSearchParams({ fields: "id,text,username,timestamp,from,replies{id,text,username,timestamp,from}", limit: "50", ...(after ? { after } : {}) });
+    const r = await fetch(`${GRAPH}/${mediaId}/comments?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { comments: [], next: null, error: j.error?.message || `HTTP ${r.status}` };
+    return { comments: ((j.data ?? []) as Record<string, unknown>[]).map(node), next: j.paging?.next ? (j.paging?.cursors?.after ?? null) : null };
+  } catch (e) { return { comments: [], next: null, error: e instanceof Error ? e.message : "Instagram error" }; }
+}
+
 // ── Remove a comment we posted ──────────────────────────────────────────────
 // Instagram has no way to edit a comment (not even in the app), so correcting a
 // reply means posting the right one and deleting this one.

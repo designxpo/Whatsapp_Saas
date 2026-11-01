@@ -278,6 +278,37 @@ export async function getThreads(creds: YtCreds, ids: string[], fullFor: (t: YtT
   return out;
 }
 
+/**
+ * One page of the channel's comment threads, newest first, with their replies —
+ * for importing past replies (comment-history.ts). 1 unit per page of 100,
+ * plus 1 per thread whose full reply list is fetched (capped by `fullBudget`).
+ */
+export async function listThreadsPage(creds: YtCreds, pageToken: string | null, fullBudget = 5): Promise<{ threads: YtThread[]; next: string | null; calls: number; error?: string }> {
+  const token = await accessTokenFor(creds);
+  if (!token) return { threads: [], next: null, calls: 0, error: "YouTube is not connected" };
+  const params: Record<string, string> = { part: "snippet,replies", allThreadsRelatedToChannelId: creds.channelId, order: "time", maxResults: "100", textFormat: "plainText" };
+  if (pageToken) params.pageToken = pageToken;
+  const { data, error } = await apiGetDetailed(token, "commentThreads", params);
+  if (!data) return { threads: [], next: null, calls: 1, error: error ?? "YouTube didn't answer" };
+  let calls = 1;
+  const threads: YtThread[] = [];
+  for (const it of (data.items as Record<string, unknown>[] | undefined) ?? []) {
+    const sn = (it.snippet as Record<string, unknown>) ?? {};
+    const top = toReply((sn.topLevelComment as Record<string, unknown>) ?? {});
+    const inline = (((it.replies as Record<string, unknown> | undefined)?.comments as Record<string, unknown>[] | undefined) ?? []).map(toReply);
+    const t: YtThread = { id: (it.id as string) ?? top.id, videoId: (sn.videoId as string) ?? "", channelId: (sn.channelId as string) ?? "", top, replies: inline, totalReplies: Number(sn.totalReplyCount ?? inline.length) };
+    if (t.totalReplies > inline.length && fullBudget > 0) {
+      fullBudget--; calls++;
+      const full = await apiGet(token, "comments", { part: "snippet", parentId: t.id, maxResults: "100", textFormat: "plainText" });
+      const all = ((full?.items as Record<string, unknown>[] | undefined) ?? []).map(toReply);
+      if (all.length) t.replies = all;
+    }
+    t.replies.sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt));
+    threads.push(t);
+  }
+  return { threads, next: (data.nextPageToken as string | undefined) ?? null, calls };
+}
+
 /** The channel's @handle ("@spiritualtalksofficiall"), or null. channels.list = 1 unit. */
 export async function getChannelHandle(creds: YtCreds): Promise<string | null> {
   const token = await accessTokenFor(creds);

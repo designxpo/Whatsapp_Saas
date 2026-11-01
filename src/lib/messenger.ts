@@ -340,6 +340,37 @@ export async function fetchFbPosts(creds: FbCreds, limit = 25): Promise<FbMedia[
   }
 }
 
+// ── Reading past comments (for importing earlier replies) ──────────────────
+export interface FbCommentNode { id: string; text: string; fromName: string; fromId: string | null; createdTime: string; replies: FbCommentNode[] }
+
+/** One page of the Page's posts, newest first. */
+export async function listFbPostsPage(creds: FbCreds, after: string | null): Promise<{ posts: { id: string; createdTime: string }[]; next: string | null; error?: string }> {
+  try {
+    const q = new URLSearchParams({ fields: "id,created_time", limit: "25", ...(after ? { after } : {}) });
+    const r = await fetch(`${GRAPH}/${creds.pageId}/posts?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { posts: [], next: null, error: j.error?.message || `HTTP ${r.status}` };
+    const posts = ((j.data ?? []) as Record<string, unknown>[]).map(p => ({ id: String(p.id), createdTime: String(p.created_time ?? "") }));
+    return { posts, next: j.paging?.next ? (j.paging?.cursors?.after ?? null) : null };
+  } catch (e) { return { posts: [], next: null, error: e instanceof Error ? e.message : "Facebook error" }; }
+}
+
+/** One page of a post's comments, each with its replies. */
+export async function listFbCommentsPage(creds: FbCreds, postId: string, after: string | null): Promise<{ comments: FbCommentNode[]; next: string | null; error?: string }> {
+  const node = (c: Record<string, unknown>): FbCommentNode => ({
+    id: String(c.id ?? ""), text: String(c.message ?? ""), fromName: String((c.from as { name?: string } | undefined)?.name ?? ""),
+    fromId: ((c.from as { id?: string } | undefined)?.id) ?? null, createdTime: String(c.created_time ?? ""),
+    replies: (((c.comments as { data?: Record<string, unknown>[] } | undefined)?.data) ?? []).map(node),
+  });
+  try {
+    const q = new URLSearchParams({ fields: "id,message,from,created_time,comments.limit(50){id,message,from,created_time}", limit: "50", filter: "toplevel", ...(after ? { after } : {}) });
+    const r = await fetch(`${GRAPH}/${postId}/comments?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { comments: [], next: null, error: j.error?.message || `HTTP ${r.status}` };
+    return { comments: ((j.data ?? []) as Record<string, unknown>[]).map(node), next: j.paging?.next ? (j.paging?.cursors?.after ?? null) : null };
+  } catch (e) { return { comments: [], next: null, error: e instanceof Error ? e.message : "Facebook error" }; }
+}
+
 export interface FbProfile { name?: string; profilePic?: string }
 
 // Resolve a user's profile from their PSID (webhooks only carry the id). Works

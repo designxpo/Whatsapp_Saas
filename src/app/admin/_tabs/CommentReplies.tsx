@@ -4,6 +4,11 @@
 // rules' canned replies, follow-ups in a thread — and a way to fix a wrong one.
 // YouTube and Facebook change the comment in place; Instagram cannot edit a
 // comment, so a correction posts the right reply and removes the old one.
+//
+// Read a page (25) at a time within a chosen range — 7, 30, 90 days or a year —
+// so a long history never loads at once. Replies from before the log existed
+// are imported in the background (comment-history.ts); the line under the
+// header says while that is still going.
 
 import { useCallback, useEffect, useState } from "react";
 import { MessageSquareReply, Pencil, Trash2, Loader2, ExternalLink, RefreshCw } from "lucide-react";
@@ -11,6 +16,7 @@ import { Drawer } from "@/components/overlay";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useConfirm } from "@/components/confirm-dialog";
+import { SegmentedControl } from "@/components/SegmentedControl";
 
 type Platform = "youtube" | "instagram" | "facebook";
 interface Reply {
@@ -20,7 +26,11 @@ interface Reply {
 }
 
 const NAME: Record<Platform, string> = { youtube: "YouTube", instagram: "Instagram", facebook: "Facebook" };
-const SOURCE: Record<Reply["source"], string> = { ai: "AI", rule: "Rule", ai_followup: "AI follow-up", manual: "You" };
+const SOURCE: Record<Reply["source"], string> = { ai: "AI", rule: "Rule", ai_followup: "AI follow-up", manual: "Team" };
+const SOURCE_HINT: Partial<Record<Reply["source"], string>> = { manual: "Posted by a person, in the platform's own app, not by the AI or a rule" };
+type Range = "7" | "30" | "90" | "365";
+const RANGES: { value: Range; label: string }[] = [{ value: "7", label: "7 days" }, { value: "30", label: "30 days" }, { value: "90", label: "90 days" }, { value: "365", label: "1 year" }];
+const PAGE = 25;
 const LIMIT: Record<Platform, number> = { youtube: 9000, instagram: 1000, facebook: 2000 };
 
 function ago(iso: string): string {
@@ -29,7 +39,8 @@ function ago(iso: string): string {
   if (m < 60) return `${m}m ago`;
   const h = Math.round(m / 60);
   if (h < 48) return `${h}h ago`;
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", ...(d.getFullYear() !== new Date().getFullYear() ? { year: "numeric" } : {}) });
 }
 
 /** Where the reply can be seen, when the platform gives us an address for it. */
@@ -41,8 +52,13 @@ function viewLink(r: Reply): string | null {
 
 export function CommentReplies({ platform }: { platform: Platform }) {
   const [rows, setRows] = useState<Reply[] | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [range, setRange] = useState<Range>("30");
+  // cursors[i] starts page i (page 0: none); next starts the page after this one.
+  const [cursors, setCursors] = useState<(string | null)[]>([null]);
+  const [next, setNext] = useState<string | null>(null);
+  const [total, setTotal] = useState<number | null>(null);
+  const [paging, setPaging] = useState(false);
+  const [history, setHistory] = useState<{ importing: boolean; imported: number; error: string | null } | null>(null);
   const [setup, setSetup] = useState<string | null>(null);
   const [editing, setEditing] = useState<Reply | null>(null);
   const [draft, setDraft] = useState("");
@@ -52,18 +68,28 @@ export function CommentReplies({ platform }: { platform: Platform }) {
   const ask = useConfirm();
   const name = NAME[platform];
 
-  const load = useCallback(async (before?: string) => {
-    const q = new URLSearchParams({ platform });
-    if (before) q.set("before", before);
+  const load = useCallback(async (days: Range, cursor: string | null) => {
+    const q = new URLSearchParams({ platform, days });
+    if (cursor) q.set("cursor", cursor);
     const r = await fetch(`/api/admin/comment-replies?${q}`);
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) { say(j.error || `Couldn't load the replies (HTTP ${r.status}).`); if (!before) setRows([]); return; }
+    if (!r.ok) { say(j.error || `Couldn't load the replies (HTTP ${r.status}).`); setRows(prev => prev ?? []); return false; }
     setSetup(j.setupNeeded ?? null);
-    const got = (j.replies ?? []) as Reply[];
-    setRows(prev => (before ? [...(prev ?? []), ...got] : got));
-    setHasMore(got.length >= 30);
+    setRows((j.replies ?? []) as Reply[]);
+    setNext(j.next ?? null);
+    if (!cursor) { setTotal(typeof j.total === "number" ? j.total : null); setHistory(j.history ?? null); }
+    return true;
   }, [platform, say]);
-  useEffect(() => { load(); }, [load]);
+  // A new range starts again at its first page.
+  useEffect(() => { setRows(null); setCursors([null]); load(range, null); }, [load, range]);
+
+  const page = cursors.length - 1;
+  async function goTo(dir: 1 | -1) {
+    setPaging(true);
+    if (dir === 1 && next) { if (await load(range, next)) setCursors(c => [...c, next]); }
+    if (dir === -1 && page > 0) { const prev = cursors[page - 1]; if (await load(range, prev)) setCursors(c => c.slice(0, -1)); }
+    setPaging(false);
+  }
 
   function openEdit(r: Reply) { setEditing(r); setDraft(r.replyText); sayEdit(null); }
 
@@ -103,8 +129,15 @@ export function CommentReplies({ platform }: { platform: Platform }) {
             {platform === "instagram" ? " — Instagram can't edit a comment, so the corrected reply is posted and the old one removed." : "."} Private messages (DMs) are in Live Chat.
           </PageInfo>
         </div>
-        <button onClick={() => { setRows(null); load(); }} aria-label="Refresh replies" className="p-1.5 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
+        <button onClick={() => { setRows(null); load(range, cursors[page]); }} aria-label="Refresh replies" className="p-1.5 rounded-control text-slate-500 hover:bg-canvas hover:text-ink-900"><RefreshCw className="w-3.5 h-3.5" /></button>
       </div>
+
+      {!setup && <SegmentedControl options={RANGES} value={range} onChange={setRange} size="sm" ariaLabel="Show replies from" className="max-w-sm" />}
+      {history?.importing && (
+        <p className="text-[12px] text-slate-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+          Bringing in your earlier {name} replies, up to a year back{history.imported ? ` — ${history.imported.toLocaleString()} so far` : ""}. This runs in the background, a little at a time.</p>
+      )}
+      {history?.error && !history.importing && <p className="text-[12px] text-amber-700">Some earlier replies couldn&apos;t be read from {name}: {history.error}</p>}
 
       <Notice notice={note} onClose={() => say(null)} />
       {setup && <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-control px-3 py-2">{setup}</p>}
@@ -112,7 +145,7 @@ export function CommentReplies({ platform }: { platform: Platform }) {
       {rows === null ? (
         <div role="status" aria-label="Loading" className="space-y-2">{[0, 1, 2].map(i => <div key={i} className="h-16 rounded-control bg-canvas animate-pulse" />)}</div>
       ) : !rows.length ? (
-        !setup && <p className="text-[13px] text-slate-500">No replies yet. Replies posted under {name} comments from now on show up here.</p>
+        !setup && <p className="text-[13px] text-slate-500">{history?.importing ? `Nothing in this range yet — earlier replies are still coming in.` : `No replies under ${name} comments in the last ${RANGES.find(r => r.value === range)?.label}.`}</p>
       ) : (
         <ul className="space-y-2.5">
           {rows.map(r => {
@@ -126,7 +159,7 @@ export function CommentReplies({ platform }: { platform: Platform }) {
                 </div>
                 {r.commentText && <p className="text-[13px] text-ink-700 bg-canvas rounded-control px-3 py-2 whitespace-pre-wrap break-words">{r.commentText}</p>}
                 <div className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold">{SOURCE[r.source]}</span>
+                  <span title={SOURCE_HINT[r.source]} className="shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[10px] font-bold">{SOURCE[r.source]}</span>
                   <p className={`text-[13px] whitespace-pre-wrap break-words min-w-0 ${gone ? "line-through text-slate-400" : "text-ink-900"}`}>{r.replyText}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -144,11 +177,17 @@ export function CommentReplies({ platform }: { platform: Platform }) {
         </ul>
       )}
 
-      {hasMore && rows && rows.length > 0 && (
-        <button onClick={async () => { setLoadingMore(true); await load(rows[rows.length - 1].createdAt); setLoadingMore(false); }} disabled={loadingMore}
-          className="w-full px-3 py-2 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas disabled:opacity-60 inline-flex items-center justify-center gap-1.5">
-          {loadingMore && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Show older replies
-        </button>
+      {rows && rows.length > 0 && (page > 0 || next) && (
+        <nav aria-label="Pages" className="flex items-center justify-between gap-2 pt-1">
+          <span className="text-[12px] text-slate-500 tabular-nums">
+            {page * PAGE + 1}–{page * PAGE + rows.length}{total !== null ? ` of ${total.toLocaleString()}` : ""}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {paging && <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-400" />}
+            <button onClick={() => goTo(-1)} disabled={paging || page === 0} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Newer</button>
+            <button onClick={() => goTo(1)} disabled={paging || !next} className="px-2.5 py-1 rounded-control border border-line text-[11px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-40">Older</button>
+          </div>
+        </nav>
       )}
 
       <Drawer open={!!editing} onClose={() => !busy && setEditing(null)} title="Edit reply" width="md"

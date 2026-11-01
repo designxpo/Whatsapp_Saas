@@ -33,6 +33,7 @@ import { drainMetaUsageAlert } from "@/lib/metausage";
 import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
 import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
+import { drainReplyHistory } from "@/lib/comment-history";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -49,7 +50,7 @@ const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
-  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "tenantmetrics",
+  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "tenantmetrics",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -96,9 +97,12 @@ export async function POST(req: Request) {
     // White-label billing: partners' prepaid monthly charges, and the payment
     // links they send their own customers. Returns at once while white-label is off.
     const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling(), domains: await drainPendingDomains(), metaApps: await drainPartnerMetaChecks() }), pollStart, POLL_BUDGET);
+    // Earlier comment replies, imported a few pages per account per tick
+    // (comment-history.ts); returns at once once every account is done.
+    const replyHistory = await stage("replyhistory", null, () => drainReplyHistory(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 
