@@ -14,9 +14,9 @@
 // replied in the platform's own app.
 
 import { db } from "./supabase";
-import { listChannels, type Channel } from "./channels";
+import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { listThreadsPage, type YtThread } from "./youtube";
-import { listIgMediaPage, listIgCommentsPage, getIgUsername, type IgCommentNode } from "./instagram";
+import { listIgMediaPage, listIgCommentsPage, getIgSelf, type IgCommentNode } from "./instagram";
 import { listFbPostsPage, listFbCommentsPage, type FbCommentNode } from "./messenger";
 import { importCommentReplies, type ImportedReply, type ReplyPlatform, type ReplySource } from "./comment-replies";
 import { setTenantSetting } from "./store";
@@ -27,17 +27,27 @@ const CALLS_PER_ACCOUNT = 8;     // API pages one account may use per tick
 const ACCOUNTS_PER_TICK = 3;
 export const PLATFORM_OF: Record<string, ReplyPlatform> = { youtube: "youtube", instagram: "instagram", messenger: "facebook" };
 
+// Bumped when a platform's matching changes, so its accounts are read again.
+// v2: Instagram recognises the account by both of its ids and its @username.
+const VERSION = 2;
+
 export interface HistoryState {
+  v?: number;
   since: string; startedAt: string; done: boolean; imported: number;
   cursor: string | null;                          // the next page of threads / posts
   listDone?: boolean;                             // posts: no more to list
   queue?: { id: string; after: string | null }[]; // posts still to read comments from
   selfName?: string | null;                       // Instagram: the account's @username
+  selfIds?: string[];                             // Instagram: every id it may be reported under
+  failures?: number;                              // failed runs in a row
+  // What the platform returned, so a run that finds nothing can be told apart
+  // from one that can't recognise the account's own replies.
+  seen?: { comments: number; replies: number; repliesWithName: number; repliesWithId: number; ours: number };
   error?: string | null; finishedAt?: string;
 }
 
 export function freshState(now = Date.now()): HistoryState {
-  return { since: new Date(now - HISTORY_DAYS * 86_400_000).toISOString(), startedAt: new Date(now).toISOString(), done: false, imported: 0, cursor: null };
+  return { v: VERSION, since: new Date(now - HISTORY_DAYS * 86_400_000).toISOString(), startedAt: new Date(now).toISOString(), done: false, imported: 0, cursor: null };
 }
 
 type Claims = Map<string, string | null>;   // claimed comment id → rule id (null: the AI)
@@ -86,11 +96,21 @@ function repliesFromNodes(platform: ReplyPlatform, nodes: Node[], isOurs: (n: No
   return out;
 }
 
-/** Instagram: matched by the account id or, since Instagram may report a different id form, its @username. */
-export function igRepliesFromComments(comments: IgCommentNode[], igUserId: string, selfName: string | null, mediaId: string, since: number, claims: Claims): ImportedReply[] {
+/** Instagram: matched by any id the account is reported under, or its @username. */
+export function igRepliesFromComments(comments: IgCommentNode[], selfIds: string[], selfName: string | null, mediaId: string, since: number, claims: Claims): ImportedReply[] {
   const toNode = (c: IgCommentNode): Node => ({ id: c.id, text: c.text, author: c.username ? `@${c.username}` : "", fromId: c.fromId, at: c.timestamp, replies: c.replies.map(toNode) });
+  const ids = new Set(selfIds.filter(Boolean));
   const self = selfName?.toLowerCase() ?? null;
-  return repliesFromNodes("instagram", comments.map(toNode), n => (!!n.fromId && n.fromId === igUserId) || (!!self && n.author.toLowerCase() === `@${self}`), mediaId, since, claims);
+  return repliesFromNodes("instagram", comments.map(toNode), n => (!!n.fromId && ids.has(n.fromId)) || (!!self && n.author.toLowerCase() === `@${self}`), mediaId, since, claims);
+}
+
+// A token that's been revoked or expired won't come right by retrying.
+const AUTH_ERROR = /oauth|access token|invalid_grant|expired|revoked|not authori[sz]ed|has not authorized|permission/i;
+/** Note a failed run. Ends the account's import on an access error, or after three failures in a row. */
+function failed(st: HistoryState, error: string): void {
+  st.error = error;
+  st.failures = (st.failures ?? 0) + 1;
+  if (AUTH_ERROR.test(error) || st.failures >= 3) st.done = true;
 }
 
 /** Facebook: comments written by the Page itself. */
@@ -120,7 +140,8 @@ async function stepYoutube(ch: Channel, st: HistoryState): Promise<void> {
   while (calls < CALLS_PER_ACCOUNT && !st.done) {
     const page = await listThreadsPage(creds, st.cursor, 3);
     calls += Math.max(1, page.calls);
-    if (page.error) { st.error = page.error; return; }   // try again next tick
+    if (page.error) { failed(st, page.error); return; }
+    st.failures = 0;
     const others = page.threads.flatMap(t => [t.top, ...t.replies]).filter(c => c.authorChannelId !== ch.ytChannelId).map(c => c.id);
     st.imported += await importCommentReplies(ch.tenantId, ch.id, ytRepliesFromThreads(page.threads, ch.ytChannelId, since, await claimsFor("youtube", ch.tenantId, others)));
     st.cursor = page.next;
@@ -138,7 +159,12 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
   const fbCreds = { pageId: ch.pageId ?? "", token: ch.token };
   const since = Date.parse(st.since);
   let calls = 0;
-  if (ig && st.selfName === undefined) { st.selfName = await getIgUsername(igCreds); calls++; }
+  if (ig && st.selfIds === undefined) {
+    const me = await getIgSelf(igCreds);
+    calls++;
+    st.selfName = me.username;
+    st.selfIds = [...new Set([ownId, ...me.ids])];
+  }
   st.queue ??= [];
   while (calls < CALLS_PER_ACCOUNT && !st.done) {
     if (!st.queue.length) {
@@ -147,7 +173,8 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
         ? await listIgMediaPage(igCreds, st.cursor).then(p => ({ items: p.media.map(m => ({ id: m.id, at: m.timestamp })), next: p.next, error: p.error }))
         : await listFbPostsPage(fbCreds, st.cursor).then(p => ({ items: p.posts.map(m => ({ id: m.id, at: m.createdTime })), next: p.next, error: p.error }));
       calls++;
-      if (page.error) { st.error = page.error; return; }
+      if (page.error) { failed(st, page.error); return; }
+      st.failures = 0;
       const fresh = page.items.filter(m => Date.parse(m.at) >= since);
       st.queue = fresh.map(m => ({ id: m.id, after: null }));
       st.cursor = page.next;
@@ -159,13 +186,23 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
     calls++;
     if (ig) {
       const page = await listIgCommentsPage(igCreds, item.id, item.after);
-      if (page.error) { st.error = page.error; st.queue.shift(); continue; }   // a removed post: move on
+      if (page.error) {
+        if (AUTH_ERROR.test(page.error)) { failed(st, page.error); return; }
+        st.error = page.error; st.queue.shift(); continue;   // a removed post: move on
+      }
       const ids = page.comments.flatMap(c => [c.id, ...c.replies.map(r => r.id)]);
-      st.imported += await importCommentReplies(ch.tenantId, ch.id, igRepliesFromComments(page.comments, ownId, st.selfName ?? null, item.id, since, await claimsFor("instagram", ch.tenantId, ids)));
+      const rows = igRepliesFromComments(page.comments, st.selfIds ?? [ownId], st.selfName ?? null, item.id, since, await claimsFor("instagram", ch.tenantId, ids));
+      const replies = page.comments.flatMap(c => c.replies);
+      const seen = st.seen ?? { comments: 0, replies: 0, repliesWithName: 0, repliesWithId: 0, ours: 0 };
+      st.seen = { comments: seen.comments + page.comments.length, replies: seen.replies + replies.length, repliesWithName: seen.repliesWithName + replies.filter(r => r.username).length, repliesWithId: seen.repliesWithId + replies.filter(r => r.fromId).length, ours: seen.ours + rows.length };
+      st.imported += await importCommentReplies(ch.tenantId, ch.id, rows);
       if (page.next) item.after = page.next; else st.queue.shift();
     } else {
       const page = await listFbCommentsPage(fbCreds, item.id, item.after);
-      if (page.error) { st.error = page.error; st.queue.shift(); continue; }
+      if (page.error) {
+        if (AUTH_ERROR.test(page.error)) { failed(st, page.error); return; }
+        st.error = page.error; st.queue.shift(); continue;
+      }
       const ids = page.comments.flatMap(c => [c.id, ...c.replies.map(r => r.id)]);
       st.imported += await importCommentReplies(ch.tenantId, ch.id, fbRepliesFromComments(page.comments, ownId, item.id, since, await claimsFor("facebook", ch.tenantId, ids)));
       if (page.next) item.after = page.next; else st.queue.shift();
@@ -175,14 +212,16 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
 
 /** Background engine: move the history import along for a few accounts. */
 export async function drainReplyHistory(deadlineAt: number): Promise<{ accounts: number; imported: number }> {
-  const channels = (await listChannels()).filter(c => c.active && PLATFORM_OF[c.kind]);
+  const channels = (await listChannels()).filter(c => isLiveChannel(c) && PLATFORM_OF[c.kind]);
   if (!channels.length) return { accounts: 0, imported: 0 };
   const { data } = await db().from("wa_settings").select("key,value").like("key", `${PREFIX}%`);
   const states = new Map(((data ?? []) as { key: string; value: HistoryState }[]).map(r => [r.key.slice(PREFIX.length), r.value]));
   let accounts = 0, imported = 0;
   for (const ch of channels) {
     if (accounts >= ACCOUNTS_PER_TICK || Date.now() > deadlineAt - 15_000) break;
-    const st = states.get(ch.id) ?? freshState();
+    let st = states.get(ch.id) ?? freshState();
+    // Read again with the current matching (Instagram's v1 recognised none of the account's own replies).
+    if (ch.kind === "instagram" && (st.v ?? 1) < VERSION) st = freshState();
     if (st.done) continue;
     const before = st.imported;
     try {
@@ -200,7 +239,7 @@ export async function drainReplyHistory(deadlineAt: number): Promise<{ accounts:
 
 /** For the section's status line: is history still coming in for this platform? */
 export async function historyStatus(tenantId: string, platform: ReplyPlatform): Promise<{ importing: boolean; imported: number; error: string | null }> {
-  const mine = (await listChannels(tenantId)).filter(c => c.active && PLATFORM_OF[c.kind] === platform);
+  const mine = (await listChannels(tenantId)).filter(c => isLiveChannel(c) && PLATFORM_OF[c.kind] === platform);
   if (!mine.length) return { importing: false, imported: 0, error: null };
   const { data } = await db().from("wa_settings").select("key,value").eq("tenant_id", tenantId).in("key", mine.map(c => `${PREFIX}${c.id}`));
   const states = ((data ?? []) as { value: HistoryState }[]).map(r => r.value);

@@ -10,7 +10,7 @@
 
 import { partnerYtRemaining } from "./partner-quotas";
 import { db } from "./supabase";
-import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
+import { listChannels, isLiveChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
 import { recordCommentReply } from "./comment-replies";
 import {
@@ -340,7 +340,7 @@ export async function drainYtComments(tenantId?: string): Promise<number> {
   if (!youtubeConfigured()) return 0;   // dormant until the OAuth client is set
   let channels: Channel[];
   try {
-    channels = (await listChannels(tenantId)).filter(c => c.kind === "youtube" && c.active && c.ytChannelId && c.token);
+    channels = (await listChannels(tenantId)).filter(c => c.kind === "youtube" && isLiveChannel(c) && c.ytChannelId);
   } catch { return 0; }
   if (!channels.length) return 0;
   const aiEnabledCache = new Map<string, boolean>();

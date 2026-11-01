@@ -290,13 +290,18 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
 // ── Reading past comments (for importing earlier replies) ──────────────────
 export interface IgCommentNode { id: string; text: string; username: string; fromId: string | null; timestamp: string; replies: IgCommentNode[] }
 
-/** The account's own @username, to recognise its comments among others'. */
-export async function getIgUsername(creds: IgCreds): Promise<string | null> {
+/**
+ * Who the account is, to recognise its own comments among others': its
+ * @username and every id Instagram may report it under (`id` is the app-scoped
+ * one, `user_id` the professional account's).
+ */
+export async function getIgSelf(creds: IgCreds): Promise<{ username: string | null; ids: string[] }> {
   try {
-    const r = await fetch(`${GRAPH}/me?fields=username`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const r = await fetch(`${GRAPH}/me?fields=id,user_id,username`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
     const j = await r.json().catch(() => ({}));
-    return r.ok && j.username ? String(j.username) : null;
-  } catch { return null; }
+    if (!r.ok) return { username: null, ids: [] };
+    return { username: j.username ? String(j.username) : null, ids: [j.id, j.user_id].filter(Boolean).map(String) };
+  } catch { return { username: null, ids: [] }; }
 }
 
 /** One page of the account's posts, newest first. */

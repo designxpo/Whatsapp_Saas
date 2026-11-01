@@ -24,6 +24,7 @@ vi.mock("../youtube", () => ({
 }));
 vi.mock("../channels", () => ({
   listChannels: vi.fn(),
+  isLiveChannel: (c: { active: boolean; token: string }) => c.active && !!c.token && !/^demo[-_]/i.test(c.token),
   effectiveAgentId: () => null,
   effectiveKbScope: () => ({ tag: null, strict: false }),
 }));

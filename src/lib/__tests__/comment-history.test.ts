@@ -10,16 +10,18 @@ import type { YtThread, YtReply } from "../youtube";
 // ── Fakes for the import step and the list ──────────────────────────────────
 const saved: Record<string, unknown> = {};
 const imported: unknown[][] = [];
-let threadPages: { threads: YtThread[]; next: string | null }[] = [];
+let threadPages: { threads: YtThread[]; next: string | null; error?: string }[] = [];
+let stored: { key: string; value: unknown }[] = [];
 let pageCalls = 0;
 type Q = { filters: [string, ...unknown[]][]; head?: boolean };
 const queries: Q[] = [];
 let listRows: Record<string, unknown>[] = [];
 
-vi.mock("../channels", () => ({ listChannels: vi.fn(async () => [{ id: "ch1", tenantId: "t1", kind: "youtube", active: true, ytChannelId: "UC_ME", token: "r" }]) }));
+let channels: Record<string, unknown>[] = [];
+vi.mock("../channels", async (orig) => ({ ...(await orig<typeof import("../channels")>()), listChannels: vi.fn(async () => channels) }));
 vi.mock("../store", () => ({ setTenantSetting: vi.fn(async (_t: string, k: string, v: unknown) => { saved[k] = JSON.parse(JSON.stringify(v)); }) }));
 vi.mock("../youtube", () => ({ listThreadsPage: vi.fn(async () => { const p = threadPages[pageCalls++] ?? { threads: [], next: null }; return { ...p, calls: 1 }; }) }));
-vi.mock("../instagram", () => ({ listIgMediaPage: vi.fn(), listIgCommentsPage: vi.fn(), getIgUsername: vi.fn() }));
+vi.mock("../instagram", () => ({ listIgMediaPage: vi.fn(), listIgCommentsPage: vi.fn(), getIgSelf: vi.fn() }));
 vi.mock("../messenger", () => ({ listFbPostsPage: vi.fn(), listFbCommentsPage: vi.fn() }));
 vi.mock("../supabase", () => ({
   db: () => ({
@@ -27,7 +29,7 @@ vi.mock("../supabase", () => ({
       const b: Record<string, unknown> = {};
       const chain = () => b;
       for (const m of ["select", "eq", "in", "like"]) b[m] = chain;
-      b.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(res);
+      b.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: stored, error: null }).then(res);
       return b;
     },
   }),
@@ -58,7 +60,7 @@ const yt = (id: string, author: string, daysAgo: number, text = id): YtReply => 
 const thread = (top: YtReply, replies: YtReply[], videoId = "v1"): YtThread => ({ id: top.id, videoId, channelId: "UC_ME", top, replies, totalReplies: replies.length });
 
 afterEach(() => { vi.useRealTimers(); });
-beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); for (const k of Object.keys(saved)) delete saved[k]; imported.length = 0; threadPages = []; pageCalls = 0; queries.length = 0; listRows = []; });
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); stored = []; channels = [{ id: "ch1", tenantId: "t1", kind: "youtube", active: true, ytChannelId: "UC_ME", token: "r" }]; for (const k of Object.keys(saved)) delete saved[k]; imported.length = 0; threadPages = []; pageCalls = 0; queries.length = 0; listRows = []; });
 
 describe("finding our replies (YouTube)", () => {
   it("keeps only the channel's own replies, each with the comment it answered and who wrote it", () => {
@@ -84,9 +86,11 @@ describe("finding our replies (Instagram, Facebook)", () => {
     const comments = [{ id: "c1", text: "Price?", username: "buyer", fromId: "u9", timestamp: at(3), replies: [
       { id: "x1", text: "₹999", username: "shop", fromId: "OTHER_FORM_OF_ID", timestamp: at(2), replies: [] },
     ] }];
-    const rows = igRepliesFromComments(comments, "IG_ME", "shop", "m1", SINCE, new Map([["c1", null]]));
+    const rows = igRepliesFromComments(comments, ["IG_ME"], "shop", "m1", SINCE, new Map([["c1", null]]));
     expect(rows).toEqual([expect.objectContaining({ replyId: "x1", parentCommentId: "c1", commentAuthor: "@buyer", postId: "m1", source: "ai" })]);
-    expect(igRepliesFromComments(comments, "IG_ME", null, "m1", SINCE, new Map())).toEqual([]);
+    expect(igRepliesFromComments(comments, ["IG_ME"], null, "m1", SINCE, new Map())).toEqual([]);
+    // …and by its other id when Instagram reports that one instead.
+    expect(igRepliesFromComments(comments, ["IG_ME", "OTHER_FORM_OF_ID"], null, "m1", SINCE, new Map()).map(r => r.replyId)).toEqual(["x1"]);
   });
   it("Facebook keeps the Page's own replies only", () => {
     const comments = [{ id: "c1", text: "Open today?", fromName: "Asha", fromId: "u1", createdTime: at(3), replies: [
@@ -110,6 +114,29 @@ describe("the background import", () => {
     await drainReplyHistory(Date.now() + 60_000);
     expect(pageCalls).toBe(8);
     expect(saved["reply_history:ch1"]).toMatchObject({ done: false, cursor: "p8" });
+  });
+  it("a revoked or expired token ends that account's import at once, with the reason — no endless spinner", async () => {
+    threadPages = [{ threads: [], next: null, error: "Invalid OAuth access token - Cannot parse access token" }];
+    await drainReplyHistory(Date.now() + 60_000);
+    expect(saved["reply_history:ch1"]).toMatchObject({ done: true, error: expect.stringMatching(/Invalid OAuth/) });
+  });
+  it("any other failure gets three tries in a row, then stops", async () => {
+    stored = [{ key: "reply_history:ch1", value: { ...freshState(NOW), failures: 2 } }];
+    threadPages = [{ threads: [], next: null, error: "Backend Error" }];
+    await drainReplyHistory(Date.now() + 60_000);
+    expect(saved["reply_history:ch1"]).toMatchObject({ done: true, failures: 3 });
+  });
+  it("a success resets the count of failures", async () => {
+    stored = [{ key: "reply_history:ch1", value: { ...freshState(NOW), failures: 2 } }];
+    threadPages = [{ threads: [thread(yt("t", "fan", 400), [])], next: null }];
+    await drainReplyHistory(Date.now() + 60_000);
+    expect(saved["reply_history:ch1"]).toMatchObject({ done: true, failures: 0 });
+    expect((saved["reply_history:ch1"] as { error?: string }).error).toBeFalsy();
+  });
+  it("never touches the demo workspace's placeholder accounts", async () => {
+    channels = [{ id: "demo", tenantId: "lumi", kind: "instagram", active: true, igUserId: "17841400000000004", token: "demo-token-instagram" }];
+    expect(await drainReplyHistory(Date.now() + 60_000)).toEqual({ accounts: 0, imported: 0 });
+    expect(saved).toEqual({});
   });
   it("starts a year back", () => {
     expect(Date.parse(freshState(NOW).since)).toBe(SINCE);

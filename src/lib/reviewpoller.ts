@@ -9,7 +9,7 @@
 // googlereviews.ts) makes listReviews()/replyToReview() return empty/failed
 // rather than throw, so this simply imports nothing until access is granted.
 
-import { listChannels, type Channel } from "./channels";
+import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { googleReviewsConfigured, listReviews, replyToReview, type GrCreds } from "./googlereviews";
 import { getReviewByExternalId, saveReview, setReviewReply, getReviewSettings } from "./reviews";
 import { generateReviewReply } from "./llm";
@@ -67,7 +67,7 @@ export async function drainGoogleReviews(): Promise<number> {
   if (!googleReviewsConfigured()) return 0;
   let channels: Channel[];
   try {
-    channels = (await listChannels()).filter(c => c.kind === "google_reviews" && c.active && c.googleAccountId && c.googleLocationId && c.token);
+    channels = (await listChannels()).filter(c => c.kind === "google_reviews" && isLiveChannel(c) && c.googleAccountId && c.googleLocationId);
   } catch { return 0; }
   if (!channels.length) return 0;
   let imported = 0;

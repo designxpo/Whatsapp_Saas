@@ -163,6 +163,19 @@ export async function recordChannelQuality(match: { wabaId?: string | null; phon
   } catch (e) { console.error("[channels] recordChannelQuality", e); }
 }
 
+// The demo workspace was seeded with accounts that carry a placeholder token
+// ("demo-…") and made-up ids — never a real connection. Anything that calls
+// Meta or Google for every account across workspaces must skip them: the call
+// can only fail, and it repeats on every run. The demo workspace still shows
+// them in its own portal.
+export function isDemoToken(token: string | null | undefined): boolean {
+  return !!token && /^demo[-_]/i.test(token);
+}
+/** An account that is switched on and really connected. */
+export function isLiveChannel(ch: Pick<Channel, "active" | "token">): boolean {
+  return ch.active && !!ch.token && !isDemoToken(ch.token);
+}
+
 export async function listChannels(tenantId?: string): Promise<Channel[]> {
   try {
     let q = db().from("wa_channels").select("*").order("created_at", { ascending: true });
@@ -857,7 +870,7 @@ export async function repairIgChannelId(webhookIgId: string): Promise<Channel | 
       .neq("ig_user_id", webhookIgId).limit(25);
     for (const row of (data ?? []) as Record<string, unknown>[]) {
       const ch = mapChannel(row);
-      if (!ch.token) continue;
+      if (!ch.token || isDemoToken(ch.token)) continue;
       // Ask whether THIS token can read THAT account. A direct authorization
       // test, not a comparison of ids — which matters because the whole bug is
       // that we cannot be sure which id /me hands back, and an earlier version of

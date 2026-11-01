@@ -16,7 +16,7 @@
 // and when that copy went stale on 2026-10-03 the sweep silently stopped. The
 // engine is driven by pg_cron, which carries the live secret.
 
-import { listChannels, updateChannelToken } from "./channels";
+import { listChannels, updateChannelToken, isLiveChannel } from "./channels";
 import { getTenantSetting, setTenantSetting } from "./store";
 import { refreshIgToken, igTokenRefreshedKey } from "./iglogin";
 import { errorMessage } from "./errors";
@@ -31,7 +31,7 @@ export async function sweepInstagramTokens(deadlineAt: number): Promise<TokenSwe
   const result: TokenSweepResult = { checked: 0, refreshed: 0, skipped: 0, failed: 0, errors: [] };
   // Every tenant's Instagram channels. Inactive ones are skipped: a tenant who
   // switched a channel off should not have us holding its token alive.
-  const channels = (await listChannels()).filter(c => c.kind === "instagram" && c.active && c.token);
+  const channels = (await listChannels()).filter(c => c.kind === "instagram" && isLiveChannel(c));
 
   for (const ch of channels) {
     if (Date.now() > deadlineAt) {
