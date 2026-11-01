@@ -2,6 +2,8 @@
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useBrand } from "@/components/BrandContext";
+import { HandoffOption } from "./HandoffOption";
+import { HandoffResults } from "./HandoffResults";
 import { CommentReplies } from "./CommentReplies";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
@@ -36,6 +38,8 @@ function InstagramTab() {
       <InstagramManager />
 
       <CommentReplies platform="instagram" />
+
+      <HandoffResults platform="instagram" />
     </div>
   );
 }
@@ -50,6 +54,7 @@ type CommentRule = {
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
   keyword: string; dmMessage: string; buttons: RuleButton[]; publicReplies: string[];
   replyOnly: boolean; requireFollow: boolean; followPrompt: string; matchCount?: number;
+  waHandoff?: boolean; waHandoffMessage?: string | null;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
 // Live delivery state read back from Meta (see api/admin/channels/instagram/health).
@@ -568,6 +573,12 @@ function InstagramManager() {
                 </button>
               )}
             </div>
+
+            {/* Continue on WhatsApp (DM rules only — the button rides the DM) */}
+            {!ruleForm.replyOnly && (
+              <HandoffOption platform="instagram" on={!!ruleForm.waHandoff} message={ruleForm.waHandoffMessage ?? ""}
+                onChange={(on, message) => setRuleForm({ ...ruleForm, waHandoff: on, waHandoffMessage: message })} />
+            )}
 
             {/* Follow-to-unlock gate (DM rules only — a reply-only rule sends no link) */}
             {!ruleForm.replyOnly && (

@@ -13,6 +13,8 @@ import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
 import { CommentReplies } from "./CommentReplies";
+import { HandoffOption } from "./HandoffOption";
+import { HandoffResults } from "./HandoffResults";
 
 function YoutubeTab() {
   const brand = useBrand();
@@ -35,6 +37,8 @@ function YoutubeTab() {
       <YoutubeManager />
 
       <CommentReplies platform="youtube" />
+
+      <HandoffResults platform="youtube" />
     </div>
   );
 }
@@ -47,6 +51,7 @@ type YtRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   videoId: string | null; videoTitle: string | null; videoThumbnail: string | null;
   keyword: string; publicReplies: string[]; moderate: Moderate; matchCount?: number;
+  waHandoff?: boolean; waHandoffMessage?: string | null;
 };
 type YtVideo = { id: string; title: string; thumbnail: string; publishedAt: string };
 // What the last background poll did for a channel — surfaced so a silent
@@ -451,6 +456,9 @@ function YoutubeManager() {
                 </button>
               )}
             </div>
+            {/* Continue on WhatsApp — a typed code in the reply (no link) */}
+            <HandoffOption platform="youtube" on={!!ruleForm.waHandoff} message={ruleForm.waHandoffMessage ?? ""}
+              onChange={(on, message) => setRuleForm({ ...ruleForm, waHandoff: on, waHandoffMessage: message })} />
             {/* Moderation */}
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-1.5">
               <label className="flex items-center gap-1.5 text-[11px] font-bold text-ink-600"><ShieldAlert className="w-3.5 h-3.5" /> Moderation on match</label>

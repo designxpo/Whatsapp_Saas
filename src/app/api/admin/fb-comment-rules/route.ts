@@ -66,6 +66,8 @@ export async function POST(req: Request) {
       publicReplies: publicReplies.slice(0, 5),
       replyOnly,
       likeComment: !!body.likeComment,
+      // "Continue on WhatsApp" (handoff.ts) — only sent when the editor sends it.
+      ...(body.waHandoff !== undefined ? { waHandoff: !!body.waHandoff, waHandoffMessage: String(body.waHandoffMessage ?? "").slice(0, 1000) } : {}),
     }, tid);
     logActivity(await currentUser(), "settings.save", `fb comment rule "${rule.name || rule.id}"`);
     return NextResponse.json({ rule });

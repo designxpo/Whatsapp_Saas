@@ -86,6 +86,8 @@ export interface IgCommentRule {
   publicReplies: string[];      // rotating public-reply variants (picked at random)
   publicReply: string | null;   // legacy mirror of publicReplies[0]
   replyOnly: boolean;           // true → post a public reply only, never DM
+  waHandoff: boolean;           // the DM carries a "Continue on WhatsApp" button (handoff.ts)
+  waHandoffMessage: string | null;  // what to send on WhatsApp when they arrive
   requireFollow: boolean;
   followPrompt: string | null;
   matchCount: number;
@@ -120,6 +122,8 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
     publicReplies,
     publicReply: publicReplies[0] ?? legacyReply,
     replyOnly: (r.reply_only as boolean) ?? false,
+    waHandoff: (r.wa_handoff as boolean) ?? false,
+    waHandoffMessage: (r.wa_handoff_message as string | null) ?? null,
     requireFollow: (r.require_follow as boolean) ?? false,
     followPrompt: (r.follow_prompt as string | null) ?? null,
     matchCount: (r.match_count as number) ?? 0,
@@ -151,6 +155,20 @@ export interface CommentRuleInput {
   replyOnly?: boolean;
   requireFollow?: boolean;
   followPrompt?: string | null;
+  waHandoff?: boolean;
+  waHandoffMessage?: string | null;
+}
+
+/**
+ * The handoff settings a rule save writes: none when the input leaves them out
+ * (so the save works before 20261101160000 is applied), and a WhatsApp message
+ * is required whenever the option is on.
+ */
+export function handoffFields(input: { waHandoff?: boolean; waHandoffMessage?: string | null }): { row: Record<string, unknown> } | { error: string } {
+  if (input.waHandoff === undefined) return { row: {} };
+  const message = (input.waHandoffMessage ?? "").trim();
+  if (input.waHandoff && !message) return { error: "Write what to send on WhatsApp when they arrive." };
+  return { row: { wa_handoff: !!input.waHandoff, wa_handoff_message: message || null } };
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<IgCommentRule> {
@@ -158,9 +176,11 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   // nobody watching, so it's screened when authored — the send-time check in
   // instagram.ts stays as the backstop, not the only line of defense.
   await assertTextsAllowed(
-    [input.dmMessage, input.followPrompt, input.publicReply, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
+    [input.dmMessage, input.followPrompt, input.publicReply, input.waHandoffMessage, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
     { tenantId, surface: "comment_rule" },
   );
+  const handoff = handoffFields(input);
+  if ("error" in handoff) throw new Error(handoff.error);
   // Accept either the new `buttons` array or the legacy single button; the
   // legacy columns always mirror buttons[0] so old readers keep working.
   let buttons = normalizeButtons(input.buttons);
@@ -188,6 +208,8 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     reply_only: replyOnly,
     require_follow: replyOnly ? false : (input.requireFollow ?? false),
     follow_prompt: replyOnly ? null : (input.followPrompt?.trim() || null),
+    // Only sent when set, so a save works before the handoff migration is applied.
+    ...(replyOnly ? (input.waHandoff !== undefined ? { wa_handoff: false, wa_handoff_message: null } : {}) : handoff.row),
   };
   const runSave = (r: Record<string, unknown>) => (input.id
     ? db().from("wa_ig_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
@@ -198,7 +220,9 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   // the legacy columns still persist variant[0], so rules keep working until the
   // migration lands. Loop so every missing column can be stripped in turn.
   const attempt = { ...row };
-  for (let i = 0; i < 3 && error && /\b(buttons|public_replies|reply_only)\b/i.test(error.message ?? ""); i++) {
+  for (let i = 0; i < 4 && error && /\b(buttons|public_replies|reply_only|wa_handoff\w*)\b/i.test(error.message ?? ""); i++) {
+    // Before 20261101160000 the handoff columns don't exist: save the rule without them.
+    if (/wa_handoff/i.test(error.message ?? "")) { delete attempt.wa_handoff; delete attempt.wa_handoff_message; }
     if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
     if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
     if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;

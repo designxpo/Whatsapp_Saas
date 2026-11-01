@@ -1,6 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/partner-meta";
 import { recordCommentReply } from "@/lib/comment-replies";
+import { ruleInviteLink, withInviteButton } from "@/lib/handoff";
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, getChannelById, repairIgChannelId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
@@ -431,7 +432,9 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule), tid);
     if (sent.ok) await setFollowGate(fromId, rule.id, channel.id, tid);
   } else {
-    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, rewardButtons(rule), tid);
+    // "Continue on WhatsApp" (handoff.ts): their own code, hidden in the link.
+    const invite = await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, commentId, postId: mediaId, text, author: handle || null });
+    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, withInviteButton(rewardButtons(rule), invite), tid);
   }
   if (!sent.ok) {
     // The commenter gets nothing — record it in the thread like the AI path does,
@@ -532,7 +535,8 @@ async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string
     await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${reprompt}`, source: "bot", tenantId: tid, channelId: channel.id }).catch(() => {});
     return;
   }
-  const buttons = rewardButtons(rule);
+  const invite = await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, author: conv.name || null });
+  const buttons = withInviteButton(rewardButtons(rule), invite);
   const sent = buttons.length
     ? await sendIgButtons(creds, igsid, rule.dmMessage, buttons, { lastInboundAt: now })
     : await sendIgMessage(creds, igsid, rule.dmMessage, { lastInboundAt: now });

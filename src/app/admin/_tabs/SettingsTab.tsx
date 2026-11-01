@@ -4,6 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useBrand } from "@/components/BrandContext";
+import { HandoffOption } from "./HandoffOption";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
@@ -1301,6 +1302,7 @@ type FbCommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
   keyword: string; dmMessage: string; buttons: FbRuleButton[]; publicReplies: string[]; replyOnly: boolean; likeComment: boolean; matchCount?: number;
+  waHandoff?: boolean; waHandoffMessage?: string | null;
 };
 type FbPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
 const BLANK_FB_RULE: FbCommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, likeComment: false };
@@ -1717,6 +1719,12 @@ export function MessengerCard() {
                 </button>
               )}
             </div>
+
+            {/* Continue on WhatsApp (DM rules only — the button rides the DM) */}
+            {!ruleForm.replyOnly && (
+              <HandoffOption platform="facebook" on={!!ruleForm.waHandoff} message={ruleForm.waHandoffMessage ?? ""}
+                onChange={(on, message) => setRuleForm({ ...ruleForm, waHandoff: on, waHandoffMessage: message })} />
+            )}
 
             <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer" title="When this rule fires, also like the commenter's comment as your Page — a friendly engagement nudge.">
               <input type="checkbox" className="accent-blue-600" checked={ruleForm.likeComment} onChange={e => setRuleForm({ ...ruleForm, likeComment: e.target.checked })} />

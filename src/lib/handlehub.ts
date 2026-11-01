@@ -168,6 +168,11 @@ function encodeInvisibleRef(code: string): string {
   return ZW_MARK + [...bits].map(b => (b === "1" ? ZW1 : ZW0)).join("");
 }
 
+/** A message with a code hidden at its end (zero-width characters), as tracked links carry. */
+export function withInvisibleRef(text: string, code: string): string {
+  return `${text}${encodeInvisibleRef(code)}`;
+}
+
 function decodeInvisibleRef(text: string): string | null {
   const idx = (text || "").indexOf(ZW_MARK);
   if (idx < 0) return null;

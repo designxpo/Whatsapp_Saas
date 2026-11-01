@@ -9,7 +9,7 @@
 
 import type { YtWatch } from "./ytfollowups";
 import { db } from "./supabase";
-import { normalizePublicReplies, matchesKeywords } from "./igcomments";
+import { normalizePublicReplies, matchesKeywords, handoffFields } from "./igcomments";
 import { getPlanLimits } from "./usage";
 
 // What to do with a matched comment beyond replying. YouTube's moderation
@@ -29,6 +29,8 @@ export interface YtCommentRule {
   keyword: string | null;        // comma-separated trigger words (blank = any)
   publicReplies: string[];       // rotating reply variants
   moderate: YtModerate;
+  waHandoff: boolean;            // the reply ends with a WhatsApp code (handoff.ts) — no link
+  waHandoffMessage: string | null;
   matchCount: number;
   createdAt: string;
 }
@@ -51,6 +53,8 @@ function mapRule(r: Record<string, unknown>): YtCommentRule {
     keyword: (r.keyword as string | null) ?? null,
     publicReplies: normalizePublicReplies(r.public_replies),
     moderate: normalizeModerate(r.moderate),
+    waHandoff: (r.wa_handoff as boolean) ?? false,
+    waHandoffMessage: (r.wa_handoff_message as string | null) ?? null,
     matchCount: (r.match_count as number) ?? 0,
     createdAt: r.created_at as string,
   };
@@ -72,9 +76,14 @@ export interface YtCommentRuleInput {
   keyword?: string | null;
   publicReplies?: string[];
   moderate?: YtModerate;
+  waHandoff?: boolean;
+  waHandoffMessage?: string | null;
 }
 
 export async function saveYtCommentRule(input: YtCommentRuleInput, tenantId: string): Promise<YtCommentRule> {
+  const handoff = handoffFields(input);
+  if ("error" in handoff) throw new Error(handoff.error);
+  if (input.waHandoff && !normalizePublicReplies(input.publicReplies).length) throw new Error("The WhatsApp code goes in the public reply — add a reply first.");
   const publicReplies = normalizePublicReplies(input.publicReplies);
   const row: Record<string, unknown> = {
     tenant_id: tenantId,
@@ -87,11 +96,18 @@ export async function saveYtCommentRule(input: YtCommentRuleInput, tenantId: str
     keyword: input.keyword?.trim() || null,
     public_replies: publicReplies,
     moderate: normalizeModerate(input.moderate),
+    ...handoff.row,
   };
   const runSave = (r: Record<string, unknown>) => (input.id
     ? db().from("wa_yt_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
     : db().from("wa_yt_comment_rules").insert(r).select().single());
-  const { data, error } = await runSave(row);
+  let { data, error } = await runSave(row);
+  // Before 20261101160000 the handoff columns don't exist: save the rule without them.
+  if (error && /wa_handoff/i.test(error.message ?? "")) {
+    const { wa_handoff: _a, wa_handoff_message: _b, ...rest } = row;
+    void _a; void _b;
+    ({ data, error } = await runSave(rest));
+  }
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
 }

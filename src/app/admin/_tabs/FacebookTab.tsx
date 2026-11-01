@@ -4,6 +4,7 @@ import { PageInfo } from "@/components/PageInfo";
 import { Facebook } from "lucide-react";
 import { MessengerCard } from "./SettingsTab";
 import { CommentReplies } from "./CommentReplies";
+import { HandoffResults } from "./HandoffResults";
 
 // Facebook Messenger — first-class channel page (mirrors the Instagram tab).
 export default function FacebookTab() {
@@ -27,6 +28,8 @@ export default function FacebookTab() {
       <MessengerCard />
 
       <CommentReplies platform="facebook" />
+
+      <HandoffResults platform="facebook" />
     </div>
   );
 }

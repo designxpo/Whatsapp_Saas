@@ -1,6 +1,7 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/partner-meta";
 import { recordCommentReply } from "@/lib/comment-replies";
+import { ruleInviteLink, withInviteButton } from "@/lib/handoff";
 import { NextResponse, after } from "next/server";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByPageId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
@@ -355,7 +356,9 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
 
   // Up to 3 link buttons (Meta button-template cap); fall back to legacy single.
   const btnList = rule.buttons?.length ? rule.buttons : (rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : []);
-  const buttons: FbButton[] = btnList.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) }));
+  // "Continue on WhatsApp" (handoff.ts): their own code, hidden in the link.
+  const invite = await ruleInviteLink(rule, "facebook", { tenantId: tid, channelId: channel.id, commentId, postId, text, author: fromName || null });
+  const buttons: FbButton[] = withInviteButton(btnList.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) })), invite);
   const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons, tid);
   if (!sent.ok) {
     // The commenter gets nothing — record it in the thread like the AI path does,

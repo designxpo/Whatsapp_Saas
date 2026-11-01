@@ -10,7 +10,7 @@
 // tenant_id and EVERY write stamps it — app-layer scoping is the real guard.
 
 import { db } from "./supabase";
-import { normalizeButtons, normalizePublicReplies, matchesKeywords, type RuleButton } from "./igcomments";
+import { normalizeButtons, normalizePublicReplies, matchesKeywords, handoffFields, type RuleButton } from "./igcomments";
 import { assertTextsAllowed } from "./moderation";
 
 export interface FbCommentRule {
@@ -31,6 +31,8 @@ export interface FbCommentRule {
   publicReplies: string[];      // rotating public-reply variants
   publicReply: string | null;   // legacy mirror of publicReplies[0]
   replyOnly: boolean;           // true → public reply only, never DM
+  waHandoff: boolean;           // the DM carries a "Continue on WhatsApp" button (handoff.ts)
+  waHandoffMessage: string | null;
   likeComment: boolean;         // like the comment (as the Page) when the rule fires
   matchCount: number;
   createdAt: string;
@@ -62,6 +64,8 @@ function mapRule(r: Record<string, unknown>): FbCommentRule {
     publicReplies,
     publicReply: publicReplies[0] ?? legacyReply,
     replyOnly: (r.reply_only as boolean) ?? false,
+    waHandoff: (r.wa_handoff as boolean) ?? false,
+    waHandoffMessage: (r.wa_handoff_message as string | null) ?? null,
     likeComment: (r.like_comment as boolean) ?? false,
     matchCount: (r.match_count as number) ?? 0,
     createdAt: r.created_at as string,
@@ -91,13 +95,17 @@ export interface CommentRuleInput {
   publicReply?: string | null;   // legacy single-reply input
   replyOnly?: boolean;
   likeComment?: boolean;
+  waHandoff?: boolean;
+  waHandoffMessage?: string | null;
 }
 
 export async function saveCommentRule(input: CommentRuleInput, tenantId: string): Promise<FbCommentRule> {
+  const handoff = handoffFields(input);
+  if ("error" in handoff) throw new Error(handoff.error);
   // Screened when authored, same reasoning as the Instagram rule saver — this
   // text posts publicly and DMs automatically with nobody watching.
   await assertTextsAllowed(
-    [input.dmMessage, input.publicReply, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
+    [input.dmMessage, input.publicReply, input.waHandoffMessage, ...(input.publicReplies ?? []), ...(input.buttons ?? []).map(b => b.label)],
     { tenantId, surface: "comment_rule" },
   );
   let buttons = normalizeButtons(input.buttons);
@@ -123,6 +131,7 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     public_reply: publicReplies[0] || null,
     reply_only: replyOnly,
     like_comment: !!input.likeComment,
+    ...(replyOnly ? (input.waHandoff !== undefined ? { wa_handoff: false, wa_handoff_message: null } : {}) : handoff.row),
   };
   const runSave = (r: Record<string, unknown>) => (input.id
     ? db().from("wa_fb_comment_rules").update(r).eq("id", input.id).eq("tenant_id", tenantId).select().single()
@@ -131,7 +140,9 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
   // Tolerant fallback until migration 0089 lands — strip any not-yet-present
   // column; the legacy columns still persist variant[0].
   const attempt = { ...row };
-  for (let i = 0; i < 4 && error && /\b(buttons|public_replies|reply_only|like_comment)\b/i.test(error.message ?? ""); i++) {
+  for (let i = 0; i < 5 && error && /\b(buttons|public_replies|reply_only|like_comment|wa_handoff\w*)\b/i.test(error.message ?? ""); i++) {
+    // Before 20261101160000 the handoff columns don't exist: save the rule without them.
+    if (/wa_handoff/i.test(error.message ?? "")) { delete attempt.wa_handoff; delete attempt.wa_handoff_message; }
     if (/buttons/i.test(error.message ?? "")) delete attempt.buttons;
     if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
     if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;

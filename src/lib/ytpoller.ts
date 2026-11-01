@@ -13,6 +13,7 @@ import { db } from "./supabase";
 import { listChannels, isLiveChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
 import { recordCommentReply } from "./comment-replies";
+import { withYoutubeInvite } from "./handoff";
 import {
   matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday,
   getYtWatch, saveYtWatch, recentlyAnsweredThreads, releaseYtComment,
@@ -144,7 +145,9 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
     budget -= 1;   // one comment-action spent against the tenant's daily cap
 
     if (rule) {
-      const reply = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
+      const picked = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
+      // "Continue on WhatsApp" (handoff.ts): a typed code — YouTube hides replies with links.
+      const reply = picked ? await withYoutubeInvite(rule, picked, { tenantId: channel.tenantId, channelId: channel.id, commentId: c.id, postId: c.videoId, text: c.text }) : picked;
       if (reply) {
         const r = await replyToComment(creds, c.id, reply);
         if (r.ok) {

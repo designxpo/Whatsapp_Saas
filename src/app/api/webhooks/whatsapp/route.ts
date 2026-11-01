@@ -12,6 +12,7 @@ import {
 } from "@/lib/store";
 import { growthToolForOptIn, recordGrowthConversion } from "@/lib/growth";
 import { parseRef, stripRef, resolveRef, recordTouch, resolveSessionRef, markSessionRefMatched } from "@/lib/handlehub";
+import { handoffCodeIn, claimHandoff, setHandoffConversation, handoffAttributes, PLATFORM_LABEL } from "@/lib/handoff";
 import { utmAttributes } from "@/lib/attribution";
 import { enroll, matchKeywordSequence, hasActiveEnrollment } from "@/lib/sequences";
 import { getOpenCart, checkoutCart, upsertCart, listProducts, type CartItem } from "@/lib/commerce";
@@ -260,6 +261,17 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (session?.sclxId) refAttrs.sclx_id = session.sclxId;
   }
 
+  // WhatsApp handoff (handoff.ts): they came from a comment or DM invitation —
+  // the code hidden in the link's message (Instagram/Facebook) or typed
+  // (YouTube, "YT-4821"). Claimed once, and only in the workspace that owns
+  // this number. The contact keeps where it came from and what was asked.
+  const handoffCode = handoffCodeIn(text, hhRef);
+  const handoff = handoffCode ? await claimHandoff(tid, handoffCode, from).catch(() => null) : null;
+  if (handoff) {
+    Object.assign(refAttrs, handoffAttributes(handoff));
+    adSource ??= `${PLATFORM_LABEL[handoff.platform]} ${handoff.sourceKind}`;
+  }
+
   // Ensure the sender is a contact, then attach to a conversation. An inbound
   // message IS a verifiable opt-in, so mark consent (and upgrade an existing
   // imported-but-unconsented contact via markOptedIn).
@@ -277,6 +289,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   if (Object.keys(refAttrs).length) {
     void setContactAttributes(from, refAttrs, tid).catch(() => undefined);
   }
+  if (handoff) void addContactTag(from, `from-${handoff.platform}`, tid).catch(() => undefined);
   // Brand-new contact → a new lead. Fire once (inserted>0) so CRM connectors
   // sync each lead exactly once instead of on every message.
   if (upserted?.inserted) after(() => emitEvent(tid, "contact.created", { phone: from, name: profileName, channel: "whatsapp" }));
@@ -321,6 +334,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
   conv = await autoHandoverToCounselorLine(conv, channel ?? null);
   const savedInbound = await appendConvMessage({ conversationId: conv.id, role: "user", body: text, metaId: id, source: "inbound", tenantId: tid, channelId: channel?.id ?? null, mediaUrl, mediaType });
   await touchInbound(conv.id, text);
+  if (handoff) void setHandoffConversation(tid, handoff.id, conv.id);
 
   // Form submission → record it (sent→submitted) for the Responses view + chat.
   if (answers && Object.keys(answers).length) {
@@ -437,6 +451,16 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     // nothing newer, so exactly one turn proceeds; the awaiting-reply cron is the
     // backstop if that last turn ever dies mid-flight.
     if (savedInbound && await hasNewerInbound(conv.id, savedInbound.createdAt).catch(() => false)) return;
+
+    // Arrived from a handoff: what the rule promised is this turn's reply. It
+    // stands in for the welcome too (claimed so it isn't sent after it), and the
+    // AI carries on from their next message with the promise in the history.
+    if (handoff?.message) {
+      await claimWelcome(conv.id).catch(() => false);
+      const sent = await sendText(from, handoff.message, channel);
+      if (sent.id) await appendConvMessage({ conversationId: conv.id, role: "assistant", body: handoff.message, metaId: sent.id, source: "bot", tenantId: tid, channelId: channel?.id ?? null });
+      return;
+    }
 
     // If a drip is already driving this contact, stay quiet — no welcome, no AI —
     // so the sequence owns the thread (until it completes) and nothing collides.
