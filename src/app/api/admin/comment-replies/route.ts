@@ -1,0 +1,22 @@
+import { NextResponse } from "next/server";
+import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { listCommentReplies, REPLY_PLATFORMS, type ReplyPlatform } from "@/lib/comment-replies";
+import { errorMessage } from "@/lib/errors";
+
+export const dynamic = "force-dynamic";
+
+// GET ?platform=youtube|instagram|facebook &channelId= &before=<iso> — the
+// public comment replies posted for this workspace, newest first.
+export async function GET(req: Request) {
+  if (!(await currentUser())) return NextResponse.json({ error: "Sign in first" }, { status: 401 });
+  const url = new URL(req.url);
+  const platform = url.searchParams.get("platform") as ReplyPlatform;
+  if (!REPLY_PLATFORMS.includes(platform)) return NextResponse.json({ error: "Unknown platform" }, { status: 400 });
+  try {
+    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const r = await listCommentReplies(tid, { platform, channelId: url.searchParams.get("channelId"), before: url.searchParams.get("before") });
+    return NextResponse.json(r);
+  } catch (err) {
+    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  }
+}

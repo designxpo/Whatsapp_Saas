@@ -261,6 +261,37 @@ export async function replyToFbComment(creds: FbCreds, commentId: string, text: 
   }
 }
 
+// Change a reply the Page posted: a Page may edit its own comment in place
+// (POST /{comment-id} with the new message; pages_manage_engagement).
+export async function editFbComment(creds: FbCreds, commentId: string, text: string, tenantId?: string): Promise<{ ok: boolean; error?: string }> {
+  if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };
+  if (!(await moderateText(text, { tenantId, surface: "comment_reply" })).allowed) return { ok: false, error: "Blocked by the content safety filter" };
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${creds.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text.slice(0, 2000) }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: j.error?.message || `Comment edit failed (${r.status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Comment edit error" };
+  }
+}
+
+// Remove a reply the Page posted.
+export async function deleteFbComment(creds: FbCreds, commentId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}`, { method: "DELETE", headers: { Authorization: `Bearer ${creds.token}` } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: j.error?.message || `Comment delete failed (${r.status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Comment delete error" };
+  }
+}
+
 // Like a Page comment AS the Page. Best-effort engagement signal on comments an
 // automation replies to. Paced on its own budget to avoid spam flags. Needs the
 // Page token's pages_manage_engagement permission.

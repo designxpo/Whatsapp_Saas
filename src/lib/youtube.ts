@@ -314,6 +314,41 @@ export async function replyToComment(creds: YtCreds, parentCommentId: string, te
   }
 }
 
+// Change a reply we posted (comments.update, 50 units). YouTube lets the author
+// edit their own comment in place; the safety filter runs on the new text.
+export async function editComment(creds: YtCreds, commentId: string, text: string, tenantId?: string): Promise<YtSendResult> {
+  if (!commentId || !text.trim()) return { ok: false, error: "comment and text required" };
+  const token = await accessTokenFor(creds);
+  if (!token) return { ok: false, blockedBy: "config", error: "YouTube is not connected on this deployment" };
+  if (!(await moderateText(text, { tenantId, surface: "comment_reply" })).allowed) return { ok: false, error: "Blocked by the content safety filter" };
+  try {
+    const r = await fetch(`${API}/comments?part=snippet`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: commentId, snippet: { textOriginal: text.slice(0, 9000) } }),
+    });
+    const j = (await r.json().catch(() => null)) as { id?: string; error?: { message?: string } } | null;
+    if (!r.ok) return { ok: false, error: j?.error?.message || `YouTube edit failed (${r.status})` };
+    return { ok: true, id: j?.id ?? commentId };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "YouTube edit error" };
+  }
+}
+
+// Remove a reply we posted (comments.delete, 50 units).
+export async function deleteComment(creds: YtCreds, commentId: string): Promise<YtSendResult> {
+  const token = await accessTokenFor(creds);
+  if (!token) return { ok: false, blockedBy: "config", error: "YouTube is not connected on this deployment" };
+  try {
+    const r = await fetch(`${API}/comments?id=${encodeURIComponent(commentId)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (r.ok || r.status === 404) return { ok: true };   // already gone is gone
+    const j = (await r.json().catch(() => null)) as { error?: { message?: string } } | null;
+    return { ok: false, error: j?.error?.message || `YouTube delete failed (${r.status})` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "YouTube delete error" };
+  }
+}
+
 // Moderate a comment. comments.setModerationStatus = 50 units. status:
 // "heldForReview" | "rejected" | "published". `banAuthor` only valid with rejected.
 export async function setModeration(creds: YtCreds, commentId: string, status: "heldForReview" | "rejected" | "published"): Promise<YtSendResult> {

@@ -12,6 +12,7 @@ import { partnerYtRemaining } from "./partner-quotas";
 import { db } from "./supabase";
 import { listChannels, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
 import { youtubeConfigured, listNewComments, replyToComment, setModeration, getThreads, getChannelHandle, type YtCreds } from "./youtube";
+import { recordCommentReply } from "./comment-replies";
 import {
   matchYtCommentRule, claimYtComment, claimedYtCommentIds, listYtCommentRules, bumpYtRuleMatch, getYtDailyReplyCap, ytActionsUsedToday,
   getYtWatch, saveYtWatch, recentlyAnsweredThreads, releaseYtComment,
@@ -146,7 +147,10 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
       const reply = pickPublicReply({ publicReplies: rule.publicReplies, publicReply: null });
       if (reply) {
         const r = await replyToComment(creds, c.id, reply);
-        if (r.ok) { acted++; lastReplyId = r.id ?? null; answered.push(c.id); }
+        if (r.ok) {
+          acted++; lastReplyId = r.id ?? null; answered.push(c.id);
+          await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: reply, source: "rule", commentText: c.text, postId: c.videoId });
+        }
         else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] rule reply failed", channel.id, c.id, r.error); }
       }
       if (rule.moderate === "hold_spam") await setModeration(creds, c.id, "heldForReview");
@@ -173,7 +177,10 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
         const verdict = classifyAiReply(res, isCannedNonAnswer);
         if (verdict === "post") {
           const r = await replyToComment(creds, c.id, res.reply as string);
-          if (r.ok) { acted++; lastReplyId = r.id ?? null; answered.push(c.id); }
+          if (r.ok) {
+            acted++; lastReplyId = r.id ?? null; answered.push(c.id);
+            await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: res.reply as string, source: "ai", commentText: c.text, postId: c.videoId });
+          }
           else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] ai reply failed", channel.id, c.id, r.error); }
         } else if (verdict === "retry") {
           // The AI is failing (provider down / quota out). Never post its
@@ -291,8 +298,12 @@ async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, bool
             channel.tenantId, effectiveKbScope(null, channel), false, undefined, "youtube");
           const verdict = classifyAiReply(res, isCannedNonAnswer);
           if (verdict === "post") {
-            const p = await replyToComment(creds, t.id, addressTo(r.authorName, res.reply as string));
-            if (p.ok) { acted++; st.active = nowIso; }
+            const text = addressTo(r.authorName, res.reply as string);
+            const p = await replyToComment(creds, t.id, text);
+            if (p.ok) {
+              acted++; st.active = nowIso;
+              await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: r.id, replyId: p.id, replyText: text, source: "ai_followup", commentText: r.text, commentAuthor: r.authorName, postId: t.videoId });
+            }
             else console.error("[ytpoller] follow-up reply failed", channel.id, r.id, p.error);
           } else if (verdict === "retry") {
             // AI failing: release, keep the thread unread from here, stop for this run.

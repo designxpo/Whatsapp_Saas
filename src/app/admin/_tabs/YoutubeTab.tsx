@@ -12,6 +12,7 @@ import { inp, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
+import { CommentReplies } from "./CommentReplies";
 
 function YoutubeTab() {
   const brand = useBrand();
@@ -32,6 +33,8 @@ function YoutubeTab() {
       </section>
 
       <YoutubeManager />
+
+      <CommentReplies platform="youtube" />
     </div>
   );
 }

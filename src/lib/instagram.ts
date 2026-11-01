@@ -287,6 +287,20 @@ export async function fetchIgMedia(creds: IgCreds, limit = 25): Promise<IgMedia[
   } catch { return []; }
 }
 
+// ── Remove a comment we posted ──────────────────────────────────────────────
+// Instagram has no way to edit a comment (not even in the app), so correcting a
+// reply means posting the right one and deleting this one.
+export async function deleteIgComment(creds: IgCreds, commentId: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}`, { method: "DELETE", headers: { Authorization: `Bearer ${creds.token}` } });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: j.error?.message || `Comment delete failed (${r.status})` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Comment delete error" };
+  }
+}
+
 // ── Public reply under a comment (optional, alongside the private DM) ─────────
 export async function replyToComment(creds: IgCreds, commentId: string, text: string, tenantId?: string): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!commentId || !text.trim()) return { ok: false, error: "commentId and text required" };

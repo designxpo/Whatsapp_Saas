@@ -2,6 +2,7 @@
 
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useBrand } from "@/components/BrandContext";
+import { CommentReplies } from "./CommentReplies";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
@@ -33,6 +34,8 @@ function InstagramTab() {
       </section>
 
       <InstagramManager />
+
+      <CommentReplies platform="instagram" />
     </div>
   );
 }
