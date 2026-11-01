@@ -5,7 +5,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import { track } from "@/lib/analytics";
 
 const TOPICS = ["Sales", "Support", "Partnership", "General"];
-const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
+const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
 
 export function ContactForm() {
   const [form, setForm] = useState({ name: "", email: "", topic: "General", message: "", website: "" });
@@ -35,7 +35,7 @@ export function ContactForm() {
   if (done) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-[0_18px_50px_-24px_rgba(7,131,253,0.35)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#DDEFE4] text-[#2f9e6e]"><MailCheck className="h-7 w-7" /></div>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#DDEFE4] text-[#047857]"><MailCheck className="h-7 w-7" /></div>
         <h3 className="mt-4 text-xl font-extrabold text-slate-900">Message sent</h3>
         <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">Thanks{form.name ? `, ${form.name.split(" ")[0]}` : ""} — we&apos;ll reply to <span className="font-semibold text-slate-700">{form.email}</span> shortly.</p>
       </div>

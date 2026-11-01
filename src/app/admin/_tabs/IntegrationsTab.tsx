@@ -243,7 +243,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                 {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
                 <button onClick={() => test(i.id)} disabled={testing === i.id} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas disabled:opacity-60">{testing === i.id ? "Testing…" : "Test"}</button>
                 <button onClick={() => toggleActive(i)} className="px-2.5 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">{i.active ? "Pause" : "Resume"}</button>
-                <button onClick={() => remove(i)} className="p-1.5 text-red-400 hover:text-red-600 rounded-control"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => remove(i)} className="p-1.5 text-red-500 hover:text-red-600 rounded-control"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
             <div className="flex flex-wrap gap-1">

@@ -51,7 +51,7 @@ export default function VsIndexPage() {
                   <span className="block text-base font-extrabold text-slate-900">Talko AI vs {c.name}</span>
                   <span className="block text-xs text-slate-500">{c.category}</span>
                 </span>
-                <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-[#0783fd]" aria-hidden="true" />
+                <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-[#026cd4]" aria-hidden="true" />
               </Link>
             ))}
           </div>

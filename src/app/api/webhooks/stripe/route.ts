@@ -6,6 +6,7 @@ import { applySubscription, setStripeIds, getTenant, getTenantByStripeCustomer, 
 import { getPlanByStripePrice } from "@/lib/plans";
 import { markOrderPaid } from "@/lib/commerce";
 import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
+import { recordCancelAt } from "@/lib/billing-cancel";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,13 @@ async function syncSubscription(sub: Stripe.Subscription): Promise<void> {
     currentPeriodEnd: periodEndUnix ? new Date(periodEndUnix * 1000).toISOString() : undefined,
     subscriptionId: sub.id,
   });
+
+  // Cancelled in the portal "at period end": Stripe keeps the status active
+  // and sets cancel_at, so the billing page can say "active until <date>, won't
+  // renew". Cleared again if they resume it in the portal.
+  const cancelAtUnix = sub.cancel_at ?? (sub.cancel_at_period_end ? periodEndUnix : null)
+    ?? (sub.status === "canceled" ? sub.ended_at : null);
+  await recordCancelAt(tenantId, cancelAtUnix ? new Date(cancelAtUnix * 1000).toISOString() : null);
 
   // Stripe has exhausted its retries — say so, instead of letting them discover
   // it. Gated on the literal `unpaid` status, NOT on the mapped tenant status:

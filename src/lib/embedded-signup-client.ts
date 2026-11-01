@@ -80,7 +80,7 @@ function loadSdk(forApp: string | undefined = APP_ID): Promise<void> {
   if (!forApp) return Promise.reject(new Error("NEXT_PUBLIC_META_APP_ID is not set"));
   const init = () => {
     if (initedFor === forApp) return;
-    window.FB!.init({ appId: forApp, autoLogAppEvents: true, xfbml: false, version: GRAPH_VERSION });
+    window.FB!.init({ appId: forApp, autoLogAppEvents: false, xfbml: false, version: GRAPH_VERSION });
     initedFor = forApp;
   };
   if (window.FB) { init(); return Promise.resolve(); }

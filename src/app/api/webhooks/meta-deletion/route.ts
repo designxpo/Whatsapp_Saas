@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { verifySignedRequest } from "@/lib/apiauth";
-import { recordDeletionRequest } from "@/lib/metadeletion";
+import { recordDeletionRequest, processDeletionRequest } from "@/lib/metadeletion";
 
 export const dynamic = "force-dynamic";
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://whatsapp-saas-navy.vercel.app").replace(/\/$/, "");
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://app.thetalko.in").replace(/\/$/, "");
 
 // Meta Data Deletion Request callback (shared across WhatsApp / Instagram /
 // Messenger under the one Tech Provider app). Meta POSTs a `signed_request`
@@ -28,11 +28,16 @@ async function readSignedRequest(req: Request): Promise<string> {
 
 export async function POST(req: Request) {
   const signed = await readSignedRequest(req);
-  const payload = verifySignedRequest(signed, process.env.META_APP_SECRET);
+  const payload = verifySignedRequest(signed, process.env.META_APP_SECRET)
+    ?? verifySignedRequest(signed, process.env.META_INSTAGRAM_APP_SECRET);
   if (!payload) return NextResponse.json({ error: "Invalid signed_request" }, { status: 400 });
 
   const metaUserId = String(payload.user_id ?? "unknown");
   const code = await recordDeletionRequest(metaUserId);
+  after(async () => {
+    try { await processDeletionRequest(code, metaUserId); }
+    catch (e) { console.error("[meta-deletion] processing failed", code, e); }
+  });
 
   return NextResponse.json({
     url: `${SITE_URL}/legal/data-deletion?code=${encodeURIComponent(code)}`,

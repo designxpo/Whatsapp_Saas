@@ -93,7 +93,7 @@ function HandleHubTab() {
           <h2 className="text-xl font-extrabold text-brand-dark">Handle Hub</h2><PageInfo className="text-sm text-slate-500" lead={<>Branded WhatsApp entry points — with a tracked link + QR per source, so you know exactly which QR, ad, or post started each conversation.</>}>Run this on as many WhatsApp numbers as you like.</PageInfo>
         </div>
 
-        {err && <p className="text-xs text-red-500">{err}</p>}
+        {err && <p className="text-xs text-red-700">{err}</p>}
 
         {/* Add a number */}
         <div className="bg-white rounded-card border border-line p-4 space-y-3">
@@ -143,7 +143,7 @@ function HandleHubTab() {
                   ) : (
                     <button onClick={() => setEditDraft(d => ({ ...d, [ep.id]: { label: ep.label, number: ep.number, handle: ep.handle, greeting: ep.greeting } }))} className="text-xs font-bold text-brand-700 hover:underline">Edit</button>
                   )}
-                  <button onClick={() => removeEntryPoint(ep)} className="text-xs text-red-500 hover:underline">Delete</button>
+                  <button onClick={() => removeEntryPoint(ep)} className="text-xs text-red-700 hover:underline">Delete</button>
                 </div>
               </div>
 
@@ -181,7 +181,7 @@ function HandleHubTab() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => removeSource(s.id, s.label)} className="text-xs text-red-500 hover:underline shrink-0">Delete</button>
+                    <button onClick={() => removeSource(s.id, s.label)} className="text-xs text-red-700 hover:underline shrink-0">Delete</button>
                   </div>
                 ))}
                 {ep.sources.length === 0 && <p className="text-center text-slate-400 text-sm py-6 border border-line rounded-card">No sources yet for this number — add one above.</p>}

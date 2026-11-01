@@ -48,7 +48,7 @@ function Node({ node, dots = "x", className = "w-48" }: { node: CanvasNode; dots
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       {showOut && <span aria-hidden className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       <div className="flex items-center gap-2.5">
-        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${node.accent ? `${GRADIENTS.brand} text-white animate-pulsesoft` : "bg-[#0783fd]/10 text-[#0783fd]"}`}>
+        <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${node.accent ? `${GRADIENTS.brand} text-white animate-pulsesoft` : "bg-[#0783fd]/10 text-[#026cd4]"}`}>
           <Ico name={node.icon} className="h-4 w-4" />
         </span>
         <div className="min-w-0">
@@ -118,7 +118,7 @@ export function AgentCanvas() {
                 <div className="grid w-[360px] grid-cols-4 gap-2">
                   {c.attachments.map(a => (
                     <div key={a.id} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2 text-center">
-                      <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={a.icon} className="h-3 w-3" /></span>
+                      <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#026cd4]"><Ico name={a.icon} className="h-3 w-3" /></span>
                       <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{a.title}</div>
                       <div className="text-[10px] leading-tight text-slate-500">{a.sub}</div>
                     </div>
@@ -140,8 +140,8 @@ export function AgentCanvas() {
                 <path d={`M${SPLIT_W - 8} ${LEAD_Y - 5} L${SPLIT_W} ${LEAD_Y} L${SPLIT_W - 8} ${LEAD_Y + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
                 <path d={`M${SPLIT_W - 8} ${OTHER_Y - 5} L${SPLIT_W} ${OTHER_Y} L${SPLIT_W - 8} ${OTHER_Y + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
               </svg>
-              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#0783fd]" style={{ left: 22, top: LEAD_Y - 24 }}>lead</span>
-              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#0783fd]" style={{ left: 20, top: OTHER_Y - 24 }}>other</span>
+              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#026cd4]" style={{ left: 22, top: LEAD_Y - 24 }}>lead</span>
+              <span className="absolute rounded-full bg-[#0783fd]/10 px-2 py-0.5 text-[10px] font-bold text-[#026cd4]" style={{ left: 20, top: OTHER_Y - 24 }}>other</span>
             </div>
 
             <div className="flex flex-col" style={{ gap: BRANCH_GAP }}>

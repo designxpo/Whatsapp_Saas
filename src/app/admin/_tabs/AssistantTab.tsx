@@ -4,6 +4,7 @@
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
+import { AiGaps } from "./AiGaps";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AlertTriangle, BookOpen, Check, ChevronDown, ChevronRight, Download, Edit3, FolderOpen, Save, X, ArrowRight, Bot, Database, FileText, FlaskConical, Globe, Loader2, MessageSquare, Plus, RefreshCw, Send, ShieldCheck, Sparkles, Trash2, UploadCloud } from "lucide-react";
 import { type Tab, type GoTo, inp, railLoading, RailCard, StatRow, RailBar, statusBadge, ConvAvatar, useAnalytics } from "../_shared";
@@ -179,6 +180,9 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
       {/* Test the assistant (no WhatsApp send) */}
       <TestAssistantBox />
 
+      {/* What customers asked that the knowledge base didn't cover */}
+      <AiGaps />
+
       {/* The OKF library. Only shown once something has been filed into it —
           before that it is noise on a screen about documents. */}
       {(review.length > 0 || areas.length > 0) && (
@@ -238,7 +242,7 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
                   onClick={() => runDocAction(d, "reprocess")} className={`p-1.5 rounded-lg disabled:cursor-wait ${busyDoc[d.id] === "reprocess" ? "text-brand-700 bg-brand-50" : "text-slate-400 hover:text-brand-700 hover:bg-brand-50"}`}>
                   {busyDoc[d.id] === "reprocess" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                 </button>
-                <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                <button onClick={() => fetch("/api/admin/kb", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: d.id }) }).then(load).catch(() => {})} className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
               </div>
             </div>
           ))}

@@ -87,7 +87,29 @@ async function logSend(opts: SendEmailOptions, resendId: string | null, status: 
   }
 }
 
+// Mail people didn't ask for one by one — announcements and recurring reports.
+// These are never sent to an address that bounced or marked us as spam
+// (Resend's webhook records both on the log row). Account, security and
+// billing mail still goes: a bounced mailbox may have been fixed since, and
+// someone resetting their password needs the code.
+const SUPPRESSIBLE: ReadonlySet<EmailType> = new Set<EmailType>(["owner_broadcast", "weekly_recap", "daily_digest"]);
+
+/** The address bounced or complained before. Unknown (an error) counts as no. */
+export async function isSuppressed(to: string): Promise<boolean> {
+  try {
+    // Exact match (as sent, and lower-cased) — not ilike, whose "_" wildcard
+    // would match a neighbour's address.
+    const addr = to.trim();
+    const { data } = await db().from("wa_email_log").select("id").in("to_email", [...new Set([addr, addr.toLowerCase()])])
+      .in("status", ["bounced", "complained"]).limit(1);
+    return !!data?.length;
+  } catch { return false; }
+}
+
 export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult> {
+  if (opts.type && SUPPRESSIBLE.has(opts.type) && await isSuppressed(opts.to)) {
+    return { ok: false, error: "Not sent: this address bounced or reported our email as spam before." };
+  }
   try {
     const sender = process.env.RESEND_FROM_EMAIL || "Talko AI <no-reply@thetalko.in>";
     const address = opts.fromEmail && /^[^\s@<>"]+@[^\s@<>"]+$/.test(opts.fromEmail) ? opts.fromEmail : (sender.match(/<([^>]+)>/)?.[1] ?? sender);

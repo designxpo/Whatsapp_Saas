@@ -50,7 +50,7 @@ export default function ExtensionPage() {
             <p>
               It&apos;s for anyone running Talko AI who&apos;s often mid-task in a browser tab — a CRM, a marketplace listing, an email — when a customer message
               needs a reply. Every send goes through WhatsApp&apos;s, Instagram&apos;s and Facebook&apos;s own official APIs, the same rules (including WhatsApp&apos;s
-              24-hour window) as the <Link href="/features" className="font-semibold text-[#0783fd] hover:underline">Talko AI web app</Link>.
+              24-hour window) as the <Link href="/features" className="font-semibold text-[#026cd4] hover:underline">Talko AI web app</Link>.
             </p>
           </PageSummary>
           <div className="mt-4 text-center text-sm text-slate-500">
@@ -62,7 +62,7 @@ export default function ExtensionPage() {
               className={`inline-flex items-center justify-center gap-2 rounded-full ${GRADIENTS.brand} px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(7,131,253,0.8)] transition-opacity hover:opacity-90`}>
               Add to Chrome — it&apos;s free
             </a>
-            <Link href="/signup" className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#0783fd]">
+            <Link href="/signup" className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#026cd4]">
               No Talko AI account yet? Start a free trial →
             </Link>
           </Reveal>
@@ -75,7 +75,7 @@ export default function ExtensionPage() {
           {FEATURES.map((f, i) => (
             <Reveal key={f.title} delay={(i % 3) * 90} className="h-full">
               <Card className="h-full">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]">
                   <f.icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <h3 className="mt-4 text-base font-bold text-slate-900">{f.title}</h3>

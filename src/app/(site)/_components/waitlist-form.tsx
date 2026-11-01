@@ -6,7 +6,7 @@ import { TIERS, CREATOR_TIERS } from "../_content/site";
 
 const PLAN_OPTIONS = [...TIERS, ...CREATOR_TIERS].map(t => t.name);
 const CHANNELS = ["WhatsApp", "Instagram", "Facebook Messenger", "Website chat", "Google reviews"];
-const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
+const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
 
 export function WaitlistForm({ initialPlan = "" }: { initialPlan?: string }) {
   const preset = PLAN_OPTIONS.find(p => p.toLowerCase() === initialPlan.trim().toLowerCase()) ?? "";
@@ -39,7 +39,7 @@ export function WaitlistForm({ initialPlan = "" }: { initialPlan?: string }) {
   if (done) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-[0_18px_50px_-24px_rgba(7,131,253,0.35)]">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#DDEFE4] text-[#2f9e6e]"><PartyPopper className="h-7 w-7" /></div>
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#DDEFE4] text-[#047857]"><PartyPopper className="h-7 w-7" /></div>
         <h3 className="mt-4 text-xl font-extrabold text-slate-900">You&apos;re on the list! 🎉</h3>
         <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">Thanks{form.name ? `, ${form.name.split(" ")[0]}` : ""} — we&apos;ve saved your details{form.plan ? ` for the ${form.plan} plan` : ""}. We&apos;ll email you at <span className="font-semibold text-slate-700">{form.email}</span> the moment we launch and get you set up first.</p>
       </div>
@@ -82,7 +82,7 @@ export function WaitlistForm({ initialPlan = "" }: { initialPlan?: string }) {
             const on = channels.includes(c);
             return (
               <button key={c} type="button" onClick={() => toggleChannel(c)}
-                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${on ? "border-[#0783fd] bg-[#0783fd]/10 text-[#0783fd]" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition ${on ? "border-[#0783fd] bg-[#0783fd]/10 text-[#026cd4]" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}>
                 {on && <Check className="h-3.5 w-3.5" />}{c}
               </button>
             );

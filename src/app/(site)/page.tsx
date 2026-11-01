@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Container, SectionTitle } from "./_components/ui";
-import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, Testimonials, CtaBand, ProblemSolution, ComparisonTable, Glossary } from "./_components/sections";
+import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, CtaBand, ProblemSolution, ComparisonTable, Glossary } from "./_components/sections";
 import { WhyChoose } from "./_components/why-choose";
-import { PricingTiers } from "./_components/pricing";
+import { PricingTiers, RenewalNote } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
 import { PlatformGlimpse } from "./_components/glimpse";
@@ -45,7 +45,7 @@ const homeWebPage = {
     name: "Talko AI — WhatsApp, Instagram & YouTube Chat Automation with AI",
     description: "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
     published: "2026-06-01",
-    updated: "2026-08-05",
+    updated: "2026-11-01",
     breadcrumb: false,
   }),
   speakable: {
@@ -81,7 +81,7 @@ export default function HomePage() {
           The <summary> doubles as a question heading with its answer directly
           beneath, which is the pattern answer engines extract from. */}
       <details className="group mx-auto mb-10 max-w-2xl px-5">
-        <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#0783fd] [&::-webkit-details-marker]:hidden">
+        <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#026cd4] [&::-webkit-details-marker]:hidden">
           What is Talko AI?
           <svg className="h-3 w-3 transition-transform group-open:rotate-180" viewBox="0 0 12 12" fill="none" aria-hidden="true">
             <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -133,13 +133,12 @@ export default function HomePage() {
       <Container className="py-12">
         <SectionTitle id="pricing" eyebrow="Pricing" title="Simple, transparent pricing" subtitle="Free for 14 days. Cancel anytime." />
         <PricingTiers />
-        <div className="mt-8 flex flex-col items-center gap-2 text-center">
-          <Link href="/pricing" className="text-sm font-bold text-[#0783fd] hover:underline">Compare all plans →</Link>
-          <Link href="/pricing" className="text-xs font-semibold text-slate-500 hover:text-[#0783fd]">Creating on Instagram? See Creator plans from ₹999/mo →</Link>
+        <RenewalNote className="mt-8" />
+        <div className="mt-6 flex flex-col items-center gap-2 text-center">
+          <Link href="/pricing" className="text-sm font-bold text-[#026cd4] hover:underline">Compare all plans →</Link>
+          <Link href="/pricing" className="text-xs font-semibold text-slate-500 hover:text-[#026cd4]">Creating on Instagram? See Creator plans from ₹999/mo →</Link>
         </div>
       </Container>
-
-      <Testimonials />
 
       <Container className="py-12">
         <SectionTitle id="faq" eyebrow="FAQ" title="Frequently asked questions" />

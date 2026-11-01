@@ -66,10 +66,10 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
             { name: "Guides", href: "/guides" },
             { name: guide.title, href: `/guides/${guide.slug}` },
           ]} />
-          <Link href="/guides" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All guides</Link>
+          <Link href="/guides" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#026cd4]"><ArrowLeft className="h-4 w-4" /> All guides</Link>
           <div className="mx-auto mt-8 max-w-2xl text-center">
             <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{guide.category}</span>
+              <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#026cd4]">{guide.category}</span>
               <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {guide.timeEstimate}</span>
             </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{guide.title}</h1>
@@ -86,7 +86,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
               <ul className="mt-3 space-y-2">
                 {guide.before.map(b => (
                   <li key={b} className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#0783fd]" /> {b}
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#026cd4]" /> {b}
                   </li>
                 ))}
               </ul>
@@ -107,7 +107,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
 
           {guide.tip && (
             <div className="mt-10 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
               <p className="text-sm leading-relaxed text-amber-900">{guide.tip}</p>
             </div>
           )}
@@ -132,7 +132,7 @@ export default async function GuidePage({ params }: { params: Promise<{ slug: st
             <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400">Keep going</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {more.map(g => (
-                <Link key={g.slug} href={`/guides/${g.slug}`} className="rounded-xl border border-slate-200 p-4 text-sm font-semibold text-slate-700 transition-colors hover:border-[#0783fd]/40 hover:text-[#0783fd]">
+                <Link key={g.slug} href={`/guides/${g.slug}`} className="rounded-xl border border-slate-200 p-4 text-sm font-semibold text-slate-700 transition-colors hover:border-[#0783fd]/40 hover:text-[#026cd4]">
                   {g.title}
                 </Link>
               ))}

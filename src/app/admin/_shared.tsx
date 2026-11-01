@@ -227,13 +227,39 @@ export function RailCard({ title, action, onAction, children }: { title: string;
   );
 }
 
+// For a clickable row that can't be a <button> (it holds block layout or other
+// buttons): makes it Tab-reachable and lets Enter/Space activate it, like a
+// button would. Keys pressed on a nested control are left to that control.
+export function rowButtonProps(onActivate: () => void) {
+  return {
+    role: "button" as const,
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onActivate(); }
+    },
+  };
+}
+
 export function StatRow({ label, value, tone, onClick }: { label: string; value: React.ReactNode; tone?: "warn" | "bad"; onClick?: () => void }) {
-  return (
-    <div onClick={onClick} className={`flex items-center justify-between py-0.5 ${onClick ? "cursor-pointer hover:bg-canvas rounded-md px-1 -mx-1" : ""}`}>
+  const inner = (
+    <>
       <span className="text-xs text-slate-500">{label}</span>
-      <span className={`text-sm font-bold ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-600" : "text-ink-900"}`}>{value}</span>
-    </div>
+      <span className={`text-sm font-bold ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-700" : "text-ink-900"}`}>{value}</span>
+    </>
   );
+  // Clickable rows are real buttons so keyboard users can Tab to them and
+  // press Enter/Space; the width calc cancels the -mx-1 bleed a block div got
+  // for free. Rows without onClick stay plain, non-focusable text.
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className="flex w-[calc(100%+0.5rem)] items-center justify-between py-0.5 text-left cursor-pointer hover:bg-canvas rounded-md px-1 -mx-1">
+        {inner}
+      </button>
+    );
+  }
+  return <div className="flex items-center justify-between py-0.5">{inner}</div>;
 }
 
 export function RailBar({ label, pct, count, color }: { label: string; pct: number; count: number; color: string }) {

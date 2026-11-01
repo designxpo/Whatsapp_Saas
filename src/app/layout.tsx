@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { VercelMetrics } from "@/components/VercelMetrics";
 import { SITE_URL } from "@/lib/siteurl";
 import "./globals.css";
 
@@ -60,10 +59,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={inter.variable}>
       <head>
-        {/* Warm up the icon CDNs used above the fold (brand marks / hero chips)
-            so their TLS/connection setup isn't on the critical path. */}
-        <link rel="preconnect" href="https://cdn.simpleicons.org" crossOrigin="anonymous" />
-        <link rel="preconnect" href="https://api.iconify.design" crossOrigin="anonymous" />
         <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
         {/* No-JS safety net: scroll-reveal bakes a hidden state into SSR markup
             (opacity:0). If JS never runs, force every [data-reveal] element
@@ -75,9 +70,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {children}
         {/* Privacy-friendly product analytics + Core Web Vitals monitoring
-            (no-op until enabled in the Vercel project dashboard). */}
-        <Analytics />
-        <SpeedInsights />
+            (no-op until enabled in the Vercel project dashboard). Cookieless;
+            addresses are stripped of ids and query strings first. */}
+        <VercelMetrics />
       </body>
     </html>
   );

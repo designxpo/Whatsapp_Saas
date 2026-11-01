@@ -2,15 +2,16 @@
 // (Terms, Privacy, Acceptable Use, Refunds, Cookies). Pure data, no JSX, usable
 // from server components and the sitemap.
 //
-// EDIT ME: the placeholders in LEGAL_META (legal entity, contact emails,
-// jurisdiction) should be replaced with your real registered details, and these
-// documents should be reviewed by counsel before relying on them.
+// STILL NEEDED from the business (not guessable, so not filled in): the
+// registered address, the type of entity PM TECHNOLOGIES is, and a named
+// grievance officer (India IT Rules 2021 / DPDP Act). Have counsel review these
+// documents before relying on them.
 
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-10-30";
-export const LEGAL_EFFECTIVE = "15 August 2026";
+export const LEGAL_VERSION = "2026-11-01";
+export const LEGAL_EFFECTIVE = "1 November 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -33,6 +34,23 @@ export type LegalDoc = { slug: string; title: string; summary: string; sections:
 const p = (text: string): LegalBlock => ({ type: "p", text });
 const ul = (items: string[]): LegalBlock => ({ type: "list", items });
 
+// Who processes personal data for us — one list, shown in the Privacy Policy
+// and on its own page. Kept in step with the code: every outside service the
+// app sends personal data to belongs here.
+export const SUBPROCESSORS: { name: string; purpose: string; data: string; location?: string }[] = [
+  { name: "Vercel Inc.", purpose: "hosts the website and app, and provides cookieless page-view and speed measurement.", data: "all data passing through the app while it is processed; page addresses without ids.", location: "United States" },
+  { name: "Supabase, Inc.", purpose: "managed database and file storage.", data: "account data, your workspace's contacts, messages and files.", location: "the hosting region configured for our project" },
+  { name: "Meta Platforms", purpose: "sends and receives messages and comments on WhatsApp, Instagram and Messenger.", data: "message content, phone numbers and profile ids of the people you message.", location: "United States / Ireland" },
+  { name: "Google LLC (YouTube and Business Profile APIs)", purpose: "reads, posts and moderates comments on a YouTube channel you connect, and reads and replies to reviews on a Business Profile you connect.", data: "comments, reviews and the replies you send.", location: "United States" },
+  { name: "Google LLC (Gemini API)", purpose: "turns your knowledge-base documents and incoming customer questions into search vectors so the AI can find the right answer — on our account unless you connect your own Gemini key.", data: "knowledge-base text and the text of customer questions.", location: "United States" },
+  { name: "AI provider you choose (Google Gemini, OpenAI or Anthropic)", purpose: "writes AI replies using your own API key, under your own agreement with that provider.", data: "the conversation and knowledge-base text needed for each reply.", location: "United States" },
+  { name: "OpenAI, L.L.C.", purpose: "screens outbound messages and uploaded images against our content-safety rules before they are sent, on our key for every business.", data: "the outbound message text and images.", location: "United States" },
+  { name: "Resend", purpose: "delivers our emails: sign-in codes, invoices, digests and announcements.", data: "email address, the email content and delivery events.", location: "United States" },
+  { name: "Razorpay and Stripe", purpose: "take payment for subscriptions.", data: "name, email, phone and payment details (card details are held by them, never by us).", location: "India (Razorpay), United States (Stripe)" },
+  { name: "Google LLC (Google Analytics)", purpose: "website analytics — only for visitors who accept optional cookies, and only on our marketing website and sign-up page.", data: "pages visited, referrer, approximate location and device details.", location: "United States" },
+  { name: "CARTO", purpose: "map images in the ad-targeting map inside the app.", data: "your IP address and the map area viewed." },
+];
+
 const TERMS: LegalDoc = {
   slug: "terms",
   title: "Terms of Service",
@@ -48,23 +66,26 @@ const TERMS: LegalDoc = {
       p(`The Service connects to third-party platforms (such as Meta's WhatsApp, Instagram and Messenger APIs, and Google's YouTube Data API and Business Profile APIs) and to AI providers, using credentials and API keys or OAuth authorisations that you supply. Your use of those platforms remains subject to their own terms and policies.`),
     ] },
     { heading: "3. Eligibility and accounts", blocks: [
-      p(`You must be at least 18 years old and capable of forming a binding contract to use the Service. You are responsible for the accuracy of the information you provide and for keeping it up to date.`),
+      p(`You must be at least 18 years old and capable of forming a binding contract, and you must be using the Service for a business, not as a consumer for personal or household purposes. You are responsible for the accuracy of the information you provide and for keeping it up to date.`),
       p(`You are responsible for safeguarding your account credentials and for all activity that occurs under your account. You must notify us promptly at ${CONTACT} of any unauthorised use. Each business account is isolated from others; you may invite team members subject to the seat limits of your plan.`),
     ] },
     { heading: "4. Free trial", blocks: [
-      p(`We may offer a free trial period (typically 14 days). At the end of the trial, continued use of paid features requires an active paid plan. We may modify or discontinue trials at any time. Trial accounts are subject to the same Acceptable Use Policy as paid accounts.`),
+      p(`We may offer a free trial period (typically 14 days). No payment details are needed for the trial, and you are not charged automatically when it ends. At the end of the trial, continued use of paid features requires an active paid plan. We may modify or discontinue trials at any time. Trial accounts are subject to the same Acceptable Use Policy as paid accounts.`),
     ] },
     { heading: "5. Plans, billing and taxes", blocks: [
-      p(`Paid plans are billed in advance on a recurring (monthly or other stated) basis until cancelled. By subscribing you authorise us, or our payment processor, to charge the applicable fees and any taxes to your chosen payment method on each renewal date.`),
-      p(`Prices are stated exclusive of taxes unless otherwise indicated; you are responsible for all applicable taxes. We may change plan pricing or features on reasonable notice; changes take effect at your next renewal. AI usage is billed directly to your own AI provider under the "bring your own key" model and is not charged by us.`),
+      p(`Paid plans are billed in advance and renew automatically each month (or other period stated when you subscribe) until you cancel. By subscribing you authorise us, or our payment processor, to charge the plan fee to your chosen payment method on each renewal date. You can cancel at any time from the billing page in your account; see the Refund & Cancellation Policy.`),
+      p(`The amount shown on the billing page before you pay is the full amount charged for each period — nothing is added at payment. We are not currently registered for GST, so no GST is charged; if that changes, we will tell you in advance and any tax will apply only from a later renewal. We may change plan pricing or features on reasonable notice; changes take effect at your next renewal. AI usage is billed directly to your own AI provider under the "bring your own key" model and is not charged by us.`),
       p(`Refunds and cancellations are governed by our Refund & Cancellation Policy.`),
     ] },
     { heading: "6. Acceptable use", blocks: [
       p(`Your use of the Service must comply at all times with our Acceptable Use Policy, including all messaging-platform rules around consent, opt-in, messaging windows and prohibited content. We may suspend or limit messaging that puts your connected accounts or our infrastructure at risk.`),
     ] },
     { heading: "7. Your content and data", blocks: [
-      p(`You retain all rights to the content, contacts, messages and other data you submit to or generate through the Service ("Your Data"). You grant us a limited licence to host, process and transmit Your Data solely to provide and improve the Service and as described in our Privacy Policy.`),
-      p(`You are responsible for Your Data and for having all necessary rights, consents and lawful bases to collect and process it, including the consent of the end-customers you message. With respect to personal data of your end-customers, you act as the data controller and ${C} acts as your processor.`),
+      p(`You retain all rights to the content, contacts, messages and other data you submit to or generate through the Service ("Your Data"). You grant us a limited licence to host, process and transmit Your Data solely to provide, secure and support the Service and as described in our Privacy Policy. We do not use Your Data to train AI models, and we do not sell it or make it available to anyone else for that purpose.`),
+      p(`You are responsible for Your Data and for having all necessary rights, consents and lawful bases to collect and process it, including the consent of the end-customers you message. With respect to personal data of your end-customers, you act as the data controller (a "data fiduciary" under India's Digital Personal Data Protection Act, 2023) and ${C} acts as your processor. If your customers include children (under 18 in India), you are responsible for obtaining verifiable consent from a parent or guardian where the law requires it.`),
+    ] },
+    { heading: "7A. AI-generated replies", blocks: [
+      p(`Replies written by the AI features are generated automatically and sent in your business's name. Where the law or a platform's rules require it, you must make clear to your customers that they are talking to an automated assistant. You are responsible for checking that AI replies are accurate before relying on them.`),
     ] },
     { heading: "8. Third-party services", blocks: [
       p(`The Service integrates with third-party services including Meta (WhatsApp, Instagram, Messenger), Google (YouTube Data API Services, Business Profile APIs), payment processors, AI model providers and other tools you choose to connect. We are not responsible for third-party services, their availability, or changes to their APIs or policies, which may affect the Service. Your use of those services is governed by their own terms, including the YouTube Terms of Service (https://www.youtube.com/t/terms) where you connect a YouTube channel.`),
@@ -77,7 +98,7 @@ const TERMS: LegalDoc = {
       p(`Each party may have access to the other's confidential information. Each party agrees to protect the other's confidential information with reasonable care and to use it only as needed to perform under these Terms.`),
     ] },
     { heading: "11. Availability and changes to the Service", blocks: [
-      p(`We aim to keep the Service available but do not guarantee uninterrupted or error-free operation. We may modify, suspend or discontinue features, perform maintenance, or impose usage limits to protect the integrity and security of the Service. We will use reasonable efforts to give notice of material adverse changes.`),
+      p(`We aim to keep the Service available but do not guarantee uninterrupted or error-free operation, and we do not offer a guaranteed uptime percentage or service credits. Current status is shown at /status. We may modify, suspend or discontinue features, perform maintenance, or impose usage limits to protect the integrity and security of the Service. We will use reasonable efforts to give notice of material adverse changes.`),
     ] },
     { heading: "12. Disclaimers", blocks: [
       p(`The Service is provided "as is" and "as available" without warranties of any kind, whether express, implied or statutory, including warranties of merchantability, fitness for a particular purpose and non-infringement. We do not warrant that AI-generated responses will be accurate, complete or suitable for any purpose, or that messaging through third-party platforms will always be delivered. You are responsible for reviewing automated outputs before relying on them.`),
@@ -99,8 +120,14 @@ const TERMS: LegalDoc = {
     { heading: "17. Changes to these Terms", blocks: [
       p(`We may update these Terms from time to time. If we make material changes, we will provide notice (for example, by email or in-product). Your continued use of the Service after changes take effect constitutes acceptance of the revised Terms. The "last updated" date below indicates the current version.`),
     ] },
-    { heading: "18. Contact", blocks: [
-      p(`Questions about these Terms can be sent to ${CONTACT}.`),
+    { heading: "18. Copyright and content complaints", blocks: [
+      p(`If you believe content handled through the Service infringes your copyright or other rights, or is otherwise unlawful, write to ${CONTACT} with: your contact details; the content concerned and where it appears; the right you say is infringed and why; and a statement that the information in your notice is accurate and that you are the rights holder or authorised to act for them. We review each notice, may remove or disable access to the content, and tell the business concerned so it can respond.`),
+    ] },
+    { heading: "19. Grievances", blocks: [
+      p(`Complaints about the Service or about how we handle personal data can be sent to ${CONTACT}, marked "Grievance". We acknowledge complaints within 24 hours and aim to resolve them within 15 days.`),
+    ] },
+    { heading: "20. Contact", blocks: [
+      p(`Questions about these Terms can be sent to ${CONTACT}. ${C} is operated by ${LEGAL_META.legalEntity}, ${LEGAL_META.jurisdiction}.`),
     ] },
   ],
 };
@@ -119,11 +146,13 @@ const PRIVACY_DOC: LegalDoc = {
     ] },
     { heading: "3. Information we collect", blocks: [
       ul([
-        "Account information: name, business name, email, phone, password (stored hashed), and the industry, team size and use-case details you provide at sign-up.",
+        "Account information: name, business name, email, phone, password (stored hashed), and — only if you choose to answer — the industry, team size, use-case and volume questions at sign-up.",
+        "Consent records: the version of these policies you accepted and when, and whether you agreed to product news by email.",
         "Billing information: plan, subscription status and payment metadata. Card details are handled by our payment processor and are not stored by us.",
         "Channel & integration data: the credentials, API keys and OAuth tokens you connect (encrypted at rest), and the messages, contacts and media exchanged on your connected channels — including comments and video metadata from a connected YouTube channel, and reviews and business-location data from a connected Google Business Profile.",
         "AI keys: the AI provider keys you supply, stored encrypted and used only to generate replies for your account.",
-        "Usage data: log data, device and browser information, IP address, feature usage and diagnostic information.",
+        "Usage data: log data, feature usage and diagnostic information. IP addresses are used to limit sign-in and sign-up abuse and are deleted within about a day.",
+        "Website analytics: only if you accept analytics in the cookie banner, Google Analytics records which pages you visit on our website. Vercel's privacy-friendly analytics counts page views and loading speed without cookies, with ids and query strings removed from addresses.",
         "Cookies and similar technologies, as described in our Cookie Policy.",
       ]),
     ] },
@@ -132,10 +161,11 @@ const PRIVACY_DOC: LegalDoc = {
         "To provide, operate, secure and improve the Service.",
         "To authenticate users, manage accounts and process billing.",
         "To generate AI responses using the keys and knowledge base you provide.",
-        "To send service, security and transactional communications, and — where permitted — product updates you can opt out of.",
+        "To send service, security and transactional communications, and product news by email if you agreed to it at sign-up (accounts created before 1 November 2026 receive it unless they unsubscribe). Every product-news email has an unsubscribe link.",
         "To detect, prevent and address fraud, abuse and security or technical issues.",
         "To comply with legal obligations and enforce our terms.",
       ]),
+      p(`We do not use personal data in your workspace — including your customers' messages — to train AI models, and we do not sell it.`),
     ] },
     { heading: "5. Legal bases for processing", blocks: [
       p(`Where applicable law requires a legal basis, we rely on: performance of our contract with you; our legitimate interests in operating and securing the Service; your consent (which you may withdraw); and compliance with legal obligations.`),
@@ -143,15 +173,10 @@ const PRIVACY_DOC: LegalDoc = {
     { heading: "6. How we share information", blocks: [
       p(`We do not sell personal information. We share information only as needed to run the Service, with sub-processors and partners that are bound by appropriate confidentiality and data-protection obligations, including:`),
       ul([
-        "Meta Platforms — to send and receive messages and comments on WhatsApp, Instagram and Messenger.",
-        "Google — to read, post and moderate comments via YouTube API Services on a YouTube channel you connect, and to read and reply to reviews via the Google Business Profile APIs on a Business Profile you connect.",
-        "AI providers you choose (such as Google Gemini, OpenAI or Anthropic) — to generate replies using your own API key, billed to your provider account.",
-        "OpenAI, L.L.C. — to screen outbound messages and uploaded images against our content-safety rules before they are sent. This check runs on our key for every business, separately from the AI provider you choose for replies.",
-        "Payment processors (such as Stripe or Razorpay) — to handle subscriptions and payments.",
-        "Vercel Inc. — application hosting.",
-        "Supabase, Inc. — managed database and file storage.",
+        ...SUBPROCESSORS.map(sp => `${sp.name} — ${sp.purpose}`),
         "Professional advisers, and authorities where required by law or to protect rights and safety.",
       ]),
+      p(`The full list, with what each receives and where, is on our Sub-processors page (/legal/subprocessors).`),
       p(`We may also disclose information in connection with a merger, acquisition or sale of assets, subject to this Policy.`),
       // Spelled out as its own paragraph rather than left as one bullet: this is
       // the limb platform data-handling reviews ask about directly, and a policy
@@ -174,23 +199,26 @@ const PRIVACY_DOC: LegalDoc = {
       p(`Leads and conversations created through the extension are stored in your own workspace and are treated exactly like data created in the portal: you remain the data controller and we act as your processor, as described in section 2. We do not sell extension data, use it for advertising, use it to train generalised AI models, or use it for any purpose other than providing the features you invoke.`),
     ] },
     { heading: "9. International transfers", blocks: [
-      p(`${LEGAL_META.legalEntity} is established in ${LEGAL_META.governingLaw}, and your information may be processed outside your own country. In particular, the AI, hosting and content-safety providers named in section 6 — Anthropic, PBC, OpenAI, L.L.C., Google LLC and Vercel Inc. — are established in the United States and process data there. Our managed database and file storage are provided by Supabase, Inc. in the hosting region configured for our workspace.`),
+      p(`${LEGAL_META.legalEntity} is established in ${LEGAL_META.governingLaw}, and your information may be processed outside your own country. In particular, the AI, hosting, email, analytics and content-safety providers named in section 6 — including Anthropic, PBC, OpenAI, L.L.C., Google LLC, Vercel Inc. and Resend — are established in the United States and process data there. Our managed database and file storage are provided by Supabase, Inc. in the hosting region configured for our workspace.`),
       p(`Where we transfer personal data internationally, we use appropriate safeguards, such as standard contractual clauses, where required by applicable law.`),
     ] },
     { heading: "10. Data retention", blocks: [
       p(`We retain personal information for as long as your account is active or as needed to provide the Service, and thereafter only as required to comply with legal obligations, resolve disputes and enforce agreements. You can request export or deletion of Your Data; on account termination we delete or anonymise data within a reasonable period, subject to legal retention requirements. If you disconnect a YouTube channel or Google Business Profile, we delete the associated OAuth tokens promptly and stop accessing the Google API on your behalf.`),
+      p(`Some records are deleted automatically after a fixed time: website-visit attribution (ad click ids and campaign tags) after 90 days; records of how the AI routed each question after 180 days; cached AI answers after 90 days without use; questions the AI couldn't answer 180 days after they are dealt with, or 365 days if never dealt with; our email-sending log after 400 days; logs of incoming notifications from connected tools after 30 days; and the proof that a deletion request was carried out 3 years after it was completed. IP addresses used to limit sign-in abuse are deleted within about a day.`),
+      p(`Your customers' conversations, contacts and orders stay in your workspace until you delete them, erase a customer, or close your account. Order records are anonymised rather than deleted when a customer is erased, because tax and company law require accounting records to be kept.`),
     ] },
     { heading: "11. Security", blocks: [
       p(`We use technical and organisational measures designed to protect personal information, including encryption of credentials, API keys and OAuth tokens at rest, per-business data isolation with row-level security, access controls and audit logging. No method of transmission or storage is completely secure, and we cannot guarantee absolute security.`),
     ] },
     { heading: "12. Your rights", blocks: [
-      p(`Depending on your location, you may have rights to access, correct, delete, export or restrict the processing of your personal data, and to object to processing or withdraw consent. To exercise these rights, contact ${PRIVACY}. Where ${C} acts as a processor for end-customer data, requests from those individuals should be directed to the business that controls that data. You can revoke ${C}'s access to your Google account at any time via https://myaccount.google.com/permissions.`),
+      p(`Depending on your location, you may have rights to access, correct, delete, export or restrict the processing of your personal data, and to object to processing or withdraw consent. To exercise these rights, contact ${PRIVACY}. Workspace admins can also do this themselves: Settings lets you export your workspace's data and erase a single customer's data. Where ${C} acts as a processor for end-customer data, requests from those individuals should be directed to the business that controls that data. You can revoke ${C}'s access to your Google account at any time via https://myaccount.google.com/permissions.`),
     ] },
     { heading: "13. Cookies", blocks: [
       p(`We use cookies and similar technologies as described in our Cookie Policy.`),
     ] },
     { heading: "14. Children", blocks: [
-      p(`The Service is not directed to children under 16, and we do not knowingly collect their personal information. If you believe a child has provided us personal data, contact us and we will delete it.`),
+      p(`The Service is for businesses and people aged 18 or over, and we do not knowingly collect children's personal data for our own purposes. If you believe a child has signed up, contact us and we will delete the account.`),
+      p(`Businesses using ${C} may message their own customers, who can include minors (for example, students). The business is the controller of that data and is responsible for any consent the law requires — including verifiable consent from a parent or guardian for anyone under 18 under India's Digital Personal Data Protection Act, 2023.`),
     ] },
     { heading: "15. Changes to this Policy", blocks: [
       p(`We may update this Privacy Policy from time to time. Material changes will be notified through the Service or by email, and the "last updated" date below will reflect the current version.`),
@@ -258,10 +286,10 @@ const REFUND: LegalDoc = {
   summary: `How trials, billing, cancellations and refunds work.`,
   sections: [
     { heading: "1. Free trial", blocks: [
-      p(`New accounts may start with a free trial (typically 14 days), with no charge during the trial. You can cancel any time during the trial without being billed. If you do not subscribe to a paid plan, paid features become unavailable when the trial ends.`),
+      p(`New accounts may start with a free trial (typically 14 days). No payment details are needed and nothing is charged when the trial ends. You can stop any time during the trial without being billed. If you do not subscribe to a paid plan, paid features become unavailable when the trial ends.`),
     ] },
     { heading: "2. Subscription billing", blocks: [
-      p(`Paid plans are billed in advance on a recurring basis (for example monthly). Your subscription renews automatically at the start of each billing period until you cancel. The applicable fees plus any taxes are charged to your payment method on each renewal date.`),
+      p(`Paid plans are billed in advance on a recurring basis (for example monthly). Your subscription renews automatically at the start of each billing period until you cancel. The amount shown on the billing page before you pay is the amount charged to your payment method on each renewal date; no GST is currently charged and nothing is added at payment.`),
     ] },
     { heading: "3. Cancellation", blocks: [
       p(`You can cancel your subscription at any time from the billing area of your account, or by contacting ${CONTACT}. Cancellation stops future renewals; your plan remains active until the end of the current paid period, after which it will not renew.`),
@@ -270,7 +298,7 @@ const REFUND: LegalDoc = {
       p(`Except where required by law, fees already paid are non-refundable and we do not provide refunds or credits for partial billing periods, unused time, or features not used. If you believe you have been billed in error, contact us at ${CONTACT} within 7 days of the charge and we will review the issue in good faith.`),
     ] },
     { heading: "5. Plan changes", blocks: [
-      p(`You can upgrade or downgrade where available. Upgrades take effect immediately and may be charged on a pro-rated basis; downgrades typically take effect at the next renewal. Some features and limits change with your plan.`),
+      p(`To change plans while a subscription is running, contact ${CONTACT} and we will move you over without charging twice; or cancel and choose the new plan when the current period ends. Some features and limits change with your plan.`),
     ] },
     { heading: "6. Failed payments", blocks: [
       p(`If a renewal payment fails, we may retry the charge and may suspend or downgrade access until payment succeeds. Accounts left unpaid may be cancelled.`),
@@ -287,25 +315,67 @@ const COOKIES: LegalDoc = {
   summary: `The cookies and similar technologies we use, and how to manage them.`,
   sections: [
     { heading: "1. What are cookies", blocks: [
-      p(`Cookies are small text files stored on your device when you visit a website. We use cookies and similar technologies (such as local storage) to operate and improve the Service.`),
+      p(`Cookies are small text files stored on your device when you visit a website. Local storage is a similar store in your browser. We use both, as listed below.`),
     ] },
-    { heading: "2. How we use cookies", blocks: [
+    { heading: "2. Your choice", blocks: [
+      p(`On your first visit to our website we ask whether you accept optional cookies. "Accept" and "Reject" are equally easy, and until you choose, only essential cookies are used. You can change your answer at any time with "Cookie settings" at the bottom of every page; choosing "Reject" later stops Google Analytics and removes its cookies.`),
+    ] },
+    { heading: "3. Essential cookies (always on)", blocks: [
+      p(`These keep the site and your account working and secure. They are not used for analytics or advertising.`),
       ul([
-        "Essential cookies — required to sign you in, keep you authenticated and maintain your session. The Service does not work without these.",
-        "Preference cookies — remember choices such as interface settings.",
-        "Analytics — where used, to understand aggregate usage so we can improve the Service. These do not identify you personally.",
+        "talko_consent — remembers your cookie choice. 6 months.",
+        "wa_admin_session — keeps you signed in to your workspace. 7 days.",
+        "wa_device_id — remembers a device you've verified, so you aren't asked for a code every time. 180 days.",
+        "wa_pending_login, wa_pending_signup, wa_pk_challenge — hold a sign-in or sign-up while you enter the code we send or use a passkey. 5–15 minutes.",
+        "yt_oauth_state, gr_oauth_state — protect the connection to YouTube or Google Business Profile while you connect it. 10 minutes.",
+        "wa_partner_session, wa_affiliate_session — keep partners and affiliates signed in to their own dashboards. 7 and 30 days.",
       ]),
     ] },
-    { heading: "3. Managing cookies", blocks: [
-      p(`Most browsers let you block or delete cookies through their settings. Blocking essential cookies will prevent you from signing in and using core features. Where required, we will ask for your consent before setting non-essential cookies.`),
+    { heading: "4. Optional cookies (only if you accept)", blocks: [
+      ul([
+        "Google Analytics (_ga, _ga_<id>) — tells us which pages of our website people visit and where they came from. Set by Google; up to 2 years. Not loaded at all unless you accept.",
+        "talko_ref — remembers the affiliate link you arrived through, so the affiliate can be credited if you sign up later. 30 days. If you reject, a sign-up made straight from the affiliate link is still credited, without a cookie.",
+      ]),
     ] },
-    { heading: "4. Contact", blocks: [
+    { heading: "5. Local storage", blocks: [
+      ul([
+        "Website chat — once you send a message in the chat on our website (or a business's website using our chat), a visitor id is kept so the conversation continues across pages. The campaign tags in the page address (utm_…) are kept too once you've chatted or accepted optional cookies.",
+        "Workspace preferences — interface choices inside the app, such as a collapsed panel or a finished product tour.",
+      ]),
+    ] },
+    { heading: "6. Cookieless measurement", blocks: [
+      p(`Vercel Analytics and Speed Insights count page views and measure loading speed without cookies or local storage. Page addresses are stripped of query strings and ids before they are sent.`),
+    ] },
+    { heading: "7. Managing cookies", blocks: [
+      p(`Besides "Cookie settings", most browsers let you block or delete cookies. Blocking essential cookies will stop you signing in.`),
+    ] },
+    { heading: "8. Contact", blocks: [
       p(`Questions about our use of cookies can be sent to ${PRIVACY}.`),
     ] },
   ],
 };
 
-export const LEGAL_DOCS: LegalDoc[] = [TERMS, PRIVACY_DOC, ACCEPTABLE_USE, REFUND, COOKIES];
+const SUBPROCESSORS_DOC: LegalDoc = {
+  slug: "subprocessors",
+  title: "Sub-processors",
+  summary: `The companies that process personal data for us to run ${C}, what each receives, and where.`,
+  sections: [
+    { heading: "1. About this list", blocks: [
+      p(`${C} uses the service providers below to run the Service. Each receives only what it needs for the purpose shown. We will update this page before adding a new sub-processor that handles your customers' personal data.`),
+    ] },
+    { heading: "2. Sub-processors", blocks: [
+      ul(SUBPROCESSORS.map(sp => `${sp.name} — ${sp.purpose} Receives: ${sp.data}${sp.location ? ` Location: ${sp.location}.` : ""}`)),
+    ] },
+    { heading: "3. Services you choose to connect", blocks: [
+      p(`Integrations you switch on yourself — such as a CRM, a calendar, a spreadsheet or a payment gateway for your own customers — receive the data you send them under your own agreement with that provider. They are not our sub-processors.`),
+    ] },
+    { heading: "4. Contact", blocks: [
+      p(`Questions about sub-processors, or a request for a data processing agreement, can be sent to ${PRIVACY}.`),
+    ] },
+  ],
+};
+
+export const LEGAL_DOCS: LegalDoc[] = [TERMS, PRIVACY_DOC, ACCEPTABLE_USE, REFUND, COOKIES, SUBPROCESSORS_DOC];
 
 // Footer / nav order (slug → short label).
 export const LEGAL_NAV: { slug: string; label: string }[] = LEGAL_DOCS.map(d => ({

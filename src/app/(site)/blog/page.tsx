@@ -92,8 +92,8 @@ export default function BlogPage() {
             <p>
               It is written for owners and marketers who answer customer messages themselves, support and sales leads deciding what to automate
               first, agencies running messaging for clients, and creators keeping up with Instagram DMs. For step-by-step setup instructions
-              instead of context, see the <Link href="/guides" className="font-semibold text-[#0783fd] hover:underline">setup guides</Link>; for what
-              shipped recently, the <Link href="/changelog" className="font-semibold text-[#0783fd] hover:underline">changelog</Link>.
+              instead of context, see the <Link href="/guides" className="font-semibold text-[#026cd4] hover:underline">setup guides</Link>; for what
+              shipped recently, the <Link href="/changelog" className="font-semibold text-[#026cd4] hover:underline">changelog</Link>.
             </p>
           </PageSummary>
           <div className="mt-4 text-center text-sm text-slate-500">
@@ -119,10 +119,10 @@ export default function BlogPage() {
               </div>
               <div className="flex flex-1 flex-col p-6">
               <div className="flex items-center gap-2 text-xs text-slate-500">
-                <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{p.category}</span>
+                <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#026cd4]">{p.category}</span>
                 <span>{p.readTime}</span>
               </div>
-              <h3 className="mt-4 text-lg font-bold leading-snug text-slate-900 group-hover:text-[#0783fd]">{p.title}</h3>
+              <h3 className="mt-4 text-lg font-bold leading-snug text-slate-900 group-hover:text-[#026cd4]">{p.title}</h3>
               <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{p.excerpt}</p>
               <div className="mt-5 flex items-center justify-between text-xs text-slate-400">
                 <span>{p.date}</span>

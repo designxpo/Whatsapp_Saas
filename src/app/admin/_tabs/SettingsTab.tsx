@@ -1660,7 +1660,7 @@ export function MessengerCard() {
                     <button type="button" key={p.id} title={p.caption || "(no caption)"} onClick={() => setRuleForm({ ...ruleForm, postId: p.id, postCaption: p.caption, postPermalink: p.permalink, postThumbnail: p.thumbnail })}
                       className={`relative aspect-square rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-blue-500 border-blue-500" : "border-line hover:opacity-90"}`}>
                       {p.thumbnail
-                        ? <img src={p.thumbnail} alt="" className="w-full h-full object-cover" />
+                        ? <img src={p.thumbnail} alt={p.caption ? `Post: ${p.caption.slice(0, 120)}` : "Post with no caption"} className="w-full h-full object-cover" />
                         : <div className="w-full h-full bg-canvas flex items-center justify-center text-ink-300"><Facebook className="w-4 h-4" /></div>}
                       {sel && <span className="absolute inset-0 bg-blue-500/15 flex items-center justify-center"><Check className="w-5 h-5 text-white drop-shadow" /></span>}
                     </button>
@@ -1930,7 +1930,7 @@ export function WebchatCard() {
             const contain = !!form.iconUrl && form.logoFit === "contain";
             const avatar = (cls: string, pct: number) => (
               <span className={`shrink-0 ${cls} rounded-full flex items-center justify-center text-white overflow-hidden`} style={{ background: form.iconUrl ? (contain ? badge : "transparent") : "rgba(255,255,255,.25)", boxShadow: "0 0 0 1px rgba(15,23,42,.08)" }}>
-                {form.iconUrl ? <img src={form.iconUrl} alt="" style={contain ? { width: `${pct}%`, height: `${pct}%`, objectFit: "contain" } : { width: "100%", height: "100%", objectFit: "cover" }} /> : <MessageSquare className="w-3.5 h-3.5" />}
+                {form.iconUrl ? <img src={form.iconUrl} alt="Chat button icon preview" style={contain ? { width: `${pct}%`, height: `${pct}%`, objectFit: "contain" } : { width: "100%", height: "100%", objectFit: "cover" }} /> : <MessageSquare className="w-3.5 h-3.5" />}
               </span>
             );
             return (
@@ -2404,20 +2404,27 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
           <div className="flex flex-wrap gap-2">
-            <a href="/api/admin/gdpr/export" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export all data (JSON)</a>
+            <a href="/api/admin/gdpr/export" className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export workspace data (JSON)</a>
+            <button onClick={() => {
+              const who = prompt("Export one person's data — enter their phone number, or their Instagram / Messenger / web‑chat id.");
+              if (who?.trim()) window.location.href = `/api/admin/gdpr/export?contact=${encodeURIComponent(who.trim())}`;
+            }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas">Export one person…</button>
             <button onClick={async () => {
-              const phone = prompt("Erase a contact — enter their phone number.\nThis permanently deletes the contact and ALL their data.");
+              const phone = prompt("Erase a contact — enter their phone number, or their Instagram / Messenger / web‑chat id.\nThis permanently deletes the contact and ALL their data.");
               if (!phone?.trim()) return;
               if (!(await ask({
                 title: "Permanently erase this person's data?", tone: "danger", confirmLabel: "Erase everything", typeToConfirm: "ERASE",
-                message: "Their contact record, conversations, messages and logs are deleted outright. There is no backup to restore from and no way to reverse this.",
-                facts: [{ label: "Number", value: phone }],
+                message: "Their contact record, conversations, messages, notes, media and logs are deleted outright. Their orders are kept for your tax records with their number removed. There is no backup to restore from and no way to reverse this.",
+                facts: [{ label: "Number or id", value: phone }],
               }))) return;
               const r = await fetch("/api/admin/gdpr/erase", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone }) }).then(x => x.json()).catch(() => ({ error: "request failed" }));
-              alert(r.error ? `Error: ${r.error}` : `Erased data for ${r.phone}.`);
+              const rows = Object.values((r.deleted ?? {}) as Record<string, number>).reduce((a, b) => a + b, 0);
+              alert(r.error ? `Error: ${r.error}`
+                : `Erased data for ${r.phone}: ${rows} records deleted${r.anonymised?.wa_orders ? `, ${r.anonymised.wa_orders} orders kept without their number` : ""}.`
+                  + (r.errors?.length ? `\nSome parts failed — run it again: ${r.errors.join("; ")}` : ""));
             }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Erase a contact…</button>
           </div>
-          <p className="text-[11px] text-ink-400">Export downloads everything stored for your workspace. Erase fulfils a right‑to‑be‑forgotten request for one contact (removes the contact, conversations, messages, opt‑outs, queue/log, orders and more).</p>
+          <p className="text-[11px] text-ink-400">Workspace export includes contacts, conversations, message text (media as links), team notes, form responses, opt‑outs and orders — not media files, AI settings, knowledge base, flows or send logs. A very large workspace is cut off at the size or time limit, and the file says which parts were. Export one person gives everything held about them, for an access request. Erase fulfils a right‑to‑be‑forgotten request for one person (removes the contact, conversations, messages, notes, media they sent, form responses, opt‑outs, queue/log and more; orders are kept with their number removed).</p>
         </section>
       )}
 

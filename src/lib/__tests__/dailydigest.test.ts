@@ -16,7 +16,8 @@ const h = vi.hoisted(() => ({
   users: {} as Record<string, { email: string; role: string; active: boolean }[]>,
   tenants: [] as { id: string; owner_email: string | null; status: string }[],
   unsub: new Set<string>(),
-  sent: [] as { to: string; subject: string; tenantId?: string }[],
+  people: {} as Record<string, Set<string>>,
+  sent: [] as { to: string; subject: string; tenantId?: string; unsubscribeUrl?: string }[],
   sendOk: true,
 }));
 
@@ -30,12 +31,16 @@ vi.mock("../store", () => ({
 }));
 vi.mock("../team", () => ({ listUsers: async (t: string) => h.users[t] ?? [] }));
 vi.mock("../email", () => ({
-  sendEmail: async (m: { to: string; subject: string; tenantId?: string }) => { h.sent.push(m); return { ok: h.sendOk }; },
+  sendEmail: async (m: { to: string; subject: string; tenantId?: string; unsubscribeUrl?: string }) => { h.sent.push(m); return { ok: h.sendOk }; },
 }));
 vi.mock("../emailprefs", () => ({
   isUnsubscribed: async (t: string) => h.unsub.has(t),
-  setUnsubscribed: async (t: string, _k: string, v: boolean) => { if (v) h.unsub.add(t); else h.unsub.delete(t); },
-  unsubscribeUrl: (t: string) => `https://x/unsub/${t}`,
+  setUnsubscribed: async (t: string, _k: string, v: boolean, who?: string) => {
+    if (who) { const s = (h.people[t] ??= new Set()); if (v) s.add(who); else s.delete(who); return; }
+    if (v) h.unsub.add(t); else h.unsub.delete(t);
+  },
+  unsubscribedRecipients: async (t: string) => new Set(h.people[t] ?? []),
+  unsubscribeUrl: (t: string, _k: string, who?: string) => `https://x/unsub/${t}${who ? `/${who}` : ""}`,
 }));
 vi.mock("../llm", () => ({ generateExecutiveBrief: async () => { throw new Error("AiKeyMissingError"); } }));
 vi.mock("../supabase", () => ({
@@ -69,7 +74,7 @@ const EARLY = Date.parse("2026-10-22T01:30:00Z");     // 07:00 IST
 
 beforeEach(() => {
   h.settings = { t1: { daily_digest: { enabled: true, hour: 9 } }, t2: { daily_digest: { enabled: false, hour: 9 } } };
-  h.claims = new Set(); h.released = []; h.unsub = new Set(); h.sent = []; h.sendOk = true;
+  h.claims = new Set(); h.released = []; h.unsub = new Set(); h.people = {}; h.sent = []; h.sendOk = true;
   h.tenants = [
     { id: "t1", owner_email: "owner@one.co", status: "active" },
     { id: "t2", owner_email: "owner@two.co", status: "active" },
@@ -118,6 +123,20 @@ describe("drainDailyDigests", () => {
     expect((await drainDailyDigests(MORNING)).sent).toBe(0);
   });
 
+  it("gives each person their own unsubscribe link, and leaves out only the one who used it", async () => {
+    h.people.t1 = new Set(["admin@one.co"]);
+    const r = await drainDailyDigests(MORNING);
+    expect(h.sent.map(s => s.to)).toEqual(["owner@one.co"]);
+    expect(h.sent[0].unsubscribeUrl).toBe("https://x/unsub/t1/owner@one.co");
+    expect(r.sent).toBe(1);
+  });
+
+  it("doesn't use up the day when everyone has opted out", async () => {
+    h.people.t1 = new Set(["admin@one.co", "owner@one.co"]);
+    expect((await drainDailyDigests(MORNING)).sent).toBe(0);
+    expect(h.claims.size).toBe(0);
+  });
+
   it("waits for the hour", async () => {
     expect((await drainDailyDigests(EARLY)).sent).toBe(0);
   });
@@ -138,5 +157,11 @@ describe("setDigestConfig", () => {
     await setDigestConfig("t2", { enabled: true });
     expect(h.unsub.has("t2")).toBe(false);
     await expect(setDigestConfig("t2", { hour: 25 })).rejects.toThrow();
+  });
+
+  it("switching on never re-subscribes a person who opted out", async () => {
+    h.people.t2 = new Set(["admin@two.co"]);
+    await setDigestConfig("t2", { enabled: true });
+    expect(h.people.t2.has("admin@two.co")).toBe(true);
   });
 });

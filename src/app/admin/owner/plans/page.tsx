@@ -116,7 +116,7 @@ export default function PlansPage() {
 
           <Panel title="Feature matrix" dense action={
             <div className="flex items-center gap-2">
-              {saved && <span className="text-[11px] font-bold text-emerald-600">Saved</span>}
+              {saved && <span className="text-[11px] font-bold text-emerald-700">Saved</span>}
               {changes.length > 0 && (
                 <span className="text-[11px] text-amber-700">
                   {changes.length} change{changes.length === 1 ? "" : "s"} · affects {compact(affected)} account{affected === 1 ? "" : "s"}

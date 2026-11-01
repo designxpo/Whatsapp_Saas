@@ -50,7 +50,7 @@ function Card({ n, accent = false, w = NODE_W, h = NODE_H, dot }: { n: FlowNodeD
     >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
       {showOut && <span aria-hidden className="absolute -right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
-      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accent ? `${GRADIENTS.brand} text-white animate-pulsesoft` : "bg-[#0783fd]/10 text-[#0783fd]"}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accent ? `${GRADIENTS.brand} text-white animate-pulsesoft` : "bg-[#0783fd]/10 text-[#026cd4]"}`}>
         <Ico name={n.icon} className="h-4 w-4" />
       </span>
       <div className="min-w-0">
@@ -89,7 +89,7 @@ function Flow({ uc }: { uc: UseCase }) {
         <div className="flex" style={{ gap: SUB_GAP }}>
           {uc.context.map(s => (
             <div key={s.title} className="rounded-xl border border-dashed border-slate-300 bg-white/80 p-2.5 text-center" style={{ width: SUB_W, minHeight: SUB_H }}>
-              <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Ico name={s.icon} className="h-3 w-3" /></span>
+              <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#026cd4]"><Ico name={s.icon} className="h-3 w-3" /></span>
               <div className="mt-1 text-[10px] font-bold leading-tight text-slate-800">{s.title}</div>
               <div className="text-[10px] leading-tight text-slate-500">{s.sub}</div>
             </div>
@@ -105,8 +105,8 @@ function Flow({ uc }: { uc: UseCase }) {
           <path d={`M${SPLIT_W - 8} ${B1 - 5} L${SPLIT_W} ${B1} L${SPLIT_W - 8} ${B1 + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
           <path d={`M${SPLIT_W - 8} ${B2 - 5} L${SPLIT_W} ${B2} L${SPLIT_W - 8} ${B2 + 5} Z`} fill="#0783fd" fillOpacity="0.7" />
         </svg>
-        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/20" style={{ left: 16, top: B1 - 22 }}>{uc.branches[0].label}</span>
-        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/20" style={{ left: 14, top: B2 - 22 }}>{uc.branches[1].label}</span>
+        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#026cd4] ring-1 ring-[#0783fd]/20" style={{ left: 16, top: B1 - 22 }}>{uc.branches[0].label}</span>
+        <span className="absolute rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-[#026cd4] ring-1 ring-[#0783fd]/20" style={{ left: 14, top: B2 - 22 }}>{uc.branches[1].label}</span>
       </div>
 
       {/* Outcomes */}
@@ -157,7 +157,7 @@ export function FlowShowcase() {
                 className={`group relative rounded-2xl border px-4 py-3.5 text-left transition-colors ${on ? "border-[#0783fd]/30 bg-[#0783fd]/[0.06]" : "border-slate-200 bg-white hover:border-[#0783fd]/30 hover:bg-slate-50"}`}
               >
                 <span className={`absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-full bg-gradient-to-b from-brand-600 to-brand-900 transition-opacity ${on ? "opacity-100" : "opacity-0"}`} />
-                <div className={`flex items-center justify-between gap-2 text-sm font-bold ${on ? "text-[#0783fd]" : "text-slate-900"}`}>
+                <div className={`flex items-center justify-between gap-2 text-sm font-bold ${on ? "text-[#026cd4]" : "text-slate-900"}`}>
                   {u.tab}
                   <ArrowRight aria-hidden className={`h-4 w-4 shrink-0 transition-opacity ${on ? "opacity-100" : "opacity-0 group-hover:opacity-50"}`} />
                 </div>
@@ -174,7 +174,7 @@ export function FlowShowcase() {
             <div key={active} className="animate-flowin mx-auto w-max">
               <Flow uc={uc} />
               <p className="mx-auto mt-7 max-w-2xl text-center text-sm font-medium text-slate-600">
-                <span className="font-bold text-[#0783fd]">Outcome:</span> {uc.outcome}
+                <span className="font-bold text-[#026cd4]">Outcome:</span> {uc.outcome}
               </p>
             </div>
           </div>

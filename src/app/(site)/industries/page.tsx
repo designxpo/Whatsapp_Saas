@@ -85,9 +85,9 @@ export default function IndustriesPage() {
       <Container className="py-16">
         <PageFaq items={INDUSTRIES_SEO.faqs} path={PATH} title="Questions about the industry playbooks" />
         <p className="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-slate-500">
-          Not sure which playbook fits? <Link href="/contact" className="font-semibold text-[#0783fd] hover:underline">Tell us what you sell</Link>{" "}
+          Not sure which playbook fits? <Link href="/contact" className="font-semibold text-[#026cd4] hover:underline">Tell us what you sell</Link>{" "}
           and we&apos;ll point you at the closest one — or start from the{" "}
-          <Link href="/guides" className="font-semibold text-[#0783fd] hover:underline">setup guides</Link> and switch on one piece at a time.
+          <Link href="/guides" className="font-semibold text-[#026cd4] hover:underline">setup guides</Link> and switch on one piece at a time.
         </p>
         <SourceList items={INDUSTRIES_SEO.sources} className="mt-14" />
       </Container>

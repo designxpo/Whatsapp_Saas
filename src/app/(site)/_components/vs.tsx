@@ -12,7 +12,7 @@ import { SITE_URL } from "@/lib/siteurl";
 // Same a11y contract as the homepage CompareCell: icon cells carry an sr-only
 // "Yes"/"No" so they scrape as real text for screen readers AND answer engines.
 function Cell({ value }: { value: boolean | string }) {
-  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Yes</span></span>;
+  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#047857]"><Check className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Yes</span></span>;
   if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" aria-hidden="true" /><span className="sr-only">No</span></span>;
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Minus className="h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" />{value}</span>;
 }
@@ -50,7 +50,7 @@ export function VsComparison({ competitor }: { competitor: Competitor }) {
               ))}
               <tr className="border-t-2 border-slate-200 bg-white">
                 <td className="px-4 py-3.5 text-[12.5px] font-extrabold text-slate-900">Capabilities included</td>
-                <td className="bg-[#0783fd]/5 px-3 py-3.5 text-center"><span className="text-sm font-extrabold text-[#0783fd]">{talkoScore}</span><span className="text-[11px] font-semibold text-slate-400">/{total}</span></td>
+                <td className="bg-[#0783fd]/5 px-3 py-3.5 text-center"><span className="text-sm font-extrabold text-[#026cd4]">{talkoScore}</span><span className="text-[11px] font-semibold text-slate-400">/{total}</span></td>
                 <td className="px-3 py-3.5 text-center"><span className="text-sm font-extrabold text-slate-400">{rivalScore}</span><span className="text-[11px] font-semibold text-slate-400">/{total}</span></td>
               </tr>
             </tbody>
@@ -71,7 +71,7 @@ export function WhySwitch({ competitor }: { competitor: Competitor }) {
         <div className="mt-10 grid gap-5 sm:grid-cols-3">
           {competitor.whySwitch.map(r => (
             <Card key={r.title}>
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#0783fd]"><Check className="h-5 w-5" /></span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#0783fd]/10 text-[#026cd4]"><Check className="h-5 w-5" /></span>
               <h3 className="mt-4 text-base font-extrabold text-slate-900">{r.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-600">{r.body}</p>
             </Card>
@@ -128,12 +128,12 @@ export function OtherComparisons({ currentSlug }: { currentSlug: string }) {
                 <span className="block text-sm font-extrabold text-slate-900">Talko AI vs {c.name}</span>
                 <span className="block text-xs text-slate-500">{c.category}</span>
               </span>
-              <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-[#0783fd]" aria-hidden="true" />
+              <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-colors group-hover:text-[#026cd4]" aria-hidden="true" />
             </Link>
           ))}
         </div>
         <p className="mt-8 text-center text-sm text-slate-500">
-          Want the full picture? <Link href="/vs" className="font-bold text-[#0783fd] hover:underline">See every comparison</Link> or read <GradientText>why teams choose Talko AI</GradientText>.
+          Want the full picture? <Link href="/vs" className="font-bold text-[#026cd4] hover:underline">See every comparison</Link> or read <GradientText>why teams choose Talko AI</GradientText>.
         </p>
       </Container>
     </section>

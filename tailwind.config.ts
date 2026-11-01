@@ -21,9 +21,17 @@ export default {
           green: "#0783FD",
           greenDark: "#0668D6",
         },
+        // Neutral greys. 300/500/700/800 were missing, so ~240 text-ink-300/500/
+        // 700/800 classes generated no CSS and fell back to the body grey.
+        // 300 and 500 are retuned for TEXT in globals.css (like 400) so they
+        // read; 700 and 800 clear 4.5:1 on white as they are (10.4:1, 15.1:1).
         ink: {
+          300: "#D4D4D4",
           400: "#A3A3A3",
+          500: "#737373",
           600: "#525252",
+          700: "#404040",
+          800: "#262626",
           900: "#171717",
           950: "#0A0A0A",
         },

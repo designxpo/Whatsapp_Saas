@@ -50,7 +50,7 @@ export function WhyChoose() {
               <div className="overflow-hidden rounded-2xl border border-white/70 bg-white shadow-[0_30px_70px_-30px_rgba(124,92,255,0.35),0_10px_28px_-14px_rgba(0,0,0,0.12)]">
                 <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
                   <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
-                  <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.talko.ai / live-chat</span>
+                  <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.thetalko.in / live-chat</span>
                 </div>
                 <div className="relative aspect-[1600/910] w-full bg-white">
                   <Image src="/tour/inbox.png" alt="Talko AI unified inbox answering a customer from the knowledge base" fill sizes="(min-width: 1024px) 560px, 100vw" className="object-contain" />
@@ -63,13 +63,13 @@ export function WhyChoose() {
               className="absolute -bottom-4 left-4 flex items-center gap-2 rounded-full border border-slate-100 bg-white/95 px-3.5 py-2 shadow-[0_16px_40px_-18px_rgba(7,131,253,0.5)] backdrop-blur sm:left-8">
               <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[#0783fd] to-[#7c5cff] text-white"><Bot className="h-4 w-4" /></span>
               <span className="text-[12px] font-bold text-slate-900">AI replied in 2s</span>
-              <span className="text-[11px] font-semibold text-[#2f9e6e]">· brand voice</span>
+              <span className="text-[11px] font-semibold text-[#047857]">· brand voice</span>
             </div>
           </div>
 
           {/* RIGHT — benefit cards, spread across colour families. */}
           <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#7c5cff]/20 bg-[#7c5cff]/5 px-3 py-1 text-xs font-semibold text-[#7c5cff]">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[#7c5cff]/20 bg-[#7c5cff]/5 px-3 py-1 text-xs font-semibold text-[#6d4aff]">
               <Sparkles className="h-3.5 w-3.5" /> Built for outcomes
             </span>
             <h3 className="mt-4 text-2xl font-extrabold tracking-tight text-slate-900">

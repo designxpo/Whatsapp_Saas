@@ -199,7 +199,7 @@ export default function EmailsPage() {
               <div key={r.id} className="px-4 py-3 flex items-start gap-3">
                 <span className={`mt-0.5 w-7 h-7 rounded-full flex items-center justify-center shrink-0 ${
                   r.status === "bounced" || r.status === "complained" || r.status === "failed" ? "bg-red-50 text-red-600"
-                  : r.status === "opened" || r.status === "clicked" || r.status === "delivered" ? "bg-emerald-50 text-emerald-600"
+                  : r.status === "opened" || r.status === "clicked" || r.status === "delivered" ? "bg-emerald-50 text-emerald-700"
                   : "bg-canvas text-ink-400"
                 }`}><Icon className="w-3.5 h-3.5" /></span>
                 <div className="min-w-0 flex-1">

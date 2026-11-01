@@ -195,7 +195,7 @@ function Item({ label, value, tone, hint }: { label: string; value: string; tone
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
         <span className="text-[11px] font-bold text-ink-900">{label}</span>
       </div>
-      <p className={`text-[11px] tabular-nums ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-600" : "text-ink-600"}`}>{value}</p>
+      <p className={`text-[11px] tabular-nums ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-700" : "text-ink-600"}`}>{value}</p>
       {hint && <p className="text-[10px] text-ink-400 max-w-xs leading-snug">{hint}</p>}
     </div>
   );

@@ -39,7 +39,7 @@ export default function TroubleshootingPage() {
             { name: "Guides", href: "/guides" },
             { name: "Troubleshooting", href: "/guides/troubleshooting" },
           ]} />
-          <Link href="/guides" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All guides</Link>
+          <Link href="/guides" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#026cd4]"><ArrowLeft className="h-4 w-4" /> All guides</Link>
           <div className="mx-auto mt-6 max-w-2xl text-center">
             <SectionTitle level={1} title="Troubleshooting" subtitle="Symptom, cause and fix — organized by channel, so you can jump straight to the thing that's actually wrong." />
           </div>
@@ -50,7 +50,7 @@ export default function TroubleshootingPage() {
         {/* Quick-jump nav — this page is long by design; let people skip straight to their channel. */}
         <nav aria-label="Jump to a section" className="mx-auto flex max-w-3xl flex-wrap justify-center gap-2">
           {TROUBLESHOOTING.map(s => (
-            <a key={s.key} href={`#${s.key}`} className="rounded-full border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-[#0783fd]/40 hover:text-[#0783fd]">
+            <a key={s.key} href={`#${s.key}`} className="rounded-full border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:border-[#0783fd]/40 hover:text-[#026cd4]">
               {s.title}
             </a>
           ))}
@@ -67,7 +67,7 @@ export default function TroubleshootingPage() {
                     <p className="mt-2.5 text-sm leading-relaxed text-slate-500"><span className="font-semibold text-slate-600">Why: </span>{issue.cause}</p>
                     <p className="mt-2 text-sm leading-relaxed text-slate-500"><span className="font-semibold text-slate-600">Fix: </span>{issue.fix}</p>
                     {issue.guideHref && (
-                      <Link href={issue.guideHref} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#0783fd] hover:underline">
+                      <Link href={issue.guideHref} className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-[#026cd4] hover:underline">
                         {issue.guideLabel} <ArrowUpRight className="h-3.5 w-3.5" />
                       </Link>
                     )}

@@ -12,6 +12,7 @@ import { moderateText } from "./moderation";
 import { getIsolation, NEUTRAL_AGENT } from "./isolation";
 import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
+import { knowledgeGapReason, recordGap } from "./ai-gaps";
 import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
 import { executeRestaurantTool, isRestaurantTool, RESTAURANT_PROMPT, restaurantLink, restaurantTools } from "./restaurant-tools";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
@@ -546,7 +547,9 @@ export async function retrieveForReply(
 // so tools that change something — booking or cancelling a table — may run. Drafts
 // for a human, tests, simulators and public comment replies leave it off and get
 // read-only tools: drafting a suggestion must never book anything.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
+// `opts.practice`: a test, simulator or a draft for a human — not a customer
+// waiting on an answer, so it never counts as a question the AI couldn't answer.
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean; practice?: boolean } = {}): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -557,6 +560,12 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
     return { reply: null, escalate: true, reason: "account not in good standing (trial expired, past due, or suspended)", usedChunks: 0 };
   }
   const result = await generateReplyUnmoderated(history, phone, agentId, tenantId, primaryKbTag, askPhone, commerce, platform, query, opts);
+  // A real question the knowledge base couldn't answer → the weekly list (ai-gaps.ts).
+  if (!opts.practice) {
+    const question = [...history].reverse().find(m => m.role === "user")?.body ?? "";
+    const gap = knowledgeGapReason(result, question, SOFT_FALLBACK);
+    if (gap) recordGap({ tenantId, platform, question, reason: gap, phone: phone ?? null });
+  }
   if (!result.reply) return result;
   const verdict = await moderateText(result.reply, { tenantId, surface: "ai_reply" });
   if (verdict.allowed) return result;

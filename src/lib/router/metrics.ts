@@ -14,21 +14,45 @@ export type RouterEvent =
 
 export function logRouterEvent(p: {
   event: RouterEvent;
+  tenantId: string;
+  conversationId?: string | null;
   phone?: string;
   question?: string;
   ref?: string;
   score?: number;
   latencyMs?: number;
 }): void {
-  console.log(JSON.stringify({ tag: "router", ts: new Date().toISOString(), ...p }));
-  void db().from("wa_router_events").insert({
+  const { tenantId, conversationId, ...logged } = p;
+  console.log(JSON.stringify({ tag: "router", ts: new Date().toISOString(), tenantId, ...logged }));
+  // tenant_id is what lets a deleted workspace's rows go with it, keeps one
+  // tenant's questions out of another's KB test set (kbeval), and lets an
+  // erasure find the conversation's rows.
+  const row: Record<string, unknown> = {
+    tenant_id: tenantId,
+    conversation_id: conversationId ?? null,
     event: p.event,
     phone: p.phone ?? null,
     question: (p.question ?? "").slice(0, 500),
     ref: p.ref ?? null,
     score: p.score ?? null,
     latency_ms: p.latencyMs ?? null,
-  }).then(({ error }) => { if (error) console.error("[router] event insert failed:", error.message); });
+  };
+  void insertRouterEvent(row);
+}
+
+// A database that doesn't have tenant_id / conversation_id yet answers
+// 42703/PGRST204; drop them and write the event anyway.
+async function insertRouterEvent(row: Record<string, unknown>): Promise<void> {
+  try {
+    let { error } = await db().from("wa_router_events").insert(row);
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      const { tenant_id: _t, conversation_id: _c, ...bare } = row;
+      ({ error } = await db().from("wa_router_events").insert(bare));
+    }
+    if (error) console.error("[router] event insert failed:", error.message);
+  } catch (e) {
+    console.error("[router] event insert failed:", e instanceof Error ? e.message : e);
+  }
 }
 
 export interface RouterStats {

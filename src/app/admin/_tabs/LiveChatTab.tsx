@@ -960,7 +960,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   {isComment && <p className={`text-[10px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
                     <div className="space-y-1.5">
-                      {isImage && <a href={m.mediaUrl!} target="_blank" rel="noreferrer"><img src={m.mediaUrl!} alt="" className="rounded-lg max-h-72 max-w-full object-cover" /></a>}
+                      {isImage && <a href={m.mediaUrl!} target="_blank" rel="noreferrer"><img src={m.mediaUrl!} alt="Image attachment (opens full size)" className="rounded-lg max-h-72 max-w-full object-cover" /></a>}
                       {isVideo && <video controls preload="metadata" src={m.mediaUrl!} className="rounded-lg max-h-72 max-w-full" />}
                       {isAudio && <>
                         <p className="text-[10px] font-bold text-ink-400 flex items-center gap-1"><Mic className="w-3 h-3" /> Voice note</p>

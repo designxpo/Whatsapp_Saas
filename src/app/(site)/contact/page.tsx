@@ -84,7 +84,7 @@ export default function ContactPage() {
                 Talko AI is a customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile
                 reviews and website chat — used by D2C and retail brands, service and local businesses, education and healthcare providers, agencies
                 and creators. If your question is &quot;something isn&apos;t working&quot;, the{" "}
-                <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> will
+                <Link href="/guides/troubleshooting" className="font-semibold text-[#026cd4] hover:underline">troubleshooting guide</Link> will
                 usually answer it faster than we can.
               </p>
               <LastUpdated iso={CONTACT_SEO.updated} />
@@ -100,11 +100,11 @@ export default function ContactPage() {
           <div className="space-y-6 lg:pt-2">
             {REASONS.map(r => (
               <div key={r.title} className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><r.icon className="h-4 w-4" /></span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]"><r.icon className="h-4 w-4" /></span>
                 <div>
                   <h3 className="text-sm font-extrabold text-slate-900">{r.title}</h3>
                   <p className="mt-0.5 text-sm leading-relaxed text-slate-500">{r.body}</p>
-                  {r.link && <Link href={r.link.href} className="mt-1.5 inline-block text-xs font-bold text-[#0783fd] hover:underline">{r.link.label} →</Link>}
+                  {r.link && <Link href={r.link.href} className="mt-1.5 inline-block text-xs font-bold text-[#026cd4] hover:underline">{r.link.label} →</Link>}
                 </div>
               </div>
             ))}
@@ -132,9 +132,9 @@ export default function ContactPage() {
           {FASTER.map(f => (
             <li key={f.href} className="flex flex-col gap-1.5 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <span className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#0783fd]" aria-hidden="true" /> {f.q}
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#026cd4]" aria-hidden="true" /> {f.q}
               </span>
-              <Link href={f.href} className="shrink-0 text-xs font-bold text-[#0783fd] hover:underline sm:text-right">{f.label} →</Link>
+              <Link href={f.href} className="shrink-0 text-xs font-bold text-[#026cd4] hover:underline sm:text-right">{f.label} →</Link>
             </li>
           ))}
         </ul>

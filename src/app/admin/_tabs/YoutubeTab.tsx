@@ -260,7 +260,7 @@ function YoutubeManager() {
           <p className="text-xs font-bold text-slate-400 uppercase">Which YouTube channel is this?</p>
           {oauthLoading && <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your channels…</p>}
           {!oauthLoading && !oauthOptions.length && (
-            <p className="text-xs text-amber-600">No channels found on this Google login — make sure you signed in with the account that manages your YouTube channel.</p>
+            <p className="text-xs text-amber-700">No channels found on this Google login — make sure you signed in with the account that manages your YouTube channel.</p>
           )}
           <div className="space-y-1.5">
             {oauthOptions.map(opt => (
@@ -282,12 +282,12 @@ function YoutubeManager() {
         <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className="w-8 h-8 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
             <p className="text-[11px] text-ink-400 font-mono truncate">yt {c.ytChannelId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
             {/* Last background poll — makes a silent failure visible instead of
                 leaving "why didn't it reply?" unanswerable from the portal. */}
             {!st
-              ? <p className="text-[11px] text-amber-600 mt-0.5">Not checked yet — the background poller runs every few minutes.</p>
+              ? <p className="text-[11px] text-amber-700 mt-0.5">Not checked yet — the background poller runs every few minutes.</p>
               : <p className={`text-[11px] mt-0.5 ${st.lastError ? "text-red-600" : "text-ink-500"}`}>
                   Last checked {st.lastCheckedAt ? new Date(st.lastCheckedAt).toLocaleString() : "—"}
                   {typeof st.commentsSeen === "number" && <> · {st.commentsSeen} comment{st.commentsSeen === 1 ? "" : "s"} seen</>}
@@ -362,7 +362,7 @@ function YoutubeManager() {
                 ? <img src={thumb} alt="" className="w-14 h-10 rounded-lg object-cover shrink-0" />
                 : <div className="w-14 h-10 rounded-lg bg-red-50 text-red-600 flex items-center justify-center shrink-0"><Youtube className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YT"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-red-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "YT"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
                 <p className="text-[11px] text-ink-400 truncate">{r.videoId ? `Video: ${(r.videoTitle || video?.title || r.videoId).slice(0, 34) || r.videoId}` : "All videos"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"}{r.moderate !== "off" ? ` · ${MOD_LABEL[r.moderate]}` : ""} · {r.matchCount ?? 0} done</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
@@ -418,7 +418,7 @@ function YoutubeManager() {
                     <button type="button" key={v.id} title={v.title || v.id} onClick={() => setRuleForm({ ...ruleForm, videoId: v.id, videoTitle: v.title, videoThumbnail: v.thumbnail })}
                       className={`relative w-full h-0 pb-[56.25%] rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-red-500 border-red-500" : "border-line hover:opacity-90"}`}>
                       {v.thumbnail
-                        ? <img src={v.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover" />
+                        ? <img src={v.thumbnail} alt={`Video: ${v.title || v.id}`} className="absolute inset-0 w-full h-full object-cover" />
                         : <div className="absolute inset-0 bg-canvas flex items-center justify-center text-ink-300"><Video className="w-4 h-4" /></div>}
                       {sel && <span className="absolute inset-0 bg-red-500/15 flex items-center justify-center"><Check className="w-5 h-5 text-white drop-shadow" /></span>}
                     </button>
@@ -426,7 +426,7 @@ function YoutubeManager() {
                 })}
               </div>
               {!videos.length && (
-                <p className={`text-[11px] mt-1.5 ${videosError ? "text-red-600" : "text-amber-600"}`}>
+                <p className={`text-[11px] mt-1.5 ${videosError ? "text-red-600" : "text-amber-700"}`}>
                   {videosError
                     ? <>{videosError} You can still create an &ldquo;All videos&rdquo; rule.</>
                     : <>No videos found on this channel yet — publish a video, or create an &ldquo;All videos&rdquo; rule that covers future uploads.</>}

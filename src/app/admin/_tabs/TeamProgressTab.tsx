@@ -121,7 +121,7 @@ export default function TeamProgressTab({ me, goTo }: { me: { role: Role; team?:
                   </p>
                 </td>
                 {scope === "all" && <td className="px-3 py-2.5 text-[11px] font-bold text-blue-600">{TEAM_SHORT[r.team]}</td>}
-                <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${r.waiting > 0 ? "text-amber-600" : "text-ink-400"}`}>{r.waiting}</td>
+                <td className={`px-3 py-2.5 text-right font-bold tabular-nums ${r.waiting > 0 ? "text-amber-700" : "text-ink-400"}`}>{r.waiting}</td>
                 <td className="px-3 py-2.5 text-right text-ink-900 tabular-nums">{r.open}</td>
                 <td className={`px-3 py-2.5 text-right tabular-nums ${r.escalated > 0 ? "text-red-600 font-bold" : "text-ink-400"}`}>{r.escalated}</td>
                 <td className="px-3 py-2.5 text-right text-ink-600 tabular-nums">{r.activeInRange}</td>

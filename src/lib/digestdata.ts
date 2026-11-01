@@ -14,6 +14,8 @@ import { pageAll } from "./pagedselect";
 import { listChannels } from "./channels";
 import { SEND_FAILURE_PREFIX } from "./store";
 import { startOfDayIn, addDaysIn, partsIn } from "./businessclock";
+import { hotLeads } from "./hot-leads";
+import { gapsForDigest } from "./ai-gaps";
 
 export interface DigestNumbers {
   /** The business day "yesterday" refers to, YYYY-MM-DD. */
@@ -22,6 +24,10 @@ export interface DigestNumbers {
   escalatedStale: number;
   yesterday: { newLeads: number; aiReplies: number; escalations: number; optOuts: number; failedSends: number };
   inDrips: number;
+  /** Who to call first (hot-leads.ts): up to five, each with its reasons. */
+  hotLeads?: { name: string; phoneTail: string; channel: string; reasons: string[] }[];
+  /** Questions the AI couldn't answer this week (ai-gaps.ts). */
+  gaps?: { open: number; top: { question: string; count: number }[] };
 }
 
 type Filter = ["eq" | "gte" | "lt" | "notlike", string, string | boolean];
@@ -81,5 +87,10 @@ export async function gatherDigest(tenantId: string, now = Date.now()): Promise<
     escalatedStale,
     yesterday: { newLeads, aiReplies, escalations, optOuts, failedSends },
     inDrips,
+    // Extras: a failure in either just leaves it out of the email.
+    hotLeads: (await hotLeads(tenantId, now).catch(() => []))
+      .filter(l => l.band === "hot").slice(0, 5)
+      .map(l => ({ name: l.name, phoneTail: l.phone.slice(-4), channel: l.platform, reasons: l.reasons.slice(0, 3) })),
+    gaps: await gapsForDigest(tenantId),
   };
 }

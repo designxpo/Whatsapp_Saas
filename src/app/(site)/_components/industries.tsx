@@ -47,7 +47,7 @@ function Bubble({ b }: { b: ChatBubble }) {
       {b.chips && (
         <div className="mt-1.5 flex max-w-[86%] flex-wrap gap-1.5">
           {b.chips.map(c => (
-            <span key={c} className="rounded-full border border-[#0783fd]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#0783fd]">
+            <span key={c} className="rounded-full border border-[#0783fd]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#026cd4]">
               {c}
             </span>
           ))}
@@ -95,7 +95,7 @@ export function IndustrySections() {
                     <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
                       <Ico name={ind.icon} />
                     </span>
-                    <span className="text-sm font-bold uppercase tracking-wide text-[#0783fd]">{ind.name}</span>
+                    <span className="text-sm font-bold uppercase tracking-wide text-[#026cd4]">{ind.name}</span>
                   </div>
                   <h2 className="mt-4 text-balance text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
                     {ind.headline}
@@ -105,7 +105,7 @@ export function IndustrySections() {
                     {ind.features.map(f => (
                       <li key={f.title} className="rounded-xl border border-slate-200/80 bg-white p-3.5">
                         <div className="flex items-center gap-2 text-[13px] font-bold text-slate-900">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                             <Check className="h-3 w-3" />
                           </span>
                           {f.title}
@@ -119,7 +119,7 @@ export function IndustrySections() {
                       sitemap, but was only reachable from the homepage strip and
                       from its siblings, never from the page it belongs under. */}
                   <Link href={`/industries/${ind.slug}`}
-                    className="group mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-[#0783fd] hover:underline">
+                    className="group mt-6 inline-flex items-center gap-1.5 text-sm font-bold text-[#026cd4] hover:underline">
                     Read the full {ind.navLabel} playbook
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                   </Link>
@@ -148,7 +148,7 @@ export function IndustryDetail({ ind, index = 0 }: { ind: Industry; index?: numb
             <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white ${ICON_GRADIENTS[index % ICON_GRADIENTS.length]}`}>
               <Ico name={ind.icon} />
             </span>
-            <span className="text-sm font-bold uppercase tracking-wide text-[#0783fd]">{ind.name}</span>
+            <span className="text-sm font-bold uppercase tracking-wide text-[#026cd4]">{ind.name}</span>
           </div>
           <h1 className="mt-4 text-balance text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             {ind.headline}
@@ -158,7 +158,7 @@ export function IndustryDetail({ ind, index = 0 }: { ind: Industry; index?: numb
             {ind.features.map(f => (
               <li key={f.title} className="rounded-xl border border-slate-200/80 bg-white p-3.5">
                 <div className="flex items-center gap-2 text-[13px] font-bold text-slate-900">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                     <Check className="h-3 w-3" />
                   </span>
                   {f.title}
@@ -192,7 +192,7 @@ export function OtherIndustries({ currentSlug }: { currentSlug: string }) {
             </span>
             <div className="mt-3 text-[15px] font-bold text-slate-900">{ind.navLabel}</div>
             <p className="mt-1 flex-1 text-[13px] leading-snug text-slate-500">{ind.teaser}</p>
-            <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#0783fd]">
+            <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#026cd4]">
               See the playbook <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </span>
           </Link>
@@ -223,7 +223,7 @@ export function IndustryStrip() {
               </span>
               <div className="mt-3 text-[15px] font-bold text-slate-900">{ind.navLabel}</div>
               <p className="mt-1 flex-1 text-[13px] leading-snug text-slate-500">{ind.teaser}</p>
-              <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#0783fd]">
+              <span className="mt-3 inline-flex items-center gap-1 text-[13px] font-bold text-[#026cd4]">
                 See the playbook <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
               </span>
             </Link>

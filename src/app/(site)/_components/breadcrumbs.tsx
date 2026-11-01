@@ -36,7 +36,7 @@ export function Breadcrumbs({ items, className = "" }: { items: Crumb[]; classNa
                 {i > 0 && <ChevronRight className="h-3 w-3 text-slate-300" aria-hidden="true" />}
                 {last
                   ? <span aria-current="page" className="font-semibold text-slate-700">{it.name}</span>
-                  : <Link href={it.href} className="transition-colors hover:text-[#0783fd]">{it.name}</Link>}
+                  : <Link href={it.href} className="transition-colors hover:text-[#026cd4]">{it.name}</Link>}
               </li>
             );
           })}

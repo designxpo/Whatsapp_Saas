@@ -34,6 +34,9 @@ import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
 import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
 import { drainReplyHistory } from "@/lib/comment-history";
+import { drainReviewBooster } from "@/lib/review-booster";
+import { runRetention } from "@/lib/retention";
+import { drainDeletionRequests } from "@/lib/metadeletion";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -50,7 +53,8 @@ const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
-  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "tenantmetrics",
+  "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
+  "metadeletion", "retention", "tenantmetrics",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -100,9 +104,16 @@ export async function POST(req: Request) {
     // Earlier comment replies, imported a few pages per account per tick
     // (comment-history.ts); returns at once once every account is done.
     const replyHistory = await stage("replyhistory", null, () => drainReplyHistory(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
+    // Google review requests after paid orders (review-booster.ts) — owner's workspace only until launched.
+    const reviewBooster = await stage("reviewbooster", null, () => drainReviewBooster(), pollStart, POLL_BUDGET);
+    // Meta data-deletion requests the callback didn't finish (metadeletion.ts).
+    const metaDeletion = await stage("metadeletion", null, () => drainDeletionRequests(3), pollStart, POLL_BUDGET);
+    // Ages out derived/system records past their limits (retention.ts) — never
+    // customer conversations, contacts or orders. Bounded batches, own deadline.
+    const retention = await stage("retention", null, () => sweepRetentionIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, metaDeletion, retention, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 
@@ -328,4 +339,19 @@ async function sweepTenantMetricsIfDue(deadlineAt: number): Promise<{ due: boole
   const seeded = await backfillMetricsRows();
   const r = await refreshTenantMetrics(2000, deadlineAt);
   return { due: true, seeded, refreshed: r.refreshed, failed: r.failed };
+}
+
+// Retention (retention.ts) every 6 hours — or on the very next tick while a
+// table still has a backlog, so a first run over years of rows drains in days,
+// not weeks. Each run gets at most 20s of the pollers' budget.
+const RETENTION_EVERY_MS = 6 * 3_600_000;
+async function sweepRetentionIfDue(deadlineAt: number): Promise<{ due: boolean; deleted?: Record<string, number>; backlog?: boolean; skipped?: string[]; errors?: number }> {
+  const last = Date.parse(await getSetting<string>("retention_sweep_at", ""));
+  const backlog = await getSetting<boolean>("retention_backlog", false);
+  if (!backlog && Number.isFinite(last) && Date.now() - last < RETENTION_EVERY_MS) return { due: false };
+  await setSetting("retention_sweep_at", new Date().toISOString());
+  const r = await runRetention({ deadlineAt: Math.min(deadlineAt, Date.now() + 20_000) });
+  await setSetting("retention_backlog", r.backlog || r.stoppedEarly);
+  if (r.errors.length) console.error("[cron] retention", r.errors);
+  return { due: true, deleted: r.deleted, backlog: r.backlog || r.stoppedEarly, skipped: r.skipped, errors: r.errors.length };
 }

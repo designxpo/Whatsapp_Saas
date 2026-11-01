@@ -415,7 +415,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
         <div className="rounded-card border border-line bg-white">
           <button onClick={() => setCtxOpen(o => !o)} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-left">
             <BrainCircuit className="w-4 h-4 text-brand-600 shrink-0" />
-            <span className="text-[13px] font-bold text-ink-800 flex-1">Saved context {adCtx.trim() && <span className="text-[10px] font-semibold text-emerald-600">• saved</span>}</span>
+            <span className="text-[13px] font-bold text-ink-800 flex-1">Saved context {adCtx.trim() && <span className="text-[10px] font-semibold text-emerald-700">• saved</span>}</span>
             <span className="text-[11px] text-slate-400">{ctxOpen ? "Hide" : "Edit"}</span>
           </button>
           {ctxOpen && (
@@ -424,7 +424,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
               <textarea className={`${inp} w-full`} rows={4} placeholder="e.g. We're LumiSkincare — vegan skincare for women 25–45. Warm, friendly tone. Never promise medical results. Always mention free delivery over ₹999." value={adCtx} onChange={e => setAdCtx(e.target.value.slice(0, 4000))} />
               <div className="flex items-center gap-2">
                 <button onClick={saveContext} disabled={ctxSaving} className={`${btnPrimary} !py-1.5 !text-[12px]`}>{ctxSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save context</button>
-                {ctxSaved && <span className="text-[11px] font-semibold text-emerald-600">Saved — the AI will use this from now on.</span>}
+                {ctxSaved && <span className="text-[11px] font-semibold text-emerald-700">Saved — the AI will use this from now on.</span>}
                 <span className="ml-auto text-[10px] text-slate-400 tabular-nums">{adCtx.length}/4000</span>
               </div>
             </div>
@@ -585,7 +585,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
               <input className={`${inp} flex-1`} placeholder="Tell me what you want to advertise…" value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }} />
               <button onClick={() => sendChat()} disabled={chatBusy || !chatInput.trim()} className={btnPrimary}><Send className="w-4 h-4" /></button>
             </div>
-            {!hasPage && <p className="text-[11px] text-amber-600">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
+            {!hasPage && <p className="text-[11px] text-amber-700">I can draft the campaign now, but you&apos;ll need to connect your Facebook Page before publishing.</p>}
           </div>
           </div>
         </div>
@@ -696,7 +696,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
                 {cards.map((c, i) => (
                   <div key={i} className="flex items-start gap-2.5 border border-line rounded-control p-2.5">
                     <label className={`shrink-0 w-14 h-14 rounded-lg border border-dashed border-line flex items-center justify-center cursor-pointer overflow-hidden ${cardBusy === i ? "opacity-60 pointer-events-none" : "hover:bg-canvas"}`}>
-                      {cardBusy === i ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : c.imagePreview ? <img src={c.imagePreview} alt="" className="w-full h-full object-cover" /> : <ImagePlus className="w-4 h-4 text-slate-300" />}
+                      {cardBusy === i ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" /> : c.imagePreview ? <img src={c.imagePreview} alt={`Card ${i + 1} image preview`} className="w-full h-full object-cover" /> : <ImagePlus className="w-4 h-4 text-slate-300" />}
                       <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadCardImage(i, f); }} />
                     </label>
                     <div className="flex-1 min-w-0 space-y-1.5">
@@ -763,7 +763,7 @@ function AdPreview({ plan, goalFallback, imagePreview }: { plan: AdPlan | null; 
       </div>
       <p className={`px-2.5 pb-2 text-[12px] whitespace-pre-wrap line-clamp-4 ${set ? "text-ink-800" : "text-slate-400 italic"}`}>{primary}</p>
       {imagePreview
-        ? <img src={imagePreview} alt="" className="w-full aspect-square object-cover" />
+        ? <img src={imagePreview} alt="Ad image preview" className="w-full aspect-square object-cover" />
         : <div className="w-full aspect-square bg-canvas flex items-center justify-center text-slate-300"><ImageIcon className="w-8 h-8" /></div>}
       <div className="flex items-center justify-between gap-2 p-2.5 bg-canvas/60 border-t border-line">
         <div className="min-w-0">

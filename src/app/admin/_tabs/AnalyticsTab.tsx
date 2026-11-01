@@ -396,7 +396,7 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
                   { l: "Awaiting reply", v: data.conversations.needsReply, warn: data.conversations.needsReply > 0 },
                 ].map(x => (
                   <div key={x.l} className="bg-canvas rounded-control p-3">
-                    <p className={`text-xl font-bold tnum ${x.warn && x.v > 0 ? "text-amber-600" : "text-ink-900"}`}>{x.v.toLocaleString()}</p>
+                    <p className={`text-xl font-bold tnum ${x.warn && x.v > 0 ? "text-amber-700" : "text-ink-900"}`}>{x.v.toLocaleString()}</p>
                     <p className="text-[11px] text-ink-500 font-medium">{x.l}</p>
                     {x.s && <p className="text-[10px] text-ink-400">{x.s}</p>}
                   </div>

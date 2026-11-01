@@ -11,7 +11,7 @@ import { Parallax, Reveal, CountUp } from "./motion";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
-  FEATURES, STATS, STEPS, TESTIMONIALS, INTEGRATIONS, INTEGRATION_CATEGORIES, CTA_BULLETS, type Feature,
+  FEATURES, STATS, STEPS, INTEGRATIONS, INTEGRATION_CATEGORIES, CTA_BULLETS, type Feature,
   PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE, GLOSSARY,
 } from "../_content/site";
 
@@ -117,7 +117,7 @@ const STAT_TINT = ["bg-[#7c5cff]/12 text-[#7c5cff]", "bg-[#16b8a6]/14 text-[#0d9
 export function StatsBand() {
   return (
     <Container className="py-14">
-      <div className="mb-8 flex items-center justify-center gap-2 text-center text-sm font-bold uppercase tracking-wider text-[#0783fd]">
+      <div className="mb-8 flex items-center justify-center gap-2 text-center text-sm font-bold uppercase tracking-wider text-[#026cd4]">
         <TrendingUp className="h-4 w-4" /> By the numbers
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -132,10 +132,10 @@ export function StatsBand() {
             >
               <div className="flex items-center justify-between">
                 <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${hero ? "bg-white/15 text-white" : STAT_TINT[(i - 1) % STAT_TINT.length]}`}><Icon className="h-4 w-4" /></span>
-                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hero ? "bg-white/15 text-white" : "bg-[#DDEFE4] text-[#2f9e6e]"}`}>{m.trend}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${hero ? "bg-white/15 text-white" : "bg-[#DDEFE4] text-[#047857]"}`}>{m.trend}</span>
               </div>
               <div className={`mt-4 text-4xl font-extrabold tracking-tight ${hero ? "text-white" : "text-slate-900"}`}><CountUp value={s.value} /></div>
-              <div className={`mt-1 text-sm ${hero ? "text-white/80" : "text-slate-500"}`}>{s.label}</div>
+              <div className={`mt-1 text-sm ${hero ? "text-white/90" : "text-slate-500"}`}>{s.label}</div>
               <div className="mt-3 opacity-80"><Spark pts={m.spark} light={hero} /></div>
             </div>
             </Reveal>
@@ -160,7 +160,7 @@ export function IntegrationsStrip() {
         <h3 className="text-xl font-extrabold text-slate-900">Works with your favorite tools</h3>
         <p className="mt-2 text-sm text-slate-500">Channels, AI, CRM, payments, e-commerce, scheduling and automation — all in one place.</p>
         <Marquee durationSec={30} gapClass="gap-x-12" className="mt-8 py-2">
-          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} wordmark={i.wordmark} />)}
+          {INTEGRATIONS.map(i => <BrandMark key={i.name} name={i.name} src={i.src} wordmark={i.wordmark} />)}
         </Marquee>
         </div>
       </div>
@@ -169,7 +169,7 @@ export function IntegrationsStrip() {
 }
 
 // Categorized logo wall — the full set of integrations we provide, grouped by
-// what they do. Reuses BrandMark (Simple Icons CDN, grayscale → color on hover).
+// what they do. Reuses BrandMark (self-hosted logo files).
 export function IntegrationsGrid() {
   return (
     <Container className="py-16">
@@ -183,35 +183,12 @@ export function IntegrationsGrid() {
             <h3 className="text-sm font-extrabold text-slate-900">{cat.title}</h3>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">{cat.blurb}</p>
             <div className="mt-5 flex flex-wrap items-center gap-x-7 gap-y-5">
-              {cat.items.map(i => <BrandMark key={i.name} name={i.name} slug={i.slug} iconify={i.iconify} src={i.src} wordmark={i.wordmark} />)}
+              {cat.items.map(i => <BrandMark key={i.name} name={i.name} src={i.src} wordmark={i.wordmark} />)}
             </div>
           </div>
           </Reveal>
         ))}
       </div>
-    </Container>
-  );
-}
-
-export function Testimonials() {
-  return (
-    <Container className="py-16">
-      <SectionTitle title="People love growing with Talko AI" subtitle="What teams say." />
-      <Marquee durationSec={45} gapClass="gap-x-6" className="mt-10 py-2">
-        {TESTIMONIALS.map(t => (
-          <figure key={t.name} className="flex h-full w-[340px] shrink-0 flex-col rounded-[24px] bg-slate-50 p-7 sm:w-[400px]">
-            <div className="flex gap-0.5 text-[#F6B26B]">{Array.from({ length: 5 }).map((_, i) => <Star key={i} className="h-4 w-4 fill-current" />)}</div>
-            <blockquote className="mt-4 flex-1 text-[15px] font-medium leading-relaxed text-slate-700">“{t.quote}”</blockquote>
-            <figcaption className="mt-6 flex items-center gap-3">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${GRADIENTS.brand}`}>{t.name.charAt(0)}</span>
-              <span>
-                <span className="block text-sm font-bold text-slate-900">{t.name}</span>
-                <span className="block text-xs text-slate-500">{t.role}</span>
-              </span>
-            </figcaption>
-          </figure>
-        ))}
-      </Marquee>
     </Container>
   );
 }
@@ -233,7 +210,7 @@ export function ProblemSolution() {
               <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}><Icon className="h-5 w-5" /></span>
               <div>
                 <p className="text-sm font-bold text-slate-900">{p.problem}</p>
-                <p className="mt-2 flex gap-2 text-sm leading-relaxed text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#2f9e6e]" />{p.solution}</p>
+                <p className="mt-2 flex gap-2 text-sm leading-relaxed text-slate-600"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#047857]" />{p.solution}</p>
               </div>
             </div>
             </Reveal>
@@ -248,7 +225,7 @@ export function ProblemSolution() {
 function CompareCell({ value }: { value: boolean | string }) {
   // sr-only "Yes"/"No" so the differentiator cells carry extractable text for
   // screen readers AND AI answer engines (icon-only cells scrape as blank).
-  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#2f9e6e]"><Check className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Yes</span></span>;
+  if (value === true) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-[#2f9e6e]/12 text-[#047857]"><Check className="h-4 w-4" aria-hidden="true" /><span className="sr-only">Yes</span></span>;
   if (value === false) return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-300"><X className="h-3.5 w-3.5" aria-hidden="true" /><span className="sr-only">No</span></span>;
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500"><Minus className="h-3 w-3 shrink-0 text-slate-300" aria-hidden="true" />{value}</span>;
 }
@@ -291,7 +268,7 @@ export function ComparisonTable() {
                 <td className="px-4 py-3.5 text-[12.5px] font-extrabold text-slate-900">Capabilities included</td>
                 {scores.map((s, ci) => (
                   <td key={ci} className={`px-2 py-3.5 text-center ${ci === 0 ? "bg-[#0783fd]/5" : ""}`}>
-                    <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#0783fd]" : "text-slate-400"}`}>{s}</span>
+                    <span className={`text-sm font-extrabold ${ci === 0 ? "text-[#026cd4]" : "text-slate-400"}`}>{s}</span>
                     <span className="text-[11px] font-semibold text-slate-400">/{total}</span>
                   </td>
                 ))}
@@ -302,12 +279,12 @@ export function ComparisonTable() {
         <p className="mx-auto mt-4 max-w-3xl text-center text-xs text-slate-500">{COMPARE_NOTE}</p>
         <p className="mx-auto mt-3 max-w-3xl text-center text-xs text-slate-400">
           Built only on official channel APIs — see{" "}
-          <a href="https://business.whatsapp.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">Meta&apos;s WhatsApp Business Platform</a>,{" "}
-          <a href="https://developers.google.com/youtube/v3" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">the YouTube Data API</a> and{" "}
-          <a href="https://support.google.com/business/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#0783fd]">Google Business Profile</a> — never unofficial scraping that risks a ban.
+          <a href="https://business.whatsapp.com/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#026cd4]">Meta&apos;s WhatsApp Business Platform</a>,{" "}
+          <a href="https://developers.google.com/youtube/v3" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#026cd4]">the YouTube Data API</a> and{" "}
+          <a href="https://support.google.com/business/" target="_blank" rel="noopener noreferrer" className="underline hover:text-[#026cd4]">Google Business Profile</a> — never unofficial scraping that risks a ban.
         </p>
         <div className="mt-6 text-center">
-          <Link href="/vs" className="inline-flex items-center gap-1.5 text-sm font-bold text-[#0783fd] hover:underline">
+          <Link href="/vs" className="inline-flex items-center gap-1.5 text-sm font-bold text-[#026cd4] hover:underline">
             See detailed comparisons <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
@@ -360,7 +337,7 @@ export function CtaBand() {
               ))}
             </ul>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Button href="/signup" variant="ghost" className="border-white/0 bg-white text-[#0783fd] hover:bg-slate-100">Start free trial</Button>
+              <Button href="/signup" variant="ghost" className="border-white/0 bg-white text-[#026cd4] hover:bg-slate-100">Start free trial</Button>
               <a href="/pricing" className="inline-flex items-center justify-center rounded-full border border-white/40 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">See pricing</a>
             </div>
           </div>
@@ -369,7 +346,7 @@ export function CtaBand() {
               {[["98%", "open rate"], ["3×", "faster replies"], ["24/7", "AI on duty"]].map(([v, l]) => (
                 <div key={l} className="flex items-baseline justify-between border-b border-white/10 py-2 last:border-0">
                   <span className="text-2xl font-extrabold text-white">{v}</span>
-                  <span className="text-sm text-white/70">{l}</span>
+                  <span className="text-sm text-white/90">{l}</span>
                 </div>
               ))}
             </div>

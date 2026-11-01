@@ -9,6 +9,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { checkEmail } from "@/lib/emailcheck";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
+import { REF_COOKIE, cleanRef } from "@/lib/consent";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -31,7 +32,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many signups from this network. Please try again shortly." }, { status: 429, headers: gate.retryAfterSec ? { "Retry-After": String(gate.retryAfterSec) } : undefined });
   }
   await recordLoginFailure(throttleKey);   // count this attempt toward the cap
-  let body: { company?: string; ownerName?: string; ownerEmail?: string; password?: string; ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; acceptTerms?: boolean };
+  let body: { company?: string; ownerName?: string; ownerEmail?: string; password?: string; ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; acceptTerms?: boolean; marketingOptIn?: boolean; ref?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const company = body.company?.trim();
@@ -72,15 +73,21 @@ export async function POST(req: Request) {
     // Affiliate attribution: the middleware stamped this from an earlier
     // `?ref=CODE` page load (up to 30 days ago). An invalid/unknown code is
     // validated later, at account-creation time — never blocks signup here.
-    const referralCode = (await cookies()).get("talko_ref")?.value;
+    // The cookie is only set for visitors who accepted optional cookies, so the
+    // code in the signup link itself (sent with the form) is the fallback.
+    const referralCode = cleanRef((await cookies()).get(REF_COOKIE)?.value) ?? cleanRef(body.ref) ?? undefined;
     const pending = await createPendingToken({
       // The pending token is a SIGNED (not encrypted) JWT that rides in a cookie,
       // so its payload is publicly decodable. Never carry the raw password there —
       // encrypt it at rest; verify-otp decrypts just before account creation.
       company, ownerName, ownerEmail, password: encryptSecret(password),
-      ownerPhone: body.ownerPhone?.trim(), industry: body.industry?.trim(),
-      teamSize: body.teamSize?.trim(), useCase: body.useCase?.trim(), expectedVolume: body.expectedVolume?.trim(),
+      // Blank answers are left out rather than stored as empty strings.
+      ownerPhone: body.ownerPhone?.trim() || undefined, industry: body.industry?.trim() || undefined,
+      teamSize: body.teamSize?.trim() || undefined, useCase: body.useCase?.trim() || undefined, expectedVolume: body.expectedVolume?.trim() || undefined,
       termsVersion: LEGAL_VERSION, referralCode,
+      // The record of what was agreed and when: the moment this form was sent
+      // with the box ticked, plus the separate product-news answer.
+      termsAcceptedAt: new Date().toISOString(), marketingOptIn: body.marketingOptIn === true,
     }, PENDING_SIGNUP_PURPOSE, "15m");
     const res = NextResponse.json({ pending: true, email: ownerEmail });
     res.cookies.set(PENDING_SIGNUP_COOKIE, pending, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 900 });

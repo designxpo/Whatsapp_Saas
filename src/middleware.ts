@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { CONSENT_COOKIE, REF_COOKIE, REF_MAX_AGE, cleanRef, parseConsent, sharedCookieDomain } from "@/lib/consent";
 import { jwtVerify } from "jose";
 import { partnerHostKind, whiteLabelConfig } from "@/lib/whitelabel";
 
@@ -121,10 +122,16 @@ const isPartnerDashboard = (p: string) => p === "/partner" || p.startsWith("/par
 // weeks after the click still gets attributed. Stamped onto every response
 // this middleware returns (not just one branch) since Next has no single
 // exit point here — see the multiple early returns below.
-const REF_COOKIE = "talko_ref";
-const REF_COOKIE_MAX_AGE = 60 * 60 * 24 * 30;
-function withRef(res: NextResponse, ref: string | null): NextResponse {
-  if (ref) res.cookies.set(REF_COOKIE, ref.slice(0, 40), { maxAge: REF_COOKIE_MAX_AGE, path: "/", sameSite: "lax" });
+//
+// Only for visitors who accepted optional cookies (lib/consent.ts): remembering
+// where someone came from isn't needed to run the site. Everyone else is still
+// attributed when they sign up straight from the link — the signup page reads
+// ?ref= from its own address — just not 30 days later.
+function withRef(res: NextResponse, ref: string | null, req: NextRequest): NextResponse {
+  const code = cleanRef(ref);
+  if (!code || parseConsent(req.cookies.get(CONSENT_COOKIE)?.value) !== "all") return res;
+  const domain = sharedCookieDomain(req.headers.get("host") ?? req.nextUrl.host, MARKETING_HOST);
+  res.cookies.set(REF_COOKIE, code, { maxAge: REF_MAX_AGE, path: "/", sameSite: "lax", secure: req.nextUrl.protocol === "https:", ...(domain ? { domain } : {}) });
   return res;
 }
 
@@ -190,7 +197,7 @@ export async function middleware(req: NextRequest) {
       if (pathname === "/") {
         const url = req.nextUrl.clone();
         url.pathname = ok ? "/admin" : "/login";
-        return withRef(noStore(NextResponse.redirect(url)), ref);
+        return withRef(noStore(NextResponse.redirect(url)), ref, req);
       }
       // Marketing pages don't exist on the app host — except /affiliate*,
       // which must resolve on both hosts (see the note above isPortalPage).
@@ -202,7 +209,7 @@ export async function middleware(req: NextRequest) {
       // Query strings (e.g. ?plan=growth, ?next=) are preserved.
       if (pathname === "/login" || pathname === "/signup") {
         const url = new URL(`https://${APP_HOST}${pathname}${req.nextUrl.search}`);
-        return withRef(NextResponse.redirect(url), ref);
+        return withRef(NextResponse.redirect(url), ref, req);
       }
       // Deeper portal pages don't exist on the marketing host.
       if (isPortalPage(pathname)) return new NextResponse("Not found", { status: 404 });
@@ -256,9 +263,9 @@ export async function middleware(req: NextRequest) {
     if (ok) {
       const url = req.nextUrl.clone();
       url.pathname = "/admin";
-      return withRef(noStore(NextResponse.redirect(url)), ref);
+      return withRef(noStore(NextResponse.redirect(url)), ref, req);
     }
-    return withRef(noStore(NextResponse.next()), ref);
+    return withRef(noStore(NextResponse.next()), ref, req);
   }
 
   // Affiliate dashboard → its own session cookie, separate from the tenant-
@@ -268,9 +275,9 @@ export async function middleware(req: NextRequest) {
     if (!(await validAffiliate(affiliateToken))) {
       const url = req.nextUrl.clone();
       url.pathname = "/affiliate/login";
-      return withRef(noStore(NextResponse.redirect(url)), ref);
+      return withRef(noStore(NextResponse.redirect(url)), ref, req);
     }
-    return withRef(noStore(NextResponse.next()), ref);
+    return withRef(noStore(NextResponse.next()), ref, req);
   }
 
   // Admin pages → must be authenticated, and must never be cached so Back/Forward
@@ -282,11 +289,11 @@ export async function middleware(req: NextRequest) {
       // Preserve the destination so login can land the user back where they
       // were heading (the login page only honors same-origin relative paths).
       url.search = pathname !== "/admin" ? `?next=${encodeURIComponent(pathname)}` : "";
-      return withRef(noStore(NextResponse.redirect(url)), ref);
+      return withRef(noStore(NextResponse.redirect(url)), ref, req);
     }
-    return withRef(noStore(NextResponse.next()), ref);
+    return withRef(noStore(NextResponse.next()), ref, req);
   }
-  return withRef(NextResponse.next(), ref);
+  return withRef(NextResponse.next(), ref, req);
 }
 
 // Run on every request EXCEPT Next internals and static files (anything with a

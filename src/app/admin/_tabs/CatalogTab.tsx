@@ -5,6 +5,7 @@ import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Plus, ShoppingBag, Trash2, Workflow, Image as ImageIcon, Receipt, Search, ChevronDown, Loader2, MessageSquareText, Check, X, AlertTriangle } from "lucide-react";
 import { inp, ImageUpload, ImgFallback } from "../_shared";
+import { Modal } from "@/components/overlay";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { useConfirm } from "@/components/confirm-dialog";
 import { useVocab } from "@/lib/vocab-client";
@@ -100,7 +101,7 @@ function CatalogTab() {
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
           <ImgFallback url={p.imageUrl ?? ""} imgClass="w-12 h-12 rounded-lg object-cover shrink-0" boxClass="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ShoppingBag className="w-5 h-5 text-ink-300" />} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-700">· hidden</span>}</p>
             <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
           </div>
           <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available, buttonText: p.buttonText ?? "", buttonUrl: p.buttonUrl ?? "" })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -109,9 +110,9 @@ function CatalogTab() {
       ))}
       {!products.length && !form && <p className="text-xs text-ink-400">No {productsLc} yet.</p>}
 
-      {form && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center overflow-y-auto p-4 u-fade-in" onClick={() => setForm(null)}>
-        <div onClick={e => e.stopPropagation()} className="bg-white rounded-card border border-line shadow-float p-4 my-8 w-full max-w-3xl flex flex-col xl:flex-row gap-5 u-scale-in">
+      {/* The shared Modal: a titled dialog that closes on Escape and keeps Tab inside. */}
+      <Modal open={!!form} onClose={() => setForm(null)} size="lg" title={form?.id ? `Edit ${productLc}` : `New ${productLc}`}>
+        {form && (<div className="flex flex-col xl:flex-row gap-5">
           <div className="flex-1 space-y-2 min-w-0">
           <div className="grid grid-cols-2 gap-2">
             <input className={inp} placeholder="Product name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
@@ -138,7 +139,7 @@ function CatalogTab() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${productLc}`}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          {msg && <p className="text-xs text-red-700">{msg}</p>}
           </div>
           <div className="xl:w-64 shrink-0">
             <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
@@ -155,7 +156,7 @@ function CatalogTab() {
                   })()}
                   {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
                 </div>
-                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{form.buttonText.trim() || "View"}</div>
+                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-700">{form.buttonText.trim() || "View"}</div>
               </div>
             </div>
             <p className="mt-1.5 text-[10px] text-ink-400 leading-snug">
@@ -164,9 +165,8 @@ function CatalogTab() {
                 : <>Native catalog card shows WhatsApp’s own “View” button. Add a button link above to send a custom card with your label instead.</>}
             </p>
           </div>
-        </div>
-        </div>
-      )}
+        </div>)}
+      </Modal>
       </>}
     </div>
   );
@@ -309,7 +309,7 @@ function OrdersView() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
           {stat("Revenue (paid)", money(stats.revenueCents, orders?.[0]?.currency ?? "INR"), "text-emerald-700")}
           {stat("Orders", String(stats.total))}
-          {stat("Awaiting payment", String(stats.counts.pending), stats.counts.pending ? "text-amber-600" : "text-ink-900")}
+          {stat("Awaiting payment", String(stats.counts.pending), stats.counts.pending ? "text-amber-700" : "text-ink-900")}
           {stat("To fulfil", String(stats.counts.paid), stats.counts.paid ? "text-brand-700" : "text-ink-900")}
         </div>
       )}

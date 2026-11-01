@@ -30,7 +30,7 @@ import {
 import { listUsers } from "./team";
 import { sendEmail } from "./email";
 import { renderEmail, type EmailStat } from "./emailtemplate";
-import { isUnsubscribed, setUnsubscribed, unsubscribeUrl } from "./emailprefs";
+import { isUnsubscribed, setUnsubscribed, unsubscribedRecipients, unsubscribeUrl } from "./emailprefs";
 import { generateExecutiveBrief } from "./llm";
 import { partsIn, BUSINESS_TZ } from "./businessclock";
 import { SITE_URL } from "./siteurl";
@@ -64,7 +64,9 @@ export async function setDigestConfig(tenantId: string, patch: Partial<DigestCon
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error("Hour must be a whole number from 0 to 23.");
   const next = { enabled: patch.enabled ?? cur.enabled, hour };
   await setTenantSetting(tenantId, CONFIG_KEY, next);
-  // An admin switching it on is a newer decision than someone's unsubscribe.
+  // An admin switching it on lifts a workspace-wide opt-out (the older link
+  // format). It never re-subscribes a person: those opt-outs are per address
+  // (emailprefs.ts) and stay in place.
   if (patch.enabled === true) await setUnsubscribed(tenantId, "daily_digest", false);
   return next;
 }
@@ -94,7 +96,7 @@ function factLines(n: DigestNumbers): string[] {
   ];
 }
 
-export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null, brand: Brand = TALKO_BRAND): { subject: string; html: string; text: string; unsub: string; fromName?: string; fromEmail?: string } {
+export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline: string; steps: { action: string; why: string }[] } | null, brand: Brand = TALKO_BRAND, recipient?: string): { subject: string; html: string; text: string; unsub: string; fromName?: string; fromEmail?: string } {
   const subject = `Today: ${n.waiting.total} waiting on a reply, ${n.yesterday.newLeads} new leads yesterday`;
   const stats: EmailStat[] = [
     { value: String(n.waiting.total), label: "waiting on a reply", delta: n.waiting.oldestHours != null ? `oldest ${age(n.waiting.oldestHours)}` : undefined },
@@ -104,8 +106,11 @@ export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline
   const paragraphs = [
     n.waiting.byOwner.length ? `Waiting, by number: ${n.waiting.byOwner.map(o => `${o.name} ${o.count}`).join(" · ")}.` : "Nothing is waiting on a reply.",
     `Yesterday: ${n.yesterday.aiReplies} AI replies, ${n.yesterday.escalations} escalations, ${n.yesterday.optOuts} opt-outs, ${n.yesterday.failedSends} failed sends. ${n.inDrips} people are in drips right now.`,
+    ...(n.hotLeads?.length ? [`Call these first: ${n.hotLeads.map(l => `${l.name || `…${l.phoneTail}`} (${l.reasons.join(", ")})`).join(" · ")}.`] : []),
+    ...(n.gaps?.open ? [`${n.gaps.open} question${n.gaps.open === 1 ? "" : "s"} the AI couldn't answer this week${n.gaps.top.length ? `, most asked: ${n.gaps.top.map(g => `“${g.question.slice(0, 70)}” (${g.count}×)`).join(", ")}` : ""}. Add the answers in AI Knowledge Base.`] : []),
   ];
-  const unsub = unsubscribeUrl(tenantId, "daily_digest");
+  // Per recipient, so one admin opting out leaves the others' digest alone.
+  const unsub = unsubscribeUrl(tenantId, "daily_digest", recipient);
   // White-label: a partner's customer gets this in the partner's brand.
   const mail = applyEmailBrand(brand, {
     preheader: `${n.day} · what is waiting on your team this morning.`,
@@ -121,16 +126,20 @@ export function renderDigest(n: DigestNumbers, tenantId: string, ai?: { headline
   return { subject: mail.subject, html, text, unsub: mail.opts.unsubscribeHref ?? unsub, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) };
 }
 
-async function sendTo(tenantId: string, to: string[], now: number): Promise<number> {
+async function sendTo(tenantId: string, all: string[], now: number): Promise<number> {
+  const optedOut = await unsubscribedRecipients(tenantId, "daily_digest");
+  const to = all.filter(addr => !optedOut.has(addr.trim().toLowerCase()));
+  if (!to.length) return 0;
   const numbers = await gatherDigest(tenantId, now);
   // The workspace's own key (BYO). No key, a busy model or a bad answer just
   // leaves the AI read out — the counts are the point.
   const ai = await generateExecutiveBrief(factLines(numbers).join("\n"), tenantId)
     .then(b => ({ headline: b.headline, steps: b.steps.slice(0, 3) }))
     .catch(() => null);
-  const mail = renderDigest(numbers, tenantId, ai, await brandForTenant(tenantId));
+  const brand = await brandForTenant(tenantId);
   let sent = 0;
   for (const addr of to) {
+    const mail = renderDigest(numbers, tenantId, ai, brand, addr);
     const r = await sendEmail({ to: addr, subject: mail.subject, html: mail.html, text: mail.text, unsubscribeUrl: mail.unsub, type: "daily_digest", tenantId, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) })
       .catch(() => ({ ok: false }));
     if (r.ok) sent++;

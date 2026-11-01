@@ -104,7 +104,11 @@ describe("a note can never reach the customer, the AI or the CRM", () => {
     const users = filesUnder(join(process.cwd(), "src"))
       .filter(p => !p.includes("__tests__"))
       .filter(p => readFileSync(p, "utf8").includes("wa_conversation_notes"))
-      .map(p => p.slice(p.indexOf("src/")));
-    expect(users).toEqual(["src/lib/store.ts"]);
+      .map(p => p.slice(p.indexOf("src/")))
+      .sort();
+    // gdpr.ts is the one other reader, and it goes to the workspace's own
+    // admin, never the customer or the AI: the data export (notes are personal
+    // data the business holds) and erasure (which must delete them).
+    expect(users).toEqual(["src/lib/gdpr.ts", "src/lib/store.ts"]);
   });
 });

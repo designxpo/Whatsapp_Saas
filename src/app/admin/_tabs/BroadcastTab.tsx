@@ -41,11 +41,11 @@ function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: Re
           <StatRow label="Meta tier limit" value={limits.tier ? (TIER_LABELS[limits.tier] ?? limits.tier) : limits.metaError ? "unavailable" : "—"} />
           <StatRow label="Number quality" value={
             quality === "GREEN" ? <span className="text-brand-700">● GREEN</span>
-            : quality === "YELLOW" ? <span className="text-amber-600">● YELLOW</span>
+            : quality === "YELLOW" ? <span className="text-amber-700">● YELLOW</span>
             : quality === "RED" ? <span className="text-red-600">● RED</span>
             : limits.metaError ? "unavailable" : (quality ?? "—")
           } />
-          {limits.metaError && <p className="text-[11px] text-amber-600">Meta status check failed — {limits.metaError.length > 60 ? "Meta API unreachable right now (likely their outage)." : limits.metaError}</p>}
+          {limits.metaError && <p className="text-[11px] text-amber-700">Meta status check failed — {limits.metaError.length > 60 ? "Meta API unreachable right now (likely their outage)." : limits.metaError}</p>}
           <p className="text-[11px] text-slate-400">{limits.capSource === "meta" && limits.metaTierCap
             ? <>Cap = <b>{limits.safetyPct}%</b> of your Meta tier ({limits.metaTierCap.toLocaleString()}/day) — kept low for safety, and it rises automatically as Meta lifts your tier.</>
             : <>Meta tier unavailable, so using the safe fallback cap. When the cap is reached, sends queue and resume after midnight.</>}</p>
@@ -72,10 +72,10 @@ function BroadcastRail({ goTo, preview }: { goTo: (t: Tab) => void; preview?: Re
         {!camps ? railLoading : camps.length === 0
           ? <p className="text-xs text-slate-400">No campaigns yet — your first send shows up here with its delivery funnel.</p>
           : camps.map(c => (
-            <div key={c.id} className="flex items-center justify-between gap-2 py-0.5 cursor-pointer hover:bg-canvas rounded-md px-1 -mx-1" onClick={() => goTo("campaigns")}>
+            <button type="button" key={c.id} className="flex w-[calc(100%+0.5rem)] items-center justify-between gap-2 py-0.5 text-left cursor-pointer hover:bg-canvas rounded-md px-1 -mx-1" onClick={() => goTo("campaigns")}>
               <span className="text-xs font-semibold text-ink-900 truncate">{c.name || c.templateName}</span>
               <span className="text-[11px] text-slate-400 shrink-0">{c.sentCount}/{c.totalRecipients} · {c.status}</span>
-            </div>
+            </button>
           ))}
       </RailCard>
       <RailCard title="Good to know">
@@ -390,14 +390,14 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
             {needsImage && (headerImageUrl.trim()
               ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={headerImageUrl} alt="" className="w-full h-32 object-cover" />
+                <img src={headerImageUrl} alt="Header image preview" className="w-full h-32 object-cover" />
               )
               : <div className="h-32 bg-slate-200 flex items-center justify-center text-slate-400"><ImageIcon className="w-6 h-6" /></div>)}
             <p className="px-3 py-2 text-[13px] text-slate-800 whitespace-pre-wrap break-words">{filledBody || "Your message appears here…"}</p>
             {previewFooter.trim() && <p className="px-3 pb-1 text-[11px] text-slate-400">{previewFooter}</p>}
-            <p className="px-3 pb-1.5 text-right text-[10px] text-slate-300">10:30</p>
+            <p className="px-3 pb-1.5 text-right text-[10px] text-slate-400">10:30</p>
             {previewButtons.map((b, i) => (
-              <div key={i} className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{b.text || "Button"}</div>
+              <div key={i} className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-700">{b.text || "Button"}</div>
             ))}
           </div>
         </div>
@@ -533,7 +533,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
 
         {(!selected || needsImage) && (
           <div className="space-y-1">
-            {needsImage && <p className="text-[11px] font-bold text-amber-600">This template has an image header — an image is required.</p>}
+            {needsImage && <p className="text-[11px] font-bold text-amber-700">This template has an image header — an image is required.</p>}
             <div className="flex items-center gap-3">
               <input className={`${inp} flex-1`} placeholder={needsImage ? "Header image URL (required)" : "Header image URL (only if the template has an image header)"} value={headerImageUrl} onChange={e => setHeaderImageUrl(e.target.value)} />
               <ImageUpload onUploaded={setHeaderImageUrl} />
@@ -541,12 +541,12 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
           </div>
         )}
         {selected && headerFormat && headerFormat !== "IMAGE" && headerFormat !== "TEXT" && (
-          <p className="text-[11px] text-amber-600">This template has a {headerFormat.toLowerCase()} header — broadcasting that header type isn&apos;t supported yet.</p>
+          <p className="text-[11px] text-amber-700">This template has a {headerFormat.toLowerCase()} header — broadcasting that header type isn&apos;t supported yet.</p>
         )}
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
-        <p className="text-xs font-bold text-slate-400 uppercase">When they reply — start a flow <span className="text-slate-300 normal-case font-normal">(optional)</span></p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Pick a chatbot flow to run automatically when a recipient replies to this broadcast — a tap on a template button or any message.</>}>Their first reply starts it (no trigger keyword needed); it stays armed for 7 days.</PageInfo>
+        <p className="text-xs font-bold text-slate-400 uppercase">When they reply — start a flow <span className="text-slate-400 normal-case font-normal">(optional)</span></p><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Pick a chatbot flow to run automatically when a recipient replies to this broadcast — a tap on a template button or any message.</>}>Their first reply starts it (no trigger keyword needed); it stays armed for 7 days.</PageInfo>
         <select className={`${inp} w-full`} value={replyFlowId} onChange={e => setReplyFlowId(e.target.value)}>
           <option value="">No flow — replies go to Live Chat / AI as usual</option>
           {flows.filter(f => f.active).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -555,7 +555,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
           const f = flows.find(x => x.id === replyFlowId);
           return f ? <p className="text-[11px] text-brand-700 font-semibold">▶ Replies to this broadcast will start <b>{f.name}</b> from its first step.</p> : null;
         })()}
-        {flows.filter(f => f.active).length === 0 && <p className="text-[11px] text-amber-600">No active flows yet — build one in the Flows tab first.</p>}
+        {flows.filter(f => f.active).length === 0 && <p className="text-[11px] text-amber-700">No active flows yet — build one in the Flows tab first.</p>}
       </section>
 
       <section className="bg-white rounded-card border border-line p-5 space-y-2">
@@ -582,7 +582,7 @@ function BroadcastNow({ goTo }: { goTo: (t: Tab) => void }) {
         {scheduleMode === "later" && (
           <div className="space-y-1.5">
             <input type="datetime-local" className={`${inp} w-full`} value={scheduledLocal} onChange={e => setScheduledLocal(e.target.value)} />
-            {audMode === "recipients" && <p className="text-[11px] text-amber-600">Scheduling needs a saved audience (All / Tag / Attribute), not a pasted list.</p>}
+            {audMode === "recipients" && <p className="text-[11px] text-amber-700">Scheduling needs a saved audience (All / Tag / Attribute), not a pasted list.</p>}
             {(() => { const h = scheduledLocal ? holidays.find(x => x.date === scheduledLocal.slice(0, 10)) : null; return h ? <p className="text-[11px] font-semibold text-brand-700">🎉 {new Date(`${h.date}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" })} is {h.name} — a great day for a greeting.</p> : null; })()}
           </div>
         )}
@@ -752,15 +752,16 @@ function ApiBroadcasting() {
 
       <section className="bg-slate-900 rounded-card p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-400 uppercase">Endpoint — fire from your backend, CRM, or website</p>
+          <p className="text-xs font-bold text-white/60 uppercase">Endpoint — fire from your backend, CRM, or website</p>
           <button onClick={() => { navigator.clipboard.writeText(curl).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }); }}
             className="px-2.5 py-1 rounded-lg bg-white/10 text-white text-[11px] font-bold flex items-center gap-1.5 hover:bg-white/20">
             {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{copied ? "Copied" : "Copy cURL"}
           </button>
         </div>
         <pre className="text-[11px] leading-relaxed text-brand-500 font-mono overflow-x-auto whitespace-pre">{curl}</pre>
-        <p className="text-[11px] text-slate-400">
-          Auth: <code className="text-slate-300">Bearer BROADCAST_API_KEY</code> (env). Everything inside <code className="text-slate-300">data</code> is available to rule conditions and template variables as <code className="text-slate-300">{"{{payload.field}}"}</code>.
+        {/* On the dark panel: slate-400 is retuned darker for white cards (globals.css), so it vanished here. */}
+        <p className="text-[11px] text-white/60">
+          Auth: <code className="text-slate-200">Bearer BROADCAST_API_KEY</code> (env). Everything inside <code className="text-slate-200">data</code> is available to rule conditions and template variables as <code className="text-slate-200">{"{{payload.field}}"}</code>.
         </p>
       </section>
 
@@ -863,7 +864,7 @@ function ApiBroadcasting() {
               <button onClick={() => setEditing(null)} className="px-3 py-2 text-sm font-semibold text-slate-400 hover:text-slate-600">Cancel</button>
             </div>
           </div>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          {msg && <p className="text-xs text-red-700">{msg}</p>}
         </section>)}
       </Drawer>
 
@@ -902,7 +903,7 @@ function ApiBroadcasting() {
         <button onClick={dryRun} disabled={tBusy} className="px-4 py-2 rounded-lg bg-brand-700 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
           {tBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FlaskConical className="w-4 h-4" />} Dry run
         </button>
-        {tErr && <p className="text-xs text-red-500">{tErr}</p>}
+        {tErr && <p className="text-xs text-red-700">{tErr}</p>}
         {tResults && (
           <div className="space-y-2">
             {tResults.length === 0 && <p className="text-xs text-slate-400">No active rules listen to this event.</p>}
@@ -978,7 +979,7 @@ function AutomationsTab() {
         {list.map(a => (
           <div key={a.id} className="bg-white rounded-card border border-line p-4 flex items-center justify-between">
             <div><p className="text-sm font-semibold text-brand-dark">{a.autoSendTrigger}{a.triggerKey ? ` · ${a.triggerKey}` : ""}</p><p className="text-[11px] text-slate-400 font-mono">{a.templateName} · after {a.delayValue} {a.delayUnit}</p></div>
-            <button onClick={() => disable(a.id)} className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => disable(a.id)} className="p-2 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
         {list.length === 0 && <p className="text-center text-slate-400 text-sm py-6">No automations yet.</p>}

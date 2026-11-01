@@ -27,7 +27,7 @@ function renderInline(text: string): ReactNode {
   INLINE_LINK.lastIndex = 0;
   while ((m = INLINE_LINK.exec(text))) {
     if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(<Link key={m.index} href={m[2]} className="font-semibold text-[#0783fd] hover:underline">{m[1]}</Link>);
+    parts.push(<Link key={m.index} href={m[2]} className="font-semibold text-[#026cd4] hover:underline">{m[1]}</Link>);
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -52,7 +52,7 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
           const warn = b.tone === "warn";
           return (
             <aside key={i} className={`not-prose rounded-2xl border px-5 py-4 ${warn ? "border-amber-200 bg-amber-50" : "border-[#0783fd]/20 bg-[#0783fd]/5"}`}>
-              <p className={`text-sm font-bold ${warn ? "text-amber-900" : "text-[#0783fd]"}`}>{b.title}</p>
+              <p className={`text-sm font-bold ${warn ? "text-amber-900" : "text-[#026cd4]"}`}>{b.title}</p>
               <p className={`mt-1.5 text-sm leading-relaxed ${warn ? "text-amber-900/90" : "text-slate-600"}`}>{renderInline(b.text)}</p>
             </aside>
           );
@@ -81,7 +81,7 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
         }
         if (b.type === "list") {
           return (
-            <ul key={i} className="list-disc space-y-2 pl-5 marker:text-[#0783fd]">
+            <ul key={i} className="list-disc space-y-2 pl-5 marker:text-[#026cd4]">
               {b.items.map((item, j) => <li key={j} className="leading-relaxed text-slate-500">{renderInline(item)}</li>)}
             </ul>
           );
@@ -149,14 +149,14 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             { name: "Blog", href: "/blog" },
             { name: post.title, href: `/blog/${post.slug}` },
           ]} />
-          <Link href="/blog" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#0783fd]"><ArrowLeft className="h-4 w-4" /> All articles</Link>
+          <Link href="/blog" className="mt-4 inline-flex items-center gap-1.5 text-sm text-slate-500 transition-colors hover:text-[#026cd4]"><ArrowLeft className="h-4 w-4" /> All articles</Link>
           <div className="mx-auto mt-8 max-w-3xl text-center">
             <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
-              <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#0783fd]">{post.category}</span>
+              <span className="rounded-full bg-[#0783fd]/10 px-2.5 py-1 font-bold text-[#026cd4]">{post.category}</span>
               <span>{post.date} · {post.readTime}</span>
             </div>
             <div className="mt-3 text-xs text-slate-500">
-              By the <Link href={AUTHOR.url} className="font-semibold text-slate-700 hover:text-[#0783fd]">{AUTHOR.name}</Link> team
+              By the <Link href={AUTHOR.url} className="font-semibold text-slate-700 hover:text-[#026cd4]">{AUTHOR.name}</Link> team
             </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
@@ -188,7 +188,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {more.map(p => (
                 <Link key={p.slug} href={`/blog/${p.slug}`} className="rounded-xl border border-slate-200 bg-white p-5 transition-shadow hover:shadow-[0_10px_24px_-12px_rgba(7,131,253,0.3)]">
-                  <div className="text-xs font-bold text-[#0783fd]">{p.category}</div>
+                  <div className="text-xs font-bold text-[#026cd4]">{p.category}</div>
                   <div className="mt-2 text-sm font-bold leading-snug text-slate-900">{p.title}</div>
                 </Link>
               ))}

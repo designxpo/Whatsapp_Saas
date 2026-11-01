@@ -10,10 +10,11 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Loader2, Send, LogOut, Users, X, CheckCircle2, RotateCcw, UserCheck,
+  Loader2, Send, LogOut, Users, CheckCircle2, RotateCcw, UserCheck,
   MessageSquare, MessageCircle, Instagram, Facebook, Inbox, FileText, Plus,
 } from "lucide-react";
 import { SegmentedControl } from "@/components/SegmentedControl";
+import { Modal, Drawer } from "@/components/overlay";
 
 // ── Types (mirror the admin conversation API payloads) ───────────────────────
 type Ticket = {
@@ -201,7 +202,7 @@ function TicketThread({ id, me, onChanged }: { id: string; me: Profile; onChange
               <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[72%] rounded-xl px-3.5 py-2 text-sm shadow-sm ${mine ? "bg-brand-700 text-white" : "bg-white border border-line text-ink-900"}`}>
                   {m.mediaUrl && (isImage
-                    ? <a href={m.mediaUrl} target="_blank" rel="noreferrer"><img src={m.mediaUrl} alt="" className="rounded-lg max-h-72 max-w-full object-cover mb-1" /></a>
+                    ? <a href={m.mediaUrl} target="_blank" rel="noreferrer"><img src={m.mediaUrl} alt="Image attachment (opens full size)" className="rounded-lg max-h-72 max-w-full object-cover mb-1" /></a>
                     : <a href={m.mediaUrl} target="_blank" rel="noreferrer" className={`flex items-center gap-2 underline text-[13px] font-semibold mb-1 ${mine ? "text-white" : "text-brand-700"}`}><FileText className="w-4 h-4" /> Attachment</a>)}
                   {hasText && <p className="whitespace-pre-wrap break-words">{m.body}</p>}
                   <p className={`text-[10px] mt-1 ${mine ? "text-white/60" : "text-ink-400"}`}>
@@ -255,13 +256,12 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
     finally { setBusy(false); }
   }
 
+  // The shared Modal (src/components/overlay.tsx): a titled dialog that closes
+  // on Escape, keeps Tab inside and hands focus back to whatever opened it.
+  // Mounted only while open, so `open` is always true here.
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-ink-950/40 p-4 u-fade-in" onClick={onClose}>
-      <div className="w-full max-w-sm bg-white rounded-card border border-line p-5 space-y-4 u-scale-in" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-bold text-ink-900">My profile</p>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
-        </div>
+    <Modal open onClose={onClose} size="sm" title="My profile">
+      <div className="space-y-4">
         <div className="flex items-center gap-3">
           <Avatar label={me.name || me.email} size={40} />
           <div className="min-w-0">
@@ -295,7 +295,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
         </button>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -325,14 +325,11 @@ function TeamSheet({ onClose }: { onClose: () => void }) {
     finally { setBusy(false); }
   }
 
+  // The shared Drawer: a titled side panel that closes on Escape and keeps Tab
+  // inside. Mounted only while open, so `open` is always true here.
   return (
-    <div className="fixed inset-0 z-40 flex justify-end bg-ink-950/40 u-fade-in" onClick={onClose}>
-      <div className="w-full max-w-sm h-full bg-white border-l border-line flex flex-col u-slide-in-right" onClick={e => e.stopPropagation()}>
-        <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between">
-          <p className="text-sm font-bold text-ink-900 flex items-center gap-2"><Users className="w-4 h-4" /> Team</p>
-          <button onClick={onClose} className="text-ink-400 hover:text-ink-900"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+    <Drawer open onClose={onClose} width="md" title={<span className="flex items-center gap-2"><Users className="w-4 h-4" /> Team</span>}>
+        <div className="space-y-5">
           {/* Members */}
           <div className="space-y-2">
             {members === null && <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading members…</p>}
@@ -367,8 +364,7 @@ function TeamSheet({ onClose }: { onClose: () => void }) {
             </button>
           </div>
         </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 

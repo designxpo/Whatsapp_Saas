@@ -85,7 +85,7 @@ function SamplePicker({ accept, fileName, uploading, previewUrl, hint, onFile }:
   return (
     <label className="flex items-center gap-3 border border-dashed border-slate-300 rounded-lg px-3 py-2 cursor-pointer hover:border-brand-dark/50 bg-slate-50">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {previewUrl ? <img src={previewUrl} alt="" className="w-10 h-10 rounded object-cover" /> : <UploadCloud className="w-5 h-5 text-slate-400 shrink-0" />}
+      {previewUrl ? <img src={previewUrl} alt="Uploaded header sample preview" className="w-10 h-10 rounded object-cover" /> : <UploadCloud className="w-5 h-5 text-slate-400 shrink-0" />}
       <span className="text-xs text-slate-500 flex-1 truncate">
         {uploading ? "Uploading sample to Meta…" : fileName ? `${fileName} — sample uploaded` : hint}
       </span>
@@ -139,7 +139,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
   buttons: TplButton[]; cards: TplCard[]; label?: string;
 }) {
   const btnRow = (b: TplButton, i: number) => (
-    <div key={i} className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600 flex items-center justify-center gap-1">
+    <div key={i} className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-700 flex items-center justify-center gap-1">
       {b.type === "URL" && <Link2 className="w-3 h-3" />}{b.type === "PHONE_NUMBER" && <Phone className="w-3 h-3" />}{b.type === "COPY_CODE" && <Copy className="w-3 h-3" />}
       {b.type === "COPY_CODE" ? "Copy code" : b.text || "Button"}
     </div>
@@ -147,7 +147,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
   const mediaBox = (format: string, url: string, name: string) => (
     <div className="bg-slate-200 h-28 flex items-center justify-center overflow-hidden">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {format === "IMAGE" && url ? <img src={url} alt="" className="w-full h-full object-cover" /> :
+      {format === "IMAGE" && url ? <img src={url} alt="Header image preview" className="w-full h-full object-cover" /> :
         <span className="text-slate-400 flex flex-col items-center gap-1 text-[10px]">
           {format === "VIDEO" ? <Video className="w-6 h-6" /> : format === "DOCUMENT" ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
           {name || format.toLowerCase()}
@@ -165,7 +165,7 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
         )}
         <p className="px-3 py-2 text-[13px] text-slate-800 whitespace-pre-wrap">{fillTplVars(bodyText, examples) || "Your message body appears here…"}</p>
         {footerText.trim() && <p className="px-3 pb-1.5 text-[11px] text-slate-400">{footerText}</p>}
-        <p className="px-3 pb-1.5 text-right text-[10px] text-slate-300">10:30</p>
+        <p className="px-3 pb-1.5 text-right text-[10px] text-slate-400">10:30</p>
         {mode === "standard" && buttons.map(btnRow)}
       </div>
       {mode === "carousel" && (
@@ -627,11 +627,13 @@ function TemplatesTab() {
             <div key={`${t.name}-${t.language}`} onClick={() => setViewing(t)} title="View template"
               className="px-4 py-3 flex items-center gap-4 hover:bg-slate-50 cursor-pointer">
               <div className="w-52 min-w-0 shrink-0">
-                <p className="font-mono text-xs font-semibold text-brand-dark truncate hover:underline">{t.name}</p>
-                {t.status === "REJECTED" && t.rejected_reason && <p className="text-[11px] text-red-500 truncate">Rejected: {t.rejected_reason.replaceAll("_", " ").toLowerCase()}</p>}
+                {/* The row click is for mice; the name is a real button so the template opens from the keyboard
+                    (the row holds its own buttons, so it can't be one itself). */}
+                <button type="button" onClick={e => { e.stopPropagation(); setViewing(t); }} className="block w-full text-left font-mono text-xs font-semibold text-brand-dark truncate hover:underline">{t.name}</button>
+                {t.status === "REJECTED" && t.rejected_reason && <p className="text-[11px] text-red-700 truncate">Rejected: {t.rejected_reason.replaceAll("_", " ").toLowerCase()}</p>}
               </div>
               <span className="w-24 shrink-0 text-[11px] font-bold text-slate-400 uppercase">{t.category}</span>
-              <span className={`w-24 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-600" : ACTIONABLE.includes(t.status) ? "text-red-500" : "text-amber-500"}`}>{t.status}</span>
+              <span className={`w-24 shrink-0 text-[11px] font-bold ${t.status === "APPROVED" ? "text-brand-600" : ACTIONABLE.includes(t.status) ? "text-red-700" : "text-amber-700"}`}>{t.status}</span>
               <span className="w-20 shrink-0 text-[11px] font-bold text-slate-500 uppercase">{tplType(t)}</span>
               <span className="w-16 shrink-0 text-[11px] text-slate-400">{t.language}</span>
               <div className="flex-1" />

@@ -62,10 +62,10 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   // Layer 1 — conversation memory (follow-ups like "tell me more")
   const followUp = resolveFollowUp(p.message, mem);
   if (followUp) {
-    logRouterEvent({ event: "MEMORY_HIT", phone: p.phone, question: p.message, ref: `faq:${followUp.id}`, latencyMs: Date.now() - t0 });
+    logRouterEvent({ event: "MEMORY_HIT", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `faq:${followUp.id}`, latencyMs: Date.now() - t0 });
     return { answer: await toned(followUp.detailedAnswer), source: "memory", faqId: followUp.id, confidence: 1, queryEmbedding: null };
   }
-  logRouterEvent({ event: "MEMORY_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
+  logRouterEvent({ event: "MEMORY_MISS", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
   // Layer 2 — FAQ index (in-memory, no network)
   const faqHit = matchFaq(lookup, mem.lastCategory);
@@ -77,22 +77,22 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
     if (looksLikeDeflection(faqHit.faq.detailedAnswer)) {
       const cov = await kbCoverage(lookup, tid).catch(() => null);
       if (cov?.covered) {
-        logRouterEvent({ event: "FAQ_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
+        logRouterEvent({ event: "FAQ_DEFLECT_OVERRIDE", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
         return { ...miss, queryEmbedding: cov.embedding };
       }
     }
-    logRouterEvent({ event: "FAQ_MATCH", phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}:${faqHit.tier}`, score: faqHit.confidence, latencyMs: Date.now() - t0 });
+    logRouterEvent({ event: "FAQ_MATCH", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `faq:${faqHit.faq.id}:${faqHit.tier}`, score: faqHit.confidence, latencyMs: Date.now() - t0 });
     void saveMemory(p.conversationId, { lastFaqId: faqHit.faq.id, lastCategory: faqHit.faq.category, lastIntent: faqHit.faq.intentKeywords?.[0] });
     return { answer: await toned(faqHit.faq.detailedAnswer), source: "faq", faqId: faqHit.faq.id, confidence: faqHit.confidence, queryEmbedding: null };
   }
-  logRouterEvent({ event: "FAQ_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
+  logRouterEvent({ event: "FAQ_MISS", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
   // Tag-scoped chats (e.g. a specific course/property/package) skip the shared
   // answer cache entirely — a cached answer is tag-blind and could replay
   // another item's specifics to a lead who picked a different one. Go straight
   // to the tag-scoped RAG path.
   if (p.primaryKbTag) {
-    logRouterEvent({ event: "CACHE_MISS", phone: p.phone, question: p.message, ref: "tag-scoped:skip", latencyMs: Date.now() - t0 });
+    logRouterEvent({ event: "CACHE_MISS", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: "tag-scoped:skip", latencyMs: Date.now() - t0 });
     return { ...miss, queryEmbedding: p.queryEmbedding ?? null };
   }
 
@@ -106,14 +106,14 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
       if (looksLikeDeflection(hit.answer)) {
         const cov = await kbCoverage(lookup, tid, embedding).catch(() => null);
         if (cov?.covered) {
-          logRouterEvent({ event: "CACHE_DEFLECT_OVERRIDE", phone: p.phone, question: p.message, ref: `cache:${hit.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
+          logRouterEvent({ event: "CACHE_DEFLECT_OVERRIDE", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `cache:${hit.id}→kb`, score: cov.top, latencyMs: Date.now() - t0 });
           return { ...miss, queryEmbedding: embedding };
         }
       }
-      logRouterEvent({ event: "CACHE_HIT", phone: p.phone, question: p.message, ref: `cache:${hit.id}${hit.exact ? ":exact" : ""}`, score: hit.similarity, latencyMs: Date.now() - t0 });
+      logRouterEvent({ event: "CACHE_HIT", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `cache:${hit.id}${hit.exact ? ":exact" : ""}`, score: hit.similarity, latencyMs: Date.now() - t0 });
       return { answer: await toned(hit.answer), source: "cache", confidence: hit.similarity, queryEmbedding: embedding };
     }
-    logRouterEvent({ event: "CACHE_MISS", phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
+    logRouterEvent({ event: "CACHE_MISS", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
     return { ...miss, queryEmbedding: embedding };
   } catch (e) {
     // Cache layer down (DB/embedding hiccup) — degrade straight to RAG.
@@ -126,7 +126,7 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 // The generic FALLBACK_REPLY (returned on LLM API errors) must never be cached —
 // it would permanently shadow the real answer for that question.
 export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null }): void {
-  logRouterEvent({ event: "RAG_USED", phone: p.phone, question: p.question });
+  logRouterEvent({ event: "RAG_USED", tenantId: p.tenantId ?? DEFAULT_TENANT_ID, phone: p.phone, question: p.question });
   // Generic non-answers (API-error fallback, empty/ambiguous nudges) must never be
   // cached. `contactName` lets cacheStore refuse a name-personalised answer.
   const a = p.answer.trim();

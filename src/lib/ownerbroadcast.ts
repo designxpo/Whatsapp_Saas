@@ -16,7 +16,9 @@
 import { whiteLabelConfig } from "./whitelabel";
 import { db } from "./supabase";
 import { sendEmail } from "./email";
-import { renderEmail } from "./emailtemplate";
+import { renderEmail, escapeHtml } from "./emailtemplate";
+import { isUnsubscribed, unsubscribeUrl } from "./emailprefs";
+import { supplierIdentity } from "./supplier-identity";
 import { SITE_URL } from "./siteurl";
 
 export type AudienceMode = "all" | "active" | "trialing" | "suspended";
@@ -86,6 +88,7 @@ export async function resolveAudience(mode: AudienceMode): Promise<Recipient[]> 
   const { data, error } = await q;
   if (error) throw error;
   const partnerOwned = await partnerWorkspaceIds();
+  const optedOut = await productNewsOptOuts((data ?? []).map(r => ({ id: r.id as string, email: (r.owner_email as string) ?? "" })));
 
   // Two tenants can share an owner email (an agency running several
   // workspaces). One email per address — the DB's unique constraint would
@@ -94,7 +97,7 @@ export async function resolveAudience(mode: AudienceMode): Promise<Recipient[]> 
   const out: Recipient[] = [];
   for (const r of data ?? []) {
     const email = ((r.owner_email as string) ?? "").trim().toLowerCase();
-    if (!email || seen.has(email) || partnerOwned.has(r.id as string)) continue;
+    if (!email || seen.has(email) || partnerOwned.has(r.id as string) || optedOut.has(email)) continue;
     seen.add(email);
     out.push({
       tenantId: r.id as string, email,
@@ -116,6 +119,24 @@ async function partnerWorkspaceIds(): Promise<Set<string>> {
     if (error) throw error;
     return new Set((data ?? []).map(r => r.id as string));
   } catch { return new Set(); }
+}
+
+// These announcements are marketing, so they honour the "product news" opt-out
+// (emailprefs.ts): set by the unsubscribe link in every one of them, and at
+// signup when the box for product news is left unticked. Keyed by address, not
+// workspace — an owner of two workspaces who opts out in one is out of both.
+async function productNewsOptOuts(rows: { id: string; email: string }[]): Promise<Set<string>> {
+  const ids = rows.map(r => r.id);
+  const out = new Set<string>();
+  for (let i = 0; i < ids.length; i += 500) {
+    const { data, error } = await db().from("wa_settings").select("tenant_id, value")
+      .eq("key", "email_optout:product_news").in("tenant_id", ids.slice(i, i + 500));
+    // Failing to read opt-outs must never mean mailing people who opted out.
+    if (error) throw new Error(`Couldn't check unsubscribes: ${error.message}`);
+    const flagged = new Set((data ?? []).filter(d => d.value === true).map(d => d.tenant_id as string));
+    for (const r of rows) if (flagged.has(r.id) && r.email) out.add(r.email.trim().toLowerCase());
+  }
+  return out;
 }
 
 /** Recipient count for a segment, for the composer's "this will go to N" line. */
@@ -218,13 +239,24 @@ function personalise(s: string, r: { company: string | null; ownerName: string |
     .replace(/\{\{\s*name\s*\}\}/gi, r.ownerName || "there");
 }
 
-export function renderCampaign(c: OwnerCampaign, r: { company: string | null; ownerName: string | null }): { subject: string; html: string; text: string } {
+export function renderCampaign(c: OwnerCampaign, r: { company: string | null; ownerName: string | null; unsubscribeHref?: string }): { subject: string; html: string; text: string } {
   const subject = personalise(c.subject, r);
+  // Every announcement carries an unsubscribe link and the sender's postal
+  // address (TALKO_ADDRESS_LINES — supplier-identity.ts), as CAN-SPAM and
+  // Gmail/Yahoo's bulk-sender rules expect of marketing email.
+  const addressLines = supplierIdentity().addressLines;
   if (c.mode === "html") {
-    const html = personalise(c.htmlBody ?? "", r);
+    let html = personalise(c.htmlBody ?? "", r);
+    // A hand-built campaign gets the same footer appended, so it can't go out
+    // without a way to opt out.
+    const footer = `<p style="margin:24px 0 0;font-family:Arial,sans-serif;font-size:12px;line-height:18px;color:#6b7280;text-align:center;">Talko AI by PM Technologies${addressLines.map(l => `<br>${escapeHtml(l)}`).join("")}${r.unsubscribeHref ? `<br><a href="${escapeHtml(r.unsubscribeHref)}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>` : ""}</p>`;
+    html = /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${footer}</body>`) : html + footer;
     // No HTML→text conversion beyond stripping tags: a hand-built campaign's
     // text alternative is better as readable prose than as mangled markup.
-    const text = html.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    const text = [
+      html.replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+      ...(r.unsubscribeHref ? [`Unsubscribe: ${r.unsubscribeHref}`] : []),
+    ].join("\n\n");
     return { subject, html, text };
   }
   const { html, text } = renderEmail({
@@ -234,6 +266,8 @@ export function renderCampaign(c: OwnerCampaign, r: { company: string | null; ow
     ...(c.imageUrl ? { imageUrl: c.imageUrl, imageAlt: personalise(c.heading ?? "", r) } : {}),
     ...(c.ctaLabel && c.ctaUrl ? { cta: { label: c.ctaLabel, href: c.ctaUrl } } : {}),
     footerReason: "You're getting this because you own a Talko AI workspace. It's an occasional product announcement from the team, not a recurring newsletter.",
+    ...(addressLines.length ? { addressLines } : {}),
+    ...(r.unsubscribeHref ? { unsubscribeHref: r.unsubscribeHref } : {}),
   }, SITE_URL);
   return { subject, html, text };
 }
@@ -286,9 +320,16 @@ export async function drainOwnerEmailCampaigns(max = PER_TICK): Promise<{ sent: 
     for (const r of rows) {
       if (budget <= 0) break;
       budget--;
-      const { subject, html, text } = renderCampaign(campaign, { company: r.company, ownerName: r.owner_name });
+      // The queue was frozen when the campaign was created; someone may have
+      // unsubscribed since. Checked again at send time, and skipped if so.
+      if (r.tenant_id && await isUnsubscribed(r.tenant_id, "product_news")) {
+        await db().from("wa_owner_email_queue").update({ status: "skipped", error: "Unsubscribed", processed_at: new Date().toISOString() }).eq("id", r.id);
+        continue;
+      }
+      const unsub = r.tenant_id ? unsubscribeUrl(r.tenant_id, "product_news") : undefined;
+      const { subject, html, text } = renderCampaign(campaign, { company: r.company, ownerName: r.owner_name, unsubscribeHref: unsub });
       const result = await sendEmail({
-        to: r.to_email, subject, html, text,
+        to: r.to_email, subject, html, text, unsubscribeUrl: unsub,
         type: "owner_broadcast", tenantId: r.tenant_id, campaignId: campaign.id,
       });
       await db().from("wa_owner_email_queue").update({

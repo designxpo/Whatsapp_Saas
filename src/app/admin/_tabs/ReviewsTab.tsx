@@ -10,6 +10,7 @@ import { Star, Sparkles, Copy, Check, Trash2, Loader2, RefreshCw, Plus, SlidersH
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer, Modal } from "@/components/overlay";
+import { ReviewBooster } from "./ReviewBooster";
 
 type ReplyStatus = "none" | "draft" | "posted";
 type Review = {
@@ -204,6 +205,9 @@ export default function ReviewsTab() {
         </div>
       </div>
 
+      {/* Owner preview: renders nothing for anyone the API refuses */}
+      <ReviewBooster />
+
       {/* Location picker — shown right after the OAuth redirect back, until a
           Business Profile location is chosen for this connection. */}
       {pickerChannelId && (
@@ -286,7 +290,7 @@ export default function ReviewsTab() {
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
       </Modal>
 
-      {msg && <p className="text-xs text-red-500">{msg}</p>}
+      {msg && <p className="text-xs text-red-700">{msg}</p>}
 
       {/* Review list */}
       {!reviews.length && !showAdd && <p className="text-sm text-ink-400 py-8 text-center">No reviews yet. Tap <b>Add review</b> to paste one and let the AI draft a reply.</p>}

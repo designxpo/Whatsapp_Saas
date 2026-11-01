@@ -190,7 +190,7 @@ export default function ComposeCampaignPage() {
             {mode === "simple" && imageUrl && (
               <>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={imageUrl} alt="" className="h-9 w-14 object-cover rounded-control border border-line" />
+                <img src={imageUrl} alt="Uploaded image thumbnail" className="h-9 w-14 object-cover rounded-control border border-line" />
                 <button onClick={() => setImageUrl("")} className="text-[11px] font-bold text-ink-400 hover:text-red-600">Remove</button>
               </>
             )}
@@ -216,7 +216,7 @@ export default function ComposeCampaignPage() {
             {paragraphs.map((p, i) => <p key={i} className="text-sm text-ink-600 leading-relaxed mt-3">{p.replace(/\{\{\s*company\s*\}\}/gi, "Example Business").replace(/\{\{\s*name\s*\}\}/gi, "Priya")}</p>)}
             {imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="w-full rounded-control mt-4" />
+              <img src={imageUrl} alt="Email image preview" className="w-full rounded-control mt-4" />
             )}
             {ctaLabel && ctaUrl && <span className="inline-block mt-4 px-4 py-2 rounded-full bg-brand-700 text-white text-xs font-bold">{ctaLabel}</span>}
           </div>

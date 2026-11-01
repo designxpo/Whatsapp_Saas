@@ -77,7 +77,7 @@ export default async function StatusPage() {
               It is for customers checking whether a delay is on our side or theirs. If this page says operational but your messages are
               not sending, the cause is almost always channel-side — an expired Meta token, an unapproved template, or a send outside
               WhatsApp&apos;s 24-hour customer service window. The{" "}
-              <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> covers those by symptom.
+              <Link href="/guides/troubleshooting" className="font-semibold text-[#026cd4] hover:underline">troubleshooting guide</Link> covers those by symptom.
             </p>
           </PageSummary>
           <div className="mt-4 text-center text-sm text-slate-500">

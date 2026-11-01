@@ -5,14 +5,21 @@ import { useRouter } from "next/navigation";
 import Script from "next/script";
 import { Loader2, CreditCard, Check, X, ArrowLeft, ExternalLink, AlertTriangle, Pencil } from "lucide-react";
 import { FEATURE_KEYS, FEATURE_META } from "@/lib/entitlement-registry";
+import { autoRenewAckLabel, autoRenewStatement, everyText } from "@/lib/billing-consent";
+import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
 
 declare global {
   interface Window { Razorpay: new (options: Record<string, unknown>) => { open: () => void }; }
 }
 
 type Limits = { contacts: number; conversations_per_month?: number; messages_per_month: number; channels: number; team_seats: number };
-type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean; baseAmountCents: number; taxCents: number; gatewayFeeEstimateCents: number; totalChargedCents: number };
-type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean };
+type StripePrice = { amountCents: number; currency: string; interval: string; intervalCount: number };
+type PlanRow = { key: string; name: string; priceCents: number; currency: string; interval: string; limits: Limits; features?: Record<string, boolean>; purchasable: boolean; purchasableViaRazorpay: boolean; baseAmountCents: number; taxCents: number; gatewayFeeEstimateCents: number; totalChargedCents: number; stripe?: StripePrice | null; razorpayInterval?: string };
+type Current = { plan: string; paymentStatus: string; amountCents: number; currency: string; trialEndsAt: string | null; currentPeriodEnd: string | null; hasSubscription: boolean; hasCustomer: boolean; provider?: "razorpay" | "stripe" | null; cancelAt?: string | null; canCancel?: boolean };
+// How a plan would be paid for on this page, and EXACTLY what that provider
+// charges — the number on the card, in the renewal statement and in the
+// acknowledgement all come from here, so they can't disagree with the charge.
+type Offer = { via: "stripe" | "razorpay"; amountCents: number; currency: string; interval: string; intervalCount: number };
 type BillingDetails = { gstin: string | null; billingLegalName: string | null; billingAddress: string | null; billingState: string | null; billingStateCode: string | null; billingCountry: string | null };
 type DetailsResponse = { details?: BillingDetails; company?: string | null; complete?: boolean; taxInvoiceReady?: boolean };
 
@@ -49,8 +56,15 @@ const GST_STATES: [string, string][] = [
 ];
 const stateName = (code: string) => GST_STATES.find(([c]) => c === code)?.[1] ?? "";
 
+// The cancel confirmation uses the shared dialog, which needs its provider
+// above the page.
 export default function BillingPage() {
+  return <ConfirmProvider><Billing /></ConfirmProvider>;
+}
+
+function Billing() {
   const router = useRouter();
+  const ask = useConfirm();
   const [stripeOn, setStripeOn] = useState(true);
   const [razorpayOn, setRazorpayOn] = useState(false);
   const [current, setCurrent] = useState<Current | null>(null);
@@ -60,6 +74,9 @@ export default function BillingPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [requested, setRequested] = useState<Set<string>>(new Set());
+  // Plans whose "renews automatically" box has been ticked. Starts empty: the
+  // pay button stays off until the customer ticks it themselves.
+  const [acks, setAcks] = useState<Set<string>>(new Set());
 
   // GST billing identity — who we invoice. `detailsComplete` mirrors the
   // server's hasBillingIdentity(), and gates checkout below.
@@ -106,6 +123,15 @@ export default function BillingPage() {
     finally { setLoading(false); }
   }, [applyDetails]);
   useEffect(() => { load(); }, [load]);
+
+  // Stripe first when it can quote the plan (same order the buttons used
+  // before), else Razorpay. Stripe bills its Price as set in its dashboard;
+  // Razorpay bills the all-inclusive total, monthly.
+  function offerFor(p: PlanRow): Offer | null {
+    if (stripeOn && p.purchasable && p.stripe) return { via: "stripe", ...p.stripe };
+    if (razorpayOn && p.purchasableViaRazorpay) return { via: "razorpay", amountCents: p.totalChargedCents, currency: p.currency, interval: p.razorpayInterval ?? "month", intervalCount: 1 };
+    return null;
+  }
 
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get("status");
@@ -156,11 +182,14 @@ export default function BillingPage() {
     return false;
   }
 
-  async function checkout(planKey: string) {
+  async function checkout(planKey: string, offer: Offer) {
     if (!billingDetailsReady()) return;
     setBusy(planKey); setMsg(null);
     try {
-      const res = await fetch("/api/admin/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey }) });
+      // The acknowledgement and the amount it was given against travel with
+      // the request; the server refuses without the first and on a mismatch
+      // of the second.
+      const res = await fetch("/api/admin/billing/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey, autoRenewAck: acks.has(planKey), displayedAmountCents: offer.amountCents }) });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Could not start checkout"); return; }
       window.location.href = d.url;
@@ -171,11 +200,11 @@ export default function BillingPage() {
   // (unlike Stripe's hosted-page redirect above), so this stays on /admin/billing
   // throughout: create the subscription, open the modal, verify the payment
   // in its `handler`, then reload this page's own data instead of navigating.
-  async function checkoutRazorpay(planKey: string, planName: string) {
+  async function checkoutRazorpay(planKey: string, planName: string, offer: Offer) {
     if (!billingDetailsReady()) return;
     setBusy(planKey); setMsg(null);
     try {
-      const res = await fetch("/api/admin/billing/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey }) });
+      const res = await fetch("/api/admin/billing/razorpay/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ planKey, autoRenewAck: acks.has(planKey), displayedAmountCents: offer.amountCents }) });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Could not start checkout"); setBusy(null); return; }
       if (typeof window.Razorpay !== "function") { setMsg("Payment could not load — please refresh and try again."); setBusy(null); return; }
@@ -184,7 +213,9 @@ export default function BillingPage() {
         key: d.razorpayKeyId,
         subscription_id: d.subscriptionId,
         name: "Talko AI",
-        description: `${planName} subscription — all-inclusive`,
+        // Razorpay's modal shows only its own total, so the renewal terms are
+        // repeated where the payment is actually made.
+        description: `${planName} — renews automatically at ${money(d.amountCents ?? offer.amountCents, offer.currency)} ${everyText(offer.interval)} until you cancel`,
         handler: async (resp: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
           try {
             const v = await fetch("/api/admin/billing/razorpay/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(resp) });
@@ -216,14 +247,46 @@ export default function BillingPage() {
     } finally { setBusy(null); }
   }
 
-  async function portal() {
-    setBusy("portal"); setMsg(null);
+  async function portal(flow?: "cancel") {
+    setBusy(flow === "cancel" ? "cancel" : "portal"); setMsg(null);
     try {
-      const res = await fetch("/api/admin/billing/portal", { method: "POST" });
+      const res = await fetch("/api/admin/billing/portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(flow ? { flow } : {}) });
       const d = await res.json();
       if (!res.ok) { setMsg(d.error || "Could not open billing portal"); return; }
       window.location.href = d.url;
     } finally { setBusy(null); }
+  }
+
+  // One plain confirmation, then done. Stripe's portal shows its own cancel
+  // screen, so a Stripe subscription goes straight there rather than through
+  // two confirmations in a row.
+  async function cancelSubscription() {
+    if (!current) return;
+    if (current.provider === "stripe") { await portal("cancel"); return; }
+    const until = fmtDate(current.currentPeriodEnd);
+    const ok = await ask({
+      title: "Cancel your subscription?",
+      message: current.currentPeriodEnd
+        ? <>You won&apos;t be charged again. Your plan stays active until <b>{until}</b> and then ends.</>
+        : <>You won&apos;t be charged again. Your plan stays active until the end of the period you&apos;ve paid for.</>,
+      facts: [
+        { label: "Plan", value: current.plan },
+        ...(current.currentPeriodEnd ? [{ label: "Active until", value: until }] : []),
+      ],
+      confirmLabel: "Cancel subscription",
+      cancelLabel: "Go back",
+      tone: "caution",
+    });
+    if (!ok) return;
+    setBusy("cancel"); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/billing/cancel", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) { setMsg(d.error || "Could not cancel the subscription"); return; }
+      setBanner(d.endsAt ? `Your plan stays active until ${fmtDate(d.endsAt)}; it won't renew.` : "Your subscription won't renew.");
+      await load();
+    } catch { setMsg("Could not cancel the subscription"); }
+    finally { setBusy(null); }
   }
 
   if (loading) return <div className="min-h-screen grid place-items-center bg-canvas"><Loader2 className="w-6 h-6 animate-spin text-brand-700" /></div>;
@@ -253,15 +316,29 @@ export default function BillingPage() {
                 </p>
                 <p className="text-xs text-ink-500 mt-1">
                   {current.amountCents > 0 ? `${money(current.amountCents, current.currency)}/mo · ` : ""}
-                  {current.paymentStatus === "trialing" ? `Trial ends ${fmtDate(current.trialEndsAt)}` : current.currentPeriodEnd ? `Renews ${fmtDate(current.currentPeriodEnd)}` : ""}
+                  {current.paymentStatus === "trialing" ? `Trial ends ${fmtDate(current.trialEndsAt)}`
+                    : current.cancelAt && current.paymentStatus !== "cancelled" ? `Active until ${fmtDate(current.cancelAt)} · won't renew`
+                    : current.currentPeriodEnd ? `Renews ${fmtDate(current.currentPeriodEnd)}` : ""}
                 </p>
               </div>
-              {stripeOn && current.hasCustomer && (
-                <button onClick={portal} disabled={busy === "portal"} className="px-4 py-2 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas flex items-center gap-1.5">
-                  {busy === "portal" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />} Manage billing
-                </button>
-              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                {stripeOn && current.hasCustomer && (
+                  <button onClick={() => portal()} disabled={busy === "portal"} className="px-4 py-2 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas flex items-center gap-1.5">
+                    {busy === "portal" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />} Manage billing
+                  </button>
+                )}
+                {/* Cancelling is as visible as subscribing: a plain button on
+                    this card, whichever provider bills the workspace. */}
+                {current.canCancel && ((current.provider === "stripe" && stripeOn && current.hasCustomer) || (current.provider === "razorpay" && razorpayOn)) && (
+                  <button onClick={cancelSubscription} disabled={busy === "cancel"} className="px-4 py-2 rounded-control border border-line text-xs font-bold text-ink-800 hover:bg-canvas flex items-center gap-1.5">
+                    {busy === "cancel" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Cancel subscription
+                  </button>
+                )}
+              </div>
             </div>
+            {current.cancelAt && current.paymentStatus !== "cancelled" && (
+              <p className="mt-3 text-xs text-ink-700 bg-canvas rounded-control px-3 py-2">Your plan stays active until {fmtDate(current.cancelAt)}; it won&apos;t renew.</p>
+            )}
           </div>
         )}
 
@@ -360,14 +437,22 @@ export default function BillingPage() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {plans.map(p => {
             const isCurrent = current?.plan === p.key;
+            const offer = offerFor(p);
+            // The figure shown is the one the provider behind this card's
+            // button will charge. With no online payment (a "Request" card)
+            // there's no payment step, so it falls back to the list price.
+            const shownCents = offer ? offer.amountCents : p.totalChargedCents;
+            const shownCurrency = offer ? offer.currency : p.currency;
+            const shownInterval = offer ? (offer.intervalCount > 1 ? `${offer.intervalCount} ${offer.interval}s` : offer.interval) : p.interval;
+            const acked = acks.has(p.key);
             return (
               <div key={p.key} className={`bg-white rounded-card border p-5 flex flex-col ${isCurrent ? "border-brand-700 ring-1 ring-brand-700/20" : "border-line"}`}>
                 <p className="text-sm font-extrabold text-ink-900">{p.name}</p>
                 {/* The all-inclusive amount IS the price — there is no tax line
                     and no separate fee line to disclose, so showing one number
                     is both simpler and the only honest presentation. */}
-                <p className="text-2xl font-extrabold text-ink-900 mt-1">{p.totalChargedCents === 0 ? "Free" : money(p.totalChargedCents, p.currency)}<span className="text-xs font-medium text-ink-400">{p.totalChargedCents ? `/${p.interval}` : ""}</span></p>
-                {p.totalChargedCents > 0 && (
+                <p className="text-2xl font-extrabold text-ink-900 mt-1">{shownCents === 0 ? "Free" : money(shownCents, shownCurrency)}<span className="text-xs font-medium text-ink-400">{shownCents ? `/${shownInterval}` : ""}</span></p>
+                {shownCents > 0 && (
                   <p className="text-[11px] text-ink-400 mt-0.5">All-inclusive — no tax or processing charges added at checkout.</p>
                 )}
                 <ul className="mt-3 space-y-1.5 text-xs text-ink-600">
@@ -392,14 +477,30 @@ export default function BillingPage() {
                   </ul>
                 </div>
                 <div className="mt-4">
+                  {/* Auto-renewal, stated where the decision is made: the exact
+                      recurring amount, how to stop it, the policy, and an
+                      unticked box the customer ticks themselves. */}
+                  {!isCurrent && offer && offer.amountCents > 0 && (
+                    <div className="mb-2.5 space-y-2">
+                      <p className="text-[11px] text-ink-600 leading-snug">
+                        {autoRenewStatement(money(offer.amountCents, offer.currency), offer.interval, offer.intervalCount)}{" "}
+                        <a href="/legal/refund" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Refund &amp; cancellation policy</a>
+                      </p>
+                      <label className="flex items-start gap-2 text-[11px] text-ink-800 cursor-pointer">
+                        <input type="checkbox" className="mt-0.5 shrink-0" checked={acked}
+                          onChange={e => setAcks(s => { const n = new Set(s); if (e.target.checked) n.add(p.key); else n.delete(p.key); return n; })} />
+                        <span>{autoRenewAckLabel(offer.interval, offer.intervalCount)}</span>
+                      </label>
+                    </div>
+                  )}
                   {isCurrent ? (
                     <span className="block text-center text-xs font-bold text-brand-700 py-2">Your plan</span>
-                  ) : stripeOn && p.purchasable ? (
-                    <button onClick={() => checkout(p.key)} disabled={busy === p.key} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                  ) : offer?.via === "stripe" ? (
+                    <button onClick={() => checkout(p.key, offer)} disabled={busy === p.key || (offer.amountCents > 0 && !acked)} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
                     </button>
-                  ) : razorpayOn && p.purchasableViaRazorpay ? (
-                    <button onClick={() => checkoutRazorpay(p.key, p.name)} disabled={busy === p.key} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5">
+                  ) : offer?.via === "razorpay" ? (
+                    <button onClick={() => checkoutRazorpay(p.key, p.name, offer)} disabled={busy === p.key || (offer.amountCents > 0 && !acked)} className="w-full py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed">
                       {busy === p.key ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Choose {p.name}
                     </button>
                   ) : requested.has(p.key) ? (
@@ -411,7 +512,7 @@ export default function BillingPage() {
                   )}
                   {/* The button stays live and explains itself on click (see
                       billingDetailsReady) — this is the heads-up before it. */}
-                  {!isCurrent && !detailsComplete && ((stripeOn && p.purchasable) || (razorpayOn && p.purchasableViaRazorpay)) && (
+                  {!isCurrent && !detailsComplete && offer && (
                     <p className="mt-1.5 text-[10px] text-amber-700 text-center">Billing details needed first</p>
                   )}
                 </div>
@@ -420,10 +521,14 @@ export default function BillingPage() {
           })}
         </div>
 
+        {/* Only promise a self-serve cancel where this page actually has one;
+            team-managed billing is cancelled by asking the team. */}
         <p className="text-[11px] text-ink-400 text-center">
-          {stripeOn && razorpayOn ? "Secure payments by Stripe and Razorpay."
-            : razorpayOn ? "Secure payments by Razorpay."
-            : "Secure payments by Stripe."} Cancel anytime from Manage billing.
+          {stripeOn && razorpayOn ? "Secure payments by Stripe and Razorpay. Cancel anytime from this page."
+            : razorpayOn ? "Secure payments by Razorpay. Cancel anytime from this page."
+            : stripeOn ? "Secure payments by Stripe. Cancel anytime from this page."
+            : "Billing is managed by our team — contact us to cancel."}{" "}
+          <a href="/legal/refund" target="_blank" rel="noopener noreferrer" className="underline hover:text-ink-600">Refund &amp; cancellation policy</a>
         </p>
       </div>
       {razorpayOn && <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />}

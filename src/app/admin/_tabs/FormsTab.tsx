@@ -333,7 +333,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
               <div className="p-3 space-y-2.5">
                 {fields.filter(f => f.label.trim()).map((f, i) => (
                   <div key={i}>
-                    <p className="text-[10px] font-semibold text-ink-600 mb-0.5">{f.label}{f.required && <span className="text-red-500"> *</span>}</p>
+                    <p className="text-[10px] font-semibold text-ink-600 mb-0.5">{f.label}{f.required && <span className="text-red-700"> *</span>}</p>
                     {isChoice(f.type)
                       ? <div className="space-y-1">{f.options.split(",").map(s => s.trim()).filter(Boolean).slice(0, 4).map(o => (
                           <div key={o} className="flex items-center gap-1.5 text-[10px] text-ink-400">
@@ -360,7 +360,7 @@ function FormsTab({ goTo }: { goTo: (t: Tab) => void }) {
             <div className="w-9 h-9 rounded-control bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><ClipboardList className="w-[18px] h-[18px]" /></div>
             <div className="min-w-0 flex-1">
               <button onClick={() => renameForm(f)} disabled={busy === "rename:" + f.id} title="Click to rename" className="text-sm font-semibold text-ink-900 truncate text-left hover:underline disabled:opacity-60">{f.name}</button>
-              {f.validationErrors.length > 0 && <p className="text-[11px] text-red-500 truncate">Fix before publishing: {f.validationErrors.join(" · ")}</p>}
+              {f.validationErrors.length > 0 && <p className="text-[11px] text-red-700 truncate">Fix before publishing: {f.validationErrors.join(" · ")}</p>}
             </div>
             <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${statusPill(f.status)}`}>{f.status}</span>
             {f.previewUrl && (

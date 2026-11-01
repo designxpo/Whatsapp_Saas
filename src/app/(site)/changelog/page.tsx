@@ -27,8 +27,8 @@ export const metadata: Metadata = {
 // the site (TONES.violet, GRADIENTS, ICON_GRADIENTS all use #7c5cff) — not
 // Tailwind's stock violet-600 (#7c3aed), a visibly different, off-brand purple.
 const TAG_STYLES: Record<ChangeTag, string> = {
-  New: "bg-[#0783fd]/10 text-[#0783fd]",
-  Improved: "bg-[#7c5cff]/10 text-[#7c5cff]",
+  New: "bg-[#0783fd]/10 text-[#026cd4]",
+  Improved: "bg-[#7c5cff]/10 text-[#6d4aff]",
   Fixed: "bg-amber-50 text-amber-700",
 };
 
@@ -61,7 +61,7 @@ export default function ChangelogPage() {
             <p>
               It is for existing customers checking whether something they asked for has landed, and for anyone evaluating the platform who wants
               to see how actively it is developed. For the live health of the platform right now, see
-              the <Link href="/status" className="font-semibold text-[#0783fd] hover:underline">system status page</Link> instead — this page covers
+              the <Link href="/status" className="font-semibold text-[#026cd4] hover:underline">system status page</Link> instead — this page covers
               what changed, not what is working at this moment.
             </p>
           </PageSummary>

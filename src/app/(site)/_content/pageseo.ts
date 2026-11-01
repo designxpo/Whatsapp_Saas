@@ -12,7 +12,7 @@
 
 import type { FaqItem } from "./schema";
 import type { Source } from "../_components/seo";
-import { TIERS, CREATOR_TIERS, ANNUAL_DISCOUNT } from "./site";
+import { TIERS, CREATOR_TIERS } from "./site";
 import { EXTENSION_STORE_URL } from "./schema";
 
 // Prices quoted in prose are derived from the same TIERS the pricing table
@@ -28,7 +28,6 @@ const range = (tiers: typeof TIERS) => {
 export const BIZ_RANGE = range(TIERS);
 export const CREATOR_RANGE = range(CREATOR_TIERS);
 export const CREATOR_FLOOR = `${inr(Math.min(...monthly(CREATOR_TIERS)))}/mo`;
-export const ANNUAL_OFF = `${Math.round(ANNUAL_DISCOUNT * 100)}%`;
 
 export type PageSeo = {
   updated: string;
@@ -93,12 +92,12 @@ export const FEATURES_SEO: PageSeo = {
 // ── /pricing ────────────────────────────────────────────────────────────────
 
 export const PRICING_SEO: PageSeo = {
-  updated: "2026-08-05",
+  updated: "2026-11-01",
   published: "2026-06-01",
   faqs: [
     {
       q: "How much does Talko AI cost?",
-      a: `Business plans run ${BIZ_RANGE} on monthly billing. Creator plans, which are Instagram-first, run ${CREATOR_RANGE}. Annual billing takes ${ANNUAL_OFF} off any of them. Scale is quoted per account because it is sized to your message volume and the number of channels and numbers you connect. Every plan begins with a 14-day free trial and no credit card.`,
+      a: `Business plans run ${BIZ_RANGE} on monthly billing. Creator plans, which are Instagram-first, run ${CREATOR_RANGE}. Scale is quoted per account because it is sized to your message volume and the number of channels and numbers you connect. Every plan begins with a 14-day free trial and no credit card.`,
     },
     {
       q: "What is included in the free trial?",
@@ -114,15 +113,17 @@ export const PRICING_SEO: PageSeo = {
     },
     {
       q: "Can I change or cancel my plan later?",
-      a: "Yes. Upgrade, downgrade or cancel from billing settings whenever you like. On monthly billing there is no commitment to unwind at all; on annual billing the discount is the trade for the longer term. Either way your contacts, conversation history and flows stay exportable the whole time.",
+      a: "Yes. Upgrade, downgrade or cancel from billing settings whenever you like. Plans are billed monthly, so there is no long-term commitment to unwind. Your contacts, conversation history and flows stay exportable the whole time.",
     },
     {
       q: "Which plan should I choose?",
       a: `If customers reach you mainly on WhatsApp and a team answers them, start on a business plan. If you are a creator or influencer whose volume is Instagram DMs and comments, the Creator plans start at ${CREATOR_FLOOR} and skip the WhatsApp business stack you would not use. If you run more than a handful of numbers, brands or channels, ask for a Scale quote instead of stacking plans.`,
     },
     {
+      // Monthly only: checkout can't sell an annual plan (Razorpay plans are
+      // monthly), so the site no longer advertises one.
       q: "Do you offer annual billing or volume pricing?",
-      a: `Yes to both. Annual billing is ${ANNUAL_OFF} cheaper per month than monthly on the same plan — switch the toggle above the pricing table to see the annual rate. Volume pricing, for high message counts or many connected numbers and brands, is quoted per account: send us your expected monthly volume and the channels you need.`,
+      a: `Plans are billed monthly; there is no annual plan at the moment. Volume pricing, for high message counts or many connected numbers and brands, is quoted per account: send us your expected monthly volume and the channels you need.`,
     },
   ],
   sources: [SRC.whatsappPricing, SRC.gemini, SRC.openai, SRC.anthropic],
@@ -368,8 +369,11 @@ export const EXTENSION_SEO: PageSeo = {
 
 // ── /affiliate ──────────────────────────────────────────────────────────────
 
+// Growth's base monthly price, for the affiliate commission example below.
+const GROWTH_BASE = TIERS.find(t => t.name === "Growth")?.priceMonthly ?? 0;
+
 export const AFFILIATE_SEO: PageSeo = {
-  updated: "2026-08-30",
+  updated: "2026-11-01",
   published: "2026-08-21",
   faqs: [
     {
@@ -378,7 +382,10 @@ export const AFFILIATE_SEO: PageSeo = {
     },
     {
       q: "How much commission do I earn?",
-      a: "10% of the subscription payment made by each business you refer, for as long as they stay a paying customer — not a one-time payout. If someone you referred is on a ₹4,999/month plan, you earn ₹499.90 every month they remain subscribed.",
+      // Worked example derived from the Growth tier so it can't name a plan
+      // price that doesn't exist (it once quoted a ₹4,999 plan). Commission is
+      // computed on the base plan price (see applySubscription in lib/tenants).
+      a: `10% of each subscription payment made by a business you refer, calculated on the plan's base price, for as long as they stay a paying customer — not a one-time payout. If someone you referred is on the Growth plan (${inr(GROWTH_BASE)}/month), you earn ₹${(GROWTH_BASE / 10).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} every month they remain subscribed.`,
     },
     {
       q: "Is the commission recurring or a one-time payment?",

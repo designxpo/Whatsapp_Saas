@@ -22,7 +22,7 @@ import { TALKO_BRAND, brandCopy, type Brand } from "@/lib/whitelabel";
 
 export const dynamic = "force-dynamic";
 
-const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email" };
+const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email", product_news: "product news and announcements" };
 
 // White-label: on a partner's address (where its emails' unsubscribe links
 // point) the page carries the partner's name and links stay on that address.
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
       <p>Email <a href="mailto:info@thetalko.in?subject=Unsubscribe">info@thetalko.in</a> and we'll remove you by hand.</p>`, 400);
 
   try {
-    await setUnsubscribed(claim.tenantId, claim.kind, true);
+    await setUnsubscribed(claim.tenantId, claim.kind, true, claim.recipient);
   } catch (e) {
     console.error("[unsubscribe] failed to persist", claim.tenantId, e);
     return page("Something went wrong", `<h1>We couldn't save that just now</h1>
@@ -111,7 +111,8 @@ export async function POST(req: Request) {
   const what = LABELS[claim.kind] ?? "these emails";
   return page("Unsubscribed", `
       <h1>Done — you're unsubscribed</h1>
-      <p>You won't get ${what} again. Account, security and billing emails still apply. You can turn the
-      recap back on any time from your workspace settings.</p>
+      <p>You won't get ${what} again. Account, security and billing emails still apply. ${claim.kind === "product_news"
+        ? `To get them again, email <a href="mailto:info@thetalko.in">info@thetalko.in</a>.`
+        : "You can turn it back on any time from your workspace settings."}</p>
       <a class="link" href="${SITE_URL}/login">Open Talko AI &rarr;</a>`);
 }

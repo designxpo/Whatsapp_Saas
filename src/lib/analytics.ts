@@ -77,3 +77,23 @@ export function planFromHref(href: string | null | undefined): string | null {
     return null;
   }
 }
+
+/**
+ * A page address with nothing personal left in it, for Vercel's analytics:
+ * the query string dropped (it can carry emails, tokens, referral codes) and
+ * any path segment that looks like an id — a UUID, a long number or token —
+ * replaced by ":id" (hyphenated slugs like a blog post's are left alone), so
+ * /admin/conversations/<uuid> is reported as a route,
+ * not as one customer's conversation. Pure.
+ */
+export function redactUrl(url: string): string {
+  try {
+    const u = new URL(url, "https://x.invalid");
+    const path = u.pathname.split("/").map(seg =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(seg) || /^\d{5,}$/.test(seg) || (seg.length >= 16 && /\d/.test(seg) && /^[A-Za-z0-9_]+$/.test(seg))
+        ? ":id" : seg).join("/");
+    return /^https?:\/\//i.test(url) ? `${u.origin}${path}` : path;
+  } catch {
+    return "";
+  }
+}

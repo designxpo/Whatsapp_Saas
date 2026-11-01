@@ -80,7 +80,7 @@ export default function GuidesPage() {
             </p>
             <p>
               Written for business owners, marketers and support leads setting this up themselves, not for engineers. If something is already
-              broken, the <Link href="/guides/troubleshooting" className="font-semibold text-[#0783fd] hover:underline">troubleshooting guide</Link> is
+              broken, the <Link href="/guides/troubleshooting" className="font-semibold text-[#026cd4] hover:underline">troubleshooting guide</Link> is
               organised by symptom and will get you there faster.
             </p>
           </PageSummary>
@@ -96,7 +96,7 @@ export default function GuidesPage() {
         <ul className="mx-auto mt-10 max-w-2xl space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 p-6">
           {PREREQS.map(p => (
             <li key={p} className="flex items-start gap-2.5 text-sm leading-relaxed text-slate-600">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#0783fd]" aria-hidden="true" /> {p}
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#026cd4]" aria-hidden="true" /> {p}
             </li>
           ))}
         </ul>
@@ -109,7 +109,7 @@ export default function GuidesPage() {
         return (
           <Container key={cat.key} className="py-8">
             <div className="mx-auto flex max-w-3xl items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><Icon className="h-5 w-5" /></span>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]"><Icon className="h-5 w-5" /></span>
               <div>
                 <h2 id={cat.key.toLowerCase().replace(/\s+/g, "-")} className="scroll-mt-24 text-lg font-extrabold text-slate-900">{cat.label}</h2>
                 <p className="text-sm text-slate-500">{cat.blurb}</p>
@@ -119,7 +119,7 @@ export default function GuidesPage() {
               {items.map(g => (
                 <Link key={g.slug} href={`/guides/${g.slug}`}
                   className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
-                  <h3 className="text-base font-bold leading-snug text-slate-900 group-hover:text-[#0783fd]">{g.title}</h3>
+                  <h3 className="text-base font-bold leading-snug text-slate-900 group-hover:text-[#026cd4]">{g.title}</h3>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-500">{g.summary}</p>
                   <div className="mt-5 flex items-center justify-between text-xs text-slate-400">
                     <span>{g.timeEstimate}</span>
@@ -138,12 +138,12 @@ export default function GuidesPage() {
       <Container className="py-8">
         <Link href="/guides/troubleshooting"
           className="group mx-auto flex max-w-3xl items-center gap-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><LifeBuoy className="h-5 w-5" /></span>
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]"><LifeBuoy className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-bold text-slate-900 group-hover:text-[#0783fd]">Something not working? Troubleshooting</h3>
+            <h3 className="text-base font-bold text-slate-900 group-hover:text-[#026cd4]">Something not working? Troubleshooting</h3>
             <p className="mt-1 text-sm leading-relaxed text-slate-500">Symptom, cause and fix for the issues that come up most — WhatsApp, Instagram, YouTube, Reviews, AI replies and billing.</p>
           </div>
-          <ArrowUpRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#0783fd]" />
+          <ArrowUpRight className="h-5 w-5 shrink-0 text-slate-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-[#026cd4]" />
         </Link>
       </Container>
 

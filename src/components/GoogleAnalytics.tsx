@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Script from "next/script";
 import { GA_ID, planFromHref, track } from "@/lib/analytics";
+import { CONSENT_EVENT, currentConsent } from "./ConsentBanner";
 
 // The GA4 tag, plus the one site-wide listener that turns trial CTAs into a
 // measurable step. Mounted by (site)/layout.tsx and signup/layout.tsx only —
@@ -13,7 +14,18 @@ import { GA_ID, planFromHref, track } from "@/lib/analytics";
 // History API pushState/replaceState, which is exactly what the App Router
 // uses, so client-side navigations are counted without our help. Sending them
 // ourselves as well would double-count every page after the first.
+//
+// Nothing loads until the visitor accepts analytics in the cookie banner
+// (ConsentBanner.tsx): no gtag script, no _ga cookie, no request to Google.
 export function GoogleAnalytics() {
+  const [allowed, setAllowed] = useState(false);
+  useEffect(() => {
+    setAllowed(currentConsent() === "all");
+    const onChoice = (e: Event) => setAllowed((e as CustomEvent).detail === "all");
+    window.addEventListener(CONSENT_EVENT, onChoice);
+    return () => window.removeEventListener(CONSENT_EVENT, onChoice);
+  }, []);
+
   // Every "Start free trial" button on the site is a plain <Link> rendered by
   // the shared server-component Button in (site)/_components/ui.tsx. Rather
   // than convert that component to a client one and thread an onClick through
@@ -35,7 +47,7 @@ export function GoogleAnalytics() {
     return () => document.removeEventListener("click", onClick, { capture: true });
   }, []);
 
-  if (!GA_ID) return null;
+  if (!GA_ID || !allowed) return null;
   return (
     <>
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />

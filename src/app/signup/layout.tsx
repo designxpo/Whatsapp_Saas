@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
+import { ConsentBanner } from "@/components/ConsentBanner";
 
 // middleware.ts redirects /signup on the marketing host to the APP host, so
 // this page is actually served (and crawled) at app.thetalko.in/signup, not
@@ -21,6 +22,7 @@ export default function SignupLayout({ children }: { children: React.ReactNode }
   // the marketing property would record all the intent and none of the
   // conversions, because this route is served on the app host under the ROOT
   // layout. Requires both hosts listed in the GA4 stream's "Configure your
-  // domains", or the session breaks at the domain hop.
-  return <>{children}<GoogleAnalytics /></>;
+  // domains", or the session breaks at the domain hop. Like the site, it waits
+  // for the visitor's answer in the cookie banner before loading.
+  return <>{children}<ConsentBanner /><GoogleAnalytics /></>;
 }

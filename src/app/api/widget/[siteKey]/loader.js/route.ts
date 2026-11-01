@@ -46,22 +46,31 @@ export async function GET(req: Request, { params }: { params: Promise<{ siteKey:
 "  if (window.__alabsWC) return; window.__alabsWC = true;\n" +
 "  var CFG = " + cfg + ";\n" +
 "  var LS = 'alabs_wc_visitor_' + CFG.siteKey;\n" +
-"  var vid = localStorage.getItem(LS);\n" +
-"  if (!vid) { vid = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(LS, vid); }\n" +
-"  // First-touch UTM capture: read once from the landing page's URL, then stick\n" +
-"  // in localStorage for the life of this visitor — so a lead who lands from an\n" +
-"  // ad, browses a few pages, then opens the chat still carries the campaign.\n" +
+"  // Nothing is written to the visitor's browser until they use the chat: the id\n" +
+"  // lives in memory and is kept (so the conversation survives a page change)\n" +
+"  // only once they send a message. A returning visitor's saved id is reused.\n" +
+"  var vid = null; try { vid = localStorage.getItem(LS); } catch(e){}\n" +
+"  var vidKept = !!vid;\n" +
+"  if (!vid) vid = 'v_' + Math.random().toString(36).slice(2) + Date.now().toString(36);\n" +
+"  // First-touch UTM capture: read from the landing page's URL and held in\n" +
+"  // memory. It is saved for later pages only once the visitor has chatted, or\n" +
+"  // once the site says they agreed to it (window.__twcConsent = true, or the\n" +
+"  // 'twc:consent' event) — campaign tracking is not needed to run the chat.\n" +
 "  var UTM_KEYS = ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'];\n" +
 "  var UTM_LS = 'alabs_wc_utm_' + CFG.siteKey;\n" +
-"  var utm = null;\n" +
-"  try { var utmRaw = localStorage.getItem(UTM_LS); if (utmRaw) utm = JSON.parse(utmRaw); } catch(e){}\n" +
+"  var utm = null, utmKept = false;\n" +
+"  try { var utmRaw = localStorage.getItem(UTM_LS); if (utmRaw) { utm = JSON.parse(utmRaw); utmKept = true; } } catch(e){}\n" +
 "  if (!utm) {\n" +
 "    try {\n" +
 "      var qp = new URLSearchParams(window.location.search); var found = {};\n" +
 "      UTM_KEYS.forEach(function(k){ var v = qp.get(k); if (v) found[k] = v.slice(0,100); });\n" +
-"      if (Object.keys(found).length) { utm = found; localStorage.setItem(UTM_LS, JSON.stringify(utm)); }\n" +
+"      if (Object.keys(found).length) utm = found;\n" +
 "    } catch(e){}\n" +
 "  }\n" +
+"  function keepUtm(){ if (utm && !utmKept) { try { localStorage.setItem(UTM_LS, JSON.stringify(utm)); utmKept = true; } catch(e){} } }\n" +
+"  function keepVisitor(){ if (!vidKept) { try { localStorage.setItem(LS, vid); vidKept = true; } catch(e){} } keepUtm(); }\n" +
+"  if (window.__twcConsent === true) keepUtm();\n" +
+"  window.addEventListener('twc:consent', keepUtm);\n" +
 "  function build(){\n" +
 "  var since = null, open = false, timer = null, seen = {}, greeted = false, busy = false, escalated = false;\n" +
 "  var BRAND = CFG.color, SIDE = CFG.position;\n" +
@@ -167,7 +176,7 @@ powLine +
 "  function showTyping(){ if(typingEl) return; var row=document.createElement('div'); row.className='twc-row b'; row.innerHTML='<div class=\"twc-bav\">' + avInner + '</div><div class=\"twc-typing\"><span></span><span></span><span></span></div>'; body.appendChild(row); body.scrollTop=body.scrollHeight; typingEl=row; }\n" +
 "  function hideTyping(){ if(typingEl){ typingEl.parentNode.removeChild(typingEl); typingEl=null; } }\n" +
 "  function poll(){ fetch(CFG.base+'/api/widget/poll?siteKey='+encodeURIComponent(CFG.siteKey)+'&visitorId='+encodeURIComponent(vid)+(since?'&since='+encodeURIComponent(since):''),{}).then(function(r){return r.json();}).then(function(d){ render(d.messages); if(d.status==='escalated' && !escalated){ escalated=true; sysBanner('Connecting you with our team — someone will reply here shortly.'); } }).catch(function(){}); }\n" +
-"  function send(t){ t=(t==null?(input.value||''):t).trim(); if(!t||busy) return; input.value=''; clearChips(); addUser(t); busy=true; sendBtn.disabled=true; showTyping(); fetch(CFG.base+'/api/widget/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({siteKey:CFG.siteKey,visitorId:vid,text:t,utm:utm||undefined,identity:(typeof window.__twcIdentity==='object'?window.__twcIdentity:undefined)})}).then(function(r){return r.json();}).then(function(d){ hideTyping(); busy=false; sendBtn.disabled=false; var msgs=(d&&d.messages)?d.messages:(d&&d.reply?[{body:d.reply,id:d.id,at:d.at}]:[]); render(msgs); if(d&&d.escalated && !escalated){ escalated=true; sysBanner('Connecting you with our team — someone will reply here shortly.'); } }).catch(function(){ hideTyping(); busy=false; sendBtn.disabled=false; addBot({body:'Sorry, something went wrong. Please try again.'}); }); }\n" +
+"  function send(t){ t=(t==null?(input.value||''):t).trim(); if(!t||busy) return; keepVisitor(); input.value=''; clearChips(); addUser(t); busy=true; sendBtn.disabled=true; showTyping(); fetch(CFG.base+'/api/widget/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({siteKey:CFG.siteKey,visitorId:vid,text:t,utm:utm||undefined,identity:(typeof window.__twcIdentity==='object'?window.__twcIdentity:undefined)})}).then(function(r){return r.json();}).then(function(d){ hideTyping(); busy=false; sendBtn.disabled=false; var msgs=(d&&d.messages)?d.messages:(d&&d.reply?[{body:d.reply,id:d.id,at:d.at}]:[]); render(msgs); if(d&&d.escalated && !escalated){ escalated=true; sysBanner('Connecting you with our team — someone will reply here shortly.'); } }).catch(function(){ hideTyping(); busy=false; sendBtn.disabled=false; addBot({body:'Sorry, something went wrong. Please try again.'}); }); }\n" +
 "  var MOB = window.matchMedia ? window.matchMedia('(max-width:768px)') : { matches:false };\n" +
 "  var prevOv=null, prevBodyOv=null;\n" +
 "  function lockScroll(on){ var de=document.documentElement, b=document.body; if(on){ prevOv=de.style.overflow; prevBodyOv=b.style.overflow; de.style.overflow='hidden'; b.style.overflow='hidden'; } else { de.style.overflow=prevOv||''; b.style.overflow=prevBodyOv||''; } }\n" +

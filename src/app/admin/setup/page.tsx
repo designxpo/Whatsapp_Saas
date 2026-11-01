@@ -95,13 +95,13 @@ export default function SetupPage() {
           </div>
 
           {loading && !d ? <div className="py-6 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-slate-300" /></div>
-          : !d ? <p className="text-xs text-amber-600">Couldn&apos;t load setup diagnostics.</p>
+          : !d ? <p className="text-xs text-amber-700">Couldn&apos;t load setup diagnostics.</p>
           : (
             <div className="space-y-5">
               {/* Migrations */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-bold text-ink-900">Database migrations {pendingMig.length > 0 && <span className="text-amber-600">· {pendingMig.length} to run</span>}</p>
+                  <p className="text-xs font-bold text-ink-900">Database migrations {pendingMig.length > 0 && <span className="text-amber-700">· {pendingMig.length} to run</span>}</p>
                   <a href={d.links.supabaseSql} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 inline-flex items-center gap-1 hover:underline">Open Supabase SQL editor <ExternalLink className="w-3 h-3" /></a>
                 </div>
                 <p className="text-[11px] text-slate-400">The portal can&apos;t run SQL itself. Copy each pending migration, paste it in the SQL editor, and run — then re-check.</p>

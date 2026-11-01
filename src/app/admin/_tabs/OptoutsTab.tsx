@@ -65,7 +65,7 @@ function OptoutsTab() {
                 {o.createdAt ? ` · ${new Date(o.createdAt).toLocaleDateString()}` : ""}
               </p>
             </div>
-            <button onClick={() => remove(o.phone)} className="text-xs text-red-500 hover:underline shrink-0">Remove</button>
+            <button onClick={() => remove(o.phone)} className="text-xs text-red-700 hover:underline shrink-0">Remove</button>
           </div>
         ))}
         {visible.length === 0 && <p className="text-center text-slate-400 text-sm py-6">{list.length === 0 ? "No opt-outs — when someone replies STOP they appear here automatically." : "No matches."}</p>}

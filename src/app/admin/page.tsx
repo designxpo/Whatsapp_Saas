@@ -10,6 +10,7 @@ import { BrandLogo } from "@/components/BrandLogo";
 import { useBrand } from "@/components/BrandContext";
 import { brandCopy } from "@/lib/whitelabel";
 import { setPartnerMetaApp } from "@/lib/embedded-signup-client";
+import { HotLeads } from "./_tabs/HotLeads";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
@@ -555,12 +556,15 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
             { label: "Need attention", value: s.counts.needsAttention, tab: "livechat", intent: { filter: "escalated" } },
           ] as { label: string; value: number; tab: Tab; intent?: ChatIntent }[]).map(c => (
             <button key={c.label} data-help-title={c.label} data-help={c.intent ? "Conversations escalated to a human. Select this card to open the inbox filtered to chats needing attention." : `Open ${tabLabel(c.tab, vocab)} to review the records counted here.`} onClick={() => goTo(c.tab, c.intent)} className="bg-white border border-line rounded-2xl p-4 text-left hover:border-brand-500">
-              <p className={`text-2xl font-extrabold ${c.label === "Need attention" && c.value > 0 ? "text-red-500" : ""}`}>{c.value}</p>
+              <p className={`text-2xl font-extrabold ${c.label === "Need attention" && c.value > 0 ? "text-red-600" : ""}`}>{c.value}</p>
               <p className="text-xs text-slate-500 font-medium">{c.label}</p>
             </button>
           ))}
         </div>
       )}
+
+      {/* Who to call first — ranked from the last three days' chats */}
+      <HotLeads goTo={goTo} />
 
       {/* How to use */}
       <section>

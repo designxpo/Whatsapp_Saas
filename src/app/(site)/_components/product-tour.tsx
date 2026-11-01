@@ -78,7 +78,7 @@ export function ProductTour() {
           const on = s.key === active.key;
           return (
             <button key={s.key} type="button" aria-pressed={on} onClick={() => setActive(s)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] transition-colors ${ring} ${on ? "border-[#0783fd] bg-[#0783fd] font-bold text-white shadow-[0_6px_16px_-8px_rgba(7,131,253,0.6)]" : "border-slate-200 bg-white font-semibold text-slate-500 hover:border-[#0783fd]/40 hover:text-[#0783fd]"}`}>
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] transition-colors ${ring} ${on ? "border-[#0783fd] bg-[#0783fd] font-bold text-white shadow-[0_6px_16px_-8px_rgba(7,131,253,0.6)]" : "border-slate-200 bg-white font-semibold text-slate-500 hover:border-[#0783fd]/40 hover:text-[#026cd4]"}`}>
               <s.icon className="h-4 w-4" /> {s.label}
             </button>
           );
@@ -88,18 +88,18 @@ export function ProductTour() {
       {/* Highlight + browser-framed screenshot */}
       <div className="mt-8 grid items-start gap-8 lg:grid-cols-[1fr_1.5fr] lg:gap-10">
         <div className="order-2 lg:order-1 lg:pt-2">
-          <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]"><active.icon className="h-5 w-5" /></div>
+          <div className="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]"><active.icon className="h-5 w-5" /></div>
           <h3 className="mt-4 text-balance text-xl font-extrabold tracking-tight text-slate-900 lg:text-2xl">{active.title}</h3>
           <p className="mt-3 leading-relaxed text-slate-600">{active.blurb}</p>
           <ul className="mt-5 space-y-2.5">
             {active.points.map(p => (
               <li key={p} className="flex gap-2.5 text-sm text-slate-600">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0783fd]/10 text-[#0783fd]"><Check className="h-3 w-3" /></span>
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0783fd]/10 text-[#026cd4]"><Check className="h-3 w-3" /></span>
                 <span>{p}</span>
               </li>
             ))}
           </ul>
-          <Link href="/signup" className={`mt-7 inline-flex items-center gap-1.5 rounded-sm text-sm font-bold text-[#0783fd] hover:underline ${ring}`}>
+          <Link href="/signup" className={`mt-7 inline-flex items-center gap-1.5 rounded-sm text-sm font-bold text-[#026cd4] hover:underline ${ring}`}>
             Start your free trial <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
@@ -109,7 +109,7 @@ export function ProductTour() {
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_60px_-24px_rgba(7,131,253,0.22),0_8px_24px_-12px_rgba(0,0,0,0.10)]">
             <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-4 py-2.5">
               <span className="flex gap-1.5">{["#f87171", "#fbbf24", "#34d399"].map(c => <span key={c} className="h-2.5 w-2.5 rounded-full" style={{ background: c }} />)}</span>
-              <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.talko.ai / {active.key === "inbox" ? "live-chat" : active.key}</span>
+              <span className="mx-auto max-w-[60%] truncate rounded-lg border border-slate-200 bg-white px-3 py-1 text-center text-xs font-medium text-slate-500">app.thetalko.in / {active.key === "inbox" ? "live-chat" : active.key}</span>
             </div>
             <div className="relative aspect-[1600/910] w-full bg-white">
               {SCREENS.map((s, i) => (

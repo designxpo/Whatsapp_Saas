@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { planFromHref, track } from "@/lib/analytics";
+import { cleanRef } from "@/lib/consent";
 
 const inp = "w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400";
 const INDUSTRIES = ["E-commerce / D2C", "Education / EdTech", "Real estate", "Healthcare", "Travel & hospitality", "Financial services", "Agency / Marketing", "SaaS / Tech", "Other"];
@@ -24,8 +25,14 @@ export default function SignupPage() {
   // The plan is never rendered, only reported, so there is nothing to read it
   // for until an event actually fires.
   const plan = () => planFromHref(typeof window === "undefined" ? null : window.location.href) ?? undefined;
-  const [f, setF] = useState({ company: "", ownerName: "", ownerEmail: "", ownerPhone: "", password: "", industry: INDUSTRIES[0], teamSize: TEAM_SIZES[1], useCase: GOALS[0], expectedVolume: VOLUMES[1] });
+  // The four "about you" questions are optional and start blank: nothing is
+  // assumed on the visitor's behalf, and leaving them empty changes nothing
+  // except that the workspace starts on neutral wording (industry picks it).
+  const [f, setF] = useState({ company: "", ownerName: "", ownerEmail: "", ownerPhone: "", password: "", industry: "", teamSize: "", useCase: "", expectedVolume: "" });
   const [accept, setAccept] = useState(false);
+  // Product news is a separate, optional yes — never bundled into the terms
+  // and never pre-ticked.
+  const [news, setNews] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (k: keyof typeof f, v: string) => setF(s => ({ ...s, [k]: v }));
@@ -41,13 +48,20 @@ export default function SignupPage() {
     if (!accept) { setError("Please accept the Terms of Service and Privacy Policy to continue."); return; }
     setLoading(true); setError(null);
     try {
-      const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...f, acceptTerms: true }) });
+      const res = await fetch("/api/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ...f, acceptTerms: true, marketingOptIn: news,
+        // A referral link lands here as /signup?ref=CODE; sending it with the
+        // form attributes the signup without needing a tracking cookie.
+        ref: cleanRef(new URLSearchParams(window.location.search).get("ref")) ?? undefined,
+      }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setError(d.error || "Signup failed"); return; }
       // Funnel step, not the conversion — no account exists until the code is
       // confirmed below. Reported separately so the gap between the two is
       // visible: a large one means the verification email is the leak.
-      track("sign_up_start", { plan: plan(), industry: f.industry, team_size: f.teamSize, use_case: f.useCase });
+      // Only the plan goes to Google — not what the visitor told us about their
+      // business, which they gave to us, not to an analytics vendor.
+      track("sign_up_start", { plan: plan() });
       setStep("otp");
     } catch { setError("Connection error"); }
     finally { setLoading(false); }
@@ -98,7 +112,7 @@ export default function SignupPage() {
             onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 4))} autoFocus
           />
           {error && <p className="text-sm text-red-600">{error}</p>}
-          {resendMsg && <p className="text-sm text-emerald-600">{resendMsg}</p>}
+          {resendMsg && <p className="text-sm text-emerald-700">{resendMsg}</p>}
           <button disabled={loading || otpCode.length !== 4} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Verify &amp; create account
           </button>
@@ -131,11 +145,11 @@ export default function SignupPage() {
           <input className={inp} placeholder="Work email" type="email" value={f.ownerEmail} onChange={e => set("ownerEmail", e.target.value)} />
           <input className={inp} placeholder="Phone (WhatsApp)" value={f.ownerPhone} onChange={e => set("ownerPhone", e.target.value)} />
           <input className={`${inp} col-span-2`} type="password" placeholder="Create a password (8+ characters)" value={f.password} onChange={e => set("password", e.target.value)} />
-          <label className="text-xs text-ink-400 col-span-2 -mb-2">Tell us a bit about how you’ll use it:</label>
-          <select className={inp} value={f.industry} onChange={e => set("industry", e.target.value)}>{INDUSTRIES.map(o => <option key={o}>{o}</option>)}</select>
-          <select className={inp} value={f.teamSize} onChange={e => set("teamSize", e.target.value)}>{TEAM_SIZES.map(o => <option key={o}>{o}</option>)}</select>
-          <select className={inp} value={f.useCase} onChange={e => set("useCase", e.target.value)}>{GOALS.map(o => <option key={o}>{o}</option>)}</select>
-          <select className={inp} value={f.expectedVolume} onChange={e => set("expectedVolume", e.target.value)}>{VOLUMES.map(o => <option key={o}>{o}</option>)}</select>
+          <label className="text-xs text-ink-400 col-span-2 -mb-2">Optional — helps us set up your workspace:</label>
+          <select aria-label="Industry (optional)" className={inp} value={f.industry} onChange={e => set("industry", e.target.value)}><option value="">Industry (optional)</option>{INDUSTRIES.map(o => <option key={o}>{o}</option>)}</select>
+          <select aria-label="Team size (optional)" className={inp} value={f.teamSize} onChange={e => set("teamSize", e.target.value)}><option value="">Team size (optional)</option>{TEAM_SIZES.map(o => <option key={o}>{o}</option>)}</select>
+          <select aria-label="Main goal (optional)" className={inp} value={f.useCase} onChange={e => set("useCase", e.target.value)}><option value="">Main goal (optional)</option>{GOALS.map(o => <option key={o}>{o}</option>)}</select>
+          <select aria-label="Monthly messages (optional)" className={inp} value={f.expectedVolume} onChange={e => set("expectedVolume", e.target.value)}><option value="">Monthly messages (optional)</option>{VOLUMES.map(o => <option key={o}>{o}</option>)}</select>
         </div>
 
         <label className="flex items-start gap-2.5 text-xs text-ink-500 cursor-pointer">
@@ -144,8 +158,14 @@ export default function SignupPage() {
             I agree to Talko AI&apos;s{" "}
             <a href="/legal/terms" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Terms of Service</a>,{" "}
             <a href="/legal/privacy" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Privacy Policy</a>{" "}and{" "}
-            <a href="/legal/acceptable-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Acceptable Use Policy</a>.
+            <a href="/legal/acceptable-use" target="_blank" rel="noopener noreferrer" className="font-semibold text-brand-700 hover:underline">Acceptable Use Policy</a>,
+            and confirm I&apos;m 18 or older and signing up for a business.
           </span>
+        </label>
+
+        <label className="flex items-start gap-2.5 text-xs text-ink-500 cursor-pointer -mt-2">
+          <input type="checkbox" checked={news} onChange={e => setNews(e.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 rounded border-line text-brand-700 focus:ring-brand-700" />
+          <span>Email me occasional product news and tips (optional — unsubscribe anytime).</span>
         </label>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

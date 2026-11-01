@@ -17,7 +17,7 @@ function NodeCard({ icon, title, body, accent = false, className = "" }: { icon:
   return (
     <div className={`rounded-2xl border bg-white p-4 shadow-[0_10px_30px_-14px_rgba(7,131,253,0.35)] ${accent ? "border-[#0783fd]/40 ring-1 ring-[#0783fd]/15" : "border-slate-200"} ${className}`}>
       <div className="flex items-center gap-3">
-        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${accent ? "bg-[#0783fd] text-white animate-pulsesoft" : "bg-[#0783fd]/10 text-[#0783fd]"}`}><Ico name={icon} /></span>
+        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${accent ? "bg-[#0783fd] text-white animate-pulsesoft" : "bg-[#0783fd]/10 text-[#026cd4]"}`}><Ico name={icon} /></span>
         <div>
           <div className="text-sm font-bold text-slate-900">{title}</div>
           <div className="text-[11px] text-slate-500">{body}</div>
@@ -91,8 +91,8 @@ export function SequenceFlowDiagram() {
                 <span className="relative z-10 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0783fd] text-white shadow-[0_12px_26px_-8px_rgba(7,131,253,0.8)] ring-[6px] ring-slate-50">
                   <Ico name={s.icon} />
                 </span>
-                <span className="mt-4 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#0783fd] ring-1 ring-[#0783fd]/15">{s.meta}</span>
-                <h3 className="mt-3 text-base font-extrabold text-slate-900"><span className="text-[#0783fd]">{s.n}.</span> {s.title}</h3>
+                <span className="mt-4 inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-[#026cd4] ring-1 ring-[#0783fd]/15">{s.meta}</span>
+                <h3 className="mt-3 text-base font-extrabold text-slate-900"><span className="text-[#026cd4]">{s.n}.</span> {s.title}</h3>
                 <p className="mx-auto mt-1.5 max-w-[14rem] text-sm leading-relaxed text-slate-500">{s.body}</p>
               </Reveal>
             ))}

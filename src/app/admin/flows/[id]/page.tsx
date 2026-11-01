@@ -173,7 +173,7 @@ function useSet(id: string) {
 }
 function Counter({ value, max }: { value: string; max: number }) {
   if (!value) return null;
-  return <p className={`text-right text-[9px] -mt-1 ${value.length >= max ? "text-red-500 font-bold" : "text-ink-400"}`}>{value.length}/{max}</p>;
+  return <p className={`text-right text-[9px] -mt-1 ${value.length >= max ? "text-red-700 font-bold" : "text-ink-400"}`}>{value.length}/{max}</p>;
 }
 
 // ── Node types ────────────────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ function ConditionNode({ id, type, selected, data }: NodeProps) {
       </select>
       <input className={inp} placeholder="Value" value={str(data.value)} onChange={e => set({ value: e.target.value })} />
       <OptionRow id="yes"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-brand-600 pr-1"><Check className="w-3 h-3" /> yes</p></OptionRow>
-      <OptionRow id="no"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-red-500 pr-1"><X className="w-3 h-3" /> no</p></OptionRow>
+      <OptionRow id="no"><p className="inline-flex items-center justify-end gap-1 w-full text-[10px] font-bold text-red-700 pr-1"><X className="w-3 h-3" /> no</p></OptionRow>
     </Shell>
   );
 }
@@ -363,7 +363,7 @@ function HoursNode({ id, type, selected, data }: NodeProps) {
         </select>
       </div>
       <OptionRow id="open"><p className="text-[10px] font-bold text-brand-600 text-right pr-1">● open</p></OptionRow>
-      <OptionRow id="closed"><p className="text-[10px] font-bold text-amber-500 text-right pr-1">○ closed</p></OptionRow>
+      <OptionRow id="closed"><p className="text-[10px] font-bold text-amber-700 text-right pr-1">○ closed</p></OptionRow>
     </Shell>
   );
 }
@@ -414,7 +414,7 @@ function ProductNode({ id, type, selected, data }: NodeProps) {
             <option value="">{prods.length ? "— pick a product —" : "No products yet — add them in Catalog"}</option>
             {prods.map(p => <option key={p.id} value={p.id}>{p.name}{p.buttonText ? ` · “${p.buttonText}”` : ""}</option>)}
           </select>
-          {sel && !sel.buttonUrl && <p className="text-[10px] text-amber-600">This product has no button link — add one in Catalog or it won’t send.</p>}
+          {sel && !sel.buttonUrl && <p className="text-[10px] text-amber-700">This product has no button link — add one in Catalog or it won’t send.</p>}
         </>
       ) : (
         <>
@@ -510,7 +510,7 @@ function TemplateNode({ id, type, selected, data }: NodeProps) {
       </select>
       {isCarousel ? (
         <>
-          <p className="text-[10px] text-amber-600 leading-snug">Carousel template — add each card&apos;s image/video below (Meta needs it at send time).</p>
+          <p className="text-[10px] text-amber-700 leading-snug">Carousel template — add each card&apos;s image/video below (Meta needs it at send time).</p>
           <input className={inp} placeholder="Bubble {{1}},{{2}}… (optional)" value={str(data.bubbleParams)} onChange={e => set({ bubbleParams: e.target.value })} />
           {cards.map((c, i) => (
             <div key={i} className="border border-line rounded-lg p-1.5 space-y-1 bg-canvas/50">

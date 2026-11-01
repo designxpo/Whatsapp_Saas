@@ -106,7 +106,7 @@ function FlowsTab() {
             </button>
             <button onClick={() => toggle(f)} className={`px-3 py-1 rounded-full text-[11px] font-bold shrink-0 ${f.active ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>{f.active ? "● Active" : "○ Inactive"}</button>
             <button onClick={() => router.push(`/admin/flows/${f.id}`)} className="px-3 py-1 rounded-lg border border-line text-[11px] font-bold text-slate-600 shrink-0">Edit</button>
-            <button onClick={() => remove(f.id)} className="p-1.5 text-red-400 hover:text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></button>
+            <button onClick={() => remove(f.id)} className="p-1.5 text-red-500 hover:text-red-600 shrink-0"><Trash2 className="w-4 h-4" /></button>
           </div>
         ))}
         {flows.length === 0 && (

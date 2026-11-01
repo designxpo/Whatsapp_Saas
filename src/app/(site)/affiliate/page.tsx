@@ -10,8 +10,13 @@ import { LastUpdated, PageSummary, PageFaq, SourceList } from "../_components/se
 import { AffiliateForm } from "../_components/affiliate-form";
 import { webPageSchema, affiliateProgramSchema } from "../_content/schema";
 import { AFFILIATE_SEO } from "../_content/pageseo";
+import { TIERS } from "../_content/site";
 
 const PATH = "/affiliate";
+// Worked example uses a real plan (Growth) — it used to quote a ₹4,999 plan we
+// don't sell. Commission is calculated on the plan's base price.
+const GROWTH_BASE = TIERS.find(t => t.name === "Growth")?.priceMonthly ?? 0;
+const inr = (n: number, dp = 0) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: dp, maximumFractionDigits: dp })}`;
 const TITLE = "Talko AI Affiliate Program — Earn 10% Recurring Commission";
 const DESCRIPTION = "Refer businesses to Talko AI and earn a 10% recurring commission on every subscription payment they make, for as long as they stay a customer. Free to join, no account required.";
 
@@ -48,7 +53,7 @@ export default function AffiliatePage() {
                 login", not just "Log in", so it reads as a second, distinct
                 destination rather than a duplicate of the header's link. */}
             <Link href="/affiliate/login"
-              className="shrink-0 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-bold text-slate-700 transition-colors hover:border-[#0783fd]/40 hover:text-[#0783fd]">
+              className="shrink-0 rounded-full border border-slate-200 px-4 py-1.5 text-sm font-bold text-slate-700 transition-colors hover:border-[#0783fd]/40 hover:text-[#026cd4]">
               Affiliate login
             </Link>
           </div>
@@ -65,7 +70,7 @@ export default function AffiliatePage() {
             <p>
               It&apos;s built for anyone who reaches small and medium businesses regularly: agencies, consultants, content
               creators, or existing Talko AI customers who know other businesses that would benefit. You don&apos;t need a{" "}
-              <Link href="/pricing" className="font-semibold text-[#0783fd] hover:underline">Talko AI subscription</Link>{" "}
+              <Link href="/pricing" className="font-semibold text-[#026cd4] hover:underline">Talko AI subscription</Link>{" "}
               yourself to join and start earning.
             </p>
           </PageSummary>
@@ -85,9 +90,9 @@ export default function AffiliatePage() {
                   <span className="text-lg font-bold text-white/80">commission</span>
                 </div>
                 <p className="mt-2 text-white/90 font-semibold">On every subscription payment from a business you refer</p>
-                <p className="mt-4 text-sm text-white/75 leading-relaxed max-w-md">
-                  Paid on every renewal, not just the first sale — a business paying ₹4,999/month earns you
-                  ₹499.90 every month they stay subscribed.
+                <p className="mt-4 text-sm text-white/90 leading-relaxed max-w-md">
+                  Paid on every renewal, not just the first sale — a business on the Growth plan ({inr(GROWTH_BASE)}/month)
+                  earns you {inr(GROWTH_BASE / 10, 2)} every month they stay subscribed.
                 </p>
               </div>
               <div className="bg-white p-6 sm:p-8 grid grid-cols-3 gap-4 text-center">
@@ -97,7 +102,7 @@ export default function AffiliatePage() {
                   { icon: Wallet, label: "Tracked automatically" },
                 ].map(f => (
                   <div key={f.label} className="flex flex-col items-center gap-1.5">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0783fd]/10 text-[#0783fd]"><f.icon className="h-4.5 w-4.5" /></span>
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#0783fd]/10 text-[#026cd4]"><f.icon className="h-4.5 w-4.5" /></span>
                     <span className="text-xs font-semibold text-slate-600">{f.label}</span>
                   </div>
                 ))}
@@ -114,7 +119,7 @@ export default function AffiliatePage() {
           {BENEFITS.map((b, i) => (
             <Reveal key={b.title} delay={i * 90} className="h-full">
               <Card className="h-full">
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#0783fd]">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#0783fd]/10 text-[#026cd4]">
                   <b.icon className="h-5 w-5" aria-hidden="true" />
                 </span>
                 <h3 className="mt-4 text-base font-bold text-slate-900">{b.title}</h3>

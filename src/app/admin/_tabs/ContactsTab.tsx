@@ -683,8 +683,9 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
             {visible.map(c => (
               <tr key={c.id} className={`hover:bg-slate-50 ${selected.has(c.id) ? "bg-brand-green/5" : ""}`}>
                 <td className="pl-4 pr-2 py-2.5"><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleOne(c.id)} className="accent-brand-dark" /></td>
-                <td className="px-3 py-2.5 font-semibold text-brand-dark cursor-pointer hover:underline" onClick={() => setProfilePhone(c.phone)}>{c.name || "—"}</td>
-                <td className="px-3 py-2.5 font-mono text-xs cursor-pointer" onClick={() => setProfilePhone(c.phone)}>{c.phone}</td>
+                {/* Real buttons inside the cells so the profile opens from the keyboard too. */}
+                <td className="px-3 py-2.5 font-semibold text-brand-dark"><button type="button" className="text-left font-semibold hover:underline" onClick={() => setProfilePhone(c.phone)}>{c.name || "—"}</button></td>
+                <td className="px-3 py-2.5 font-mono text-xs"><button type="button" className="text-left font-mono" onClick={() => setProfilePhone(c.phone)}>{c.phone}</button></td>
                 <td className="px-3 py-2.5">
                   <div className="flex gap-1 flex-wrap">
                     {c.tags.slice(0, 3).map(t => <span key={t} className="px-2 py-0.5 rounded-full bg-brand-100 text-brand-700 text-[11px] font-semibold">{t}</span>)}

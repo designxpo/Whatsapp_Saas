@@ -5,6 +5,7 @@ import { verifySubscriptionSignature, getSubscriptionDetail } from "@/lib/razorp
 import { getPlan } from "@/lib/plans";
 import { computeChargeBreakdown } from "@/lib/billing-tax";
 import { recordBillingEvent } from "@/lib/billing-events";
+import { recordCancelAt } from "@/lib/billing-cancel";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ export async function POST(req: Request) {
       currentPeriodEnd: detail.currentPeriodEnd,
       baseAmountCents: breakdown.baseAmountCents, taxCents: breakdown.taxCents, gatewayFeeEstimateCents: breakdown.gatewayFeeEstimateCents,
     });
+    // A freshly paid subscription renews — any "won't renew" left from a
+    // previous, cancelled subscription no longer applies.
+    await recordCancelAt(tid, null);
     await recordBillingEvent(tid, { provider: "razorpay", providerPaymentId: paymentId, currency: detail.currency, breakdown })
       .catch(err => console.error(JSON.stringify({ at: "billing.razorpay.verify.recordBillingEvent", tid, error: errorMessage(err) })));
     return NextResponse.json({ success: true });

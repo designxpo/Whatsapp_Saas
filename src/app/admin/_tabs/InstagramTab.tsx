@@ -319,7 +319,7 @@ function InstagramManager() {
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><Instagram className="w-4 h-4" /></div>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+              <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{!c.active && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
               <p className="text-[11px] text-ink-400 font-mono truncate">ig {c.igUserId}{c.pageId ? ` · page ${c.pageId}` : ""} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}</p>
             </div>
             {h && <DeliveryChip h={h} />}
@@ -430,7 +430,7 @@ function InstagramManager() {
                 ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                 : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
                 <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · follow-gated" : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
@@ -459,7 +459,7 @@ function InstagramManager() {
                   ? <img src={thumb} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
                   : <div className="w-10 h-10 rounded-lg bg-violet-50 text-violet-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                  <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-violet-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
                   <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
                 <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
@@ -513,7 +513,7 @@ function InstagramManager() {
                     <button type="button" key={p.id} title={p.caption || "(no caption)"} onClick={() => setRuleForm({ ...ruleForm, postId: p.id, postCaption: p.caption, postPermalink: p.permalink, postThumbnail: p.thumbnail })}
                       className={`relative aspect-square rounded-lg overflow-hidden border transition-all ${sel ? "ring-2 ring-pink-500 border-pink-500" : "border-line hover:opacity-90"}`}>
                       {p.thumbnail
-                        ? <img src={p.thumbnail} alt="" className="w-full h-full object-cover" />
+                        ? <img src={p.thumbnail} alt={p.caption ? `Post: ${p.caption.slice(0, 120)}` : "Post with no caption"} className="w-full h-full object-cover" />
                         : <div className="w-full h-full bg-canvas flex items-center justify-center text-ink-300"><Instagram className="w-4 h-4" /></div>}
                       {p.mediaType === "VIDEO" && <Video className="absolute top-1 right-1 w-3 h-3 text-white drop-shadow" />}
                       {sel && <span className="absolute inset-0 bg-pink-500/15 flex items-center justify-center"><Check className="w-5 h-5 text-white drop-shadow" /></span>}
@@ -521,7 +521,7 @@ function InstagramManager() {
                   );
                 })}
               </div>
-              {!posts.length && <p className="text-[11px] text-amber-600 mt-1.5">No posts loaded — token needs comment/media permissions. You can still create an &ldquo;All&rdquo; rule.</p>}
+              {!posts.length && <p className="text-[11px] text-amber-700 mt-1.5">No posts loaded — token needs comment/media permissions. You can still create an &ldquo;All&rdquo; rule.</p>}
             </div>
             <div>
               <input className={`${inp} w-full`} placeholder="Trigger words — comma-separated (optional, blank = any comment)" value={ruleForm.keyword} onChange={e => setRuleForm({ ...ruleForm, keyword: e.target.value })} />
@@ -600,7 +600,7 @@ function InstagramManager() {
               <button onClick={saveRule} disabled={ruleBusy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{ruleBusy ? "Saving…" : "Save rule"}</button>
               <button onClick={() => setRuleForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
             </div>
-            {msg && <p className="text-xs text-red-500">{msg}</p>}
+            {msg && <p className="text-xs text-red-700">{msg}</p>}
           </div>)}
         </Drawer>
       </div>

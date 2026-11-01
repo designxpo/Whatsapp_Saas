@@ -169,7 +169,11 @@ function AiKeyCard() {
         <input value={model} onChange={e => setModel(e.target.value)} placeholder={`Model (default ${AI_MODEL_HINT[provider]})`} className="rounded-control border border-line px-3 py-2 text-sm sm:col-span-2" />
       </div>
       <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={status?.configured ? "Enter a new key to replace the saved one" : "Paste your API key"} className="w-full rounded-control border border-line px-3 py-2 text-sm font-mono" />
-      <p className="text-[11px] text-slate-400">{AI_KEY_HELP[provider]}</p>
+      <p className="text-[11px] text-slate-500">{AI_KEY_HELP[provider]}</p>
+      {/* Google's terms let it use what's sent through a free-tier Gemini key to
+          improve its products, with human review. Customer chats shouldn't go
+          there, so the owner is told before saving one. */}
+      {provider === "gemini" && <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-2.5 py-1.5">Use a key from a Google Cloud project with billing turned on. On Gemini&apos;s free tier, Google may use what you send — your customers&apos; messages — to improve its products.</p>}
       {msg && <p className={`text-[12px] font-semibold ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.text}</p>}
       <div className="flex gap-2">
         <button onClick={save} disabled={busy || !apiKey.trim()} className="bg-brand-700 text-white rounded-control px-4 py-2 text-sm font-bold disabled:opacity-50 inline-flex items-center gap-2">

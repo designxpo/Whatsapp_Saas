@@ -87,7 +87,34 @@ async function rzp<T>(path: string, init?: RequestInit): Promise<T> {
 // at Plan creation, same as the price itself, which is exactly why a pricing
 // change requires minting a new Plan.
 export async function getOrCreateRazorpayPlan(plan: Plan): Promise<string> {
-  if (plan.razorpayPlanId) return plan.razorpayPlanId;
+  return (await resolveRazorpayPlan(plan)).planId;
+}
+
+// Every Razorpay Plan this app mints bills monthly (period "monthly",
+// interval 1 below), whatever wa_plans.interval says — so the billing page
+// quotes "/month" for Razorpay rather than the plan row's interval.
+export const RAZORPAY_INTERVAL = "month";
+
+export interface ResolvedRazorpayPlan {
+  planId: string; amountCents: number; currency: string;
+  period: string; interval: number;
+}
+
+// The Razorpay Plan for `plan` AND what it will actually charge. A cached
+// plan id was minted at some earlier price (Plans are immutable), so its
+// amount is read back from Razorpay rather than assumed — checkout compares
+// it with the price the customer was shown and refuses to open on a mismatch.
+// This already happened once: the GST-inclusive Plans from August had to be
+// nulled by hand in prod, and an owner editing a plan's price leaves the old
+// Plan id in place to this day.
+export async function resolveRazorpayPlan(plan: Plan): Promise<ResolvedRazorpayPlan> {
+  if (plan.razorpayPlanId) {
+    const p = await rzp<{ id: string; period?: string; interval?: number; item?: { amount?: number; currency?: string } }>(`/plans/${plan.razorpayPlanId}`);
+    return {
+      planId: plan.razorpayPlanId, amountCents: p.item?.amount ?? 0, currency: p.item?.currency ?? plan.currency,
+      period: p.period ?? "monthly", interval: p.interval ?? 1,
+    };
+  }
   const { totalChargedCents } = computeChargeBreakdown(plan.priceCents);
   const created = await rzp<{ id: string }>("/plans", {
     method: "POST",
@@ -98,7 +125,7 @@ export async function getOrCreateRazorpayPlan(plan: Plan): Promise<string> {
     }),
   });
   await setRazorpayPlanId(plan.key, created.id);
-  return created.id;
+  return { planId: created.id, amountCents: totalChargedCents, currency: plan.currency, period: "monthly", interval: 1 };
 }
 
 export async function getOrCreateRazorpayCustomer(tenant: Tenant): Promise<string | undefined> {
@@ -121,8 +148,10 @@ export interface CreatedSubscription { subscriptionId: string; shortUrl: string 
 // Creates the subscription in `created` status (not yet paid) and stamps its
 // id on the tenant immediately, so the webhook has something to match against
 // even before the customer completes the checkout modal.
-export async function createSubscription(tenant: Tenant, plan: Plan): Promise<CreatedSubscription> {
-  const planId = await getOrCreateRazorpayPlan(plan);
+// `planId` lets checkout pass the Plan it already resolved (and price-checked),
+// so the subscription is created on exactly that Plan.
+export async function createSubscription(tenant: Tenant, plan: Plan, planId?: string): Promise<CreatedSubscription> {
+  planId = planId ?? await getOrCreateRazorpayPlan(plan);
   const customerId = await getOrCreateRazorpayCustomer(tenant);
   const sub = await rzp<{ id: string; short_url: string }>("/subscriptions", {
     method: "POST",
@@ -156,6 +185,39 @@ export async function getSubscriptionDetail(subscriptionId: string): Promise<Raz
     currency: sub.plan?.item?.currency ?? "INR",
     currentPeriodEnd: sub.current_end ? new Date(sub.current_end * 1000).toISOString() : null,
   };
+}
+
+export interface CancelledSubscription {
+  status: string;                 // "active" until the cycle ends, then "cancelled"
+  currentEnd: string | null;      // end of the period already paid for
+  endedAt: string | null;         // set once the subscription has actually ended
+  alreadyCancelled: boolean;      // Razorpay had already cancelled it before this call
+}
+
+const isoFromUnix = (n?: number | null) => (typeof n === "number" && n > 0 ? new Date(n * 1000).toISOString() : null);
+
+// Cancel at the END of the current billing cycle — the customer keeps what
+// they paid for and is simply not charged again. Razorpay keeps the
+// subscription's status until the cycle ends, then moves it to `cancelled`
+// and sends subscription.cancelled, which is what ends access (see
+// webhooks/razorpay/subscriptions). There is no API to undo this.
+//
+// Cancel can only be called once per subscription: a second call is a 400
+// ("not cancellable in cancelled status"). That is reported as
+// alreadyCancelled, with the period read back, so a double click or a retry
+// lands on the same answer instead of an error.
+export async function cancelRazorpaySubscriptionAtCycleEnd(subscriptionId: string): Promise<CancelledSubscription> {
+  type Sub = { status?: string; current_end?: number | null; ended_at?: number | null };
+  try {
+    const sub = await rzp<Sub>(`/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST", body: JSON.stringify({ cancel_at_cycle_end: 1 }),
+    });
+    return { status: sub.status ?? "active", currentEnd: isoFromUnix(sub.current_end), endedAt: isoFromUnix(sub.ended_at), alreadyCancelled: false };
+  } catch (err) {
+    if (!/not cancellable|cancelled status|already cancel/i.test(err instanceof Error ? err.message : String(err))) throw err;
+    const sub = await rzp<Sub>(`/subscriptions/${subscriptionId}`);
+    return { status: sub.status ?? "cancelled", currentEnd: isoFromUnix(sub.current_end), endedAt: isoFromUnix(sub.ended_at), alreadyCancelled: true };
+  }
 }
 
 // Post-checkout signature check. NOTE the field order: payment_id first, then

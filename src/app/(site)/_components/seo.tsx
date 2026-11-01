@@ -42,7 +42,7 @@ import { faqPageSchema, type FaqItem } from "../_content/schema";
 export function PageSummary({ question, children }: { question: string; children: React.ReactNode }) {
   return (
     <details className="group mx-auto mt-6 max-w-2xl">
-      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#0783fd] [&::-webkit-details-marker]:hidden">
+      <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#026cd4] [&::-webkit-details-marker]:hidden">
         {question}
         <svg className="h-3 w-3 transition-transform group-open:rotate-180" viewBox="0 0 12 12" fill="none" aria-hidden="true">
           <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -114,7 +114,7 @@ export function SourceList({ items, className = "" }: { items: Source[]; classNa
         {items.map(s => (
           <li key={s.href} className="text-xs leading-relaxed text-slate-500">
             <a href={s.href} target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-baseline gap-1 font-semibold text-[#0783fd] hover:underline">
+              className="inline-flex items-baseline gap-1 font-semibold text-[#026cd4] hover:underline">
               {s.label}
               <ExternalLink className="h-3 w-3 shrink-0 translate-y-[1px]" aria-hidden="true" />
             </a>

@@ -180,7 +180,8 @@ function Customers({ me, onChanged }: { me: Me; onChanged: () => void }) {
             <Table head={<tr><Th>{noun === "customer" ? "Customer" : "Workspace"}</Th><Th>Plan</Th><Th>Status</Th><Th align="right">Added</Th></tr>}>
               {rows.map(w => (
                 <tr key={w.id} className="hover:bg-canvas cursor-pointer" onClick={() => setOpenId(w.id)}>
-                  <Td><span className="font-bold text-ink-900">{w.company || w.name}</span></Td>
+                  {/* The row click is for mice; this button is the keyboard route in (a <tr> can't be a button without losing table semantics). */}
+                  <Td><button type="button" onClick={e => { e.stopPropagation(); setOpenId(w.id); }} className="font-bold text-ink-900 text-left hover:underline">{w.company || w.name}</button></Td>
                   <Td>{planName(w.plan)}</Td>
                   <Td><Badge tone={WS_TONE[w.status] ?? "muted"}>{WS_LABEL[w.status] ?? w.status}</Badge></Td>
                   <Td align="right">{ago(w.createdAt)}</Td>

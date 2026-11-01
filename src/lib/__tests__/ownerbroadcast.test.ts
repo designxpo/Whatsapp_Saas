@@ -82,7 +82,22 @@ describe("renderCampaign — custom HTML mode", () => {
       campaign({ mode: "html", htmlBody: `<div class="x"><h1>Hi {{name}}</h1></div>` }),
       priya,
     );
-    expect(out.html).toBe(`<div class="x"><h1>Hi Priya</h1></div>`);
+    expect(out.html.startsWith(`<div class="x"><h1>Hi Priya</h1></div>`)).toBe(true);
+  });
+
+  it("can't go out without the unsubscribe link and the sender's footer", () => {
+    const out = renderCampaign(
+      campaign({ mode: "html", htmlBody: `<html><body><p>Hi</p></body></html>` }),
+      { ...priya, unsubscribeHref: "https://x.test/api/email/unsubscribe?t=abc" },
+    );
+    expect(out.html).toMatch(/Talko AI by PM Technologies.*Unsubscribe<\/a><\/p><\/body>/s);
+    expect(out.text).toContain("Unsubscribe: https://x.test/api/email/unsubscribe?t=abc");
+  });
+
+  it("puts the unsubscribe link in a templated announcement too", () => {
+    const out = renderCampaign(campaign({}), { ...priya, unsubscribeHref: "https://x.test/u" });
+    expect(out.html).toContain("https://x.test/u");
+    expect(out.text).toContain("Unsubscribe: https://x.test/u");
   });
 
   it("derives a readable text alternative by stripping markup and styles", () => {
@@ -90,7 +105,7 @@ describe("renderCampaign — custom HTML mode", () => {
       campaign({ mode: "html", htmlBody: `<style>h1{color:red}</style><h1>Big news</h1><p>Details here.</p>` }),
       priya,
     );
-    expect(out.text).toBe("Big news Details here.");
+    expect(out.text.startsWith("Big news Details here.")).toBe(true);
     expect(out.text).not.toContain("color:red");   // the <style> block must not leak into the text part
   });
 });

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container, Glow, SectionTitle, Card } from "../_components/ui";
-import { Testimonials, CtaBand } from "../_components/sections";
-import { PricingTiers } from "../_components/pricing";
+import { CtaBand } from "../_components/sections";
+import { PricingTiers, RenewalNote } from "../_components/pricing";
 import { JsonLd } from "../_components/json-ld";
 import { Breadcrumbs } from "../_components/breadcrumbs";
 import { LastUpdated, PageSummary, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
-import { PRICING_SEO, BIZ_RANGE, CREATOR_RANGE, CREATOR_FLOOR, ANNUAL_OFF } from "../_content/pageseo";
+import { PRICING_SEO, BIZ_RANGE, CREATOR_RANGE } from "../_content/pageseo";
 import { CREATOR_TIERS } from "../_content/site";
 
 const PATH = "/pricing";
@@ -67,7 +67,7 @@ export default function PricingPage() {
           <PageSummary question="How much does Talko AI cost?">
             <p>
               <strong className="font-semibold text-slate-900">Business plans run {BIZ_RANGE}; Creator plans, which are Instagram-first, run {CREATOR_RANGE}; Scale is quoted per account.</strong>{" "}
-              Annual billing takes {ANNUAL_OFF} off any of them. Every plan starts with a 14-day free trial and no credit card.
+              All plans are billed monthly. Every plan starts with a 14-day free trial and no credit card.
             </p>
             <p>
               Two costs sit outside your subscription, and both are billed to you directly rather than marked up by us: Meta&apos;s
@@ -87,10 +87,10 @@ export default function PricingPage() {
         <SectionTitle title="Business plans" eyebrow="For teams" id="business-plans"
           subtitle="Every channel, one inbox. Pick by monthly message volume and how many numbers you need." />
         <div className="mt-12"><PricingTiers /></div>
-        {/* Was "Need annual billing? Talk to sales" — which contradicted the
-            annual toggle directly above it. Annual is self-serve; only volume
-            pricing needs a conversation. */}
-        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR. Annual billing saves {ANNUAL_OFF} — use the toggle above. Need a custom volume or several brands? <Link href="/contact" className="font-semibold text-[#0783fd] hover:underline">Talk to sales.</Link></p>
+        {/* Monthly billing only — checkout can't sell an annual plan, so none
+            is advertised. Only volume pricing needs a conversation. */}
+        <p className="mt-8 text-center text-xs text-slate-500">Prices in INR, billed monthly. Need a custom volume or several brands? <Link href="/contact" className="font-semibold text-[#026cd4] hover:underline">Talk to sales.</Link></p>
+        <RenewalNote className="mt-4" />
       </Container>
 
       {/* Audience → plan mapping. Answers "which one should I buy", which the
@@ -103,7 +103,7 @@ export default function PricingPage() {
             <Card key={f.who} className="h-full">
               <h3 className="text-base font-bold text-slate-900">{f.who}</h3>
               <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.use}</p>
-              <p className="mt-3 text-sm font-semibold text-[#0783fd]">{f.plan}</p>
+              <p className="mt-3 text-sm font-semibold text-[#026cd4]">{f.plan}</p>
             </Card>
           ))}
         </div>
@@ -115,12 +115,11 @@ export default function PricingPage() {
           <SectionTitle eyebrow="For creators & influencers"
             title="Instagram-first plans for creators"
             subtitle="No WhatsApp business stack to pay for — just the Instagram DM & comment automation creators actually need. Reply to every DM, turn comments into DMs, and capture leads on autopilot." />
-          <PricingTiers tiers={CREATOR_TIERS} showToggle={false} />
-          <p className="mt-8 text-center text-xs text-slate-500">Need WhatsApp too? See the business plans above — or <span className="font-semibold text-[#0783fd]">talk to sales</span> for a custom mix.</p>
+          <PricingTiers tiers={CREATOR_TIERS} />
+          <p className="mt-8 text-center text-xs text-slate-500">Need WhatsApp too? See the business plans above — or <Link href="/contact" className="font-semibold text-[#026cd4] hover:underline">talk to sales</Link> for a custom mix.</p>
+          <RenewalNote className="mt-4" />
         </div>
       </Container>
-
-      <Testimonials />
 
       {/* Billing-specific questions rather than the shared site FAQ the
           homepage already publishes: a visitor here wants trial, message-fee

@@ -11,7 +11,7 @@ import { KNOWN_SCORES } from "@/lib/drip-types";
 import { audienceFingerprint, describeAudience as describeSeqAudience } from "@/lib/seqaudience";
 import { LANES, AIDA_STAGES, AIDA_LABELS, type Lane, type AidaStage } from "@/lib/drip-types";
 import { ConfirmProvider, useConfirm } from "@/components/confirm-dialog";
-import { inp, ChannelSelect, useChannelList, ImageUpload } from "../_shared";
+import { inp, ChannelSelect, useChannelList, ImageUpload, rowButtonProps } from "../_shared";
 import { useVocab } from "@/lib/vocab-client";
 import { Drawer } from "@/components/overlay";
 
@@ -709,7 +709,7 @@ function StageDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => setDrips(a => [...(a ?? []), { stage: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add stage rule</button>
         <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
-        {clash && <span className="text-[11px] text-red-500">Duplicate stage.</span>}
+        {clash && <span className="text-[11px] text-red-700">Duplicate stage.</span>}
         <Notice notice={note} />
       </div>
       <p className="text-[11px] text-ink-400">Cold {leadN} are usually outside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
@@ -815,7 +815,7 @@ function ScoreDripsPanel({ seqs }: { seqs: SeqRow[] }) {
       <div className="flex items-center gap-2 flex-wrap">
         <button onClick={() => setDrips(a => [...(a ?? []), { score: "", sequenceId: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add score rule</button>
         <button onClick={save} disabled={busy || clash} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "…" : "Save rules"}</button>
-        {clash && <span className="text-[11px] text-red-500">Duplicate score.</span>}
+        {clash && <span className="text-[11px] text-red-700">Duplicate score.</span>}
         <Notice notice={note} />
       </div>
       <p className="text-[11px] text-ink-400">Grading {leadN} by hand is almost never inside Meta&apos;s 24h window — make each mapped {seq1}&apos;s <b>step 1 an approved template</b> or it will be skipped.</p>
@@ -880,7 +880,7 @@ function LsqDripPanel({ seqs }: { seqs: SeqRow[] }) {
         <datalist id="lsq-fields">{LSQ_FIELDS.map(f => <option key={f} value={f} />)}</datalist>
         {conds.length < 6 && <button onClick={() => setConds(cs => [...cs, { field: "", op: "eq", value: "" }])} className="text-xs font-semibold text-brand-700 flex items-center gap-1 hover:underline"><Plus className="w-3.5 h-3.5" /> Add condition</button>}
       </div>
-      {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-600">Add at least one <b>equals</b> condition — it anchors the LeadSquared search.</p>}
+      {!hasAnchor && valid.length > 0 && <p className="text-[11px] text-amber-700">Add at least one <b>equals</b> condition — it anchors the LeadSquared search.</p>}
       <div className="flex items-center gap-2">
         <select className={`${inp} flex-1`} value={seqId} onChange={e => setSeqId(e.target.value)}>
           <option value="">Enroll into {seq1}…</option>
@@ -1236,7 +1236,7 @@ function SeqAnalyticsPanel({
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${currentSeq.platform === "instagram" ? "bg-pink-50 text-pink-600" : "bg-emerald-50 text-emerald-700"}`}>
                     {currentSeq.platform === "instagram" ? "Instagram" : "WhatsApp"}
                   </span>
-                  {!currentSeq.active && <span className="text-[10px] font-bold text-red-500">OFF</span>}
+                  {!currentSeq.active && <span className="text-[10px] font-bold text-red-700">OFF</span>}
                 </div>
                 <p className="text-[11px] text-ink-400">
                   Trigger: <span className="font-semibold text-ink-600">{triggerLabel(currentSeq.triggerKind)}</span>
@@ -1324,7 +1324,7 @@ function SeqAnalyticsPanel({
                         <div className="flex justify-between text-[10px] text-ink-400">
                           <span>{st.reachedCount} delivered</span>
                           {!isFirst && dropFromPrev > 0 && (
-                            <span className="text-amber-600 font-medium">▼ {dropFromPrev}% drop-off from step #{st.stepNumber - 1}</span>
+                            <span className="text-amber-700 font-medium">▼ {dropFromPrev}% drop-off from step #{st.stepNumber - 1}</span>
                           )}
                         </div>
                       </div>
@@ -1379,13 +1379,13 @@ function SeqAnalyticsPanel({
                 {data.bySequence.map(seq => (
                   <div
                     key={seq.id}
-                    onClick={() => setSelectedSeq(seq.id)}
+                    {...rowButtonProps(() => setSelectedSeq(seq.id))}
                     className="grid grid-cols-12 gap-2 px-3 py-2.5 items-center hover:bg-slate-50 cursor-pointer transition-colors group"
                   >
                     <div className="col-span-4 sm:col-span-3 min-w-0">
                       <div className="flex items-center gap-1.5 truncate">
                         <span className="font-bold text-ink-900 group-hover:text-brand-700 transition-colors truncate">{seq.name}</span>
-                        {!seq.active && <span className="text-[9px] font-bold text-red-500">OFF</span>}
+                        {!seq.active && <span className="text-[9px] font-bold text-red-700">OFF</span>}
                       </div>
                       <div className="flex items-center gap-1 text-[10px] text-ink-400 mt-0.5">
                         <span className={seq.platform === "instagram" ? "text-pink-600 font-semibold" : "text-emerald-700 font-semibold"}>
@@ -1433,7 +1433,7 @@ function fmtWhen(s: string | null): string {
   const rel = m < 1 ? "now" : m < 60 ? `${m}m` : h < 48 ? `${h}h` : `${days}d`;
   return diff >= 0 ? `in ${rel}` : `${rel} ago`;
 }
-const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-600", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
+const ENR_BADGE: Record<string, string> = { active: "bg-blue-50 text-blue-600", completed: "bg-emerald-50 text-emerald-700", stopped: "bg-slate-100 text-slate-500", failed: "bg-red-50 text-red-600" };
 function SeqMonitorPanel({ seqs, filterFromAnalytics }: { seqs: SeqRow[]; filterFromAnalytics?: { seqId?: string; status?: string } | null }) {
   const { vocab, seq1, seqN, ct1, ctN } = useWords();
   const [enr, setEnr] = useState<EnrRow[]>([]);
@@ -1677,8 +1677,8 @@ export default function SequencesTab() {
         <div key={s.id} className="bg-white rounded-card border border-line p-4 flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Workflow className="w-4 h-4" /></div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[10px] font-bold text-red-500">· OFF</span>}</p>
-            <p className="text-[11px] text-ink-400">{s.team ? <span className="font-semibold text-ink-600">{s.team === "sales" ? "Sales" : "Marketing"}{s.aidaStage ? ` · ${AIDA_LABELS[s.aidaStage].label}` : ""} · </span> : <span className="text-amber-600 font-semibold">Unassigned · </span>}{s.platform} · starts when: {triggerLabel(s.triggerKind)}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{s.name} {!s.active && <span className="text-[10px] font-bold text-red-700">· OFF</span>}</p>
+            <p className="text-[11px] text-ink-400">{s.team ? <span className="font-semibold text-ink-600">{s.team === "sales" ? "Sales" : "Marketing"}{s.aidaStage ? ` · ${AIDA_LABELS[s.aidaStage].label}` : ""} · </span> : <span className="text-amber-700 font-semibold">Unassigned · </span>}{s.platform} · starts when: {triggerLabel(s.triggerKind)}{s.triggerValue ? ` “${s.triggerValue}”` : ""} · {s.steps.length} step{s.steps.length === 1 ? "" : "s"}</p>
           </div>
           <button onClick={() => editRow(s)} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
           <button onClick={() => remove(s.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
@@ -1826,7 +1826,7 @@ export default function SequencesTab() {
           <div className="flex items-center gap-2 pt-1">
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : `Save ${seq1}`}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
-            {msg && <span className="text-xs text-red-500">{msg}</span>}
+            {msg && <span className="text-xs text-red-700">{msg}</span>}
           </div>
           </div>
           <SequencePreview platform={form.platform} steps={form.steps} channelId={form.channelId} />
@@ -1928,7 +1928,7 @@ function CatalogTab() {
         <div key={p.id} className="bg-white rounded-card border border-line p-3 flex items-center gap-3">
           <ImgFallback url={p.imageUrl ?? ""} imgClass="w-12 h-12 rounded-lg object-cover shrink-0" boxClass="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center shrink-0" icon={<ShoppingBag className="w-5 h-5 text-ink-300" />} />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-500">· hidden</span>}</p>
+            <p className="text-sm font-semibold text-ink-900 truncate">{p.name} {!p.available && <span className="text-[10px] font-bold text-red-700">· hidden</span>}</p>
             <p className="text-[11px] text-ink-400">{p.currency} {(p.priceCents / 100).toFixed(2)}{p.retailerId ? ` · SKU ${p.retailerId}` : ""}</p>
           </div>
           <button onClick={() => setForm({ id: p.id, name: p.name, description: p.description ?? "", price: String(p.priceCents / 100), currency: p.currency, imageUrl: p.imageUrl ?? "", retailerId: p.retailerId ?? "", metaProductId: p.metaProductId ?? "", catalogId: p.catalogId ?? "", available: p.available, buttonText: p.buttonText ?? "", buttonUrl: p.buttonUrl ?? "" })} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
@@ -1965,7 +1965,7 @@ function CatalogTab() {
             <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save product"}</button>
             <button onClick={() => setForm(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
           </div>
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          {msg && <p className="text-xs text-red-700">{msg}</p>}
           </div>
           <div className="xl:w-64 shrink-0">
             <p className="text-[10px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Preview in chat</p>
@@ -1977,7 +1977,7 @@ function CatalogTab() {
                   <p className="text-[13px] font-bold text-slate-900">{form.currency || "INR"} {(Number(form.price) || 0).toFixed(2)}</p>
                   {form.description.trim() && <p className="text-[11px] text-slate-500 break-words line-clamp-2">{form.description}</p>}
                 </div>
-                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-600">{form.buttonText.trim() || "View"}</div>
+                <div className="border-t border-slate-100 py-1.5 text-center text-[12px] font-semibold text-sky-700">{form.buttonText.trim() || "View"}</div>
               </div>
             </div>
             <p className="mt-1.5 text-[10px] text-ink-400 leading-snug">

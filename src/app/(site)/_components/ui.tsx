@@ -11,6 +11,12 @@ export const PURPLE = "#0783fd";
 // with mint and amber as supporting accents, so the whole site reads as one
 // gradient family instead of flat blue. Use these everywhere a gradient is
 // needed rather than ad-hoc one-offs.
+//
+// TEXT in brand blue uses #026cd4, not #0783fd: #0783fd is 3.7:1 on white,
+// under the 4.5:1 WCAG AA needs for normal text. #026cd4 is the same hue and
+// the value globals.css gives text-brand-700 (5.1:1 on white, 4.55:1 on the
+// /10 brand tint). Fills, borders and buttons keep #0783fd. Green text likewise
+// uses #047857 (5.5:1) instead of #2f9e6e (3.4:1).
 export const GRADIENTS = {
   // Primary CTA / accent — brand blue flowing into indigo-violet.
   brand: "bg-gradient-to-br from-[#0783fd] via-[#3274ff] to-[#6a5cff]",
@@ -54,7 +60,7 @@ export function Glow({ className = "" }: { className?: string }) {
 
 export function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-full border border-[#0783fd]/20 bg-[#0783fd]/5 px-3 py-1 text-xs font-semibold text-[#0783fd]">
+    <span className="inline-flex items-center gap-2 rounded-full border border-[#0783fd]/20 bg-[#0783fd]/5 px-3 py-1 text-xs font-semibold text-[#026cd4]">
       {children}
     </span>
   );
@@ -66,7 +72,7 @@ export function Button({
   const base = "inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold transition active:scale-[0.97]";
   const styles = variant === "primary"
     ? `${GRADIENTS.brand} ${GRADIENTS.brandHover} text-white shadow-[0_10px_28px_-10px_rgba(106,92,255,0.65)] sheen`
-    : "border border-[#0783fd]/30 bg-white text-[#0783fd] hover:bg-[#0783fd]/5";
+    : "border border-[#0783fd]/30 bg-white text-[#026cd4] hover:bg-[#0783fd]/5";
   if (href.startsWith("http")) return <a href={href} className={`${base} ${styles} ${className}`}>{children}</a>;
   return <Link href={href} className={`${base} ${styles} ${className}`}>{children}</Link>;
 }

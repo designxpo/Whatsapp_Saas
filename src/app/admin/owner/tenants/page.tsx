@@ -246,7 +246,7 @@ function TenantsInner() {
                   <Td>
                     <span className="text-[12px] text-ink-600">{ago(t.createdAt)}</span>
                     {t.trialEndsAt && (t.paymentStatus === "trialing" || ended) && (
-                      <p className={`text-[10px] ${ended ? "text-red-600" : "text-amber-600"}`}>{trialText(t.trialEndsAt)}</p>
+                      <p className={`text-[10px] ${ended ? "text-red-600" : "text-amber-700"}`}>{trialText(t.trialEndsAt)}</p>
                     )}
                   </Td>
                 </tr>

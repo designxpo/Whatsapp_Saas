@@ -169,7 +169,7 @@ export function TenantDrawer({ id, onClose, onChanged, setConfirm }: {
                           <div key={lab}>
                             <div className="flex justify-between text-[11px] mb-0.5">
                               <span className="text-ink-600">{lab}</span>
-                              <span className={`tabular-nums ${near ? "text-amber-600 font-bold" : "text-ink-400"}`}>{compact(used)} / {lim > 0 ? compact(lim) : "∞"}</span>
+                              <span className={`tabular-nums ${near ? "text-amber-700 font-bold" : "text-ink-400"}`}>{compact(used)} / {lim > 0 ? compact(lim) : "∞"}</span>
                             </div>
                             <div className="h-1.5 rounded-full bg-canvas overflow-hidden">
                               <div className={`h-full rounded-full ${pct >= 100 ? "bg-red-500" : near ? "bg-amber-500" : "bg-brand-600"}`} style={{ width: `${lim > 0 ? pct : 4}%` }} />

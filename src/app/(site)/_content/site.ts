@@ -67,12 +67,6 @@ export const STEPS: Step[] = [
   { n: "03", title: "Automate & broadcast", body: "Turn on auto-replies, launch broadcasts, build flows and sequences — then watch conversations convert." },
 ];
 
-// Annual billing discount. Lives here, not in the pricing component, because
-// prose on the pricing page quotes this number — a copy that says "20% off"
-// beside a table computing 15% is the kind of mismatch nobody notices until a
-// customer does.
-export const ANNUAL_DISCOUNT = 0.2;
-
 export type Tier = {
   name: string; priceMonthly: number | null; customLabel?: string; tagline: string;
   features: string[]; cta: string; href: string; highlighted?: boolean;
@@ -131,13 +125,6 @@ export const SEQUENCE_FLOW: SeqStep[] = [
   { n: "4", icon: "cart", title: "Convert", body: "Send the offer and a checkout link, then hand hot leads to your team.", meta: "+3 days" },
 ];
 
-export type Testimonial = { quote: string; name: string; role: string };
-export const TESTIMONIALS: Testimonial[] = [
-  { quote: "We replaced three tools with Talko AI. AI replies handle 70% of our DMs and our team finally has one inbox.", name: "Aisha Khan", role: "Founder, Bloom D2C" },
-  { quote: "Broadcasts with 95%+ open rates and flows that book demos overnight. Our cost per lead dropped by half.", name: "Rohit Verma", role: "Growth Lead, EduPrime" },
-  { quote: "Setup took an afternoon. Bringing our own AI key meant predictable costs and full control over the model.", name: "Sara Mathew", role: "Ops Head, Nest Realty" },
-];
-
 export type Faq = { q: string; a: string };
 export const FAQS: Faq[] = [
   { q: "What is Talko AI?", a: "Talko AI is an AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat. It replies, qualifies leads and sells across every channel from one inbox, using AI grounded on your own knowledge base and billed to your own AI provider key." },
@@ -145,7 +132,7 @@ export const FAQS: Faq[] = [
   { q: "Do I need my own WhatsApp Business account?", a: "For WhatsApp, Instagram and Messenger, yes — Talko AI connects your own number, Instagram account and Facebook Page through Meta's official APIs, so your brand stays yours. The website web-chat widget needs no Meta account at all — just paste one line of code on your site." },
   { q: "What does 'bring your own AI key' mean?", a: "AI replies run on your own Gemini, OpenAI or Anthropic key, which you add in settings. Usage is billed to your provider account, so costs are transparent and fully under your control." },
   { q: "Is there a free trial?", a: "Every plan starts with a 14-day free trial. No credit card required to start — explore the full platform and only subscribe when you're ready." },
-  { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, your channel tokens are encrypted at rest, and we run on dedicated infrastructure. You own your data and can export or delete it anytime." },
+  { q: "Is my data secure?", a: "Each business is fully isolated with row-level security, and your channel tokens are encrypted at rest. The platform runs on managed cloud hosting shared across customers, with each business's data kept separate. You own your data and can export or delete it anytime." },
   { q: "Which channels does Talko AI support?", a: "WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and a website web-chat widget — all through the same unified inbox, AI engine, flows and sequences. Each is a channel, not a separate product, so your AI, knowledge base and team work identically everywhere. We're not a Meta-only tool — the same platform covers Google's ecosystem too, with more channels on the roadmap." },
   { q: "Do you have a plan for creators & influencers?", a: "Yes — our Creator and Creator Pro plans are Instagram-first, built for creators who don't need the WhatsApp business stack. You get AI auto-replies, comment-to-DM and keyword automation, link-in-bio lead capture, basic flows and a merch catalog from ₹999/mo. Creator Pro adds Messenger, multiple Instagram accounts, YouTube comment automation, ads and more volume." },
   { q: "Can my whole team use it?", a: "Absolutely. Assign conversations, set roles, use shared quick replies and keep a full activity log across your team." },
@@ -383,9 +370,12 @@ export const POSTS: Post[] = [
     slug: "whatsapp-service-message-pricing-october-2026",
     title: "WhatsApp Service Messages Stop Being Free on 1 October 2026",
     excerpt: "Every free-form reply you send inside the 24-hour window becomes billable after the first 1,000 a month. In India the bill is small — but miss the 30 September payment-method deadline and Meta stops delivering those replies altogether.",
-    date: "September 13, 2026", category: "Compliance", readTime: "9 min read",
+    date: "September 13, 2026", dateModified: "November 1, 2026", category: "Compliance", readTime: "9 min read",
     body: [
-      p("On 1 October 2026, the replies your team and your bot send inside WhatsApp's 24-hour customer service window stop being free. They have been free since 1 November 2024, which is long enough that most businesses have built their entire support model on the assumption — answer as many times as you like, at no cost, as long as the customer messaged first. That assumption expires in a little over two weeks."),
+      // Written ahead of the change; the note keeps the forward-looking wording
+      // below from reading as current now that the date has passed.
+      p("Written on 13 September 2026, ahead of the change. Meta's new pricing took effect on 1 October 2026."),
+      p("On 1 October 2026, the replies your team and your bot send inside WhatsApp's 24-hour customer service window stop being free. They have been free since 1 November 2024, which is long enough that most businesses have built their entire support model on the assumption — answer as many times as you like, at no cost, as long as the customer messaged first. That assumption ended on 1 October 2026."),
       p("The bottom line: service messages become chargeable at each market's utility rate after a monthly allowance of 1,000 per business phone number, and utility templates lose the in-window waiver they have had since July 2025. For an Indian business the money involved is genuinely small — a few hundred rupees a month at ordinary volumes. The part worth acting on this week is different: any business without a valid payment method on file by 30 September has service message delivery stopped when charging begins. Not throttled, not billed later. Stopped."),
 
       h2("What actually becomes chargeable"),
@@ -434,7 +424,7 @@ export const POSTS: Post[] = [
         "Keep one number's volume visible. The 1,000-message allowance is per business phone number, per month, with no rollover — so the allowance is only useful if somebody can see how much of it is left.",
       ]),
 
-      h2("A checklist for the next two weeks"),
+      h2("A checklist for the switch-over"),
       list([
         "Confirm a valid payment method is on file — yours or your BSP's — before 30 September. This is the only item on this list that can stop messages from being delivered.",
         "Find out whether your provider bills you per message or absorbs service messages into a plan, and get it in writing before October.",
@@ -916,57 +906,53 @@ export const COMPETITORS: Competitor[] = [
   },
 ];
 
-export const SOCIAL_PROOF = "Trusted by 2,000+ growing businesses";
+// Heading over the hero's logo strip. These are integrations, not customers —
+// we don't publish a customer count we can't back up.
+export const WORKS_WITH = "Works with the tools you already use";
 
 // Integrations we provide, grouped by category for the logo wall.
-// slug = Simple Icons id (cdn.simpleicons.org); omit slug to render the name as
-// a wordmark (e.g. brands without a Simple Icon). Single source of truth — the
-// flat INTEGRATIONS strip below is derived from it.
-// src = explicit logo URL (e.g. an official SVG in /public/brand); slug = Simple
-// Icons id; iconify = Iconify "logos" id (for brands Simple Icons dropped, e.g.
-// Slack/Teams/Pipedrive); none → the name renders as a wordmark.
-export type IntegrationBrand = { name: string; slug?: string; iconify?: string; src?: string; wordmark?: boolean };
+// src = a self-hosted logo in /public/brand/logos (never an icon CDN — see
+// BrandMark); omit src to render the name as a wordmark. Single source of
+// truth — the flat INTEGRATIONS strip below is derived from it.
+export type IntegrationBrand = { name: string; src?: string; wordmark?: boolean };
 export type IntegrationCategory = { title: string; blurb: string; items: IntegrationBrand[] };
 
-// Every logo is self-hosted in /public/brand/logos so ad-blockers (which
-// commonly block icon CDNs) can never degrade the wall to plain text. slug /
-// iconify remain as network fallbacks only.
 export const INTEGRATION_CATEGORIES: IntegrationCategory[] = [
   { title: "Channels", blurb: "Meet customers where they already are.", items: [
-    { name: "WhatsApp", src: "/brand/logos/whatsapp.svg", slug: "whatsapp" },
-    { name: "Instagram", src: "/brand/logos/instagram.svg", slug: "instagram" },
-    { name: "Messenger", src: "/brand/logos/messenger.svg", slug: "messenger" },
-    { name: "YouTube", src: "/brand/logos/youtube.svg", slug: "youtube" },
-    { name: "Google Reviews", src: "/brand/logos/google.svg", slug: "google" },
+    { name: "WhatsApp", src: "/brand/logos/whatsapp.svg" },
+    { name: "Instagram", src: "/brand/logos/instagram.svg" },
+    { name: "Messenger", src: "/brand/logos/messenger.svg" },
+    { name: "YouTube", src: "/brand/logos/youtube.svg" },
+    { name: "Google Reviews", src: "/brand/logos/google.svg" },
     { name: "Website web chat", src: "/brand/favicon-96.png" },
   ] },
   { title: "AI models", blurb: "Bring your own key — full control over cost and model.", items: [
-    { name: "Gemini", src: "/brand/logos/googlegemini.svg", slug: "googlegemini" },
-    { name: "OpenAI", src: "/brand/logos/openai.svg", iconify: "logos:openai-icon" },
-    { name: "Anthropic", src: "/brand/logos/anthropic.svg", slug: "anthropic" },
+    { name: "Gemini", src: "/brand/logos/googlegemini.svg" },
+    { name: "OpenAI", src: "/brand/logos/openai.svg" },
+    { name: "Anthropic", src: "/brand/logos/anthropic.svg" },
   ] },
   { title: "CRM", blurb: "New leads sync to whichever CRM you already use.", items: [
-    { name: "HubSpot", src: "/brand/logos/hubspot.svg", slug: "hubspot" },
+    { name: "HubSpot", src: "/brand/logos/hubspot.svg" },
     { name: "LeadSquared", src: "/brand/logos/leadsquared.png" },
-    { name: "Pipedrive", src: "/brand/logos/pipedrive.svg", iconify: "logos:pipedrive", wordmark: true },
+    { name: "Pipedrive", src: "/brand/logos/pipedrive.svg", wordmark: true },
   ] },
   { title: "Payments", blurb: "Send a pay link and get paid inside the chat.", items: [
-    { name: "Razorpay", src: "/brand/logos/razorpay.svg", slug: "razorpay" },
-    { name: "Stripe", src: "/brand/logos/stripe.svg", slug: "stripe" },
+    { name: "Razorpay", src: "/brand/logos/razorpay.svg" },
+    { name: "Stripe", src: "/brand/logos/stripe.svg" },
   ] },
   { title: "E-commerce", blurb: "Import your product catalog in one click.", items: [
-    { name: "Shopify", src: "/brand/logos/shopify.svg", slug: "shopify" },
-    { name: "WooCommerce", src: "/brand/logos/woocommerce.svg", slug: "woocommerce", wordmark: true },
+    { name: "Shopify", src: "/brand/logos/shopify.svg" },
+    { name: "WooCommerce", src: "/brand/logos/woocommerce.svg", wordmark: true },
   ] },
   { title: "Scheduling", blurb: "Customers book a meeting without leaving chat.", items: [
-    { name: "Cal.com", src: "/brand/logos/caldotcom.svg", slug: "caldotcom", wordmark: true },
+    { name: "Cal.com", src: "/brand/logos/caldotcom.svg", wordmark: true },
   ] },
   { title: "Automation & alerts", blurb: "Pipe events into 5,000+ apps and your team's tools.", items: [
-    { name: "Zapier", src: "/brand/logos/zapier.svg", slug: "zapier" },
-    { name: "Make", src: "/brand/logos/make.svg", slug: "make" },
-    { name: "n8n", src: "/brand/logos/n8n.svg", slug: "n8n" },
-    { name: "Slack", src: "/brand/logos/slack.svg", iconify: "logos:slack-icon" },
-    { name: "Microsoft Teams", src: "/brand/logos/msteams.svg", iconify: "logos:microsoft-teams" },
+    { name: "Zapier", src: "/brand/logos/zapier.svg" },
+    { name: "Make", src: "/brand/logos/make.svg" },
+    { name: "n8n", src: "/brand/logos/n8n.svg" },
+    { name: "Slack", src: "/brand/logos/slack.svg" },
+    { name: "Microsoft Teams", src: "/brand/logos/msteams.svg" },
   ] },
 ];
 

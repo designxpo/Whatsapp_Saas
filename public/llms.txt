@@ -7,7 +7,7 @@ Disambiguation: "Talko AI" (thetalko.in) is a WhatsApp/Instagram/Messenger/web-c
 Key facts:
 - Channels: WhatsApp, Instagram, Facebook Messenger, and an embeddable website web-chat widget — one inbox, one AI engine, one team across all four.
 - Bring your own AI key: AI replies run on the customer's own Gemini, OpenAI or Anthropic key, so usage costs stay transparent and predictable with no per-message markup.
-- Pricing (INR/month): Starter ₹1,999, Growth ₹4,999 (most popular), Scale (custom). Creator plans: Creator ₹999, Creator Pro ₹2,499.
+- Pricing (INR/month): Starter ₹1,999, Growth ₹5,999 (most popular), Scale (custom). Creator plans: Creator ₹999, Creator Pro ₹2,999. Billed monthly; paid plans renew automatically each month until cancelled.
 - Free 14-day trial, no credit card required. Connect a number and go live in under an hour.
 - Target industries: D2C/e-commerce, EdTech/coaching, healthcare/clinics, real estate, restaurants/food delivery, travel/hospitality.
 - Uses Meta's official APIs (WhatsApp Business Platform, Instagram, Messenger). Per-business data isolation with encrypted credential vaults.

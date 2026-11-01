@@ -285,6 +285,10 @@ export async function createTenantFromSignup(p: {
   company: string; ownerName: string; ownerEmail: string; password: string;
   ownerPhone?: string; industry?: string; teamSize?: string; useCase?: string; expectedVolume?: string; source?: string;
   termsVersion?: string; referralCode?: string;
+  /** When the box was ticked (the signup form's submit time). */
+  termsAcceptedAt?: string;
+  /** The separate, optional product-news answer. Absent on signups started before it existed. */
+  marketingOptIn?: boolean;
 }): Promise<{ tenantId: string; email: string }> {
   const email = p.ownerEmail.trim().toLowerCase();
   // Reject if the email already has an account.
@@ -314,7 +318,7 @@ export async function createTenantFromSignup(p: {
   // them when present; on a missing-column error, retry without them so signup
   // keeps working before those migrations are applied (the audit log below is
   // the durable consent record either way).
-  const acceptedAt = new Date().toISOString();
+  const acceptedAt = p.termsAcceptedAt && !Number.isNaN(Date.parse(p.termsAcceptedAt)) ? p.termsAcceptedAt : new Date().toISOString();
   // An invalid/unknown/suspended referral code silently resolves to no
   // attribution — a bad or stale referral link must never block signup.
   const referredByAffiliateId = p.referralCode
@@ -345,16 +349,50 @@ export async function createTenantFromSignup(p: {
   } catch { /* neutral wording until chosen in Settings */ }
 
   // Durable consent record (best-effort; survives even if 0060 isn't applied yet).
-  if (p.termsVersion) await ownerAudit(email, "signup.terms_accepted", tenantId, `Accepted Terms, Privacy & Acceptable Use — version ${p.termsVersion}`);
+  if (p.termsVersion) await ownerAudit(email, "signup.terms_accepted", tenantId, `Accepted Terms, Privacy & Acceptable Use — version ${p.termsVersion}, at ${acceptedAt}; confirmed 18+ and business use`);
+
+  // Product news: kept apart from the terms, so a "no" is an opt-out from the
+  // first day (owner broadcasts check it — ownerbroadcast.ts) and a "yes" is on
+  // record with its time. Best-effort, like the vocabulary pack above.
+  if (p.marketingOptIn !== undefined) {
+    try {
+      const [{ setTenantSetting }, { setUnsubscribed }] = await Promise.all([import("./store"), import("./emailprefs")]);
+      // The opt-out first: of the three writes it is the one that stops mail.
+      await setUnsubscribed(tenantId, "product_news", !p.marketingOptIn);
+      await setTenantSetting(tenantId, "marketing_consent", { optIn: p.marketingOptIn, at: acceptedAt, email, wording: "Email me occasional product news and tips (optional — unsubscribe anytime)." });
+      await ownerAudit(email, p.marketingOptIn ? "signup.marketing_opt_in" : "signup.marketing_declined", tenantId, p.marketingOptIn ? "Agreed to product news emails" : "Declined product news emails");
+    } catch (e) {
+      // Never blocks signup; logged so a missed opt-out can be set by hand.
+      console.error(JSON.stringify({ at: "signup.marketing_consent", tenantId, optIn: p.marketingOptIn, error: e instanceof Error ? e.message : String(e) }));
+    }
+  }
 
   return { tenantId, email };
 }
 
+// Tenant rows the cascade from `tenants` doesn't reach. wa_email_log and
+// wa_owner_email_queue point at tenants with ON DELETE SET NULL, so without
+// this every email address we ever sent to would outlive the workspace; the
+// rest carry a tenant_id with no foreign key at all (customers' phones,
+// comments, review authors, integration secrets).
+const TENANT_ROWS_WITHOUT_CASCADE = [
+  "wa_email_log", "wa_owner_email_queue",
+  "wa_flow_arms", "wa_integrations", "wa_handle_sources", "wa_reviews",
+  "wa_yt_comment_rules", "wa_yt_comment_log", "wa_yt_poll_cursor",
+  "wa_comment_threads", "wa_moderation_log",
+];
+
 // Hard-delete a tenant and everything it owns (FKs cascade from 0019). The
-// default tenant can never be deleted.
+// default tenant can never be deleted. Kept on purpose: wa_owner_audit and the
+// white-label partner audit/ledger (tenant_id set null — they are the
+// platform's own audit and money trail).
 export async function deleteTenant(id: string): Promise<void> {
   if (id === "00000000-0000-0000-0000-000000000001") throw new Error("The default tenant cannot be deleted");
   await db().from("wa_users").delete().eq("tenant_id", id);   // users aren't tenant-FK-cascaded
+  for (const t of TENANT_ROWS_WITHOUT_CASCADE) {
+    // A table not migrated in this database has nothing to delete.
+    try { await db().from(t).delete().eq("tenant_id", id); } catch { /* best-effort; the tenant delete below must still run */ }
+  }
   const { error } = await db().from("tenants").delete().eq("id", id);
   if (error) throw error;
 }

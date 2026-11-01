@@ -147,7 +147,7 @@ export function MetricTile({ label, value, sub, tone, onClick }: {
     <Tag onClick={onClick}
       className={`text-left bg-white rounded-card border border-line px-4 py-3 w-full ${onClick ? "hover:border-brand-500 hover:shadow-sm transition-[border-color,box-shadow]" : ""}`}>
       <p className="text-[10px] font-bold text-ink-400 uppercase tracking-[0.06em]">{label}</p>
-      <p className={`text-2xl font-extrabold tabular-nums leading-tight mt-0.5 ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-600" : "text-ink-900"}`}>{value}</p>
+      <p className={`text-2xl font-extrabold tabular-nums leading-tight mt-0.5 ${tone === "bad" ? "text-red-600" : tone === "warn" ? "text-amber-700" : "text-ink-900"}`}>{value}</p>
       {sub && <p className="text-[11px] text-ink-600 mt-0.5">{sub}</p>}
     </Tag>
   );
@@ -174,7 +174,7 @@ export function QueueCard({ title, why, count, oldest, severity, stale, onClick 
           <p className="text-[13px] font-bold text-ink-900">{title}</p>
           <p className="text-[11px] text-ink-600 leading-snug mt-0.5">{why}</p>
         </div>
-        <span className={`text-xl font-extrabold tabular-nums shrink-0 ${clear ? "text-emerald-600" : severity === "critical" ? "text-red-600" : "text-ink-900"}`}>
+        <span className={`text-xl font-extrabold tabular-nums shrink-0 ${clear ? "text-emerald-700" : severity === "critical" ? "text-red-600" : "text-ink-900"}`}>
           {clear ? <Check className="w-5 h-5" /> : compact(count)}
         </span>
       </div>

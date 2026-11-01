@@ -6,6 +6,7 @@ import { computeChargeBreakdown } from "@/lib/billing-tax";
 import { recordBillingEvent, recordActualGatewayFee } from "@/lib/billing-events";
 import { sendInvoiceEmail } from "@/lib/invoice-email";
 import { notifyPaymentFailed, notifyServiceSuspended } from "@/lib/dunning";
+import { recordCancelAt } from "@/lib/billing-cancel";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ function mapStatus(event: string): { payment: PaymentStatus; tenant: TenantStatu
 interface RzpWebhookBody {
   event: string;
   payload?: {
-    subscription?: { entity?: { id?: string; current_end?: number; paid_count?: number; notes?: Record<string, string> } };
+    subscription?: { entity?: { id?: string; status?: string; current_end?: number; ended_at?: number | null; paid_count?: number; notes?: Record<string, string> } };
     // fee/tax are Razorpay's ACTUAL gateway fee and the GST on that fee for
     // this specific payment (in paise) — only present once the charge is
     // fully processed, distinct from the checkout-time ESTIMATE this route
@@ -72,6 +73,21 @@ export async function POST(req: Request) {
     if (!subId) return NextResponse.json({ received: true });
     const tenant = await getTenantByRazorpaySubscription(subId);
     if (!tenant) { console.warn("[razorpay webhook] no tenant for subscription", subId); return NextResponse.json({ received: true }); }
+
+    // ENDING ACCESS. A customer who cancels from the billing page cancels at
+    // the END of the cycle: Razorpay keeps the subscription running, then moves
+    // it to cancelled and sends this event when the paid period is over — so
+    // switching the workspace off here is "access ends when the paid period
+    // ends", not when they clicked. Guard against an event that arrives while
+    // the entity says it is still running (the status in the payload is the
+    // subscription's state at send time): ignore it rather than cut off time
+    // the customer has paid for. A later event will carry the real ending.
+    const entity = event.payload?.subscription?.entity;
+    const ending = event.event === "subscription.cancelled" || event.event === "subscription.completed";
+    if (ending && entity?.status && entity.status !== "cancelled" && entity.status !== "completed") {
+      console.warn(JSON.stringify({ at: "razorpay.subscriptions.endingEventWhileRunning", tenantId: tenant.id, subId, event: event.event, status: entity.status }));
+      return NextResponse.json({ received: true });
+    }
 
     const { payment, tenant: tenantStatus } = mapStatus(event.event);
     const currentEndUnix = event.payload?.subscription?.entity?.current_end;
@@ -130,6 +146,13 @@ export async function POST(req: Request) {
         await sendInvoiceEmail(billingEventId)
           .catch(err => console.error(JSON.stringify({ at: "razorpay.subscriptions.sendInvoiceEmail", tenantId: tenant.id, error: errorMessage(err) })));
       }
+    }
+
+    // Keep "when it stopped renewing" for the billing page and owner console:
+    // the actual end, or the end of the last paid period.
+    if (ending) {
+      const endedUnix = entity?.ended_at ?? currentEndUnix;
+      await recordCancelAt(tenant.id, endedUnix ? new Date(endedUnix * 1000).toISOString() : new Date().toISOString());
     }
 
     if (event.event === "subscription.pending" && pay?.id) {

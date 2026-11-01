@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     const r = await generateReply(
       history.map(h => ({ role: h.role, body: h.body, mediaUrl: h.mediaUrl, mediaType: h.mediaType })),
       conv.phone, effectiveAgentId(conv, channel), tenantId, effectiveKbScope(conv, channel),
-      false, undefined, conv.platform,
+      false, undefined, conv.platform, undefined, { practice: true },   // a draft for a person, not an answer sent
     );
     return NextResponse.json({ suggestion: r.reply ?? "", escalate: r.escalate });
   } catch (err) {
