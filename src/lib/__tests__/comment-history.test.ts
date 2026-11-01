@@ -50,7 +50,7 @@ vi.mock("../tenantdb", () => ({
   }),
 }));
 
-import { ytRepliesFromThreads, igRepliesFromComments, fbRepliesFromComments, drainReplyHistory, freshState } from "../comment-history";
+import { ytRepliesFromThreads, igRepliesFromComments, fbRepliesFromComments, drainReplyHistory, freshState, repliesFromRecords } from "../comment-history";
 import { listCommentReplies } from "../comment-replies";
 
 const NOW = Date.parse("2026-11-01T00:00:00Z");
@@ -170,5 +170,19 @@ describe("paging the list", () => {
     const gte = queries[0].filters.find(f => f[0] === "gte")!;
     expect(Math.round((Date.now() - Date.parse(gte[2] as string)) / 86_400_000)).toBe(30);
     expect(queries[0].filters.some(f => f[0] === "or")).toBe(false);
+  });
+});
+
+describe("from the app's own reply records", () => {
+  const rec = (watch: string, root: string, depth = 0) => ({ watch_comment_id: watch, root_comment_id: root, original_text: "Jai Shree Ram", reply_text: "Jai Janki Mata 🙏", depth, created_at: "2026-07-30T05:38:56Z" });
+  it("names the account's own reply by id from each comment + reply pair — no author needed from Instagram", () => {
+    const rows = repliesFromRecords("instagram", [rec("C1", "C1"), rec("R1", "C1")], new Map([["C1", "rule-1"]]));
+    expect(rows).toEqual([expect.objectContaining({ platform: "instagram", parentCommentId: "C1", replyId: "R1", replyText: "Jai Janki Mata 🙏", commentText: "Jai Shree Ram", source: "rule", createdAt: "2026-07-30T05:38:56Z" })]);
+  });
+  it("leaves follow-ups deeper in a thread alone: there the pair can't say which id is ours", () => {
+    expect(repliesFromRecords("instagram", [rec("A", "C1", 1), rec("B", "C1", 1)], new Map())).toEqual([]);
+  });
+  it("skips a record with no reply text", () => {
+    expect(repliesFromRecords("facebook", [{ ...rec("R1", "C1"), reply_text: " " }], new Map())).toEqual([]);
   });
 });

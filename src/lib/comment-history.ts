@@ -16,7 +16,7 @@
 import { db } from "./supabase";
 import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { listThreadsPage, type YtThread } from "./youtube";
-import { listIgMediaPage, listIgCommentsPage, getIgSelf, type IgCommentNode } from "./instagram";
+import { listIgMediaPage, listIgCommentsPage, listIgReplies, getIgSelf, type IgCommentNode } from "./instagram";
 import { listFbPostsPage, listFbCommentsPage, type FbCommentNode } from "./messenger";
 import { importCommentReplies, type ImportedReply, type ReplyPlatform, type ReplySource } from "./comment-replies";
 import { setTenantSetting } from "./store";
@@ -24,12 +24,15 @@ import { setTenantSetting } from "./store";
 export const HISTORY_DAYS = 365;
 const PREFIX = "reply_history:";
 const CALLS_PER_ACCOUNT = 8;     // API pages one account may use per tick
+const IG_CALLS_PER_ACCOUNT = 16; // Instagram also reads each answered comment's replies
 const ACCOUNTS_PER_TICK = 3;
 export const PLATFORM_OF: Record<string, ReplyPlatform> = { youtube: "youtube", instagram: "instagram", messenger: "facebook" };
 
 // Bumped when a platform's matching changes, so its accounts are read again.
 // v2: Instagram recognises the account by both of its ids and its @username.
-const VERSION = 2;
+// v3: Instagram replies fetched with their authors (nested ones come without),
+//     and Instagram/Facebook first seeded from the app's own reply records.
+const VERSION = 3;
 
 export interface HistoryState {
   v?: number;
@@ -39,10 +42,11 @@ export interface HistoryState {
   queue?: { id: string; after: string | null }[]; // posts still to read comments from
   selfName?: string | null;                       // Instagram: the account's @username
   selfIds?: string[];                             // Instagram: every id it may be reported under
+  seeded?: number;                                // replies imported from the app's own records
   failures?: number;                              // failed runs in a row
   // What the platform returned, so a run that finds nothing can be told apart
   // from one that can't recognise the account's own replies.
-  seen?: { comments: number; replies: number; repliesWithName: number; repliesWithId: number; ours: number };
+  seen?: { comments: number; commentsWithName?: number; replies: number; repliesWithName: number; repliesWithId: number; ours: number; repliesError?: string };
   error?: string | null; finishedAt?: string;
 }
 
@@ -119,6 +123,43 @@ export function fbRepliesFromComments(comments: FbCommentNode[], pageId: string,
   return repliesFromNodes("facebook", comments.map(toNode), n => n.fromId === pageId, postId, since, claims);
 }
 
+// ── From the app's own records ──────────────────────────────────────────────
+// Every automated public reply on Instagram/Facebook is recorded in
+// wa_comment_threads as a pair — the customer's comment (watch id = root) and
+// the reply the account posted (watch id ≠ root), with both texts. That names
+// the account's own replies by id, with no need for Instagram to say who wrote
+// them (nested replies come back without an author: 25 of 25 in production,
+// 2026-11-01). Follow-ups deeper in a thread (depth > 0) pair the account's
+// reply with the customer's next comment, so they can't be told apart here and
+// are left to the platform walk.
+export interface ThreadRecord { watch_comment_id: string; root_comment_id: string; original_text: string | null; reply_text: string | null; depth: number; created_at: string }
+export function repliesFromRecords(platform: ReplyPlatform, records: ThreadRecord[], claims: Claims): ImportedReply[] {
+  return records
+    .filter(r => r.depth === 0 && r.watch_comment_id !== r.root_comment_id && (r.reply_text ?? "").trim())
+    .map(r => ({
+      platform, parentCommentId: r.root_comment_id, commentText: r.original_text || null, commentAuthor: null, postId: null,
+      replyId: r.watch_comment_id, replyText: r.reply_text as string, createdAt: r.created_at,
+      source: claims.has(r.root_comment_id) && !claims.get(r.root_comment_id) ? "ai" : "rule",
+    }));
+}
+
+async function seedFromRecords(ch: Channel, st: HistoryState, platform: "instagram" | "facebook"): Promise<void> {
+  let seeded = 0;
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db().from("wa_comment_threads")
+      .select("watch_comment_id,root_comment_id,original_text,reply_text,depth,created_at")
+      .eq("tenant_id", ch.tenantId).eq("channel_id", ch.id).eq("platform", platform === "facebook" ? "messenger" : "instagram")
+      .eq("depth", 0).gte("created_at", st.since).order("created_at", { ascending: true }).range(from, from + 999);
+    if (error) { st.error = error.message; break; }
+    const records = (data ?? []) as ThreadRecord[];
+    const roots = records.filter(r => r.watch_comment_id !== r.root_comment_id).map(r => r.root_comment_id);
+    seeded += await importCommentReplies(ch.tenantId, ch.id, repliesFromRecords(platform, records, await claimsFor(platform, ch.tenantId, roots)));
+    if (records.length < 1000) break;
+  }
+  st.seeded = seeded;
+  st.imported += seeded;
+}
+
 // ── The import, one bounded step per account ────────────────────────────────
 
 const CLAIM_TABLE: Record<ReplyPlatform, string> = { youtube: "wa_yt_comment_log", instagram: "wa_ig_comment_log", facebook: "wa_fb_comment_log" };
@@ -159,6 +200,9 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
   const fbCreds = { pageId: ch.pageId ?? "", token: ch.token };
   const since = Date.parse(st.since);
   let calls = 0;
+  const budget = ig ? IG_CALLS_PER_ACCOUNT : CALLS_PER_ACCOUNT;
+  // First run: everything the app itself recorded, at once — no platform calls.
+  if (st.seeded === undefined) await seedFromRecords(ch, st, platform);
   if (ig && st.selfIds === undefined) {
     const me = await getIgSelf(igCreds);
     calls++;
@@ -166,7 +210,7 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
     st.selfIds = [...new Set([ownId, ...me.ids])];
   }
   st.queue ??= [];
-  while (calls < CALLS_PER_ACCOUNT && !st.done) {
+  while (calls < budget && !st.done) {
     if (!st.queue.length) {
       if (st.listDone) { st.done = true; break; }
       const page = ig
@@ -190,11 +234,19 @@ async function stepPosts(ch: Channel, st: HistoryState, platform: "instagram" | 
         if (AUTH_ERROR.test(page.error)) { failed(st, page.error); return; }
         st.error = page.error; st.queue.shift(); continue;   // a removed post: move on
       }
+      // The nested replies only say a comment HAS replies; read their authors.
+      for (const c of page.comments) {
+        if (!c.replies.length) continue;
+        const full = await listIgReplies(igCreds, c.id);
+        calls++;
+        if (!full.error) c.replies = full.replies;
+        else st.seen = { ...(st.seen ?? { comments: 0, replies: 0, repliesWithName: 0, repliesWithId: 0, ours: 0 }), repliesError: full.error.slice(0, 200) };
+      }
       const ids = page.comments.flatMap(c => [c.id, ...c.replies.map(r => r.id)]);
       const rows = igRepliesFromComments(page.comments, st.selfIds ?? [ownId], st.selfName ?? null, item.id, since, await claimsFor("instagram", ch.tenantId, ids));
       const replies = page.comments.flatMap(c => c.replies);
       const seen = st.seen ?? { comments: 0, replies: 0, repliesWithName: 0, repliesWithId: 0, ours: 0 };
-      st.seen = { comments: seen.comments + page.comments.length, replies: seen.replies + replies.length, repliesWithName: seen.repliesWithName + replies.filter(r => r.username).length, repliesWithId: seen.repliesWithId + replies.filter(r => r.fromId).length, ours: seen.ours + rows.length };
+      st.seen = { ...seen, comments: seen.comments + page.comments.length, commentsWithName: (seen.commentsWithName ?? 0) + page.comments.filter(c => c.username || c.fromId).length, replies: seen.replies + replies.length, repliesWithName: seen.repliesWithName + replies.filter(r => r.username).length, repliesWithId: seen.repliesWithId + replies.filter(r => r.fromId).length, ours: seen.ours + rows.length };
       st.imported += await importCommentReplies(ch.tenantId, ch.id, rows);
       if (page.next) item.after = page.next; else st.queue.shift();
     } else {
@@ -221,7 +273,7 @@ export async function drainReplyHistory(deadlineAt: number): Promise<{ accounts:
     if (accounts >= ACCOUNTS_PER_TICK || Date.now() > deadlineAt - 15_000) break;
     let st = states.get(ch.id) ?? freshState();
     // Read again with the current matching (Instagram's v1 recognised none of the account's own replies).
-    if (ch.kind === "instagram" && (st.v ?? 1) < VERSION) st = freshState();
+    if ((ch.kind === "instagram" || ch.kind === "messenger") && (st.v ?? 1) < VERSION) st = freshState();
     if (st.done) continue;
     const before = st.imported;
     try {

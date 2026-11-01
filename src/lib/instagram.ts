@@ -316,6 +316,26 @@ export async function listIgMediaPage(creds: IgCreds, after: string | null): Pro
   } catch (e) { return { media: [], next: null, error: e instanceof Error ? e.message : "Instagram error" }; }
 }
 
+/**
+ * A comment's replies with their authors. Nested inside the comments call,
+ * Instagram returns replies WITHOUT username or from (seen in production,
+ * 2026-11-01: 8 replies, 0 with either), so who wrote a reply needs this call.
+ */
+export async function listIgReplies(creds: IgCreds, commentId: string): Promise<{ replies: IgCommentNode[]; error?: string }> {
+  try {
+    const q = new URLSearchParams({ fields: "id,text,username,timestamp,from{id,username}", limit: "50" });
+    const r = await fetch(`${GRAPH}/${commentId}/replies?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { replies: [], error: j.error?.message || `HTTP ${r.status}` };
+    return {
+      replies: ((j.data ?? []) as Record<string, unknown>[]).map(c => ({
+        id: String(c.id ?? ""), text: String(c.text ?? ""), username: String(c.username ?? (c.from as { username?: string } | undefined)?.username ?? ""),
+        fromId: ((c.from as { id?: string } | undefined)?.id) ?? null, timestamp: String(c.timestamp ?? ""), replies: [],
+      })),
+    };
+  } catch (e) { return { replies: [], error: e instanceof Error ? e.message : "Instagram error" }; }
+}
+
 /** One page of a post's comments, each with its replies. */
 export async function listIgCommentsPage(creds: IgCreds, mediaId: string, after: string | null): Promise<{ comments: IgCommentNode[]; next: string | null; error?: string }> {
   const node = (c: Record<string, unknown>): IgCommentNode => ({
@@ -324,7 +344,8 @@ export async function listIgCommentsPage(creds: IgCreds, mediaId: string, after:
     replies: (((c.replies as { data?: Record<string, unknown>[] } | undefined)?.data) ?? []).map(node),
   });
   try {
-    const q = new URLSearchParams({ fields: "id,text,username,timestamp,from,replies{id,text,username,timestamp,from}", limit: "50", ...(after ? { after } : {}) });
+    // 25 a page: each comment with replies costs one more call (listIgReplies), so this bounds a run.
+    const q = new URLSearchParams({ fields: "id,text,username,timestamp,from,replies{id}", limit: "25", ...(after ? { after } : {}) });
     const r = await fetch(`${GRAPH}/${mediaId}/comments?${q}`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return { comments: [], next: null, error: j.error?.message || `HTTP ${r.status}` };
