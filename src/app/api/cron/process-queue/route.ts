@@ -33,7 +33,7 @@ import { drainMetaUsageAlert } from "@/lib/metausage";
 import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
 import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
-import { drainReplyHistory } from "@/lib/comment-history";
+import { drainReplyHistory, fillReplyAuthors } from "@/lib/comment-history";
 import { drainReviewBooster } from "@/lib/review-booster";
 import { runRetention } from "@/lib/retention";
 import { drainDeletionRequests } from "@/lib/metadeletion";
@@ -102,8 +102,12 @@ export async function POST(req: Request) {
     // links they send their own customers. Returns at once while white-label is off.
     const partnerBilling = await stage("partnerbilling", null, async () => ({ partners: await drainPartnerBilling(), customers: await drainCustomerBilling(), domains: await drainPendingDomains(), metaApps: await drainPartnerMetaChecks() }), pollStart, POLL_BUDGET);
     // Earlier comment replies, imported a few pages per account per tick
-    // (comment-history.ts); returns at once once every account is done.
-    const replyHistory = await stage("replyhistory", null, () => drainReplyHistory(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
+    // (comment-history.ts); returns at once once every account is done. Then
+    // the commenter is named on a few replies recorded without one.
+    const replyHistory = await stage("replyhistory", null, async () => ({
+      ...(await drainReplyHistory(pollStart + POLL_BUDGET)),
+      authors: await fillReplyAuthors(pollStart + POLL_BUDGET),
+    }), pollStart, POLL_BUDGET);
     // Google review requests after paid orders (review-booster.ts) — owner's workspace only until launched.
     const reviewBooster = await stage("reviewbooster", null, () => drainReviewBooster(), pollStart, POLL_BUDGET);
     // Meta data-deletion requests the callback didn't finish (metadeletion.ts).

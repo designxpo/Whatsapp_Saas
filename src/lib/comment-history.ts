@@ -16,8 +16,8 @@
 import { db } from "./supabase";
 import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { listThreadsPage, type YtThread } from "./youtube";
-import { listIgMediaPage, listIgCommentsPage, listIgReplies, getIgSelf, type IgCommentNode } from "./instagram";
-import { listFbPostsPage, listFbCommentsPage, type FbCommentNode } from "./messenger";
+import { listIgMediaPage, listIgCommentsPage, listIgReplies, getIgSelf, getIgCommentAuthor, type IgCommentNode } from "./instagram";
+import { listFbPostsPage, listFbCommentsPage, getFbCommentAuthor, type FbCommentNode } from "./messenger";
 import { importCommentReplies, type ImportedReply, type ReplyPlatform, type ReplySource } from "./comment-replies";
 import { setTenantSetting } from "./store";
 
@@ -73,7 +73,7 @@ export function ytRepliesFromThreads(threads: YtThread[], channelId: string, sin
       if (r.authorChannelId !== channelId) { answered = r; continue; }
       if (answered.authorChannelId === channelId || Date.parse(r.publishedAt) < since) continue;
       out.push({
-        platform: "youtube", parentCommentId: answered.id, commentText: answered.text, commentAuthor: answered.authorName || null,
+        platform: "youtube", parentCommentId: answered.id, commentText: answered.text, commentAuthor: answered.authorName || null, commentAuthorId: answered.authorChannelId || null,
         postId: t.videoId || null, replyId: r.id, replyText: r.text, createdAt: r.publishedAt,
         source: sourceFor(answered.id, answered.id === t.top.id, claims),
       });
@@ -92,7 +92,7 @@ function repliesFromNodes(platform: ReplyPlatform, nodes: Node[], isOurs: (n: No
       if (!isOurs(r)) { answered = r; continue; }
       if (Date.parse(r.at) < since) continue;
       out.push({
-        platform, parentCommentId: answered.id, commentText: answered.text, commentAuthor: answered.author || null,
+        platform, parentCommentId: answered.id, commentText: answered.text, commentAuthor: answered.author || null, commentAuthorId: answered.fromId || null,
         postId, replyId: r.id, replyText: r.text, createdAt: r.at, source: sourceFor(answered.id, answered.id === top.id, claims),
       });
     }
@@ -287,6 +287,68 @@ export async function drainReplyHistory(deadlineAt: number): Promise<{ accounts:
     accounts++; imported += st.imported - before;
   }
   return { accounts, imported };
+}
+
+// ── Who commented, for replies recorded without it ──────────────────────────
+// Replies imported from the app's own thread records carry no commenter, and
+// nothing before 2026-11-01 kept the commenter's id. Each tick fills a few,
+// newest first (the ones on screen):
+//  1. from Live Chat — every comment the automation acted on was stored there
+//     as "[comment] <text>" in the commenter's conversation, moments before the
+//     reply, under their platform id and @handle; no platform call needed;
+//  2. otherwise by asking Instagram/Facebook who wrote that one comment.
+// A row that can't be resolved is marked "" so it isn't asked about again.
+const FILL_PER_TICK = 40;
+const FILL_WINDOW_BEFORE_MS = 30 * 60_000;   // the comment arrives before our reply…
+const FILL_WINDOW_AFTER_MS = 2 * 60_000;     // …give or take clock skew between the two writes
+
+type FillRow = { id: string; tenant_id: string; channel_id: string | null; platform: ReplyPlatform; parent_comment_id: string; comment_text: string | null; comment_author: string | null; created_at: string };
+
+async function fromLiveChat(row: FillRow): Promise<{ id: string; name: string | null } | null> {
+  if (!row.comment_text || !row.channel_id) return null;
+  const at = Date.parse(row.created_at);
+  const { data } = await db().from("wa_conv_messages").select("conversation_id")
+    .eq("tenant_id", row.tenant_id).eq("channel_id", row.channel_id).eq("role", "user").eq("body", `[comment] ${row.comment_text}`)
+    .gte("created_at", new Date(at - FILL_WINDOW_BEFORE_MS).toISOString()).lte("created_at", new Date(at + FILL_WINDOW_AFTER_MS).toISOString())
+    .order("created_at", { ascending: false }).limit(1);
+  const convId = (data as { conversation_id: string }[] | null)?.[0]?.conversation_id;
+  if (!convId) return null;
+  const { data: conv } = await db().from("wa_conversations").select("phone,name").eq("id", convId).eq("tenant_id", row.tenant_id).maybeSingle();
+  const c = conv as { phone: string; name: string | null } | null;
+  return c?.phone ? { id: c.phone, name: c.name } : null;
+}
+
+async function fromPlatform(row: FillRow, ch: Channel | undefined): Promise<{ id: string; name: string | null } | null> {
+  if (!ch || ch.tenantId !== row.tenant_id || !isLiveChannel(ch)) return null;
+  if (row.platform === "instagram") {
+    const a = await getIgCommentAuthor({ igUserId: ch.igUserId ?? "", token: ch.token }, row.parent_comment_id);
+    return a.id ? { id: a.id, name: a.username ? `@${a.username}` : null } : null;
+  }
+  const a = await getFbCommentAuthor({ pageId: ch.pageId ?? "", token: ch.token }, row.parent_comment_id);
+  return a.id ? { id: a.id, name: a.name } : null;
+}
+
+/** Background engine: name the commenter on a few replies recorded without one. */
+export async function fillReplyAuthors(deadlineAt: number, max = FILL_PER_TICK): Promise<{ filled: number; looked: number }> {
+  const { data, error } = await db().from("wa_comment_replies")
+    .select("id,tenant_id,channel_id,platform,parent_comment_id,comment_text,comment_author,created_at")
+    .is("comment_author_id", null).in("platform", ["instagram", "facebook"])
+    .order("created_at", { ascending: false }).limit(max);
+  // No comment_author_id column yet (migration 20261101230000): nothing to fill.
+  if (error || !data?.length) return { filled: 0, looked: 0 };
+  const channels = new Map((await listChannels()).map(c => [c.id, c]));
+  let filled = 0, looked = 0;
+  for (const row of data as FillRow[]) {
+    if (Date.now() > deadlineAt - 5_000) break;
+    looked++;
+    const who = (await fromLiveChat(row)) ?? (await fromPlatform(row, row.channel_id ? channels.get(row.channel_id) : undefined));
+    await db().from("wa_comment_replies").update({
+      comment_author_id: who?.id ?? "",
+      ...(who?.name && !row.comment_author ? { comment_author: who.name.slice(0, 200) } : {}),
+    }).eq("id", row.id).eq("tenant_id", row.tenant_id);
+    if (who) filled++;
+  }
+  return { filled, looked };
 }
 
 /** For the section's status line: is history still coming in for this platform? */

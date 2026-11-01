@@ -25,8 +25,19 @@ export const REPLY_PLATFORMS: ReplyPlatform[] = ["youtube", "instagram", "facebo
 export interface CommentReply {
   id: string; channelId: string | null; platform: ReplyPlatform;
   parentCommentId: string; commentText: string | null; commentAuthor: string | null; postId: string | null;
+  /** The commenter's platform id: Instagram-scoped id, Facebook page-scoped id or YouTube channel id. */
+  commentAuthorId: string | null;
   replyId: string; replyText: string; source: ReplySource; status: "sent" | "edited" | "deleted";
   editedAt: string | null; editedBy: string | null; createdAt: string;
+  /** What the workspace already knows about the commenter (their chat), when it does. */
+  person?: CommentPerson;
+}
+
+export interface CommentPerson {
+  /** Their chat's id in Live Chat (the platform id the conversation is keyed by). */
+  chatPhone: string; name: string | null; avatarUrl: string | null;
+  /** A phone number they shared in the chat, if any. */
+  leadPhone: string | null;
 }
 
 const TABLE = "wa_comment_replies";
@@ -38,6 +49,7 @@ function map(r: Record<string, unknown>): CommentReply {
     id: r.id as string, channelId: (r.channel_id as string | null) ?? null, platform: r.platform as ReplyPlatform,
     parentCommentId: r.parent_comment_id as string, commentText: (r.comment_text as string | null) ?? null,
     commentAuthor: (r.comment_author as string | null) ?? null, postId: (r.post_id as string | null) ?? null,
+    commentAuthorId: (r.comment_author_id as string | null) || null,
     replyId: r.reply_id as string, replyText: r.reply_text as string, source: r.source as ReplySource,
     status: r.status as CommentReply["status"], editedAt: (r.edited_at as string | null) ?? null,
     editedBy: (r.edited_by as string | null) ?? null, createdAt: r.created_at as string,
@@ -48,15 +60,16 @@ function map(r: Record<string, unknown>): CommentReply {
 export async function recordCommentReply(r: {
   tenantId: string; channelId: string | null; platform: ReplyPlatform;
   parentCommentId: string; replyId: string | null | undefined; replyText: string;
-  source: ReplySource; commentText?: string | null; commentAuthor?: string | null; postId?: string | null;
+  source: ReplySource; commentText?: string | null; commentAuthor?: string | null; commentAuthorId?: string | null; postId?: string | null;
 }): Promise<void> {
   if (!r.tenantId || !r.replyId || !r.parentCommentId || !r.replyText?.trim()) return;
   try {
-    const { error } = await tdb(r.tenantId).from(TABLE).upsert({
+    const { error } = await upsertRows(r.tenantId, [{
       channel_id: r.channelId, platform: r.platform, parent_comment_id: r.parentCommentId,
       comment_text: r.commentText?.slice(0, 4000) ?? null, comment_author: r.commentAuthor?.slice(0, 200) || null,
+      comment_author_id: r.commentAuthorId?.slice(0, 100) || null,
       post_id: r.postId ?? null, reply_id: r.replyId, reply_text: r.replyText.slice(0, 9000), source: r.source,
-    }, { onConflict: "platform,reply_id", ignoreDuplicates: true });
+    }]);
     if (error) console.warn("[comment-replies] record failed:", error.message);
   } catch (e) {
     console.warn("[comment-replies] record failed:", errorMessage(e));
@@ -66,18 +79,35 @@ export async function recordCommentReply(r: {
 /** A past reply found on the platform (comment-history.ts), with its own posting time. */
 export interface ImportedReply {
   platform: ReplyPlatform; parentCommentId: string; commentText: string | null; commentAuthor: string | null;
+  commentAuthorId?: string | null;
   postId: string | null; replyId: string; replyText: string; source: ReplySource; createdAt: string;
+}
+
+// Before migration 20261101230000 there is no comment_author_id column: write
+// without it rather than lose the row.
+const noAuthorIdColumn = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === "PGRST204" || e.code === "42703") && /comment_author_id/.test(e.message ?? "");
+
+async function upsertRows(tenantId: string, rows: Record<string, unknown>[], select = false) {
+  const run = (rs: Record<string, unknown>[]) => {
+    const q = tdb(tenantId).from(TABLE).upsert(rs, { onConflict: "platform,reply_id", ignoreDuplicates: true });
+    return select ? q.select("id") : q;
+  };
+  const first = await run(rows);
+  if (!noAuthorIdColumn(first.error)) return first;
+  return run(rows.map(({ comment_author_id: _drop, ...rest }) => rest));
 }
 
 /** Add past replies; ones already in the log are left as they are. Returns how many were new. */
 export async function importCommentReplies(tenantId: string, channelId: string, rows: ImportedReply[]): Promise<number> {
   const clean = rows.filter(r => r.replyId && r.parentCommentId && r.replyText?.trim() && !Number.isNaN(Date.parse(r.createdAt)));
   if (!clean.length) return 0;
-  const { data, error } = await tdb(tenantId).from(TABLE).upsert(clean.map(r => ({
+  const { data, error } = await upsertRows(tenantId, clean.map(r => ({
     channel_id: channelId, platform: r.platform, parent_comment_id: r.parentCommentId,
     comment_text: r.commentText?.slice(0, 4000) ?? null, comment_author: r.commentAuthor?.slice(0, 200) || null,
+    comment_author_id: r.commentAuthorId?.slice(0, 100) || null,
     post_id: r.postId, reply_id: r.replyId, reply_text: r.replyText.slice(0, 9000), source: r.source, created_at: r.createdAt,
-  })), { onConflict: "platform,reply_id", ignoreDuplicates: true }).select("id");
+  })), true);
   if (error) throw new Error(error.message);
   return (data ?? []).length;
 }
@@ -89,6 +119,35 @@ const PAGE = 25;
 function parseCursor(c: string | null | undefined): { at: string; id: string } | null {
   const [at, id] = (c ?? "").split("|");
   return at && id && !Number.isNaN(Date.parse(at)) && /^[0-9a-f-]{36}$/i.test(id) ? { at, id } : null;
+}
+
+// Live Chat keeps each commenter's conversation under their platform id, with
+// their @handle, picture and any phone they shared — the "who is this" the
+// reply card shows. Matched by id, or for older Instagram rows by @handle.
+const CHAT_PLATFORM: Record<ReplyPlatform, string> = { instagram: "instagram", facebook: "messenger", youtube: "youtube" };
+export async function withPeople(tenantId: string, platform: ReplyPlatform, replies: CommentReply[]): Promise<CommentReply[]> {
+  const ids = [...new Set(replies.map(r => r.commentAuthorId).filter((x): x is string => !!x))];
+  const handles = platform === "instagram" ? [...new Set(replies.filter(r => !r.commentAuthorId && r.commentAuthor?.startsWith("@")).map(r => r.commentAuthor as string))] : [];
+  if (!ids.length && !handles.length) return replies;
+  type Conv = { phone: string; name: string | null; avatar_url: string | null; lead_phone: string | null; channel_id: string | null };
+  const found: Conv[] = [];
+  const cols = "phone,name,avatar_url,lead_phone,channel_id";
+  if (ids.length) {
+    const { data } = await tdb(tenantId).from("wa_conversations").select(cols).eq("platform", CHAT_PLATFORM[platform]).in("phone", ids);
+    found.push(...((data ?? []) as unknown as Conv[]));
+  }
+  if (handles.length) {
+    const { data } = await tdb(tenantId).from("wa_conversations").select(cols).eq("platform", CHAT_PLATFORM[platform]).in("name", handles);
+    found.push(...((data ?? []) as unknown as Conv[]));
+  }
+  const pick = (r: CommentReply) => {
+    const same = found.filter(c => r.commentAuthorId ? c.phone === r.commentAuthorId : c.name === r.commentAuthor);
+    return same.find(c => c.channel_id === r.channelId) ?? same[0];
+  };
+  return replies.map(r => {
+    const c = pick(r);
+    return c ? { ...r, commentAuthorId: r.commentAuthorId ?? c.phone, person: { chatPhone: c.phone, name: c.name, avatarUrl: c.avatar_url, leadPhone: c.lead_phone } } : r;
+  });
 }
 
 /**
@@ -110,7 +169,7 @@ export async function listCommentReplies(tenantId: string, q: { platform: ReplyP
     throw new Error(error.message);
   }
   const rows = ((data ?? []) as unknown as Record<string, unknown>[]).map(map);
-  const replies = rows.slice(0, PAGE);
+  const replies = await withPeople(tenantId, q.platform, rows.slice(0, PAGE));
   const last = replies[replies.length - 1];
   const next = rows.length > PAGE && last ? `${last.createdAt}|${last.id}` : null;
   if (at) return { replies, next };

@@ -44,6 +44,7 @@ export function memdb(unique: Record<string, string[][]> = {}): MemDb {
     b.gte = chain((c, v) => preds.push(r => r[c as string] != null && String(r[c as string]) >= String(v)));
     b.gt = chain((c, v) => preds.push(r => r[c as string] != null && String(r[c as string]) > String(v)));
     b.lt = chain((c, v) => preds.push(r => r[c as string] != null && String(r[c as string]) < String(v)));
+    b.lte = chain((c, v) => preds.push(r => r[c as string] != null && String(r[c as string]) <= String(v)));
     b.is = chain((c, v) => preds.push(r => (v === null ? r[c as string] == null : r[c as string] === v)));
     b.not = chain((c, o, v) => preds.push(r => (o === "is" && v === null ? r[c as string] != null : r[c as string] !== v)));
     b.like = chain((c, v) => { const re = new RegExp("^" + String(v).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$"); preds.push(r => re.test(String(r[c as string] ?? ""))); });

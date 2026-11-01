@@ -33,6 +33,7 @@ export interface YtComment {
   videoId: string;
   text: string;
   authorChannelId: string | null;
+  authorName?: string;    // the commenter's display name, for the reply log
   publishedAt: string;
 }
 
@@ -202,6 +203,7 @@ export async function listNewComments(creds: YtCreds, since: Date | null, maxPag
         videoId: (cs.videoId as string) ?? "",
         text: (cs.textDisplay as string) ?? (cs.textOriginal as string) ?? "",
         authorChannelId: authorChannel ?? null,
+        authorName: (cs.authorDisplayName as string) || undefined,
         publishedAt,
       });
     }

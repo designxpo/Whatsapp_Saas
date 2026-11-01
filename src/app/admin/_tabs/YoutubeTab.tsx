@@ -8,7 +8,7 @@ import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Check, Youtube, Loader2, MessageCircle, Plus, Trash2, Video, ShieldAlert, RefreshCw } from "lucide-react";
-import { inp, type ChannelRow } from "../_shared";
+import { inp, type GoTo, type ChannelRow } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
@@ -16,7 +16,7 @@ import { CommentReplies } from "./CommentReplies";
 import { HandoffOption } from "./HandoffOption";
 import { HandoffResults } from "./HandoffResults";
 
-function YoutubeTab() {
+function YoutubeTab({ goTo }: { goTo?: GoTo } = {}) {
   const brand = useBrand();
   const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   return (
@@ -36,7 +36,7 @@ function YoutubeTab() {
 
       <YoutubeManager />
 
-      <CommentReplies platform="youtube" />
+      <CommentReplies platform="youtube" onOpenChat={goTo ? phone => goTo("livechat", { openPhone: phone }) : undefined} />
 
       <HandoffResults platform="youtube" />
     </div>

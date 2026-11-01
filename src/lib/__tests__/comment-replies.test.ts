@@ -62,7 +62,7 @@ describe("recording a reply", () => {
   it("writes one row per reply, stamped with the workspace, never twice", async () => {
     await recordCommentReply({ tenantId: "t1", channelId: "ch1", platform: "youtube", parentCommentId: "C1", replyId: "R1", replyText: "Thanks!", source: "ai", commentText: "Q?" });
     const c = calls.find(x => x.op === "upsert")!;
-    expect(c.payload).toMatchObject({ platform: "youtube", parent_comment_id: "C1", reply_id: "R1", reply_text: "Thanks!", source: "ai" });
+    expect((c.payload as unknown[])[0]).toMatchObject({ platform: "youtube", parent_comment_id: "C1", reply_id: "R1", reply_text: "Thanks!", source: "ai" });
     expect(c.opts).toEqual({ onConflict: "platform,reply_id", ignoreDuplicates: true });
   });
   it("skips a reply with no id, and never throws when the log fails", async () => {

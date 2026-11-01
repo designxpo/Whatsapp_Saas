@@ -392,9 +392,9 @@ function AdminShell() {
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
           {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
           {tab === "ads" && <AdsTab goTo={goTo} />}
-          {tab === "instagram" && <InstagramTab />}
-          {tab === "facebook" && <FacebookTab />}
-          {tab === "youtube" && <YoutubeTab />}
+          {tab === "instagram" && <InstagramTab goTo={goTo} />}
+          {tab === "facebook" && <FacebookTab goTo={goTo} />}
+          {tab === "youtube" && <YoutubeTab goTo={goTo} />}
           {tab === "webchat" && <WebchatTab />}
           {tab === "reviews" && <ReviewsTab />}
           {tab === "assistant" && <AssistantTab goTo={goTo} />}

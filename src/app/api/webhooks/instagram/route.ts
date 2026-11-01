@@ -276,7 +276,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const deliver = async (msg: string): Promise<boolean> => {
     const r = commentId ? await replyToComment(creds, commentId, msg, tid) : await sendIgMessage(creds, conv.phone, msg, { lastInboundAt: now });
     // A public reply goes in the reply log, where the team can read and correct it.
-    if (r.ok && commentId) await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: "id" in r ? r.id : null, replyText: msg, source: "ai", commentText: userText, commentAuthor: conv.name });
+    if (r.ok && commentId) await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: "id" in r ? r.id : null, replyText: msg, source: "ai", commentText: userText, commentAuthor: conv.name, commentAuthorId: conv.phone });
     if (!r.ok) {
       console.warn("[ig webhook] ai reply blocked:", "blockedBy" in r ? r.blockedBy : undefined, r.error);
       await logSendFailure(conv.id, channel.id, r.error || "unknown error", tid);
@@ -411,7 +411,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       const res = await replyToComment(creds, commentId, publicReply, tid).catch(e => { console.error("[ig webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
-        await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: res.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: handle || null, postId: mediaId });
+        await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: res.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: handle || null, commentAuthorId: fromId || null, postId: mediaId });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
         // Watch this thread so a follow-up reply escalates to the AI.
         await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
@@ -459,7 +459,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     // reply is missing, and with it this thread's AI-takeover watch.
     if (pr.ok) {
       await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
-      await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: pr.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: handle || null, postId: mediaId });
+      await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: pr.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: handle || null, commentAuthorId: fromId || null, postId: mediaId });
     } else console.warn("[ig webhook] public reply blocked:", pr.error);
   }
 }
@@ -498,7 +498,7 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
     return;
   }
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
-  await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: watch.rootCommentId, replyId: sent.id, replyText: r.reply, source: "ai_followup", commentText: fu.text, commentAuthor: handle || null });
+  await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: watch.rootCommentId, replyId: sent.id, replyText: r.reply, source: "ai_followup", commentText: fu.text, commentAuthor: handle || null, commentAuthorId: fu.fromId || null });
   // Continue the thread: a reply to the AI's reply (or another follow-up) keeps going, one level deeper.
   await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "instagram", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
 }

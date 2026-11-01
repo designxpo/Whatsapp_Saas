@@ -152,7 +152,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
         const r = await replyToComment(creds, c.id, reply);
         if (r.ok) {
           acted++; lastReplyId = r.id ?? null; answered.push(c.id);
-          await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: reply, source: "rule", commentText: c.text, postId: c.videoId });
+          await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: reply, source: "rule", commentText: c.text, commentAuthor: c.authorName || null, commentAuthorId: c.authorChannelId || null, postId: c.videoId });
         }
         else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] rule reply failed", channel.id, c.id, r.error); }
       }
@@ -182,7 +182,7 @@ async function drainChannel(channel: Channel, aiEnabledCache: Map<string, boolea
           const r = await replyToComment(creds, c.id, res.reply as string);
           if (r.ok) {
             acted++; lastReplyId = r.id ?? null; answered.push(c.id);
-            await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: res.reply as string, source: "ai", commentText: c.text, postId: c.videoId });
+            await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: c.id, replyId: r.id, replyText: res.reply as string, source: "ai", commentText: c.text, commentAuthor: c.authorName || null, commentAuthorId: c.authorChannelId || null, postId: c.videoId });
           }
           else { lastError = r.error ?? "YouTube refused the reply"; console.error("[ytpoller] ai reply failed", channel.id, c.id, r.error); }
         } else if (verdict === "retry") {
@@ -305,7 +305,7 @@ async function drainFollowUps(channel: Channel, aiEnabledCache: Map<string, bool
             const p = await replyToComment(creds, t.id, text);
             if (p.ok) {
               acted++; st.active = nowIso;
-              await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: r.id, replyId: p.id, replyText: text, source: "ai_followup", commentText: r.text, commentAuthor: r.authorName, postId: t.videoId });
+              await recordCommentReply({ tenantId: channel.tenantId, channelId: channel.id, platform: "youtube", parentCommentId: r.id, replyId: p.id, replyText: text, source: "ai_followup", commentText: r.text, commentAuthor: r.authorName, commentAuthorId: r.authorChannelId || null, postId: t.videoId });
             }
             else console.error("[ytpoller] follow-up reply failed", channel.id, r.id, p.error);
           } else if (verdict === "retry") {

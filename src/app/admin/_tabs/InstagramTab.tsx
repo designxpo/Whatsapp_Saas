@@ -9,13 +9,13 @@ import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, Check, Instagram, Loader2, Lock, MessageCircle, Plus, Send, Trash2, Video } from "lucide-react";
-import { inp, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
+import { inp, type GoTo, type ChannelRow, DEFAULT_TENANT_ID } from "../_shared";
 import { fetchKbTags } from "./SettingsTab";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
 
 // Dedicated Instagram section (its own nav tab).
-function InstagramTab() {
+function InstagramTab({ goTo }: { goTo?: GoTo } = {}) {
   const brand = useBrand();
   const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   return (
@@ -37,7 +37,7 @@ function InstagramTab() {
 
       <InstagramManager />
 
-      <CommentReplies platform="instagram" />
+      <CommentReplies platform="instagram" onOpenChat={goTo ? phone => goTo("livechat", { openPhone: phone }) : undefined} />
 
       <HandoffResults platform="instagram" />
     </div>

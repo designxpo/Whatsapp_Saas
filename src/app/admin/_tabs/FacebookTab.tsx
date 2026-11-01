@@ -4,10 +4,11 @@ import { PageInfo } from "@/components/PageInfo";
 import { Facebook } from "lucide-react";
 import { MessengerCard } from "./SettingsTab";
 import { CommentReplies } from "./CommentReplies";
+import type { GoTo } from "../_shared";
 import { HandoffResults } from "./HandoffResults";
 
 // Facebook Messenger — first-class channel page (mirrors the Instagram tab).
-export default function FacebookTab() {
+export default function FacebookTab({ goTo }: { goTo?: GoTo } = {}) {
   const brand = useBrand();
   const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   return (
@@ -27,7 +28,7 @@ export default function FacebookTab() {
 
       <MessengerCard />
 
-      <CommentReplies platform="facebook" />
+      <CommentReplies platform="facebook" onOpenChat={goTo ? phone => goTo("livechat", { openPhone: phone }) : undefined} />
 
       <HandoffResults platform="facebook" />
     </div>

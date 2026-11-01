@@ -371,6 +371,17 @@ export async function listFbCommentsPage(creds: FbCreds, postId: string, after: 
   } catch (e) { return { comments: [], next: null, error: e instanceof Error ? e.message : "Facebook error" }; }
 }
 
+/** Who wrote one comment on the Page. */
+export async function getFbCommentAuthor(creds: FbCreds, commentId: string): Promise<{ id: string | null; name: string | null; error?: string }> {
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}?fields=from`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { id: null, name: null, error: j.error?.message || `HTTP ${r.status}` };
+    const from = (j.from ?? {}) as { id?: string; name?: string };
+    return { id: from.id ? String(from.id) : null, name: from.name || null };
+  } catch (e) { return { id: null, name: null, error: e instanceof Error ? e.message : "Facebook error" }; }
+}
+
 export interface FbProfile { name?: string; profilePic?: string }
 
 // Resolve a user's profile from their PSID (webhooks only carry the id). Works

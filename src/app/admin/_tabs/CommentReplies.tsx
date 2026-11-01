@@ -11,7 +11,7 @@
 // header says while that is still going.
 
 import { useCallback, useEffect, useState } from "react";
-import { MessageSquareReply, Pencil, Trash2, Loader2, ExternalLink, RefreshCw } from "lucide-react";
+import { MessageSquareReply, Pencil, Trash2, Loader2, ExternalLink, RefreshCw, Copy, Check, MessageCircle, Phone } from "lucide-react";
 import { Drawer } from "@/components/overlay";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
@@ -23,6 +23,8 @@ interface Reply {
   id: string; platform: Platform; parentCommentId: string; commentText: string | null; commentAuthor: string | null;
   postId: string | null; replyId: string; replyText: string; source: "ai" | "rule" | "ai_followup" | "manual";
   status: "sent" | "edited" | "deleted"; editedAt: string | null; editedBy: string | null; createdAt: string;
+  commentAuthorId: string | null;
+  person?: { chatPhone: string; name: string | null; avatarUrl: string | null; leadPhone: string | null };
 }
 
 const NAME: Record<Platform, string> = { youtube: "YouTube", instagram: "Instagram", facebook: "Facebook" };
@@ -50,7 +52,61 @@ function viewLink(r: Reply): string | null {
   return null;
 }
 
-export function CommentReplies({ platform }: { platform: Platform }) {
+/** The commenter's public profile, when the platform has an address for it. */
+function profileLink(r: Reply, who: string): string | null {
+  if (r.platform === "instagram" && /^@[\w.]+$/.test(who)) return `https://www.instagram.com/${who.slice(1)}/`;
+  if (r.platform === "youtube" && r.commentAuthorId) return `https://www.youtube.com/channel/${encodeURIComponent(r.commentAuthorId)}`;
+  return null;
+}
+
+/**
+ * Who wrote the comment: picture, @handle (linked to their profile), their
+ * platform id, a phone they shared in the chat, and a way into that chat.
+ * Older replies get their commenter filled in by the background engine.
+ */
+function Commenter({ r, onOpenChat }: { r: Reply; onOpenChat?: (chatPhone: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  const who = r.commentAuthor || r.person?.name || "";
+  const link = who ? profileLink(r, who) : null;
+  const copy = () => {
+    if (!r.commentAuthorId) return;
+    navigator.clipboard?.writeText(r.commentAuthorId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }).catch(() => undefined);
+  };
+  return (
+    <div className="flex items-start gap-2.5 min-w-0">
+      {r.person?.avatarUrl
+        // eslint-disable-next-line @next/next/no-img-element
+        ? <img src={r.person.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+        : <span aria-hidden className="w-8 h-8 rounded-full bg-brand-50 text-brand-700 text-[12px] font-bold flex items-center justify-center shrink-0">{(who.replace(/^@/, "")[0] ?? "?").toUpperCase()}</span>}
+      <div className="min-w-0">
+        <p className="text-[12px] text-slate-500 truncate">
+          {who
+            ? link
+              ? <a href={link} target="_blank" rel="noreferrer" className="font-bold text-ink-900 hover:underline">{who}</a>
+              : <b className="text-ink-900">{who}</b>
+            : <b className="text-ink-900">Someone</b>} commented
+        </p>
+        {(r.commentAuthorId || r.person?.leadPhone || (r.person && onOpenChat)) && (
+          <div className="mt-0.5 flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px] text-slate-500">
+            {r.commentAuthorId && (
+              <button type="button" onClick={copy} title="Copy ID" className="inline-flex items-center gap-1 tabular-nums hover:text-ink-900">
+                ID {r.commentAuthorId} {copied ? <Check className="w-3 h-3 text-emerald-700" /> : <Copy className="w-3 h-3" />}
+              </button>
+            )}
+            {r.person?.leadPhone && <a href={`tel:${r.person.leadPhone}`} className="inline-flex items-center gap-1 hover:text-ink-900"><Phone className="w-3 h-3" /> {r.person.leadPhone}</a>}
+            {r.person && onOpenChat && (
+              <button type="button" onClick={() => onOpenChat(r.person!.chatPhone)} className="inline-flex items-center gap-1 font-bold text-brand-700 hover:underline">
+                <MessageCircle className="w-3 h-3" /> Open chat
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function CommentReplies({ platform, onOpenChat }: { platform: Platform; onOpenChat?: (chatPhone: string) => void }) {
   const [rows, setRows] = useState<Reply[] | null>(null);
   const [range, setRange] = useState<Range>("30");
   // cursors[i] starts page i (page 0: none); next starts the page after this one.
@@ -154,7 +210,7 @@ export function CommentReplies({ platform }: { platform: Platform }) {
             return (
               <li key={r.id} className="rounded-control border border-line p-3 space-y-2">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="text-[12px] text-slate-500 min-w-0 truncate"><b className="text-ink-900">{r.commentAuthor || "Someone"}</b> commented</p>
+                  <Commenter r={r} onOpenChat={onOpenChat} />
                   <span className="text-[11px] text-slate-400 shrink-0 tabular-nums">{ago(r.createdAt)}</span>
                 </div>
                 {r.commentText && <p className="text-[13px] text-ink-700 bg-canvas rounded-control px-3 py-2 whitespace-pre-wrap break-words">{r.commentText}</p>}

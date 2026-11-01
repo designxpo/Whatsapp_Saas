@@ -336,6 +336,21 @@ export async function listIgReplies(creds: IgCreds, commentId: string): Promise<
   } catch (e) { return { replies: [], error: e instanceof Error ? e.message : "Instagram error" }; }
 }
 
+/**
+ * Who wrote one comment. Top-level comments on the account's own posts come
+ * back with their author (nested replies don't — see listIgReplies), which is
+ * what the comment we answered usually is.
+ */
+export async function getIgCommentAuthor(creds: IgCreds, commentId: string): Promise<{ id: string | null; username: string | null; error?: string }> {
+  try {
+    const r = await fetch(`${GRAPH}/${commentId}?fields=from,username`, { headers: { Authorization: `Bearer ${creds.token}` }, cache: "no-store" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return { id: null, username: null, error: j.error?.message || `HTTP ${r.status}` };
+    const from = (j.from ?? {}) as { id?: string; username?: string };
+    return { id: from.id ? String(from.id) : null, username: String(j.username ?? from.username ?? "") || null };
+  } catch (e) { return { id: null, username: null, error: e instanceof Error ? e.message : "Instagram error" }; }
+}
+
 /** One page of a post's comments, each with its replies. */
 export async function listIgCommentsPage(creds: IgCreds, mediaId: string, after: string | null): Promise<{ comments: IgCommentNode[]; next: string | null; error?: string }> {
   const node = (c: Record<string, unknown>): IgCommentNode => ({

@@ -220,7 +220,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   const deliver = async (msg: string): Promise<boolean> => {
     const r = commentId ? await replyToFbComment(creds, commentId, msg, tid) : await sendFbMessage(creds, conv.phone, msg, { lastInboundAt: now });
     // A public reply goes in the reply log, where the team can read and correct it.
-    if (r.ok && commentId) await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: "id" in r ? r.id : null, replyText: msg, source: "ai", commentText: userText, commentAuthor: conv.name });
+    if (r.ok && commentId) await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: "id" in r ? r.id : null, replyText: msg, source: "ai", commentText: userText, commentAuthor: conv.name, commentAuthorId: conv.phone });
     if (!r.ok) {
       console.warn("[fb webhook] ai reply blocked:", "blockedBy" in r ? r.blockedBy : undefined, r.error);
       await logSendFailure(conv.id, channel.id, r.error || "unknown error", tid);
@@ -340,7 +340,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       const res = await replyToFbComment(creds, commentId, publicReply, tid).catch(e => { console.error("[fb webhook] reply-only public reply", e); return { ok: false as const, error: e instanceof Error ? e.message : "Comment reply error" }; });
       if (res.ok) {
         await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
-        await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: res.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: fromName || null, postId });
+        await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: res.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: fromName || null, commentAuthorId: fromId || null, postId });
         await bumpRuleMatch(rule.id, rule.matchCount, tid);
         await trackCommentWatch([commentId, res.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
       } else {
@@ -381,7 +381,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     // only the public reply is missing, and with it this thread's AI-takeover watch.
     if (pr.ok) {
       await trackCommentWatch([commentId, pr.id], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: commentId, originalText: text, replyText: publicReply, depth: 0 });
-      await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: pr.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: fromName || null, postId });
+      await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: commentId, replyId: pr.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: fromName || null, commentAuthorId: fromId || null, postId });
     } else console.warn("[fb webhook] public reply blocked:", pr.error);
   }
   if (rule.likeComment) await likeFbComment(creds, commentId).catch(() => undefined);
@@ -415,6 +415,6 @@ async function aiThreadReply(channel: Channel, watch: CommentWatch, fu: { commen
     return;
   }
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${r.reply}`, source: "bot", tenantId: tid, channelId: channel.id });
-  await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: watch.rootCommentId, replyId: sent.id, replyText: r.reply, source: "ai_followup", commentText: fu.text, commentAuthor: fu.fromName || null });
+  await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "facebook", parentCommentId: watch.rootCommentId, replyId: sent.id, replyText: r.reply, source: "ai_followup", commentText: fu.text, commentAuthor: fu.fromName || null, commentAuthorId: fu.fromId || null });
   await trackCommentWatch([sent.id, fu.commentId], { tenantId: tid, channelId: channel.id, platform: "messenger", rootCommentId: watch.rootCommentId, originalText: watch.originalText, replyText: r.reply, depth: watch.depth + 1 });
 }
