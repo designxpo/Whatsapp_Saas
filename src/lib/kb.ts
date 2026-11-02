@@ -7,7 +7,23 @@ import { createHash } from "crypto";
 import { GoogleGenAI } from "@google/genai";
 import { replaceChunks, setDocStatus, setDocSync, listSyncableUrlDocs, matchChunks, matchChunksByTag, matchChunksText, matchChunksTextByTag, getDocument, getChunks, type KbSourceType, type KbDocument } from "./store";
 import { errorMessage } from "./errors";
-import { safeFetch } from "./ssrf";
+import { safeFetch, readCapped } from "./ssrf";
+
+/** Largest web page a URL source may be (bytes of HTML, before extraction). */
+export const URL_MAX_BYTES = 5 * 1024 * 1024;
+/** Largest file a KB upload may be. */
+export const KB_MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+/** Most text one document may contribute (≈ 600 pages). */
+export const KB_MAX_TEXT_CHARS = 1_500_000;
+
+/**
+ * This business's knowledge just changed — drop its cached answers. Dynamic
+ * import: router/cache imports this module.
+ */
+export async function knowledgeChanged(tenantId: string): Promise<void> {
+  try { const { invalidateTenantCache } = await import("./router/cache"); await invalidateTenantCache(tenantId); }
+  catch { /* best-effort */ }
+}
 import { resolveEmbedModel } from "./model-allowlist";
 
 
@@ -93,7 +109,7 @@ async function embedWith(client: GoogleGenAI, texts: string[], taskType: "RETRIE
 }
 
 // Embed a batch of texts. taskType tunes the embedding for storage vs. querying.
-export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY", tenantId = DEFAULT_TENANT_ID): Promise<number[][]> {
+export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY", tenantId: string): Promise<number[][]> {
   if (texts.length === 0) return [];
   const keys = await embedKeys(tenantId);
   if (!keys.length) throw new EmbedKeyMissingError();
@@ -112,7 +128,7 @@ export async function embedTexts(texts: string[], taskType: "RETRIEVAL_DOCUMENT"
   throw lastErr;
 }
 
-export async function embedQuery(text: string, tenantId = DEFAULT_TENANT_ID): Promise<number[]> {
+export async function embedQuery(text: string, tenantId: string): Promise<number[]> {
   const [v] = await embedTexts([text], "RETRIEVAL_QUERY", tenantId);
   return v;
 }
@@ -245,7 +261,10 @@ async function extractUrl(url: string): Promise<string> {
   // SSRF guard: validates the URL (and redirects) resolve to a public address.
   const res = await safeFetch(url, { headers: { "User-Agent": "Mozilla/5.0 (compatible; wa-broadcaster KB ingest)" } });
   if (!res.ok) throw new Error(`Fetch failed: HTTP ${res.status}`);
-  return extractReadableText(await res.text());
+  // A web page, not a binary, an archive or an endless stream — and a bounded one.
+  const type = (res.headers.get("content-type") ?? "").toLowerCase();
+  if (type && !/^(text\/html|application\/xhtml\+xml|text\/plain)\b/.test(type)) throw new Error(`Not a web page (content-type ${type.split(";")[0]})`);
+  return extractReadableText(await readCapped(res, URL_MAX_BYTES));
 }
 
 export async function extractText(sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }): Promise<string> {
@@ -433,9 +452,15 @@ export function reconstructText(chunkContents: string[]): string {
 }
 
 // ── Full ingest: extract → chunk → embed → store. Updates document status. ────
-export async function ingestDocument(docId: string, sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function ingestDocument(docId: string, sourceType: KbSourceType, payload: { buffer?: Buffer; text?: string; url?: string }, tenantId: string): Promise<void> {
   try {
     const text = await extractText(sourceType, payload);
+    // Every chunk is an embedding call on the business's key, and an enormous
+    // "document" is the easiest way to flood retrieval with planted text.
+    if (text.length > KB_MAX_TEXT_CHARS) {
+      await setDocStatus(docId, "failed", { error: `Too much text (${text.length.toLocaleString("en-IN")} characters; the limit is ${KB_MAX_TEXT_CHARS.toLocaleString("en-IN")}). Split it into smaller documents.`, chunkCount: 0 }, tenantId);
+      return;
+    }
     const chunks = chunkText(text);
     // Both conditions matter: no chunks at all, and chunks carrying no actual
     // words (a scanned PDF yields page markers, which chunk to exactly one).
@@ -448,6 +473,7 @@ export async function ingestDocument(docId: string, sourceType: KbSourceType, pa
     const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tenantId);
     const rows = contents.map((content, i) => ({ content, embedding: embeddings[i] }));
     const n = await replaceChunks(docId, rows, tenantId);
+    await knowledgeChanged(tenantId);
     await setDocStatus(docId, "ready", { chunkCount: n, error: null }, tenantId);
     if (doc) { await ingestToLibrary(doc, text, tenantId); await publishConcepts({}, tenantId); }
     await setDocSync(docId, sha256(text), tenantId);   // baseline hash for future change detection
@@ -480,6 +506,7 @@ export async function syncUrlDocument(doc: KbDocument): Promise<"updated" | "unc
     const contents = headeredChunks(doc.title, chunks);
     const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tid);
     const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
+    await knowledgeChanged(tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
     await ingestToLibrary(doc, text, tid);
     await publishConcepts({}, tid);
@@ -525,6 +552,7 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
     const contents = headeredChunks(doc.title, chunks);
     const embeddings = await embedTexts(contents, "RETRIEVAL_DOCUMENT", tid);
     const n = await replaceChunks(doc.id, contents.map((content, i) => ({ content, embedding: embeddings[i] })), tid);
+    await knowledgeChanged(tid);
     await setDocStatus(doc.id, "ready", { chunkCount: n, error: null }, tid);
     await setDocSync(doc.id, sha256(text), tid);
     return "updated";
@@ -540,7 +568,7 @@ export async function reingestDocument(doc: KbDocument): Promise<"updated" | "fa
 // FAQ/cache DEFLECTION ("contact our counsellor") stand: if the KB has the answer,
 // we defer to it. Returns the embedding so the caller can reuse it (no double cost).
 const COVERAGE_FLOOR = 0.45;   // keep in sync with MIN_SIMILARITY in llm.ts
-export async function kbCoverage(query: string, tenantId = DEFAULT_TENANT_ID, embedding?: number[] | null): Promise<{ covered: boolean; top: number; embedding: number[] }> {
+export async function kbCoverage(query: string, tenantId: string, embedding?: number[] | null): Promise<{ covered: boolean; top: number; embedding: number[] }> {
   const emb = embedding ?? await embedQuery(query, tenantId);
   // Probe the SAME index the answer will come from. A gate that checks documents
   // while answers are read from concepts would report "we know this" about
@@ -604,7 +632,7 @@ export interface KbScope { tag: string | null; strict: boolean }
 const asScope = (p: string | null | undefined | KbScope): KbScope =>
   p && typeof p === "object" ? p : { tag: p ?? null, strict: false };
 
-export async function retrieve(query: string, k = 6, tenantId = DEFAULT_TENANT_ID, primary?: string | null | KbScope, opts: { index?: "documents" | "concepts" } = {}): Promise<{ content: string; similarity: number }[]> {
+export async function retrieve(query: string, k = 6, tenantId: string, primary?: string | null | KbScope, opts: { index?: "documents" | "concepts" } = {}): Promise<{ content: string; similarity: number }[]> {
   const q = (query || "").trim();
   if (!q) return [];
   const { tag: primaryTag, strict } = asScope(primary);

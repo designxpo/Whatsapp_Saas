@@ -37,31 +37,31 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
 
   it("strips wrapping quotes the model sometimes adds", async () => {
     runChat.mockResolvedValue({ text: '"Did you still want details on the course?"', toolCalls: [] });
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r?.text).toBe("Did you still want details on the course?");
   });
 
   it("grounding firewall removes an invented fee that isn't in the transcript", async () => {
     runChat.mockResolvedValue({ text: "Just following up! The course fee is ₹49,999 — want me to enroll you?", toolCalls: [] });
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r?.text ?? "").not.toContain("49,999");
   });
 
   it("returns null when the model produces nothing usable", async () => {
     runChat.mockResolvedValue({ text: "   ", toolCalls: [] });
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r).toBeNull();
   });
 
   it("returns null when the tenant has no AI key (never throws into the cron)", async () => {
     resolveTenantAi.mockRejectedValue(new Error("no key"));
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r).toBeNull();
     expect(runChat).not.toHaveBeenCalled();
   });
 
   it("returns null for an empty transcript (nothing to follow up on)", async () => {
-    const r = await composeFollowup([]);
+    const r = await composeFollowup([], { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r).toBeNull();
     expect(runChat).not.toHaveBeenCalled();
   });
@@ -71,7 +71,7 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
   // exact stored name and forbid nicknaming it.
   it("instructs the model to use the customer's exact name and never shorten it", async () => {
     runChat.mockResolvedValue({ text: "Just checking in, Priyesh — any questions?", toolCalls: [] });
-    await composeFollowup(TRANSCRIPT, { customerName: "Priyesh" });
+    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111", customerName: "Priyesh" });
     const system = (runChat.mock.calls[0][0] as { system: string }).system;
     expect(system).toContain('use EXACTLY "Priyesh"');
     expect(system).toMatch(/NEVER shorten it, nickname it/i);
@@ -79,7 +79,7 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
 
   it("tells the model to use NO name when none is known", async () => {
     runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
-    await composeFollowup(TRANSCRIPT);
+    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     const system = (runChat.mock.calls[0][0] as { system: string }).system;
     expect(system).toMatch(/Do NOT address them by any name/i);
     expect(system).not.toContain("use EXACTLY");
@@ -87,7 +87,7 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
 
   it("ignores a phone-number-like 'name' and falls back to no-name", async () => {
     runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
-    await composeFollowup(TRANSCRIPT, { customerName: "+91 83688 72108" });
+    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111", customerName: "+91 83688 72108" });
     const system = (runChat.mock.calls[0][0] as { system: string }).system;
     expect(system).toMatch(/Do NOT address them by any name/i);
     expect(system).not.toContain("use EXACTLY");
@@ -100,18 +100,18 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
   // truncated nudge is trimmed to whole sentences or dropped.
   it("drops a truncated nudge that has no complete sentence, rather than send a fragment", async () => {
     runChat.mockResolvedValue({ text: "Maa Kali ke mand", toolCalls: [], truncated: true });
-    expect(await composeFollowup(TRANSCRIPT)).toBeNull();
+    expect(await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" })).toBeNull();
   });
 
   it("keeps the complete sentences of a truncated nudge and drops the cut tail", async () => {
     runChat.mockResolvedValue({ text: "Hope the course details helped! Did you want me to sha", toolCalls: [], truncated: true });
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r?.text).toBe("Hope the course details helped!");
   });
 
   it("leaves a complete nudge untouched when the model stopped naturally", async () => {
     runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [], truncated: false });
-    const r = await composeFollowup(TRANSCRIPT);
+    const r = await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     expect(r?.text).toBe("Just checking in — any questions?");
   });
 
@@ -120,7 +120,7 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
   // reply again — and this is the only call site where that is customer-visible.
   it("asks for enough answer tokens that a short nudge cannot be cut off", async () => {
     runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
-    await composeFollowup(TRANSCRIPT);
+    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111" });
     const { maxTokens } = runChat.mock.calls[0][0] as { maxTokens: number };
     expect(maxTokens).toBeGreaterThanOrEqual(160);
   });

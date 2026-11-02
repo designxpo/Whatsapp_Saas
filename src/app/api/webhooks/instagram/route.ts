@@ -7,7 +7,7 @@ import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, getChannelById, repairIgChannelId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, logSendFailure, type Conversation } from "@/lib/store";
 import { pushIgActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
-import { generateReply } from "@/lib/llm";
+import { generateReply, deferredToTeam } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -307,6 +307,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${replyBody}` : replyBody, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, replyBody);   // AI handled it → clear "awaiting your reply"
+  if (deferredToTeam(r)) await escalateConversation(conv.id);   // the reply said the team would confirm — tell them
   if (!commentId) after(() => syncIgToLsq(channel, conv, replyBody, "outbound", "bot"));   // DM AI replies → LeadSquared
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }

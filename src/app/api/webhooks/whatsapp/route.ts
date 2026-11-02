@@ -176,7 +176,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
       // Re-host the clip so the agent can replay it next to the transcript.
       mediaUrl = await uploadAudio(media.data, media.mimeType);
       mediaType = mediaUrl ? media.mimeType : null;
-      console.log(JSON.stringify({ tag: "voice_transcribed", from, chars: transcript.length, stored: !!mediaUrl }));
+      console.log(JSON.stringify({ tag: "voice_transcribed", from: `…${from.slice(-4)}`, chars: transcript.length, stored: !!mediaUrl }));
     } else if (manual) {
       // Counselor line: never auto-send. Keep a placeholder + the clip (if we
       // got it) so the voice note still lands in Live Chat / the CRM, then let
@@ -197,7 +197,7 @@ async function handleInbound(value: Record<string, unknown>, m: Record<string, u
     if (media) {
       mediaUrl = media.url;
       mediaType = media.mime;
-      console.log(JSON.stringify({ tag: "media_stored", from, type: m.type, mime: media.mime }));
+      console.log(JSON.stringify({ tag: "media_stored", from: `…${from.slice(-4)}`, type: m.type, mime: media.mime }));
     }
     // messageText already resolved the caption (and a document's filename), so
     // `text` needs no second read of the node here.

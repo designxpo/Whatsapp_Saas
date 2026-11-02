@@ -1,7 +1,7 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
+import { aiGate } from "@/lib/ai-gate";
 import { transformText } from "@/lib/llm";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 // POST — "Generate Agent Prompt": turns a short description into a structured
 // WhatsApp persona prompt (like the Xbot generator, tuned for our pipeline).
 export async function POST(req: Request) {
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   let body: { name?: string; description?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const name = body.name?.trim() || "Assistant";
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
   ].join("\n");
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     const persona = await transformText(instruction, description, tid);
     if (!persona) return NextResponse.json({ error: "Generation returned empty text — try again" }, { status: 502 });
     return NextResponse.json({ persona });

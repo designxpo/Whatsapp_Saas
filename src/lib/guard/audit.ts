@@ -27,7 +27,7 @@ export function auditMode(): AuditMode {
 }
 
 export interface AuditInput {
-  tenantId?: string;
+  tenantId: string;
   conversationId: string;
   messageId?: string | null;
   question: string;
@@ -67,7 +67,8 @@ export async function auditReply(input: AuditInput): Promise<AuditVerdict | null
   const reply = (input.reply || "").trim();
   const question = (input.question || "").trim();
   if (!reply || !question || !worthAuditing(reply)) return null;
-  const tenantId = input.tenantId ?? DEFAULT_TENANT_ID;
+  const tenantId = input.tenantId;
+  if (!tenantId) return null;   // never judged — or billed — as another business
 
   try {
     const ai = await resolveTenantAi(tenantId);   // throws if the tenant has no key → fail-open below

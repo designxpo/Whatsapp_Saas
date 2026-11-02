@@ -27,7 +27,7 @@
 
 import { getConversation, getConvHistory, appendConvMessage, touchOutbound, escalateConversation, claimReply, reflagReply, optoutSet, logSendFailure, type Conversation } from "./store";
 import { getChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
-import { generateReply } from "./llm";
+import { generateReply, deferredToTeam } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 import { hasActiveDripEnrollment } from "./sequences";
 import { inFlow } from "./flowengine";
@@ -113,6 +113,7 @@ export async function answerUnanswered(conversationId: string, now = Date.now())
       await reflagReply(conv.id);
       return { outcome: "failed", detail: "not delivered" };
     }
+    if (deferredToTeam(r)) await escalateConversation(conv.id);   // the reply said the team would confirm — tell them
     return { outcome: "sent" };
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);

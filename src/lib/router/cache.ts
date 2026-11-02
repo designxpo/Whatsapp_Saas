@@ -46,6 +46,18 @@ async function purgeCache(id: string): Promise<void> {
   try { await db().from("wa_semantic_cache").delete().eq("id", id); } catch { /* best-effort */ }
 }
 
+/**
+ * Drop every cached answer for a business. Called whenever its knowledge base
+ * changes (upload, edit, delete, re-sync, publish): an answer cached from the
+ * old content would otherwise keep being served, word for word, after the fact
+ * it states was corrected or removed (2026-11 AI security audit).
+ */
+export async function invalidateTenantCache(tenantId: string | null | undefined): Promise<void> {
+  if (!tenantId) return;
+  try { await db().from("wa_semantic_cache").delete().eq("tenant_id", tenantId); }
+  catch (e) { console.error("[router] cache invalidation failed:", e instanceof Error ? e.message : "error"); }
+}
+
 export interface CacheHit {
   id: string;
   answer: string;
@@ -58,7 +70,7 @@ export interface CacheLookup {
   embedding: number[] | null;   // returned so the RAG path can reuse it for the write
 }
 
-export async function cacheLookup(question: string, precomputed?: number[] | null, tenantId = DEFAULT_TENANT_ID, requesterName?: string | null): Promise<CacheLookup> {
+export async function cacheLookup(question: string, precomputed: number[] | null | undefined, tenantId: string, requesterName?: string | null): Promise<CacheLookup> {
   const norm = normalize(question);
   if (!norm) return { hit: null, embedding: null };
 
@@ -100,7 +112,7 @@ async function bumpHit(id: string): Promise<void> {
 
 // Store a RAG-produced answer. Reuses the lookup's embedding when available.
 // The cache is tenant-scoped — answers must never cross tenants.
-export async function cacheStore(question: string, answer: string, embedding: number[] | null, source = "rag", tenantId = DEFAULT_TENANT_ID, knownName?: string | null): Promise<void> {
+export async function cacheStore(question: string, answer: string, embedding: number[] | null, source = "rag", tenantId: string, knownName?: string | null): Promise<void> {
   try {
     const norm = normalize(question);
     if (!norm || !answer.trim()) return;

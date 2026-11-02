@@ -40,3 +40,17 @@ describe("assertPublicUrl — allows public literal IPs", () => {
     expect(u.hostname).toBe("8.8.8.8");
   });
 });
+
+describe("readCapped — a tenant URL cannot make the server hold an unbounded body", async () => {
+  const { readCapped } = await import("@/lib/ssrf");
+  it("reads a body under the limit", async () => {
+    expect(await readCapped(new Response("hello"), 10)).toBe("hello");
+  });
+  it("refuses a declared length over the limit before reading", async () => {
+    await expect(readCapped(new Response("x".repeat(20), { headers: { "content-length": "20" } }), 10)).rejects.toThrow(/too large/);
+  });
+  it("refuses a body that grows past the limit with no declared length", async () => {
+    const stream = new ReadableStream({ start(c) { for (let i = 0; i < 5; i++) c.enqueue(new TextEncoder().encode("abcd")); c.close(); } });
+    await expect(readCapped(new Response(stream), 10)).rejects.toThrow(/too large/);
+  });
+});

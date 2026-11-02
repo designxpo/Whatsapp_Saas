@@ -3,7 +3,7 @@ import {
   claimReply, reflagReply, isOptedOut, dailySentCount,
 } from "./store";
 import { getIsolation } from "./isolation";
-import { generateReply, standaloneQuestion } from "./llm";
+import { generateReply, standaloneQuestion, deferredToTeam } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
 import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech, visionInlineMime } from "./voice";
@@ -232,6 +232,12 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     });
     await touchOutbound(conversationId, result.reply);
     void pushWaActivity({ phone: conv.phone, direction: "outbound", body: result.reply, via: "bot", tenantId: conv.tenantId });
+    // The reply told the customer the team would confirm something it could not
+    // verify — so tell the team. Escalation only flags the chat.
+    if (deferredToTeam(result)) {
+      await setConversationStatus(conversationId, "escalated");
+      void emitEvent(conv.tenantId, "conversation.escalated", { conversationId, phone: conv.phone, name: conv.name, reason: "could not verify an answer", channel: conv.platform });
+    }
     // Async semantic grounding audit — the reply is ALREADY sent, so this is off
     // the customer's hot path. Catches claims the firewall can't, on the tenant's
     // own AI key, and gates the cache so a flagged answer is never reused. The
@@ -242,7 +248,11 @@ export async function respondToConversation(conversationId: string, opts: { inbo
         context: result.context ?? "", chunkSims: result.chunkSims, coverageBand: result.coverageBand,
         topSim: result.topSim, sanitizerActions: result.groundingActions,
       }).catch(() => null);
-      if (!verdict || verdict.shouldCache) {
+      // The shared cache replays this answer to OTHER customers of this
+      // business, so it takes only a reusable reply (llm.ts cacheable) that the
+      // audit judged grounded. No verdict — audit off, failed or no key — no
+      // cache: before, a failed audit cached by default.
+      if (result.cacheable && verdict?.grounded === true && verdict.shouldCache) {
         recordRagAnswer({ phone: conv.phone, question, answer: result.reply, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag });
       }
     }

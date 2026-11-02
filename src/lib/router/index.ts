@@ -45,22 +45,28 @@ export function routerEnabled(): boolean {
 // cannot match another product's cached answer. `message` stays the raw words:
 // the memory layer recognises "tell me more", and the reply matches its language.
 // `queryEmbedding`, when given, must be the embedding of the lookup.
-export async function routeMessage(p: { conversationId: string; phone: string; message: string; lookup?: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null; platform?: Platform }): Promise<RouteResult> {
+export async function routeMessage(p: { conversationId: string; phone: string; message: string; lookup?: string; agentId?: string | null; queryEmbedding?: number[] | null; tenantId: string; contactName?: string | null; primaryKbTag?: string | null; platform?: Platform }): Promise<RouteResult> {
   const lookup = p.lookup?.trim() || p.message;
   const t0 = Date.now();
-  const tid = p.tenantId ?? DEFAULT_TENANT_ID;
+  // The business is required and never defaulted (2026-11 AI security audit):
+  // a missing one used to fall back to the platform's own business, answering
+  // one business's customer from another's cache. Empty → route nothing.
+  const tid = p.tenantId;
   const miss: RouteResult = { answer: null, source: null, queryEmbedding: null };
-  if (!routerEnabled()) return miss;
+  if (!routerEnabled() || !tid) return miss;
+  // faq.json is bundled with the app, so it belongs to the platform's own
+  // business — never served to another business's customers.
+  const ownFaq = tid === DEFAULT_TENANT_ID;
 
   // FAQ/cache answers are rewritten in the agent's persona voice before sending
   // (cheap one-shot call, falls back to the raw answer on any failure).
   const toned = (answer: string) => applyPersonaTone(answer, p.message, p.agentId ?? null, tid, p.platform ?? "whatsapp");
 
   let mem: ConvMemory = {};
-  try { mem = await loadMemory(p.conversationId); } catch { /* memory is best-effort */ }
+  if (ownFaq) { try { mem = await loadMemory(p.conversationId); } catch { /* memory is best-effort */ } }
 
   // Layer 1 — conversation memory (follow-ups like "tell me more")
-  const followUp = resolveFollowUp(p.message, mem);
+  const followUp = ownFaq ? resolveFollowUp(p.message, mem) : null;
   if (followUp) {
     logRouterEvent({ event: "MEMORY_HIT", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, ref: `faq:${followUp.id}`, latencyMs: Date.now() - t0 });
     return { answer: await toned(followUp.detailedAnswer), source: "memory", faqId: followUp.id, confidence: 1, queryEmbedding: null };
@@ -68,7 +74,7 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
   logRouterEvent({ event: "MEMORY_MISS", tenantId: tid, conversationId: p.conversationId, phone: p.phone, question: p.message, latencyMs: Date.now() - t0 });
 
   // Layer 2 — FAQ index (in-memory, no network)
-  const faqHit = matchFaq(lookup, mem.lastCategory);
+  const faqHit = ownFaq ? matchFaq(lookup, mem.lastCategory) : null;
   if (faqHit) {
     // A deflecting FAQ answer (e.g. the "fees" entry that says "contact admissions")
     // must not shadow real KB content. If this tenant's KB covers the question, fall
@@ -125,8 +131,9 @@ export async function routeMessage(p: { conversationId: string; phone: string; m
 // Call after the RAG fallback produced a real (non-escalation) answer.
 // The generic FALLBACK_REPLY (returned on LLM API errors) must never be cached —
 // it would permanently shadow the real answer for that question.
-export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId?: string; contactName?: string | null; primaryKbTag?: string | null }): void {
-  logRouterEvent({ event: "RAG_USED", tenantId: p.tenantId ?? DEFAULT_TENANT_ID, phone: p.phone, question: p.question });
+export function recordRagAnswer(p: { phone: string; question: string; answer: string; queryEmbedding: number[] | null; tenantId: string; contactName?: string | null; primaryKbTag?: string | null }): void {
+  if (!p.tenantId) return;
+  logRouterEvent({ event: "RAG_USED", tenantId: p.tenantId, phone: p.phone, question: p.question });
   // Generic non-answers (API-error fallback, empty/ambiguous nudges) must never be
   // cached. `contactName` lets cacheStore refuse a name-personalised answer.
   const a = p.answer.trim();
@@ -134,5 +141,5 @@ export function recordRagAnswer(p: { phone: string; question: string; answer: st
   // A tag-scoped answer is specific to that item — never write it to the
   // shared cache, or a different lead could be served the wrong specifics.
   if (p.primaryKbTag) return;
-  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId ?? DEFAULT_TENANT_ID, p.contactName);
+  void cacheStore(p.question, p.answer, p.queryEmbedding, "rag", p.tenantId, p.contactName);
 }

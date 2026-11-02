@@ -45,6 +45,7 @@ vi.mock("../llm", () => ({
     if (h.throwFromAi) throw new Error("model timed out");
     return h.reply;
   },
+  deferredToTeam: (r: { groundingActions?: { disposition: string }[] }) => !!r.groundingActions?.some(a => a.disposition === "defer"),
 }));
 vi.mock("../messaging-settings", () => ({ isAiEnabled: async (tid: string) => { h.tenants.add(tid); return h.aiOn; } }));
 vi.mock("../sequences", () => ({ hasActiveDripEnrollment: async (_p: string, tid: string) => { h.tenants.add(tid); return h.inSequence; } }));

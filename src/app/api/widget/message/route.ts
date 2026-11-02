@@ -2,7 +2,7 @@ export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webho
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, setContactAttributes, landCapturedLead, type Conversation } from "@/lib/store";
-import { generateReply } from "@/lib/llm";
+import { generateReply, deferredToTeam } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
@@ -143,6 +143,7 @@ export async function POST(req: Request) {
 
   const saved = await appendConvMessage({ conversationId: conv.id, role: "assistant", body: r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
+  if (deferredToTeam(r)) await escalateConversation(conv.id);   // the reply said the team would confirm — tell them
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
   after(() => syncWebToLsq(channel, conv, aiReply, "outbound", "bot", visitSource));   // AI reply → LeadSquared
   // Return the saved message's id + timestamp so the widget seeds its dedup state

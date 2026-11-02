@@ -1,9 +1,9 @@
 export const maxDuration = 300;
 import { NextResponse, after } from "next/server";
+import { aiGate } from "@/lib/ai-gate";
 import { createDocument, listDocuments, deleteDocument, setDocStatus, setDocTag, type KbSourceType } from "@/lib/store";
-import { ingestDocument, jsonToText, syncUrlDocument, reingestDocument } from "@/lib/kb";
+import { ingestDocument, jsonToText, syncUrlDocument, reingestDocument, knowledgeChanged, KB_MAX_UPLOAD_BYTES, KB_MAX_TEXT_CHARS } from "@/lib/kb";
 import { isAiEnabled } from "@/lib/messaging-settings";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +15,9 @@ async function botEnabled(tenantId: string): Promise<boolean> {
 
 // GET — list KB documents + bot status (drives the AI Assistant tab).
 export async function GET() {
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     const documents = await listDocuments(tid);
     return NextResponse.json({ documents, botEnabled: await botEnabled(tid) });
   } catch (err) {
@@ -35,13 +36,15 @@ function extToSourceType(name: string): KbSourceType | null {
 // POST — add a document. Either multipart/form-data (file) or JSON (text/url).
 // Ingestion runs after the response via after().
 export async function POST(req: Request) {
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   const ctype = req.headers.get("content-type") ?? "";
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = g.tid;
   try {
     if (ctype.includes("multipart/form-data")) {
       const form = await req.formData();
       const file = form.get("file");
       if (!(file instanceof File)) return NextResponse.json({ error: "file required" }, { status: 400 });
+      if (file.size > KB_MAX_UPLOAD_BYTES) return NextResponse.json({ error: `File too large — the limit is ${KB_MAX_UPLOAD_BYTES / 1024 / 1024} MB` }, { status: 413 });
       const sourceType = extToSourceType(file.name);
       if (!sourceType) return NextResponse.json({ error: "Unsupported file type (use PDF, DOC/DOCX, TXT, MD, JSON)" }, { status: 400 });
       const title = (form.get("title") as string)?.trim() || file.name;
@@ -86,6 +89,7 @@ export async function POST(req: Request) {
     if (sourceType === "text") {
       const content = (body.content as string)?.trim();
       if (!content) return NextResponse.json({ error: "content required" }, { status: 400 });
+      if (content.length > KB_MAX_TEXT_CHARS) return NextResponse.json({ error: "Text too long — split it into smaller documents" }, { status: 413 });
       const doc = await createDocument({ title: (body.title as string)?.trim() || "Pasted text", sourceType: "text", tag: (body.tag as string)?.trim() || null }, tid);
       after(() => ingestDocument(doc.id, "text", { text: content }, tid));
       return NextResponse.json({ document: doc });
@@ -109,12 +113,14 @@ export async function POST(req: Request) {
 
 // DELETE — remove a document (chunks cascade). Body: { id }
 export async function DELETE(req: Request) {
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = g.tid;
   try {
     await deleteDocument(body.id, tid);
+    await knowledgeChanged(tid);
     return NextResponse.json({ success: true });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });

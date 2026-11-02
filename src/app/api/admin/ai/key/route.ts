@@ -1,6 +1,6 @@
 export const maxDuration = 30;
 import { NextResponse } from "next/server";
-import { currentTenantId, DEFAULT_TENANT_ID, requireRoleAdmin } from "@/lib/auth";
+import { aiGate } from "@/lib/ai-gate";
 import { getTenantAiStatus, saveTenantAi, clearTenantAi } from "@/lib/ai/keys";
 import { validateKey, DEFAULT_CHAT_MODEL, type AiProvider } from "@/lib/ai/chat";
 import { errorMessage } from "@/lib/errors";
@@ -11,8 +11,9 @@ const PROVIDERS: AiProvider[] = ["gemini", "openai", "anthropic"];
 
 // GET — masked status of the tenant's chat AI config (never returns the key).
 export async function GET() {
+  const g = await aiGate("member"); if (!g.ok) return g.res;
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     return NextResponse.json(await getTenantAiStatus(tid));
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
@@ -22,7 +23,7 @@ export async function GET() {
 // POST — validate the key with a live test call, then store it encrypted.
 // Body: { provider, apiKey, model? }
 export async function POST(req: Request) {
-  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   let body: { provider?: string; apiKey?: string; model?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const provider = body.provider as AiProvider;
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     await saveTenantAi(tid, provider, apiKey, model);
     return NextResponse.json(await getTenantAiStatus(tid));
   } catch (err) {
@@ -49,9 +50,9 @@ export async function POST(req: Request) {
 
 // DELETE — remove the tenant's key (AI chat turns off for them).
 export async function DELETE() {
-  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     await clearTenantAi(tid);
     return NextResponse.json(await getTenantAiStatus(tid));
   } catch (err) {

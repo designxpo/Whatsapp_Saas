@@ -518,7 +518,7 @@ describe("Travel agency (Wanderly Trips)", () => {
       const reply = "Bali offers Visa on Arrival for Indian passport holders. The visa costs ₹9,999 and must be paid in cash. You can also call our Bali desk on +91 99999 88888.";
       const r = enforceGrounding(reply, KB_CONTEXT, { questionHint: "How much is the Bali visa fee?" });
       expect(r.text).toBe(
-        "Bali offers Visa on Arrival for Indian passport holders. For the exact fees, our team will share the latest confirmed information.",
+        "Bali offers Visa on Arrival for Indian passport holders. I couldn't verify the exact fees in the available knowledge base, so I've asked our team to confirm.",
       );
       expect(r.text).not.toContain("9,999");
       expect(r.text).not.toContain("99999 88888");
@@ -653,9 +653,9 @@ describe("Travel agency (Wanderly Trips)", () => {
   describe('human handoff → emitEvent("conversation.escalated") (assistant + integrations)', () => {
     // Literal public IPs: the REAL SSRF guard passes them without a DNS lookup,
     // so the delivery path runs end-to-end against the recorded fetch stub.
-    const OPS_HOOK_URL = "https://203.0.113.60/zapier/hooks/wanderly-escalations";
-    const SLACK_URL = "https://203.0.113.61/services/T0WAND/B0OPS/xyz";
-    const RIVAL_URL = "https://203.0.113.62/rival/hook";
+    const OPS_HOOK_URL = "https://52.0.113.60/zapier/hooks/wanderly-escalations";
+    const SLACK_URL = "https://52.0.113.61/services/T0WAND/B0OPS/xyz";
+    const RIVAL_URL = "https://52.0.113.62/rival/hook";
     const SIGNING_SECRET = "wanderly_signing_secret_2026";   // stored plaintext = legacy path of readSecret
     const CONV2 = "conv-travel-2";
 

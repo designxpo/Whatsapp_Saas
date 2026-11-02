@@ -84,7 +84,7 @@ describe("assistant system prompt", () => {
     const { generateReply } = await import("../llm");
     await generateReply(
       [{ role: "user", body: "what are the pricing options?" }],
-      "919876543210", null, undefined, null, false, undefined, platform,
+      "919876543210", null, "00000000-0000-0000-0000-00000000000a", null, false, undefined, platform,
     );
     return seen.join("\n\n");
   }

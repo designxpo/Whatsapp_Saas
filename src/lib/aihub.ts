@@ -41,12 +41,12 @@ const mapFn = (r: Record<string, unknown>): AiFunction => ({
 });
 
 // ── Agents ────────────────────────────────────────────────────────────────────
-export async function listAgents(tenantId = DEFAULT_TENANT_ID): Promise<AiAgent[]> {
+export async function listAgents(tenantId: string): Promise<AiAgent[]> {
   const { data } = await db().from("wa_ai_agents").select("*").eq("tenant_id", tenantId).order("created_at");
   return (data ?? []).map(r => mapAgent(r as Record<string, unknown>));
 }
 
-export async function getActiveAgent(tenantId = DEFAULT_TENANT_ID): Promise<AiAgent | null> {
+export async function getActiveAgent(tenantId: string): Promise<AiAgent | null> {
   const { data } = await db().from("wa_ai_agents").select("*").eq("tenant_id", tenantId).eq("active", true).limit(1).maybeSingle();
   return data ? mapAgent(data as Record<string, unknown>) : null;
 }
@@ -61,7 +61,7 @@ export async function getAgentById(id: string, tenantId?: string): Promise<AiAge
 }
 
 // Routing: the conversation's pinned agent wins; otherwise the tenant's active agent.
-export async function resolveAgent(agentId?: string | null, tenantId = DEFAULT_TENANT_ID): Promise<AiAgent | null> {
+export async function resolveAgent(agentId: string | null | undefined, tenantId: string): Promise<AiAgent | null> {
   if (agentId) {
     const pinned = await getAgentById(agentId, tenantId).catch(() => null);
     if (pinned) return pinned;
@@ -69,7 +69,7 @@ export async function resolveAgent(agentId?: string | null, tenantId = DEFAULT_T
   return getActiveAgent(tenantId);
 }
 
-export async function saveAgent(p: Partial<AiAgent> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<AiAgent> {
+export async function saveAgent(p: Partial<AiAgent> & { name: string }, tenantId: string): Promise<AiAgent> {
   // Routing embedding from what the agent handles. Best-effort: a failed embed
   // (rate limit) saves the agent anyway; it just won't auto-route until re-saved.
   let embedding: number[] | null = null;
@@ -101,18 +101,18 @@ export async function saveAgent(p: Partial<AiAgent> & { name: string }, tenantId
 const ROUTE_MIN_SIMILARITY = 0.35;   // below this nothing matches well — keep current
 const ROUTE_SWITCH_MARGIN = 0.04;    // hysteresis: switch only on a clearly better fit
 
-export async function isAutoRouteEnabled(tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+export async function isAutoRouteEnabled(tenantId: string): Promise<boolean> {
   return (await getTenantSetting<{ auto?: boolean }>(tenantId, "agent_routing", {})).auto === true;
 }
-export async function setAutoRoute(auto: boolean, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function setAutoRoute(auto: boolean, tenantId: string): Promise<void> {
   await setTenantSetting(tenantId, "agent_routing", { auto });
 }
 
 // Persona tone for FAQ/cache answers — ON by default (raw FAQ text reads robotic).
-export async function isToneEnabled(tenantId = DEFAULT_TENANT_ID): Promise<boolean> {
+export async function isToneEnabled(tenantId: string): Promise<boolean> {
   return (await getTenantSetting<{ enabled?: boolean }>(tenantId, "faq_tone", {})).enabled !== false;
 }
-export async function setToneEnabled(enabled: boolean, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function setToneEnabled(enabled: boolean, tenantId: string): Promise<void> {
   await setTenantSetting(tenantId, "faq_tone", { enabled });
 }
 
@@ -125,7 +125,7 @@ function cosine(a: number[], b: number[]): number {
 // Returns the agent the conversation should use for this query, or null to
 // keep the current behavior. Sticky: switching needs a clear margin over the
 // conversation's current agent so chat doesn't ping-pong between personas.
-export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null, tenantId = DEFAULT_TENANT_ID): Promise<{ agentId: string; name: string; score: number } | null> {
+export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null, tenantId: string): Promise<{ agentId: string; name: string; score: number } | null> {
   const { data } = await db().from("wa_ai_agents").select("id, name, embedding").eq("tenant_id", tenantId).not("embedding", "is", null);
   const scored = (data ?? [])
     .map(r => ({ agentId: r.id as string, name: r.name as string, score: cosine(queryEmbedding, r.embedding as number[]) }))
@@ -141,20 +141,20 @@ export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId
   return best;
 }
 
-export async function deleteAgent(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function deleteAgent(id: string, tenantId: string): Promise<void> {
   const { error } = await db().from("wa_ai_agents").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
 
 // ── Functions ─────────────────────────────────────────────────────────────────
-export async function listFunctions(activeOnly = false, tenantId = DEFAULT_TENANT_ID): Promise<AiFunction[]> {
+export async function listFunctions(activeOnly = false, tenantId: string): Promise<AiFunction[]> {
   let q = db().from("wa_ai_functions").select("*").eq("tenant_id", tenantId).order("created_at");
   if (activeOnly) q = q.eq("active", true);
   const { data } = await q;
   return (data ?? []).map(r => mapFn(r as Record<string, unknown>));
 }
 
-export async function saveFunction(p: Partial<AiFunction> & { name: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function saveFunction(p: Partial<AiFunction> & { name: string }, tenantId: string): Promise<void> {
   const name = p.name.trim().toLowerCase().replace(/[^a-z0-9_]/g, "_").slice(0, 50);
   const row = {
     tenant_id: tenantId,
@@ -173,7 +173,7 @@ export async function saveFunction(p: Partial<AiFunction> & { name: string }, te
   if (error) throw error;
 }
 
-export async function deleteFunction(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function deleteFunction(id: string, tenantId: string): Promise<void> {
   const { error } = await db().from("wa_ai_functions").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }
@@ -196,7 +196,7 @@ export function toGeminiTools(fns: AiFunction[]): { functionDeclarations: { name
 
 // Executes one function call from the model: save attributes → webhook → escalate.
 // Never throws — returns a result object the model can read.
-export async function executeAiFunction(fn: AiFunction, args: Record<string, unknown>, phone?: string, tenantId = DEFAULT_TENANT_ID): Promise<{ status: string; escalate: boolean }> {
+export async function executeAiFunction(fn: AiFunction, args: Record<string, unknown>, phone: string | undefined, tenantId: string): Promise<{ status: string; escalate: boolean }> {
   const collected: Record<string, string> = {};
   for (const pm of fn.parameters) {
     const v = args[pm.name];
@@ -224,7 +224,7 @@ export async function executeAiFunction(fn: AiFunction, args: Record<string, unk
 }
 
 // ── Prompts (agent assist) ────────────────────────────────────────────────────
-export async function listPrompts(activeOnly = false, tenantId = DEFAULT_TENANT_ID): Promise<AiPrompt[]> {
+export async function listPrompts(activeOnly = false, tenantId: string): Promise<AiPrompt[]> {
   let q = db().from("wa_ai_prompts").select("*").eq("tenant_id", tenantId).order("sort").order("created_at");
   if (activeOnly) q = q.eq("active", true);
   const { data } = await q;
@@ -234,14 +234,14 @@ export async function listPrompts(activeOnly = false, tenantId = DEFAULT_TENANT_
   }));
 }
 
-export async function savePrompt(p: Partial<AiPrompt> & { name: string; prompt: string }, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function savePrompt(p: Partial<AiPrompt> & { name: string; prompt: string }, tenantId: string): Promise<void> {
   const row = { tenant_id: tenantId, name: p.name.trim(), prompt: p.prompt.trim(), active: p.active ?? true, sort: p.sort ?? 0 };
   const q = p.id ? db().from("wa_ai_prompts").update(row).eq("tenant_id", tenantId).eq("id", p.id) : db().from("wa_ai_prompts").insert(row);
   const { error } = await q;
   if (error) throw error;
 }
 
-export async function deletePrompt(id: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function deletePrompt(id: string, tenantId: string): Promise<void> {
   const { error } = await db().from("wa_ai_prompts").delete().eq("tenant_id", tenantId).eq("id", id);
   if (error) throw error;
 }

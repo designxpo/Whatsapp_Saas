@@ -8,7 +8,7 @@ import { getChannelByPageId, effectiveAgentId, effectiveKbScope, type Channel } 
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, addOptout, isOptedOut, escalateConversation, setConversationAvatar, setConversationComment, incAiReplies, claimWebhookEvent, getContactByPhone, setConversationLeadPhone, landCapturedLead, upsertContacts, logSendFailure, type Conversation } from "@/lib/store";
 import { pushChatActivity, phoneFromAttributes, extractPhone, createOrUpdateLead } from "@/lib/leadsquared";
 import { fetchLeadgen } from "@/lib/ads";
-import { generateReply } from "@/lib/llm";
+import { generateReply, deferredToTeam } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { downloadRemoteMedia, transcribeAudio } from "@/lib/voice";
 import { uploadAudio, uploadMedia } from "@/lib/supabase";
@@ -254,6 +254,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // Tag comment replies so Live Chat shows them as comment replies, not DMs.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: commentId ? `[comment] ${r.reply}` : r.reply, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, r.reply);
+  if (deferredToTeam(r)) await escalateConversation(conv.id);   // the reply said the team would confirm — tell them
   const aiReply = r.reply;   // capture (closure loses the non-null narrowing)
   if (!commentId) after(() => syncFbToLsq(channel, conv, aiReply, "outbound", "bot"));   // DM AI replies → LeadSquared
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);

@@ -1,0 +1,40 @@
+# Release gate. Every push and pull request must typecheck and pass the whole
+# test suite — including the AI security evaluations
+# (src/lib/__tests__/ai-security-evals.test.ts, router-lookup.test.ts,
+# ai-routes-authz.test.ts, grounding.test.ts), whose bar is zero unauthorized
+# disclosures. Protect `main` with this check (Settings → Branches) so a red
+# run blocks the merge; until that is set, it only reports.
+#
+# Passing establishes that the pinned attacks are still stopped. It does not
+# establish that the AI cannot be manipulated in other ways.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
+      - name: AI security evaluations
+        run: npx vitest run src/lib/__tests__/ai-security-evals.test.ts src/lib/__tests__/ai-routes-authz.test.ts src/lib/__tests__/router-lookup.test.ts src/lib/__tests__/grounding.test.ts src/lib/__tests__/ssrf.test.ts
+      - name: All tests
+        run: npm test

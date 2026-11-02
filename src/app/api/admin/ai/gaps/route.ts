@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
+import { aiGate } from "@/lib/ai-gate";
 import { listGaps, answerGap, dismissGap } from "@/lib/ai-gaps";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -8,9 +9,10 @@ export const dynamic = "force-dynamic";
 
 // GET ?days=7|30|90 — questions the AI couldn't answer, grouped, most-asked first.
 export async function GET(req: Request) {
+  const g = await aiGate("member"); if (!g.ok) return g.res;
   if (!(await currentUser())) return NextResponse.json({ error: "Sign in first" }, { status: 401 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     return NextResponse.json(await listGaps(tid, Number(new URL(req.url).searchParams.get("days")) || 30));
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
@@ -20,11 +22,11 @@ export async function GET(req: Request) {
 // POST { key, answer, tag? } — add the answer to the knowledge base and resolve
 // the question; { key, dismiss: true } — hide it. Admins.
 export async function POST(req: Request) {
-  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   const body = await req.json().catch(() => ({})) as { key?: unknown; answer?: unknown; tag?: unknown; dismiss?: unknown };
   if (typeof body.key !== "string" || !body.key) return NextResponse.json({ error: "key required" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     const user = await currentUser();
     if (body.dismiss) {
       await dismissGap(tid, body.key, user?.email ?? "admin");

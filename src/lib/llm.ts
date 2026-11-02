@@ -14,6 +14,9 @@ import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
 import { knowledgeGapReason, recordGap } from "./ai-gaps";
 import { channelLabel, supportsAsteriskBold, identityIsPhone, type Platform } from "./channel-label";
+import { fenceData } from "./guard/fence";
+import { RUNTIME_POLICY, RUNTIME_POLICY_VERSION } from "./prompts/runtime-policy";
+import { DEFAULT_TENANT_ID } from "./tenant";
 import { executeRestaurantTool, isRestaurantTool, RESTAURANT_PROMPT, restaurantLink, restaurantTools } from "./restaurant-tools";
 // Persona/email scrubbers now live in the shared guard module; re-exported so
 // existing importers (and tests) keep resolving them from "@/lib/llm".
@@ -40,6 +43,21 @@ function coverageBand(sims: number[]): CoverageBand {
 // the multi-tenant SaaS these are empty by default (per-tenant config supplies
 // them); an unset value simply means "nothing extra is pre-approved".
 const APPROVED_PHONES = (process.env.PUBLIC_CONTACT_PHONE || "").split(",").map(s => s.trim()).filter(Boolean);
+// Those env values are the PLATFORM's own contact details. Another business's
+// bot must never be steered to them: an invented email on that domain in
+// another business's reply would be "corrected" to the platform's inbox, and
+// links on its domain would be pre-approved for everyone (2026-11 audit).
+function approvedContact(tenantId: string): { approvedEmail?: string; approvedPhones?: string[] } {
+  return tenantId === DEFAULT_TENANT_ID ? { approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES } : {};
+}
+// Sampling temperature for customer replies (Gemini; see RunChatOpts). Lower
+// is steadier, not more correct — the grounding firewall does that work.
+const CHAT_TEMPERATURE = (() => { const t = parseFloat(process.env.GEMINI_CHAT_TEMPERATURE ?? ""); return Number.isFinite(t) && t >= 0 && t <= 2 ? t : 0.4; })();
+
+/** A reply whose firewall deferred something promised the team would confirm — so a person must be told. */
+export function deferredToTeam(r: { groundingActions?: { disposition: string }[] }): boolean {
+  return !!r.groundingActions?.some(a => a.disposition === "defer");
+}
 const ESCALATE_TOKEN = "[[ESCALATE]]";
 // A genuine human-handoff / complaint signal. The model occasionally emits the
 // escalate token on a benign one-word menu tap ("Pricing", "Products"), which would
@@ -201,7 +219,7 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
   if (agent?.productInfo?.trim()) parts.push(`--- Product & service information ---\n${agent.productInfo.trim()}`);
   if (profile.trim()) parts.push([
     "--- Who you're talking to (remembered from earlier) ---",
-    profile.trim(),
+    fenceData("customer-profile", profile.trim()),
     "Greet returning customers by name and use these details. NEVER ask for information you already have here.",
   ].join("\n"));
   parts.push([
@@ -264,7 +282,8 @@ function systemPrompt(context: string, agent: { persona: string; constraintsText
     "--- Selling & checkout ---",
     "This business sells products right here in chat. When the customer wants to buy or asks what's available, call list_products to show the items and prices. As they choose, call add_to_cart for each item (confirm the quantity), and use view_cart to recap on request. When they confirm they're ready to pay, call checkout and send them the payment link EXACTLY as it is returned — never invent, shorten, or alter a link, and never state a price the tools didn't give you. Their order is confirmed automatically once they pay. If checkout says online payment isn't set up, don't send a link — say the team will follow up to arrange payment.",
   ].join("\n"));
-  parts.push(`--- Business context ---\n${context || "(no relevant context found)"}`);
+  parts.push(RUNTIME_POLICY);
+  parts.push(`--- Business context ---\n${fenceData("knowledge-base", context || "(no relevant context found)")}`);
   return parts.join("\n\n");
 }
 
@@ -294,7 +313,13 @@ export function nameIsAddressed(text: string, name: string): boolean {
   return new RegExp(`\\b(?:hey|hi+|hello+|helo|namaste|yo|dear|sir|maam|ma'?am|thanks?|thank\\s+you)\\s*[,!]?\\s+${n}\\b`, "i").test(text);
 }
 
-async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string, ctx: { lastUserText?: string; agentName?: string | null; existingName?: string | null } = {}): Promise<void> {
+// `ctx.phoneIdentity` is true only when `phone` IS a phone number (WhatsApp).
+// On web chat, Instagram and Messenger it is an opaque id ("web:<visitor>", a
+// PSID); digits() of that can equal a real customer's number — a visitor id of
+// "919876543210" would otherwise have the AI overwrite that customer's email
+// and push it to the CRM (2026-11 AI security audit). There, only the
+// conversation's own name is saved.
+async function rememberCustomer(phone: string, args: Record<string, unknown>, tenantId: string, ctx: { lastUserText?: string; agentName?: string | null; existingName?: string | null; phoneIdentity?: boolean } = {}): Promise<void> {
   const s = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 200) : "");
   let name = s(args.name);
   const email = s(args.email), city = s(args.city), interest = s(args.interest);
@@ -312,10 +337,11 @@ async function rememberCustomer(phone: string, args: Record<string, unknown>, te
   // missing one. The manual "edit" path is separate and still overwrites freely.
   if (name && (ctx.existingName ?? "").trim()) name = "";
 
-  if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
   // Show the real name in the portal instead of "Website visitor" (web/IG/FB have
-  // no contact record keyed by their opaque id, so updateContactProfile can't).
+  // no contact record keyed by their opaque id).
   if (name) await setConversationName(phone, name, tenantId).catch(() => undefined);
+  if (!ctx.phoneIdentity) return;
+  if (name || email) await updateContactProfile(phone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tenantId).catch(() => undefined);
   const attrs: Record<string, string> = {};
   if (city) attrs.city = city;
   if (interest) attrs.interest = interest;
@@ -422,6 +448,11 @@ export interface ReplyResult {
   topSim?: number;             // best chunk similarity
   chunkSims?: number[];        // all relevant chunk similarities
   groundingActions?: GroundingAction[];  // what the firewall rewrote/stripped/deferred
+  // Safe to reuse word-for-word for ANOTHER customer of the same business: no
+  // tool ran, no remembered profile was in the prompt, no file was read, and
+  // the firewall changed nothing. Necessary, not sufficient — the caller also
+  // requires the grounding audit to pass before caching.
+  cacheable?: boolean;
 }
 
 // Persona-label / self-intro scrubbing + the contact-email guard moved to
@@ -476,7 +507,7 @@ function wantsRewrite(history: { role: "user" | "assistant"; body: string }[]): 
   return last.split(/\s+/).length <= SHORT_WORDS || FOLLOWUP_OPENER.test(last) || BARE_ASPECT.test(last);
 }
 
-export async function standaloneQuestion(history: { role: "user" | "assistant"; body: string }[], tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+export async function standaloneQuestion(history: { role: "user" | "assistant"; body: string }[], tenantId: string): Promise<string> {
   const fallback = retrievalQuery(history);
   if (!wantsRewrite(history)) return fallback;
   const transcript = history.filter(m => m.body?.trim()).slice(-6)
@@ -549,7 +580,7 @@ export async function retrieveForReply(
 // read-only tools: drafting a suggestion must never book anything.
 // `opts.practice`: a test, simulator or a draft for a human — not a customer
 // waiting on an answer, so it never counts as a question the AI couldn't answer.
-export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean; practice?: boolean } = {}): Promise<ReplyResult> {
+export async function generateReply(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone: string | undefined, agentId: string | null | undefined, tenantId: string, primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean; practice?: boolean } = {}): Promise<ReplyResult> {
   // Same funnel, same reasoning as the moderation check two lines down: every
   // channel's AI reply passes through here, so this is the one place an
   // expired trial / past-due / suspended account actually stops the bot from
@@ -574,7 +605,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone?: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone: string | undefined, agentId: string | null | undefined, tenantId: string, primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -645,7 +676,9 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
 
   // What we already know about this person — injected so the AI recognises
   // returning customers and never re-asks for details already on file.
-  const contact = phone ? await getContactByPhone(phone, tenantId).catch(() => null) : null;
+  // Only where the id IS a phone number (see rememberCustomer).
+  const phoneIdentity = identityIsPhone(platform);
+  const contact = phone && phoneIdentity ? await getContactByPhone(phone, tenantId).catch(() => null) : null;
   const profile = knownProfile(contact);
 
   // Annotate weak chunks so the model sees the evidence strength inline, not just
@@ -723,7 +756,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       // below. Replies stay short via the prompt + firewall. Tune with
       // GEMINI_CHAT_MAX_TOKENS.
       const maxTokens = Math.max(512, parseInt(process.env.GEMINI_CHAT_MAX_TOKENS ?? "", 10) || 2048);
-      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens, timeoutMs: sawMedia ? 60000 : undefined });
+      const res = await runChat({ provider: ai.provider, apiKey: ai.apiKey, model: ai.model, system: systemWithMedia, turns, tools, maxTokens, temperature: CHAT_TEMPERATURE, timeoutMs: sawMedia ? 60000 : undefined });
 
       // Function-calling round: execute each call, feed results back, continue.
       if (res.toolCalls.length > 0 && round < MAX_TOOL_ROUNDS) {
@@ -731,7 +764,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
         const results = [];
         for (const c of res.toolCalls) {
           if (c.name === MEMORY_FN) {
-            if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name, existingName: contact?.name });
+            if (phone) await rememberCustomer(phone, c.args, tenantId, { lastUserText: lastUser.body, agentName: agent?.name, existingName: contact?.name, phoneIdentity });
             executed.push(MEMORY_FN);
             results.push({ id: c.id, name: c.name, status: "saved" });
             continue;
@@ -786,9 +819,12 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
       // sentences first. If nothing completed this lands on the `!text` fallback
       // below, which is the right outcome: a soft prompt beats half a sentence.
       const answerText = res.truncated ? completeSentences(res.text ?? "") : (res.text ?? "").trim();
-      const guarded = sanitizeOutbound(answerText, { agentName: agent?.name, context: guardContext, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: lastUser.body });
+      const customerText = history.filter(m => m.role === "user").map(m => m.body).join("\n");
+      const guarded = sanitizeOutbound(answerText, { agentName: agent?.name, context: guardContext, customerText, questionHint: lastUser.body, ...approvedContact(tenantId) });
       const text = guarded.text;
-      if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions }));
+      // Classes and dispositions only — the matched text can be a customer's
+      // email or number, and logs are not where personal data belongs.
+      if (guarded.actions.length) console.log(JSON.stringify({ tag: "grounding_guard", policy: RUNTIME_POLICY_VERSION, coverage, topSim: Number(topSim.toFixed(3)), actions: guarded.actions.map(a => `${a.cls}:${a.disposition}`) }));
       // Only an explicit escalate token hands off to a human. An empty model
       // reply must NOT escalate — fall back to a soft prompt instead.
       if (text.includes(ESCALATE_TOKEN)) {
@@ -809,7 +845,8 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
         const reply = isGreeting(lastUser.body) ? GREETING_REPLY : isLowStakes(lastUser.body) ? CLARIFY_REPLY : SOFT_FALLBACK;
         return { reply, escalate: false, reason: "empty model reply", usedChunks: relevant.length, functionCalls: executed };
       }
-      return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed, context, coverageBand: coverage, topSim, chunkSims, groundingActions: guarded.actions };
+      const cacheable = executed.length === 0 && !profile.trim() && !sawMedia && guarded.actions.length === 0 && !payLinks.length;
+      return { reply: text, escalate: escalateViaFn, reason: escalateViaFn ? "function handoff" : undefined, usedChunks: relevant.length, functionCalls: executed, context, coverageBand: coverage, topSim, chunkSims, groundingActions: guarded.actions, cacheable };
     }
     if (repeatingFallback(history)) {
       return { reply: null, escalate: true, reason: "second consecutive non-answer — handing off", usedChunks: relevant.length, functionCalls: executed };
@@ -833,7 +870,7 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
 // the tenant's chat provider for a yes/no classification. Best-effort: on any
 // error (missing key, rate limit) it returns true (accept) so a hiccup never
 // traps a customer mid-flow.
-export async function looksLikeCity(text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<boolean> {
+export async function looksLikeCity(text: string, tenantId: string): Promise<boolean> {
   const t = (text || "").trim();
   if (t.length < 2 || t.length > 60) return false;
   try {
@@ -860,9 +897,10 @@ export async function looksLikeCity(text: string, tenantId = "00000000-0000-0000
 // send (empty output, fully stripped, or the tenant has no AI key).
 export async function composeFollowup(
   history: { role: "user" | "assistant"; body: string }[],
-  opts: { tenantId?: string; agentName?: string | null; customerName?: string | null } = {},
+  opts: { tenantId: string; agentName?: string | null; customerName?: string | null },
 ): Promise<{ text: string; groundingActions: GroundingAction[] } | null> {
-  const tenantId = opts.tenantId ?? "00000000-0000-0000-0000-000000000001";
+  const tenantId = opts.tenantId;
+  if (!tenantId) return null;
   const transcript = (history ?? []).filter(m => m.body?.trim()).slice(-12);
   if (!transcript.length) return null;
   const convText = transcript.map(m => `${m.role === "user" ? "Customer" : "Us"}: ${m.body.trim()}`).join("\n");
@@ -930,7 +968,7 @@ export async function composeFollowup(
   // Grounding firewall: the transcript is the ONLY allowed source of facts, so any
   // invented specific is stripped/deferred exactly as on the live reply path. This
   // also scrubs any accidental self-introduction by name.
-  const guarded = sanitizeOutbound(raw, { agentName: opts.agentName ?? undefined, context: convText, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES });
+  const guarded = sanitizeOutbound(raw, { agentName: opts.agentName ?? undefined, context: convText, customerText: convText, ...approvedContact(tenantId) });
   const text = guarded.text.trim();
   if (text.length < 2) return null;
   // Screened like any other outbound AI text — a follow-up nudge is sent
@@ -942,7 +980,7 @@ export async function composeFollowup(
 // Rewrites a factual FAQ/cache answer in the agent's persona voice, matching
 // the customer's language and the agent's style rules. Facts are preserved;
 // any failure (rate limit, etc.) falls back to the raw answer — never blocks.
-export async function applyPersonaTone(answer: string, userMessage: string, agentId?: string | null, tenantId = "00000000-0000-0000-0000-000000000001", platform: Platform = "whatsapp"): Promise<string> {
+export async function applyPersonaTone(answer: string, userMessage: string, agentId: string | null | undefined, tenantId: string, platform: Platform = "whatsapp"): Promise<string> {
   try {
     if (!(await isToneEnabled(tenantId))) return answer;
     // Partitioned workspace: a channel with no persona of its own has none to speak in.
@@ -975,7 +1013,7 @@ export async function applyPersonaTone(answer: string, userMessage: string, agen
     // answer with half a sentence — keep whole sentences, and when none survived
     // fall through to the curated answer, exactly as an empty rewrite already did.
     const rewritten = res.truncated ? completeSentences(res.text ?? "") : (res.text ?? "");
-    const toned = sanitizeOutbound(rewritten || answer, { agentName: agent.name, context: answer, approvedEmail: PUBLIC_CONTACT_EMAIL, approvedPhones: APPROVED_PHONES, questionHint: userMessage }).text;
+    const toned = sanitizeOutbound(rewritten || answer, { agentName: agent.name, context: answer, customerText: userMessage, questionHint: userMessage, ...approvedContact(tenantId) }).text;
     // This is a SECOND model generation, steered by the tenant's own persona and
     // constraints text — so its output needs screening independently of
     // generateReply's. Falling back to the curated `answer` (rather than failing
@@ -1012,7 +1050,7 @@ export interface ConversationBrief {
   alreadyTold: string;
 }
 
-export async function generateConversationBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ConversationBrief> {
+export async function generateConversationBrief(context: string, tenantId: string): Promise<ConversationBrief> {
   const ai = await resolveTenantAi(tenantId);
   const instruction =
     `Read the context below (chat history, collected details, campaigns received, links tapped) and produce a ` +
@@ -1091,7 +1129,7 @@ export interface ReviewReplyInput {
   signature?: string;          // appended verbatim if provided (e.g. "— Team X")
 }
 
-export async function generateReviewReply(input: ReviewReplyInput, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+export async function generateReviewReply(input: ReviewReplyInput, tenantId: string): Promise<string> {
   const ai = await resolveTenantAi(tenantId);
   const rating = Math.min(5, Math.max(1, Math.round(input.rating) || 3));
   const band = rating >= 4 ? "positive" : rating === 3 ? "mixed" : "negative";
@@ -1146,7 +1184,7 @@ export interface OutreachOpenerInput {
   category?: string;          // e.g. "recommendation-ask", "pain-point" — see extension/src/signals.js
 }
 
-export async function generateOutreachOpener(input: OutreachOpenerInput, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+export async function generateOutreachOpener(input: OutreachOpenerInput, tenantId: string): Promise<string> {
   const ai = await resolveTenantAi(tenantId);
   const instruction =
     `Write the OPENING line(s) of a private DM (1-2 sentences, under 40 words) to someone who posted this ` +
@@ -1187,7 +1225,7 @@ export interface ExecutiveBrief {
   steps: { action: string; why: string }[];
 }
 
-export async function generateExecutiveBrief(context: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<ExecutiveBrief> {
+export async function generateExecutiveBrief(context: string, tenantId: string): Promise<ExecutiveBrief> {
   const ai = await resolveTenantAi(tenantId);
   const instruction =
     `You are a sharp growth/operations advisor briefing the CEO of a business that runs customer messaging ` +
@@ -1233,7 +1271,7 @@ export async function generateExecutiveBrief(context: string, tenantId = "000000
 
 // One-shot text transform for agent assist (tone change, translate, fix, etc).
 // Uses the tenant's own chat provider; throws AiKeyMissingError if unconfigured.
-export async function transformText(instruction: string, text: string, tenantId = "00000000-0000-0000-0000-000000000001"): Promise<string> {
+export async function transformText(instruction: string, text: string, tenantId: string): Promise<string> {
   const ai = await resolveTenantAi(tenantId);
   const res = await runChat({
     provider: ai.provider, apiKey: ai.apiKey, model: ai.model,

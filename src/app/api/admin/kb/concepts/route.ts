@@ -6,6 +6,7 @@
 // just reports the reason. Keeping the rule in one place means an import
 // script, a future API client and this route cannot disagree about it.
 import { NextResponse, after } from "next/server";
+import { aiGate } from "@/lib/ai-gate";
 import {
   listReviewItems, listActiveConcepts, conceptAreaSummary,
   approveConcept, rejectConcept, updateConcept, convertDocumentToLibrary, conceptMismatches, reorganiseLibrary,
@@ -16,7 +17,6 @@ import { listDocuments } from "@/lib/store";
 import { areaTitle } from "@/lib/kbareas";
 import { libraryLive } from "@/lib/kb";
 import { errorMessage } from "@/lib/errors";
-import { currentTenantId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 // The scan reads every chunk of every document; the default budget is not enough.
@@ -25,7 +25,8 @@ export const maxDuration = 60;
 // GET — the review queue, the library by area, and (optionally) one area's
 // concepts. `?area=pricing` loads a single shelf rather than all 1,500 rows.
 export async function GET(req: Request) {
-  const tenantId = await currentTenantId();
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
+  const tenantId = g.tid;
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
   try {
     const url = new URL(req.url);
@@ -61,7 +62,8 @@ export async function GET(req: Request) {
 // on an embedding round trip. A re-embed touches ONE concept (kb_chunks.
 // concept_id), not the 1,171 chunks of the document it arrived in.
 export async function POST(req: Request) {
-  const tenantId = await currentTenantId();
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
+  const tenantId = g.tid;
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
   try {
     const body = await req.json() as Record<string, unknown>;

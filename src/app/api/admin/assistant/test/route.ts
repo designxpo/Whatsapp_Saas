@@ -1,11 +1,11 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
+import { aiGate } from "@/lib/ai-gate";
 import { generateReply, FALLBACK_REPLY, applyPersonaTone } from "@/lib/llm";
 import { retrieve } from "@/lib/kb";
 import { matchFaq } from "@/lib/router/faq";
 import { cacheLookup, cacheStore } from "@/lib/router/cache";
 import { routerEnabled } from "@/lib/router";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +14,14 @@ export const dynamic = "force-dynamic";
 // Body: { question, skipRouter?, agentId? } — skipRouter forces the raw RAG
 // path; agentId tests a specific AI Hub agent persona.
 export async function POST(req: Request) {
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
   let body: { question?: string; skipRouter?: boolean; agentId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const question = body.question?.trim();
   if (!question) return NextResponse.json({ error: "question required" }, { status: 400 });
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = g.tid;
     let queryEmbedding: number[] | null = null;
 
     if (routerEnabled() && !body.skipRouter && !body.agentId) {

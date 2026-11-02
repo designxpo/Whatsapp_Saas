@@ -446,10 +446,10 @@ describe("Real estate agency (Skyline Realty)", () => {
     // Literal public IPs: the REAL SSRF guard (assertPublicUrl) passes them
     // without a DNS lookup, so the delivery path runs end-to-end against the
     // recorded fetch stub.
-    const ZAP_URL = "https://203.0.113.10/zapier/hooks/skyline-leads";
-    const SLACK_URL = "https://203.0.113.20/services/T0SKY/B0LEADS/xyz";
-    const PAUSED_URL = "https://203.0.113.30/old-crm/hook";
-    const RIVAL_URL = "https://203.0.113.40/rival/hook";
+    const ZAP_URL = "https://52.0.113.10/zapier/hooks/skyline-leads";
+    const SLACK_URL = "https://52.0.113.20/services/T0SKY/B0LEADS/xyz";
+    const PAUSED_URL = "https://52.0.113.30/old-crm/hook";
+    const RIVAL_URL = "https://52.0.113.40/rival/hook";
     const SIGNING_SECRET = "skyline_signing_secret_2026";   // stored plaintext = legacy path of readSecret
 
     const seedIntegrations = () => {
@@ -528,7 +528,7 @@ describe("Real estate agency (Skyline Realty)", () => {
 
     it("a broken endpoint is isolated: the other delivery still lands, its row records the failure, and emitEvent never throws", async () => {
       seedIntegrations();
-      fetchFail.add("203.0.113.10");   // Zapier endpoint starts returning HTTP 500
+      fetchFail.add("52.0.113.10");   // Zapier endpoint starts returning HTTP 500
       await expect(emitEvent(SKYLINE, "contact.created", { name: "Amit Verma", phone: BUYER_PHONE }))
         .resolves.toBeUndefined();
 
@@ -543,7 +543,7 @@ describe("Real estate agency (Skyline Realty)", () => {
     it("createIntegration auto-generates a webhook signing secret, stores it ENCRYPTED, and returns the plaintext exactly once", async () => {
       process.env.SECRET_ENC_KEY = "unit-test-master-key-with-plenty-of-entropy!!";
       const { integration, secret } = await createIntegration(
-        { kind: "webhook", name: "Site-visit sheet", config: { url: "https://203.0.113.50/sheet" }, events: ["contact.created"] },
+        { kind: "webhook", name: "Site-visit sheet", config: { url: "https://52.0.113.50/sheet" }, events: ["contact.created"] },
         SKYLINE,
       );
       expect(secret).toMatch(/^[0-9a-f]{48}$/);        // shown once so the tenant can verify deliveries

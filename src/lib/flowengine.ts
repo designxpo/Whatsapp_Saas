@@ -516,7 +516,9 @@ export async function validateInput(type: string, text: string, tenantId?: strin
     // dropped the lead: no contact, no LSQ push (web-chat tester, 2026-07-17).
     case "phone": { const d = t.replace(/\D/g, "").length; return d >= 10 && d <= 15; }
     case "number": return /^[\d\s,.\-+]+$/.test(t) && /\d/.test(t);
-    case "city": return await looksLikeCity(t, tenantId);
+    // The AI check runs on THIS business's key; with no business known it never
+    // borrows the platform's — a plain shape check instead.
+    case "city": return tenantId ? await looksLikeCity(t, tenantId) : /^[\p{L}][\p{L} .'-]{1,59}$/u.test(t);
     case "pincode": return isPincode(t);
     case "ifsc": return isIfsc(t);
     default: return true;

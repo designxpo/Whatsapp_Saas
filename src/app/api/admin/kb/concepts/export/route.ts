@@ -5,13 +5,14 @@
 // integrate with: a .tar.gz of Markdown, openable with tar, committable to
 // git, readable by an agent that has never heard of this portal.
 import { exportBundle } from "@/lib/okfbundle";
+import { aiGate } from "@/lib/ai-gate";
 import { errorMessage } from "@/lib/errors";
-import { currentTenantId } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tenantId = await currentTenantId();
+  const g = await aiGate("admin"); if (!g.ok) return g.res;
+  const tenantId = g.tid;
   if (!tenantId) return new Response("Unauthorized", { status: 401 });
   try {
     const tar = await exportBundle(tenantId);

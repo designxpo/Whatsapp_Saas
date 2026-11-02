@@ -97,6 +97,10 @@ export interface RunChatOpts {
   tools?: ChatTool[];
   maxTokens?: number;
   timeoutMs?: number;   // per-attempt cap; raise it for heavy media (e.g. video)
+  // Sampling temperature. Applied on Gemini only: several OpenAI reasoning
+  // models reject the parameter outright, and a rejected call on a customer's
+  // own key would silence every reply. Steadier wording — not correctness.
+  temperature?: number;
 }
 
 export interface ChatResult {
@@ -204,6 +208,7 @@ function runGemini(opts: RunChatOpts): Promise<ChatResult> {
       // Dynamic thinking by default — the model reasons only when the message needs
       // it. Tunable via GEMINI_CHAT_THINKING_BUDGET (0 = off, for lowest latency).
       thinkingConfig: { thinkingBudget: GEMINI_THINKING_BUDGET },
+      ...(typeof opts.temperature === "number" ? { temperature: opts.temperature } : {}),
       ...(tools ? { tools } : {}),
     },
   }).then(res => ({

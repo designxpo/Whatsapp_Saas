@@ -32,15 +32,27 @@ beforeEach(() => { h.faq = []; h.cache = []; h.memory = []; });
 
 describe("routeMessage lookup", () => {
   it("matches the FAQ and the cache on the standalone question, memory on the raw words", async () => {
-    await routeMessage({ conversationId: "c1", phone: "91900", message: "iski fees?", lookup: "What are the fees for the Bali tour?", tenantId: "t1" });
+    await routeMessage({ conversationId: "c1", phone: "91900", message: "iski fees?", lookup: "What are the fees for the Bali tour?", tenantId: "00000000-0000-0000-0000-000000000001" });
     expect(h.faq).toEqual(["What are the fees for the Bali tour?"]);
     expect(h.cache).toEqual(["What are the fees for the Bali tour?"]);
     expect(h.memory).toEqual(["iski fees?"]);
   });
 
   it("uses the message for everything when no lookup is given", async () => {
-    await routeMessage({ conversationId: "c1", phone: "91900", message: "fees?", tenantId: "t1" });
+    await routeMessage({ conversationId: "c1", phone: "91900", message: "fees?", tenantId: "00000000-0000-0000-0000-000000000001" });
     expect(h.faq).toEqual(["fees?"]);
     expect(h.cache).toEqual(["fees?"]);
+  });
+
+  it("another business never reaches the bundled FAQ or its follow-up memory — only its own cache", async () => {
+    await routeMessage({ conversationId: "c1", phone: "91900", message: "fees?", tenantId: "t1" });
+    expect(h.faq).toEqual([]);
+    expect(h.memory).toEqual([]);
+    expect(h.cache).toEqual(["fees?"]);
+  });
+
+  it("no business, no routing at all", async () => {
+    await routeMessage({ conversationId: "c1", phone: "91900", message: "fees?", tenantId: "" });
+    expect([h.faq, h.cache, h.memory]).toEqual([[], [], []]);
   });
 });

@@ -21,9 +21,15 @@ describe("GroundingFirewall — contact classes (default on)", () => {
     expect(r.text).toContain("careers@analytixlabs.co.in");
   });
 
-  it("leaves a foreign-domain email alone (may be the customer's own, echoed)", () => {
-    const r = enforceGrounding("I've noted your email priya@gmail.com.", "", { approvedEmail: APPROVED });
+  it("echoes back an email the CUSTOMER gave", () => {
+    const r = enforceGrounding("I've noted your email priya@gmail.com.", "", { approvedEmail: APPROVED, customerText: "my email is Priya@gmail.com" });
     expect(r.text).toContain("priya@gmail.com");
+  });
+
+  it("removes an invented email on any other domain (it used to pass as 'maybe theirs')", () => {
+    const r = enforceGrounding("Send the fee receipt to fees@pay-support.example.", "", { approvedEmail: APPROVED, customerText: "where do I send it?" });
+    expect(r.text).not.toContain("pay-support");
+    expect(r.actions).toContainEqual(expect.objectContaining({ cls: "EMAIL", disposition: "strip" }));
   });
 
   it("strips an ungrounded URL but keeps one whose domain is in context", () => {
@@ -93,13 +99,13 @@ describe("GroundingFirewall — coherent, on-topic deferrals (the 'duration answ
     const r = enforceGrounding(reply, ctx, { questionHint: "which program is best for me?" });
     expect(r.text).toMatch(/^It covers Excel/);                                       // grounded answer leads
     expect(r.text).not.toContain("49,999");
-    expect(r.text.trim()).toMatch(/our team will share the latest confirmed information\.$/);  // single deferral trails
+    expect(r.text.trim()).toMatch(/I couldn't verify the exact fees in the available knowledge base, so I've asked our team to confirm\.$/);  // single deferral trails
   });
 
   it("collapses several ungrounded sentences into ONE deferral and keeps the benign line", () => {
     const reply = "The fee is ₹49,999. The duration is 8 months. Anything else I can help with?";
     const r = enforceGrounding(reply, "", { questionHint: "fees and duration?" });
-    expect((r.text.match(/our team will share/g) ?? []).length).toBe(1);
+    expect((r.text.match(/I couldn't verify/g) ?? []).length).toBe(1);
     expect(r.text).toContain("Anything else I can help with?");
   });
 });
@@ -149,5 +155,60 @@ describe("GroundingFirewall — commerce tool output is grounded (the vanishing-
     const toolStatus = "• Vitamin C Glow Serum — INR 1299.00";
     const r = enforceGrounding("Shipping is INR 250.00 extra.", `\nFrom our catalog and cart:\n${toolStatus}`);
     expect(r.text).not.toContain("250");
+  });
+});
+
+// 2026-11 AI security audit — bypasses found in the firewall, each pinned.
+describe("GroundingFirewall — audit bypasses", () => {
+  const CTX = "[1] Apply at https://forms.gle/AbC123 . Brochure: https://acme.example/brochures/ds.pdf . Fee: ₹1,50,000.";
+
+  it("a lookalike of the approved domain is NOT the approved domain", () => {
+    const r = enforceGrounding("Pay here: https://evilanalytixlabs.co.in/pay", "", { approvedEmail: APPROVED });
+    expect(r.text).not.toContain("evilanalytixlabs");
+    // …while a real subdomain still is
+    expect(enforceGrounding("Log in: https://lms.analytixlabs.co.in/login", "", { approvedEmail: APPROVED }).text).toContain("lms.analytixlabs.co.in");
+  });
+
+  it("a host the context mentions does not license every path on it", () => {
+    const r = enforceGrounding("Fill this: https://forms.gle/EVIL999", CTX);
+    expect(r.text).not.toContain("forms.gle/EVIL999");
+    expect(enforceGrounding("Apply: https://forms.gle/AbC123", CTX).text).toContain("forms.gle/AbC123");
+    // a parent page of a grounded link is fine
+    expect(enforceGrounding("All brochures: https://acme.example/brochures", CTX).text).toContain("acme.example/brochures");
+  });
+
+  it("catches a bare link on a TLD outside the old list of eight", () => {
+    for (const link of ["pay-fees.xyz/now", "bit.ly/3abc", "acme-offer.shop"]) {
+      expect(enforceGrounding(`Visit ${link} today.`, "").text).not.toContain(link);
+    }
+  });
+
+  it("does not mistake a technology name for a link", () => {
+    const t = "You will learn Node.js, Pandas in main.py and write a README.md.";
+    expect(enforceGrounding(t, "").text).toBe(t);
+  });
+
+  it("checks fees quoted in lakh and crore — with or without a currency sign", () => {
+    expect(enforceGrounding("The fee is 2.5 lakh.", CTX).text).not.toContain("2.5 lakh");
+    expect(enforceGrounding("The fee is ₹2 lakh.", CTX).text).not.toContain("2 lakh");
+    // the SAME amount in another notation is grounded
+    expect(enforceGrounding("The fee is ₹1.5 lakh.", CTX).text).toContain("1.5 lakh");
+    expect(enforceGrounding("The fee is Rs 150000.", CTX).text).toContain("150000");
+  });
+
+  it("reads Devanagari and other non-ASCII digits as numbers", () => {
+    const r = enforceGrounding("फीस ₹४९,९९९ है।", "");
+    expect(r.text).not.toContain("४९,९९९");
+    expect(r.actions).toContainEqual(expect.objectContaining({ cls: "CURRENCY", disposition: "defer" }));
+  });
+
+  it("does not read the end of a word as a currency ('years 5')", () => {
+    const t = "Graduates with 2 years 5 projects get priority.";
+    expect(enforceGrounding(t, "").actions.filter(a => a.cls === "CURRENCY")).toEqual([]);
+  });
+
+  it("abstains with the exact wording, and says the team has been asked", () => {
+    const r = enforceGrounding("The fee is ₹99,999.", "", { questionHint: "fees?" });
+    expect(r.text).toBe("I couldn't verify the exact fees in the available knowledge base, so I've asked our team to confirm.");
   });
 });

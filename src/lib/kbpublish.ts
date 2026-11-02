@@ -80,5 +80,6 @@ export async function publishConcepts(opts: { conceptId?: string } = {}, tenantI
     out.notes.push(errorMessage(err));
     console.error("[kb] publish failed:", errorMessage(err));
   }
+  if (out.chunks > 0) { const { knowledgeChanged } = await import("./kb"); await knowledgeChanged(tenantId); }
   return out;
 }

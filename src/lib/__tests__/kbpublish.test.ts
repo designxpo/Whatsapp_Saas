@@ -166,7 +166,7 @@ describe("which index retrieval reads", () => {
   it("uses the DOCUMENT index while the library is off — today's behaviour", async () => {
     delete process.env.KB_LIBRARY_LIVE;
     const { retrieve } = await import("../kb");
-    await retrieve("what is the fee");
+    await retrieve("what is the fee", 6, "00000000-0000-0000-0000-00000000000a");
     expect(h.rpcs).toContain("match_kb_chunks");
     expect(h.rpcs.join(",")).not.toContain("concept");
   });
@@ -174,7 +174,7 @@ describe("which index retrieval reads", () => {
   it("uses the CONCEPT index once the library is live", async () => {
     process.env.KB_LIBRARY_LIVE = "true";
     const { retrieve } = await import("../kb");
-    await retrieve("what is the fee");
+    await retrieve("what is the fee", 6, "00000000-0000-0000-0000-00000000000a");
     expect(h.rpcs.join(",")).toContain("match_kb_concept_chunks");
     expect(h.rpcs).not.toContain("match_kb_chunks");
   });
@@ -192,14 +192,14 @@ describe("which index retrieval reads", () => {
     // report "we know this" about knowledge the assistant cannot reach.
     process.env.KB_LIBRARY_LIVE = "true";
     const { kbCoverage } = await import("../kb");
-    await kbCoverage("what is the fee");
+    await kbCoverage("what is the fee", "00000000-0000-0000-0000-00000000000a");
     expect(h.rpcs.join(",")).toContain("match_kb_concept_chunks");
   });
 
   it("treats any value other than true as off", async () => {
     process.env.KB_LIBRARY_LIVE = "1";
     const { retrieve } = await import("../kb");
-    await retrieve("what is the fee");
+    await retrieve("what is the fee", 6, "00000000-0000-0000-0000-00000000000a");
     expect(h.rpcs).toContain("match_kb_chunks");
   });
 });

@@ -22,8 +22,13 @@ export function logRouterEvent(p: {
   score?: number;
   latencyMs?: number;
 }): void {
-  const { tenantId, conversationId, ...logged } = p;
-  console.log(JSON.stringify({ tag: "router", ts: new Date().toISOString(), tenantId, ...logged }));
+  // Logs carry no personal data: the number is cut to its last four digits and
+  // the customer's words are left out (only their length). The full row goes to
+  // wa_router_events — tenant-scoped, under retention.ts, and findable by
+  // phone for a GDPR export or erasure.
+  const { tenantId, conversationId } = p;
+  const masked = p.phone ? `…${p.phone.replace(/\D/g, "").slice(-4)}` : null;
+  console.log(JSON.stringify({ tag: "router", ts: new Date().toISOString(), tenantId, event: p.event, phone: masked, ref: p.ref, score: p.score, latencyMs: p.latencyMs, qLen: p.question?.length ?? 0 }));
   // tenant_id is what lets a deleted workspace's rows go with it, keeps one
   // tenant's questions out of another's KB test set (kbeval), and lets an
   // erasure find the conversation's rows.
