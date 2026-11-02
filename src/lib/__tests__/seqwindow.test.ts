@@ -8,9 +8,15 @@ import {
   withinSendWindow, nextWindowOpening, shouldStopForReply, hasWindow,
   type SendWindow,
 } from "@/lib/seqwindow";
+import { instantAt, partsIn } from "@/lib/businessclock";
 
 const W = (startHour: number | null, endHour: number | null): SendWindow => ({ startHour, endHour });
-const at = (h: number, m = 0, d = 15) => new Date(2026, 8, d, h, m, 0, 0);   // 15 Sep 2026, local
+// Wall-clock times in the BUSINESS zone (IST), not the machine's. The old
+// `new Date(2026, 8, d, h, m)` meant "10:00 wherever this runs", so these
+// tests passed on a laptop set to India and failed on CI and Vercel (UTC),
+// although the code under test was right all along.
+const at = (h: number, m = 0, d = 15, month = 9, year = 2026) => instantAt({ year, month, day: d, hour: h, minute: m });   // 15 Sep 2026, IST
+const wall = (d: Date) => partsIn(d);
 
 describe("withinSendWindow", () => {
   it("no window configured → always allowed (pre-0101 behaviour)", () => {
@@ -53,35 +59,35 @@ describe("withinSendWindow", () => {
 describe("nextWindowOpening — deferred, never dropped", () => {
   it("before today's opening → today at the opening hour", () => {
     const d = nextWindowOpening(W(10, 20), at(3, 47));
-    expect(d.getDate()).toBe(15);
-    expect(d.getHours()).toBe(10);
+    expect(wall(d).day).toBe(15);
+    expect(wall(d).hour).toBe(10);
   });
 
   it("after today's close → tomorrow at the opening hour", () => {
     const d = nextWindowOpening(W(10, 20), at(21, 30));
-    expect(d.getDate()).toBe(16);
-    expect(d.getHours()).toBe(10);
+    expect(wall(d).day).toBe(16);
+    expect(wall(d).hour).toBe(10);
   });
 
   it("zeroes minutes and seconds so a cohort does not land at 19:47:33", () => {
     const d = nextWindowOpening(W(10, 20), at(3, 47));
-    expect(d.getMinutes()).toBe(0);
-    expect(d.getSeconds()).toBe(0);
-    expect(d.getMilliseconds()).toBe(0);
+    expect(wall(d).minute).toBe(0);
+    expect(wall(d).second).toBe(0);
+    expect(d.getTime() % 1000).toBe(0);
   });
 
   it("rolls over the end of a month", () => {
-    const d = nextWindowOpening(W(10, 20), new Date(2026, 8, 30, 22, 0));  // 30 Sep
-    expect(d.getMonth()).toBe(9);    // October
-    expect(d.getDate()).toBe(1);
-    expect(d.getHours()).toBe(10);
+    const d = nextWindowOpening(W(10, 20), at(22, 0, 30, 9));  // 30 Sep
+    expect(wall(d).month).toBe(10);   // October
+    expect(wall(d).day).toBe(1);
+    expect(wall(d).hour).toBe(10);
   });
 
   it("rolls over the end of a year", () => {
-    const d = nextWindowOpening(W(10, 20), new Date(2026, 11, 31, 23, 0));
-    expect(d.getFullYear()).toBe(2027);
-    expect(d.getMonth()).toBe(0);
-    expect(d.getDate()).toBe(1);
+    const d = nextWindowOpening(W(10, 20), at(23, 0, 31, 12));
+    expect(wall(d).year).toBe(2027);
+    expect(wall(d).month).toBe(1);
+    expect(wall(d).day).toBe(1);
   });
 
   it("with no window, returns the moment unchanged", () => {

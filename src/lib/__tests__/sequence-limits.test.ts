@@ -10,6 +10,7 @@
 // under test is the engine's decisions, and a hand-written query-chain double
 // mostly tests itself.
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { addDaysIn, startOfDayIn } from "../businessclock";
 
 const h = vi.hoisted(() => ({
   due: [] as Record<string, unknown>[],
@@ -207,8 +208,8 @@ describe("one message a day", () => {
 
     const deferral = h.updates.find(u => "next_run_at" in u && !("current_step" in u));
     const when = new Date(deferral?.next_run_at as string);
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    // "Tomorrow" in the business's day (IST), not the machine's — production runs UTC.
+    const tomorrow = startOfDayIn(addDaysIn(new Date(), 1));
     expect(when.getTime()).toBeGreaterThanOrEqual(tomorrow.getTime());
   });
 
