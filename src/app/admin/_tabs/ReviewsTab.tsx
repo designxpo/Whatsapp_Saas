@@ -7,7 +7,7 @@
 // Talko — the reply is copied and marked posted.
 import { useBrand } from "@/components/BrandContext";
 import { useState, useEffect, useCallback } from "react";
-import { Star, Loader2, RefreshCw, Plus, SlidersHorizontal, MapPin, Link2, Unlink, AlertTriangle } from "lucide-react";
+import { Star, Loader2, RefreshCw, Plus, SlidersHorizontal, MapPin, Link2, Unlink, AlertTriangle, ChevronDown, ShieldCheck } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer, Modal } from "@/components/overlay";
@@ -173,11 +173,11 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
   const lastSync = locations.map(l => l.sync?.lastSuccessAt).filter(Boolean).sort().pop() ?? null;
 
   return (
-    <div className="space-y-4 max-w-5xl">
+    <div className="max-w-5xl space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-lg font-bold text-ink-900 flex items-center gap-2"><Star className="w-5 h-5 text-amber-400" /> Reviews</h1>
-          <p className="text-xs text-ink-500 mt-0.5">AI drafts a reply to every review. Replies post on their own only when your rules allow — the rest wait for you, with the reason.</p>
+          <h1 className="flex items-center gap-2 text-xl font-bold text-ink-900"><Star className="h-5 w-5 text-amber-400" /> Google Reviews</h1>
+          <p className="text-xs text-ink-500 mt-0.5">Read customer feedback and approve AI-drafted replies.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {locations.length > 0 && (
@@ -190,8 +190,18 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
         </div>
       </div>
 
-      {/* Connected locations, each with its own health. */}
-      <section className="rounded-card border border-line bg-white p-4 space-y-3" aria-label="Google Business Profile locations">
+      {/* Keep connection management out of the daily inbox unless it needs attention. */}
+      <details className="group rounded-card border border-line bg-white" open={failing.length > 0 || locations.length === 0}>
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 items-center gap-2.5">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${failing.length ? "bg-red-500" : locations.length ? "bg-emerald-500" : "bg-slate-300"}`} />
+            <span className="min-w-0"><span className="block truncate text-xs font-semibold text-ink-800">{failing.length ? `${failing.length} location${failing.length === 1 ? " needs" : "s need"} attention` : locations.length === 1 ? locations[0].name : locations.length ? `${locations.length} locations connected` : "Connect your business"}</span>
+              <span className="mt-0.5 block text-[11px] text-ink-500">{lastSync ? `Synced ${ago(lastSync)}` : locations.length ? "Waiting for first sync" : "Import reviews from Google Business Profile"}</span>
+            </span>
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-ink-500">Manage <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" /></span>
+        </summary>
+        <section className="space-y-3 border-t border-line p-4" aria-label="Google Business Profile locations">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Google locations</p>
           <div className="flex items-center gap-3 text-[11px] text-ink-500">
@@ -230,14 +240,12 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
             Connect the Google account that <b>owns or manages</b> your Business Profile. Talko asks Google for permission to read your reviews and post replies as your business — nothing else. Each location is connected separately; disconnecting one never affects the others.
           </p>
         )}
-      </section>
+        </section>
+      </details>
 
       {failing.length > 0 && (
         <p className="sr-only" role="alert">{failing.length} location{failing.length === 1 ? "" : "s"} can&apos;t sync. See Google locations.</p>
       )}
-
-      {/* Owner preview: renders nothing for anyone the API refuses */}
-      <ReviewBooster />
 
       {/* Location picker — shown right after the OAuth redirect back. */}
       {pickerChannelId && (
@@ -266,11 +274,10 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
       )}
 
       {settings && (
-        <div className="rounded-card border border-amber-200 bg-amber-50/60 px-4 py-3 text-[12px] text-amber-900">
-          {settings.autoMinStars > 5
-            ? <><b>Every reply waits for your approval.</b> Change this in Settings.</>
-            : <><b>{settings.autoMinStars}★ and up</b> post on their own unless the review mentions something on your “ask me first” list. Lower ratings, complaints and anything unclear wait for you.</>}
-        </div>
+        <p className="flex items-start gap-2 px-1 text-xs leading-relaxed text-ink-500">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" aria-hidden />
+          {settings.autoMinStars > 5 ? "All replies need your approval." : `Auto-replies for ${settings.autoMinStars}★ and above. Flagged reviews always need approval.`}
+        </p>
       )}
 
       {msg && <p className="text-xs text-red-700 flex items-center gap-1.5" role="alert"><AlertTriangle className="w-3.5 h-3.5" aria-hidden /> {msg}</p>}
@@ -278,10 +285,17 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
 
       <ReviewInbox reloadKey={reloadKey} focusId={focusId} isAdmin={isAdmin} onMeta={setMeta} onClearFocus={() => setFocusId(null)} />
 
-      <Drawer open={showSettings} onClose={() => setShowSettings(false)} width="md" title="Review settings">
+      {/* Secondary owner tool stays below the review inbox, collapsed by default. */}
+      <ReviewBooster />
+
+      <Drawer open={showSettings} onClose={() => setShowSettings(false)} width="lg" title="Review settings" subtitle="Control replies, approval rules and notifications."
+        footer={<div className="flex w-full items-center gap-2">
+          <button type="button" onClick={() => setShowSettings(false)} className="rounded-control border border-line bg-white px-4 py-2 text-xs font-semibold text-ink-600 hover:bg-canvas">Cancel</button>
+          <button type="submit" form="review-settings-form" disabled={savingSettings || !settings} className="inline-flex items-center gap-2 rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{savingSettings && <Loader2 className="h-3.5 w-3.5 animate-spin" />}{savingSettings ? "Saving…" : "Save settings"}</button>
+        </div>}>
         {showSettings && settings && (
           <ReviewSettingsPanel value={settings} signaturePlaceholder={`— Team ${who}`} emailAvailable={!!meta?.emailAlertsAvailable}
-            saving={savingSettings} onSave={saveSettings} onCancel={() => setShowSettings(false)} />
+            saving={savingSettings} showActions={false} onSave={saveSettings} onCancel={() => setShowSettings(false)} />
         )}
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
       </Drawer>

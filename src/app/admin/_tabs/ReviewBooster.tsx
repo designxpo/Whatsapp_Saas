@@ -4,7 +4,7 @@
 // API answers 404 to everyone else, so for them this renders nothing at all.
 
 import { useCallback, useEffect, useState } from "react";
-import { Star, Loader2 } from "lucide-react";
+import { Star, Loader2, ChevronDown } from "lucide-react";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { inp } from "../_shared";
@@ -53,11 +53,15 @@ export function ReviewBooster() {
   }
 
   return (
-    <section className="bg-white rounded-card border border-amber-200 p-5 space-y-3">
+    <details className="group rounded-card border border-line bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+        <span className="flex flex-wrap items-center gap-2 text-xs font-semibold text-ink-700"><Star className="h-3.5 w-3.5 text-ink-400" /> Review requests <span className="rounded-full bg-canvas px-2 py-0.5 text-[10px] font-medium text-ink-500">Owner preview · not live</span></span>
+        <ChevronDown className="h-4 w-4 text-ink-400 transition-transform group-open:rotate-180" />
+      </summary>
+      <section className="space-y-4 border-t border-line p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="group flex items-center gap-1.5">
-          <p className="text-xs font-bold text-slate-400 uppercase flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-amber-400" /> Review booster</p>
-          <span className="px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold">Owner preview · not live</span>
+          <p className="text-xs font-semibold text-ink-700">Invite customers to leave a review</p>
           <PageInfo>After a paid order, one WhatsApp message asks for a Google review with a tracked link, and offers a private reply if something wasn&apos;t right. Everyone is asked the same way: Google bans sending only happy customers. Sent only inside WhatsApp&apos;s 24-hour window; outside it needs an approved template. Only you can see this.</PageInfo>
         </div>
       </div>
@@ -84,6 +88,7 @@ export function ReviewBooster() {
       {stats && (
         <p className="text-[12px] text-slate-500 tabular-nums">Last 30 days: <b className="text-ink-900">{stats.sent}</b> asked · <b className="text-ink-900">{stats.opened}</b> opened the link{stats.sent ? ` (${Math.round((stats.opened / stats.sent) * 100)}%)` : ""} · {stats.skipped} outside the 24-hour window{stats.failed ? ` · ${stats.failed} failed` : ""}</p>
       )}
-    </section>
+      </section>
+    </details>
   );
 }

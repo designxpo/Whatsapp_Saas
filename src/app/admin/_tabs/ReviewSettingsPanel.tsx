@@ -5,7 +5,7 @@
 // and who hears about new reviews, complaints and problems.
 
 import { useState } from "react";
-import { Loader2, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { inp } from "../_shared";
 
 type HoldCategory = "billing" | "safety" | "legal" | "personal_info" | "strong_complaint";
@@ -39,10 +39,11 @@ const SAMPLES = [
   { rating: 2, text: "Waited 40 minutes for a table that was booked." },
 ];
 
-export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailable, saving, onSave, onCancel }: {
+export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailable, saving, onSave, onCancel, showActions = true }: {
   value: ReviewSettingsValue; signaturePlaceholder: string; emailAvailable: boolean; saving: boolean;
-  onSave: (v: ReviewSettingsValue) => void; onCancel: () => void;
+  onSave: (v: ReviewSettingsValue) => void; onCancel: () => void; showActions?: boolean;
 }) {
+  const [section, setSection] = useState<"replies" | "approval" | "alerts">("replies");
   const [f, setF] = useState<ReviewSettingsValue>(value);
   const [recipients, setRecipients] = useState(value.alerts.recipients.join(", "));
   const [sample, setSample] = useState(SAMPLES[1]);
@@ -61,100 +62,108 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
   const save = () => onSave({ ...f, alerts: { ...f.alerts, recipients: recipients.split(/[\s,;]+/).map(s => s.trim()).filter(Boolean) } });
 
   return (
-    <div className="space-y-5">
-      <section className="space-y-3">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Replies</h3>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-            Post AI replies on their own for
-            <select className={`${inp} w-full`} value={f.autoMinStars} onChange={e => setF({ ...f, autoMinStars: Number(e.target.value) })}>
-              <option value={5}>5★ only</option>
-              <option value={4}>4★ and up (recommended)</option>
-              <option value={3}>3★ and up</option>
-              <option value={6}>Never — I approve every reply</option>
-            </select>
-          </label>
-          <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-            Signature (optional)
-            <input className={`${inp} w-full`} placeholder={signaturePlaceholder} maxLength={120} value={f.signature} onChange={e => setF({ ...f, signature: e.target.value })} />
-          </label>
-        </div>
-        <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-          Tone and brand voice (optional)
-          <textarea className={`${inp} w-full`} rows={2} maxLength={600} placeholder="e.g. Warm and friendly, mention our chef's name, keep it short" value={f.tone} onChange={e => setF({ ...f, tone: e.target.value })} />
-        </label>
-        <p className="text-[12px] text-ink-500">Only reviews from the last 7 days get an automatic reply. Older reviews brought in from Google wait for you to write or generate one.</p>
-      </section>
-
-      <section className="space-y-2 border-t border-line pt-4">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Always ask me first when a review mentions</h3>
-        <p className="text-[12px] text-ink-500">Even a 5★ reply waits for your approval when the review raises one of these. If Talko can&apos;t read a review clearly, it always waits.</p>
-        {TOPICS.map(t => (
-          <label key={t.key} className="flex items-start gap-2.5 text-[13px] text-ink-700 cursor-pointer">
-            <input type="checkbox" className="mt-0.5 accent-brand-700" checked={f.holdFor[t.key]} onChange={e => setF({ ...f, holdFor: { ...f.holdFor, [t.key]: e.target.checked } })} />
-            <span><b>{t.label}</b> <span className="text-ink-500">— e.g. {t.hint}</span></span>
-          </label>
+    <form id="review-settings-form" noValidate onSubmit={e => { e.preventDefault(); save(); }} className="space-y-6">
+      <nav aria-label="Review settings sections" className="grid grid-cols-3 gap-1 rounded-xl bg-canvas p-1">
+        {([{ key: "replies", label: "Replies" }, { key: "approval", label: "Approval rules" }, { key: "alerts", label: "Alerts" }] as const).map(item => (
+          <button key={item.key} type="button" aria-pressed={section === item.key} onClick={() => setSection(item.key)}
+            className={`rounded-lg px-2 py-2.5 text-xs font-semibold transition-colors ${section === item.key ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}>
+            {item.label}
+          </button>
         ))}
-        <div className="rounded-control border border-line bg-canvas/60 p-3 space-y-2">
-          <p className="text-[12px] font-bold text-ink-700">Try it on a sample review — nothing is posted</p>
-          <div className="flex flex-wrap gap-1.5">
-            {SAMPLES.map((s, i) => (
-              <button key={i} type="button" onClick={() => { setSample(s); setPreview(null); }} className={`px-2 py-1 rounded-full text-[11px] font-bold border ${sample === s ? "bg-ink-900 text-white border-ink-900" : "bg-white border-line text-ink-600"}`}>{s.rating}★ sample {i + 1}</button>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <select aria-label="Sample rating" className={`${inp} w-20`} value={sample.rating} onChange={e => { setSample({ ...sample, rating: Number(e.target.value) }); setPreview(null); }}>
-              {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n}★</option>)}
-            </select>
-            <textarea aria-label="Sample review text" className={`${inp} flex-1`} rows={2} value={sample.text} onChange={e => { setSample({ ...sample, text: e.target.value }); setPreview(null); }} />
-          </div>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => runPreview(false)} disabled={!!previewing} className="px-3 py-1.5 rounded-control border border-line bg-white text-xs font-bold text-ink-700 disabled:opacity-60">{previewing === "rules" && <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />}Check the rules</button>
-            <button type="button" onClick={() => runPreview(true)} disabled={!!previewing} className="px-3 py-1.5 rounded-control bg-brand-50 border border-brand-100 text-brand-700 text-xs font-bold disabled:opacity-60 inline-flex items-center gap-1">{previewing === "ai" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Also draft a sample AI reply</button>
-          </div>
-          {preview && (
-            <div className={`rounded-control border px-3 py-2 text-[12px] ${preview.autoPost ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} role="status">
-              <p className="font-bold">{preview.autoPost ? "This reply would post on its own." : "This reply would wait for your approval."}</p>
-              {preview.reasons.length > 0 && <ul className="list-disc ml-4">{preview.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
-              {preview.note && <p className="mt-1 text-ink-600">{preview.note}</p>}
-              {preview.aiNote && <p className="mt-1">{preview.aiNote}</p>}
-              {preview.reply && <p className="mt-2 rounded-control bg-white border border-line px-2 py-1.5 text-ink-800 whitespace-pre-wrap"><span className="block text-[10px] font-bold text-ink-500 uppercase">Sample AI reply</span>{preview.reply}</p>}
-            </div>
-          )}
-        </div>
+      </nav>
+
+      <section hidden={section !== "replies"} className="space-y-5">
+        <div><h3 className="text-sm font-bold text-ink-900">Reply preferences</h3><p className="mt-1 text-xs text-ink-500">Choose when to post and how your business sounds.</p></div>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Automatic replies</span>
+          <select className={`${inp} w-full`} value={f.autoMinStars} onChange={e => { setF({ ...f, autoMinStars: Number(e.target.value) }); setPreview(null); }}>
+            <option value={5}>5-star reviews only</option>
+            <option value={4}>4- and 5-star reviews</option>
+            <option value={3}>3-star reviews and above</option>
+            <option value={6}>Off — approve every reply</option>
+          </select>
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Sign-off <span className="font-normal text-ink-400">· optional</span></span>
+          <input className={`${inp} w-full`} placeholder={signaturePlaceholder} maxLength={120} value={f.signature} onChange={e => setF({ ...f, signature: e.target.value })} />
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Brand voice <span className="font-normal text-ink-400">· optional</span></span>
+          <textarea className={`${inp} w-full`} rows={3} maxLength={600} placeholder="Warm, friendly and concise." value={f.tone} onChange={e => setF({ ...f, tone: e.target.value })} />
+        </label>
+        <p className="rounded-xl bg-canvas px-4 py-3 text-xs leading-relaxed text-ink-500">Automatic replies apply to reviews from the last 7 days. Older reviews and anything flagged by your approval rules wait for you.</p>
       </section>
 
-      <section className="space-y-2 border-t border-line pt-4">
-        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Alerts</h3>
-        <p className="text-[12px] text-ink-500">Alerts appear in the bell for admins. Choose what you want to hear about:</p>
-        <div className="grid sm:grid-cols-2 gap-1.5">
-          {ALERTS.map(a => (
-            <label key={a.key} className="flex items-center gap-2 text-[13px] text-ink-700 cursor-pointer">
-              <input type="checkbox" className="accent-brand-700" checked={f.alerts.events[a.key]} onChange={e => setF({ ...f, alerts: { ...f.alerts, events: { ...f.alerts.events, [a.key]: e.target.checked } } })} /> {a.label}
+      <section hidden={section !== "approval"} className="space-y-4">
+        <div><h3 className="text-sm font-bold text-ink-900">Always ask for approval</h3><p className="mt-1 text-xs leading-relaxed text-ink-500">These topics need your review, even with 5 stars. Unclear reviews always wait.</p></div>
+        <div className="divide-y divide-line rounded-xl border border-line px-4">
+          {TOPICS.map(t => (
+            <label key={t.key} title={`Examples: ${t.hint}`} className="flex cursor-pointer items-center justify-between gap-4 py-3.5 text-[13px] text-ink-700">
+              <span>{t.label}</span>
+              <input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-700" checked={f.holdFor[t.key]} onChange={e => { setF({ ...f, holdFor: { ...f.holdFor, [t.key]: e.target.checked } }); setPreview(null); }} />
             </label>
           ))}
         </div>
-        <label className="flex items-center gap-2 text-[12px] text-ink-700">
-          Count a review as unanswered after
-          <input type="number" min={1} max={336} className={`${inp} w-20`} value={f.alerts.unansweredHours} onChange={e => setF({ ...f, alerts: { ...f.alerts, unansweredHours: Number(e.target.value) } })} /> hours
-        </label>
-        {emailAvailable ? <>
-          <label className="flex items-center gap-2 text-[13px] text-ink-700 cursor-pointer">
-            <input type="checkbox" className="accent-brand-700" checked={f.alerts.email} onChange={e => setF({ ...f, alerts: { ...f.alerts, email: e.target.checked } })} /> Also email these alerts
-          </label>
-          {f.alerts.email && (
-            <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-              Send to (leave empty for every admin)
-              <input className={`${inp} w-full`} placeholder="owner@business.in, manager@business.in" value={recipients} onChange={e => setRecipients(e.target.value)} />
-            </label>
-          )}
-        </> : <p className="text-[12px] text-amber-800">Email alerts aren&apos;t available yet. Alerts still show in the bell.</p>}
+        <details className="group rounded-xl border border-line">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 text-xs font-semibold text-ink-700 [&::-webkit-details-marker]:hidden">Test your rules <ChevronDown className="h-4 w-4 text-ink-400 transition-transform group-open:rotate-180" /></summary>
+          <div className="space-y-3 px-4 pb-4">
+            <p className="text-xs text-ink-500">Use a sample review. Nothing is posted.</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SAMPLES.map((s, i) => (
+                <button key={i} type="button" onClick={() => { setSample(s); setPreview(null); }} className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${sample === s ? "bg-ink-900 text-white border-ink-900" : "bg-white border-line text-ink-600"}`}>{s.rating}★ sample {i + 1}</button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <select aria-label="Sample rating" className={`${inp} w-20 shrink-0`} value={sample.rating} onChange={e => { setSample({ ...sample, rating: Number(e.target.value) }); setPreview(null); }}>
+                {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n}★</option>)}
+              </select>
+              <textarea aria-label="Sample review text" className={`${inp} min-w-0 flex-1`} rows={3} value={sample.text} onChange={e => { setSample({ ...sample, text: e.target.value }); setPreview(null); }} />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => runPreview(false)} disabled={!!previewing} className="rounded-control border border-line bg-white px-3 py-2 text-xs font-semibold text-ink-700 disabled:opacity-60">{previewing === "rules" && <Loader2 className="mr-1 inline h-3.5 w-3.5 animate-spin" />}Check rules</button>
+              <button type="button" onClick={() => runPreview(true)} disabled={!!previewing} className="inline-flex items-center gap-1 rounded-control border border-brand-100 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 disabled:opacity-60">{previewing === "ai" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}Preview AI reply</button>
+            </div>
+            {preview && (
+              <div className={`rounded-control border px-3 py-2 text-xs ${preview.autoPost ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`} role="status">
+                <p className="font-semibold">{preview.autoPost ? "This reply would post automatically." : "This reply would wait for approval."}</p>
+                {preview.reasons.length > 0 && <ul className="ml-4 list-disc">{preview.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+                {preview.note && <p className="mt-1 text-ink-600">{preview.note}</p>}
+                {preview.aiNote && <p className="mt-1">{preview.aiNote}</p>}
+                {preview.reply && <p className="mt-2 whitespace-pre-wrap rounded-control border border-line bg-white px-2 py-1.5 text-ink-800"><span className="block text-[10px] font-bold uppercase text-ink-500">Sample AI reply</span>{preview.reply}</p>}
+              </div>
+            )}
+          </div>
+        </details>
       </section>
 
-      <div className="flex items-center gap-2 border-t border-line pt-4">
-        <button onClick={save} disabled={saving} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{saving ? "Saving…" : "Save settings"}</button>
-        <button onClick={onCancel} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
-      </div>
-    </div>
+      <section hidden={section !== "alerts"} className="space-y-4">
+        <div><h3 className="text-sm font-bold text-ink-900">Notifications</h3><p className="mt-1 text-xs text-ink-500">Choose which events appear in your admin notification bell.</p></div>
+        <div className="divide-y divide-line rounded-xl border border-line px-4">
+          {ALERTS.map(a => (
+            <label key={a.key} className="flex cursor-pointer items-center justify-between gap-4 py-3 text-[13px] text-ink-700">
+              <span>{a.label}</span><input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-700" checked={f.alerts.events[a.key]} onChange={e => setF({ ...f, alerts: { ...f.alerts, events: { ...f.alerts.events, [a.key]: e.target.checked } } })} />
+            </label>
+          ))}
+        </div>
+        <label className="flex flex-wrap items-center gap-2 text-xs text-ink-700">
+          Unanswered after
+          <input type="number" min={1} max={336} className={`${inp} w-20`} value={f.alerts.unansweredHours} onChange={e => setF({ ...f, alerts: { ...f.alerts, unansweredHours: Number(e.target.value) } })} /> hours
+        </label>
+        {emailAvailable ? <div className="space-y-3 rounded-xl bg-canvas p-4">
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink-700">
+            <input type="checkbox" className="accent-brand-700" checked={f.alerts.email} onChange={e => setF({ ...f, alerts: { ...f.alerts, email: e.target.checked } })} /> Also send by email
+          </label>
+          {f.alerts.email && <label className="block space-y-2 text-xs font-semibold text-ink-700">
+            <span>Recipients <span className="font-normal text-ink-400">· leave empty for all admins</span></span>
+            <input className={`${inp} w-full`} placeholder="owner@business.in, manager@business.in" value={recipients} onChange={e => setRecipients(e.target.value)} />
+          </label>}
+        </div> : <p className="rounded-xl bg-canvas px-4 py-3 text-xs text-ink-500">Email alerts aren&apos;t available yet. You&apos;ll still see alerts in the bell.</p>}
+      </section>
+
+      {showActions && <div className="flex items-center gap-2 border-t border-line pt-4">
+        <button type="submit" disabled={saving} className="rounded-control bg-brand-700 px-4 py-2 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-60">{saving ? "Saving…" : "Save settings"}</button>
+        <button type="button" onClick={onCancel} className="px-3 py-2 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
+      </div>}
+    </form>
   );
 }

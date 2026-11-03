@@ -7,7 +7,7 @@
 // to: their reply is copied and marked posted by hand.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw, Search, Send, Sparkles, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw, Search, Send, SlidersHorizontal, Sparkles, Star, Trash2 } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 
@@ -53,6 +53,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
   onMeta: (m: InboxMeta) => void; onClearFocus: () => void;
 }) {
   const ask = useConfirm();
+  const [showFilters, setShowFilters] = useState(false);
   const [view, setView] = useState<View>("all");
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [search, setSearch] = useState("");
@@ -144,6 +145,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const filtered = Object.entries(filters).some(([k, v]) => k !== "sort" && v) || filters.sort !== "newest";
+  const filterCount = [filters.location, filters.rating, filters.status, filters.from, filters.to].filter(Boolean).length;
   const focus = data?.focus && !data.reviews.some(r => r.id === data.focus!.id) ? data.focus : null;
 
   const card = (r: InboxReview, highlighted = false) => {
@@ -249,67 +251,67 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
 
   return (
     <section className="space-y-3" aria-label="Review inbox">
-      <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Review views">
+      <div className="flex gap-5 overflow-x-auto border-b border-line" role="tablist" aria-label="Review views">
         {VIEWS.map(v => (
           <button key={v.key} role="tab" aria-selected={view === v.key} onClick={() => setView(v.key)}
-            className={`px-3 py-1 rounded-full text-xs font-bold border tabular-nums ${view === v.key ? "bg-ink-900 text-white border-ink-900" : "bg-white text-ink-600 border-line hover:bg-canvas"} ${v.key === "failed" && (data?.counts.failed ?? 0) > 0 && view !== v.key ? "text-red-700 border-red-200" : ""}`}>
-            {v.label} {data ? data.counts[v.key] : ""}
+            className={`shrink-0 border-b-2 px-0.5 pb-3 pt-1 text-xs font-semibold transition-colors ${view === v.key ? "border-brand-700 text-brand-700" : "border-transparent text-ink-500 hover:text-ink-900"} ${v.key === "failed" && (data?.counts.failed ?? 0) > 0 && view !== v.key ? "text-red-700" : ""}`}>
+            {v.label}<span className={`ml-1.5 text-[10px] tabular-nums ${view === v.key ? "text-brand-700" : "text-ink-400"}`}>{data ? data.counts[v.key] : ""}</span>
           </button>
         ))}
       </div>
 
-      <div className="rounded-card border border-line bg-white p-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 items-end">
-        <label className="col-span-2 sm:col-span-4 lg:col-span-2 text-[11px] font-bold text-ink-500 space-y-1">
-          <span>Search</span>
-          <span className="relative block">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400" aria-hidden />
-            <input className={`${inp} w-full pl-8`} placeholder="Review text or reviewer name" value={search} onChange={e => setSearch(e.target.value)} />
-          </span>
-        </label>
-        <label className="text-[11px] font-bold text-ink-500 space-y-1">
-          <span>Location</span>
-          <select className={`${inp} w-full`} value={filters.location} onChange={e => setFilters({ ...filters, location: e.target.value })}>
-            <option value="">All locations</option>
-            {(data?.locations ?? []).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            <option value="manual">Pasted by hand</option>
-          </select>
-        </label>
-        <label className="text-[11px] font-bold text-ink-500 space-y-1">
-          <span>Rating</span>
-          <select className={`${inp} w-full`} value={filters.rating} onChange={e => setFilters({ ...filters, rating: e.target.value })}>
-            <option value="">Any rating</option>
-            {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n}★</option>)}
-          </select>
-        </label>
-        <label className="text-[11px] font-bold text-ink-500 space-y-1">
-          <span>Reply</span>
-          <select className={`${inp} w-full`} value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
-            <option value="">Any reply status</option>
-            <option value="none">No reply yet</option>
-            <option value="draft">Draft waiting</option>
-            <option value="posted">Replied</option>
-          </select>
-        </label>
-        <label className="text-[11px] font-bold text-ink-500 space-y-1">
-          <span>From</span>
-          <input type="date" className={`${inp} w-full`} value={filters.from} max={filters.to || undefined} onChange={e => setFilters({ ...filters, from: e.target.value })} />
-        </label>
-        <label className="text-[11px] font-bold text-ink-500 space-y-1">
-          <span>To</span>
-          <input type="date" className={`${inp} w-full`} value={filters.to} min={filters.from || undefined} onChange={e => setFilters({ ...filters, to: e.target.value })} />
-        </label>
-        <label className="col-span-2 sm:col-span-2 lg:col-span-2 text-[11px] font-bold text-ink-500 space-y-1">
-          <span>Order</span>
-          <select className={`${inp} w-full`} value={filters.sort} onChange={e => setFilters({ ...filters, sort: e.target.value as Filters["sort"] })}>
-            <option value="newest">Newest first</option>
-            <option value="oldest_unanswered">Oldest unanswered first</option>
-          </select>
-        </label>
-        <div className="col-span-2 sm:col-span-2 lg:col-span-5 flex items-center justify-end gap-2">
-          {filtered && <button onClick={() => { setFilters(NO_FILTERS); setSearch(""); }} className="px-2.5 py-1.5 text-xs font-bold text-ink-500 hover:text-ink-900">Clear filters</button>}
-          <button onClick={load} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60" aria-label="Refresh the list">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-0 basis-full sm:basis-auto sm:flex-1">
+            <span className="sr-only">Search reviews</span>
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-ink-400" aria-hidden />
+            <input className={`${inp} w-full pl-9`} placeholder="Search reviews or customers…" value={search} onChange={e => setSearch(e.target.value)} />
+          </label>
+          <label className="min-w-0 flex-1 sm:flex-none">
+            <span className="sr-only">Sort reviews</span>
+            <select className={`${inp} w-full sm:w-44`} value={filters.sort} onChange={e => setFilters({ ...filters, sort: e.target.value as Filters["sort"] })}>
+              <option value="newest">Newest first</option>
+              <option value="oldest_unanswered">Oldest unanswered</option>
+            </select>
+          </label>
+          <button type="button" aria-expanded={showFilters} aria-controls="review-inbox-filters" onClick={() => setShowFilters(v => !v)} className={`inline-flex items-center gap-2 rounded-control border px-3 py-2 text-xs font-semibold ${showFilters || filterCount ? "border-brand-100 bg-brand-50 text-brand-700" : "border-line bg-white text-ink-600 hover:bg-canvas"}`}>
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Filters{filterCount > 0 && <span className="tabular-nums">{filterCount}</span>}
           </button>
+          <button onClick={load} disabled={loading} title="Refresh reviews" className="rounded-control border border-line bg-white p-2 text-ink-500 hover:bg-canvas disabled:opacity-60" aria-label="Refresh the list">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+          {filtered && <button onClick={() => { setFilters(NO_FILTERS); setSearch(""); }} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Clear filters</button>}
+        </div>
+        <div id="review-inbox-filters" hidden={!showFilters}>
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-3 lg:grid-cols-5">
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>Location</span>
+              <select className={`${inp} w-full`} value={filters.location} onChange={e => setFilters({ ...filters, location: e.target.value })}>
+                <option value="">All locations</option>
+                {(data?.locations ?? []).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                <option value="manual">Pasted by hand</option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>Rating</span>
+              <select className={`${inp} w-full`} value={filters.rating} onChange={e => setFilters({ ...filters, rating: e.target.value })}>
+                <option value="">Any rating</option>
+                {[5, 4, 3, 2, 1].map(n => <option key={n} value={n}>{n}★</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>Reply status</span>
+              <select className={`${inp} w-full`} value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
+                <option value="">Any status</option><option value="none">No reply yet</option><option value="draft">Draft waiting</option><option value="posted">Replied</option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>From</span><input type="date" className={`${inp} w-full`} value={filters.from} max={filters.to || undefined} onChange={e => setFilters({ ...filters, from: e.target.value })} />
+            </label>
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>To</span><input type="date" className={`${inp} w-full`} value={filters.to} min={filters.from || undefined} onChange={e => setFilters({ ...filters, to: e.target.value })} />
+            </label>
+          </div>
         </div>
       </div>
 
