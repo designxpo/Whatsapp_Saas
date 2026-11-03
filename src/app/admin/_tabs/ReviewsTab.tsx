@@ -237,7 +237,7 @@ export default function ReviewsTab() {
       {/* Phase explainer */}
       <div className="rounded-card border border-amber-200 bg-amber-50/60 px-4 py-3 text-[12px] text-amber-800">
         {grChannel
-          ? <><b>Google Business Profile connected.</b> New reviews import automatically and reply per your settings below — <b>{settings.autoMinStars}★ and up</b> auto-post, lower ratings wait as a draft for your approval. Reviews still won&apos;t flow in until Google approves this project&apos;s Business Profile API access request.</>
+          ? <><b>Google Business Profile connected.</b> New reviews import automatically and reply per your settings below — {settings.autoMinStars > 5 ? <>all replies wait as drafts for your approval.</> : <><b>{settings.autoMinStars}★ and up</b> auto-post, lower ratings wait as drafts for your approval.</>}</>
           : <><b>Connect your Google Business Profile</b> to import reviews automatically and post replies with one tap. Until then, add reviews here (paste them in), let the AI draft a reply, then copy it to Google — replies to <b>{settings.autoMinStars}★ and up</b> would auto-post, lower ratings wait for your approval.</>}
       </div>
 
@@ -338,7 +338,7 @@ export default function ReviewsTab() {
                     <div className="flex-1" />
                     {r.replyStatus === "posted"
                       ? <button onClick={() => reply(r.id, "unpost")} disabled={working} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Mark as draft</button>
-                      : <button onClick={() => reply(r.id, "post", draft)} disabled={working} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60"><Send className="w-3.5 h-3.5" /> Mark posted</button>}
+                      : <button onClick={() => reply(r.id, "post", draft)} disabled={working} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60"><Send className="w-3.5 h-3.5" /> {r.source === "google" ? "Post to Google" : "Mark posted"}</button>}
                   </div>
                 </div>
               )}
