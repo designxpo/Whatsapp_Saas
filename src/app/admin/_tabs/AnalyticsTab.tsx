@@ -71,7 +71,7 @@ function DeliveryDonut({ segments, centerValue, centerLabel }: { segments: { lab
   const R = 56, C = 2 * Math.PI * R;
   let offset = 0;
   return (
-    <div className="flex flex-wrap items-center gap-6">
+    <div className="flex items-center gap-6">
       <div className="relative shrink-0" style={{ width: 140, height: 140 }}>
         <svg width="140" height="140" viewBox="0 0 140 140" className="-rotate-90">
           <circle cx="70" cy="70" r={R} fill="none" stroke="#F1F5F9" strokeWidth="16" />
@@ -165,8 +165,6 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
   const { vocab } = useVocab();
   const [range, setRange] = useState<RangeKey>(DEFAULT_RANGE);
   const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loadError, setLoadError] = useState("");
-  const [reload, setReload] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [brief, setBrief] = useState<ExecBrief | null>(null);
   const [briefBusy, setBriefBusy] = useState(false);
@@ -174,15 +172,9 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
   useEffect(() => {
     // Cleared on range change so a stale window's figures never sit under a new
     // period's heading.
-    let cancelled = false;
-    setData(null); setNotice(null); setLoadError("");
-    fetch(`/api/admin/analytics?range=${range}`).then(async r => {
-      const d = await r.json();
-      if (!r.ok || (!d.analytics && !d.notice)) throw new Error(d.error || "Could not load analytics.");
-      if (!cancelled) { setData(d.analytics ?? null); setNotice(d.notice ?? null); }
-    }).catch(() => { if (!cancelled) setLoadError("Could not load analytics. Please try again."); });
-    return () => { cancelled = true; };
-  }, [range, reload]);
+    setData(null);
+    fetch(`/api/admin/analytics?range=${range}`).then(r => r.json()).then(d => { setData(d.analytics ?? null); setNotice(d.notice ?? null); }).catch(() => {});
+  }, [range]);
 
   async function genBrief() {
     setBriefBusy(true); setBriefErr(null);
@@ -231,7 +223,7 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
         </div>
         {/* The window every figure below is computed over — and the one its labels
             are written from, so a heading and its numbers cannot disagree. */}
-        <div role="group" aria-label="Date range" className="inline-flex max-w-full overflow-x-auto rounded-control border border-line bg-white p-0.5">
+        <div role="group" aria-label="Date range" className="inline-flex rounded-control border border-line bg-white p-0.5">
           {RANGES.map(r => (
             <button key={r.key} onClick={() => setRange(r.key)} aria-pressed={range === r.key}
               className={`px-3 py-1.5 rounded-[7px] text-xs font-bold ${range === r.key ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"}`}>{r.short}</button>
@@ -475,8 +467,7 @@ function AnalyticsTab({ isAdmin = false }: { isAdmin?: boolean }) {
           </div>
         </>
       )}
-      {loadError && <div role="alert" className="rounded-card border border-red-200 bg-red-50 p-4 text-sm text-red-700">{loadError} <button onClick={() => setReload(x => x + 1)} className="ml-2 font-semibold underline">Retry</button></div>}
-      {!data && !notice && !loadError && <p className="text-center text-ink-400 text-sm py-8">Loading…</p>}
+      {!data && !notice && <p className="text-center text-ink-400 text-sm py-8">Loading…</p>}
     </div>
   );
 }

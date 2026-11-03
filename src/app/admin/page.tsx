@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useScrolled } from "@/lib/use-nav-motion";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSlidingPill, useScrolled } from "@/lib/use-nav-motion";
 import { useInboxAlerts, type ReviewBellAlert } from "@/lib/use-inbox-alerts";
 import { requestReviewFocus, reviewIdFromHref } from "@/lib/review-focus";
 import { AlertsBell } from "@/components/alerts-bell";
@@ -15,9 +15,7 @@ import { HotLeads } from "./_tabs/HotLeads";
 import { useTabInUrl } from "@/lib/tab-url";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard, Menu } from "lucide-react";
-import { Drawer } from "@/components/overlay";
-import { PortalNavigation } from "./_components/PortalNavigation";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { ProductTour } from "@/components/ProductTour";
 import { HoverHelp } from "@/components/HoverHelp";
@@ -197,7 +195,6 @@ function AdminShell() {
   const { vocab } = useVocab();
   const brand = useBrand();   // Talko's, except inside a partner's portal
   const router = useRouter();
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [tab, setTab] = useState<Tab>("home");
   // A pending deep-link for Live Chat (set by Home cards / Pipeline / Contacts,
   // consumed by LiveChatTab on arrival). goTo switches tab and carries it along.
@@ -253,8 +250,10 @@ function AdminShell() {
     router.push("/login");
   }
 
-  // Close mobile navigation on URL-driven tab changes too.
-  useEffect(() => setMobileNavOpen(false), [tab]);
+  // The sidebar's active pill glides to the section picked; the top bar's
+  // edge shows once the page scrolls under it (lib/use-nav-motion.ts).
+  const navList = useRef<HTMLDivElement>(null);
+  const pill = useSlidingPill(navList, tab, [ent, me?.role]);
   const scrolled = useScrolled();
   // Chats waiting for a person: the bell, the tab title, a chime and desktop
   // notifications, on every screen (lib/use-inbox-alerts.ts).
@@ -266,16 +265,10 @@ function AdminShell() {
   }, [goTo]);
   const alerts = useInboxAlerts(chat => goTo("livechat", { openPhone: chat.phone }), openReviewAlert);
 
-  const visibleGroups = NAV_GROUPS.map(g => ({ ...g, items: g.items
-    .filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role))
-    .map(n => ({ ...n, label: tabLabel(n.key, vocab) })) })).filter(g => g.items.length);
-  const navigate = (next: Tab) => { goTo(next); setMobileNavOpen(false); };
-
   return (
     <ConfirmProvider>
     <div className="min-h-screen flex bg-canvas">
-      <a href="#portal-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:p-3">Skip to content</a>
-      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-line flex-col h-dvh sticky top-0">
+      <aside className="w-64 shrink-0 bg-white border-r border-line flex flex-col h-screen sticky top-0">
         {/* Logo block */}
         <div className="px-5 py-4">
           <BrandLogo height={28} className="max-w-[150px]" fallback={
@@ -298,7 +291,37 @@ function AdminShell() {
           </div>
         )}
 
-        <PortalNavigation groups={visibleGroups} activeTab={tab} waiting={alerts.count} onNavigate={navigate} onWarm={preloadTab} />
+        {/* Grouped nav — items the tenant's plan doesn't include are hidden
+            entirely (when entitlement enforcement is on; otherwise all show). */}
+        <nav aria-label="Workspace navigation" className="flex-1 px-3 py-2 overflow-y-auto">
+          <div ref={navList} className="relative">
+          <span aria-hidden className="nav-pill absolute left-0 right-0 top-0 rounded-full bg-ink-950" style={pill.style} data-ready={pill.ready || undefined} />
+          {NAV_GROUPS.map(g => {
+            const items = g.items.filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role));
+            if (!items.length) return null;
+            return (
+            <div key={g.group} className="mb-4">
+              <p className="px-3 mb-1.5 text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{g.group}</p>
+              <div className="space-y-0.5">
+                {items.map(n => {
+                  const active = tab === n.key;
+                  return (
+                    <button key={n.key} data-tour-nav={n.key} data-nav-key={n.key} aria-current={active ? "page" : undefined} data-help={n.hint + ". Select this screen to open it and use the available controls."} onClick={() => goTo(n.key)}
+                      onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
+                      className={`nav-item relative w-full flex items-center gap-3 h-10 px-3 rounded-full text-[13px] font-medium text-left ${active ? "text-white" : "text-ink-600 hover:bg-canvas"}`}>
+                      {n.icon}<span className="truncate">{tabLabel(n.key, vocab)}</span>
+                      {n.key === "livechat" && alerts.count > 0 && (
+                        <span aria-label={`${alerts.count} waiting`} className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[10px] font-bold leading-5 text-center tabular-nums">{alerts.count > 99 ? "99+" : alerts.count}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            );
+          })}
+          </div>
+        </nav>
 
         <div className="p-3 border-t border-line space-y-1">
           {me && (
@@ -324,10 +347,6 @@ function AdminShell() {
         </div>
       </aside>
 
-      <Drawer open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} title={brand.name} width="md" footer={<div className="flex items-center justify-between gap-3"><span className="text-xs text-ink-500 truncate">{me?.name || me?.email}</span><button onClick={logout} className="text-xs font-semibold flex items-center gap-2"><LogOut className="w-4 h-4" /> Log out</button></div>}>
-        {me?.isPlatformOwner && <a href="/admin/owner" className="block mb-4 text-sm font-semibold text-brand-700">Owner Portal</a>}
-        <PortalNavigation groups={visibleGroups} activeTab={tab} waiting={alerts.count} onNavigate={navigate} onWarm={preloadTab} />
-      </Drawer>
       <div className="flex-1 flex flex-col min-w-0">
         {(() => {
           const a = accountState(ent);
@@ -346,32 +365,36 @@ function AdminShell() {
             <b>{banner.title}</b>{banner.body ? ` — ${banner.body}` : ""}
           </div>
         )}
+        {me?.isPlatformOwner && !impersonating && (
+          <div className="h-9 shrink-0 bg-brand-50 border-b border-brand-100 flex items-center justify-center gap-3 text-[12px] text-brand-800 font-semibold">
+<ShieldCheck className="w-3.5 h-3.5" /> Owner preview — this is the platform&apos;s default workspace
+            <a href="/admin/owner" className="px-2 py-0.5 rounded-control bg-brand-700 text-white text-[11px] font-bold hover:bg-brand-800">Open Owner Portal</a>
+          </div>
+        )}
         {impersonating && (
-          <div className="min-h-9 px-4 py-2 flex-wrap shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-3 text-[12px] text-amber-800 font-semibold">
+          <div className="h-9 shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-3 text-[12px] text-amber-800 font-semibold">
 <Eye className="w-3.5 h-3.5" /> You&apos;re viewing a tenant&apos;s workspace as the owner
             <button onClick={exitImpersonation} className="px-2 py-0.5 rounded-control bg-amber-600 text-white text-[11px] font-bold hover:bg-amber-700">Exit to Owner Portal</button>
           </div>
         )}
         {/* Topbar */}
-        <header className="glass-bar h-16 shrink-0 border-b flex items-center justify-between gap-3 px-4 sm:px-6 sticky top-0 z-10" data-scrolled={scrolled || undefined}>
-          <div className="flex items-center gap-3 min-w-0">
-            <button type="button" aria-label="Open navigation" aria-haspopup="dialog" aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(true)} className="lg:hidden p-2 -ml-2 rounded-control hover:bg-canvas"><Menu className="w-5 h-5" /></button>
-            <p className="text-[13px] text-ink-400 truncate"><span className="hidden sm:inline">{brand.name}<span className="mx-2">/</span></span><span className="text-ink-900 font-semibold">{tabLabel(tab, vocab)}</span></p>
-            {me?.isPlatformOwner && !impersonating && <a href="/admin/owner" title="Owner preview of the default workspace" className="hidden md:inline-flex text-[10px] text-brand-700 bg-brand-50 rounded px-2 py-1 whitespace-nowrap">Owner preview</a>}
-          </div>
+        <header className="glass-bar h-16 shrink-0 border-b flex items-center justify-between px-6 sticky top-0 z-10" data-scrolled={scrolled || undefined}>
+          <p className="text-[13px] text-ink-400">
+            {brand.name} <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
+          </p>
           <div className="flex items-center gap-2">
           <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} onOpenReview={openReviewAlert} />
-          <div>{me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
-            blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}</div>
-          {["home", "broadcast", "templates", "campaigns"].includes(tab) && tabAllowed("broadcast", ent) && tabRoleAllowed("broadcast", me?.role) && (
+          {me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
+            blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}
+          {tabAllowed("broadcast", ent) && tabRoleAllowed("broadcast", me?.role) && (
             <button data-help="Choose an approved template and audience, review the message, then send or schedule your broadcast." onClick={() => setTab("broadcast")} className={btnPrimary}>
-              <Send className="w-4 h-4" /><span className="hidden sm:inline">New broadcast</span><span className="sm:hidden">Broadcast</span>
+              <Send className="w-4 h-4" /> New broadcast
             </button>
           )}
           </div>
         </header>
 
-        <main id="portal-content" tabIndex={-1} className="flex-1 min-w-0 p-4 sm:p-6 overflow-x-hidden">
+        <main className="flex-1 p-6 overflow-x-hidden">
           {roleBlocked ? <AdminOnlyTab title={tabLabel(tab, vocab)} goTo={goTo} /> : <>
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
@@ -531,7 +554,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
 
       {/* At a glance */}
       {s && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {([
             { label: vocab.contact.many, value: s.counts.contacts, tab: "contacts" },
             { label: "Knowledge docs", value: s.counts.kbDocuments, tab: "assistant" },
@@ -554,7 +577,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
       {/* How to use */}
       <section>
         <h3 className="font-bold text-sm mb-3">How to use this platform</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           {guide.map(g => (
             <div key={g.title} className="bg-white border border-line rounded-2xl p-4 flex flex-col">
               <div className="flex items-center gap-2 text-brand-600 mb-1.5">{g.icon}<p className="font-bold text-sm">{g.title}</p></div>
@@ -624,7 +647,7 @@ function HomeRail({ goTo }: { goTo: GoTo }) {
   const t = a?.messaging.totals;
   const pct = (n: number) => t && t.sent ? Math.round((n / t.sent) * 100) : 0;
   return (
-    <aside className="hidden 2xl:flex flex-col gap-4 w-80 shrink-0">
+    <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
       <RailCard title="Inbox pulse" action="Live Chat" onAction={() => goTo("livechat")}>
         {!a ? railLoading : <>
           <StatRow label="Awaiting your reply" value={a.conversations.needsReply} tone={a.conversations.needsReply > 0 ? "warn" : undefined} onClick={() => goTo("livechat", { filter: "needs_reply" })} />

@@ -431,11 +431,11 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   };
 
   return (
-    <div className="-m-4 sm:-m-6 h-[calc(100dvh-64px)] flex flex-col bg-white overflow-hidden">
+    <div className="-m-6 h-[calc(100vh-64px)] flex flex-col bg-white overflow-hidden">
       <CrmStatusBar />
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
-      <aside className={`${selected ? "hidden md:flex" : "flex"} w-full md:w-72 xl:w-80 shrink-0 border-r border-line flex-col min-h-0`}>
+      <aside className="w-80 shrink-0 border-r border-line flex flex-col min-h-0">
         <div className="p-4 pb-3 space-y-3 border-b border-line">
           <p className="text-[15px] font-bold text-ink-900">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-400">({visible.length})</span></p>
           {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
@@ -554,9 +554,9 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
       </aside>
 
       {selected
-        ? <div className="relative min-w-0 flex-1 flex flex-col"><button onClick={() => setSelected(null)} className="md:hidden shrink-0 border-b border-line px-4 py-2 text-left text-xs font-semibold text-brand-700">← All conversations</button><div className="relative flex flex-1 min-h-0"><ChatView key={selected} id={selected} onChanged={load} goTo={goTo} crm={crmOn ? crmChats : null} crmError={crmErr} /></div></div>
+        ? <ChatView key={selected} id={selected} onChanged={load} goTo={goTo} crm={crmOn ? crmChats : null} crmError={crmErr} />
         : (
-          <div className="hidden md:flex flex-1 flex-col items-center justify-center gap-3 text-ink-400 bg-canvas/40">
+          <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-400 bg-canvas/40">
             <div className="w-14 h-14 rounded-full bg-brand-50 text-brand-700 flex items-center justify-center"><MessageSquare className="w-6 h-6" /></div>
             <p className="text-sm font-medium">Select a conversation to start chatting</p>
           </div>
@@ -657,7 +657,6 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
 // Middle thread + right contact-info pane for one conversation.
 function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChanged: () => void; goTo: (t: Tab) => void; crm?: CrmChatMap | null; crmError?: string }) {
   const { vocab } = useVocab();
-  const [showDetails, setShowDetails] = useState(false);
   const [conv, setConv] = useState<Conversation | null>(null);
   const [showProfile, setShowProfile] = useState(false);
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
@@ -875,7 +874,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
     <>
       {/* ── Middle: thread ── */}
       <section className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="min-h-14 shrink-0 px-4 py-3 border-b border-line flex flex-wrap items-center justify-between gap-3 bg-white">
+        <div className="h-14 shrink-0 px-5 border-b border-line flex items-center justify-between gap-3 bg-white">
           <div className="min-w-0 flex items-center gap-3">
             <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
             <div className="min-w-0">
@@ -892,9 +891,8 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
             {conv && crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
             {conv && <LeadPill lead={conv.lead} />}
           </div>
-          <button type="button" onClick={() => setShowDetails(true)} className="2xl:hidden text-xs font-semibold text-brand-700">Contact details</button>
           {conv && (
-            <div className="flex flex-wrap items-center gap-2 text-xs">
+            <div className="flex items-center gap-2 shrink-0 text-xs">
               <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
                 className={`px-2.5 py-1.5 rounded-control border font-semibold ${conv.botEnabled ? "border-line text-ink-600 hover:bg-canvas" : "border-brand-700 bg-brand-700 text-white"}`}>
                 {conv.botEnabled ? "Turn bot off" : "Turn bot on"}
@@ -1102,8 +1100,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
       </section>
 
       {/* ── Right: contact info ── */}
-      <aside aria-label="Contact details" className={`${showDetails ? "absolute inset-0 z-20" : "hidden"} 2xl:block 2xl:static w-full 2xl:w-72 shrink-0 border-l border-line overflow-y-auto bg-white`}>
-        <button type="button" onClick={() => setShowDetails(false)} className="2xl:hidden w-full border-b border-line p-3 text-left text-xs font-semibold text-brand-700">← Back to conversation</button>
+      <aside className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">
         <div className="p-5 flex flex-col items-center text-center border-b border-line">
           <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={64} />
           <p className="text-[15px] font-bold text-ink-900 mt-2">{conv ? contactDisplayName(conv) : "Unknown"}</p>
