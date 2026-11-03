@@ -21,6 +21,8 @@ const REASON: Record<WaitingChat["reason"], string> = {
   bot_off: "A person is handling it",
   ai_off: "AI replies are off",
   unanswered: "No reply yet",
+  ready_to_pay: "Ready to pay — close the sale",
+  approval: "Discount or refund needs your approval",
 };
 
 function ago(iso: string): string {

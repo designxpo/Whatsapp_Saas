@@ -9,8 +9,13 @@
 //    number and are waiting on a reply;
 //  - lowered for someone who has just paid (already a customer) or who sounds
 //    unhappy (a different conversation, not a sales call).
+//
+// Once the AI has read a chat (lead-intel.ts), its read is used instead: its
+// status picks the band, its score and reason are shown, and "ready to pay"
+// goes first among the reasons. Chats it hasn't read keep the rules above.
 
 import { tdb } from "./tenantdb";
+import { bandOf } from "./lead-intel";
 
 export interface LeadInput {
   inbound: string[];            // their messages, newest last
@@ -58,10 +63,12 @@ export interface HotLead extends LeadScore { conversationId: string; name: strin
  */
 export async function hotLeads(tenantId: string, now = Date.now()): Promise<HotLead[]> {
   const since = new Date(now - 72 * HOUR).toISOString();
-  const { data: convs } = await tdb(tenantId).from("wa_conversations")
-    .select("id,phone,name,handle,platform,last_inbound_at,lead_phone,needs_reply,status")
+  const base = "id,phone,name,handle,platform,last_inbound_at,lead_phone,needs_reply,status";
+  const pick = (cols: string) => tdb(tenantId).from("wa_conversations").select(cols)
     .gte("last_inbound_at", since).order("last_inbound_at", { ascending: false }).limit(300);
-  const list = (convs ?? []) as unknown as { id: string; phone: string; name: string | null; handle: string | null; platform: string; last_inbound_at: string | null; lead_phone: string | null; needs_reply: boolean | null; status: string | null }[];
+  let res = await pick(`${base},lead_status,intent_score,lead_reason,ready_to_pay`);
+  if (res.error) res = await pick(base);   // before migration 20261103120000
+  const list = (res.data ?? []) as unknown as { id: string; phone: string; name: string | null; handle: string | null; platform: string; last_inbound_at: string | null; lead_phone: string | null; needs_reply: boolean | null; status: string | null; lead_status?: string | null; intent_score?: number | null; lead_reason?: string | null; ready_to_pay?: boolean | null }[];
   if (!list.length) return [];
 
   const inbound = new Map<string, string[]>();
@@ -84,7 +91,10 @@ export async function hotLeads(tenantId: string, now = Date.now()): Promise<HotL
     .filter(c => c.status !== "opted_out")
     .map(c => {
       const msgs = inbound.get(c.id) ?? [];
-      const s = scoreLead({ inbound: msgs, lastInboundAt: c.last_inbound_at, sharedPhone: !!c.lead_phone, waitingOnReply: !!c.needs_reply, paidRecently: paid.has(c.phone) }, now);
+      const ai = bandOf(c.lead_status);
+      const s: LeadScore = ai
+        ? { score: c.intent_score ?? 0, band: ai, reasons: [...(c.ready_to_pay ? ["ready to pay"] : []), ...(c.lead_reason ? [c.lead_reason] : [])] }
+        : scoreLead({ inbound: msgs, lastInboundAt: c.last_inbound_at, sharedPhone: !!c.lead_phone, waitingOnReply: !!c.needs_reply, paidRecently: paid.has(c.phone) }, now);
       return { ...s, conversationId: c.id, name: c.name || c.handle || "", phone: c.phone, platform: c.platform, lastInboundAt: c.last_inbound_at, lastMessage: (msgs[msgs.length - 1] ?? "").slice(0, 160) };
     })
     .filter(l => l.band !== "cold")

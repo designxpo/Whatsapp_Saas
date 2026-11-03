@@ -3,6 +3,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // it's a Sequence (trigger_kind='cart_abandoned') that the cron enrolls idle
 // carts into. Browse/checkout reuse the WhatsApp product messages + Flows.
 
+import { syncToCrm, type LeadRead } from "./lead-intel";
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
@@ -157,11 +158,15 @@ export async function upsertCart(p: { phone: string; platform?: "whatsapp" | "in
   return data!.id as string;
 }
 
-// Convert an open cart into an order.
-export async function checkoutCart(p: { phone: string; paymentRef?: string }, tenantId = DEFAULT_TENANT_ID): Promise<{ orderId: string; totalCents: number; paymentUrl: string | null } | null> {
+// Convert an open cart into an order. `discountPercent` is only ever a
+// discount a person approved (approvals.ts): the items keep their catalog
+// prices and the order total — and so the pay link — is reduced.
+export async function checkoutCart(p: { phone: string; paymentRef?: string; discountPercent?: number }, tenantId = DEFAULT_TENANT_ID): Promise<{ orderId: string; totalCents: number; paymentUrl: string | null } | null> {
   const cart = await getOpenCart(p.phone, tenantId);
   if (!cart) return null;
-  const total = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
+  const subtotal = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
+  const off = Math.min(100, Math.max(0, Math.round(p.discountPercent ?? 0)));
+  const total = off ? Math.round(subtotal * (100 - off) / 100) : subtotal;
   const { data, error } = await db().from("wa_orders").insert({
     tenant_id: tenantId, cart_id: cart.id, phone: p.phone, items: cart.items, total_cents: total, status: p.paymentRef ? "paid" : "pending", payment_ref: p.paymentRef ?? null,
   }).select("id").single();
@@ -177,13 +182,24 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string }, te
   // pay link so the customer can complete checkout in chat. Best-effort.
   let paymentUrl: string | null = null;
   if (!p.paymentRef && total > 0) {
-    const link = await createPaymentLink(tenantId, { amountCents: total, description: `Order ${orderId.slice(0, 8)}`, phone: p.phone });
+    const link = await createPaymentLink(tenantId, { amountCents: total, description: `Order ${orderId.slice(0, 8)}${off ? ` (${off}% off)` : ""}`, phone: p.phone });
     if (link) {
       paymentUrl = link.url;
       await db().from("wa_orders").update({ payment_ref: link.id }).eq("id", orderId).then(() => {}, () => {});
     }
   }
   return { orderId, totalCents: total, paymentUrl };
+}
+
+async function markLeadWon(tenantId: string, phone: string, orderId: string): Promise<void> {
+  const { data, error } = await db().from("wa_conversations").select("id,tenant_id,phone,name,platform,lead_phone,lead_status")
+    .eq("tenant_id", tenantId).or(`phone.eq.${phone},lead_phone.eq.${phone}`);
+  if (error) return;   // no lead columns yet (migration 20261103120000)
+  const read: LeadRead = { status: "Won", score: 100, reason: `Paid order ${orderId.slice(0, 8)}.`, readyToPay: false, action: null };
+  for (const c of (data ?? []) as { id: string; tenant_id: string; phone: string; name: string | null; platform: string | null; lead_phone: string | null; lead_status: string | null }[]) {
+    await db().from("wa_conversations").update({ lead_status: "Won", intent_score: 100, lead_reason: read.reason, ready_to_pay: false, lead_action: null }).eq("id", c.id);
+    if (c.lead_status !== "Won") await syncToCrm(c, read);
+  }
 }
 
 // ── Payment confirmation ──────────────────────────────────────────────────────
@@ -244,6 +260,10 @@ export async function markOrderPaid(m: {
 
   // Notify the brand + fan out to connected integrations (Slack/Sheets/Zapier).
   void emitEvent(tenantId, "order.paid", { orderId, phone: order.phone, totalCents, provider: m.provider, paymentId: m.providerPaymentId });
+
+  // The lead is Won the moment they pay — on every channel they used — and
+  // the CRM hears it now, not at the next lead read (lead-intel.ts).
+  await markLeadWon(tenantId, order.phone as string, orderId).catch(e => console.warn("[order paid] lead status not updated:", e instanceof Error ? e.message : e));
 
   // Best-effort customer confirmation on the SAME channel the cart came in on —
   // WhatsApp, Instagram DM, or Messenger. May fail outside the platform's 24h

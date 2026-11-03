@@ -8,6 +8,7 @@ import { ArrowRight, Check, Loader2, Plus, ShieldCheck, Sparkles, Trash2, Zap, D
 import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiPromptT, RailCard, StatRow } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
+import { SalesCloserCard } from "./SalesCloserCard";
 
 // Business isolation — each channel answers with its own persona and its own
 // knowledge, and a channel that hasn't chosen falls back to a neutral assistant,
@@ -241,6 +242,7 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
       </div>
 
       <AiKeyCard />
+      <SalesCloserCard />
 
       <div className="flex gap-2">
         {([["agents", "AI agents"], ["functions", "Lead capture"], ["prompts", "Writing tools"]] as ["agents" | "functions" | "prompts", string][]).map(([k, label]) => (

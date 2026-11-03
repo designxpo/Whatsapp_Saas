@@ -50,6 +50,8 @@ const REASON: Record<WaitingChat["reason"], string> = {
   bot_off: "is waiting for a reply",
   ai_off: "is waiting for a reply",
   unanswered: "has had no reply for 2 minutes",
+  ready_to_pay: "is ready to pay",
+  approval: "is waiting for your approval on a discount or refund",
 };
 
 // A soft two-note chime, made in the browser (no file to load). Audio can only

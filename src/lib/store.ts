@@ -845,6 +845,17 @@ export interface Conversation {
   handle: string | null;        // WhatsApp @username (lowercased, no @) when the number is hidden
   tenantId: string;             // owning tenant
   createdAt: string;
+  /** The AI's latest read of this lead (lead-intel.ts); null until it has read the chat. */
+  lead: LeadSnapshot | null;
+}
+
+export interface LeadSnapshot {
+  status: "Cold" | "Warm" | "Hot" | "Won" | "OptOut";
+  score: number | null;
+  reason: string | null;
+  readyToPay: boolean;
+  action: "DISCOUNT_REQUEST" | "REFUND_REQUEST" | "HUMAN_TAKEOVER" | null;
+  scoredAt: string | null;
 }
 
 export interface ConvMessage {
@@ -893,6 +904,13 @@ function mapConversation(r: Record<string, unknown>): Conversation {
     handle: (r.handle as string | null) ?? null,
     tenantId: (r.tenant_id as string) ?? DEFAULT_TENANT_ID,
     createdAt: r.created_at as string,
+    lead: r.lead_status
+      ? {
+          status: r.lead_status as LeadSnapshot["status"], score: (r.intent_score as number | null) ?? null,
+          reason: (r.lead_reason as string | null) ?? null, readyToPay: !!r.ready_to_pay,
+          action: (r.lead_action as LeadSnapshot["action"]) ?? null, scoredAt: (r.lead_scored_at as string | null) ?? null,
+        }
+      : null,
   };
 }
 
@@ -1571,8 +1589,9 @@ export async function conversationsNeedingReply(limit = 20): Promise<Conversatio
 export interface WaitingChat {
   id: string; name: string; phone: string; platform: ConvPlatform;
   preview: string; lastInboundAt: string;
-  /** Why it needs a person: handed over, a person took it, the AI is off, or nobody answered. */
-  reason: "escalated" | "bot_off" | "ai_off" | "unanswered";
+  /** Why it needs a person: handed over, a person took it, the AI is off, nobody
+   * answered, the AI read them as ready to pay, or a discount/refund awaits approval. */
+  reason: "escalated" | "bot_off" | "ai_off" | "unanswered" | "ready_to_pay" | "approval";
 }
 
 /** How long the AI gets before an unanswered chat is a person's to pick up. */
@@ -1613,6 +1632,41 @@ export async function waitingForTeam(opts: { tenantId: string; channelIds: strin
     reason: (r.status === "escalated" ? "escalated" : r.bot_enabled === false ? "bot_off" : !opts.aiOn ? "ai_off" : "unanswered") as WaitingChat["reason"],
   }));
   return { count: counted.count ?? chats.length, chats };
+}
+
+/**
+ * Chats a person should act on even though the AI is handling them: a lead the
+ * AI read as ready to pay, or a discount/refund it asked the team to approve
+ * (lead-intel.ts, approvals.ts). The alert time is when that happened, so each
+ * new one is announced once. Empty before migration 20261103120000.
+ */
+export async function chatsNeedingAction(opts: { tenantId: string; channelIds: string[] | null; now?: number; limit?: number }): Promise<WaitingChat[]> {
+  if (opts.channelIds && opts.channelIds.length === 0) return [];
+  const since = new Date((opts.now ?? Date.now()) - 24 * 60 * 60 * 1000).toISOString();
+  const cols = "id,name,phone,platform,last_message,last_inbound_at,channel_id,lead_scored_at";
+  const toChat = (r: Record<string, unknown>, reason: WaitingChat["reason"], at: string): WaitingChat => ({
+    id: r.id as string, name: (r.name as string) ?? "", phone: r.phone as string,
+    platform: ((r.platform as ConvPlatform) ?? "whatsapp"), preview: ((r.last_message as string) ?? "").slice(0, 140), lastInboundAt: at, reason,
+  });
+  let ready = db().from("wa_conversations").select(cols).eq("tenant_id", opts.tenantId).eq("ready_to_pay", true).gte("lead_scored_at", since);
+  if (opts.channelIds) ready = ready.in("channel_id", opts.channelIds);
+  const [r, a] = await Promise.all([
+    ready.order("lead_scored_at", { ascending: false }).limit(opts.limit ?? 20),
+    db().from("wa_approval_requests").select("conversation_id,created_at").eq("tenant_id", opts.tenantId).eq("status", "pending").order("created_at", { ascending: false }).limit(opts.limit ?? 20),
+  ]);
+  const out: WaitingChat[] = [];
+  const pending = ((a.data ?? []) as unknown as { conversation_id: string | null; created_at: string }[]).filter(x => x.conversation_id);
+  if (pending.length) {
+    let q = db().from("wa_conversations").select(cols).eq("tenant_id", opts.tenantId).in("id", pending.map(p => p.conversation_id as string));
+    if (opts.channelIds) q = q.in("channel_id", opts.channelIds);
+    const { data } = await q;
+    const byId = new Map(((data ?? []) as unknown as Record<string, unknown>[]).map(c => [c.id as string, c]));
+    for (const p of pending) { const c = byId.get(p.conversation_id as string); if (c) out.push(toChat(c, "approval", p.created_at)); }
+  }
+  for (const c of (r.data ?? []) as unknown as Record<string, unknown>[]) {
+    if (!out.some(o => o.id === c.id)) out.push(toChat(c, "ready_to_pay", c.lead_scored_at as string));
+  }
+  return out;
 }
 
 export async function conversationsAwaitingReply(
@@ -2008,12 +2062,17 @@ export async function setTenantSetting(tenantId: string, key: string, value: unk
 // Atomic "claim once" for a one-time-per-tenant flag (e.g. "have we already
 // sent this tenant's onboarding nudge?"). Unlike get-then-set with
 // setTenantSetting — a check-then-act race under overlapping cron ticks — this
-// relies on wa_settings' real (tenant_id, key) primary key (0020 migration): a
-// second concurrent insert for the same key fails instead of silently
-// upserting, so only the first caller ever gets `true` back.
+// relies on wa_settings' real (tenant_id, key) primary key (0020 migration):
+// only the first caller's row is written, so only it ever gets `true` back.
+//
+// ON CONFLICT DO NOTHING, not a plain insert: a plain insert made Postgres log
+// a "duplicate key … wa_settings_pkey" ERROR for every workspace already
+// claimed, on every cron tick — expected, but it buried real errors in the
+// logs. Now an existing claim simply returns no row.
 export async function claimTenantSettingOnce(tenantId: string, key: string): Promise<boolean> {
-  const { error } = await tdb(tenantId).from("wa_settings").insert({ key, value: true });
-  return !error;
+  const { data, error } = await tdb(tenantId).from("wa_settings")
+    .upsert({ key, value: true }, { onConflict: "tenant_id,key", ignoreDuplicates: true }).select("key");
+  return !error && (data?.length ?? 0) > 0;
 }
 
 // Release a claim taken via claimTenantSettingOnce — used when the action the

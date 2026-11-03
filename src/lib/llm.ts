@@ -1,4 +1,5 @@
 import { type KbScope, retrieve } from "./kb";
+import { getApprovalPolicy, requestApproval } from "./approvals";
 import { getAgentById, resolveAgent, listFunctions, executeAiFunction, isToneEnabled, type AiFunction } from "./aihub";
 import { runChat, providerSupportsMedia, type ChatTool, type ChatTurn, type ChatMedia } from "./ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "./ai/keys";
@@ -386,6 +387,30 @@ const COMMERCE_TOOLS: ChatTool[] = [
 
 const money2 = (cents: number, ccy: string) => `${ccy} ${(cents / 100).toFixed(2)}`;
 
+// ── Discounts and refunds: ask, never promise (approvals.ts) ───────────────
+// Offered only when the workspace has switched that kind of approval on, and
+// never in a practice run. The tool files a request for a person to decide;
+// its status tells the model to say "I've asked the team", nothing more.
+const APPROVAL_FNS = { discount: "request_discount", refund: "request_refund" } as const;
+const DISCOUNT_TOOL: ChatTool = {
+  name: APPROVAL_FNS.discount,
+  description: "Ask the team to approve a discount when the customer is negotiating the price or asks for a better deal and offering one could win the sale. You can NEVER give, promise or confirm a discount yourself — this only asks. After calling it, tell the customer you've checked with the team and will confirm shortly.",
+  params: [
+    { name: "percent", description: "The discount to ask for, as a whole percent (e.g. 10). Ask for the smallest that could close the sale." },
+    { name: "reason", description: "One line for the team: what the customer said and why a discount could help." },
+  ],
+  required: ["percent", "reason"],
+};
+const REFUND_TOOL: ChatTool = {
+  name: APPROVAL_FNS.refund,
+  description: "Pass a refund request to the team when the customer asks for their money back. You can NEVER approve or promise a refund yourself. After calling it, tell the customer the team will confirm shortly.",
+  params: [
+    { name: "reason", description: "One line for the team: what went wrong, in the customer's words." },
+    { name: "order", description: "The order number if the customer gave one (optional)." },
+  ],
+  required: ["reason"],
+};
+
 // Execute one commerce tool. Returns a plain-language status for the model, plus
 // (on checkout) the pay-link URL so the caller can whitelist it past the
 // grounding firewall. Never throws — a failure becomes a graceful status.
@@ -605,7 +630,7 @@ export async function generateReply(history: { role: "user" | "assistant"; body:
 
 // The unscreened generator. Private on purpose — callers must go through
 // generateReply() above so nothing can send AI text that skipped moderation.
-async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone: string | undefined, agentId: string | null | undefined, tenantId: string, primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean } = {}): Promise<ReplyResult> {
+async function generateReplyUnmoderated(history: { role: "user" | "assistant"; body: string; mediaUrl?: string | null; mediaType?: string | null }[], phone: string | undefined, agentId: string | null | undefined, tenantId: string, primaryKbTag?: string | null | KbScope, askPhone = false, commerce?: CommerceCtx, platform: Platform = "whatsapp", query?: string, opts: { canAct?: boolean; unscoped?: boolean; practice?: boolean } = {}): Promise<ReplyResult> {
   const lastUser = [...history].reverse().find(m => m.role === "user");
   if (!lastUser) return { reply: null, escalate: true, reason: "no user message", usedChunks: 0 };
 
@@ -646,7 +671,11 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
   // Configured AI functions + a built-in "remember" tool so the model can
   // persist the customer's name/details, plus the commerce tools when enabled.
   // `functions` stays the configured list (the no-context guard keys off it).
-  const tools: ChatTool[] = [...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : []), ...(restaurant ? restaurantTools(platform, !!opts.canAct) : [])];
+  const approvalPolicy = !opts.practice && phone ? await getApprovalPolicy(tenantId).catch(() => null) : null;
+  const tools: ChatTool[] = [
+    ...(toChatTools(functions) ?? []), MEMORY_TOOL, ...(hasCommerce ? COMMERCE_TOOLS : []), ...(restaurant ? restaurantTools(platform, !!opts.canAct) : []),
+    ...(approvalPolicy?.discounts.enabled ? [DISCOUNT_TOOL] : []), ...(approvalPolicy?.refunds.enabled ? [REFUND_TOOL] : []),
+  ];
 
   // Retrieve business context for the latest question. k=8 gives the model enough
   // material to synthesise an answer that spans several documents (fees in one,
@@ -778,6 +807,16 @@ async function generateReplyUnmoderated(history: { role: "user" | "assistant"; b
             // Same as the commerce tools: what the restaurant system said is
             // grounded; a quoted echo of the model's own words is not.
             toolFacts.push(r.status.replace(/"[^"]*"/g, '""'));
+            executed.push(c.name);
+            results.push({ id: c.id, name: c.name, status: r.status });
+            continue;
+          }
+          if (approvalPolicy && phone && (c.name === APPROVAL_FNS.discount || c.name === APPROVAL_FNS.refund)) {
+            const r = await requestApproval({
+              tenantId, phone, platform, conversationId: commerce?.conversationId ?? null,
+              kind: c.name === APPROVAL_FNS.discount ? "discount" : "refund",
+              percent: c.args.percent, reason: c.args.reason, orderRef: c.args.order,
+            });
             executed.push(c.name);
             results.push({ id: c.id, name: c.name, status: r.status });
             continue;

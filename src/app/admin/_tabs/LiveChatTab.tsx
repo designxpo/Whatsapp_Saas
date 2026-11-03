@@ -14,6 +14,7 @@ import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
 import { TEAM_SHORT, nextTeam, type Team } from "@/lib/team-vocab";
 import { EmptyState } from "../_shared";
 import { ChatNotes } from "@/components/chat-notes";
+import { LeadPill, LeadReason, ApprovalCard } from "./LeadInsight";
 
 type ThreadMessage = { id: string; role: "user" | "assistant"; body: string; source: "inbound" | "bot" | "agent"; createdAt: string; channelId?: string | null; mediaUrl?: string | null; mediaType?: string | null; metaMessageId?: string | null };
 // One step in a lead's ownership trail (which number owned it, and who moved it).
@@ -531,6 +532,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
                   {c.needsReply && <span className="w-2 h-2 rounded-full bg-brand-500" title="awaiting reply" />}
                   {c.status === "escalated" && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-50 text-red-600">ESCALATED</span>}
                   {!c.botEnabled && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-canvas text-ink-400">BOT OFF</span>}
+                  <LeadPill lead={c.lead} compact />
                   {stages[c.phone] && (
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
                       style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#64748b" }}
@@ -887,6 +889,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                 timeline? The bar above answers it for the whole inbox; sales
                 asks it about the person they're looking at. */}
             {conv && crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
+            {conv && <LeadPill lead={conv.lead} />}
           </div>
           {conv && (
             <div className="flex items-center gap-2 shrink-0 text-xs">
@@ -900,6 +903,9 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
             </div>
           )}
         </div>
+
+        {conv?.lead?.reason && <div className="px-5 py-1.5 border-b border-line bg-white"><LeadReason lead={conv.lead} /></div>}
+        {conv && <ApprovalCard conversationId={conv.id} onDecided={() => { load(); onChanged(); }} />}
 
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1.5 bg-canvas/60">
           {messages.map((m, i) => {

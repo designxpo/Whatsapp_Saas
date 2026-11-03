@@ -34,6 +34,7 @@ import { recordStageTick } from "@/lib/cronstages";
 import { sweepInstagramTokens } from "@/lib/igtokensweep";
 import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
 import { drainReplyHistory, fillReplyAuthors } from "@/lib/comment-history";
+import { drainLeadScoring } from "@/lib/lead-intel";
 import { drainReviewBooster } from "@/lib/review-booster";
 import { runRetention } from "@/lib/retention";
 import { drainDeletionRequests } from "@/lib/metadeletion";
@@ -55,7 +56,7 @@ const STAGES = [
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
-  "metadeletion", "retention", "sheetrows", "tenantmetrics",
+  "metadeletion", "retention", "sheetrows", "tenantmetrics", "leadscore",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -111,6 +112,9 @@ export async function POST(req: Request) {
     }), pollStart, POLL_BUDGET);
     // Google review requests after paid orders (review-booster.ts) — owner's workspace only until launched.
     const reviewBooster = await stage("reviewbooster", null, () => drainReviewBooster(), pollStart, POLL_BUDGET);
+    // The AI's read of each lead with new messages — status, intent, ready to
+    // pay — saved on the chat and sent to the CRM when it changes (lead-intel.ts).
+    const leadScore = await stage("leadscore", null, () => drainLeadScoring(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Meta data-deletion requests the callback didn't finish (metadeletion.ts).
     const metaDeletion = await stage("metadeletion", null, () => drainDeletionRequests(3), pollStart, POLL_BUDGET);
     // Ages out derived/system records past their limits (retention.ts) — never
@@ -121,7 +125,7 @@ export async function POST(req: Request) {
     const sheetRows = await stage("sheetrows", null, () => drainSheetRows(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, leadScore, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 

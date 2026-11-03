@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { currentUser, currentTenantId } from "@/lib/auth";
 import { visibleChannelIds } from "@/lib/teams";
-import { waitingForTeam } from "@/lib/store";
+import { waitingForTeam, chatsNeedingAction } from "@/lib/store";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { errorMessage } from "@/lib/errors";
 
@@ -16,7 +16,12 @@ export async function GET() {
   if (!tenantId) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   try {
     const [channelIds, aiOn] = await Promise.all([visibleChannelIds(await currentUser()), isAiEnabled(tenantId)]);
-    return NextResponse.json(await waitingForTeam({ tenantId, channelIds, aiOn }), { headers: { "Cache-Control": "no-store" } });
+    // Plus chats the AI is handling that a person should act on: a lead ready
+    // to pay, or a discount/refund waiting for approval. They come first.
+    const [waiting, action] = await Promise.all([waitingForTeam({ tenantId, channelIds, aiOn }), chatsNeedingAction({ tenantId, channelIds }).catch(() => [])]);
+    const extra = action.filter(a => !waiting.chats.some(w => w.id === a.id));
+    const chats = [...action, ...waiting.chats.filter(w => !action.some(a => a.id === w.id))];
+    return NextResponse.json({ count: waiting.count + extra.length, chats }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

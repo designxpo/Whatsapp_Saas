@@ -38,6 +38,7 @@ export const INTEGRATION_EVENTS = [
   "contact.optout",
   "order.paid",
   "order.refunded",
+  "lead.scored",
 ] as const;
 export type IntegrationEvent = (typeof INTEGRATION_EVENTS)[number];
 
@@ -49,6 +50,7 @@ export const EVENT_LABELS: Record<IntegrationEvent, string> = {
   "contact.optout": "Contact opted out",
   "order.paid": "Order paid",
   "order.refunded": "Order refunded",
+  "lead.scored": "Lead status or intent changed (AI)",
 };
 
 export function isIntegrationEvent(s: string): s is IntegrationEvent {
@@ -172,6 +174,8 @@ export function humanText(event: IntegrationEvent, data: Record<string, unknown>
       return `💰 Payment received — order ${data.orderId ?? ""} from ${who} is confirmed.`;
     case "order.refunded":
       return `↩️ Refund recorded — order ${data.orderId ?? ""} from ${who}${data.refundRef ? ` (ref ${String(data.refundRef)})` : ""}.`;
+    case "lead.scored":
+      return `${data.readyToPay ? "💳" : "📈"} ${who}: ${String(data.leadStatus ?? "")} (${String(data.intentScore ?? "?")}/100)${data.readyToPay ? " — ready to pay" : ""}${data.reason ? ` — ${String(data.reason).slice(0, 200)}` : ""}`;
   }
 }
 
@@ -235,6 +239,16 @@ export function hubspotContactProps(data: Record<string, unknown>): Record<strin
   props.hs_lead_status = "NEW";
   if (data.channel) props.lifecyclestage = "lead";
   return props;
+}
+
+// The AI lead read in HubSpot's own Lead Status values, so no custom property
+// has to exist in the account. Won moves the lifecycle stage to customer
+// instead (it can only move forward, which a won lead does).
+export function hubspotLeadProps(status: unknown): Record<string, string> {
+  if (status === "Won") return { lifecyclestage: "customer" };
+  const map: Record<string, string> = { Cold: "OPEN", Warm: "IN_PROGRESS", Hot: "OPEN_DEAL", OptOut: "UNQUALIFIED" };
+  const v = map[String(status)];
+  return v ? { hs_lead_status: v } : {};
 }
 
 // The phone number a CRM may file for this event, as "+<digits>", or "" when
@@ -590,13 +604,24 @@ const hubspotConnector: Connector = {
       method: "POST", headers: auth, signal: AbortSignal.timeout(6000),
       body: JSON.stringify({ filterGroups: [{ filters: [{ propertyName: "phone", operator: "EQ", value: phone }] }], properties: ["phone"], limit: 1 }),
     });
+    // The AI's lead read updates the contact's Lead Status (lead-intel.ts).
+    const lead = envelope.event === "lead.scored" ? hubspotLeadProps(envelope.data.leadStatus) : {};
+    if (envelope.event === "lead.scored" && !search.ok) throw new Error(`HubSpot HTTP ${search.status}`);
     if (search.ok) {
-      const found = (await search.json().catch(() => null)) as { total?: number } | null;
-      if (found?.total && found.total > 0) return; // already in HubSpot — no dupe
+      const found = (await search.json().catch(() => null)) as { total?: number; results?: { id?: string }[] } | null;
+      if (found?.total && found.total > 0) {
+        const id = found.results?.[0]?.id;
+        if (!Object.keys(lead).length || !id) return; // already in HubSpot — no dupe
+        const up = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts/${encodeURIComponent(id)}`, {
+          method: "PATCH", headers: auth, signal: AbortSignal.timeout(6000), body: JSON.stringify({ properties: lead }),
+        });
+        if (!up.ok) throw new Error(`HubSpot HTTP ${up.status}`);
+        return;
+      }
     }
     const res = await fetch(`${HUBSPOT_API}/crm/v3/objects/contacts`, {
       method: "POST", headers: auth, signal: AbortSignal.timeout(6000),
-      body: JSON.stringify({ properties: hubspotContactProps(envelope.data) }),
+      body: JSON.stringify({ properties: { ...hubspotContactProps(envelope.data), ...lead } }),
     });
     if (!res.ok && res.status !== 409) throw new Error(`HubSpot HTTP ${res.status}`); // 409 = already exists
   },
