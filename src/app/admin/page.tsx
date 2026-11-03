@@ -11,6 +11,7 @@ import { useBrand } from "@/components/BrandContext";
 import { brandCopy } from "@/lib/whitelabel";
 import { setPartnerMetaApp } from "@/lib/embedded-signup-client";
 import { HotLeads } from "./_tabs/HotLeads";
+import { useTabInUrl } from "@/lib/tab-url";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
 import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
@@ -173,6 +174,8 @@ const TAB_TITLES: Record<Tab, string> = {
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
   contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security", team: "Team Progress",
 };
+// Every section the address bar may name (?tab=…).
+const ALL_TABS = Object.keys(TAB_TITLES) as Tab[];
 
 // The tabs whose names are the workspace's own nouns (Contacts → Students…).
 // Everything else keeps its product name.
@@ -197,13 +200,11 @@ function AdminShell() {
   const [chatIntent, setChatIntent] = useState<ChatIntent | null>(null);
   const goTo = useCallback<GoTo>((t, intent) => { setChatIntent(intent ?? null); setTab(t); }, []);
   const clearChatIntent = useCallback(() => setChatIntent(null), []);
-  // Land on the right tab after a full-page redirect back into the SPA (e.g. the
-  // YouTube "Connect with Google" OAuth round trip returns to /admin?tab=youtube).
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const t = new URLSearchParams(window.location.search).get("tab");
-    if (t && t in TAB_TITLES) setTab(t as Tab);
-  }, []);
+  // The section lives in the URL (?tab=flows): a refresh stays on it, Back and
+  // Forward move between sections, and a full-page redirect back into the SPA
+  // (the YouTube "Connect with Google" round trip returns to /admin?tab=youtube)
+  // lands on the right one (lib/tab-url.ts).
+  useTabInUrl(tab, setTab, ALL_TABS, "home");
   const [me, setMe] = useState<{ email: string; name: string; role: string; team?: string | null; isPlatformOwner?: boolean; tenantId?: string } | null>(null);
   const [ent, setEnt] = useState<Entitlements | null>(null);
   const [banner, setBanner] = useState<{ title: string; body: string; level: string } | null>(null);

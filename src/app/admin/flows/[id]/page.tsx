@@ -969,7 +969,7 @@ function Editor({ flowId }: { flowId: string }) {
     <div className="h-screen flex flex-col bg-canvas">
       {/* Top bar — flow identity + status & actions */}
       <header className="px-4 h-14 shrink-0 bg-white border-b border-line flex items-center gap-3 z-30">
-        <button onClick={() => router.push("/admin")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900"><ArrowLeft className="w-4 h-4" /></button>
+        <button onClick={() => router.push("/admin?tab=flows")} className="p-1.5 rounded-lg text-ink-400 hover:bg-canvas hover:text-ink-900" aria-label="Back to flows"><ArrowLeft className="w-4 h-4" /></button>
         <span className="text-[13px] text-ink-400 hidden sm:block">Flows<span className="mx-1">/</span></span>
         <input className="font-semibold text-sm text-ink-900 border-b border-transparent focus:border-brand-600 focus:outline-none flex-1 min-w-[8rem] max-w-[24rem] bg-transparent" placeholder="Untitled flow" value={name} onChange={e => setName(e.target.value)} />
         <div className="flex-1" />
