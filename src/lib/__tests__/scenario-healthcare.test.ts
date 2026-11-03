@@ -190,6 +190,9 @@ vi.mock("@/lib/commerce", () => ({ getProduct: vi.fn(async () => null) }));
 vi.mock("@/lib/integrations", () => ({
   calcomSlots: vi.fn(async () => null),
   calcomBook: vi.fn(async () => false),
+  scheduleSlots: vi.fn(async () => null),
+  scheduleBook: vi.fn(async () => false),
+  formatSlotLabel: vi.fn((iso: string) => iso),
   matchSlot: vi.fn(() => null),
   extractEmail: vi.fn(() => null),
 }));

@@ -14,7 +14,7 @@ import { useVocab } from "@/lib/vocab-client";
 // ── Integrations hub: per-tenant outbound webhooks (Zapier/Make/Slack/Teams) ──
 type Integration = {
   id: string; kind: string; name: string; active: boolean;
-  config: { url?: string; format?: string; mezmitraTenant?: string; defaultOutletId?: string | null }; events: string[];
+  config: { url?: string; format?: string; mezmitraTenant?: string; defaultOutletId?: string | null; sheetTitle?: string; leadsTab?: string; calendarName?: string; calendarId?: string }; events: string[];
   status: "connected" | "error" | "unverified"; statusDetail: string | null;
   hasSecret: boolean; hasWebhookSecret: boolean; lastEventAt: string | null; createdAt: string;
 };
@@ -28,11 +28,13 @@ const INTEGRATION_EVENTS: { key: string; label: string }[] = [
   { key: "order.refunded", label: "Order refunded" },
 ];
 const FORMAT_LABELS: Record<string, string> = { generic: "Standard (Zapier / Make / n8n)", slack: "Slack message", teams: "Microsoft Teams message" };
-const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", freshsales: "Freshsales", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezvaan (restaurant)" };
+const KIND_LABELS: Record<string, string> = { webhook: "Outgoing webhook (Zapier / Make / n8n)", slack: "Slack", teams: "Microsoft Teams", hubspot: "HubSpot", pipedrive: "Pipedrive", freshsales: "Freshsales", leadsquared: "LeadSquared", razorpay: "Razorpay", stripe: "Stripe", shopify: "Shopify", woocommerce: "WooCommerce", calcom: "Cal.com", mezmitra: "Mezvaan (restaurant)", google_sheets: "Google Sheets", google_calendar: "Google Calendar" };
 const CRM_KINDS = ["hubspot", "pipedrive", "freshsales", "leadsquared"];
 const PAYMENT_KINDS = ["razorpay", "stripe"];
 const STORE_KINDS = ["shopify", "woocommerce"];
-const SCHEDULE_KINDS = ["calcom"];
+const SCHEDULE_KINDS = ["calcom", "google_calendar"];
+// Connected by sharing with the portal's Google account: no key to paste.
+const GOOGLE_KINDS = ["google_sheets", "google_calendar"];
 const RESTAURANT_KINDS = ["mezmitra"];
 // What Mezvaan sends: each can start an API rule (Broadcast → API rules) that
 // sends an approved template, with {{payload.<field>}} filling its variables.
@@ -43,7 +45,7 @@ const MEZMITRA_EVENTS: { key: string; when: string; fields: string }[] = [
   { key: "mezmitra.reservation.cancelled", when: "A booking is cancelled", fields: "outlet_name, booking_ref, date, time" },
   { key: "mezmitra.order.ready", when: "A takeaway order is ready", fields: "outlet_name, order_no, track_url" },
 ];
-const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales"];
+const EVENT_KINDS = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "google_sheets"];
 const TOKEN_HELP: Record<string, string> = {
   hubspot: "HubSpot → Settings → Integrations → Private Apps → create one with crm.objects.contacts read+write, then paste its token.",
   pipedrive: "Pipedrive → Settings → Personal preferences → API → copy your personal API token.",
@@ -72,6 +74,8 @@ const CATALOG: { kind: string; logo: string | null; blurb: string }[] = [
   { kind: "shopify", logo: "/integrations/shopify.svg", blurb: "Import your Shopify product catalog." },
   { kind: "woocommerce", logo: "/integrations/woocommerce.png", blurb: "Import your WooCommerce catalog." },
   { kind: "calcom", logo: "/integrations/calcom.png", blurb: "Let customers book meetings via Cal.com." },
+  { kind: "google_sheets", logo: "/integrations/google_sheets.svg", blurb: "Add a row to a Google Sheet for each event you pick." },
+  { kind: "google_calendar", logo: "/integrations/google_calendar.svg", blurb: "Let customers book a time on your Google Calendar from a chat." },
   { kind: "mezmitra", logo: "/integrations/mezmitra.svg", blurb: "Restaurants: live menu and table booking in every chat, WhatsApp after bills, bookings and orders." },
   { kind: "slack", logo: "/integrations/slack.svg", blurb: "Post events to a Slack channel." },
   { kind: "teams", logo: "/integrations/teams.svg", blurb: "Post events to a Microsoft Teams channel." },
@@ -102,14 +106,16 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     : e);
   const [items, setItems] = useState<Integration[] | null>(null);
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] as string[] });
+  const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, spreadsheetUrl: "", leadsTab: "", calendarId: "", slotMinutes: "", workStart: "", workEnd: "", workDays: "", noticeHours: "", daysAhead: "", eventTitle: "", events: ["contact.created", "conversation.escalated"] as string[] });
   const isCrm = CRM_KINDS.includes(form.kind);
   const isPayment = PAYMENT_KINDS.includes(form.kind);
   const isStore = STORE_KINDS.includes(form.kind);
   const isSchedule = SCHEDULE_KINDS.includes(form.kind);
   const isRestaurant = RESTAURANT_KINDS.includes(form.kind);
   const isEventKind = EVENT_KINDS.includes(form.kind);
-  const isToken = isCrm || isPayment || isStore || isSchedule || isRestaurant;
+  const isGoogle = GOOGLE_KINDS.includes(form.kind);
+  const isToken = (isCrm || isPayment || isStore || isSchedule || isRestaurant) && !isGoogle;
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -117,7 +123,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [testing, setTesting] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetch("/api/admin/integrations").then(r => r.json()).then(d => setItems(d.integrations ?? [])).catch(() => setItems([]));
+    fetch("/api/admin/integrations").then(r => r.json()).then(d => { setItems(d.integrations ?? []); setGoogleEmail(d.googleShareEmail ?? null); }).catch(() => setItems([]));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -132,8 +138,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       if (d.error) setMsg({ ok: false, text: d.error });
       else {
         setNewSecret(d.secret ?? null);
-        setMsg({ ok: true, text: "Added. Hit Test to confirm it's connected." });
-        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
+        setMsg({ ok: true, text: d.detail || "Added. Hit Test to confirm it's connected." });
+        setForm({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, spreadsheetUrl: "", leadsTab: "", calendarId: "", slotMinutes: "", workStart: "", workEnd: "", workDays: "", noticeHours: "", daysAhead: "", eventTitle: "", events: ["contact.created", "conversation.escalated"] });
         setAdding(false);
         load();
       }
@@ -177,7 +183,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   // Clicking a catalog card opens the setup form for THAT connector (kind fixed).
   function openSetup(kind: string) {
-    setForm({ kind, name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, events: ["contact.created", "conversation.escalated"] });
+    setForm({ kind, name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, spreadsheetUrl: "", leadsTab: "", calendarId: "", slotMinutes: "", workStart: "", workEnd: "", workDays: "", noticeHours: "", daysAhead: "", eventTitle: "", events: ["contact.created", "conversation.escalated"] });
     setMsg(null); setNewSecret(null); setAdding(true);
   }
 
@@ -203,6 +209,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     woocommerce: { kind: "woocommerce", title: "Import your product catalog", blurb: `Bring your WooCommerce products into ${who} so the AI and checkout can use them.`, connected: countOf("woocommerce") },
     razorpay: { kind: "razorpay", title: "Send payment links in chat", blurb: `Connect your Razorpay keys so ${who} can send payment links inside the chat and confirm paid orders.`, connected: countOf("razorpay") },
     calcom: { kind: "calcom", title: "Let customers book meetings", blurb: "Connect Cal.com so a chatbot flow's “Book meeting” step can book real slots.", connected: countOf("calcom") },
+    google_sheets: { kind: "google_sheets", title: "Log events to a sheet", blurb: "Add a row to a tab of your sheet for each event you pick: new leads, hand-offs, opt-outs, orders.", connected: countOf("google_sheets") },
+    google_calendar: { kind: "google_calendar", title: "Connect your calendar for booking", blurb: "Share your Google Calendar with the portal so a chatbot flow's “Book meeting” step offers your free times and books the one the customer picks.", connected: countOf("google_calendar") },
   };
 
   return (
@@ -237,7 +245,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
                   {statusBadge(i.status)}
                   {!i.active && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">Paused</span>}
                 </div>
-                <p className="text-[11px] text-slate-500 truncate">{RESTAURANT_KINDS.includes(i.kind) ? `Mezvaan · ${String(i.config.mezmitraTenant ?? "restaurant")} · live menu + table booking` : SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · books meetings` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
+                <p className="text-[11px] text-slate-500 truncate">{RESTAURANT_KINDS.includes(i.kind) ? `Mezvaan · ${String(i.config.mezmitraTenant ?? "restaurant")} · live menu + table booking` : SCHEDULE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]}${i.config.calendarName ? ` · ${i.config.calendarName}` : ""} · books meetings` : i.kind === "google_sheets" ? `Google Sheets${i.config.sheetTitle ? ` · ${i.config.sheetTitle}` : ""} · “${i.config.leadsTab || "Portal log"}” tab` : STORE_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · imports products` : PAYMENT_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · payment links` : i.kind === "leadsquared" ? `LeadSquared · syncs every chat to the lead timeline` : CRM_KINDS.includes(i.kind) ? `${KIND_LABELS[i.kind]} · syncs contacts` : `${FORMAT_LABELS[i.config.format ?? "generic"]} · ${i.config.url}`}</p>
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {STORE_KINDS.includes(i.kind) && <button onClick={() => sync(i.id)} disabled={syncing === i.id} className="px-2.5 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{syncing === i.id ? "Importing…" : "Sync now"}</button>}
@@ -285,6 +293,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <div className="flex items-center gap-2">
             <button onClick={create} disabled={busy || (isEventKind && !isRestaurant && !form.events.length) || (
               isRestaurant ? !form.token.trim()
+              : form.kind === "google_sheets" ? (!googleEmail || !form.spreadsheetUrl.trim())
+              : form.kind === "google_calendar" ? (!googleEmail || !form.calendarId.trim())
               : isSchedule ? (!form.token.trim() || !form.eventTypeId.trim())
               : isStore ? (!form.token.trim() || (form.kind === "shopify" ? !form.shopDomain.trim() : !form.storeUrl.trim() || !form.consumerKey.trim()))
               : form.kind === "leadsquared" ? (!form.token.trim() || !form.lsqAccessKey.trim() || !form.lsqHost.trim() || !form.lsqActivityCode.trim())
@@ -297,7 +307,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         }>
         <div className="space-y-3">
           <input className={`${inp} w-full`} placeholder={isToken ? `Name (e.g. ${KIND_LABELS[form.kind]})` : "Name (e.g. Slack #leads, Zapier orders)"} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          {isToken ? (
+          {isGoogle ? (
+            <GoogleSetup kind={form.kind as "google_sheets" | "google_calendar"} email={googleEmail} form={form} set={patch => setForm(f => ({ ...f, ...patch }))} />
+          ) : isToken ? (
             <div className="space-y-2">
               {form.kind === "razorpay" && <input className={`${inp} w-full`} placeholder="Razorpay Key ID (rzp_…)" value={form.keyId} onChange={e => setForm({ ...form, keyId: e.target.value })} />}
               {form.kind === "shopify" && <input className={`${inp} w-full`} placeholder="Shop domain (my-store.myshopify.com)" value={form.shopDomain} onChange={e => setForm({ ...form, shopDomain: e.target.value })} />}
@@ -355,6 +367,54 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       <div className="border-t border-line pt-5">
       </div>
+    </div>
+  );
+}
+
+// ── Google Sheets / Calendar — share with the portal's Google address ───────
+type GoogleForm = { spreadsheetUrl: string; leadsTab: string; calendarId: string; slotMinutes: string; workStart: string; workEnd: string; workDays: string; noticeHours: string; daysAhead: string; eventTitle: string };
+function GoogleSetup({ kind, email, form, set }: { kind: "google_sheets" | "google_calendar"; email: string | null; form: GoogleForm; set: (p: Partial<GoogleForm>) => void }) {
+  const [copied, setCopied] = useState(false);
+  if (!email) {
+    return <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5">The portal&apos;s Google access isn&apos;t set up yet, so a {kind === "google_sheets" ? "sheet" : "calendar"} can&apos;t be connected. Ask the portal&apos;s administrator to add the Google service account key (GOOGLE_SERVICE_ACCOUNT_JSON).</p>;
+  }
+  const steps = kind === "google_sheets"
+    ? ["Open the sheet and click Share.", "Paste the address above, choose Editor, untick Notify people, and click Share.", "Copy the sheet's link from your browser and paste it below."]
+    : ["In Google Calendar, open Settings, then click your calendar on the left.", "Under Share with specific people, click Add people, paste the address above, and choose Make changes to events.", "Scroll to Integrate calendar, copy the Calendar ID, and paste it below."];
+  const field = (key: keyof GoogleForm, placeholder: string, label: string) => (
+    <label className="block space-y-0.5">
+      <span className="text-[11px] font-bold text-slate-600">{label}</span>
+      <input className={`${inp} w-full`} placeholder={placeholder} value={form[key]} onChange={e => set({ [key]: e.target.value } as Partial<GoogleForm>)} />
+    </label>
+  );
+  return (
+    <div className="space-y-3">
+      <div className="rounded-card border border-line p-3 space-y-2">
+        <p className="text-xs font-bold text-ink-900">First, share your {kind === "google_sheets" ? "sheet" : "calendar"} with the portal</p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs bg-canvas border border-line rounded px-2 py-1.5 break-all">{email}</code>
+          <button onClick={() => { navigator.clipboard?.writeText(email); setCopied(true); setTimeout(() => setCopied(false), 1500); }} className="px-2 py-1.5 rounded-control border border-line text-xs font-bold text-ink-700 hover:bg-canvas shrink-0">{copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}</button>
+        </div>
+        <ol className="list-decimal pl-4 space-y-0.5 text-[11px] text-ink-700">{steps.map(s => <li key={s}>{s}</li>)}</ol>
+        <p className="text-[11px] text-slate-500">The portal reaches only this {kind === "google_sheets" ? "sheet" : "calendar"}, and only while it is shared. To stop it, remove the address in Google&apos;s Share settings.</p>
+      </div>
+      {kind === "google_sheets" ? <>
+        {field("spreadsheetUrl", "https://docs.google.com/spreadsheets/d/…", "Sheet link *")}
+        {field("leadsTab", "Portal log", "Tab to add rows to (created if missing)")}
+        <p className="text-[11px] text-slate-500">To message people from rows in a sheet instead, use the Google Sheets card under Add an integration.</p>
+      </> : <>
+        {field("calendarId", "you@yourbusiness.com", "Calendar ID *")}
+        <div className="grid grid-cols-2 gap-2">
+          {field("slotMinutes", "30", "Appointment length (minutes)")}
+          {field("workDays", "Mon-Sat", "Working days")}
+          {field("workStart", "10:00", "Day starts")}
+          {field("workEnd", "19:00", "Day ends")}
+          {field("noticeHours", "2", "Minimum notice (hours)")}
+          {field("daysAhead", "7", "Days ahead to offer")}
+        </div>
+        {field("eventTitle", "Call with {{name}}", "Event title ({{name}} is the customer)")}
+        <p className="text-[11px] text-slate-500">Add a “Book meeting” node to a chatbot flow. It offers free times from this calendar, checks the chosen one is still free, and books it. The customer isn&apos;t added as a guest (Google allows that only for Workspace accounts with extra setup); their name and number go in the event.</p>
+      </>}
     </div>
   );
 }

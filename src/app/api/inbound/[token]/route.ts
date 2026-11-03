@@ -2,6 +2,7 @@ export const maxDuration = 30;
 import { NextResponse } from "next/server";
 import { findByToken, noteActivity } from "@/lib/inbound/store";
 import { PROVIDERS } from "@/lib/inbound/providers";
+import { CATALOG_BY_ID } from "@/lib/inbound/catalog";
 import { ingestEvents } from "@/lib/inbound/ingest";
 import { parseBody } from "@/lib/inbound/normalize";
 import { rateLimit, clientIp } from "@/lib/ratelimit";
@@ -41,6 +42,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ token: 
   if (!found) return NextResponse.json({ error: "Unknown inbound URL" }, { status: 404 });
   const { row, secrets } = found;
 
+  // A polled tool (Google Sheets) posts nothing: the portal reads it. A
+  // delivery to its URL is not one of ours, and is not recorded as a problem.
+  if (CATALOG_BY_ID.get(row.kind)?.polled) return NextResponse.json({ error: "Unknown inbound URL" }, { status: 404 });
   const provider = PROVIDERS[row.kind];
   if (!provider) return NextResponse.json({ error: "This integration is not available" }, { status: 404 });
 

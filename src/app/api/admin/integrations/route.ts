@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
+import { googleRobotEmail } from "@/lib/google/auth";
+import { bookingSettings } from "@/lib/google/calendar";
+import { spreadsheetIdFrom } from "@/lib/google/sheets";
 import {
-  listIntegrations, createIntegration, isIntegrationEvent,
+  listIntegrations, createIntegration, deleteIntegration, verifyIntegration, isIntegrationEvent, GOOGLE_KINDS,
   CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, WEBHOOK_KINDS, EVENT_KINDS, formatForKind, freshsalesBase, type IntegrationEvent, type IntegrationKind,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
@@ -11,7 +14,7 @@ import { guardFeature } from "@/lib/feature-guard";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom", "mezmitra"];
+const KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "leadsquared", "razorpay", "stripe", "shopify", "woocommerce", "calcom", "mezmitra", "google_sheets", "google_calendar"];
 
 // GET — this tenant's integrations (never returns secrets).
 export async function GET() {
@@ -19,7 +22,9 @@ export async function GET() {
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    return NextResponse.json({ integrations: await listIntegrations(tid) });
+    // googleShareEmail: the address a business shares a Google Sheet or
+    // Calendar with. Public by design; the service account key never leaves.
+    return NextResponse.json({ integrations: await listIntegrations(tid), googleShareEmail: googleRobotEmail() });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -32,7 +37,7 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; fsDomain?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqWaHandleField?: string; lsqAutoCreate?: boolean };
+  let b: { spreadsheetUrl?: string; leadsTab?: string; calendarId?: string; slotMinutes?: string; workStart?: string; workEnd?: string; workDays?: string; noticeHours?: string; daysAhead?: string; eventTitle?: string; kind?: string; name?: string; url?: string; token?: string; keyId?: string; shopDomain?: string; storeUrl?: string; consumerKey?: string; eventTypeId?: string; fsDomain?: string; events?: string[]; lsqAccessKey?: string; lsqHost?: string; lsqActivityCode?: string; lsqTaskCategory?: string; lsqIgHandleField?: string; lsqWaHandleField?: string; lsqAutoCreate?: boolean };
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
   const kind = (KINDS.includes(b.kind as IntegrationKind) ? b.kind : "webhook") as IntegrationKind;
@@ -49,7 +54,23 @@ export async function POST(req: Request) {
 
   let config: Record<string, unknown> = {};
   let secretInput: string | undefined;
-  if (PAYMENT_KINDS.includes(kind)) {
+  if (GOOGLE_KINDS.includes(kind)) {
+    // Shared with the portal's Google account: no secret. Checked live right
+    // after it is saved, and removed again if the portal can't reach it.
+    const t = (v: unknown) => (typeof v === "string" ? v.trim() : "").slice(0, 300);
+    if (!googleRobotEmail()) return NextResponse.json({ error: "The portal's Google access is not set up yet (GOOGLE_SERVICE_ACCOUNT_JSON)." }, { status: 400 });
+    if (kind === "google_sheets") {
+      if (!spreadsheetIdFrom(t(b.spreadsheetUrl))) return NextResponse.json({ error: "Paste the sheet's link: open the sheet and copy the address from your browser." }, { status: 400 });
+      config = { spreadsheetUrl: t(b.spreadsheetUrl), ...(t(b.leadsTab) ? { leadsTab: t(b.leadsTab) } : {}) };
+    } else {
+      config = Object.fromEntries(Object.entries({
+        calendarId: t(b.calendarId), slotMinutes: t(b.slotMinutes), workStart: t(b.workStart), workEnd: t(b.workEnd),
+        workDays: t(b.workDays), noticeHours: t(b.noticeHours), daysAhead: t(b.daysAhead), eventTitle: t(b.eventTitle),
+      }).filter(([, v]) => v));
+      const { problems } = bookingSettings(config as Record<string, string>);
+      if (problems.length) return NextResponse.json({ error: problems.join(" ") }, { status: 400 });
+    }
+  } else if (PAYMENT_KINDS.includes(kind)) {
     secretInput = (b.token ?? "").trim();
     if (!secretInput) return NextResponse.json({ error: kind === "stripe" ? "Paste your Stripe secret key (sk_…)." : "Paste your Razorpay Key Secret." }, { status: 400 });
     if (kind === "razorpay") {
@@ -107,6 +128,14 @@ export async function POST(req: Request) {
       { kind, name: (b.name ?? "").trim() || kind, config, events, secret: secretInput },
       tid,
     );
+    if (GOOGLE_KINDS.includes(kind)) {
+      const check = await verifyIntegration(integration.id, tid);
+      if (!check.ok) {
+        await deleteIntegration(integration.id, tid).catch(() => undefined);
+        return NextResponse.json({ error: check.detail }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, integration: { ...integration, status: "connected", statusDetail: check.detail }, secret: null, detail: check.detail });
+    }
     // Only the auto-generated webhook signing secret is surfaced; never a CRM token.
     return NextResponse.json({ success: true, integration, secret: kind === "webhook" ? secret : null });
   } catch (err) {

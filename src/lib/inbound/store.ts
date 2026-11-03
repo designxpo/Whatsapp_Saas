@@ -163,6 +163,23 @@ export async function claimEvent(i: Integration, e: { externalId: string | null;
   return (data as { id: string }).id;
 }
 
+/**
+ * Every live (not paused) connection of `kind`, across businesses, with its
+ * secrets — for a poller (the Google Sheets watcher) that has no request to
+ * name a tenant. Deliberately unscoped, like findByToken: each row carries its
+ * own tenant_id, and everything done for a row is done for THAT tenant.
+ * Empty before the migration, or for a row that cannot be decrypted.
+ */
+export async function liveConnectionsOfKind(kind: string): Promise<{ row: Integration; secrets: IntegrationSecrets }[]> {
+  const { data, error } = await db().from("wa_inbound_connections")
+    .select(`${COLUMNS},secret_enc`).eq("kind", kind).eq("status", "connected");
+  if (error) return [];
+  return ((data ?? []) as Record<string, unknown>[]).flatMap(r => {
+    try { return [{ row: mapRow(r), secrets: JSON.parse(decryptSecret(r.secret_enc as string)) as IntegrationSecrets }]; }
+    catch { return []; }
+  });
+}
+
 export async function settleEvent(tenantId: string, eventId: string, outcome: InboundEvent["outcome"], detail: string): Promise<void> {
   await db().from("wa_inbound_events").update({ outcome, detail: detail.slice(0, 500) }).eq("tenant_id", tenantId).eq("id", eventId);
 }

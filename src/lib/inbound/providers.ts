@@ -12,6 +12,7 @@ import { calendlyProvider } from "./connectors/calendly";
 import { calcomProvider } from "./connectors/calcom";
 import { typeformProvider } from "./connectors/typeform";
 import { indiamartProvider } from "./connectors/indiamart";
+import { googleSheetsProvider } from "./connectors/google-sheets";
 import type { IntegrationSecrets } from "./store";
 
 export interface InboundContext {
@@ -102,4 +103,5 @@ export const PROVIDERS: Record<string, Provider> = {
   calcom: calcomProvider,
   typeform: typeformProvider,
   indiamart: indiamartProvider,
+  google_sheets: googleSheetsProvider,
 };

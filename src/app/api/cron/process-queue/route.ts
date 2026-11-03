@@ -37,6 +37,7 @@ import { drainReplyHistory, fillReplyAuthors } from "@/lib/comment-history";
 import { drainReviewBooster } from "@/lib/review-booster";
 import { runRetention } from "@/lib/retention";
 import { drainDeletionRequests } from "@/lib/metadeletion";
+import { drainSheetRows } from "@/lib/google/sheetwatch";
 
 // SaaS runs on Vercel Hobby: NO vercel.json cron (it breaks deploys) — the
 // GitHub Actions */5 pinger drives this route (CRON_URL + CRON_SECRET), hitting
@@ -54,7 +55,7 @@ const STAGES = [
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
-  "metadeletion", "retention", "tenantmetrics",
+  "metadeletion", "retention", "sheetrows", "tenantmetrics",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -115,9 +116,12 @@ export async function POST(req: Request) {
     // Ages out derived/system records past their limits (retention.ts) — never
     // customer conversations, contacts or orders. Bounded batches, own deadline.
     const retention = await stage("retention", null, () => sweepRetentionIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
+    // Rows added to connected Google Sheets → each business's Messages
+    // (google/sheetwatch.ts). One read and at most one write per watched tab.
+    const sheetRows = await stage("sheetrows", null, () => drainSheetRows(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, metaDeletion, retention, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 

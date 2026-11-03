@@ -66,6 +66,15 @@ export interface CatalogEntry {
   /** Where in the tool the URL and secret go, step by step. */
   steps?: string[];
   events?: CatalogEvent[];
+  /**
+   * Connected by sharing with the portal's Google service account rather than
+   * pasting a key: the panel shows the address to share with.
+   */
+  shareWithGoogle?: "sheet" | "calendar";
+  /** The portal reads the tool on a schedule; nothing is posted to us, so no URL. */
+  polled?: boolean;
+  /** No incoming events at all: the card only opens the account connection (accountLinks). */
+  accountOnly?: boolean;
 }
 
 const COUNTRY_FIELD: IntegrationField = {
@@ -220,10 +229,19 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "google_calendar", name: "Google Calendar", category: "scheduling", color: "#1A73E8", logo: "/integrations/google_calendar.svg", availability: "next",
-    blurb: "Appointment reminders for events on your Google Calendar.",
-    gives: ["Reminders before appointments", "Booking from a WhatsApp chat straight into your calendar"],
-    pending: "Google requires the portal to register and verify an OAuth app first.",
+    id: "google_calendar", name: "Google Calendar", category: "scheduling", color: "#1A73E8", logo: "/integrations/google_calendar.svg", availability: "available",
+    blurb: "Customers book a time on your Google Calendar from inside a chat.",
+    gives: [
+      "A flow's “Book meeting” step offers your free times, read live from your calendar",
+      "The booking lands on your calendar with the customer's name and WhatsApp number",
+      "Only your working hours and days are offered, with the notice you choose",
+    ],
+    docsUrl: "https://support.google.com/calendar/answer/37082",
+    showsWebhookUrl: false,
+    shareWithGoogle: "calendar",
+    // Nothing comes IN from a calendar: it is connected as an account (the
+    // Integrations tab's google_calendar connection) that flows book into.
+    accountOnly: true,
   },
 
   // ── Lead sources & forms ──────────────────────────────────────────────────
@@ -270,10 +288,25 @@ export const CATALOG: CatalogEntry[] = [
     pending: "JustDial has no public lead API; it is set up through your JustDial account manager. Use the Webhooks integration with them meanwhile.",
   },
   {
-    id: "google_sheets", name: "Google Sheets", category: "leads", color: "#0F9D58", logo: "/integrations/google_sheets.svg", availability: "next",
-    blurb: "Send messages from rows in a sheet, and log WhatsApp leads into one.",
-    gives: ["A row added → a WhatsApp message", "Every new WhatsApp lead appended to a sheet"],
-    pending: "A one-click Google connection needs a verified Google OAuth app. Until then, a sheet can post to the Webhooks integration with a short Apps Script.",
+    id: "google_sheets", name: "Google Sheets", category: "leads", color: "#0F9D58", logo: "/integrations/google_sheets.svg", availability: "available",
+    blurb: "Message people from rows in a sheet, and log your leads into one.",
+    gives: [
+      "A row added to a tab → a WhatsApp message, with the row's columns in the template",
+      "Each row's status written back into the sheet: sent, skipped or failed, and why",
+      "Rows already in the tab when you connect are marked and never messaged",
+    ],
+    docsUrl: "https://support.google.com/docs/answer/9331169",
+    showsWebhookUrl: false,
+    shareWithGoogle: "sheet",
+    polled: true,
+    fields: [
+      { key: "spreadsheetUrl", label: "Sheet link", required: true, placeholder: "https://docs.google.com/spreadsheets/d/…", hint: "Open the sheet and copy the address from your browser." },
+      { key: "sendTab", label: "Message new rows from this tab", required: true, placeholder: "e.g. Send", hint: "Its first row needs a Phone column. A \"Portal status\" column is added to it." },
+      TAGS_FIELD("Google Sheets"), COUNTRY_FIELD,
+    ],
+    events: [
+      { key: "google_sheets.row_added", label: "New row in the sheet", suggestion: "A fee reminder, a welcome, an event invite: whatever the tab is for", fields: [NAME, p("your_column", "Any column, by its header (Fee Amount → fee_amount)", "₹12,000"), p("row", "Row number", "42")] },
+    ],
   },
 
   // ── CRM ───────────────────────────────────────────────────────────────────
@@ -304,7 +337,7 @@ export const CATALOG: CatalogEntry[] = [
 export const CATALOG_BY_ID = new Map(CATALOG.map(c => [c.id, c]));
 
 /** Tools that run on a the portal connector (not built-ins like LeadSquared, not "next"). */
-export const CONNECTABLE = new Set(CATALOG.filter(c => c.availability === "available").map(c => c.id));
+export const CONNECTABLE = new Set(CATALOG.filter(c => c.availability === "available" && !c.accountOnly).map(c => c.id));
 
 /** The catalogue entry an event key belongs to: "shopify.order_created" → shopify. */
 export function entryForEvent(eventKey: string): CatalogEntry | undefined {

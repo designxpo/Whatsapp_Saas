@@ -37,7 +37,8 @@ import { accountCanSend } from "./feature-guard";
 import { syncLeadProfile, pushWaActivity } from "./leadsquared";
 import { looksLikeCity } from "./llm";
 import { getProduct } from "./commerce";
-import { calcomSlots, calcomBook, matchSlot, extractEmail } from "./integrations";
+import { scheduleSlots, scheduleBook, calcomBook, matchSlot, extractEmail, formatSlotLabel } from "./integrations";
+import { channelShort, type Platform } from "./channel-label";
 import { continueTableBooking, startTableBooking, type BookTableIO, type BookTableState } from "./flow-booktable";
 import { safeFetch } from "./ssrf";
 import { fillVars, type ContactVars } from "./mergefields";
@@ -791,18 +792,20 @@ async function runFrom(flow: Flow, node: FlowNode | undefined, convKey: string, 
         return true;
       }
       case "book": {
-        // Cal.com booking — show available slots as a list, then book on the
-        // user's pick (resume logic in handleFlowMessage). Skips gracefully when
-        // no Cal.com integration is connected so the flow still continues.
+        // Meeting booking — Cal.com or Google Calendar, whichever the tenant
+        // connected (scheduleSlots). Show available slots as a list, then book
+        // on the user's pick (resume logic in handleFlowMessage). Skips
+        // gracefully when no calendar is connected so the flow still continues.
         const tz = str(d.tz) || "Asia/Kolkata";
-        if (!isReal) { await send.text("[booking] would show available Cal.com slots here."); cur = nextNode(g, cur.id); continue; }
-        const slots = await calcomSlots(tenantId, { tz });
-        if (slots === null) { if (str(d.fallback)) await send.text(str(d.fallback)); cur = nextNode(g, cur.id); continue; }
+        if (!isReal) { await send.text("[booking] would show available times from your connected calendar (Cal.com or Google Calendar) here."); cur = nextNode(g, cur.id); continue; }
+        const sched = await scheduleSlots(tenantId, { tz });
+        if (sched === null) { if (str(d.fallback)) await send.text(str(d.fallback)); cur = nextNode(g, cur.id); continue; }
+        const slots = sched.slots;
         if (!slots.length) { await send.text(str(d.fallback) || "Sorry, there are no open times in the next few days — our team will reach out to schedule."); cur = nextNode(g, cur.id); continue; }
         await send.list(str(d.text) || "Pick a time that works for you:", "Times", [{ title: "Available times", rows: slots.map(s => ({ id: s.id, title: s.label })) }]);
         const slotMap: Record<string, string> = {};
         for (const s of slots) slotMap[s.id] = s.iso;
-        await saveSession(convKey, flow.id, cur.id, { step: "pickSlot", slots: slotMap, tz, ...(menuNodeId ? { menu: menuNodeId } : {}) }, tenantId);
+        await saveSession(convKey, flow.id, cur.id, { step: "pickSlot", slots: slotMap, tz, provider: sched.provider, ...(menuNodeId ? { menu: menuNodeId } : {}) }, tenantId);
         return true;
       }
       case "booktable": {
@@ -1328,9 +1331,14 @@ export async function handleFlowMessage(
 
       // Send the result and continue the flow (on success) or close the booking
       // session (on failure, so the user isn't stuck mid-booking).
-      const finish = async (booked: boolean, email: string): Promise<boolean> => {
+      // Google Calendar books with no guest (a service account can't invite
+      // one), so its confirmation names the time and promises no invite.
+      const provider = str(state.provider) || "calcom";
+      const finish = async (booked: boolean, email: string, when = ""): Promise<boolean> => {
         await send.text(booked
-          ? `✅ Booked! A calendar invite is on its way${email ? ` to ${email}` : ""}.`
+          ? provider === "google_calendar"
+            ? `✅ Booked${when ? ` for ${when}` : ""}! It's on our calendar — see you then.`
+            : `✅ Booked! A calendar invite is on its way${email ? ` to ${email}` : ""}.`
           : "Sorry — I couldn't lock that slot in (it may have just been taken). Reply to start over and pick another time.");
         if (booked) {
           const consumed = await runFrom(flow, nextNode(flow.graph, waiting.id), convKey, phone, send, isReal, undefined, tid);
@@ -1348,6 +1356,14 @@ export async function handleFlowMessage(
         if (!chosen) return false;   // not a valid pick → let the AI field the question
         const startIso = slots[chosen];
         const contact = await getContactByPhone(phone, tid).catch(() => null);
+        if (provider === "google_calendar") {
+          // No email needed: the booking goes on the business's own calendar,
+          // re-checked there first so a time taken meanwhile is refused.
+          const kind = (send.kind && send.kind !== "dry" ? send.kind : "whatsapp") as Platform;
+          return finish(await scheduleBook(tid, {
+            startIso, name: contact?.name || "", phone: kind === "whatsapp" ? phone : "", channel: channelShort(kind), tz,
+          }), "", formatSlotLabel(startIso, tz));
+        }
         const attrEmail = Object.values(contact?.attributes ?? {}).map(v => extractEmail(String(v))).find(Boolean) ?? null;
         const email = contact?.email || attrEmail;
         if (email) return finish(await calcomBook(tid, { startIso, name: contact?.name || phone, email, tz }), email);

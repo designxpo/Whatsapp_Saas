@@ -6,6 +6,7 @@ import { trackingOrigin } from "@/lib/links";
 import { errorMessage } from "@/lib/errors";
 import { CATALOG_BY_ID, CONNECTABLE } from "@/lib/inbound/catalog";
 import { PROVIDERS } from "@/lib/inbound/providers";
+import { googleRobotEmail } from "@/lib/google/auth";
 import {
   listConnections, getConnectionWithSecrets, saveConnection, setConnectionPaused, deleteConnection,
   recentEvents, newInboundToken, type IntegrationSecrets,
@@ -48,13 +49,15 @@ export async function GET(req: Request) {
     const secrets = full?.secrets ?? ({ token: "" } as IntegrationSecrets);
     return {
       ...row,
-      webhookUrl: secrets.token ? webhookUrlFor(base, secrets.token) : "",
+      webhookUrl: secrets.token && !entry?.polled ? webhookUrlFor(base, secrets.token) : "",
       generated: entry?.generated ? { key: entry.generated.key, value: secrets[entry.generated.key] ?? "" } : null,
       storedSecrets: Object.keys(secrets).filter(k => k !== "token" && k !== entry?.generated?.key && secrets[k]),
       events: await recentEvents(tenantId, row.id, 15),
     };
   }));
-  return NextResponse.json({ connections, publicUrl: !!base });
+  // The address a business shares a Google Sheet or Calendar with. Public by
+  // design (it is typed into Google's Share dialog); the key never leaves.
+  return NextResponse.json({ connections, publicUrl: !!base, googleShareEmail: googleRobotEmail() });
 }
 
 // POST { kind, config, secrets } — connect a tool, or change its settings.
@@ -68,8 +71,9 @@ export async function POST(req: Request) {
   const provider = PROVIDERS[kind];
   if (!entry || !provider || !CONNECTABLE.has(kind)) return NextResponse.json({ error: "That integration can't be connected yet." }, { status: 400 });
 
+  // A polled tool (Google Sheets) is given no URL, so needs no public address.
   const base = origin(req);
-  if (!base) return NextResponse.json({ error: "The portal has no public address to give the tool (NEXT_PUBLIC_SITE_URL). Set it, then connect." }, { status: 400 });
+  if (!base && !entry.polled) return NextResponse.json({ error: "The portal has no public address to give the tool (NEXT_PUBLIC_SITE_URL). Set it, then connect." }, { status: 400 });
 
   // Only the fields the catalogue declares, so nothing else rides along into
   // the stored config or the encrypted secrets.
@@ -106,7 +110,7 @@ export async function POST(req: Request) {
     const user = await currentUser();
     const connection = await saveConnection({ tenantId, kind, config: finalConfig, secrets, actor: user?.email ?? "", existingId: existing?.row.id ?? null });
     logActivity(user, existing ? "inbound.update" : "inbound.connect", entry.name);
-    return NextResponse.json({ success: true, detail, connection, webhookUrl: webhookUrlFor(base, secrets.token) });
+    return NextResponse.json({ success: true, detail, connection, webhookUrl: entry.polled ? "" : webhookUrlFor(base, secrets.token) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

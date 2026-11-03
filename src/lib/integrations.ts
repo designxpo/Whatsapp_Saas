@@ -21,6 +21,10 @@ import { encryptSecret, readSecret } from "./crypto";
 import { safeFetch } from "./ssrf";
 import { errorMessage } from "./errors";
 import { mezmitraBase, whoami as mezWhoami } from "./mezmitra";
+import { googleRobotEmail, NOT_SET_UP as GOOGLE_NOT_SET_UP } from "./google/auth";
+import { GoogleApiError } from "./google/api";
+import { spreadsheetIdFrom, prepareLogTab, appendLogRow, sheetTime, accessProblem, DEFAULT_LOG_TAB } from "./google/sheets";
+import { connectCalendar, bookingSettings, liveSlots, bookSlot } from "./google/calendar";
 
 
 // ── Event catalog ────────────────────────────────────────────────────────────
@@ -59,7 +63,9 @@ export function isIntegrationEvent(s: string): s is IntegrationEvent {
 //   freshsales — sync contacts into Freshsales (bundle alias + API key)
 //   razorpay   — generate payment links (key id + secret)
 //   stripe     — generate payment links (secret key)
-export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "freshsales" | "leadsquared" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom" | "mezmitra";
+//   google_sheets   — append each subscribed event as a row (shared with the portal's Google account)
+//   google_calendar — the flow "Book meeting" node books into it (shared the same way)
+export type IntegrationKind = "webhook" | "slack" | "teams" | "hubspot" | "pipedrive" | "freshsales" | "leadsquared" | "razorpay" | "stripe" | "shopify" | "woocommerce" | "calcom" | "mezmitra" | "google_sheets" | "google_calendar";
 export type WebhookFormat = "generic" | "slack" | "teams";
 
 // Webhook-style kinds POST to a URL. slack/teams are webhooks with the format
@@ -78,12 +84,15 @@ export const PAYMENT_KINDS: IntegrationKind[] = ["razorpay", "stripe"];
 // Store kinds expose fetchProducts() for one-way catalog import.
 export const STORE_KINDS: IntegrationKind[] = ["shopify", "woocommerce"];
 // Scheduling kinds back the flow "Book meeting" node (slots + booking via API).
-export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom"];
+export const SCHEDULE_KINDS: IntegrationKind[] = ["calcom", "google_calendar"];
 // Restaurant system: live menu + table booking for the AI and flows (lib/mezmitra.ts),
 // and opt-outs sent back. One per tenant; linked by pasting a Mezvaan link key.
 export const RESTAURANT_KINDS: IntegrationKind[] = ["mezmitra"];
 // Event-driven kinds — their `events` subscription matters; action kinds ignore it.
-export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "mezmitra"];
+export const EVENT_KINDS: IntegrationKind[] = ["webhook", "slack", "teams", "hubspot", "pipedrive", "freshsales", "mezmitra", "google_sheets"];
+// Connected by SHARING a sheet or calendar with the portal's Google service
+// account (src/lib/google/auth.ts): no secret is pasted.
+export const GOOGLE_KINDS: IntegrationKind[] = ["google_sheets", "google_calendar"];
 export const KIND_LABELS: Record<IntegrationKind, string> = {
   webhook: "Webhook (Zapier / Make / n8n)",
   slack: "Slack",
@@ -98,6 +107,8 @@ export const KIND_LABELS: Record<IntegrationKind, string> = {
   woocommerce: "WooCommerce",
   calcom: "Cal.com",
   mezmitra: "Mezvaan (restaurant)",
+  google_sheets: "Google Sheets",
+  google_calendar: "Google Calendar",
 };
 
 // A product pulled from an external store, normalized for wa_products import.
@@ -195,6 +206,11 @@ export function buildWebhookRequest(opts: {
 // A missing/blocked URL is configuration, never transient.
 const RETRIABLE_DELIVERY_HTTP = new Set([408, 425, 429, 500, 502, 503, 504]);
 export function isRetriableDelivery(kind: IntegrationKind, err: unknown): boolean {
+  // Google's errors say for themselves whether a retry is safe (429 / 5xx). A
+  // timeout says no: the row may already be in the sheet, and replaying it
+  // would log the lead twice. Without this, a message with no "HTTP nnn" in it
+  // counted as a network blip and was queued.
+  if (GOOGLE_KINDS.includes(kind) && err && typeof (err as { retry?: unknown }).retry === "boolean") return (err as { retry: boolean }).retry;
   const m = errorMessage(err);
   if (/no url|invalid url|only http|host is not allowed|private or reserved|too many redirects|did not resolve|enotfound/i.test(m)) return false;
   const status = Number(m.match(/HTTP (\d{3})/)?.[1] ?? 0);
@@ -501,7 +517,8 @@ export interface PaymentLinkParams {
 }
 
 interface Connector {
-  verify(i: Integration, secret: string | null): Promise<{ ok: boolean; detail: string }>;
+  /** `config`: settings the check worked out (a sheet's id and title) for verifyIntegration to keep. */
+  verify(i: Integration, secret: string | null): Promise<{ ok: boolean; detail: string; config?: Record<string, unknown> }>;
   // Event-driven connectors implement deliver; action connectors (payments) don't.
   deliver?(i: Integration, secret: string | null, envelope: EventEnvelope): Promise<void>;
   // Payment connectors implement this; returns a hosted checkout URL.
@@ -877,6 +894,66 @@ const mezmitraConnector: Connector = {
   },
 };
 
+// ── Google Sheets — every subscribed event as a row ──────────────────────────
+// The business shares the sheet with the portal's service account as an
+// Editor; no secret is stored. Rows are written RAW, so a customer's text never
+// becomes a formula.
+const configStr = (i: Integration, k: string) => String(i.config[k] ?? "").trim();
+const sheetLogTab = (i: Integration) => configStr(i, "leadsTab") || DEFAULT_LOG_TAB;
+
+/** The row an event becomes: When, Event, Name, Phone, Email, Details. Pure. */
+export function sheetLogRow(envelope: EventEnvelope, at = new Date()): string[] {
+  const d = envelope.data;
+  const text = (k: string) => (d[k] === undefined || d[k] === null ? "" : String(d[k])).replace(/\s+/g, " ").trim();
+  const money = typeof d.totalCents === "number" ? `₹${(d.totalCents / 100).toLocaleString("en-IN")}` : "";
+  const details = text("text") || text("reason") || [text("orderId") && `Order ${text("orderId")}`, money].filter(Boolean).join(" · ");
+  const phone = text("phone").replace(/[^\d+]/g, "");
+  return [
+    sheetTime(at),
+    EVENT_LABELS[envelope.event] ?? envelope.event,
+    text("name"),
+    phone && !phone.startsWith("+") && phone.length >= 10 ? `+${phone}` : phone,
+    text("email"),
+    details.slice(0, 1000),
+  ];
+}
+
+const googleSheetsConnector: Connector = {
+  async verify(i) {
+    if (!googleRobotEmail()) return { ok: false, detail: GOOGLE_NOT_SET_UP };
+    const id = spreadsheetIdFrom(configStr(i, "spreadsheetUrl"));
+    if (!id) return { ok: false, detail: "Paste the sheet's link: open the sheet and copy the address from your browser (it contains /spreadsheets/d/…)." };
+    try {
+      const tab = sheetLogTab(i);
+      const { title } = await prepareLogTab(id, tab);
+      return { ok: true, detail: `Connected to “${title || "your sheet"}”. Events go to the “${tab}” tab.`, config: { spreadsheetId: id, sheetTitle: title } };
+    } catch (err) {
+      return { ok: false, detail: accessProblem(err) };
+    }
+  },
+  async deliver(i, _secret, envelope) {
+    const id = configStr(i, "spreadsheetId") || spreadsheetIdFrom(configStr(i, "spreadsheetUrl"));
+    if (!id) throw new Error("no url");   // configuration, never retried
+    try {
+      await appendLogRow(id, sheetLogTab(i), sheetLogRow(envelope));
+    } catch (err) {
+      // isRetriableDelivery reads "HTTP <status>": 429/5xx park for a retry;
+      // a lost share (403/404) is the business's to fix, so it is not queued.
+      if (err instanceof GoogleApiError) throw new Error(`Google Sheets HTTP ${err.status}: ${accessProblem(err)}`);
+      throw err;
+    }
+  },
+};
+
+// ── Google Calendar — the "Book meeting" node books into it ──────────────────
+const googleCalendarConnector: Connector = {
+  async verify(i) {
+    const config = Object.fromEntries(Object.entries(i.config).map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]));
+    const r = await connectCalendar(config);
+    return r.ok ? { ok: true, detail: r.detail, config: r.config } : { ok: false, detail: r.detail };
+  },
+};
+
 const CONNECTORS: Record<IntegrationKind, Connector> = {
   webhook: webhookConnector,
   slack: webhookConnector,   // webhook with format pre-set to "slack"
@@ -891,6 +968,8 @@ const CONNECTORS: Record<IntegrationKind, Connector> = {
   woocommerce: wooConnector,
   calcom: calcomConnector,
   mezmitra: mezmitraConnector,
+  google_sheets: googleSheetsConnector,
+  google_calendar: googleCalendarConnector,
 };
 
 // Resolve the tenant's active integration of any of `kinds` (+ its secret).
@@ -906,7 +985,7 @@ async function activeIntegration(tenantId: string, kinds: IntegrationKind[]): Pr
 // calendar is simply full. Never throws.
 export async function calcomSlots(tenantId: string, opts: { days?: number; tz?: string } = {}): Promise<Slot[] | null> {
   try {
-    const found = await activeIntegration(tenantId, SCHEDULE_KINDS);
+    const found = await activeIntegration(tenantId, ["calcom"]);
     if (!found?.secret) return null;
     const tz = opts.tz || "Asia/Kolkata";
     const eventTypeId = String(found.integration.config.eventTypeId ?? "").trim();
@@ -933,7 +1012,7 @@ export async function calcomSlots(tenantId: string, opts: { days?: number; tz?: 
 // Book a Cal.com slot for an attendee. Returns true on success. Never throws.
 export async function calcomBook(tenantId: string, p: { startIso: string; name: string; email: string; tz?: string }): Promise<boolean> {
   try {
-    const found = await activeIntegration(tenantId, SCHEDULE_KINDS);
+    const found = await activeIntegration(tenantId, ["calcom"]);
     if (!found?.secret) return false;
     const eventTypeId = Number(found.integration.config.eventTypeId);
     if (!Number.isFinite(eventTypeId)) return false;
@@ -956,6 +1035,65 @@ export async function calcomBook(tenantId: string, p: { startIso: string; name: 
     return res.ok;
   } catch (err) {
     console.error("[integrations] calcom book failed:", errorMessage(err));
+    return false;
+  }
+}
+
+// ── Either scheduling provider, for the flow "Book meeting" node ─────────────
+// The tenant's first active schedule connection decides: Cal.com books with
+// the attendee's email (Cal.com sends the invite); Google Calendar books into
+// the shared calendar with no email (a service account can't invite guests, so
+// nothing is promised about an invite).
+
+export type ScheduleProvider = "calcom" | "google_calendar";
+
+/** Which provider this tenant books with, or null when none is connected and active. */
+export async function scheduleProvider(tenantId: string): Promise<ScheduleProvider | null> {
+  const found = await activeIntegration(tenantId, SCHEDULE_KINDS).catch(() => null);
+  return (found?.integration.kind as ScheduleProvider | undefined) ?? null;
+}
+
+/**
+ * Free slots from the tenant's provider. null when no provider is connected
+ * (the node skips gracefully); [] when the calendar is full or unreadable.
+ * Never throws.
+ */
+export async function scheduleSlots(tenantId: string, opts: { days?: number; tz?: string } = {}): Promise<{ provider: ScheduleProvider; slots: Slot[] } | null> {
+  const found = await activeIntegration(tenantId, SCHEDULE_KINDS).catch(() => null);
+  if (!found) return null;
+  if (found.integration.kind === "calcom") {
+    const slots = await calcomSlots(tenantId, opts);
+    return slots === null ? null : { provider: "calcom", slots };
+  }
+  try {
+    const settings = bookingSettings(Object.fromEntries(Object.entries(found.integration.config).map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]))).settings;
+    if (!settings) return { provider: "google_calendar", slots: [] };
+    const tz = opts.tz || "Asia/Kolkata";
+    const starts = (await liveSlots(settings)).slice(0, 8);
+    return { provider: "google_calendar", slots: starts.map((d, i) => ({ id: `s${i}`, iso: d.toISOString(), label: formatSlotLabel(d.toISOString(), tz) })) };
+  } catch (err) {
+    console.error("[integrations] google calendar slots failed:", errorMessage(err));
+    return { provider: "google_calendar", slots: [] };
+  }
+}
+
+/**
+ * Book `startIso` with the tenant's provider. Google re-checks the calendar
+ * first and refuses a time taken meanwhile — false, never a double booking.
+ * Never throws.
+ */
+export async function scheduleBook(tenantId: string, p: { startIso: string; name: string; email?: string; phone?: string; channel?: string; tz?: string }): Promise<boolean> {
+  const found = await activeIntegration(tenantId, SCHEDULE_KINDS).catch(() => null);
+  if (!found) return false;
+  if (found.integration.kind === "calcom") return p.email ? calcomBook(tenantId, { startIso: p.startIso, name: p.name, email: p.email, tz: p.tz }) : false;
+  try {
+    const settings = bookingSettings(Object.fromEntries(Object.entries(found.integration.config).map(([k, v]) => [k, v === null || v === undefined ? "" : String(v)]))).settings;
+    const start = new Date(p.startIso);
+    if (!settings || Number.isNaN(start.getTime())) return false;
+    const booked = await bookSlot(settings, start, { name: p.name, phone: (p.phone ?? "").replace(/\D/g, ""), channel: p.channel || "WhatsApp" });
+    return booked !== null;
+  } catch (err) {
+    console.error("[integrations] google calendar booking failed:", errorMessage(err));
     return false;
   }
 }
@@ -1028,8 +1166,11 @@ export async function verifyIntegration(id: string, tenantId: string = DEFAULT_T
   if (!connector) return { ok: false, detail: "That integration type isn't supported." };
   const secret = await getSecret(id, tenantId);
   const result = await connector.verify(i, secret);
+  // Settings the check worked out (a sheet's id and title, a calendar's name)
+  // are kept, so delivery doesn't have to work them out again.
+  if (result.ok && result.config) await updateIntegration(id, { config: { ...i.config, ...result.config } }, tenantId).catch(() => undefined);
   await setStatus(id, tenantId, result.ok ? "connected" : "error", result.detail);
-  return result;
+  return { ok: result.ok, detail: result.detail };
 }
 
 // Fan an event out to every active integration subscribed to it. NEVER throws

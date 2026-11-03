@@ -112,13 +112,14 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
   const [category, setCategory] = useState<IntegrationCategory | "all" | "crm" | "more">("all");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<string | null>(null);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/admin/inbound");
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      setConnections(d.connections ?? []); setError(null);
+      setConnections(d.connections ?? []); setGoogleEmail(d.googleShareEmail ?? null); setError(null);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     setLoaded(true);
   }, []);
@@ -181,6 +182,8 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${conn.status === "paused" ? "bg-slate-100 text-slate-500" : conn.lastError ? "bg-amber-50 text-amber-700" : "bg-brand-50 text-brand-700"}`}>
                       {conn.status === "paused" ? "Paused" : conn.lastError ? "Check" : "Connected"}
                     </span>
+                  ) : e.accountOnly && accountLinks[e.id]?.connected ? (
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-brand-50 text-brand-700">Connected</span>
                   ) : e.availability === "next" ? (
                     <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Coming next</span>
                   ) : null}
@@ -207,7 +210,7 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
 
       {openEntry && (
         <IntegrationPanel entry={openEntry} connection={byKind.get(openEntry.id) ?? null}
-          accountLink={accountLinks[openEntry.id]}
+          accountLink={accountLinks[openEntry.id]} googleEmail={googleEmail}
           onOpenAccount={onOpenAccount ? (k) => { setOpen(null); onOpenAccount(k); } : undefined}
           onClose={() => setOpen(null)} onChanged={load} />
       )}
@@ -216,8 +219,8 @@ export default function InboundIntegrations({ extras = [], accountLinks = {}, on
 }
 
 // ── One tool: connect it, and say what each of its events should send ───────
-function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClose, onChanged }: {
-  entry: CatalogEntry; connection: Connection | null; accountLink?: AccountLink; onOpenAccount?: (kind: string) => void;
+function IntegrationPanel({ entry, connection, accountLink, googleEmail = null, onOpenAccount, onClose, onChanged }: {
+  entry: CatalogEntry; connection: Connection | null; accountLink?: AccountLink; googleEmail?: string | null; onOpenAccount?: (kind: string) => void;
   onClose: () => void; onChanged: () => void;
 }) {
   const ask = useConfirm();
@@ -228,7 +231,9 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
 
   useEffect(() => { setValues(connection?.config ?? {}); setEditing(false); setMsg(null); }, [entry.id, connection]);
 
-  const showForm = entry.availability !== "next" && (!connection || editing);
+  // accountOnly (Google Calendar): nothing comes in, so there is no inbound
+  // connection to make — the card only opens the account connection.
+  const showForm = entry.availability !== "next" && !entry.accountOnly && (!connection || editing);
 
   async function connect() {
     setBusy(true); setMsg(null);
@@ -254,7 +259,9 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
   async function disconnect() {
     const ok = await ask({
       title: `Disconnect ${entry.name}?`, tone: "danger", confirmLabel: "Disconnect",
-      message: `The portal stops receiving ${entry.name} events, so the messages set up below stop going out. Contacts already brought in stay. To reconnect later you will set it up in ${entry.name} again.`,
+      message: entry.polled
+        ? `The portal stops reading the sheet, so new rows are no longer messaged. Contacts already brought in stay, and the sheet is left as it is.`
+        : `The portal stops receiving ${entry.name} events, so the messages set up below stop going out. Contacts already brought in stay. To reconnect later you will set it up in ${entry.name} again.`,
       facts: [{ label: "Integration", value: entry.name }, ...(connection ? [{ label: "Last event", value: ago(connection.lastEventAt) }] : [])],
     });
     if (!ok) return;
@@ -277,7 +284,7 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
           {/* The same tool, from the other side: the portal acting in it. One card, both jobs. */}
           {accountLink && onOpenAccount && (
             <div className="rounded-card border border-line bg-slate-50 p-4 space-y-2">
-              <p className="text-sm font-extrabold text-ink-900">Also connect your {entry.name} account</p>
+              <p className="text-sm font-extrabold text-ink-900">{entry.accountOnly ? `Connect your ${entry.name}` : `Also connect your ${entry.name} account`}</p>
               <p className="text-xs text-slate-600">{accountLink.blurb}</p>
               <button onClick={() => onOpenAccount(accountLink.kind)} className="px-3 py-1.5 rounded-lg border border-line bg-white text-xs font-bold text-ink-800 hover:bg-canvas">
                 {accountLink.connected ? `Manage: ${accountLink.title}` : accountLink.title}
@@ -293,7 +300,7 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
           {connection && (
             <div className={`rounded-control border px-3 py-2.5 text-xs space-y-1 ${connection.lastError ? "bg-amber-50 border-amber-200" : "bg-brand-50 border-brand-100"}`}>
               <p className="font-bold text-ink-900 flex items-center gap-1.5">
-                {connection.status === "paused" ? <><Pause className="w-3.5 h-3.5" /> Paused — events are received but nothing is sent</>
+                {connection.status === "paused" ? <><Pause className="w-3.5 h-3.5" /> {entry.polled ? "Paused — new rows aren't read" : "Paused — events are received but nothing is sent"}</>
                   : connection.lastError ? <><AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> Connected, with a problem</>
                   : <><CircleCheck className="w-3.5 h-3.5 text-brand-600" /> Connected</>}
               </p>
@@ -312,6 +319,24 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
               )}
               {entry.docsUrl && <a href={entry.docsUrl} target="_blank" rel="noreferrer" className="text-[11px] font-bold text-brand-700 inline-flex items-center gap-1 hover:underline">{entry.name}&apos;s guide <ExternalLink className="w-3 h-3" /></a>}
             </div>
+          )}
+
+          {/* Google: share the sheet with the portal's address */}
+          {entry.shareWithGoogle && !entry.accountOnly && (
+            googleEmail ? (
+              <div className="space-y-2.5 border border-line rounded-card p-4">
+                <p className="text-sm font-extrabold text-ink-900">{connection ? "Shared with the portal" : "First, share your sheet with the portal"}</p>
+                <CopyField label="The portal's Google address" value={googleEmail} />
+                {!connection && <ol className="list-decimal pl-4 space-y-1 text-xs text-ink-700">
+                  <li>Open the sheet and click Share.</li>
+                  <li>Paste the address above, choose Editor, untick Notify people, and click Share.</li>
+                  <li>Copy the sheet&apos;s link from your browser and paste it below, with the tab to message from.</li>
+                </ol>}
+                <p className="text-[11px] text-slate-500">The portal reaches only this sheet, and only while it is shared. Rows already in the tab when you connect are marked and never messaged; each new row gets its outcome written into a “Portal status” column.</p>
+              </div>
+            ) : (
+              <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-control px-3 py-2.5">The portal&apos;s Google access isn&apos;t set up yet, so a sheet can&apos;t be connected. Ask the portal&apos;s administrator to add the Google service account key (GOOGLE_SERVICE_ACCOUNT_JSON).</p>
+            )
           )}
 
           {/* Connect / edit form */}
@@ -350,7 +375,7 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
             </div>
           )}
 
-          {connection && entry.events?.length ? <EventMessages entry={entry} /> : null}
+          {connection && entry.events?.length ? <EventMessages entry={entry} connection={connection} /> : null}
 
           {connection && (
             <div className="space-y-1.5">
@@ -376,7 +401,22 @@ function IntegrationPanel({ entry, connection, accountLink, onOpenAccount, onClo
 }
 
 // ── What each event sends: API rules for this tool's event keys ────────────
-function EventMessages({ entry }: { entry: CatalogEntry }) {
+// A sheet row's details are its own columns: offer those, by name, instead of
+// the catalogue's generic example.
+function withSheetColumns(ev: CatalogEvent, connection: Connection): CatalogEvent {
+  if (ev.key !== "google_sheets.row_added") return ev;
+  const cols = (connection.config.sendColumns ?? "").split(",").map(c => c.trim()).filter(Boolean);
+  return {
+    ...ev,
+    fields: [
+      ...ev.fields.filter(f => f.token === "contact.name"),
+      ...cols.map(c => ({ token: `payload.${c}`, label: c.replace(/_/g, " "), sample: "" })),
+      ...ev.fields.filter(f => f.token === "payload.row"),
+    ],
+  };
+}
+
+function EventMessages({ entry, connection }: { entry: CatalogEntry; connection: Connection }) {
   const ask = useConfirm();
   const [rules, setRules] = useState<Rule[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -428,7 +468,7 @@ function EventMessages({ entry }: { entry: CatalogEntry }) {
                 <button onClick={() => remove(r)} aria-label="Delete message" className="p-1 text-slate-300 hover:text-red-600"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
             ))}
-            {adding === ev.key && <MessageForm event={ev} entry={entry} templates={templates} onDone={() => { setAdding(null); load(); }} />}
+            {adding === ev.key && <MessageForm event={withSheetColumns(ev, connection)} entry={entry} templates={templates} onDone={() => { setAdding(null); load(); }} />}
           </div>
         );
       })}
