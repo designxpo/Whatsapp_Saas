@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listReviews, saveReview, deleteReview, getReviewSettings } from "@/lib/reviews";
+import { listReviews, saveReview, deleteReview, getReviewSettings, getGoogleSyncStatus } from "@/lib/reviews";
 import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
-    const [reviews, settings] = await Promise.all([listReviews(tid), getReviewSettings(tid)]);
-    return NextResponse.json({ reviews, settings });
+    const [reviews, settings, googleSync] = await Promise.all([listReviews(tid), getReviewSettings(tid), getGoogleSyncStatus(tid)]);
+    return NextResponse.json({ reviews, settings, googleSync });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

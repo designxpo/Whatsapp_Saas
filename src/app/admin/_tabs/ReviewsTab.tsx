@@ -19,6 +19,7 @@ type Review = {
 };
 type Settings = { autoMinStars: number; signature: string; tone: string };
 type GrChannel = { id: string; name: string; active: boolean };
+type GoogleSync = { ok: boolean; error: string | null; at: string };
 type GrLocation = { accountId: string; id: string; name: string; address: string };
 
 // Result flags the Google OAuth callback lands back with (?gr=connected|pick
@@ -63,7 +64,8 @@ export default function ReviewsTab() {
   const [settingsForm, setSettingsForm] = useState<Settings>({ autoMinStars: 4, signature: "", tone: "" });
   const [savingSettings, setSavingSettings] = useState(false);
   // Google Business Profile connection (Phase 2) + its location picker.
-  const [grChannel, setGrChannel] = useState<GrChannel | null>(null);
+  const [grChannels, setGrChannels] = useState<GrChannel[]>([]);
+  const [googleSync, setGoogleSync] = useState<Record<string, GoogleSync>>({});
   const [pickerChannelId, setPickerChannelId] = useState<string | null>(null);
   const [pickerLocations, setPickerLocations] = useState<GrLocation[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
@@ -74,14 +76,16 @@ export default function ReviewsTab() {
     fetch("/api/admin/reviews").then(r => r.json()).then(d => {
       setReviews(d.reviews ?? []);
       if (d.settings) { setSettings(d.settings); setSettingsForm(d.settings); }
+      setGoogleSync(d.googleSync ?? {});
     }).catch(() => {});
   }, []);
   useEffect(() => { load(); }, [load]);
 
   const loadGrChannel = useCallback(() => {
     fetch("/api/admin/channels").then(r => r.json()).then(d => {
-      const gr = (d.channels ?? []).find((c: { kind?: string; active: boolean }) => c.kind === "google_reviews" && c.active);
-      setGrChannel(gr ? { id: gr.id, name: gr.name, active: gr.active } : null);
+      // Every connected profile: a tenant may connect more than one location.
+      const gr = (d.channels ?? []).filter((c: { kind?: string; active: boolean; googleLocationId?: string | null }) => c.kind === "google_reviews" && c.active && c.googleLocationId);
+      setGrChannels(gr.map((c: GrChannel) => ({ id: c.id, name: c.name, active: c.active })));
     }).catch(() => {});
   }, []);
   useEffect(() => { loadGrChannel(); }, [loadGrChannel]);
@@ -124,13 +128,13 @@ export default function ReviewsTab() {
     } finally { setPickerBusy(null); }
   }
 
-  async function disconnectGoogle() {
-    if (!grChannel || !(await ask({
+  async function disconnectGoogle(grChannel: GrChannel) {
+    if (!(await ask({
       title: "Disconnect this Google Business Profile?", tone: "danger", confirmLabel: "Disconnect",
       message: "Reviews already imported are kept, but new ones stop arriving and replies can no longer be posted.",
     }))) return;
     await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: grChannel.id }) }).catch(() => {});
-    setGrChannel(null);
+    setGrChannels(list => list.filter(c => c.id !== grChannel.id));
   }
 
   const draftOf = (r: Review) => drafts[r.id] ?? r.replyText ?? "";
@@ -190,12 +194,12 @@ export default function ReviewsTab() {
           <p className="text-xs text-ink-500 mt-0.5">AI drafts a reply to every review, tuned to the star rating. Approve &amp; post to Google.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {grChannel ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+          {grChannels.length ? grChannels.map(grChannel => (
+            <div key={grChannel.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
               <MapPin className="w-3.5 h-3.5" /> {grChannel.name}
-              <button onClick={disconnectGoogle} className="text-emerald-700/60 hover:text-red-600 ml-1" title="Disconnect"><Unlink className="w-3.5 h-3.5" /></button>
+              <button onClick={() => disconnectGoogle(grChannel)} className="text-emerald-700/60 hover:text-red-600 ml-1" title={`Disconnect ${grChannel.name}`} aria-label={`Disconnect ${grChannel.name}`}><Unlink className="w-3.5 h-3.5" /></button>
             </div>
-          ) : (
+          )) : (
             <a href="/api/admin/onboarding/google-reviews/start" className="px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5">
               <Link2 className="w-3.5 h-3.5" /> Connect with Google
             </a>
@@ -234,11 +238,24 @@ export default function ReviewsTab() {
         </div>
       )}
 
+      {/* A connection Google stopped letting us read. Without this an empty
+          list looks exactly like a business with no reviews. */}
+      {grChannels.map(c => {
+        const sync = googleSync[c.id];
+        if (!sync || sync.ok) return null;
+        return (
+          <div key={`sync-${c.id}`} role="alert" className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-800 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span><b>New reviews from {c.name} aren&apos;t arriving.</b> {sync.error} <span className="text-red-700/70">(last checked {new Date(sync.at).toLocaleString()})</span></span>
+            <a href="/api/admin/onboarding/google-reviews/start" className="font-bold underline">Reconnect with Google</a>
+          </div>
+        );
+      })}
+
       {/* Phase explainer */}
       <div className="rounded-card border border-amber-200 bg-amber-50/60 px-4 py-3 text-[12px] text-amber-800">
-        {grChannel
-          ? <><b>Google Business Profile connected.</b> New reviews import automatically and reply per your settings below — {settings.autoMinStars > 5 ? <>all replies wait as drafts for your approval.</> : <><b>{settings.autoMinStars}★ and up</b> auto-post, lower ratings wait as drafts for your approval.</>}</>
-          : <><b>Connect your Google Business Profile</b> to import reviews automatically and post replies with one tap. Until then, add reviews here (paste them in), let the AI draft a reply, then copy it to Google — replies to <b>{settings.autoMinStars}★ and up</b> would auto-post, lower ratings wait for your approval.</>}
+        {grChannels.length
+          ? <><b>Google Business Profile connected.</b> New reviews import automatically and reply per your settings below — {settings.autoMinStars > 5 ? <>no reply is posted until you approve it.</> : <><b>{settings.autoMinStars}★ and up</b> auto-post, lower ratings wait as drafts for your approval.</>}</>
+          : <><b>Connect your Google Business Profile</b> to import reviews automatically and post replies with one tap. Until then, add reviews here (paste them in), let the AI draft a reply, then copy it to Google{settings.autoMinStars > 5 ? <>.</> : <> — once connected, replies to <b>{settings.autoMinStars}★ and up</b> would auto-post, lower ratings wait for your approval.</>}</>}
       </div>
 
       {/* Settings */}

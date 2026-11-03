@@ -30,7 +30,7 @@ export interface Review {
 }
 
 export interface ReviewSettings {
-  autoMinStars: number;        // reviews with rating >= this are meant to auto-post (phase 2)
+  autoMinStars: number;        // ratings >= this auto-post; NEVER_AUTO_POST (6) means every reply waits for approval
   signature: string;           // appended to replies, e.g. "— Team Talko"
   tone: string;                // freeform tone/brand guidance for the AI
 }
@@ -40,6 +40,20 @@ const DEFAULT_SETTINGS: ReviewSettings = { autoMinStars: 4, signature: "", tone:
 function clampStars(n: unknown, fallback = 5): number {
   const v = Math.round(Number(n));
   return Number.isFinite(v) ? Math.min(5, Math.max(1, v)) : fallback;
+}
+
+// The auto-post threshold has one more value than a rating: 6 is the settings
+// screen's "Never auto-post". Clamping it like a rating turned that opt-out
+// into "5★ only", so five-star reviews still got public AI replies.
+export const NEVER_AUTO_POST = 6;
+function clampThreshold(n: unknown, fallback: number): number {
+  const v = Math.round(Number(n));
+  return Number.isFinite(v) ? Math.min(NEVER_AUTO_POST, Math.max(1, v)) : fallback;
+}
+
+/** Whether a reply to this rating may be posted publicly without a person approving it. */
+export function autoPosts(rating: number, settings: Pick<ReviewSettings, "autoMinStars">): boolean {
+  return settings.autoMinStars < NEVER_AUTO_POST && rating >= settings.autoMinStars;
 }
 
 function mapReview(r: Record<string, unknown>): Review {
@@ -139,7 +153,7 @@ export async function getReviewSettings(tenantId: string): Promise<ReviewSetting
   try {
     const p = JSON.parse(raw) as Partial<ReviewSettings>;
     return {
-      autoMinStars: clampStars(p.autoMinStars, DEFAULT_SETTINGS.autoMinStars),
+      autoMinStars: clampThreshold(p.autoMinStars, DEFAULT_SETTINGS.autoMinStars),
       signature: (p.signature ?? "").toString().slice(0, 120),
       tone: (p.tone ?? "").toString().slice(0, 600),
     };
@@ -149,10 +163,29 @@ export async function getReviewSettings(tenantId: string): Promise<ReviewSetting
 export async function setReviewSettings(tenantId: string, input: Partial<ReviewSettings>): Promise<ReviewSettings> {
   const current = await getReviewSettings(tenantId);
   const next: ReviewSettings = {
-    autoMinStars: input.autoMinStars !== undefined ? clampStars(input.autoMinStars, current.autoMinStars) : current.autoMinStars,
+    autoMinStars: input.autoMinStars !== undefined ? clampThreshold(input.autoMinStars, current.autoMinStars) : current.autoMinStars,
     signature: input.signature !== undefined ? String(input.signature).slice(0, 120) : current.signature,
     tone: input.tone !== undefined ? String(input.tone).slice(0, 600) : current.tone,
   };
   await setTenantSetting(tenantId, SETTINGS_KEY, JSON.stringify(next));
   return next;
+}
+
+// ── Google sync status (one wa_settings row per tenant, keyed by channel) ─────
+// The poller writes each connection's last read result here, so the Reviews
+// tab can say "Google refused access — reconnect" instead of showing an empty
+// list that looks exactly like a business with no reviews.
+const SYNC_KEY = "google_reviews_sync";
+
+export interface GoogleSyncStatus { ok: boolean; error: string | null; at: string }
+
+export async function getGoogleSyncStatus(tenantId: string): Promise<Record<string, GoogleSyncStatus>> {
+  const v = await getTenantSetting<Record<string, GoogleSyncStatus> | null>(tenantId, SYNC_KEY, null).catch(() => null);
+  return v && typeof v === "object" ? v : {};
+}
+
+export async function recordGoogleSync(tenantId: string, channelId: string, error: string | null, at = new Date().toISOString()): Promise<void> {
+  const all = await getGoogleSyncStatus(tenantId);
+  all[channelId] = { ok: !error, error: error ? error.slice(0, 300) : null, at };
+  await setTenantSetting(tenantId, SYNC_KEY, all).catch(e => console.error("[reviews] sync status", tenantId, e));
 }

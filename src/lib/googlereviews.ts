@@ -7,9 +7,12 @@
 //   - The legacy v4 "My Business API" (mybusiness.googleapis.com/v4) — reviews
 //     list/reply/delete-reply. This is the ONE Google still gates behind a
 //     separate access request (the "Business Profile APIs" form) — an approved
-//     OAuth client can still get 403s here until that's granted. Everything in
-//     this file fails soft (returns [] / {ok:false}) rather than throwing, so a
-//     pending approval degrades to "no reviews yet", not a crash.
+//     OAuth client can still get 403s here until that's granted.
+// Account/location discovery and replies return their error as data. Listing
+// reviews THROWS a GoogleReviewsError instead: returning [] there made lost
+// access look exactly like "no reviews yet", so imports could stop and nothing
+// said why. The poller records the error per connection; the Reviews tab
+// shows it.
 //
 // Auth: reuses the SAME Google OAuth client as YouTube (youtube.ts) — one
 // Google Cloud project, two scopes. A per-channel OAuth refresh token (stored
@@ -58,11 +61,6 @@ async function accessTokenFor(creds: GrCreds): Promise<string | null> {
   } catch { return null; }
 }
 
-async function apiGet(token: string, url: string): Promise<Record<string, unknown> | null> {
-  const { data } = await apiGetDetailed(token, url);
-  return data;
-}
-
 // Keeps Google's error instead of collapsing every failure to null. Without
 // this, "this Google account manages no Business Profile" is indistinguishable
 // from "the API isn't enabled" or "the access request isn't approved" — the
@@ -76,12 +74,12 @@ async function apiGetDetailed(token: string, url: string): Promise<{ data: Recor
     const msg = err?.message ?? "";
     if (err?.status === "PERMISSION_DENIED" || r.status === 403) {
       // Google uses SERVICE_DISABLED when the API isn't switched on for the
-      // project, and a plain permission denial when the access request to use
-      // the Business Profile APIs hasn't been granted yet.
+      // project. Talko's Business Profile API access is approved (3 Nov 2026),
+      // so a plain denial now means this Google login can't manage the profile.
       if (/SERVICE_DISABLED|has not been used in project|is disabled/i.test(msg)) {
         return { data: null, error: "This Google Cloud project doesn't have the Business Profile APIs enabled yet (Account Management + Business Information)." };
       }
-      return { data: null, error: "Google hasn't approved this project for Business Profile API access yet — that request is separate from OAuth verification and can take a few weeks." };
+      return { data: null, error: "Google refused access to this Business Profile. The Google account that connected it may no longer be an owner or manager — reconnect with one that is." };
     }
     if (r.status === 401) return { data: null, error: "Google access expired or was revoked — reconnect." };
     if (r.status === 429 || err?.status === "RESOURCE_EXHAUSTED") {
@@ -152,16 +150,23 @@ export interface GrReview {
 
 // Fetches up to `maxPages` pages (v4 caps pageSize at 50). No time filter exists
 // on this endpoint — the caller de-dupes against already-imported reviews.
+export class GoogleReviewsError extends Error {
+  constructor(message: string) { super(message); this.name = "GoogleReviewsError"; }
+}
+
+// Throws GoogleReviewsError when Google can't be read, so a lost connection is
+// never mistaken for a location with no reviews.
 export async function listReviews(creds: GrCreds, maxPages = 4): Promise<GrReview[]> {
-  if (!creds.accountId || !creds.locationId) return [];
+  if (!creds.accountId || !creds.locationId) throw new GoogleReviewsError("No Business Profile location is selected for this connection.");
   const token = await accessTokenFor(creds);
-  if (!token) return [];
+  if (!token) throw new GoogleReviewsError("Google access expired or was revoked — reconnect.");
   const out: GrReview[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < maxPages; page++) {
     const qs = new URLSearchParams({ pageSize: "50", ...(pageToken ? { pageToken } : {}) }).toString();
-    const data = await apiGet(token, `${REVIEWS_API}/${creds.accountId}/${creds.locationId}/reviews?${qs}`);
-    if (!data) break;
+    const { data, error } = await apiGetDetailed(token, `${REVIEWS_API}/${creds.accountId}/${creds.locationId}/reviews?${qs}`);
+    // A later page failing would still lose reviews, so never return a partial list as complete.
+    if (error || !data) throw new GoogleReviewsError(error ?? "Google returned an empty response.");
     const items = (data.reviews as Record<string, unknown>[] | undefined) ?? [];
     for (const r of items) {
       const reviewer = (r.reviewer as Record<string, unknown> | undefined) ?? {};

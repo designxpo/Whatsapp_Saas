@@ -5,13 +5,14 @@
 // else is saved as a draft for a human to approve. Reviews the owner already
 // replied to via Google directly are imported as already-posted (no AI call).
 //
-// Best-effort throughout: a pending Business Profile API access request (see
-// googlereviews.ts) makes listReviews()/replyToReview() return empty/failed
-// rather than throw, so this simply imports nothing until access is granted.
+// listReviews() throws when Google can't be read (revoked access, a login
+// that no longer manages the profile, API errors). That is recorded per
+// connection (recordGoogleSync) and shown in the Reviews tab, rather than
+// passing silently as "no new reviews".
 
 import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { googleReviewsConfigured, listReviews, replyToReview, type GrCreds } from "./googlereviews";
-import { getReviewByExternalId, saveReview, setReviewReply, getReviewSettings } from "./reviews";
+import { getReviewByExternalId, saveReview, setReviewReply, getReviewSettings, autoPosts, recordGoogleSync } from "./reviews";
 import { generateReviewReply } from "./llm";
 
 async function drainChannel(channel: Channel): Promise<number> {
@@ -20,7 +21,15 @@ async function drainChannel(channel: Channel): Promise<number> {
     channelId: channel.id, refreshToken: channel.token,
     accountId: channel.googleAccountId, locationId: channel.googleLocationId,
   };
-  const reviews = await listReviews(creds);
+  let reviews;
+  try {
+    reviews = await listReviews(creds);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Google Reviews couldn't be read.";
+    await recordGoogleSync(channel.tenantId, channel.id, message);
+    throw e;
+  }
+  await recordGoogleSync(channel.tenantId, channel.id, null);
   if (!reviews.length) return 0;
 
   const settings = await getReviewSettings(channel.tenantId);
@@ -41,7 +50,7 @@ async function drainChannel(channel: Channel): Promise<number> {
       continue;
     }
 
-    const auto = r.rating >= settings.autoMinStars;
+    const auto = autoPosts(r.rating, settings);
     try {
       const reply = await generateReviewReply(
         { author: r.author, rating: r.rating, text: r.text, businessName: channel.name, tone: settings.tone, signature: settings.signature },

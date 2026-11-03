@@ -43,7 +43,9 @@ export async function POST(req: Request) {
       name: body.name?.trim() || "YouTube channel",
       ytChannelId: body.ytChannelId, active: true,
     });
-    return NextResponse.json({ channel: saved });
+    // Never send the stored Google refresh token to the browser.
+    const { token: _token, ...safe } = saved;
+    return NextResponse.json({ channel: safe });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

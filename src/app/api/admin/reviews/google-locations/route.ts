@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getChannel, saveGoogleReviewsChannel } from "@/lib/channels";
+import { getChannel, saveGoogleReviewsChannel, listChannels, deleteChannel } from "@/lib/channels";
 import { listAccounts, listLocations, googleReviewsConfigured, type GrLocation } from "@/lib/googlereviews";
 import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
@@ -57,7 +57,15 @@ export async function POST(req: Request) {
       name: body.locationName?.trim() || "Google Business Profile",
       googleAccountId: body.accountId, googleLocationId: body.locationId, active: true,
     });
-    return NextResponse.json({ channel: saved });
+    // Reconnecting the same location (the fix for revoked access) creates a new
+    // row. Remove the old one, as Disconnect would, so the poller and replies
+    // can't keep using the dead login. Imported reviews aren't tied to a row.
+    const superseded = (await listChannels(tid)).filter(c => c.kind === "google_reviews" && c.id !== saved.id && c.googleLocationId === body.locationId);
+    for (const old of superseded) await deleteChannel(old.id, tid);
+
+    // Never send the stored Google refresh token to the browser.
+    const { token: _token, ...safe } = saved;
+    return NextResponse.json({ channel: safe });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
