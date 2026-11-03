@@ -23,7 +23,7 @@ function SettingsRail({ goTo }: { goTo: (t: Tab) => void }) {
   useEffect(() => { fetch("/api/admin/team/members").then(r => r.json()).then(d => setTeamCount((d.members ?? []).length)).catch(() => setTeamCount(0)); }, []);
   useEffect(() => { fetch("/api/admin/quick-replies").then(r => r.json()).then(d => setQrCount((d.quickReplies ?? []).length)).catch(() => setQrCount(0)); }, []);
   return (
-    <aside className="hidden 2xl:flex flex-col gap-4 w-80 shrink-0">
+    <aside className="hidden xl:flex flex-col gap-4 w-80 shrink-0">
       <RailCard title="Workspace">
         <StatRow label="People with portal access" value={teamCount ?? "…"} />
         <StatRow label="Quick replies" value={qrCount ?? "…"} />
@@ -2033,7 +2033,6 @@ function QrTool() {
 
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const ask = useConfirm();
-  const [section, setSection] = useState("workspace");
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
   const [away, setAway] = useState<AwayS | null>(null);
   const [aiOn, setAiOn] = useState<boolean | null>(null);
@@ -2168,24 +2167,16 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         <h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><p className="text-sm text-slate-500">WhatsApp numbers, automatic messages, and canned responses.</p>
       </div>
 
-      <nav aria-label="Settings sections" className="flex flex-wrap gap-2 border-b border-line pb-4">
-        {[["workspace", "Workspace"], ["team", "Team & activity"], ["automation", "AI & automation"], ["messages", "Messages"], ["advanced", "Privacy & developer"]].filter(([key]) => isAdmin || !["team", "advanced"].includes(key)).map(([key, label]) => <button key={key} type="button" aria-current={section === key ? "page" : undefined} onClick={() => setSection(key)} className={`rounded-control px-3 py-2 text-xs font-semibold ${section === key ? "bg-brand-50 text-brand-700" : "text-ink-500 hover:bg-white"}`}>{label}</button>)}
-      </nav>
-      <div hidden={section !== "workspace"} className="space-y-5">
       <UsageCard />
       {isAdmin && <TerminologyCard />}
       {isAdmin && <ChannelsManager />}
       <QrTool />
-      </div>
-      <div hidden={section !== "team"} className="space-y-5">
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
 
-      </div>
-      <div hidden={section !== "automation"} className="space-y-5">
       {/* AI auto-replies — the ONE master switch for the AI on every channel */}
       <section className="bg-white rounded-card border border-line p-5 space-y-1">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase">AI auto-replies</p>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -2334,11 +2325,9 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
       </section>
 
-      </div>
-      <div hidden={section !== "messages"} className="space-y-5">
       {/* Welcome message */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase">Welcome message</p><p className="text-xs text-slate-500 mt-0.5">Sent once, the first time a contact ever messages you (before the AI answers).</p>
           </div>
@@ -2356,7 +2345,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {/* Away message */}
       <section className="bg-white rounded-card border border-line p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-slate-400 uppercase">Away message (outside working hours)</p><p className="text-xs text-slate-500 mt-0.5">Sent at most once per 12h per conversation. The AI keeps answering either way.</p>
           </div>
@@ -2370,7 +2359,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         {away ? (
           <>
             <textarea className={`${inp} w-full resize-none`} rows={3} value={away.text} onChange={e => setAway({ ...away, text: e.target.value })} />
-            <div className="flex flex-wrap items-center gap-2 text-sm text-slate-600">
+            <div className="flex items-center gap-2 text-sm text-slate-600">
               <span>Working hours:</span>
               <input type="number" min={0} max={23} className={`${inp} w-20`} value={away.startHour} onChange={e => setAway({ ...away, startHour: parseInt(e.target.value) || 0 })} />
               <span>to</span>
@@ -2411,8 +2400,6 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
       </section>
 
-      </div>
-      <div hidden={section !== "advanced"} className="space-y-5">
       {isAdmin && (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
@@ -2444,7 +2431,6 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
       {isAdmin && <VoiceSettingsCard />}
       {isAdmin && <ApiKeysCard />}
       {isAdmin && <OtpServiceCard />}
-      </div>
     </div>
     <SettingsRail goTo={goTo} />
     </div>

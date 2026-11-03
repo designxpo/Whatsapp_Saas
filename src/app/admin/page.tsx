@@ -275,7 +275,7 @@ function AdminShell() {
     <ConfirmProvider>
     <div className="min-h-screen flex bg-canvas">
       <a href="#portal-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-white focus:p-3">Skip to content</a>
-      <aside className="hidden lg:flex w-60 shrink-0 bg-white border-r border-line flex-col h-dvh sticky top-0">
+      <aside className="hidden lg:flex w-64 shrink-0 bg-white border-r border-line flex-col h-dvh sticky top-0">
         {/* Logo block */}
         <div className="px-5 py-4">
           <BrandLogo height={28} className="max-w-[150px]" fallback={
@@ -552,9 +552,9 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
       <HotLeads goTo={goTo} />
 
       {/* How to use */}
-      <details className="rounded-card border border-line bg-white p-4">
-        <summary className="font-semibold text-sm cursor-pointer">Getting started · 4 steps</summary>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+      <section>
+        <h3 className="font-bold text-sm mb-3">How to use this platform</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {guide.map(g => (
             <div key={g.title} className="bg-white border border-line rounded-2xl p-4 flex flex-col">
               <div className="flex items-center gap-2 text-brand-600 mb-1.5">{g.icon}<p className="font-bold text-sm">{g.title}</p></div>
@@ -563,7 +563,7 @@ function HomeTab({ goTo }: { goTo: GoTo }) {
             </div>
           ))}
         </div>
-      </details>
+      </section>
 
       {s?.router?.enabled && (
         <p className="text-xs text-slate-400 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> Knowledge Router active — {s.router.faqEntries} FAQs answer instantly before the AI is called.</p>
