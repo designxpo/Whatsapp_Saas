@@ -10,8 +10,8 @@
 // Version stamp recorded against each signup's consent + shown as the effective
 // date. Bump LEGAL_VERSION whenever the substance of a document changes so we can
 // tell which version a user agreed to.
-export const LEGAL_VERSION = "2026-11-01";
-export const LEGAL_EFFECTIVE = "1 November 2026";
+export const LEGAL_VERSION = "2026-11-03";
+export const LEGAL_EFFECTIVE = "3 November 2026";
 
 export const LEGAL_META = {
   // Talko AI is a product operated by the registered parent company PM TECHNOLOGIES.
@@ -42,6 +42,7 @@ export const SUBPROCESSORS: { name: string; purpose: string; data: string; locat
   { name: "Supabase, Inc.", purpose: "managed database and file storage.", data: "account data, your workspace's contacts, messages and files.", location: "the hosting region configured for our project" },
   { name: "Meta Platforms", purpose: "sends and receives messages and comments on WhatsApp, Instagram and Messenger.", data: "message content, phone numbers and profile ids of the people you message.", location: "United States / Ireland" },
   { name: "Google LLC (YouTube and Business Profile APIs)", purpose: "reads, posts and moderates comments on a YouTube channel you connect, and reads and replies to reviews on a Business Profile you connect.", data: "comments, reviews and the replies you send.", location: "United States" },
+  { name: "Google LLC (Sheets and Calendar APIs)", purpose: "only where you connect them: adds your leads to a Google Sheet you share with us, reads the rows you ask us to message, and reads free times on and adds bookings to a Google Calendar you share.", data: "lead and contact names, phone numbers, email addresses and messages; the sheet rows you choose; booking times.", location: "United States" },
   { name: "Google LLC (Gemini API)", purpose: "turns your knowledge-base documents and incoming customer questions into search vectors so the AI can find the right answer — on our account unless you connect your own Gemini key.", data: "knowledge-base text and the text of customer questions.", location: "United States" },
   { name: "AI provider you choose (Google Gemini, OpenAI or Anthropic)", purpose: "writes AI replies using your own API key, under your own agreement with that provider.", data: "the conversation and knowledge-base text needed for each reply.", location: "United States" },
   { name: "OpenAI, L.L.C.", purpose: "screens outbound messages and uploaded images against our content-safety rules before they are sent, on our key for every business.", data: "the outbound message text and images.", location: "United States" },
@@ -280,31 +281,58 @@ const ACCEPTABLE_USE: LegalDoc = {
   ],
 };
 
+// Refund & Cancellation. Modelled on what the market actually does (AiSensy,
+// Interakt, WATI, Gallabox, DoubleTick and Zoko, read 3 Nov 2026): a period
+// that has started is not refunded and cancelling stops the next renewal; the
+// free trial is the try-before-you-pay window. On top of that, what is fair
+// and safe to promise: a full refund for a charge made in error, and credit
+// (or the unused part back) for an outage that is ours. Deliberately NOT
+// promised: a pro-rata refund on cancelling, refunds of Meta's charges (Meta
+// does not refund us), refunds after a ban by Meta, or a payout date the bank
+// controls. No GST is charged (billing-tax.ts), so no GST credit note either.
 const REFUND: LegalDoc = {
   slug: "refund",
   title: "Refund & Cancellation Policy",
-  summary: `How trials, billing, cancellations and refunds work.`,
+  summary: `How trials, billing, cancellations and refunds work, and what is and isn't refunded.`,
   sections: [
     { heading: "1. Free trial", blocks: [
-      p(`New accounts may start with a free trial (typically 14 days). No payment details are needed and nothing is charged when the trial ends. You can stop any time during the trial without being billed. If you do not subscribe to a paid plan, paid features become unavailable when the trial ends.`),
+      p(`New accounts may start with a free trial (typically 14 days). No payment details are needed and nothing is charged when the trial ends. You can stop any time during the trial without being billed. If you do not subscribe to a paid plan, paid features become unavailable when the trial ends. The trial is the time to decide whether ${C} suits you; there is no separate money-back period after you subscribe.`),
     ] },
     { heading: "2. Subscription billing", blocks: [
-      p(`Paid plans are billed in advance on a recurring basis (for example monthly). Your subscription renews automatically at the start of each billing period until you cancel. The amount shown on the billing page before you pay is the amount charged to your payment method on each renewal date; no GST is currently charged and nothing is added at payment.`),
+      p(`Paid plans are billed in advance on a recurring basis (for example monthly). Your subscription renews automatically at the start of each billing period until you cancel. The amount shown on the billing page before you pay is the amount charged to your payment method on each renewal date; no GST is currently charged and nothing is added at payment. If a plan's price changes, you are told before the renewal it applies to.`),
     ] },
     { heading: "3. Cancellation", blocks: [
-      p(`You can cancel your subscription at any time from the billing area of your account, or by contacting ${CONTACT}. Cancellation stops future renewals; your plan remains active until the end of the current paid period, after which it will not renew.`),
+      p(`You can cancel your subscription at any time from the billing area of your account, or by contacting ${CONTACT}. There is no notice period and no cancellation fee. Cancellation stops future renewals; your plan remains active until the end of the current paid period, after which it will not renew.`),
+      p(`Cancelling your subscription does not close your WhatsApp Business Account or stop Meta charging it for conversations. That account is yours, and you control it.`),
     ] },
-    { heading: "4. Refunds", blocks: [
-      p(`Except where required by law, fees already paid are non-refundable and we do not provide refunds or credits for partial billing periods, unused time, or features not used. If you believe you have been billed in error, contact us at ${CONTACT} within 7 days of the charge and we will review the issue in good faith.`),
+    { heading: "4. What is refunded", blocks: [
+      ul([
+        `Charges made in error: a duplicate payment, a charge after you cancelled, a wrong amount, or a payment you did not authorise. These are refunded in full. Tell us within 30 days of the charge.`,
+        `An outage that is ours: if the Service is unusable for more than 24 hours in a row because of a fault on our side, the affected days are credited to your next renewal; if you would rather leave over it, we refund the unused part of that period instead.`,
+      ]),
     ] },
-    { heading: "5. Plan changes", blocks: [
+    { heading: "5. What is not refunded", blocks: [
+      p(`Except as set out in section 4 or where the law requires otherwise:`),
+      ul([
+        `a billing period that has started, in whole or in part, including when you cancel or move to a smaller plan part-way through;`,
+        `features, messages, seats or limits your plan allowed but you did not use;`,
+        `setup, training or flow-building work charged separately, once it has been delivered;`,
+        `charges made by Meta, or by any AI provider whose key you connect: those are billed by them directly to your own accounts and never reach us;`,
+        `fees for a period in which your account was restricted by WhatsApp or Meta, or suspended by us, because of how it was used (for example spam, purchased contact lists or content Meta forbids).`,
+      ]),
+    ] },
+    { heading: "6. How to ask for a refund", blocks: [
+      p(`Email ${CONTACT} from the address you sign in with, with your workspace name, the payment reference, and what went wrong. We acknowledge within 2 business days and give you a decision within 7 business days, with the reason if it is a no. An approved refund goes back to the payment method you paid with, through Razorpay or Stripe; it usually reaches you in 5 to 10 business days, but the last step is your bank's or card issuer's and we cannot speed it up.`),
+      p(`Please ask us before raising a chargeback with your bank: most problems are fixed faster that way. While a chargeback is open, scheduled sending on the workspace may be paused; your data and inbox are not touched, and sending resumes when it is resolved.`),
+    ] },
+    { heading: "7. Plan changes", blocks: [
       p(`To change plans while a subscription is running, contact ${CONTACT} and we will move you over without charging twice; or cancel and choose the new plan when the current period ends. Some features and limits change with your plan.`),
     ] },
-    { heading: "6. Failed payments", blocks: [
+    { heading: "8. Failed payments", blocks: [
       p(`If a renewal payment fails, we may retry the charge and may suspend or downgrade access until payment succeeds. Accounts left unpaid may be cancelled.`),
     ] },
-    { heading: "7. Contact", blocks: [
-      p(`For any billing question, contact ${CONTACT}.`),
+    { heading: "9. Contact", blocks: [
+      p(`For any billing question, contact ${CONTACT}. If this policy and the Terms of Service ever disagree about refunds or cancellation, this policy applies.`),
     ] },
   ],
 };
