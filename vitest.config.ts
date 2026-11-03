@@ -2,6 +2,7 @@ import { defineConfig } from "vitest/config";
 import { fileURLToPath } from "url";
 
 export default defineConfig({
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     // Mirror the tsconfig "@/*" → "src/*" path alias so tests import like the app.
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },

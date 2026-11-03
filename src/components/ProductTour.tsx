@@ -20,7 +20,7 @@ export function ProductTour({ tenantId, email, activeTab, blocked, impersonating
     <button type="button" data-tour="replay" disabled={blocked} onClick={() => start.current()}
       aria-label="Take a tour" className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-line bg-white px-3 text-xs font-semibold text-ink-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-700 disabled:opacity-50">
       <Compass className="h-4 w-4" aria-hidden="true" />
-      <span>Take a tour</span>
+      <span className="hidden sm:inline">Take a tour</span>
     </button>
   );
 }

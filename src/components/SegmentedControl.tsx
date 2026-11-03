@@ -19,7 +19,7 @@ export function SegmentedControl<T extends string>({
   className?: string;
 }) {
   return (
-    <div role="tablist" aria-label={ariaLabel} className={`flex gap-1 p-0.5 bg-canvas rounded-control ${className}`}>
+    <div role="tablist" aria-label={ariaLabel} className={`flex max-w-full overflow-x-auto gap-1 p-0.5 bg-canvas rounded-control ${className}`}>
       {options.map(o => {
         const on = o.value === value;
         return (
@@ -28,8 +28,20 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="tab"
             aria-selected={on}
+            tabIndex={on ? 0 : -1}
+            onKeyDown={e => {
+              const index = options.findIndex(option => option.value === o.value);
+              const next = e.key === "ArrowRight" ? (index + 1) % options.length
+                : e.key === "ArrowLeft" ? (index - 1 + options.length) % options.length
+                : e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : -1;
+              if (next < 0) return;
+              e.preventDefault();
+              onChange(options[next].value);
+              const buttons = e.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+              buttons?.[next]?.focus();
+            }}
             onClick={() => onChange(o.value)}
-            className={`flex-1 min-w-0 flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 font-bold transition-colors ${size === "sm" ? "text-[11px]" : "text-[12px]"} ${on ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}
+            className={`flex-1 shrink-0 whitespace-nowrap flex items-center justify-center gap-1.5 rounded-[7px] px-2 py-1.5 font-bold transition-colors ${size === "sm" ? "text-[11px]" : "text-[12px]"} ${on ? "bg-white shadow-sm text-ink-900" : "text-ink-400 hover:text-ink-600"}`}
           >
             {o.icon}
             <span className="truncate">{o.label}</span>
