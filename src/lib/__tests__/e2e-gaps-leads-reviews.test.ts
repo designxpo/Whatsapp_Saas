@@ -230,6 +230,8 @@ describe("google review booster — owner only until launched", () => {
     h.db.tables.wa_conversations = [{ id: "c1", tenant_id: T1, phone: "918368872108", platform: "whatsapp", last_inbound_at: hoursAgo(1) }];
     expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "8368872108" })))).body).toEqual({ status: "sent" });
     expect(h.sent[0].phone).toBe("918368872108");
+    // The request shows in the customer's chat, sent from the business number.
+    expect(h.db.tables.wa_conv_messages).toEqual([expect.objectContaining({ tenant_id: T1, conversation_id: "c1", role: "assistant", source: "bot", body: h.sent[0].body, meta_message_id: "wamid.1" })]);
     expect((await boosterPost(req("/api/admin/review-booster", { sendTo: "12345" }))).status).toBe(400);
   });
 

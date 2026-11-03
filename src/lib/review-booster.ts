@@ -19,7 +19,7 @@ import crypto from "crypto";
 import { db } from "./supabase";
 import { tdb } from "./tenantdb";
 import { DEFAULT_TENANT_ID } from "./tenant";
-import { getTenantSetting, setTenantSetting } from "./store";
+import { getTenantSetting, setTenantSetting, appendConvMessage } from "./store";
 import { listChannels, isLiveChannel } from "./channels";
 import { locationReviewUrl } from "./googlereviews";
 import { sendText } from "./whatsapp";
@@ -97,8 +97,9 @@ export async function requestReview(tenantId: string, phone: string, orderId: st
   if (!reviewBoosterAllowed(tenantId)) return { status: "skipped", detail: "Not available for this workspace yet." };
   const cfg = await getBoosterConfig(tenantId);
   if (!cfg.reviewUrl) return { status: "skipped", detail: "No Google review link saved." };
-  const { data: conv } = await tdb(tenantId).from("wa_conversations").select("last_inbound_at").eq("phone", phone).eq("platform", "whatsapp").maybeSingle();
-  const last = (conv as unknown as { last_inbound_at?: string | null } | null)?.last_inbound_at;
+  const { data: conv } = await tdb(tenantId).from("wa_conversations").select("id,channel_id,last_inbound_at").eq("phone", phone).eq("platform", "whatsapp").maybeSingle();
+  const chat = conv as unknown as { id?: string; channel_id?: string | null; last_inbound_at?: string | null } | null;
+  const last = chat?.last_inbound_at;
   const inWindow = !!last && now - Date.parse(last) < 24 * 3_600_000;
   const token = Array.from(crypto.randomBytes(12), b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
   const row = { phone, order_id: orderId, token, sent_at: new Date(now).toISOString(), status: inWindow ? "sent" : "skipped", detail: inWindow ? null : "Outside WhatsApp's 24-hour window: this customer hasn't messaged you in the last 24 hours, so WhatsApp won't deliver it. Once they message your WhatsApp number, send again." };
@@ -106,11 +107,18 @@ export async function requestReview(tenantId: string, phone: string, orderId: st
   if (error) return error.code === "23505" ? { status: "duplicate" } : { status: "failed", detail: error.message };
   if (!inWindow) return { status: "skipped", detail: row.detail as string };
   const channel = await whatsappChannel(tenantId);
-  const sent = await sendText(phone, requestMessage(cfg.message, linkBase() + token), channel ?? undefined).catch(e => ({ error: e instanceof Error ? e.message : "send failed" }));
+  const text = requestMessage(cfg.message, linkBase() + token);
+  const sent = await sendText(phone, text, channel ?? undefined).catch(e => ({ error: e instanceof Error ? e.message : "send failed" }));
   if (!("id" in sent) || !sent.id) {
     const detail = ("error" in sent && sent.error) || "WhatsApp didn't accept the message.";
     await tdb(tenantId).from(TABLE).update({ status: "failed", detail }).eq("token", token);
     return { status: "failed", detail };
+  }
+  // Show it in the customer's chat, as every other message from the business
+  // number is. It isn't a reply, so the chat's "needs a reply" state is left alone.
+  if (chat?.id) {
+    await appendConvMessage({ conversationId: chat.id, role: "assistant", body: text, metaId: sent.id, source: "bot", tenantId, channelId: channel?.id ?? chat.channel_id ?? null })
+      .catch(e => console.error("[review-booster] chat log", tenantId, e));
   }
   return { status: "sent" };
 }

@@ -11,9 +11,34 @@
 // passing silently as "no new reviews".
 
 import { listChannels, isLiveChannel, type Channel } from "./channels";
-import { googleReviewsConfigured, listReviews, replyToReview, type GrCreds } from "./googlereviews";
-import { getReviewByExternalId, saveReview, setReviewReply, getReviewSettings, autoPosts, recordGoogleSync } from "./reviews";
+import { googleReviewsConfigured, listReviews, replyToReview, type GrCreds, type GrReview } from "./googlereviews";
+import { getReviewByExternalId, saveReview, setReviewReply, getReviewSettings, autoPosts, recordGoogleSync, type ReviewSettings } from "./reviews";
 import { generateReviewReply } from "./llm";
+
+const RETRY_FOR_MS = 24 * 3_600_000;
+const MAX_RETRIES_PER_TICK = 5;
+
+// AI-draft a reply and, when the rating meets the tenant's auto-post threshold,
+// post it. A failure leaves the review at replyStatus "none": the next tick
+// retries it (see drainChannel), and a person can always draft one by hand.
+async function draftReply(channel: Channel, creds: GrCreds, reviewId: string, r: GrReview, settings: ReviewSettings): Promise<void> {
+  const auto = autoPosts(r.rating, settings);
+  try {
+    const reply = await generateReviewReply(
+      { author: r.author, rating: r.rating, text: r.text, businessName: channel.name, tone: settings.tone, signature: settings.signature },
+      channel.tenantId,
+    );
+    if (auto) {
+      const posted = await replyToReview(creds, r.externalId, reply, channel.tenantId);
+      await setReviewReply(reviewId, channel.tenantId, reply, posted.ok ? "posted" : "draft", true);
+      if (!posted.ok) console.error("[reviewpoller] live reply failed", channel.id, r.externalId, posted.error);
+    } else {
+      await setReviewReply(reviewId, channel.tenantId, reply, "draft", false);
+    }
+  } catch (e) {
+    console.error("[reviewpoller] ai draft", channel.id, r.externalId, e);
+  }
+}
 
 async function drainChannel(channel: Channel): Promise<number> {
   if (!channel.googleAccountId || !channel.googleLocationId || !channel.token) return 0;
@@ -33,9 +58,21 @@ async function drainChannel(channel: Channel): Promise<number> {
   if (!reviews.length) return 0;
 
   const settings = await getReviewSettings(channel.tenantId);
-  let imported = 0;
+  let imported = 0, retries = 0;
   for (const r of reviews) {
-    if (await getReviewByExternalId(channel.tenantId, "google", r.externalId)) continue;   // already imported
+    const known = await getReviewByExternalId(channel.tenantId, "google", r.externalId);
+    if (known) {
+      // Imported before but still without a reply. That happens when the AI was
+      // busy on the tick that imported it: the review was saved, the draft
+      // failed, and every later tick skipped it as "already imported", so it
+      // never got a reply. Try again on later ticks, for a day, a few per tick.
+      if (known.replyStatus !== "none") continue;
+      if (r.existingReply) { await setReviewReply(known.id, channel.tenantId, r.existingReply, "posted", false); continue; }
+      if (Date.now() - Date.parse(known.createdAt) > RETRY_FOR_MS || retries >= MAX_RETRIES_PER_TICK) continue;
+      retries++;
+      await draftReply(channel, creds, known.id, r, settings);
+      continue;
+    }
 
     const saved = await saveReview({
       source: "google", externalId: r.externalId, locationName: channel.name,
@@ -49,23 +86,7 @@ async function drainChannel(channel: Channel): Promise<number> {
       await setReviewReply(saved.id, channel.tenantId, r.existingReply, "posted", false);
       continue;
     }
-
-    const auto = autoPosts(r.rating, settings);
-    try {
-      const reply = await generateReviewReply(
-        { author: r.author, rating: r.rating, text: r.text, businessName: channel.name, tone: settings.tone, signature: settings.signature },
-        channel.tenantId,
-      );
-      if (auto) {
-        const posted = await replyToReview(creds, r.externalId, reply);
-        await setReviewReply(saved.id, channel.tenantId, reply, posted.ok ? "posted" : "draft", true);
-        if (!posted.ok) console.error("[reviewpoller] live reply failed", channel.id, r.externalId, posted.error);
-      } else {
-        await setReviewReply(saved.id, channel.tenantId, reply, "draft", false);
-      }
-    } catch (e) {
-      console.error("[reviewpoller] ai draft", channel.id, r.externalId, e);   // leave as replyStatus "none" — a human can generate one manually
-    }
+    await draftReply(channel, creds, saved.id, r, settings);
   }
   return imported;
 }

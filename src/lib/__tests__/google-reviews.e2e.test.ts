@@ -2,7 +2,7 @@
 // Google HTTP, AI and the database are isolated; nothing is publicly posted.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { memdb } from './helpers/memdb';
-const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, google: [] as Record<string, unknown>[], calls: [] as {
+const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, aiBusy: 0, google: [] as Record<string, unknown>[], calls: [] as {
         url: string;
         method: string;
         body: string;
@@ -10,7 +10,7 @@ const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').M
     }[] }));
 vi.mock('../supabase', () => ({ db: () => h.db.client }));
 vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async () => h.tenant, requireRoleAdmin: async () => h.admin }));
-vi.mock('../llm', () => ({ generateReviewReply: vi.fn(async (_input: unknown, tenant: string) => `Thank you — ${tenant}`) }));
+vi.mock('../llm', () => ({ generateReviewReply: vi.fn(async (_input: unknown, tenant: string) => { if (h.aiBusy > 0) { h.aiBusy--; throw new Error('AI_BUSY'); } return `Thank you — ${tenant}`; }) }));
 vi.mock('../moderation', () => ({ moderateText: async () => ({ allowed: true }), assertTextAllowed: async () => undefined }));
 vi.mock('../entitlements', () => ({ checkFeature: async () => ({ ok: h.allowed }) }));
 import { listReviews as listGoogleReviews, locationReviewUrl } from '../googlereviews';
@@ -30,6 +30,7 @@ beforeEach(() => {
     h.allowed = true;
     h.failReviews = false;
     h.failPost = false;
+    h.aiBusy = 0;
     h.google = [];
     h.calls = [];
     h.db.tables.wa_channels = [channel()];
@@ -161,6 +162,25 @@ describe('Google Reviews tenant readiness', () => {
         h.db.tables.wa_reviews = [{ id: 'r5', tenant_id: 'tenant-a', source: 'manual', rating: 5, text: 'Great' }];
         const response = await reply(request({ id: 'r5', action: 'save', text: 'Thanks!' }));
         expect((await response.json()).review.auto).toBe(false);
+    });
+    it('retries the AI reply on the next run when the AI was busy at import', async () => {
+        h.google = [review('busy')];
+        h.aiBusy = 1;
+        expect(await drainGoogleReviews()).toBe(1);
+        expect(h.db.tables.wa_reviews[0].reply_status ?? 'none').toBe('none');   // memdb has no column defaults
+        expect(await drainGoogleReviews()).toBe(0);   // not imported twice…
+        expect(h.db.tables.wa_reviews).toHaveLength(1);
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ reply_status: 'posted', reply_text: 'Thank you — tenant-a' });   // …but replied
+        expect(h.calls.filter(c => c.method === 'PUT')).toHaveLength(1);
+    });
+    it('stops retrying a reply after a day', async () => {
+        h.google = [review('old')];
+        h.aiBusy = 1;
+        await drainGoogleReviews();
+        h.db.tables.wa_reviews[0].created_at = new Date(Date.now() - 25 * 3_600_000).toISOString();
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0].reply_status ?? 'none').toBe('none');
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
     });
     it("reads the location's own write-a-review link from Google", async () => {
         expect(await locationReviewUrl({ channelId: 'a', refreshToken: 'refresh-a', accountId: 'accounts/a', locationId: 'locations/a' })).toEqual({ url: 'https://search.google.com/local/writereview?placeid=PLACE' });
