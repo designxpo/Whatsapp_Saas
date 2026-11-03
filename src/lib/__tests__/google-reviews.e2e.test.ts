@@ -17,12 +17,13 @@ import { listReviews as listGoogleReviews, locationReviewUrl } from '../googlere
 import { drainGoogleReviews } from '../reviewpoller';
 import { getReviewSettings, setReviewSettings, getGoogleSyncStatus } from '../reviews';
 import { POST as pickYoutube } from '../../app/api/admin/yt-channels/route';
+import { POST as syncNow } from '../../app/api/admin/reviews/sync/route';
 import { POST as reply } from '../../app/api/admin/reviews/reply/route';
 import { POST as pickLocation } from '../../app/api/admin/reviews/google-locations/route';
 import { GET as start } from '../../app/api/admin/onboarding/google-reviews/start/route';
 const request = (body: unknown) => new Request('https://app.thetalko.in/api/admin/reviews/reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const channel = (tenant = 'tenant-a', id = 'a', account = 'accounts/a', location = 'locations/a') => ({ id, tenant_id: tenant, kind: 'google_reviews', name: `Business ${id}`, active: true, access_token: `refresh-${id}`, google_account_id: account, google_location_id: location });
-const review = (id: string, stars = 'FIVE', extra: Record<string, unknown> = {}) => ({ name: `accounts/a/locations/a/reviews/${id}`, reviewId: id, reviewer: { displayName: 'Customer' }, starRating: stars, comment: 'Good service', createTime: '2026-11-01T00:00:00Z', ...extra });
+const review = (id: string, stars = 'FIVE', extra: Record<string, unknown> = {}) => ({ name: `accounts/a/locations/a/reviews/${id}`, reviewId: id, reviewer: { displayName: 'Customer' }, starRating: stars, comment: 'Good service', createTime: new Date().toISOString(), ...extra });
 beforeEach(() => {
     h.db = memdb({ wa_reviews: [['tenant_id', 'source', 'external_id']] });
     h.tenant = 'tenant-a';
@@ -181,6 +182,49 @@ describe('Google Reviews tenant readiness', () => {
         await drainGoogleReviews();
         expect(h.db.tables.wa_reviews[0].reply_status ?? 'none').toBe('none');
         expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+    });
+    it('imports an old review without the AI posting a public reply to it', async () => {
+        h.google = [review('ancient', 'FIVE', { createTime: '2023-01-01T00:00:00Z' })];
+        expect(await drainGoogleReviews()).toBe(1);
+        expect(h.db.tables.wa_reviews[0].reply_status ?? 'none').toBe('none');
+        await drainGoogleReviews();
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+    });
+    it('keeps reviews and replies in step with Google', async () => {
+        h.google = [review('edit', 'TWO')];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0].reply_status).toBe('draft');
+        // The customer edits their review, and someone replies on Google directly.
+        h.google = [review('edit', 'FOUR', { comment: 'Sorted out now, thanks', reviewReply: { comment: 'Glad we could help' } })];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ rating: 4, text: 'Sorted out now, thanks', reply_status: 'posted', reply_text: 'Glad we could help' });
+        // The reply is then removed on Google: kept here as a draft to post again.
+        h.db.tables.wa_reviews[0].posted_at = new Date(Date.now() - 3_600_000).toISOString();
+        h.google = [review('edit', 'FOUR', { comment: 'Sorted out now, thanks' })];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ reply_status: 'draft', reply_text: 'Glad we could help' });
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+    });
+    it('edits a posted reply on Google', async () => {
+        h.google = [review('fix')];
+        await drainGoogleReviews();
+        const id = h.db.tables.wa_reviews[0].id;
+        const response = await reply(request({ id, action: 'post', text: 'Thanks again — see you soon!' }));
+        expect(response.status).toBe(200);
+        const puts = h.calls.filter(c => c.method === 'PUT');
+        expect(puts).toHaveLength(2);
+        expect(puts[1]).toMatchObject({ url: 'https://mybusiness.googleapis.com/v4/accounts/a/locations/a/reviews/fix/reply', body: JSON.stringify({ comment: 'Thanks again — see you soon!' }) });
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ reply_status: 'posted', reply_text: 'Thanks again — see you soon!' });
+    });
+    it('syncs on demand for admins only, and reports a profile Google refused', async () => {
+        h.google = [review('s1'), review('s2', 'FIVE', { createTime: '2022-05-01T00:00:00Z' })];
+        const ok = await (await syncNow()).json();
+        expect(ok).toMatchObject({ imported: 2, profiles: 1, errors: [] });
+        h.failReviews = true;
+        const bad = await (await syncNow()).json();
+        expect(bad.errors[0]).toMatchObject({ profile: 'Business a' });
+        h.admin = false;
+        expect((await syncNow()).status).toBe(403);
     });
     it("reads the location's own write-a-review link from Google", async () => {
         expect(await locationReviewUrl({ channelId: 'a', refreshToken: 'refresh-a', accountId: 'accounts/a', locationId: 'locations/a' })).toEqual({ url: 'https://search.google.com/local/writereview?placeid=PLACE' });

@@ -40,35 +40,71 @@ async function draftReply(channel: Channel, creds: GrCreds, reviewId: string, r:
   }
 }
 
-async function drainChannel(channel: Channel): Promise<number> {
-  if (!channel.googleAccountId || !channel.googleLocationId || !channel.token) return 0;
+export interface SyncCounts { imported: number; updated: number }
+
+// A review older than this when first seen is imported for the record only:
+// connecting a profile, or "Sync from Google", must not have the AI post public
+// replies to years-old reviews. A person can still draft one with a click.
+const AUTO_REPLY_MAX_AGE_MS = 7 * 86_400_000;
+const isRecent = (iso: string | null | undefined, now: number) => !!iso && now - Date.parse(iso) <= AUTO_REPLY_MAX_AGE_MS;
+
+// Posted replies younger than this aren't treated as removed on Google when
+// Google's list doesn't show them yet.
+const REMOVAL_GRACE_MS = 10 * 60_000;
+
+async function drainChannel(channel: Channel, maxPages = 4, now = Date.now()): Promise<SyncCounts> {
+  if (!channel.googleAccountId || !channel.googleLocationId || !channel.token) return { imported: 0, updated: 0 };
   const creds: GrCreds = {
     channelId: channel.id, refreshToken: channel.token,
     accountId: channel.googleAccountId, locationId: channel.googleLocationId,
   };
   let reviews;
   try {
-    reviews = await listReviews(creds);
+    reviews = await listReviews(creds, maxPages);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Google Reviews couldn't be read.";
     await recordGoogleSync(channel.tenantId, channel.id, message);
     throw e;
   }
   await recordGoogleSync(channel.tenantId, channel.id, null);
-  if (!reviews.length) return 0;
+  if (!reviews.length) return { imported: 0, updated: 0 };
 
   const settings = await getReviewSettings(channel.tenantId);
-  let imported = 0, retries = 0;
+  let imported = 0, updated = 0, retries = 0;
   for (const r of reviews) {
     const known = await getReviewByExternalId(channel.tenantId, "google", r.externalId);
     if (known) {
+      // Google is the record of what is public: a customer can edit their
+      // review, and a reply can be edited or removed on Google directly.
+      if (known.rating !== r.rating || known.text.trim() !== r.text.trim() || known.author !== r.author) {
+        await saveReview({
+          id: known.id, source: "google", externalId: r.externalId, locationName: known.locationName,
+          author: r.author, rating: r.rating, text: r.text, reviewCreatedAt: r.createTime ?? known.reviewCreatedAt,
+        }, channel.tenantId);
+        updated++;
+      }
+      if (r.existingReply) {
+        if (known.replyStatus !== "posted" || (known.replyText ?? "").trim() !== r.existingReply.trim()) {
+          await setReviewReply(known.id, channel.tenantId, r.existingReply, "posted", known.auto);
+          updated++;
+        }
+        continue;
+      }
+      if (known.replyStatus === "posted") {
+        // Removed on Google: keep the text as a draft so it can be posted again.
+        if (known.postedAt && now - Date.parse(known.postedAt) > REMOVAL_GRACE_MS) {
+          await setReviewReply(known.id, channel.tenantId, known.replyText ?? "", "draft", known.auto);
+          updated++;
+        }
+        continue;
+      }
       // Imported before but still without a reply. That happens when the AI was
       // busy on the tick that imported it: the review was saved, the draft
       // failed, and every later tick skipped it as "already imported", so it
       // never got a reply. Try again on later ticks, for a day, a few per tick.
       if (known.replyStatus !== "none") continue;
-      if (r.existingReply) { await setReviewReply(known.id, channel.tenantId, r.existingReply, "posted", false); continue; }
-      if (Date.now() - Date.parse(known.createdAt) > RETRY_FOR_MS || retries >= MAX_RETRIES_PER_TICK) continue;
+      if (!isRecent(r.createTime ?? known.createdAt, now)) continue;
+      if (now - Date.parse(known.createdAt) > RETRY_FOR_MS || retries >= MAX_RETRIES_PER_TICK) continue;
       retries++;
       await draftReply(channel, creds, known.id, r, settings);
       continue;
@@ -86,24 +122,43 @@ async function drainChannel(channel: Channel): Promise<number> {
       await setReviewReply(saved.id, channel.tenantId, r.existingReply, "posted", false);
       continue;
     }
+    if (!isRecent(r.createTime ?? new Date(now).toISOString(), now)) continue;   // old review: imported, left for a person
     await draftReply(channel, creds, saved.id, r, settings);
   }
-  return imported;
+  return { imported, updated };
 }
+
+const googleChannels = async (tenantId?: string) =>
+  (await listChannels(tenantId)).filter(c => c.kind === "google_reviews" && isLiveChannel(c) && c.googleAccountId && c.googleLocationId);
 
 // Cron entrypoint — poll every connected, fully-configured Google Reviews
 // channel. Returns the number of reviews imported this tick.
 export async function drainGoogleReviews(): Promise<number> {
   if (!googleReviewsConfigured()) return 0;
   let channels: Channel[];
-  try {
-    channels = (await listChannels()).filter(c => c.kind === "google_reviews" && isLiveChannel(c) && c.googleAccountId && c.googleLocationId);
-  } catch { return 0; }
+  try { channels = await googleChannels(); } catch { return 0; }
   if (!channels.length) return 0;
   let imported = 0;
   for (const ch of channels) {
-    try { imported += await drainChannel(ch); }
+    try { imported += (await drainChannel(ch)).imported; }
     catch (e) { console.error("[reviewpoller] channel", ch.id, e); }
   }
   return imported;
+}
+
+// "Sync from Google now" — one workspace, deeper than the cron (up to 1,000
+// reviews per profile), returning what changed and any profile Google refused.
+export async function syncTenantGoogleReviews(tenantId: string): Promise<SyncCounts & { profiles: number; errors: { profile: string; error: string }[] }> {
+  const out = { imported: 0, updated: 0, profiles: 0, errors: [] as { profile: string; error: string }[] };
+  if (!googleReviewsConfigured()) return { ...out, errors: [{ profile: "Google", error: "Google Reviews isn't configured on this deployment." }] };
+  for (const ch of await googleChannels(tenantId)) {
+    out.profiles++;
+    try {
+      const r = await drainChannel(ch, 20);
+      out.imported += r.imported; out.updated += r.updated;
+    } catch (e) {
+      out.errors.push({ profile: ch.name, error: e instanceof Error ? e.message : "Couldn't read Google." });
+    }
+  }
+  return out;
 }

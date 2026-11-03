@@ -77,8 +77,11 @@ function mapReview(r: Record<string, unknown>): Review {
 }
 
 export async function listReviews(tenantId: string): Promise<Review[]> {
-  const { data } = await db().from("wa_reviews").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(500);
-  return (data ?? []).map(r => mapReview(r as Record<string, unknown>));
+  const { data } = await db().from("wa_reviews").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false }).limit(1000);
+  // Newest written first. A bulk import saves old reviews in one go, so import
+  // order would put a three-year-old review above last week's.
+  const when = (r: Review) => Date.parse(r.reviewCreatedAt ?? r.createdAt) || 0;
+  return (data ?? []).map(r => mapReview(r as Record<string, unknown>)).sort((a, b) => when(b) - when(a));
 }
 
 export async function getReview(id: string, tenantId: string): Promise<Review | null> {

@@ -16,7 +16,10 @@ type ReplyStatus = "none" | "draft" | "posted";
 type Review = {
   id: string; source: string; locationName: string | null; author: string; rating: number; text: string;
   replyText: string | null; replyStatus: ReplyStatus; auto: boolean; postedAt: string | null; createdAt: string;
+  reviewCreatedAt: string | null;
 };
+type Filter = "all" | "todo" | "replied";
+const shortDate = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
 type Settings = { autoMinStars: number; signature: string; tone: string };
 type GrChannel = { id: string; name: string; active: boolean };
 type GoogleSync = { ok: boolean; error: string | null; at: string };
@@ -66,6 +69,10 @@ export default function ReviewsTab() {
   // Google Business Profile connection (Phase 2) + its location picker.
   const [grChannels, setGrChannels] = useState<GrChannel[]>([]);
   const [googleSync, setGoogleSync] = useState<Record<string, GoogleSync>>({});
+  const [editing, setEditing] = useState<Record<string, boolean>>({});   // posted replies being edited
+  const [filter, setFilter] = useState<Filter>("all");
+  const [syncing, setSyncing] = useState(false);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
   const [pickerChannelId, setPickerChannelId] = useState<string | null>(null);
   const [pickerLocations, setPickerLocations] = useState<GrLocation[]>([]);
   const [pickerLoading, setPickerLoading] = useState(false);
@@ -150,6 +157,26 @@ export default function ReviewsTab() {
     } finally { setBusy(null); }
   }
 
+  async function syncGoogle() {
+    setSyncing(true); setSyncNote(null); setMsg(null);
+    try {
+      const res = await fetch("/api/admin/reviews/sync", { method: "POST" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg(d.error || "Couldn't reach Google — try again."); return; }
+      const parts = [d.imported ? `${d.imported} new review${d.imported === 1 ? "" : "s"}` : null, d.updated ? `${d.updated} change${d.updated === 1 ? "" : "s"} from Google` : null].filter(Boolean);
+      setSyncNote(`${parts.length ? `Synced: ${parts.join(", ")}.` : "Up to date with Google."}${d.errors?.length ? ` ${d.errors.map((e: { profile: string; error: string }) => `${e.profile}: ${e.error}`).join(" ")}` : ""}`);
+      load();
+    } finally { setSyncing(false); }
+  }
+
+  async function removeFromGoogle(r: Review) {
+    if (!(await ask({
+      title: "Remove this reply from Google?", tone: "danger", confirmLabel: "Remove from Google",
+      message: "It disappears from your Google profile. The text is kept here as a draft, so you can edit it and post again.",
+    }))) return;
+    await reply(r.id, "unpost");
+  }
+
   async function reply(id: string, action: "generate" | "save" | "post" | "unpost", text?: string) {
     setBusy(id); setMsg(null);
     try {
@@ -159,6 +186,7 @@ export default function ReviewsTab() {
       const updated: Review = d.review;
       setReviews(rs => rs.map(r => (r.id === id ? updated : r)));
       setDrafts(dr => ({ ...dr, [id]: updated.replyText ?? "" }));
+      setEditing(ed => ({ ...ed, [id]: false }));
     } finally { setBusy(null); }
   }
 
@@ -203,6 +231,11 @@ export default function ReviewsTab() {
             <a href="/api/admin/onboarding/google-reviews/start" className="px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5">
               <Link2 className="w-3.5 h-3.5" /> Connect with Google
             </a>
+          )}
+          {grChannels.length > 0 && (
+            <button onClick={syncGoogle} disabled={syncing} title="Fetch every review and reply from Google now" className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+              {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync from Google
+            </button>
           )}
           <button onClick={() => { setShowSettings(s => !s); setShowAdd(false); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><SlidersHorizontal className="w-3.5 h-3.5" /> Settings</button>
           <button onClick={() => { setShowAdd(a => !a); setShowSettings(false); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add review</button>
@@ -309,14 +342,35 @@ export default function ReviewsTab() {
 
       {msg && <p className="text-xs text-red-700">{msg}</p>}
 
+      {syncNote && <p className="text-xs font-semibold text-emerald-700" role="status">{syncNote}</p>}
+
       {/* Review list */}
-      {!reviews.length && !showAdd && <p className="text-sm text-ink-400 py-8 text-center">No reviews yet. Tap <b>Add review</b> to paste one and let the AI draft a reply.</p>}
+      {!reviews.length && !showAdd && <p className="text-sm text-ink-400 py-8 text-center">{grChannels.length ? <>No reviews yet. New Google reviews arrive automatically — or tap <b>Sync from Google</b>.</> : <>No reviews yet. Tap <b>Add review</b> to paste one and let the AI draft a reply.</>}</p>}
+
+      {reviews.length > 0 && (() => {
+        const todo = reviews.filter(r => r.replyStatus !== "posted").length;
+        const chips: { key: Filter; label: string }[] = [
+          { key: "all", label: `All ${reviews.length}` },
+          { key: "todo", label: `Needs a reply ${todo}` },
+          { key: "replied", label: `Replied ${reviews.length - todo}` },
+        ];
+        return (
+          <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Filter reviews">
+            {chips.map(c => (
+              <button key={c.key} role="tab" aria-selected={filter === c.key} onClick={() => setFilter(c.key)}
+                className={`px-3 py-1 rounded-full text-xs font-bold border tabular-nums ${filter === c.key ? "bg-ink-900 text-white border-ink-900" : "bg-white text-ink-600 border-line hover:bg-canvas"}`}>{c.label}</button>
+            ))}
+          </div>
+        );
+      })()}
 
       <div className="space-y-3">
-        {reviews.map(r => {
+        {reviews.filter(r => filter === "all" || (filter === "replied" ? r.replyStatus === "posted" : r.replyStatus !== "posted")).map(r => {
           const working = busy === r.id;
-          const meetsAuto = r.rating >= settings.autoMinStars;
+          const meetsAuto = settings.autoMinStars <= 5 && r.rating >= settings.autoMinStars;
           const draft = draftOf(r);
+          const isEditing = !!editing[r.id];
+          const google = r.source === "google";
           return (
             <div key={r.id} className="rounded-card border border-line bg-white p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
@@ -325,8 +379,10 @@ export default function ReviewsTab() {
                     <Stars n={r.rating} />
                     <span className="text-sm font-semibold text-ink-900">{r.author || "Anonymous"}</span>
                     {r.locationName && <span className="text-[11px] text-ink-400">· {r.locationName}</span>}
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meetsAuto ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{meetsAuto ? "auto-post" : "needs approval"}</span>
-                    {r.replyStatus === "posted" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600"><Check className="w-3 h-3" /> posted</span>}
+                    <span className="text-[11px] text-ink-400 tabular-nums">· {shortDate(r.reviewCreatedAt ?? r.createdAt)}</span>
+                    {google && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">Google</span>}
+                    {r.replyStatus !== "posted" && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meetsAuto ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{meetsAuto ? "auto-post" : "needs approval"}</span>}
+                    {r.replyStatus === "posted" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700"><Check className="w-3 h-3" /> {google ? "replied on Google" : "replied"}</span>}
                   </div>
                   {r.text && <p className="text-sm text-ink-700 mt-1.5 whitespace-pre-wrap">{r.text}</p>}
                 </div>
@@ -340,7 +396,10 @@ export default function ReviewsTab() {
                 </button>
               ) : (
                 <div className="rounded-control border border-line bg-canvas/50 p-2.5 space-y-2">
-                  <textarea className={`${inp} w-full bg-white`} rows={3} value={draft} disabled={r.replyStatus === "posted"}
+                  {r.replyStatus === "posted" && (
+                    <p className="text-[11px] font-bold text-ink-500">{google ? "Your reply on Google" : "Your reply"}{r.postedAt ? ` · ${shortDate(r.postedAt)}` : ""}{isEditing && google ? " — editing replaces it on Google" : ""}</p>
+                  )}
+                  <textarea aria-label={`Reply to ${r.author || "this review"}`} className={`${inp} w-full bg-white`} rows={3} value={draft} disabled={r.replyStatus === "posted" && !isEditing}
                     onChange={e => setDrafts(dr => ({ ...dr, [r.id]: e.target.value }))} />
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {r.replyStatus !== "posted" && <>
@@ -354,7 +413,17 @@ export default function ReviewsTab() {
                     </button>
                     <div className="flex-1" />
                     {r.replyStatus === "posted"
-                      ? <button onClick={() => reply(r.id, "unpost")} disabled={working} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Mark as draft</button>
+                      ? (isEditing
+                        ? <>
+                            <button onClick={() => { setEditing(ed => ({ ...ed, [r.id]: false })); setDrafts(dr => ({ ...dr, [r.id]: r.replyText ?? "" })); }} disabled={working} className="px-2.5 py-1 rounded-control text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Cancel</button>
+                            <button onClick={() => reply(r.id, "post", draft)} disabled={working || !draft.trim() || draft.trim() === (r.replyText ?? "").trim()} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60">{working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} {google ? "Update on Google" : "Save reply"}</button>
+                          </>
+                        : <>
+                            {google
+                              ? <button onClick={() => removeFromGoogle(r)} disabled={working} className="px-2.5 py-1 rounded-control text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Remove from Google</button>
+                              : <button onClick={() => reply(r.id, "unpost")} disabled={working} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Mark as draft</button>}
+                            <button onClick={() => setEditing(ed => ({ ...ed, [r.id]: true }))} disabled={working} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60">Edit reply</button>
+                          </>)
                       : <button onClick={() => reply(r.id, "post", draft)} disabled={working} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60"><Send className="w-3.5 h-3.5" /> {r.source === "google" ? "Post to Google" : "Mark posted"}</button>}
                   </div>
                 </div>
