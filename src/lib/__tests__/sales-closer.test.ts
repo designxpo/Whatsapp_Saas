@@ -89,12 +89,14 @@ describe("the lead-scoring sweep", () => {
   let lsqWrites: string[];
   let modelSays: string;
   let settings: Record<string, unknown>;
+  let aiCalls: number;
+  let aiBusy: boolean;
 
   async function load() {
     fresh();
     vi.doMock("../supabase", () => ({ db: () => m.client }));
     vi.doMock("../tenantdb", () => ({ tdb: tdbOf(m) }));
-    vi.doMock("../ai/chat", () => ({ runChat: async () => ({ text: modelSays, toolCalls: [] }) }));
+    vi.doMock("../ai/chat", () => ({ runChat: async () => { aiCalls++; if (aiBusy) throw new Error("AI_BUSY: 429 RESOURCE_EXHAUSTED"); return { text: modelSays, toolCalls: [] }; } }));
     vi.doMock("../ai/keys", () => ({ resolveTenantAi: async () => ({ provider: "gemini", apiKey: "k", model: "x" }) }));
     vi.doMock("../store", () => ({
       getTenantSetting: async (t: string, k: string, d: unknown) => (`${t}|${k}` in settings ? settings[`${t}|${k}`] : d),
@@ -113,7 +115,7 @@ describe("the lead-scoring sweep", () => {
 
   beforeEach(() => {
     m = memdb();
-    events = []; lsqWrites = []; settings = {};
+    events = []; lsqWrites = []; settings = {}; aiCalls = 0; aiBusy = false;
     modelSays = '{"lead_status":"Hot","intent_score":85,"summary_reason":"Asked how to pay for 2 tickets.","ready_to_pay_alert":true,"action_required":null}';
     const at = (min: number) => new Date(NOW - min * 60_000).toISOString();
     m.tables.wa_conversations = [
@@ -158,6 +160,20 @@ describe("the lead-scoring sweep", () => {
     const { drainLeadScoring } = await load();
     await drainLeadScoring(Date.now() + 60_000, 15, NOW);
     expect(m.tables.wa_conversations.find(c => c.id === "c1")).toMatchObject({ lead_status: "Won", intent_score: 100, ready_to_pay: false });
+  });
+
+  it("pauses a workspace's reads for 30 minutes when its AI is busy, so the rate limit can recover", async () => {
+    m.tables.wa_conversations.find(c => c.id === "c2")!.lead_scored_at = null;   // two chats due
+    aiBusy = true;
+    const { drainLeadScoring } = await load();
+    expect(await drainLeadScoring(Date.now() + 60_000, 15, NOW)).toEqual({ scored: 0, skipped: 2 });
+    expect(aiCalls).toBe(1);   // stopped after the first busy answer
+    expect(settings[`${T}|lead_intel_backoff_until`]).toBe(new Date(NOW + 30 * 60_000).toISOString());
+    aiBusy = false;
+    await drainLeadScoring(Date.now() + 60_000, 15, NOW + 10 * 60_000);
+    expect(aiCalls).toBe(1);   // still paused
+    expect((await drainLeadScoring(Date.now() + 60_000, 15, NOW + 31 * 60_000)).scored).toBe(1);   // resumed
+    expect(m.tables.wa_conversations.find(c => c.id === "c1")!.lead_status).toBe("Hot");
   });
 
   it("skips a workspace that switched it off, and moves past an unreadable answer", async () => {

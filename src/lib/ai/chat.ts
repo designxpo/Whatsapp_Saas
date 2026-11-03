@@ -144,6 +144,7 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const TRANSIENT = /\b(429|500|502|503|529)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|overloaded|high demand|rate.?limit|deadline|timed out|timeout|AI_TIMEOUT|fetch failed|ECONNRESET|ETIMEDOUT/i;
 
 async function runResilient(fn: () => Promise<ChatResult>, tries = 4, perTryMs = 24000): Promise<ChatResult> {
+  let last = "";
   for (let attempt = 0; attempt < tries; attempt++) {
     try {
       const p = fn();
@@ -155,11 +156,15 @@ async function runResilient(fn: () => Promise<ChatResult>, tries = 4, perTryMs =
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!TRANSIENT.test(msg)) throw err;          // real error (bad key, 400) — surface as-is
+      last = msg;
       if (attempt === tries - 1) break;             // transient but out of tries
       await sleep(500 * (attempt + 1));             // 0.5s, 1s, 1.5s backoff
     }
   }
-  throw new Error("AI_BUSY"); // exhausted transient retries / timed out
+  // Keep the provider's last answer: "AI_BUSY" alone can't tell an
+  // overloaded model from a spent quota or a timeout, which need different
+  // fixes. Callers match /AI_BUSY/, so the detail rides along harmlessly.
+  throw new Error(`AI_BUSY: ${last.replace(/\s+/g, " ").slice(0, 300)}`); // exhausted transient retries / timed out
 }
 
 // ── dispatcher ────────────────────────────────────────────────────────────────

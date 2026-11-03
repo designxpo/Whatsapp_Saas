@@ -222,6 +222,9 @@ export async function syncToCrm(c: Pick<ConvRow, "id" | "tenant_id" | "phone" | 
 }
 
 /** Background engine: read a few chats with messages newer than their last read. */
+const BACKOFF_KEY = "lead_intel_backoff_until";
+const BACKOFF_MS = 30 * 60_000;
+
 export async function drainLeadScoring(deadlineAt: number, max = PER_TICK, now = Date.now()): Promise<{ scored: number; skipped: number }> {
   const { data, error } = await db().from("wa_conversations")
     .select("id,tenant_id,phone,name,platform,lead_phone,last_inbound_at,lead_scored_at,lead_status,ready_to_pay,lead_action")
@@ -236,7 +239,9 @@ export async function drainLeadScoring(deadlineAt: number, max = PER_TICK, now =
   for (const c of due) {
     if (scored >= max || Date.now() > deadlineAt - 8_000) break;
     if (!tenantOk.has(c.tenant_id)) {
-      const on = (await getLeadIntelSettings(c.tenant_id)).enabled;
+      const pausedUntil = await getTenantSetting<string | null>(c.tenant_id, BACKOFF_KEY, null).catch(() => null);
+      const paused = !!pausedUntil && Date.parse(pausedUntil) > now;
+      const on = !paused && (await getLeadIntelSettings(c.tenant_id)).enabled;
       const hasKey = on && !!(await resolveTenantAi(c.tenant_id).catch(() => null))?.apiKey;
       tenantOk.set(c.tenant_id, on && hasKey);
     }
@@ -249,6 +254,14 @@ export async function drainLeadScoring(deadlineAt: number, max = PER_TICK, now =
       console.warn("[lead-intel] read failed", c.id, msg);
       // A key that no longer works stops this workspace for the rest of the tick.
       if (/api key|unauthori[sz]ed|permission|invalid_api_key|401|403/i.test(msg)) tenantOk.set(c.tenant_id, false);
+      // The provider is overloaded or this key's rate limit is spent. Retrying
+      // every chat on every tick kept the limit spent, starving customer
+      // replies and review replies that share the key, so pause this
+      // workspace's lead reads for a while instead.
+      if (/AI_BUSY/.test(msg)) {
+        tenantOk.set(c.tenant_id, false);
+        await setTenantSetting(c.tenant_id, BACKOFF_KEY, new Date(now + BACKOFF_MS).toISOString()).catch(() => undefined);
+      }
     }
   }
   return { scored, skipped };
