@@ -159,6 +159,7 @@ export const WORKSPACE_EXPORT: (PageSpec & { label: string })[] = [
   { label: "form_responses", table: "wa_form_responses", key: "id", cols: "id,conversation_id,phone,form_id,status,data,sent_at,submitted_at" },
   { label: "optouts", table: "wa_optouts", key: "phone", cols: "phone,reason,created_at" },
   { label: "orders", table: "wa_orders", key: "id", cols: "id,phone,items,total_cents,currency,status,paid_at,created_at" },
+  { label: "reviews", table: "wa_reviews", key: "id", cols: "id,source,location_name,author,rating,text,review_created_at,reply_text,reply_status,posted_at,created_at" },
 ];
 
 export interface ExportOptions { maxRowsPerTable?: number; deadlineAt?: number; pageSize?: number }

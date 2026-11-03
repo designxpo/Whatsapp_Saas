@@ -22,7 +22,7 @@ import { TALKO_BRAND, brandCopy, type Brand } from "@/lib/whitelabel";
 
 export const dynamic = "force-dynamic";
 
-const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email", product_news: "product news and announcements" };
+const LABELS: Record<string, string> = { weekly_recap: "the weekly recap email", daily_digest: "the daily digest email", product_news: "product news and announcements", review_alerts: "review alert emails" };
 
 // White-label: on a partner's address (where its emails' unsubscribe links
 // point) the page carries the partner's name and links stay on that address.

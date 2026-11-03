@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, BellOff } from "lucide-react";
 import { channelShort } from "@/lib/channel-label";
 import { usePresence } from "@/lib/use-presence";
-import type { useInboxAlerts, WaitingChat } from "@/lib/use-inbox-alerts";
+import type { useInboxAlerts, WaitingChat, ReviewBellAlert } from "@/lib/use-inbox-alerts";
 
 type Alerts = ReturnType<typeof useInboxAlerts>;
 
@@ -41,7 +41,7 @@ function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: 
   );
 }
 
-export function AlertsBell({ alerts, onOpen }: { alerts: Alerts; onOpen: (chat: WaitingChat) => void }) {
+export function AlertsBell({ alerts, onOpen, onOpenReview }: { alerts: Alerts; onOpen: (chat: WaitingChat) => void; onOpenReview?: (a: ReviewBellAlert) => void }) {
   const [open, setOpen] = useState(false);
   const { mounted, shown } = usePresence(open, 140);
   const wrap = useRef<HTMLDivElement>(null);
@@ -55,15 +55,16 @@ export function AlertsBell({ alerts, onOpen }: { alerts: Alerts; onOpen: (chat: 
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onDown); };
   }, [open]);
 
-  const n = alerts.count;
+  const reviews = alerts.reviewAlerts ?? [];
+  const n = alerts.count + reviews.length;
   const blocked = alerts.permission === "denied";
   const unsupported = alerts.permission === "unsupported";
 
   return (
     <div ref={wrap} className="relative">
       <button onClick={() => setOpen(o => !o)} aria-expanded={open} aria-haspopup="dialog"
-        aria-label={n ? `Alerts: ${n} chat${n === 1 ? "" : "s"} waiting for a person` : "Alerts"}
-        data-help="Chats waiting for a person, and how you're told about them."
+        aria-label={n ? `Alerts: ${alerts.count} chat${alerts.count === 1 ? "" : "s"} waiting for a person${reviews.length ? `, ${reviews.length} review update${reviews.length === 1 ? "" : "s"}` : ""}` : "Alerts"}
+        data-help="Chats waiting for a person, review updates, and how you're told about them."
         className="relative inline-flex items-center justify-center w-9 h-9 rounded-control border border-line text-ink-600 hover:bg-canvas hover:text-ink-900 transition-colors">
         {alerts.sound || alerts.desktop ? <Bell className="w-4 h-4" aria-hidden /> : <BellOff className="w-4 h-4" aria-hidden />}
         {n > 0 && (
@@ -78,7 +79,7 @@ export function AlertsBell({ alerts, onOpen }: { alerts: Alerts; onOpen: (chat: 
           className="ov-pop absolute right-0 top-full mt-2 w-[340px] max-w-[calc(100vw-2rem)] bg-white rounded-card border border-line shadow-float z-30 overflow-hidden">
           <div className="px-4 pt-3.5 pb-2">
             <p className="text-sm font-extrabold text-ink-900">Waiting for your team</p>
-            <p className="text-[11px] text-ink-400">{n ? `${n} chat${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} a person` : "Nothing waiting. Chats that need a person show up here."}</p>
+            <p className="text-[11px] text-ink-400">{alerts.count ? `${alerts.count} chat${alerts.count === 1 ? "" : "s"} need${alerts.count === 1 ? "s" : ""} a person` : reviews.length ? "No chats waiting." : "Nothing waiting. Chats that need a person show up here."}</p>
           </div>
           {alerts.chats.length > 0 && (
             <ul className="max-h-72 overflow-y-auto overscroll-contain border-t border-line">
@@ -95,6 +96,24 @@ export function AlertsBell({ alerts, onOpen }: { alerts: Alerts; onOpen: (chat: 
                 </li>
               ))}
             </ul>
+          )}
+          {reviews.length > 0 && (
+            <div className="border-t border-line">
+              <p className="px-4 pt-2.5 pb-1 text-[11px] font-bold text-ink-500 uppercase tracking-wide">Reviews</p>
+              <ul className="max-h-56 overflow-y-auto overscroll-contain">
+                {reviews.slice(0, 6).map(a => (
+                  <li key={a.id}>
+                    <button onClick={() => { setOpen(false); onOpenReview?.(a); }} className="no-press w-full text-left px-4 py-2 hover:bg-canvas border-b border-line last:border-0">
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-[13px] font-semibold text-ink-900 line-clamp-2">{a.title}</span>
+                        <span className="text-[11px] text-ink-400 shrink-0">{ago(a.createdAt)}</span>
+                      </span>
+                      {a.body && <span className="block text-[12px] text-ink-600 truncate mt-0.5">{a.body}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <div className="border-t border-line bg-canvas/60 px-4 py-3 space-y-2.5">
             <label className="flex items-center justify-between gap-3 text-[13px] text-ink-900">

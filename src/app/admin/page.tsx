@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSlidingPill, useScrolled } from "@/lib/use-nav-motion";
-import { useInboxAlerts } from "@/lib/use-inbox-alerts";
+import { useInboxAlerts, type ReviewBellAlert } from "@/lib/use-inbox-alerts";
+import { requestReviewFocus, reviewIdFromHref } from "@/lib/review-focus";
 import { AlertsBell } from "@/components/alerts-bell";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -256,7 +257,13 @@ function AdminShell() {
   const scrolled = useScrolled();
   // Chats waiting for a person: the bell, the tab title, a chime and desktop
   // notifications, on every screen (lib/use-inbox-alerts.ts).
-  const alerts = useInboxAlerts(chat => goTo("livechat", { openPhone: chat.phone }));
+  // A review alert opens that review in Reviews (lib/review-focus.ts).
+  const openReviewAlert = useCallback((a: ReviewBellAlert) => {
+    const id = a.reviewId ?? reviewIdFromHref(a.href);
+    if (id) requestReviewFocus(id);
+    goTo("reviews");
+  }, [goTo]);
+  const alerts = useInboxAlerts(chat => goTo("livechat", { openPhone: chat.phone }), openReviewAlert);
 
   return (
     <ConfirmProvider>
@@ -376,7 +383,7 @@ function AdminShell() {
             {brand.name} <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
           <div className="flex items-center gap-2">
-          <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} />
+          <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} onOpenReview={openReviewAlert} />
           {me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
             blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}
           {tabAllowed("broadcast", ent) && tabRoleAllowed("broadcast", me?.role) && (
@@ -397,7 +404,7 @@ function AdminShell() {
           {tab === "facebook" && <FacebookTab goTo={goTo} />}
           {tab === "youtube" && <YoutubeTab goTo={goTo} />}
           {tab === "webchat" && <WebchatTab />}
-          {tab === "reviews" && <ReviewsTab />}
+          {tab === "reviews" && <ReviewsTab isAdmin={me?.role === "admin"} />}
           {tab === "assistant" && <AssistantTab goTo={goTo} />}
           {tab === "flows" && <FlowsTab />}
           {tab === "sequences" && <SequencesTab />}

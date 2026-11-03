@@ -21,7 +21,7 @@ type Row = {
 const TYPE_LABEL: Record<string, string> = {
   otp: "Login code", invoice: "Invoice / receipt", dunning_failed: "Payment failed",
   dunning_suspended: "Workspace paused", weekly_recap: "Weekly recap", daily_digest: "Daily digest", onboarding_nudge: "Onboarding nudge",
-  affiliate_commission: "Affiliate payout", contact_form: "Contact form", other: "Other",
+  affiliate_commission: "Affiliate payout", contact_form: "Contact form", review_alert: "Review alert", other: "Other",
 };
 const TYPES = Object.keys(TYPE_LABEL);
 

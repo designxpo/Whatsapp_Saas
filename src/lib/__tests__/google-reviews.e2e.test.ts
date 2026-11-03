@@ -2,22 +2,33 @@
 // Google HTTP, AI and the database are isolated; nothing is publicly posted.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { memdb } from './helpers/memdb';
-const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, aiBusy: 0, google: [] as Record<string, unknown>[], calls: [] as {
+const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, aiBusy: 0, canSend: true, aiRead: { concerns: [], confident: true } as { concerns: string[]; confident: boolean } | null, pages: null as Record<string, { reviews: Record<string, unknown>[]; next?: string }> | null, tokenError: null as string | null, flaky: 0, team: null as string | null, emails: [] as { to: string; subject: string; text: string }[], google: [] as Record<string, unknown>[], calls: [] as {
         url: string;
         method: string;
         body: string;
         auth: string;
     }[] }));
 vi.mock('../supabase', () => ({ db: () => h.db.client }));
-vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async () => h.tenant, requireRoleAdmin: async () => h.admin }));
-vi.mock('../llm', () => ({ generateReviewReply: vi.fn(async (_input: unknown, tenant: string) => { if (h.aiBusy > 0) { h.aiBusy--; throw new Error('AI_BUSY'); } return `Thank you — ${tenant}`; }) }));
+vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async () => h.tenant, requireRoleAdmin: async () => h.admin, requireAdmin: async () => true, currentUser: async () => ({ email: 'a@b.in', name: 'A', role: h.admin ? 'admin' : 'member', team: h.team ?? undefined, tenantId: h.tenant }) }));
+vi.mock('../email', () => ({ sendEmail: vi.fn(async (o: { to: string; subject: string; text: string }) => { h.emails.push({ to: o.to, subject: o.subject, text: o.text }); return { ok: true }; }) }));
+vi.mock('../team', () => ({ listUsers: async () => [{ email: 'owner@biz.in', role: 'admin', active: true }, { email: 'agent@biz.in', role: 'member', active: true }], logActivity: () => undefined }));
+vi.mock('../brand-lookup', async () => ({ brandForTenant: async () => (await import('../whitelabel')).TALKO_BRAND }));
+vi.mock('../llm', () => {
+    const draft = async (_input: unknown, tenant: string) => { if (h.aiBusy > 0) { h.aiBusy--; throw new Error('AI_BUSY'); } return { reply: `Thank you — ${tenant}`, ai: h.aiRead }; };
+    return { draftReviewReply: vi.fn(draft), generateReviewReply: vi.fn(async (i: unknown, t: string) => (await draft(i, t)).reply) };
+});
+vi.mock('../feature-guard', () => ({ guardFeature: async () => (h.allowed ? null : Response.json({ error: 'not in plan' }, { status: 402 })), accountCanSend: async () => h.canSend }));
 vi.mock('../moderation', () => ({ moderateText: async () => ({ allowed: true }), assertTextAllowed: async () => undefined }));
 vi.mock('../entitlements', () => ({ checkFeature: async () => ({ ok: h.allowed }) }));
-import { listReviews as listGoogleReviews, locationReviewUrl } from '../googlereviews';
+import { listReviews as listGoogleReviews, locationReviewUrl, retryDelays } from '../googlereviews';
 import { drainGoogleReviews } from '../reviewpoller';
 import { getReviewSettings, setReviewSettings, getGoogleSyncStatus } from '../reviews';
 import { POST as pickYoutube } from '../../app/api/admin/yt-channels/route';
 import { POST as syncNow } from '../../app/api/admin/reviews/sync/route';
+import { GET as inbox, POST as addReview } from '../../app/api/admin/reviews/route';
+import { POST as preview } from '../../app/api/admin/reviews/policy-preview/route';
+import { GET as bellAlerts } from '../../app/api/admin/reviews/alerts/route';
+import { raiseAlert, drainAlertEmails, sweepOverdueReviews } from '../review-alerts';
 import { POST as reply } from '../../app/api/admin/reviews/reply/route';
 import { POST as pickLocation } from '../../app/api/admin/reviews/google-locations/route';
 import { GET as start } from '../../app/api/admin/onboarding/google-reviews/start/route';
@@ -32,6 +43,15 @@ beforeEach(() => {
     h.failReviews = false;
     h.failPost = false;
     h.aiBusy = 0;
+    h.canSend = true;
+    h.aiRead = { concerns: [], confident: true };
+    h.pages = null;
+    h.tokenError = null;
+    h.flaky = 0;
+    h.team = null;
+    h.emails = [];
+    process.env.RESEND_API_KEY = 're_test';
+    retryDelays.ms = [0, 0];
     h.google = [];
     h.calls = [];
     h.db.tables.wa_channels = [channel()];
@@ -41,8 +61,14 @@ beforeEach(() => {
         const url = String(input), method = init.method ?? 'GET', body = String(init.body ?? ''), auth = new Headers(init.headers).get('Authorization') ?? '';
         h.calls.push({ url, method, body, auth });
         if (url === 'https://oauth2.googleapis.com/token') {
+            if (h.tokenError) return Response.json({ error: h.tokenError }, { status: 400 });
             const token = new URLSearchParams(body).get('refresh_token');
             return Response.json({ access_token: `access-${token}`, expires_in: 0 });
+        }
+        if (method === 'GET' && url.includes('/reviews?') && h.flaky > 0) { h.flaky--; return Response.json({ error: { message: 'Backend error' } }, { status: 503 }); }
+        if (method === 'GET' && url.includes('/reviews?') && h.pages && !h.failReviews) {
+            const page = h.pages[new URL(url).searchParams.get('pageToken') ?? ''] ?? { reviews: [] };
+            return Response.json({ reviews: page.reviews, ...(page.next ? { nextPageToken: page.next } : {}), averageRating: 4.6, totalReviewCount: 120 });
         }
         if (method === 'GET' && url.includes('/reviews?'))
             return h.failReviews ? Response.json({ error: { message: 'Permission denied', status: 'PERMISSION_DENIED' } }, { status: 403 }) : Response.json({ reviews: h.google, totalReviewCount: h.google.length });
@@ -236,3 +262,211 @@ describe('Google Reviews tenant readiness', () => {
         expect(JSON.stringify(await response.json())).not.toContain('refresh-youtube-secret');
     });
 });
+
+// ── Stage 1: safer automation, reliable sync, alerts and the inbox ──────────
+const get = (qs = '') => new Request(`https://app.thetalko.in/api/admin/reviews${qs}`);
+const alertsOf = (kind?: string) => (h.db.tables.wa_review_alerts ?? []).filter(a => !kind || a.kind === kind);
+const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+const seed = (id: string, extra: Record<string, unknown> = {}) => ({ id, tenant_id: 'tenant-a', source: 'google', external_id: `accounts/a/locations/a/reviews/${id}`, channel_id: 'a', author: 'Customer', rating: 5, text: 'Good service', review_created_at: day(1), created_at: day(1), reply_status: 'none', is_complaint: false, post_error: null, ...extra });
+describe('Google Reviews stage 1', () => {
+    it('holds a five-star review that complains about billing, says why, and raises one complaint alert', async () => {
+        h.google = [review('bill', 'FIVE', { comment: 'Lovely food but I was charged twice' })];
+        await drainGoogleReviews();
+        const row = h.db.tables.wa_reviews[0];
+        expect(row).toMatchObject({ reply_status: 'draft', is_complaint: true });
+        expect((row.approval_reasons as string[]).join(' ')).toMatch(/Refunds, billing disputes or overcharging — mentions “charged twice”/);
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+        await drainGoogleReviews();
+        expect(alertsOf()).toHaveLength(1);
+        expect(alertsOf('complaint')).toHaveLength(1);
+    });
+    it('holds a reply when the AI is unsure, or its answer could not be read', async () => {
+        h.aiRead = { concerns: [], confident: false };
+        h.google = [review('unsure')];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0].approval_reasons).toEqual(["The AI wasn't sure how to read this review."]);
+        h.aiRead = null;
+        h.google = [review('unread')];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews.find(r => String(r.external_id).endsWith('unread'))!.approval_reasons).toEqual(["Couldn't check this review automatically."]);
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+    });
+    it('holds a review Google gives no star rating', async () => {
+        h.google = [review('nostars', 'STAR_RATING_UNSPECIFIED')];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ rating: 0, reply_status: 'draft' });
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+    });
+    it('stops automation when the account or the plan no longer allows it', async () => {
+        h.canSend = false;
+        h.google = [review('paused')];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0].approval_reasons).toEqual(["AI replies are paused: your plan or account doesn't allow them right now."]);
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+        h.canSend = true;
+        h.allowed = false;
+        h.google = [review('after-downgrade')];
+        h.calls = [];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews).toHaveLength(1);
+        expect(h.calls.some(c => c.url.includes('/reviews?'))).toBe(false);
+        const sync = h.db.tables.wa_settings.find(r => r.key === 'google_reviews_sync:a')!.value as { kind: string };
+        expect(sync.kind).toBe('plan');
+    });
+    it('reads only what changed on later runs, and imports a long history over several runs', async () => {
+        const old = (i: number) => review(`h${i}`, 'FOUR', { createTime: '2023-01-01T00:00:00Z', updateTime: new Date(Date.UTC(2026, 0, 1) - i * 86_400_000).toISOString() });
+        h.pages = {
+            '': { reviews: [old(1), old(2)], next: 't2' }, t2: { reviews: [old(3), old(4)], next: 't3' },
+            t3: { reviews: [old(5), old(6)], next: 't4' }, t4: { reviews: [old(7), old(8)], next: 't5' },
+            t5: { reviews: [old(9), old(10)], next: 't6' }, t6: { reviews: [old(11)] },
+        };
+        const reads = () => h.calls.filter(c => c.url.includes('/reviews?')).length;
+        expect(await drainGoogleReviews()).toBe(8);
+        expect(reads()).toBe(4);
+        h.calls = [];
+        expect(await drainGoogleReviews()).toBe(3);
+        expect(reads()).toBe(3);   // the top page (nothing new), then two pages of history
+        h.calls = [];
+        await drainGoogleReviews();
+        expect(reads()).toBe(1);   // history done: only the top page
+        expect(h.db.tables.wa_reviews).toHaveLength(11);
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);   // old reviews: no automatic replies
+    });
+    it('retries a temporary Google error instead of reporting an empty list', async () => {
+        h.flaky = 1;
+        h.google = [review('later-ok')];
+        expect(await drainGoogleReviews()).toBe(1);
+    });
+    it('shows lost access on the location and alerts once a day', async () => {
+        h.tokenError = 'invalid_grant';
+        await drainGoogleReviews();
+        await drainGoogleReviews();
+        expect(alertsOf('reauth')).toHaveLength(1);
+        const body = await (await inbox(get())).json();
+        expect(body.locations[0].sync).toMatchObject({ ok: false, kind: 'reauth' });
+    });
+    it('alerts when a location keeps failing to sync', async () => {
+        h.flaky = 1000;
+        for (let i = 0; i < 3; i++) await drainGoogleReviews();
+        expect(alertsOf('sync_failing')).toHaveLength(1);
+        expect(alertsOf('reauth')).toHaveLength(0);
+    });
+    it('keeps a failed post actionable in the Failed view, alerts, and clears once posted', async () => {
+        h.failPost = true;
+        h.google = [review('nope')];
+        await drainGoogleReviews();
+        const row = h.db.tables.wa_reviews[0];
+        expect(row).toMatchObject({ reply_status: 'draft', post_error: expect.stringMatching(/temporary problem/) });
+        expect(alertsOf('post_failed')).toHaveLength(1);
+        expect((await (await inbox(get('?view=failed'))).json()).total).toBe(1);
+        h.failPost = false;
+        expect((await reply(request({ id: row.id, action: 'post', text: 'Thank you!' }))).status).toBe(200);
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ reply_status: 'posted', post_error: null, reply_source: 'talko' });
+        expect((await (await inbox(get('?view=failed'))).json()).total).toBe(0);
+    });
+    it('never raises the same alert twice, and emails it once to the admins', async () => {
+        const a = { kind: 'complaint' as const, dedupeKey: 'review:x:arrived', title: 'Complaint: Asha left a 1★ review', body: 'Cold food' };
+        expect(await raiseAlert('tenant-a', a)).toBe(true);
+        expect(await raiseAlert('tenant-a', a)).toBe(false);
+        expect(alertsOf()).toHaveLength(1);
+        await drainAlertEmails();
+        await drainAlertEmails();
+        expect(h.emails).toEqual([expect.objectContaining({ to: 'owner@biz.in', subject: 'Complaint: Asha left a 1★ review' })]);
+        await setReviewSettings('tenant-a', { alerts: { email: true, recipients: ['Ops@Biz.in'], events: {}, unansweredHours: 24 } as never });
+        await raiseAlert('tenant-a', { ...a, dedupeKey: 'review:y:arrived' });
+        await drainAlertEmails();
+        expect(h.emails.map(e => e.to)).toEqual(['owner@biz.in', 'ops@biz.in']);
+    });
+    it('respects alert kinds the owner switched off', async () => {
+        await setReviewSettings('tenant-a', { alerts: { events: { new_review: false } } as never });
+        expect(await raiseAlert('tenant-a', { kind: 'new_review', dedupeKey: 'k', title: 't' })).toBe(false);
+        expect(await raiseAlert('tenant-a', { kind: 'complaint', dedupeKey: 'k2', title: 't' })).toBe(true);
+    });
+    it('raises one overdue alert for a review left unanswered past the limit', async () => {
+        h.db.tables.wa_reviews = [seed('late', { review_created_at: day(3), reply_status: 'draft' }), seed('fresh', { review_created_at: new Date(Date.now() - 2 * 3_600_000).toISOString() })];
+        expect(await sweepOverdueReviews()).toBe(1);
+        expect(await sweepOverdueReviews()).toBe(0);
+        expect(alertsOf('overdue')[0].review_id).toBe('late');
+    });
+    it('drops an alert from the bell once its review has a public reply', async () => {
+        h.db.tables.wa_reviews = [seed('r1')];
+        await raiseAlert('tenant-a', { kind: 'needs_approval', dedupeKey: 'review:r1:arrived', reviewId: 'r1', title: 'Waiting' });
+        let bell = await (await bellAlerts()).json();
+        expect(bell.alerts).toEqual([expect.objectContaining({ title: 'Waiting', href: '/admin?tab=reviews&review=r1' })]);
+        h.db.tables.wa_reviews[0].reply_status = 'posted';
+        bell = await (await bellAlerts()).json();
+        expect(bell.alerts).toEqual([]);
+    });
+    it('inbox: views, counts, filters, search, paging and oldest-unanswered order', async () => {
+        h.db.tables.wa_reviews = [
+            seed('n1', { author: 'Asha', text: 'Paneer was cold', rating: 2, is_complaint: true, review_created_at: day(5) }),
+            seed('n2', { reply_status: 'draft', review_created_at: day(4) }),
+            seed('n3', { reply_status: 'posted', review_created_at: day(3) }),
+            seed('n4', { reply_status: 'draft', post_error: 'Google unavailable', review_created_at: day(2) }),
+            seed('m1', { source: 'manual', external_id: null, channel_id: null, author: 'Ravi', review_created_at: day(1) }),
+            { ...seed('other'), tenant_id: 'tenant-b', text: 'Paneer elsewhere' },
+        ];
+        const all = await (await inbox(get())).json();
+        expect(all.counts).toEqual({ all: 5, approval: 2, unanswered: 4, complaints: 1, replied: 1, failed: 1 });
+        expect(all.reviews.map((r: { id: string }) => r.id)).toEqual(['m1', 'n4', 'n3', 'n2', 'n1']);
+        expect((await (await inbox(get('?q=paneer'))).json()).reviews.map((r: { id: string }) => r.id)).toEqual(['n1']);
+        expect((await (await inbox(get('?q=ravi'))).json()).total).toBe(1);
+        expect((await (await inbox(get('?location=manual'))).json()).total).toBe(1);
+        expect((await (await inbox(get('?rating=2'))).json()).total).toBe(1);
+        expect((await (await inbox(get('?view=complaints'))).json()).reviews[0].id).toBe('n1');
+        const p2 = await (await inbox(get('?pageSize=5&page=1&sort=oldest_unanswered'))).json();
+        expect(p2.reviews.map((r: { id: string }) => r.id)).toEqual(['n1', 'n2', 'n4', 'm1']);
+        expect((await (await inbox(get(`?from=${day(4).slice(0, 10)}&to=${day(3).slice(0, 10)}`))).json()).total).toBe(2);
+    });
+    it("never shows another workspace's reviews, even when asked for one by id", async () => {
+        h.db.tables.wa_reviews = [{ ...seed('theirs'), tenant_id: 'tenant-b' }];
+        const body = await (await inbox(get('?id=theirs'))).json();
+        expect(body.focus).toBeNull();
+        expect(body.total).toBe(0);
+    });
+    it('a team member sees only the locations of their team', async () => {
+        h.db.tables.wa_channels = [{ ...channel(), team: 'sales' }, { ...channel('tenant-a', 'b', 'accounts/b', 'locations/b'), team: 'ops' }];
+        h.db.tables.wa_reviews = [seed('ra'), seed('rb', { channel_id: 'b', external_id: 'accounts/b/locations/b/reviews/rb' }), seed('rm', { source: 'manual', channel_id: null, external_id: null })];
+        h.admin = false;
+        h.team = 'sales';
+        const body = await (await inbox(get())).json();
+        expect(body.reviews.map((r: { id: string }) => r.id)).toEqual(['ra']);
+        expect(body.locations.map((l: { id: string }) => l.id)).toEqual(['a']);
+        expect((await (await inbox(get('?location=b'))).json()).reviews.map((r: { id: string }) => r.id)).toEqual(['ra']);
+        await setReviewSettings('tenant-a', { alerts: { recipients: ['owner@biz.in'] } as never });
+        expect(JSON.stringify((await (await inbox(get())).json()).settings)).not.toContain('owner@biz.in');
+    });
+    it('the inbox response carries no Google tokens or page bookmarks', async () => {
+        h.db.tables.wa_settings = [{ tenant_id: 'tenant-a', key: 'google_reviews_sync:a', value: { ok: true, at: day(0), highWater: day(1), backfillToken: 'SECRET_PAGE_BOOKMARK' } }];
+        const text = JSON.stringify(await (await inbox(get())).json());
+        expect(text).not.toContain('refresh-a');
+        expect(text).not.toContain('SECRET_PAGE_BOOKMARK');
+        expect(text).toContain('"importingHistory":true');
+    });
+    it('blocks the inbox for a plan without Google Reviews', async () => {
+        h.allowed = false;
+        expect((await inbox(get())).status).toBe(402);
+    });
+    it("can't rewrite a Google review as a manual one", async () => {
+        h.db.tables.wa_reviews = [seed('g1')];
+        expect((await addReview(request({ id: 'g1', author: 'X', text: 'fake', rating: 5 }))).status).toBe(400);
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ source: 'google', text: 'Good service' });
+    });
+    it('previews the rules on a sample review without posting anything', async () => {
+        const held = await (await preview(request({ rating: 5, text: 'Great food but please refund the extra charges', withAi: true }))).json();
+        expect(held).toMatchObject({ autoPost: false, complaint: true, reply: 'Thank you — tenant-a', aiChecked: true });
+        const never = await (await preview(request({ rating: 5, text: 'Great', autoMinStars: 6 }))).json();
+        expect(never.reasons[0]).toMatch(/Never auto-post/);
+        const fine = await (await preview(request({ rating: 5, text: 'Great haircut' }))).json();
+        expect(fine.autoPost).toBe(true);
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);
+        expect(h.db.tables.wa_reviews ?? []).toHaveLength(0);
+    });
+    it('two overlapping runs import and post a review only once', async () => {
+        h.google = [review('race')];
+        await Promise.all([drainGoogleReviews(), drainGoogleReviews()]);
+        expect(h.db.tables.wa_reviews).toHaveLength(1);
+        expect(h.calls.filter(c => c.method === 'PUT')).toHaveLength(1);
+    });
+});
+

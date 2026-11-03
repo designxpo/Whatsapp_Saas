@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { getReview, setReviewReply, getReviewSettings, autoPosts } from "@/lib/reviews";
-import { generateReviewReply } from "@/lib/llm";
+import { getReview, setReviewReply, getReviewSettings, autoPosts, markPostFailed } from "@/lib/reviews";
+import { draftReviewReply } from "@/lib/llm";
+import { decideAutoPost } from "@/lib/review-policy";
+import { guardFeature } from "@/lib/feature-guard";
 import { listChannels } from "@/lib/channels";
 import { replyToReview, deleteReviewReply, type GrCreds } from "@/lib/googlereviews";
 import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
@@ -32,6 +34,8 @@ export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s defaul
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const gate = await guardFeature(tid, "reviews");
+  if (gate) return gate;
   let body: { id?: string; action?: string; text?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
@@ -43,11 +47,14 @@ export async function POST(req: Request) {
 
   try {
     if (body.action === "generate") {
-      const reply = await generateReviewReply(
+      const draft = await draftReviewReply(
         { author: review.author, rating: review.rating, text: review.text, businessName: review.locationName ?? undefined, tone: settings.tone, signature: settings.signature },
         tid,
       );
-      const saved = await setReviewReply(review.id, tid, reply, "draft", auto);
+      // The same reading the automation uses, so a person sees why this one
+      // would (or wouldn't) have posted on its own.
+      const d = decideAutoPost({ rating: review.rating, text: review.text, autoMinStars: settings.autoMinStars, holdFor: settings.holdFor, ai: draft.ai });
+      const saved = await setReviewReply(review.id, tid, draft.reply, "draft", auto, { approvalReasons: d.reasons, topics: d.topics, isComplaint: d.complaint || review.isComplaint, draftError: null });
       return NextResponse.json({ review: saved });
     }
     if (body.action === "save") {
@@ -62,10 +69,17 @@ export async function POST(req: Request) {
       if (review.source === "google" && review.externalId) {
         const creds = await googleCredsFor(tid, review.externalId);
         if (!creds) return NextResponse.json({ error: "The Google Business Profile this review belongs to isn't connected. Reconnect it in the Reviews tab, then post again." }, { status: 400 });
-        const posted = await replyToReview(creds, review.externalId, text);
-        if (!posted.ok) return NextResponse.json({ error: posted.error || "Google refused the reply" }, { status: 502 });
+        const posted = await replyToReview(creds, review.externalId, text, tid);
+        if (!posted.ok) {
+          // Kept on the review (the "Failed" view), so it stays actionable.
+          await markPostFailed(review.id, tid, posted.error || "Google refused the reply");
+          // A draft keeps its edited text. A reply already on Google keeps the
+          // text Google actually shows — the failed edit didn't change it.
+          if (body.text !== undefined && review.replyStatus !== "posted") await setReviewReply(review.id, tid, text, "draft", auto, { postError: posted.error || "Google refused the reply" });
+          return NextResponse.json({ error: posted.error || "Google refused the reply" }, { status: 502 });
+        }
       }
-      const saved = await setReviewReply(review.id, tid, text, "posted", auto);
+      const saved = await setReviewReply(review.id, tid, text, "posted", auto, { replySource: review.source === "google" ? "talko" : "manual" });
       return NextResponse.json({ review: saved });
     }
     if (body.action === "unpost") {

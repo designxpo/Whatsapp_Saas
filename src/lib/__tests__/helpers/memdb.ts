@@ -48,6 +48,16 @@ export function memdb(unique: Record<string, string[][]> = {}): MemDb {
     b.is = chain((c, v) => preds.push(r => (v === null ? r[c as string] == null : r[c as string] === v)));
     b.not = chain((c, o, v) => preds.push(r => (o === "is" && v === null ? r[c as string] != null : r[c as string] !== v)));
     b.like = chain((c, v) => { const re = new RegExp("^" + String(v).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$"); preds.push(r => re.test(String(r[c as string] ?? ""))); });
+    const likeRe = (v: unknown, flags = "") => new RegExp("^" + String(v).replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/%/g, ".*") + "$", flags);
+    b.ilike = chain((c, v) => { const re = likeRe(v, "i"); preds.push(r => re.test(String(r[c as string] ?? ""))); });
+    // PostgREST or(): "col.op.value,col.op.value" with eq / ilike / like.
+    b.or = chain(expr => {
+      const parts = String(expr).split(",").map(p => { const [col, opName, ...rest] = p.split("."); return { col, opName, value: rest.join(".") }; });
+      preds.push(r => parts.some(({ col, opName, value }) =>
+        opName === "eq" ? String(r[col] ?? "") === value
+          : opName === "ilike" ? likeRe(value, "i").test(String(r[col] ?? ""))
+          : opName === "like" ? likeRe(value).test(String(r[col] ?? "")) : false));
+    });
     b.order = chain((c, o) => orderBy.push({ col: c as string, asc: (o as { ascending?: boolean } | undefined)?.ascending !== false }));
     b.limit = chain(n => { lim = n as number; });
     b.range = chain((f, t) => { from = f as number; to = t as number; });

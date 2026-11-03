@@ -24,6 +24,7 @@ import { answerUnanswered, SETTLE_MS } from "@/lib/replybackstop";
 import { purgeOldAdChats } from "@/lib/adchats";
 import { drainYtComments } from "@/lib/ytpoller";
 import { drainGoogleReviews } from "@/lib/reviewpoller";
+import { sweepOverdueReviews, drainAlertEmails } from "@/lib/review-alerts";
 import { drainOnboardingNudges } from "@/lib/onboardingnudge";
 import { drainWeeklyRecaps } from "@/lib/weeklyrecap";
 import { drainOwnerEmailCampaigns } from "@/lib/ownerbroadcast";
@@ -56,7 +57,7 @@ const STAGES = [
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
   "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
-  "metadeletion", "retention", "sheetrows", "tenantmetrics", "leadscore",
+  "metadeletion", "retention", "sheetrows", "tenantmetrics", "leadscore", "reviewalerts",
 ];
 
 // POST /api/cron/process-queue — run on a schedule (*/5 GitHub Actions pinger).
@@ -97,7 +98,10 @@ export async function POST(req: Request) {
     const pollStart = Date.now();
     const POLL_BUDGET = 120_000;   // + the ~50s above, well inside maxDuration
     const ytComments = await stage("ytcomments", 0, () => drainYtComments(), pollStart, POLL_BUDGET);
-    const googleReviews = await stage("googlereviews", 0, () => drainGoogleReviews(), pollStart, POLL_BUDGET);
+    const googleReviews = await stage("googlereviews", 0, () => drainGoogleReviews(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
+    // Review alerts (review-alerts.ts): reviews left unanswered too long, then
+    // one email per workspace with whatever was raised since the last run.
+    const reviewAlerts = await stage("reviewalerts", null, async () => ({ overdue: await sweepOverdueReviews(), emails: await drainAlertEmails() }), pollStart, POLL_BUDGET);
     const kbSync = await stage("kbsync", null, () => refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }), pollStart, POLL_BUDGET);
     const igTokens = await stage("igtokens", null, () => sweepIgTokensIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // White-label billing: partners' prepaid monthly charges, and the payment
@@ -125,7 +129,7 @@ export async function POST(req: Request) {
     const sheetRows = await stage("sheetrows", null, () => drainSheetRows(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Last, so the owner console's figures can never take a turn from the pollers above.
     const tenantMetrics = await stage("tenantmetrics", null, () => sweepTenantMetricsIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
-    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, leadScore, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
+    console.log(JSON.stringify({ tag: "cron_pollers", ytComments, googleReviews, reviewAlerts, kbSync, igTokens, partnerBilling, replyHistory, reviewBooster, leadScore, metaDeletion, retention, sheetRows, tenantMetrics, tookMs: Date.now() - pollStart }));
     await recordStageTick(ran, [...new Set([...STAGES, ...declared])], tookMs);
   });
 

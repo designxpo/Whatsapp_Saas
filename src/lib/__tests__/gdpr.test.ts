@@ -213,7 +213,7 @@ describe("workspace export", () => {
     expect(out.tables.contacts.map((c: { id: string }) => c.id)).toEqual(["k1", "k3"]);
     expect(out.summary.messages).toEqual({ rows: 2505, truncated: false });
     expect(Math.max(...h.limits)).toBeLessThanOrEqual(PAGE_SIZE);
-    expect(out.included).toEqual(["contacts", "conversations", "messages", "notes", "form_responses", "optouts", "orders"]);
+    expect(out.included).toEqual(["contacts", "conversations", "messages", "notes", "form_responses", "optouts", "orders", "reviews"]);
   });
 
   it("stops a table at the row cap and marks it truncated", async () => {

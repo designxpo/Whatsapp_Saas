@@ -3,6 +3,7 @@ import { getChannel, saveGoogleReviewsChannel, listChannels, deleteChannel } fro
 import { listAccounts, listLocations, googleReviewsConfigured, type GrLocation } from "@/lib/googlereviews";
 import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,8 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const gate = await guardFeature(tid, "reviews");
+    if (gate) return gate;
     const channelId = new URL(req.url).searchParams.get("channelId");
     if (!channelId) return NextResponse.json({ locations: [], error: "channelId required" }, { status: 400 });
     const channel = await getChannel(channelId, tid);
@@ -46,6 +49,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const gate = await guardFeature(tid, "reviews");
+  if (gate) return gate;
   let body: { channelId?: string; accountId?: string; locationId?: string; locationName?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.channelId || !body.accountId || !body.locationId) return NextResponse.json({ error: "channelId, accountId and locationId are required" }, { status: 400 });

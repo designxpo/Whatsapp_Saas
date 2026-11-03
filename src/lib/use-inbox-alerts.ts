@@ -23,6 +23,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WaitingChat } from "./store";
 
 export type { WaitingChat };
+/** A review alert for the bell (/api/admin/reviews/alerts). */
+export interface ReviewBellAlert { id: string; kind: string; title: string; body: string; createdAt: string; href: string; reviewId: string | null }
 type Prefs = { sound: boolean; desktop: boolean };
 const PREFS_KEY = "mb-alerts";
 const DEFAULT_PREFS: Prefs = { sound: true, desktop: false };
@@ -82,8 +84,14 @@ function chime() {
   }
 }
 
-export function useInboxAlerts(openChat: (chat: WaitingChat) => void) {
+export function useInboxAlerts(openChat: (chat: WaitingChat) => void, openReview?: (a: ReviewBellAlert) => void) {
   const [count, setCount] = useState(0);
+  const [reviewAlerts, setReviewAlerts] = useState<ReviewBellAlert[]>([]);
+  const reviewSeen = useRef(new Set<string>());
+  const reviewPrimed = useRef(false);
+  const ticks = useRef(0);
+  const openR = useRef(openReview);
+  openR.current = openReview;
   const [chats, setChats] = useState<WaitingChat[]>([]);
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
@@ -114,6 +122,17 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void) {
     }
   }, []);
 
+  const announceReviews = useCallback((fresh: ReviewBellAlert[]) => {
+    const p = prefsRef.current;
+    if (p.sound) chime();
+    const away = typeof document !== "undefined" && (document.hidden || !document.hasFocus());
+    if (!p.desktop || !away || typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    for (const a of fresh.slice(0, 3)) {
+      const n = new Notification(a.title, { body: a.body || "Open Reviews in the portal.", tag: `review-${a.id}` });
+      n.onclick = () => { window.focus(); openR.current?.(a); n.close(); };
+    }
+  }, []);
+
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +150,22 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void) {
           setChats(d.chats);
         }
       } catch { /* offline for a moment: the next tick tries again */ }
+      // Review alerts change slowly (the review sync runs every ~5 minutes), so
+      // ask about once a minute rather than on every tick.
+      if (ticks.current++ % 4 === 0) {
+        try {
+          const r = await fetch("/api/admin/reviews/alerts", { cache: "no-store" });
+          if (r.ok) {
+            const d = (await r.json()) as { alerts: ReviewBellAlert[] };
+            const list = d.alerts ?? [];
+            const fresh = list.filter(a => !reviewSeen.current.has(a.id));
+            for (const a of list) reviewSeen.current.add(a.id);
+            if (reviewPrimed.current && fresh.length) announceReviews(fresh);
+            reviewPrimed.current = true;
+            setReviewAlerts(list);
+          }
+        } catch { /* next time */ }
+      }
       if (!stopped) timer = setTimeout(tick, document.hidden ? 30_000 : 15_000);
     };
     void tick();
@@ -138,7 +173,7 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void) {
     const onVisible = () => { if (!document.hidden) { clearTimeout(timer); void tick(); } };
     document.addEventListener("visibilitychange", onVisible);
     return () => { stopped = true; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisible); };
-  }, [announce]);
+  }, [announce, announceReviews]);
 
   useEffect(() => { document.title = titleWithCount(document.title, count); }, [count]);
 
@@ -157,5 +192,5 @@ export function useInboxAlerts(openChat: (chat: WaitingChat) => void) {
     setPrefs(p => { const next = { ...p, desktop }; writePrefs(next); return next; });
   }, []);
 
-  return { count, chats, sound: prefs.sound, desktop: prefs.desktop && permission === "granted", permission, setSound, setDesktop };
+  return { count, chats, reviewAlerts, sound: prefs.sound, desktop: prefs.desktop && permission === "granted", permission, setSound, setDesktop };
 }

@@ -1,49 +1,50 @@
 "use client";
 
-// Review reply system (Phase 1) — an inbox of business reviews with rating-aware
-// AI-drafted replies. Reviews are added manually / pasted for now; a live Google
-// Business Profile connection (auto-fetch + one-tap post) lands in Phase 2. The
-// auto(4–5★)/draft(1–3★) policy is surfaced per review via the auto threshold.
+// Reviews — connect Google Business Profile locations, see each location's sync
+// health, and work the review inbox (ReviewInbox.tsx): AI-drafted replies that
+// post on their own only when the rules allow, everything else waiting with the
+// reason. Reviews can also be pasted in by hand; those are never published by
+// Talko — the reply is copied and marked posted.
 import { useBrand } from "@/components/BrandContext";
 import { useState, useEffect, useCallback } from "react";
-import { Star, Sparkles, Copy, Check, Trash2, Loader2, RefreshCw, Plus, SlidersHorizontal, Send, MapPin, Link2, Unlink } from "lucide-react";
+import { Star, Loader2, RefreshCw, Plus, SlidersHorizontal, MapPin, Link2, Unlink, AlertTriangle } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer, Modal } from "@/components/overlay";
 import { ReviewBooster } from "./ReviewBooster";
+import { ReviewInbox, type InboxMeta, type LocationInfo } from "./ReviewInbox";
+import { ReviewSettingsPanel, type ReviewSettingsValue } from "./ReviewSettingsPanel";
+import { takeReviewFocus, onReviewFocus } from "@/lib/review-focus";
 
-type ReplyStatus = "none" | "draft" | "posted";
-type Review = {
-  id: string; source: string; locationName: string | null; author: string; rating: number; text: string;
-  replyText: string | null; replyStatus: ReplyStatus; auto: boolean; postedAt: string | null; createdAt: string;
-  reviewCreatedAt: string | null;
-};
-type Filter = "all" | "todo" | "replied";
-const shortDate = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
-type Settings = { autoMinStars: number; signature: string; tone: string };
-type GrChannel = { id: string; name: string; active: boolean };
-type GoogleSync = { ok: boolean; error: string | null; at: string };
 type GrLocation = { accountId: string; id: string; name: string; address: string };
 
 // Result flags the Google OAuth callback lands back with (?gr=connected|pick
 // &channelId=… / ?gr_error=…).
 const GR_ERROR_MESSAGES: Record<string, string> = {
-  not_in_plan: "Google review replies are available on Growth and above — upgrade to unlock them.",
-  not_configured: "Google isn't configured on this deployment yet (OAuth pending) — ask your platform admin.",
+  not_in_plan: "Google review replies are available on Creator Pro, Growth and Scale — upgrade to unlock them.",
+  not_configured: "Google sign-in isn't available right now. Please try again later or contact support.",
   denied: "Google sign-in was cancelled.",
   state_mismatch: "This connect link expired or was opened in a different browser or tab than the one that started it — a privacy extension may have blocked a cookie. Click Connect again and complete it in the same tab without navigating away.",
   code_expired: "That sign-in link was already used or took too long to complete — click Connect and finish it in one go.",
-  exchange_failed: "This deployment's Google sign-in isn't configured correctly, so Google refused the connection — this isn't something you can fix from here. Contact support and mention \"Reviews exchange_failed\".",
-  no_refresh_token: "Google didn't grant offline access. Visit myaccount.google.com/permissions, remove Talko AI's access, then try connecting again.",
-  save_failed: "Google connected successfully, but saving the connection failed on our side (a temporary hiccup, not a problem with your Google account). Nothing was lost on Google's end — click Connect again.",
+  exchange_failed: "Google refused the connection from our side — this isn't something you can fix from here. Contact support and mention \"Reviews exchange_failed\".",
+  no_refresh_token: "Google didn't grant ongoing access. Visit myaccount.google.com/permissions, remove Talko AI's access, then try connecting again.",
+  save_failed: "Google connected, but saving the connection failed on our side (a temporary hiccup, not a problem with your Google account). Click Connect again.",
 };
 
-function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
+const ago = (iso: string | null | undefined) => {
+  if (!iso) return "never";
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  return h < 48 ? `${h} h ago` : new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+};
+
+function PickStars({ n, onPick }: { n: number; onPick: (v: number) => void }) {
   return (
-    <span className="inline-flex items-center gap-0.5">
+    <span className="inline-flex items-center gap-0.5" role="radiogroup" aria-label="Rating">
       {[1, 2, 3, 4, 5].map(i => (
-        <button key={i} type="button" disabled={!onPick} onClick={() => onPick?.(i)}
-          className={onPick ? "cursor-pointer" : "cursor-default"} title={onPick ? `${i} star${i > 1 ? "s" : ""}` : undefined}>
+        <button key={i} type="button" role="radio" aria-checked={i === n} onClick={() => onPick(i)} title={`${i} star${i > 1 ? "s" : ""}`}>
           <Star className={`w-4 h-4 ${i <= n ? "text-amber-400 fill-amber-400" : "text-slate-300"}`} />
         </button>
       ))}
@@ -51,26 +52,20 @@ function Stars({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
   );
 }
 
-export default function ReviewsTab() {
+export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
   const brand = useBrand();
   const who = brand.partnerId ? brand.name : "Talko";   // the name in-app copy uses
   const ask = useConfirm();
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [settings, setSettings] = useState<Settings>({ autoMinStars: 4, signature: "", tone: "" });
+  const [meta, setMeta] = useState<InboxMeta | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey(k => k + 1);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);   // review id currently working
-  const [drafts, setDrafts] = useState<Record<string, string>>({});   // local edits per review
-  const [copied, setCopied] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ author: "", rating: 5, text: "", locationName: "" });
-  const [settingsForm, setSettingsForm] = useState<Settings>({ autoMinStars: 4, signature: "", tone: "" });
   const [savingSettings, setSavingSettings] = useState(false);
-  // Google Business Profile connection (Phase 2) + its location picker.
-  const [grChannels, setGrChannels] = useState<GrChannel[]>([]);
-  const [googleSync, setGoogleSync] = useState<Record<string, GoogleSync>>({});
-  const [editing, setEditing] = useState<Record<string, boolean>>({});   // posted replies being edited
-  const [filter, setFilter] = useState<Filter>("all");
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addForm, setAddForm] = useState({ author: "", rating: 5, text: "", locationName: "" });
   const [syncing, setSyncing] = useState(false);
   const [syncNote, setSyncNote] = useState<string | null>(null);
   const [pickerChannelId, setPickerChannelId] = useState<string | null>(null);
@@ -79,37 +74,31 @@ export default function ReviewsTab() {
   const [pickerError, setPickerError] = useState<string | null>(null);
   const [pickerBusy, setPickerBusy] = useState<string | null>(null);   // location id currently being saved
 
-  const load = useCallback(() => {
-    fetch("/api/admin/reviews").then(r => r.json()).then(d => {
-      setReviews(d.reviews ?? []);
-      if (d.settings) { setSettings(d.settings); setSettingsForm(d.settings); }
-      setGoogleSync(d.googleSync ?? {});
-    }).catch(() => {});
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  const locations: LocationInfo[] = meta?.locations ?? [];
+  const settings = meta?.settings as unknown as ReviewSettingsValue | undefined;
 
-  const loadGrChannel = useCallback(() => {
-    fetch("/api/admin/channels").then(r => r.json()).then(d => {
-      // Every connected profile: a tenant may connect more than one location.
-      const gr = (d.channels ?? []).filter((c: { kind?: string; active: boolean; googleLocationId?: string | null }) => c.kind === "google_reviews" && c.active && c.googleLocationId);
-      setGrChannels(gr.map((c: GrChannel) => ({ id: c.id, name: c.name, active: c.active })));
-    }).catch(() => {});
-  }, []);
-  useEffect(() => { loadGrChannel(); }, [loadGrChannel]);
-
-  // One-time result of the "Connect with Google" redirect flow. Consume it
-  // once, then scrub the query string so a refresh doesn't replay it.
+  // One-time results: the "Connect with Google" redirect, or an alert/email
+  // link to one review (?review=<id>). Consumed once, then scrubbed so a
+  // refresh doesn't replay them.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const gr = params.get("gr");
     const channelId = params.get("channelId");
     const error = params.get("gr_error");
+    const review = params.get("review") ?? takeReviewFocus();
     if (gr === "pick" && channelId) setPickerChannelId(channelId);
-    if (gr === "connected") loadGrChannel();
     if (error) setMsg(GR_ERROR_MESSAGES[error] || "Something went wrong connecting Google Reviews.");
-    if (gr || error) window.history.replaceState(null, "", window.location.pathname);
-  }, [loadGrChannel]);
+    if (review) setFocusId(review);
+    if (gr || error || review) {
+      params.delete("gr"); params.delete("channelId"); params.delete("gr_error"); params.delete("review");
+      const rest = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}`);
+    }
+  }, []);
+
+  // The bell asking for a review while this tab is already open.
+  useEffect(() => onReviewFocus(id => { setFocusId(id); window.scrollTo({ top: 0, behavior: "smooth" }); }), []);
 
   useEffect(() => {
     if (!pickerChannelId) { setPickerLocations([]); return; }
@@ -129,32 +118,33 @@ export default function ReviewsTab() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channelId: pickerChannelId, accountId: loc.accountId, locationId: loc.id, locationName: loc.name }),
       });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (!res.ok) { setMsg(d.error || "Save failed"); return; }
-      setPickerChannelId(null); setPickerLocations([]); loadGrChannel();
+      setPickerChannelId(null); setPickerLocations([]);
+      setSyncNote(`${loc.name} is connected. Its reviews start arriving within a few minutes — or use Sync from Google now.`);
+      reload();
     } finally { setPickerBusy(null); }
   }
 
-  async function disconnectGoogle(grChannel: GrChannel) {
+  async function disconnect(l: LocationInfo) {
     if (!(await ask({
-      title: "Disconnect this Google Business Profile?", tone: "danger", confirmLabel: "Disconnect",
-      message: "Reviews already imported are kept, but new ones stop arriving and replies can no longer be posted.",
+      title: `Disconnect ${l.name}?`, tone: "danger", confirmLabel: "Disconnect",
+      message: "Talko stops reading this location's reviews and can no longer post replies there. Reviews already imported stay here. Other locations aren't affected. You can reconnect any time.",
     }))) return;
-    await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: grChannel.id }) }).catch(() => {});
-    setGrChannels(list => list.filter(c => c.id !== grChannel.id));
+    const r = await fetch("/api/admin/channels", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: l.id }) }).catch(() => null);
+    if (!r?.ok) { setMsg("Couldn't disconnect — try again."); return; }
+    reload();
   }
-
-  const draftOf = (r: Review) => drafts[r.id] ?? r.replyText ?? "";
 
   async function addReview() {
     if (!addForm.text.trim() && !addForm.author.trim()) { setMsg("Add the reviewer's name or the review text"); return; }
-    setBusy("add"); setMsg(null);
+    setAdding(true); setMsg(null);
     try {
       const res = await fetch("/api/admin/reviews", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(addForm) });
-      const d = await res.json();
+      const d = await res.json().catch(() => ({}));
       if (!res.ok) setMsg(d.error || "Save failed");
-      else { setAddForm({ author: "", rating: 5, text: "", locationName: "" }); setShowAdd(false); load(); }
-    } finally { setBusy(null); }
+      else { setAddForm({ author: "", rating: 5, text: "", locationName: "" }); setShowAdd(false); reload(); }
+    } finally { setAdding(false); }
   }
 
   async function syncGoogle() {
@@ -165,273 +155,153 @@ export default function ReviewsTab() {
       if (!res.ok) { setMsg(d.error || "Couldn't reach Google — try again."); return; }
       const parts = [d.imported ? `${d.imported} new review${d.imported === 1 ? "" : "s"}` : null, d.updated ? `${d.updated} change${d.updated === 1 ? "" : "s"} from Google` : null].filter(Boolean);
       setSyncNote(`${parts.length ? `Synced: ${parts.join(", ")}.` : "Up to date with Google."}${d.errors?.length ? ` ${d.errors.map((e: { profile: string; error: string }) => `${e.profile}: ${e.error}`).join(" ")}` : ""}`);
-      load();
+      reload();
     } finally { setSyncing(false); }
   }
 
-  async function removeFromGoogle(r: Review) {
-    if (!(await ask({
-      title: "Remove this reply from Google?", tone: "danger", confirmLabel: "Remove from Google",
-      message: "It disappears from your Google profile. The text is kept here as a draft, so you can edit it and post again.",
-    }))) return;
-    await reply(r.id, "unpost");
-  }
-
-  async function reply(id: string, action: "generate" | "save" | "post" | "unpost", text?: string) {
-    setBusy(id); setMsg(null);
-    try {
-      const res = await fetch("/api/admin/reviews/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, action, text }) });
-      const d = await res.json();
-      if (!res.ok) { setMsg(d.error || "Something went wrong"); return; }
-      const updated: Review = d.review;
-      setReviews(rs => rs.map(r => (r.id === id ? updated : r)));
-      setDrafts(dr => ({ ...dr, [id]: updated.replyText ?? "" }));
-      setEditing(ed => ({ ...ed, [id]: false }));
-    } finally { setBusy(null); }
-  }
-
-  async function del(id: string) {
-    if (!(await ask({
-      title: "Delete this review?", tone: "danger", confirmLabel: "Delete review",
-      message: "It is removed from this workspace only — the review stays on Google.",
-    }))) return;
-    await fetch("/api/admin/reviews", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) }).catch(() => {});
-    load();
-  }
-
-  async function saveSettings() {
+  async function saveSettings(v: ReviewSettingsValue) {
     setSavingSettings(true); setMsg(null);
     try {
-      const res = await fetch("/api/admin/reviews/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(settingsForm) });
-      const d = await res.json();
-      if (!res.ok) setMsg(d.error || "Save failed");
-      else { setSettings(d.settings); setSettingsForm(d.settings); setShowSettings(false); }
+      const res = await fetch("/api/admin/reviews/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(v) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { setMsg(d.error || "Save failed"); return; }
+      setShowSettings(false); reload();
     } finally { setSavingSettings(false); }
   }
 
-  function copy(id: string, text: string) {
-    navigator.clipboard?.writeText(text);
-    setCopied(id); setTimeout(() => setCopied(c => (c === id ? null : c)), 1500);
-  }
+  const failing = locations.filter(l => l.sync && !l.sync.ok);
+  const lastSync = locations.map(l => l.sync?.lastSuccessAt).filter(Boolean).sort().pop() ?? null;
 
   return (
-    <div className="space-y-4 max-w-4xl">
-      <div className="flex items-center justify-between gap-2">
+    <div className="space-y-4 max-w-5xl">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg font-bold text-ink-900 flex items-center gap-2"><Star className="w-5 h-5 text-amber-400" /> Reviews</h1>
-          <p className="text-xs text-ink-500 mt-0.5">AI drafts a reply to every review, tuned to the star rating. Approve &amp; post to Google.</p>
+          <p className="text-xs text-ink-500 mt-0.5">AI drafts a reply to every review. Replies post on their own only when your rules allow — the rest wait for you, with the reason.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {grChannels.length ? grChannels.map(grChannel => (
-            <div key={grChannel.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-              <MapPin className="w-3.5 h-3.5" /> {grChannel.name}
-              <button onClick={() => disconnectGoogle(grChannel)} className="text-emerald-700/60 hover:text-red-600 ml-1" title={`Disconnect ${grChannel.name}`} aria-label={`Disconnect ${grChannel.name}`}><Unlink className="w-3.5 h-3.5" /></button>
-            </div>
-          )) : (
-            <a href="/api/admin/onboarding/google-reviews/start" className="px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5">
-              <Link2 className="w-3.5 h-3.5" /> Connect with Google
-            </a>
-          )}
-          {grChannels.length > 0 && (
-            <button onClick={syncGoogle} disabled={syncing} title="Fetch every review and reply from Google now" className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
+        <div className="flex items-center gap-2 flex-wrap">
+          {locations.length > 0 && (
+            <button onClick={syncGoogle} disabled={syncing} title="Fetch new and changed reviews from Google now" className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60">
               {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Sync from Google
             </button>
           )}
-          <button onClick={() => { setShowSettings(s => !s); setShowAdd(false); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5"><SlidersHorizontal className="w-3.5 h-3.5" /> Settings</button>
-          <button onClick={() => { setShowAdd(a => !a); setShowSettings(false); }} className="px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add review</button>
+          {isAdmin && <button onClick={() => { setShowSettings(true); setShowAdd(false); }} disabled={!settings} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5 disabled:opacity-60"><SlidersHorizontal className="w-3.5 h-3.5" /> Settings</button>}
+          {isAdmin && <button onClick={() => { setShowAdd(true); setShowSettings(false); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5" title="Paste a review from anywhere. Talko drafts a reply you copy and post yourself."><Plus className="w-3.5 h-3.5" /> Paste a review</button>}
         </div>
       </div>
+
+      {/* Connected locations, each with its own health. */}
+      <section className="rounded-card border border-line bg-white p-4 space-y-3" aria-label="Google Business Profile locations">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide">Google locations</p>
+          <div className="flex items-center gap-3 text-[11px] text-ink-500">
+            {lastSync && <span>Last successful sync {ago(lastSync)} · checks every ~5 min</span>}
+            {isAdmin && (
+              <a href="/api/admin/onboarding/google-reviews/start" className="px-3 py-1.5 rounded-control bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-1.5">
+                <Link2 className="w-3.5 h-3.5" /> {locations.length ? "Connect another location" : "Connect with Google"}
+              </a>
+            )}
+          </div>
+        </div>
+        {locations.length ? (
+          <ul className="grid sm:grid-cols-2 gap-2">
+            {locations.map(l => {
+              const s = l.sync;
+              const bad = s && !s.ok;
+              return (
+                <li key={l.id} className={`rounded-control border px-3 py-2 text-[12px] ${bad ? "border-red-200 bg-red-50" : "border-line bg-canvas/40"}`}>
+                  <div className="flex items-center gap-2">
+                    <MapPin className={`w-3.5 h-3.5 shrink-0 ${bad ? "text-red-600" : "text-emerald-600"}`} aria-hidden />
+                    <span className="font-bold text-ink-900 truncate flex-1">{l.name}</span>
+                    {s?.mapsUri && <a href={s.mapsUri} target="_blank" rel="noopener noreferrer" className="text-blue-700 font-semibold hover:underline">Google Maps</a>}
+                    {isAdmin && <button onClick={() => disconnect(l)} className="text-ink-400 hover:text-red-600" title={`Disconnect ${l.name}`} aria-label={`Disconnect ${l.name}`}><Unlink className="w-3.5 h-3.5" /></button>}
+                  </div>
+                  <p className={`mt-1 ${bad ? "text-red-800" : "text-ink-500"}`}>
+                    {!s ? "Waiting for the first sync — usually within 5 minutes."
+                      : bad ? <><b>New reviews aren&apos;t arriving.</b> {s.error} {(s.kind === "reauth" || s.kind === "permission") && isAdmin && <a href="/api/admin/onboarding/google-reviews/start" className="font-bold underline">Reconnect with Google</a>}</>
+                      : <>Synced {ago(s.lastSuccessAt)}{s.totalReviewCount != null ? ` · Google shows ${s.averageRating != null ? `${s.averageRating.toFixed(1)}★ from ` : ""}${s.totalReviewCount} review${s.totalReviewCount === 1 ? "" : "s"}` : ""}{s.importingHistory ? " · still bringing in older reviews" : ""}</>}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="text-[12px] text-ink-600">
+            Connect the Google account that <b>owns or manages</b> your Business Profile. Talko asks Google for permission to read your reviews and post replies as your business — nothing else. Each location is connected separately; disconnecting one never affects the others.
+          </p>
+        )}
+      </section>
+
+      {failing.length > 0 && (
+        <p className="sr-only" role="alert">{failing.length} location{failing.length === 1 ? "" : "s"} can&apos;t sync. See Google locations.</p>
+      )}
 
       {/* Owner preview: renders nothing for anyone the API refuses */}
       <ReviewBooster />
 
-      {/* Location picker — shown right after the OAuth redirect back, until a
-          Business Profile location is chosen for this connection. */}
+      {/* Location picker — shown right after the OAuth redirect back. */}
       {pickerChannelId && (
         <div className="rounded-card border-2 border-blue-500/30 bg-white p-4 space-y-3">
-          <p className="text-xs font-bold text-slate-400 uppercase">Which Business Profile location is this?</p>
-          {pickerLoading && <p className="text-xs text-ink-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your locations…</p>}
+          <p className="text-xs font-bold text-slate-500 uppercase">Which business location is this?</p>
+          {pickerLoading && <p className="text-xs text-ink-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading your locations…</p>}
           {!pickerLoading && !pickerLocations.length && (
-            <p className="text-xs text-red-600">{pickerError ?? "No locations found on this Google login."}</p>
+            <p className="text-xs text-red-600">{pickerError ?? "This Google account doesn't manage any Business Profile locations. Sign in with the account that owns or manages your profile."}</p>
           )}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
             {pickerLocations.map(loc => (
               <button key={loc.id} type="button" disabled={!!pickerBusy} onClick={() => pickLocation(loc)}
                 className="w-full flex items-center gap-2.5 border border-line rounded-control px-3 py-2 text-left hover:border-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-60">
                 <MapPin className="w-4 h-4 text-blue-600 shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-ink-900 truncate">{loc.name}</p>
-                  {loc.address && <p className="text-[11px] text-ink-400 truncate">{loc.address}</p>}
+                  {loc.address && <p className="text-[11px] text-ink-500 truncate">{loc.address}</p>}
                 </div>
                 {pickerBusy === loc.id && <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />}
               </button>
             ))}
           </div>
-          <button onClick={() => setPickerChannelId(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+          <p className="text-[11px] text-ink-500">Picking a location you&apos;ve connected before replaces its old connection.</p>
+          <button onClick={() => setPickerChannelId(null)} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
         </div>
       )}
 
-      {/* A connection Google stopped letting us read. Without this an empty
-          list looks exactly like a business with no reviews. */}
-      {grChannels.map(c => {
-        const sync = googleSync[c.id];
-        if (!sync || sync.ok) return null;
-        return (
-          <div key={`sync-${c.id}`} role="alert" className="rounded-card border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-800 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span><b>New reviews from {c.name} aren&apos;t arriving.</b> {sync.error} <span className="text-red-700/70">(last checked {new Date(sync.at).toLocaleString()})</span></span>
-            <a href="/api/admin/onboarding/google-reviews/start" className="font-bold underline">Reconnect with Google</a>
-          </div>
-        );
-      })}
+      {settings && (
+        <div className="rounded-card border border-amber-200 bg-amber-50/60 px-4 py-3 text-[12px] text-amber-900">
+          {settings.autoMinStars > 5
+            ? <><b>Every reply waits for your approval.</b> Change this in Settings.</>
+            : <><b>{settings.autoMinStars}★ and up</b> post on their own unless the review mentions something on your “ask me first” list. Lower ratings, complaints and anything unclear wait for you.</>}
+        </div>
+      )}
 
-      {/* Phase explainer */}
-      <div className="rounded-card border border-amber-200 bg-amber-50/60 px-4 py-3 text-[12px] text-amber-800">
-        {grChannels.length
-          ? <><b>Google Business Profile connected.</b> New reviews import automatically and reply per your settings below — {settings.autoMinStars > 5 ? <>no reply is posted until you approve it.</> : <><b>{settings.autoMinStars}★ and up</b> auto-post, lower ratings wait as drafts for your approval.</>}</>
-          : <><b>Connect your Google Business Profile</b> to import reviews automatically and post replies with one tap. Until then, add reviews here (paste them in), let the AI draft a reply, then copy it to Google{settings.autoMinStars > 5 ? <>.</> : <> — once connected, replies to <b>{settings.autoMinStars}★ and up</b> would auto-post, lower ratings wait for your approval.</>}</>}
-      </div>
+      {msg && <p className="text-xs text-red-700 flex items-center gap-1.5" role="alert"><AlertTriangle className="w-3.5 h-3.5" aria-hidden /> {msg}</p>}
+      {syncNote && <p className="text-xs font-semibold text-emerald-700" role="status">{syncNote}</p>}
 
-      {/* Settings */}
+      <ReviewInbox reloadKey={reloadKey} focusId={focusId} isAdmin={isAdmin} onMeta={setMeta} onClearFocus={() => setFocusId(null)} />
+
       <Drawer open={showSettings} onClose={() => setShowSettings(false)} width="md" title="Review settings">
-        {showSettings && (<div className="space-y-3">
-          <p className="text-xs font-bold text-slate-400 uppercase">Reply settings</p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-              Auto-post replies at or above
-              <select className={`${inp} w-full`} value={settingsForm.autoMinStars} onChange={e => setSettingsForm({ ...settingsForm, autoMinStars: Number(e.target.value) })}>
-                <option value={5}>5★ only</option>
-                <option value={4}>4★ and up (recommended)</option>
-                <option value={3}>3★ and up</option>
-                <option value={6}>Never auto-post (always approve)</option>
-              </select>
-            </label>
-            <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-              Signature (optional)
-              <input className={`${inp} w-full`} placeholder={`— Team ${who}`} maxLength={120} value={settingsForm.signature} onChange={e => setSettingsForm({ ...settingsForm, signature: e.target.value })} />
-            </label>
-          </div>
-          <label className="text-xs font-semibold text-ink-700 space-y-1 block">
-            Brand voice / tone for replies (optional)
-            <textarea className={`${inp} w-full`} rows={2} placeholder="e.g. Warm, humble and devotional. Address people respectfully. Never argue." maxLength={600} value={settingsForm.tone} onChange={e => setSettingsForm({ ...settingsForm, tone: e.target.value })} />
-          </label>
-          <div className="flex items-center gap-2">
-            <button onClick={saveSettings} disabled={savingSettings} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{savingSettings ? "Saving…" : "Save settings"}</button>
-            <button onClick={() => setShowSettings(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
-          </div>
-        </div>)}
+        {showSettings && settings && (
+          <ReviewSettingsPanel value={settings} signaturePlaceholder={`— Team ${who}`} emailAvailable={!!meta?.emailAlertsAvailable}
+            saving={savingSettings} onSave={saveSettings} onCancel={() => setShowSettings(false)} />
+        )}
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
       </Drawer>
 
-      {/* Add review */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} size="md" title="Add a review">
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} size="md" title="Paste a review">
         {showAdd && (<div className="space-y-3">
-          <p className="text-xs font-bold text-slate-400 uppercase">Add a review</p>
+          <p className="text-[12px] text-ink-600">For a review from anywhere — Google, Justdial, Zomato, a message. Talko drafts a reply you <b>copy and post yourself</b>; it can&apos;t publish for a pasted review. Google reviews from connected locations arrive on their own.</p>
           <div className="grid sm:grid-cols-2 gap-3">
-            <input className={`${inp} w-full`} placeholder="Reviewer name (optional)" value={addForm.author} onChange={e => setAddForm({ ...addForm, author: e.target.value })} />
-            <input className={`${inp} w-full`} placeholder="Location / branch (optional)" value={addForm.locationName} onChange={e => setAddForm({ ...addForm, locationName: e.target.value })} />
+            <input className={`${inp} w-full`} aria-label="Reviewer name" placeholder="Reviewer name (optional)" value={addForm.author} onChange={e => setAddForm({ ...addForm, author: e.target.value })} />
+            <input className={`${inp} w-full`} aria-label="Location or branch" placeholder="Location / branch (optional)" value={addForm.locationName} onChange={e => setAddForm({ ...addForm, locationName: e.target.value })} />
           </div>
-          <div className="flex items-center gap-2 text-xs font-semibold text-ink-700">Rating <Stars n={addForm.rating} onPick={v => setAddForm({ ...addForm, rating: v })} /></div>
-          <textarea className={`${inp} w-full`} rows={3} placeholder="Paste the review text here…" value={addForm.text} onChange={e => setAddForm({ ...addForm, text: e.target.value })} />
+          <div className="flex items-center gap-2 text-xs font-semibold text-ink-700">Rating <PickStars n={addForm.rating} onPick={v => setAddForm({ ...addForm, rating: v })} /></div>
+          <textarea className={`${inp} w-full`} aria-label="Review text" rows={3} placeholder="Paste the review text here…" value={addForm.text} onChange={e => setAddForm({ ...addForm, text: e.target.value })} />
           <div className="flex items-center gap-2">
-            <button onClick={addReview} disabled={busy === "add"} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy === "add" ? "Adding…" : "Add review"}</button>
-            <button onClick={() => setShowAdd(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-400 hover:text-ink-900">Cancel</button>
+            <button onClick={addReview} disabled={adding} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{adding ? "Adding…" : "Add review"}</button>
+            <button onClick={() => setShowAdd(false)} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Cancel</button>
           </div>
         </div>)}
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
       </Modal>
-
-      {msg && <p className="text-xs text-red-700">{msg}</p>}
-
-      {syncNote && <p className="text-xs font-semibold text-emerald-700" role="status">{syncNote}</p>}
-
-      {/* Review list */}
-      {!reviews.length && !showAdd && <p className="text-sm text-ink-400 py-8 text-center">{grChannels.length ? <>No reviews yet. New Google reviews arrive automatically — or tap <b>Sync from Google</b>.</> : <>No reviews yet. Tap <b>Add review</b> to paste one and let the AI draft a reply.</>}</p>}
-
-      {reviews.length > 0 && (() => {
-        const todo = reviews.filter(r => r.replyStatus !== "posted").length;
-        const chips: { key: Filter; label: string }[] = [
-          { key: "all", label: `All ${reviews.length}` },
-          { key: "todo", label: `Needs a reply ${todo}` },
-          { key: "replied", label: `Replied ${reviews.length - todo}` },
-        ];
-        return (
-          <div className="flex items-center gap-1.5 flex-wrap" role="tablist" aria-label="Filter reviews">
-            {chips.map(c => (
-              <button key={c.key} role="tab" aria-selected={filter === c.key} onClick={() => setFilter(c.key)}
-                className={`px-3 py-1 rounded-full text-xs font-bold border tabular-nums ${filter === c.key ? "bg-ink-900 text-white border-ink-900" : "bg-white text-ink-600 border-line hover:bg-canvas"}`}>{c.label}</button>
-            ))}
-          </div>
-        );
-      })()}
-
-      <div className="space-y-3">
-        {reviews.filter(r => filter === "all" || (filter === "replied" ? r.replyStatus === "posted" : r.replyStatus !== "posted")).map(r => {
-          const working = busy === r.id;
-          const meetsAuto = settings.autoMinStars <= 5 && r.rating >= settings.autoMinStars;
-          const draft = draftOf(r);
-          const isEditing = !!editing[r.id];
-          const google = r.source === "google";
-          return (
-            <div key={r.id} className="rounded-card border border-line bg-white p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Stars n={r.rating} />
-                    <span className="text-sm font-semibold text-ink-900">{r.author || "Anonymous"}</span>
-                    {r.locationName && <span className="text-[11px] text-ink-400">· {r.locationName}</span>}
-                    <span className="text-[11px] text-ink-400 tabular-nums">· {shortDate(r.reviewCreatedAt ?? r.createdAt)}</span>
-                    {google && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">Google</span>}
-                    {r.replyStatus !== "posted" && <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${meetsAuto ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{meetsAuto ? "auto-post" : "needs approval"}</span>}
-                    {r.replyStatus === "posted" && <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700"><Check className="w-3 h-3" /> {google ? "replied on Google" : "replied"}</span>}
-                  </div>
-                  {r.text && <p className="text-sm text-ink-700 mt-1.5 whitespace-pre-wrap">{r.text}</p>}
-                </div>
-                <button onClick={() => del(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0" title="Delete review"><Trash2 className="w-4 h-4" /></button>
-              </div>
-
-              {/* Reply area */}
-              {r.replyStatus === "none" ? (
-                <button onClick={() => reply(r.id, "generate")} disabled={working} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control bg-brand-50 border border-brand-100 text-brand-700 text-xs font-bold hover:bg-brand-100 disabled:opacity-60">
-                  {working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />} Generate AI reply
-                </button>
-              ) : (
-                <div className="rounded-control border border-line bg-canvas/50 p-2.5 space-y-2">
-                  {r.replyStatus === "posted" && (
-                    <p className="text-[11px] font-bold text-ink-500">{google ? "Your reply on Google" : "Your reply"}{r.postedAt ? ` · ${shortDate(r.postedAt)}` : ""}{isEditing && google ? " — editing replaces it on Google" : ""}</p>
-                  )}
-                  <textarea aria-label={`Reply to ${r.author || "this review"}`} className={`${inp} w-full bg-white`} rows={3} value={draft} disabled={r.replyStatus === "posted" && !isEditing}
-                    onChange={e => setDrafts(dr => ({ ...dr, [r.id]: e.target.value }))} />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {r.replyStatus !== "posted" && <>
-                      <button onClick={() => reply(r.id, "generate")} disabled={working} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white disabled:opacity-60">
-                        {working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Regenerate
-                      </button>
-                      <button onClick={() => reply(r.id, "save", draft)} disabled={working} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white disabled:opacity-60">Save draft</button>
-                    </>}
-                    <button onClick={() => copy(r.id, draft)} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-white">
-                      {copied === r.id ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />} {copied === r.id ? "Copied" : "Copy"}
-                    </button>
-                    <div className="flex-1" />
-                    {r.replyStatus === "posted"
-                      ? (isEditing
-                        ? <>
-                            <button onClick={() => { setEditing(ed => ({ ...ed, [r.id]: false })); setDrafts(dr => ({ ...dr, [r.id]: r.replyText ?? "" })); }} disabled={working} className="px-2.5 py-1 rounded-control text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Cancel</button>
-                            <button onClick={() => reply(r.id, "post", draft)} disabled={working || !draft.trim() || draft.trim() === (r.replyText ?? "").trim()} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60">{working ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} {google ? "Update on Google" : "Save reply"}</button>
-                          </>
-                        : <>
-                            {google
-                              ? <button onClick={() => removeFromGoogle(r)} disabled={working} className="px-2.5 py-1 rounded-control text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Remove from Google</button>
-                              : <button onClick={() => reply(r.id, "unpost")} disabled={working} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-500 hover:bg-white disabled:opacity-60">Mark as draft</button>}
-                            <button onClick={() => setEditing(ed => ({ ...ed, [r.id]: true }))} disabled={working} className="px-3 py-1 rounded-control border border-line bg-white text-xs font-bold text-ink-700 hover:bg-canvas disabled:opacity-60">Edit reply</button>
-                          </>)
-                      : <button onClick={() => reply(r.id, "post", draft)} disabled={working} className="inline-flex items-center gap-1 px-3 py-1 rounded-control bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold disabled:opacity-60"><Send className="w-3.5 h-3.5" /> {r.source === "google" ? "Post to Google" : "Mark posted"}</button>}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

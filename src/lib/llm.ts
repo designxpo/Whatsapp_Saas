@@ -10,6 +10,7 @@ import { syncLeadProfile } from "./leadsquared";
 import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery } from "./commerce";
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
+import { parseAiDraft, type AiRead } from "./review-policy";
 import { getIsolation, NEUTRAL_AGENT } from "./isolation";
 import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
@@ -1168,7 +1169,17 @@ export interface ReviewReplyInput {
   signature?: string;          // appended verbatim if provided (e.g. "— Team X")
 }
 
-export async function generateReviewReply(input: ReviewReplyInput, tenantId: string): Promise<string> {
+export interface ReviewDraft {
+  reply: string;
+  /** The AI's read of the review for the approval rules; null when its answer couldn't be read. */
+  ai: AiRead | null;
+}
+
+// One AI call per review: the public reply, and the AI's own read of what the
+// review raises (refunds, safety, legal, personal details, a strong complaint)
+// and whether it was sure. lib/review-policy.ts combines that read with its
+// phrase rules to decide whether the reply may post without a person.
+export async function draftReviewReply(input: ReviewReplyInput, tenantId: string): Promise<ReviewDraft> {
   const ai = await resolveTenantAi(tenantId);
   const rating = Math.min(5, Math.max(1, Math.round(input.rating) || 3));
   const band = rating >= 4 ? "positive" : rating === 3 ? "mixed" : "negative";
@@ -1178,36 +1189,46 @@ export async function generateReviewReply(input: ReviewReplyInput, tenantId: str
     negative: "Lead with a sincere apology, take it seriously WITHOUT admitting legal fault or inventing facts, acknowledge their specific issue, and offer to make it right — invite them to continue privately (e.g. a call/DM/email) rather than debating in public.",
   };
   const instruction =
-    `Write a SHORT public reply (2-4 sentences, under 80 words) from the business to this ${rating}-star review.\n\n` +
+    `Write a SHORT public reply (2-4 sentences, under 80 words) from the business to this ${input.rating ? `${rating}-star` : "unrated"} review.\n\n` +
     `Rules:\n` +
-    `- Ground ONLY in what the review says. NEVER invent facts, offers, discounts, names, or details not present.\n` +
+    `- Reply to what THIS review actually says. NEVER invent facts, offers, refunds, discounts, investigations, names or commitments.\n` +
     `- Address the reviewer by first name if given; otherwise a warm neutral greeting.\n` +
-    `- Tone for a ${band} (${rating}★) review: ${guide[band]}\n` +
-    `- Sound human and specific to THIS review — not a generic template. No hashtags, no emoji spam (at most one, only if it fits).\n` +
-    `- Never share or request sensitive personal data publicly.\n` +
+    `- Tone for a ${band} review: ${guide[band]}\n` +
+    `- If the review raises a refund, billing, safety, health, legal or personal matter, do not discuss details in public: acknowledge it and invite them to contact the business privately.\n` +
+    `- Never repeat or reveal personal information (phone numbers, emails, medical or order details) in the reply.\n` +
+    `- Sound human and specific to THIS review — not a generic template. No hashtags; at most one emoji, only if it fits.\n` +
     (input.tone ? `- Brand voice guidance: ${input.tone}\n` : "") +
     (input.signature ? `- End with this signature on its own line, verbatim: "${input.signature}"\n` : "") +
-    `Return ONLY the reply text — no preamble, no quotes around it.`;
+    `\nAlso read the review for topics a person should check before any public reply:\n` +
+    `billing (refunds, disputed or extra charges), safety (injury, illness, hygiene, a serious service failure), legal (threats, allegations of fraud or cheating, police/court), personal_info (the review contains personal or sensitive details), strong_complaint (a clear complaint, even in a high-star review).\n\n` +
+    `Answer with ONLY this JSON, no other text:\n` +
+    `{"reply": "<the reply>", "concerns": [<zero or more of "billing","safety","legal","personal_info","strong_complaint">], "confident": <true if the review's meaning and tone are clear to you, false if it is ambiguous, sarcastic, in a language you can't read well, or you are unsure>}`;
 
   const ctx =
     `Business: ${input.businessName || "(unspecified)"}\n` +
     `Reviewer: ${input.author?.trim() || "(anonymous)"}\n` +
-    `Rating: ${rating} / 5\n` +
+    `Rating: ${input.rating ? `${rating} / 5` : "not given"}\n` +
     `Review: ${(input.text || "").trim() || "(no text — rating only)"}`;
 
   const res = await runChat({
     provider: ai.provider, apiKey: ai.apiKey, model: ai.model,
-    system: "You write concise, sincere, on-brand public replies to customer reviews for a business. You never invent facts and never over-promise. You output ONLY the reply text.",
+    system: "You write concise, sincere, on-brand public replies to customer reviews for a business, and you flag reviews a person should check first. You never invent facts and never over-promise. You output ONLY the requested JSON.",
     turns: [{ role: "user", text: `${instruction}\n\n--- REVIEW ---\n${ctx}` }],
-    maxTokens: 400,
+    maxTokens: 500,
   });
-  const reply = (res.text ?? "").trim().replace(/^["']|["']$/g, "").trim();
-  // Throws rather than returning empty: the poller's catch leaves the review
-  // at replyStatus "none" for a human, which is the right outcome here — an
+  const parsed = parseAiDraft(res.text ?? "");
+  // Throws rather than returning empty: the caller leaves the review without a
+  // draft for a person (and retries later), which is the right outcome — an
   // empty string would post a blank public reply on the business's profile.
-  const verdict = await moderateText(reply, { tenantId, surface: "review_reply" });
+  if (!parsed.reply) throw new Error("The AI didn't return a usable reply");
+  const verdict = await moderateText(parsed.reply, { tenantId, surface: "review_reply" });
   if (!verdict.allowed) throw new Error(`review reply blocked by safety filter (${verdict.reason})`);
-  return reply;
+  return parsed;
+}
+
+/** Just the reply text (the "Generate AI reply" button). */
+export async function generateReviewReply(input: ReviewReplyInput, tenantId: string): Promise<string> {
+  return (await draftReviewReply(input, tenantId)).reply;
 }
 
 // ── Outreach opener ────────────────────────────────────────────────────────────

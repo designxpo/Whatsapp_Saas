@@ -22,6 +22,7 @@ export const RETENTION_DAYS = {
   emailLog: 400,            // wa_email_log: our own email send log (addresses + delivery status) — just over a year covers a yearly billing dispute.
   deletionProof: 3 * 365,   // meta_deletion_requests: proof a Meta deletion request was carried out, kept 3 years after it completed.
   inboundEvents: 30,        // wa_inbound_events: Shopify/Razorpay/etc. webhook ledger — tools retry within 3 days at most; a month leaves room to debug.
+  reviewAlerts: 90,         // wa_review_alerts: "a review needs you" notices — the review itself is kept; the notice is only useful for weeks.
 } as const;
 
 type Builder = { lt: (c: string, v: string) => Builder; eq: (c: string, v: unknown) => Builder; is: (c: string, v: null) => Builder; not: (c: string, op: string, v: null) => Builder };
@@ -44,6 +45,7 @@ export const RETENTION_RULES: RetentionRule[] = [
   { name: "email_log", table: "wa_email_log", column: "sent_at", days: RETENTION_DAYS.emailLog },
   { name: "deletion_proof", table: "meta_deletion_requests", column: "completed_at", days: RETENTION_DAYS.deletionProof, where: q => q.eq("status", "completed") },
   { name: "inbound_events", table: "wa_inbound_events", column: "created_at", days: RETENTION_DAYS.inboundEvents },
+  { name: "review_alerts", table: "wa_review_alerts", column: "created_at", days: RETENTION_DAYS.reviewAlerts },
 ];
 
 // The ids go into a DELETE … WHERE id IN (…) URL: 200 uuids keep it ~8KB.

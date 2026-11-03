@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { syncTenantGoogleReviews } from "@/lib/reviewpoller";
 import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
+import { guardFeature } from "@/lib/feature-guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120; // a deep read plus AI drafts for any new recent reviews
@@ -11,6 +12,8 @@ export const maxDuration = 120; // a deep read plus AI drafts for any new recent
 export async function POST() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const gate = await guardFeature(tid, "reviews");
+  if (gate) return gate;
   try {
     return NextResponse.json(await syncTenantGoogleReviews(tid));
   } catch (err) {
