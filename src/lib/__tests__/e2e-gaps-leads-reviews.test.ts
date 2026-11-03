@@ -13,6 +13,8 @@ const h = vi.hoisted(() => ({
   who: { email: "owner@talko.in", tenantId: "00000000-0000-0000-0000-000000000001", admin: true, owner: true },
   sent: [] as { phone: string; body: string }[],
   ingested: [] as { docId: string; text: string }[],
+  gbp: null as null | { id: string; googleAccountId: string; googleLocationId: string },
+  reviewUri: { url: "https://g.page/r/CFromGoogle/review" } as { url?: string; error?: string },
 }));
 vi.mock("../supabase", () => ({ db: () => h.db.client }));
 vi.mock("../auth", () => ({
@@ -23,10 +25,14 @@ vi.mock("../auth", () => ({
   isPlatformOwner: async () => h.who.owner,
 }));
 vi.mock("../team", () => ({ logActivity: () => undefined }));
+vi.mock("../googlereviews", () => ({ locationReviewUrl: vi.fn(async () => h.reviewUri) }));
 vi.mock("../kb", () => ({ ingestDocument: vi.fn(async (docId: string, _t: string, p: { text: string }) => { h.ingested.push({ docId, text: p.text }); }) }));
 vi.mock("../whatsapp", () => ({ sendText: vi.fn(async (phone: string, body: string) => { h.sent.push({ phone, body }); return { id: `wamid.${h.sent.length}` }; }) }));
 vi.mock("../channels", () => ({
-  listChannels: async (t?: string) => [{ id: "wa1", tenantId: t, kind: "whatsapp", active: true, isDefault: true, token: "EAAreal", phoneId: "p1" }],
+  listChannels: async (t?: string) => [
+    { id: "wa1", tenantId: t, kind: "whatsapp", active: true, isDefault: true, token: "EAAreal", phoneId: "p1" },
+    ...(h.gbp ? [{ ...h.gbp, tenantId: t, kind: "google_reviews", active: true, token: "refresh-gbp" }] : []),
+  ],
   isLiveChannel: (c: { active: boolean; token: string }) => c.active && !!c.token,
 }));
 
@@ -52,6 +58,7 @@ beforeEach(() => {
   h.db = memdb({ wa_review_requests: [["token"], ["tenant_id", "order_id"]] });
   h.who = { email: "owner@talko.in", tenantId: T1, admin: true, owner: true };
   h.sent.length = 0; h.ingested.length = 0;
+  h.gbp = null; h.reviewUri = { url: "https://g.page/r/CFromGoogle/review" };
 });
 
 // ── 1. Questions the AI couldn't answer ─────────────────────────────────────
@@ -214,6 +221,27 @@ describe("google review booster — owner only until launched", () => {
     h.db.tables.wa_conversations = [{ id: "c1", tenant_id: T1, phone: "919800000001", platform: "whatsapp", last_inbound_at: hoursAgo(2) }];
     expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "+91 98000 00001" })))).body).toEqual({ status: "sent" });
     expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "919800000777" })))).body.status).toBe("skipped");
+  });
+
+  it("accepts Google's share.google links, and a number typed without the country code", async () => {
+    const saved = await json(await boosterPost(req("/api/admin/review-booster", { reviewUrl: "https://share.google/ZBbNt32G4TQlio5xh" })));
+    expect(saved.status).toBe(200);
+    expect(saved.body.config.reviewUrl).toBe("https://share.google/ZBbNt32G4TQlio5xh");
+    h.db.tables.wa_conversations = [{ id: "c1", tenant_id: T1, phone: "918368872108", platform: "whatsapp", last_inbound_at: hoursAgo(1) }];
+    expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "8368872108" })))).body).toEqual({ status: "sent" });
+    expect(h.sent[0].phone).toBe("918368872108");
+    expect((await boosterPost(req("/api/admin/review-booster", { sendTo: "12345" }))).status).toBe(400);
+  });
+
+  it("fills the review link from the connected Google Business Profile", async () => {
+    expect((await json(await boosterGet())).body.googleConnected).toBe(false);
+    expect((await boosterPost(req("/api/admin/review-booster", { fromGoogle: true }))).status).toBe(400);
+    h.gbp = { id: "gbp1", googleAccountId: "accounts/1", googleLocationId: "locations/1" };
+    expect((await json(await boosterGet())).body.googleConnected).toBe(true);
+    const filled = await json(await boosterPost(req("/api/admin/review-booster", { fromGoogle: true })));
+    expect(filled.body.config.reviewUrl).toBe("https://g.page/r/CFromGoogle/review");
+    h.reviewUri = { error: "Google refused access" };
+    expect((await json(await boosterPost(req("/api/admin/review-booster", { fromGoogle: true })))).body.error).toBe("Google refused access");
   });
 
   it("is not on the website or any tenant screen: the section renders only when its API answers", () => {

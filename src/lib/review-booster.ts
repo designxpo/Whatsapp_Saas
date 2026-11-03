@@ -11,9 +11,9 @@
 // last message; outside that it needs an approved template. v1 sends inside the
 // window only and records the rest as skipped, with the reason.
 //
-// No Google API: the link is the public "write a review" address the owner
-// pastes in. The tracked link counts opens; whether a review was then posted
-// would need the Business Profile API, which is still awaiting approval.
+// The link is the public "write a review" address: pasted in, or filled from
+// the connected Business Profile (metadata.newReviewUri). The tracked link
+// counts opens; it can't tell whether a review was then posted.
 
 import crypto from "crypto";
 import { db } from "./supabase";
@@ -21,6 +21,7 @@ import { tdb } from "./tenantdb";
 import { DEFAULT_TENANT_ID } from "./tenant";
 import { getTenantSetting, setTenantSetting } from "./store";
 import { listChannels, isLiveChannel } from "./channels";
+import { locationReviewUrl } from "./googlereviews";
 import { sendText } from "./whatsapp";
 
 /** Flip to true to offer the booster to every workspace. */
@@ -41,12 +42,13 @@ export async function getBoosterConfig(tenantId: string): Promise<BoosterConfig>
   return { enabled: !!v?.enabled, reviewUrl: v?.reviewUrl ?? "", message: v?.message || DEFAULT_MESSAGE, delayHours: v?.delayHours ?? 2 };
 }
 
-const GOOGLE_HOST = /(^|\.)(google\.[a-z.]+|g\.page|goo\.gl|maps\.app\.goo\.gl)$/i;
+// share.google is the link Google's own "Share" button now hands out.
+const GOOGLE_HOST = /(^|\.)(google\.[a-z.]+|g\.page|goo\.gl|maps\.app\.goo\.gl|share\.google)$/i;
 /** A Google review address, https only. Pure. */
 export function checkReviewUrl(u: string): { ok: true; url: string } | { ok: false; error: string } {
   try {
     const url = new URL(u.trim());
-    if (url.protocol !== "https:" || !GOOGLE_HOST.test(url.hostname)) return { ok: false, error: "Paste your Google review link (it starts with https://g.page/… or https://search.google.com/local/writereview…)." };
+    if (url.protocol !== "https:" || !GOOGLE_HOST.test(url.hostname)) return { ok: false, error: "Paste your Google review link (it starts with https://g.page/…, https://share.google/… or https://search.google.com/local/writereview…)." };
     return { ok: true, url: url.toString() };
   } catch { return { ok: false, error: "That isn't a web address." }; }
 }
@@ -63,6 +65,20 @@ export async function saveBoosterConfig(tenantId: string, input: Partial<Booster
   next.delayHours = Math.min(72, Math.max(0, Math.round(Number(next.delayHours) || 0)));
   await setTenantSetting(tenantId, KEY, next);
   return { config: next };
+}
+
+/** The connected Google Business Profile, if any (for filling in the review link). */
+export async function connectedGoogleProfile(tenantId: string) {
+  return (await listChannels(tenantId)).find(c => c.kind === "google_reviews" && c.active && c.googleLocationId && c.token) ?? null;
+}
+
+/** Fill the review link from the connected Business Profile's own "write a review" address. */
+export async function fillReviewUrlFromGoogle(tenantId: string): Promise<{ config?: BoosterConfig; error?: string }> {
+  const ch = await connectedGoogleProfile(tenantId);
+  if (!ch) return { error: "Connect your Google Business Profile first (the location button at the top of this page)." };
+  const r = await locationReviewUrl({ channelId: ch.id, refreshToken: ch.token, accountId: ch.googleAccountId, locationId: ch.googleLocationId });
+  if (!r.url) return { error: r.error ?? "Google didn't give a review link for this profile. Paste it instead." };
+  return saveBoosterConfig(tenantId, { reviewUrl: r.url });
 }
 
 const linkBase = () => `https://${process.env.NEXT_PUBLIC_APP_HOST || "app.thetalko.in"}/r/rv/`;
@@ -85,7 +101,7 @@ export async function requestReview(tenantId: string, phone: string, orderId: st
   const last = (conv as unknown as { last_inbound_at?: string | null } | null)?.last_inbound_at;
   const inWindow = !!last && now - Date.parse(last) < 24 * 3_600_000;
   const token = Array.from(crypto.randomBytes(12), b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
-  const row = { phone, order_id: orderId, token, sent_at: new Date(now).toISOString(), status: inWindow ? "sent" : "skipped", detail: inWindow ? null : "Outside WhatsApp's 24-hour window — needs an approved template." };
+  const row = { phone, order_id: orderId, token, sent_at: new Date(now).toISOString(), status: inWindow ? "sent" : "skipped", detail: inWindow ? null : "Outside WhatsApp's 24-hour window: this customer hasn't messaged you in the last 24 hours, so WhatsApp won't deliver it. Once they message your WhatsApp number, send again." };
   const { error } = await tdb(tenantId).from(TABLE).insert(row);
   if (error) return error.code === "23505" ? { status: "duplicate" } : { status: "failed", detail: error.message };
   if (!inWindow) return { status: "skipped", detail: row.detail as string };

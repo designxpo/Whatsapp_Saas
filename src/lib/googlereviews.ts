@@ -135,6 +135,18 @@ export async function listLocations(creds: GrCreds, accountId: string): Promise<
   return { locations };
 }
 
+// The location's public "write a review" address (Business Information API
+// metadata.newReviewUri), so the owner never has to hunt for it.
+export async function locationReviewUrl(creds: GrCreds): Promise<{ url?: string; error?: string }> {
+  if (!creds.locationId) return { error: "No Business Profile location is selected for this connection." };
+  const token = await accessTokenFor(creds);
+  if (!token) return { error: "Google access expired or was revoked — reconnect." };
+  const { data, error } = await apiGetDetailed(token, `${INFO_API}/${creds.locationId}?readMask=metadata`);
+  if (error) return { error };
+  const url = ((data?.metadata as Record<string, unknown> | undefined)?.newReviewUri as string | undefined) ?? "";
+  return url.startsWith("https://") ? { url } : { error: "Google didn't give a review link for this profile — it may not be verified yet. Paste the link instead." };
+}
+
 // ── Reviews (legacy v4 — gated, see file header) ─────────────────────────────
 const STAR_MAP: Record<string, number> = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
 

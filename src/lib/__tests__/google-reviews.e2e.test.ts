@@ -13,7 +13,7 @@ vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async (
 vi.mock('../llm', () => ({ generateReviewReply: vi.fn(async (_input: unknown, tenant: string) => `Thank you — ${tenant}`) }));
 vi.mock('../moderation', () => ({ moderateText: async () => ({ allowed: true }), assertTextAllowed: async () => undefined }));
 vi.mock('../entitlements', () => ({ checkFeature: async () => ({ ok: h.allowed }) }));
-import { listReviews as listGoogleReviews } from '../googlereviews';
+import { listReviews as listGoogleReviews, locationReviewUrl } from '../googlereviews';
 import { drainGoogleReviews } from '../reviewpoller';
 import { getReviewSettings, setReviewSettings, getGoogleSyncStatus } from '../reviews';
 import { POST as pickYoutube } from '../../app/api/admin/yt-channels/route';
@@ -44,6 +44,8 @@ beforeEach(() => {
         }
         if (method === 'GET' && url.includes('/reviews?'))
             return h.failReviews ? Response.json({ error: { message: 'Permission denied', status: 'PERMISSION_DENIED' } }, { status: 403 }) : Response.json({ reviews: h.google, totalReviewCount: h.google.length });
+        if (method === 'GET' && url.includes('mybusinessbusinessinformation.googleapis.com/v1/locations/a?readMask=metadata'))
+            return Response.json({ metadata: { newReviewUri: 'https://search.google.com/local/writereview?placeid=PLACE' } });
         if (method === 'PUT' && url.endsWith('/reply'))
             return h.failPost ? Response.json({ error: { message: 'Google unavailable' } }, { status: 503 }) : Response.json({ comment: JSON.parse(body).comment });
         if (method === 'DELETE' && url.endsWith('/reply'))
@@ -159,6 +161,9 @@ describe('Google Reviews tenant readiness', () => {
         h.db.tables.wa_reviews = [{ id: 'r5', tenant_id: 'tenant-a', source: 'manual', rating: 5, text: 'Great' }];
         const response = await reply(request({ id: 'r5', action: 'save', text: 'Thanks!' }));
         expect((await response.json()).review.auto).toBe(false);
+    });
+    it("reads the location's own write-a-review link from Google", async () => {
+        expect(await locationReviewUrl({ channelId: 'a', refreshToken: 'refresh-a', accountId: 'accounts/a', locationId: 'locations/a' })).toEqual({ url: 'https://search.google.com/local/writereview?placeid=PLACE' });
     });
     it('keeps the YouTube refresh token out of the channel-picker response', async () => {
         h.db.tables.wa_channels.push({ id: 'yt', tenant_id: 'tenant-a', kind: 'youtube', name: 'YT', active: false, access_token: 'refresh-youtube-secret' });
