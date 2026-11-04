@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   ArrowRight,
   Check,
@@ -17,6 +17,12 @@ import {
   Star,
   Repeat2,
   BarChart3,
+  Megaphone,
+  ShoppingBag,
+  Users,
+  BookOpen,
+  Youtube,
+  Globe,
   type LucideIcon,
 } from "lucide-react";
 
@@ -212,13 +218,263 @@ const EXAMPLES: {
     result: "A promise your team can actually track",
     note: "Your team reviews commitments. Customer reminders are never sent automatically.",
   },
+  {
+    id: "broadcasts",
+    label: "Run a campaign",
+    message:
+      "You have a useful update for customers who asked to hear from you.",
+    channel: "Broadcast campaigns",
+    nodes: [
+      {
+        title: "Choose your audience",
+        detail: "Select the relevant opted-in segment",
+        icon: Users,
+      },
+      {
+        title: "Prepare your message",
+        detail: "Use an approved channel template",
+        icon: Megaphone,
+      },
+      {
+        title: "Send or schedule",
+        detail: "Choose when the campaign runs",
+        icon: Clock3,
+      },
+      {
+        title: "Read the response",
+        detail: "Track delivery, replies and activity",
+        icon: BarChart3,
+      },
+    ],
+    result: "A campaign connected to the conversation",
+    note: "WhatsApp campaigns use approved templates and channel-specific consent and delivery rules.",
+  },
+  {
+    id: "commerce",
+    label: "Sell in conversation",
+    message: "A customer asks about a product and wants to know what to buy.",
+    channel: "Catalog, checkout & sales",
+    nodes: [
+      {
+        title: "Understand the need",
+        detail: "Keep the enquiry and product context",
+        icon: MessageSquare,
+      },
+      {
+        title: "Share the right product",
+        detail: "Use your catalog and approved details",
+        icon: ShoppingBag,
+      },
+      {
+        title: "Connect the checkout",
+        detail: "Offer the available payment flow",
+        icon: CreditCard,
+      },
+      {
+        title: "Track the next action",
+        detail: "Record the sale or follow-up",
+        icon: CheckCheck,
+      },
+    ],
+    result: "Interest, products and checkout in one journey",
+    note: "Available catalog and checkout options depend on your channel and connected payment provider.",
+  },
+  {
+    id: "audiences",
+    label: "Organise an audience",
+    message:
+      "Your audience includes new enquiries, workshop interest and returning customers.",
+    channel: "Contact groups & team ownership",
+    nodes: [
+      {
+        title: "Capture the contact",
+        detail: "Keep the details they shared",
+        icon: UserRound,
+      },
+      {
+        title: "Apply the right labels",
+        detail: "Organise contacts into segments",
+        icon: Users,
+      },
+      {
+        title: "Choose the next action",
+        detail: "Target a campaign or assign your team",
+        icon: GitBranch,
+      },
+      {
+        title: "Keep the context",
+        detail: "See the contact and conversation together",
+        icon: MessageSquare,
+      },
+    ],
+    result: "Relevant audiences. Clear team ownership.",
+    note: "Audience groups organise contacts inside Talko AI through labels and segments.",
+  },
+  {
+    id: "knowledge",
+    label: "Ground your AI",
+    message:
+      "Your customers need answers that match your actual products, prices and policies.",
+    channel: "AI knowledge & business context",
+    nodes: [
+      {
+        title: "Add your knowledge",
+        detail: "Bring your documents and business facts",
+        icon: BookOpen,
+      },
+      {
+        title: "Match the question",
+        detail: "Retrieve relevant business context",
+        icon: MessageSquare,
+      },
+      {
+        title: "Draft in your voice",
+        detail: "Use your own connected AI provider",
+        icon: Sparkles,
+      },
+      {
+        title: "Keep your team involved",
+        detail: "Handle the cases that need a person",
+        icon: UserRound,
+      },
+    ],
+    result: "Useful answers grounded in your business",
+    note: "AI uses your knowledge and provider key. Your team remains responsible for reviewing and maintaining the source facts.",
+  },
+  {
+    id: "youtube",
+    label: "Respond on YouTube",
+    message: "A viewer leaves a question or comment under your video.",
+    channel: "YouTube comment automation",
+    nodes: [
+      {
+        title: "Receive the comment",
+        detail: "Match your connected video and rules",
+        icon: Youtube,
+      },
+      {
+        title: "Apply your rules",
+        detail: "Choose reply or moderation behaviour",
+        icon: ShieldCheck,
+      },
+      {
+        title: "Prepare a useful answer",
+        detail: "Use the context and your AI knowledge",
+        icon: Sparkles,
+      },
+      {
+        title: "Continue the thread",
+        detail: "Respond within the available channel flow",
+        icon: MessageSquare,
+      },
+    ],
+    result: "A useful response where your audience is watching",
+    note: "Comment replies and moderation follow your settings and YouTube’s available API features and limits.",
+  },
+  {
+    id: "webchat",
+    label: "Welcome a site visitor",
+    message: "A visitor has a question while browsing your website.",
+    channel: "Website chat",
+    nodes: [
+      {
+        title: "Start on your site",
+        detail: "The visitor opens your chat widget",
+        icon: Globe,
+      },
+      {
+        title: "Answer the question",
+        detail: "Use your business knowledge",
+        icon: Sparkles,
+      },
+      {
+        title: "Capture what matters",
+        detail: "Ask for relevant details in the flow",
+        icon: UserRound,
+      },
+      {
+        title: "Route the conversation",
+        detail: "Keep the enquiry in your shared inbox",
+        icon: GitBranch,
+      },
+    ],
+    result: "Website questions become connected conversations",
+    note: "The widget uses the channel and AI settings you configure for your business.",
+  },
+  {
+    id: "handoff",
+    label: "Continue on WhatsApp",
+    message:
+      "Someone on Instagram chooses to continue a conversation on WhatsApp.",
+    channel: "Explicit cross-channel handoff",
+    nodes: [
+      {
+        title: "Offer the handoff",
+        detail: "Share a link with their personal code",
+        icon: Instagram,
+      },
+      {
+        title: "Let the customer start",
+        detail: "They open WhatsApp and send the code",
+        icon: MessageSquare,
+      },
+      {
+        title: "Match the shared code",
+        detail: "Link the confirmed journey context",
+        icon: ShieldCheck,
+      },
+      {
+        title: "Continue with context",
+        detail: "Your team picks up the existing enquiry",
+        icon: CheckCheck,
+      },
+    ],
+    result: "A new channel without starting the story over",
+    note: "The customer initiates the handoff. Talko AI does not guess identities across channels.",
+  },
+  {
+    id: "experiments",
+    label: "Compare outcomes",
+    message:
+      "You want to learn which Instagram journey leads to more useful outcomes.",
+    channel: "Outcome experiments",
+    nodes: [
+      {
+        title: "Choose two journeys",
+        detail: "Define the variants you want to compare",
+        icon: GitBranch,
+      },
+      {
+        title: "Keep groups stable",
+        detail: "Assign the contact consistently",
+        icon: Users,
+      },
+      {
+        title: "Record actual outcomes",
+        detail: "Capture a lead, booking or purchase",
+        icon: CheckCheck,
+      },
+      {
+        title: "Compare the evidence",
+        detail: "Review recorded outcomes by variant",
+        icon: BarChart3,
+      },
+    ],
+    result: "A clearer decision from observed outcomes",
+    note: "Manually recorded outcomes and payment-confirmed purchases remain separate. No uplift is assumed.",
+  },
 ];
 
 export function WorkflowDemo() {
   const [selected, setSelected] = useState(EXAMPLES[0].id);
-  const example = EXAMPLES.find((e) => e.id === selected)!;
+  const [inspecting, setInspecting] = useState<number | null>(null);
+  const example = EXAMPLES.find((item) => item.id === selected)!;
+  const choose = (id: string) => {
+    setSelected(id);
+    setInspecting(null);
+  };
   return (
-    <div className="workflow-demo" id="how-it-works">
+    <div className="workflow-demo" id="how-it-works" data-motion-region>
       <div className="workflow-demo-toolbar">
         <span>
           <span className="workflow-status-dot" /> YOUR NEXT CONVERSATION
@@ -230,20 +486,38 @@ export function WorkflowDemo() {
         aria-label="Explore an example workflow"
         className="workflow-demo-tabs"
       >
-        {EXAMPLES.map((e) => (
+        {EXAMPLES.slice(0, 6).map((item) => (
           <button
-            key={e.id}
+            key={item.id}
             type="button"
-            aria-pressed={selected === e.id}
-            onClick={() => setSelected(e.id)}
+            aria-pressed={selected === item.id}
+            onClick={() => choose(item.id)}
           >
-            {e.label}
+            {item.label}
             <ArrowRight size={13} aria-hidden />
           </button>
         ))}
       </div>
+      <div className="workflow-picker">
+        <label htmlFor="workflow-feature">
+          Explore all {EXAMPLES.length} workflows
+        </label>
+        <select
+          id="workflow-feature"
+          value={selected}
+          onChange={(event) => choose(event.target.value)}
+        >
+          {EXAMPLES.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </div>
       <div
+        key={example.id}
         className="workflow-demo-canvas"
+        data-inspecting={inspecting !== null}
         aria-live="polite"
         aria-atomic="true"
       >
@@ -258,16 +532,31 @@ export function WorkflowDemo() {
           <span className="workflow-message-tag">Trigger</span>
         </div>
         <ol className="workflow-nodes" aria-label="Workflow steps">
-          {example.nodes.map((node, i) => (
-            <li key={example.id + node.title}>
-              <div
-                className={`workflow-node ${i === 1 ? "workflow-node-ai" : ""}`}
+          {example.nodes.map((node, index) => (
+            <li
+              key={node.title}
+              style={{ "--step-index": index } as CSSProperties}
+            >
+              <button
+                type="button"
+                aria-label={`Inspect step ${index + 1}: ${node.title}`}
+                aria-pressed={inspecting === index}
+                onClick={() =>
+                  setInspecting(inspecting === index ? null : index)
+                }
+                className={`workflow-node ${index === 1 ? "workflow-node-ai" : ""}`}
               >
+                <span className="workflow-step-number" aria-hidden>
+                  {index + 1}
+                </span>
                 <span className="workflow-node-icon">
                   <node.icon size={23} strokeWidth={1.6} aria-hidden />
                 </span>
                 <span className="workflow-node-port" aria-hidden />
-              </div>
+              </button>
+              <span className="workflow-link" aria-hidden>
+                <span />
+              </span>
               <h3>{node.title}</h3>
               <p>{node.detail}</p>
             </li>
@@ -275,9 +564,25 @@ export function WorkflowDemo() {
         </ol>
         <div className="workflow-outcome">
           <span>
-            <Check size={16} aria-hidden /> {example.result}
+            <Check size={16} aria-hidden />
+            {example.result}
           </span>
           <span className="workflow-kicker">YOUR RULES. CONNECTED.</span>
+        </div>
+        <div className="workflow-step-insight">
+          {inspecting === null ? (
+            "Follow the signals. Select a step to inspect it."
+          ) : (
+            <>
+              <strong>
+                Step {inspecting + 1}: {example.nodes[inspecting].title}
+              </strong>
+              <span>
+                {example.nodes[inspecting].detail}. Select this step again to
+                resume.
+              </span>
+            </>
+          )}
         </div>
       </div>
       <p className="workflow-demo-note">{example.note}</p>

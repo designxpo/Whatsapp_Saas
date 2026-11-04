@@ -45,7 +45,7 @@ function Card({ n, accent = false, w = NODE_W, h = NODE_H, dot }: { n: FlowNodeD
   const showOut = dot === "out" || dot === "io";
   return (
     <div
-      className={`relative flex shrink-0 items-center gap-2.5 rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"}`}
+      className={`flow-node relative flex shrink-0 items-center gap-2.5 rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"}`}
       style={{ width: w, minHeight: h }}
     >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
@@ -73,7 +73,7 @@ function Wire() {
 function Flow({ uc }: { uc: UseCase }) {
   const totalH = Math.max(B2 + NODE_H / 2, TOP + NODE_H + DOWN + HBUS + SUB_H);
   return (
-    <div className="flex w-max items-start" style={{ minHeight: totalH }}>
+    <div className="flow-walkthrough flex w-max items-start" style={{ minHeight: totalH }}>
       {/* Trigger */}
       <div style={{ paddingTop: TOP }}><Card n={uc.trigger} dot="out" /></div>
       <Wire />

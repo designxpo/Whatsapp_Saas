@@ -42,7 +42,7 @@ function Node({ node, dots = "x", className = "w-48" }: { node: CanvasNode; dots
   const showOut = dots === "out" || dots === "io";
   return (
     <div
-      className={`relative flex shrink-0 items-center rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}
+      className={`agent-motion-node relative flex shrink-0 items-center rounded-2xl border bg-white p-3 shadow-[0_12px_30px_-16px_rgba(7,131,253,0.45)] ${node.accent ? "border-[#0783fd] ring-1 ring-[#0783fd]/20" : "border-slate-200"} ${className}`}
       style={{ minHeight: NODE_H }}
     >
       {showIn && <span aria-hidden className="absolute -left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-[#0783fd] bg-white" />}
@@ -89,7 +89,7 @@ function BranchGroup({ nodes }: { nodes: CanvasNode[] }) {
 export function AgentCanvas() {
   const c = AGENT_CANVAS;
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-16 sm:px-8">
+    <div className="agent-motion-canvas mx-auto w-full max-w-7xl px-4 py-16 sm:px-8">
       <SectionTitle
         eyebrow="Build it visually"
         title="One canvas. Every conversation, automated."

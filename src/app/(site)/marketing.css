@@ -1026,7 +1026,7 @@
   color: #b8b8c0;
   margin-top: 20px;
 }
-.marketing-next-step > div > div:not(.next-step-art) {
+.marketing-next-step > div:first-child > div:not(.next-step-art) {
   display: flex;
   align-items: center;
   gap: 25px;
@@ -1590,7 +1590,7 @@
   .marketing-next-step .next-step-art {
     display: none;
   }
-  .marketing-next-step > div > div:not(.next-step-art) {
+  .marketing-next-step > div:first-child > div:not(.next-step-art) {
     gap: 20px;
   }
   .marketing-footer {
@@ -2805,5 +2805,647 @@
 @media (prefers-reduced-motion: reduce) and (max-width: 640px) {
   .feature-loop-group {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Decorative paths are unfilled, contained and behind the actual page content. */
+.hero-constellation {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hero-constellation > svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: #b6d8f3;
+  stroke-width: 1;
+}
+.hero-constellation > svg path {
+  fill: none;
+  stroke-dasharray: 4 10;
+  animation: hero-wire-drift 25s linear infinite;
+}
+.hero-satellite {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid #d3e5f4;
+  background: #f7fcff;
+  border-radius: 15px 15px 15px 4px;
+  color: #0879ca;
+  box-shadow: 0 8px 25px -17px #0783fd99;
+  animation: hero-satellite-float 7s ease-in-out infinite;
+}
+.hero-satellite-chat {
+  left: 8%;
+  top: 170px;
+}
+.hero-satellite-review {
+  right: 7%;
+  top: 225px;
+  animation-delay: -2.3s;
+}
+.hero-satellite-sequence {
+  left: 13%;
+  top: 390px;
+  animation-delay: -4.6s;
+}
+@keyframes hero-wire-drift {
+  to {
+    stroke-dashoffset: -280;
+  }
+}
+@keyframes hero-satellite-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(4deg);
+  }
+}
+@media (max-width: 850px) {
+  .hero-satellite {
+    display: none;
+  }
+  .hero-constellation > svg {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-constellation > svg path,
+  .hero-satellite {
+    animation: none;
+  }
+}
+
+/* The six platform areas use the same continuous rails as the feature cards. */
+.capability-carousel .capability-card {
+  flex-shrink: 0;
+  width: 420px;
+  min-height: 246px;
+  border-radius: 20px 20px 20px 5px;
+  transform: rotate(-1deg);
+  transition:
+    transform 0.25s,
+    box-shadow 0.25s;
+}
+.capability-carousel .capability-card:nth-child(even) {
+  transform: rotate(1deg);
+}
+.capability-carousel .capability-card:hover {
+  transform: translateY(-5px) rotate(0);
+  box-shadow: 0 14px 30px -24px #0783fd99;
+}
+.capability-carousel .capability-card h3 {
+  margin-top: 23px;
+}
+.capability-carousel .capability-card ul {
+  margin-top: 18px;
+}
+.marketing-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    340px circle at var(--pointer-x, 50%) var(--pointer-y, 200px),
+    #0783fd0b,
+    transparent 75%
+  );
+}
+.marketing-hero-accent {
+  background: linear-gradient(110deg, #026cd4, #087c9e, #026cd4);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: hero-accent-shift 9s ease-in-out infinite;
+}
+.marketing-home [data-tilt] {
+  transform-style: preserve-3d;
+}
+@media (hover: hover) and (pointer: fine) {
+  .marketing-home [data-tilt]:hover {
+    transform: perspective(1000px) rotateX(var(--tilt-x, 0deg))
+      rotateY(var(--tilt-y, 0deg)) translateY(-4px);
+  }
+  .marketing-home .growth-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: radial-gradient(
+      260px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+      #0783fd0b,
+      transparent 70%
+    );
+  }
+}
+.workflow-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 3px 14px;
+}
+.workflow-picker label {
+  font:
+    9px ui-monospace,
+    monospace;
+  color: #627d93;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.workflow-picker select {
+  color: #254c70;
+  background: #f9fcff;
+  border: 1px solid #cfdfed;
+  border-radius: 7px;
+  padding: 7px 25px 7px 9px;
+  font-size: 11px;
+  max-width: 100%;
+}
+.workflow-node {
+  padding: 0;
+  cursor: pointer;
+  animation: workflow-node-cycle 10s ease-in-out infinite;
+  animation-delay: calc(var(--step-index, 0) * 2s);
+}
+.workflow-node-icon {
+  display: grid;
+  place-items: center;
+}
+.workflow-step-number {
+  position: absolute;
+  left: -7px;
+  top: -7px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #3374aa;
+  background: #f5faff;
+  border: 1px solid #b7d4eb;
+  font:
+    8px ui-monospace,
+    monospace;
+}
+.workflow-link {
+  position: absolute;
+  left: calc(50% + 35px);
+  top: 33px;
+  width: calc(100% - 48px);
+  height: 1px;
+  z-index: 2;
+  pointer-events: none;
+}
+.workflow-link > span {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0783fd;
+  box-shadow: 0 0 9px #0783fd88;
+  opacity: 0;
+  animation: workflow-packet-travel 10s linear infinite;
+  animation-delay: calc(var(--step-index, 0) * 2s + 0.7s);
+}
+.workflow-nodes li:last-child .workflow-link {
+  display: none;
+}
+.workflow-outcome {
+  animation: workflow-outcome-cycle 10s ease-in-out infinite;
+}
+.workflow-demo-canvas[data-inspecting="true"]
+  :is(.workflow-node, .workflow-link > span, .workflow-outcome) {
+  animation-play-state: paused;
+}
+.workflow-demo-canvas[data-inspecting="true"] .workflow-node {
+  animation: none;
+}
+.workflow-node[aria-pressed="true"] {
+  background: #dcefff;
+  border-color: #0783fd;
+  box-shadow: 0 0 0 5px #0783fd12;
+  color: #026cd4;
+}
+.workflow-step-insight {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  min-height: 34px;
+  margin-top: 12px;
+  font-size: 10px;
+  color: #5e7990;
+  line-height: 1.7;
+  text-align: center;
+}
+.workflow-step-insight strong {
+  color: #27597e;
+  font-weight: 500;
+}
+.workflow-message {
+  animation: workflow-message-arrive 0.55s ease-out both;
+}
+.flow-walkthrough .flow-node {
+  animation: flow-node-breathe 8s ease-in-out infinite;
+}
+.flow-walkthrough .flow-node:nth-child(2n) {
+  animation-delay: 1.6s;
+}
+.flow-walkthrough svg :is(line, path).animate-dash {
+  stroke-dasharray: 5 6;
+  animation: hero-wire-drift 18s linear infinite;
+}
+.agent-motion-canvas .agent-motion-node {
+  animation: flow-node-breathe 9s ease-in-out infinite;
+}
+.agent-motion-canvas svg :is(line, path).animate-dash {
+  stroke-dasharray: 5 6;
+}
+.tour-sequence li {
+  animation: tour-step-breathe 10s ease-in-out infinite;
+  animation-delay: calc(var(--step-index, 0) * 2s);
+}
+.tour-review .review-example-draft {
+  animation: review-draft-glow 7s ease-in-out infinite;
+}
+.tour-review .review-example-status {
+  animation: review-status-arrive 7s ease-in-out infinite;
+}
+.tour-audiences .audience-example-groups > div {
+  animation: flow-node-breathe 8s ease-in-out infinite;
+}
+.tour-audiences .audience-example-groups > div:nth-child(2) {
+  animation-delay: 1.5s;
+}
+.tour-audiences .audience-example-groups > div:nth-child(3) {
+  animation-delay: 3s;
+}
+.marketing-next-step .next-step-signal {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 400px;
+  height: 250px;
+  margin: auto;
+}
+.marketing-next-step .signal-orbit {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  border: 1px dashed #4e9ace50;
+  border-radius: 50%;
+  box-shadow: 0 0 65px -22px #0783fd22;
+}
+.marketing-next-step .signal-orbit::after {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  border: 1px solid #3d6f9738;
+  border-radius: 50%;
+}
+.marketing-next-step .signal-orbit i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  background: #04b9e7;
+  border-radius: 50%;
+  box-shadow: 0 0 16px #04b9e7;
+  offset-path: inset(0 round 50%);
+  animation: feature-orbit-lap 12s linear infinite;
+}
+.marketing-next-step .signal-node {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  flex-shrink: 0;
+  border-radius: 19px;
+  background: #173f62;
+  border: 1px solid #3b6b91;
+  color: #fff;
+  z-index: 1;
+  animation: signal-node-glow 8s ease-in-out infinite;
+}
+.marketing-next-step .signal-node svg {
+  display: block;
+  width: 29px;
+  height: 29px;
+}
+.marketing-next-step .signal-node-ai {
+  width: 84px;
+  height: 84px;
+  background: var(--mk-brand-gradient);
+  border-color: #37b9ee;
+  box-shadow: 0 0 36px -10px #0783fd66;
+  animation-delay: 1.5s;
+}
+.marketing-next-step .signal-node-done {
+  animation-delay: 3s;
+}
+.marketing-next-step .signal-wire {
+  position: relative;
+  height: 1px;
+  background: #46769d;
+  width: 38px;
+  flex-shrink: 1;
+  min-width: 14px;
+  margin: 0;
+  padding: 0;
+}
+.marketing-next-step .signal-wire i {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  top: -2px;
+  background: #64dfff;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #64dfff;
+  opacity: 0;
+  animation: signal-packet 8s linear infinite;
+}
+.marketing-next-step .signal-wire-out i {
+  animation-delay: 1.5s;
+}
+.marketing-next-step .signal-caption {
+  position: absolute;
+  bottom: 8px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font:
+    9px/1.5 ui-monospace,
+    monospace;
+  color: #8caeca;
+  letter-spacing: 0.05em;
+}
+[data-motion-region][data-motion-active="false"] * {
+  animation-play-state: paused !important;
+}
+@keyframes hero-accent-shift {
+  50% {
+    background-position: 100% 0;
+  }
+}
+@keyframes workflow-node-cycle {
+  0%,
+  16% {
+    background-color: #e2f3ff;
+    border-color: #0783fd;
+    box-shadow:
+      0 0 0 5px #0783fd12,
+      0 4px 12px -8px #0783fd88;
+  }
+  22%,
+  100% {
+    background-color: white;
+    border-color: #b8cbdc;
+    box-shadow: 0 3px 0 #e3eaf1;
+  }
+}
+@keyframes workflow-packet-travel {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  2% {
+    opacity: 1;
+  }
+  13% {
+    left: 100%;
+    opacity: 1;
+  }
+  15%,
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@keyframes workflow-outcome-cycle {
+  0%,
+  75%,
+  100% {
+    border-color: #e1e1e5;
+  }
+  82%,
+  93% {
+    border-color: #74b8d8;
+    color: #206b79;
+  }
+}
+@keyframes workflow-message-arrive {
+  from {
+    opacity: 0.5;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes flow-node-breathe {
+  0%,
+  70%,
+  100% {
+    border-color: #cbdce9;
+  }
+  20%,
+  40% {
+    border-color: #66b5ed;
+    box-shadow: 0 0 0 4px #0783fd0a;
+  }
+}
+@keyframes tour-step-breathe {
+  0%,
+  16% {
+    border-color: #0783fd;
+    background: #f1f8ff;
+  }
+  23%,
+  100% {
+    border-color: #d8e5ee;
+    background: #fff;
+  }
+}
+@keyframes review-draft-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 #0783fd00;
+  }
+  40%,
+  65% {
+    box-shadow: 0 0 0 4px #0783fd0b;
+  }
+}
+@keyframes review-status-arrive {
+  0%,
+  25% {
+    opacity: 0.4;
+  }
+  40%,
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes signal-node-glow {
+  0%,
+  65%,
+  100% {
+    box-shadow: 0 0 0 0 #04b9e700;
+  }
+  20%,
+  40% {
+    box-shadow:
+      0 0 0 7px #04b9e710,
+      0 0 22px -8px #04b9e766;
+  }
+}
+@keyframes signal-packet {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  3% {
+    opacity: 1;
+  }
+  17% {
+    left: 100%;
+    opacity: 1;
+  }
+  20%,
+  100% {
+    left: 100%;
+    opacity: 0;
+  }
+}
+@media (max-width: 850px) {
+  .marketing-next-step .next-step-signal {
+    height: 210px;
+    margin-top: 20px;
+  }
+}
+@media (max-width: 640px) {
+  .capability-carousel .capability-card {
+    width: 285px;
+    min-height: 260px;
+    padding: 24px;
+  }
+  .capability-carousel .capability-card h3 {
+    font-size: 21px;
+  }
+  .workflow-picker {
+    align-items: start;
+    gap: 8px;
+    flex-direction: column;
+    padding-bottom: 12px;
+  }
+  .workflow-picker label {
+    font-size: 8px;
+  }
+  .workflow-picker select {
+    width: 100%;
+    font-size: 10px;
+  }
+  .workflow-link {
+    left: calc(50% + 28px);
+    top: 28px;
+    width: calc(100% - 40px);
+  }
+  .workflow-nodes li:nth-child(2) .workflow-link {
+    display: none;
+  }
+  .workflow-step-number {
+    width: 15px;
+    height: 15px;
+    font-size: 7px;
+    left: -5px;
+    top: -5px;
+  }
+  .workflow-step-insight {
+    font-size: 9px;
+  }
+  .marketing-next-step .next-step-signal {
+    height: 190px;
+  }
+  .marketing-next-step .signal-orbit {
+    width: 175px;
+    height: 175px;
+  }
+  .marketing-next-step .signal-node {
+    width: 54px;
+    height: 54px;
+    border-radius: 15px;
+  }
+  .marketing-next-step .signal-node-ai {
+    width: 68px;
+    height: 68px;
+  }
+  .marketing-next-step .signal-node svg {
+    width: 24px;
+    height: 24px;
+  }
+  .marketing-next-step .signal-wire {
+    width: 28px;
+  }
+  .marketing-next-step .signal-caption {
+    font-size: 7px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .capability-carousel .capability-card {
+    width: auto;
+    min-width: 0;
+    transform: none;
+  }
+  .marketing-home [data-tilt],
+  .marketing-home [data-tilt]:hover {
+    transform: none !important;
+  }
+  .marketing-hero-accent,
+  .workflow-node,
+  .workflow-link > span,
+  .workflow-outcome,
+  .workflow-message,
+  .flow-walkthrough .flow-node,
+  .flow-walkthrough svg .animate-dash,
+  .agent-motion-canvas .agent-motion-node,
+  .tour-sequence li,
+  .tour-review .review-example-draft,
+  .tour-review .review-example-status,
+  .tour-audiences .audience-example-groups > div,
+  .marketing-next-step .signal-node,
+  .marketing-next-step .signal-orbit i,
+  .marketing-next-step .signal-wire i {
+    animation: none !important;
+  }
+  .workflow-node {
+    background: #fff;
+  }
+}
+.feature-workflow-section {
+  padding-top: 80px;
+  padding-bottom: 40px;
+}
+@media (max-width: 640px) {
+  .feature-workflow-section {
+    padding-top: 55px;
   }
 }

@@ -1,12 +1,50 @@
 // The H1 and channel definition remain server-rendered for search and answer engines.
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, MessageSquare, Star, Repeat2 } from "lucide-react";
 import { Button } from "./ui";
 import { HERO } from "../_content/site";
 import { WorkflowDemo } from "./workflow-demo";
 
 export function Hero() {
   return (
-    <section className="marketing-hero">
+    <section className="marketing-hero" data-motion-region>
+      <div
+        className="hero-constellation"
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          overflow: "hidden",
+          zIndex: -1,
+        }}
+      >
+        <svg
+          viewBox="0 0 1400 800"
+          preserveAspectRatio="none"
+          fill="none"
+          stroke="#b6d8f3"
+          strokeWidth="1"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        >
+          <path d="M-40 390C180 390 80 75 330 75S1160 110 1440 330" />
+          <path d="M-30 520C200 700 1150 650 1420 410" />
+        </svg>
+        <span className="hero-satellite hero-satellite-chat">
+          <MessageSquare size={21} />
+        </span>
+        <span className="hero-satellite hero-satellite-review">
+          <Star size={21} />
+        </span>
+        <span className="hero-satellite hero-satellite-sequence">
+          <Repeat2 size={21} />
+        </span>
+      </div>
       <div className="marketing-dot-grid" aria-hidden />
       <div className="marketing-container marketing-hero-content">
         <p className="marketing-eyebrow">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HomeMotion } from "./_components/home-motion";
 import { Container, SectionTitle, Button } from "./_components/ui";
 import {
   FeatureGrid,
@@ -77,7 +78,7 @@ const homeWebPage = {
 
 export default function HomePage() {
   return (
-    <div className="marketing-home">
+    <HomeMotion>
       <JsonLd data={faqSchema} />
       <JsonLd data={homeWebPage} />
       <Hero />
@@ -210,6 +211,6 @@ export default function HomePage() {
         <Faq />
       </Container>
       <NextStepBand />
-    </div>
+    </HomeMotion>
   );
 }

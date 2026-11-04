@@ -10,6 +10,7 @@ import {
   ComparisonTable,
 } from "../_components/sections";
 import { GrowthSpotlight, CreatorStory } from "../_components/growth-story";
+import { WorkflowDemo } from "../_components/workflow-demo";
 import { AgentCanvas } from "../_components/canvas";
 import { FlowShowcase } from "../_components/flowshowcase";
 import { JsonLd } from "../_components/json-ld";
@@ -113,6 +114,18 @@ export default function FeaturesPage() {
 
       <GrowthSpotlight />
       <CreatorStory />
+      <section
+        className="marketing-container feature-workflow-section"
+        aria-labelledby="feature-workflow-heading"
+      >
+        <SectionTitle
+          id="feature-workflow-heading"
+          eyebrow="Follow the journey"
+          title="See each feature in motion"
+          subtitle="Choose a workflow, follow the signals, and select a step to inspect it."
+        />
+        <WorkflowDemo />
+      </section>
       <AgentCanvas />
       <FlowShowcase />
       <ProblemSolution />

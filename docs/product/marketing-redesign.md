@@ -35,3 +35,17 @@ The full marketing route group now shares the logo's blue-to-cyan gradient, whit
 The feature grid is now two continuously scrolling rails with alternating card tilts, faded edges and travelling corner sparks. It has no control buttons: hovering pauses the animation and leaving resumes it. Keyboard focus also pauses it. Reduced-motion preferences show all fourteen features in a static layout. The carousel is server-rendered with CSS animation, and duplicate loop copies are hidden from assistive technology. Existing feature wording remains available in the HTML.
 
 Additional browser checks cover hover pause/resume, absence of carousel buttons, reduced-motion layouts, white icon foregrounds and gradient button backgrounds. Expanded content and inner pages are checked for horizontal overflow.
+
+## Interactive homepage and workflow walkthroughs
+
+The six customer-journey overview cards now reuse the same opposing infinite rails as the feature cards. The homepage adds pointer-responsive card tilt, a subtle cursor glow and decorative channel signals. A shared visibility observer pauses marked animation regions when they leave the viewport or the tab is hidden.
+
+Fourteen selectable workflow demonstrations cover the overall customer journey, Google Reviews, sequences, comment-to-DM resources, qualification, promises, broadcasts, commerce, audience segments, AI knowledge, YouTube, website chat, WhatsApp handoffs and outcome experiments. Signals travel between numbered steps; selecting a node pauses the visual walkthrough and exposes that step's detail. The same explorer is available on the Features page. Deeper agent/use-case diagrams and review/sequence product previews also animate. These remain explicitly illustrative demonstrations.
+
+The footer's tilted tiles have been replaced with centred message, AI and outcome nodes, travelling packets and an orbital signal. The icon boxes and SVG centres are aligned on the same horizontal axis at every tested size. Decorative hero SVGs explicitly use no fill and remain absolutely contained behind the page content, preventing the default black SVG fill seen during development.
+
+### Theme audit — 5 November 2026
+
+All 50 canonical public marketing pages in the sitemap were checked in Chrome at 1440px and 390px: shared dotted canvas, blue-to-cyan primary buttons with white foregrounds, navigation/footer, one H1, no page overflow and no client errors. This covers the homepage, feature/pricing pages, industry pages, comparison pages, blog posts, guides, legal policies, status/changelog, contact, affiliate and extension pages. Article and policy pages retain their reading layouts within the same theme.
+
+Before/after checks across all 50 URLs confirmed identical status codes, titles, named/property metadata, canonical URLs, JSON-LD, H1 wording and plan signup destinations; existing anchors remain. The 10 protected SEO/analytics source files are unchanged. Homepage interactions were additionally checked at 1440, 768, 390 and 320px, including all fourteen workflows, node inspection, automatic carousel movement, hover pause/resume, centred footer icons and reduced-motion settings. The production build, changed-file ESLint and all 3,151 existing tests passed.

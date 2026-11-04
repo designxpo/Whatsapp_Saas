@@ -3,7 +3,7 @@
 // Interactive product tour — real Talko AI screenshots (public/tour) in a
 // browser frame, with a feature highlight beside each. Buttons switch the screen;
 // all screenshots stay mounted (opacity toggle) so switching is instant.
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -312,8 +312,8 @@ function CapabilityPreview({
             ["02", "Wait for the right moment", "Set the delay between steps"],
             ["03", "Send something useful", "Share your approved message"],
             ["04", "Check the next action", "Continue or exit the journey"],
-          ].map(([number, title, text]) => (
-            <li key={number}>
+          ].map(([number, title, text], index) => (
+            <li key={number} style={{ "--step-index": index } as CSSProperties}>
               <span>{number}</span>
               <div>
                 <h4>{title}</h4>

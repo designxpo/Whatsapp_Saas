@@ -17,6 +17,7 @@ import {
   ShoppingBag,
   BrainCircuit,
 } from "lucide-react";
+import { InfiniteCardRails } from "./feature-carousel";
 import { Button } from "./ui";
 
 export function GrowthSpotlight() {
@@ -36,7 +37,7 @@ export function GrowthSpotlight() {
         <p>Connect the campaign, the conversation and what happens next.</p>
       </div>
       <div className="marketing-growth-grid">
-        <article className="growth-card growth-card-wide">
+        <article data-tilt className="growth-card growth-card-wide">
           <div className="growth-card-copy">
             <span className="marketing-kicker">
               01 / CAMPAIGN-AWARE CONVERSATIONS
@@ -76,7 +77,7 @@ export function GrowthSpotlight() {
             </div>
           </div>
         </article>
-        <article className="growth-card growth-card-promise">
+        <article data-tilt className="growth-card growth-card-promise">
           <span className="marketing-kicker">02 / PROMISE TRACKING</span>
           <h3>
             “We’ll get back to you.”
@@ -98,7 +99,7 @@ export function GrowthSpotlight() {
             <p>Evidence → owner → due date → fulfilled</p>
           </div>
         </article>
-        <article className="growth-card">
+        <article data-tilt className="growth-card">
           <span className="marketing-kicker">03 / AUDIENCE DEMAND</span>
           <h3>
             They ask.
@@ -120,7 +121,7 @@ export function GrowthSpotlight() {
             </div>
           </div>
         </article>
-        <article className="growth-card">
+        <article data-tilt className="growth-card">
           <span className="marketing-kicker">04 / OUTCOME EXPERIMENTS</span>
           <h3>
             Test the journey.
@@ -146,7 +147,7 @@ export function GrowthSpotlight() {
             </span>
           </div>
         </article>
-        <article className="growth-card">
+        <article data-tilt className="growth-card">
           <span className="marketing-kicker">05 / CONNECTED JOURNEYS</span>
           <h3>
             New channel.
@@ -222,6 +223,7 @@ export function CreatorStory() {
         </Button>
       </div>
       <div
+        data-tilt
         className="creator-loop"
         aria-label="Illustrative creator growth loop"
       >
@@ -286,18 +288,26 @@ export function NextStepBand() {
         </div>
         <span>14 days to explore. No credit card required.</span>
       </div>
-      <div className="next-step-art" aria-hidden>
-        <div>
-          <MessageSquare size={32} strokeWidth={1.4} />
+      <div className="next-step-signal" aria-hidden data-motion-region>
+        <div className="signal-orbit">
+          <i />
         </div>
-        <span>→</span>
-        <div>
-          <Sparkles size={32} strokeWidth={1.4} />
+        <div className="signal-node">
+          <MessageSquare />
         </div>
-        <span>→</span>
-        <div>
-          <CheckCheck size={32} strokeWidth={1.4} />
+        <span className="signal-wire">
+          <i />
+        </span>
+        <div className="signal-node signal-node-ai">
+          <Sparkles />
         </div>
+        <span className="signal-wire signal-wire-out">
+          <i />
+        </span>
+        <div className="signal-node signal-node-done">
+          <CheckCheck />
+        </div>
+        <span className="signal-caption">MESSAGE → INTELLIGENCE → ACTION</span>
       </div>
     </section>
   );
@@ -360,25 +370,32 @@ export function PlatformCapabilities() {
           connected workspace.
         </p>
       </div>
-      <div className="capability-grid">
-        {CAPABILITIES.map((item, index) => (
-          <article className="capability-card" key={item.title}>
-            <div>
-              <span className="capability-icon">
-                <item.icon size={23} strokeWidth={1.6} aria-hidden />
-              </span>
-              <span className="marketing-kicker">0{index + 1}</span>
-            </div>
-            <h3>{item.title}</h3>
-            <p>{item.text}</p>
-            <ul>
-              {item.tags.map((tag) => (
-                <li key={tag}>{tag}</li>
-              ))}
-            </ul>
-          </article>
-        ))}
-      </div>
+      <InfiniteCardRails
+        className="capability-carousel"
+        label="Explore the whole customer journey"
+        rows={[CAPABILITIES.slice(0, 3), CAPABILITIES.slice(3)].map(
+          (row, rowIndex) =>
+            row.map((item, index) => (
+              <article className="capability-card" key={item.title} data-tilt>
+                <div>
+                  <span className="capability-icon">
+                    <item.icon size={23} strokeWidth={1.6} aria-hidden />
+                  </span>
+                  <span className="marketing-kicker">
+                    0{rowIndex * 3 + index + 1}
+                  </span>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.text}</p>
+                <ul>
+                  {item.tags.map((tag) => (
+                    <li key={tag}>{tag}</li>
+                  ))}
+                </ul>
+              </article>
+            )),
+        )}
+      />
       <Link href="/features" className="capability-explore">
         Explore the full platform <ArrowUpRight size={16} aria-hidden />
       </Link>

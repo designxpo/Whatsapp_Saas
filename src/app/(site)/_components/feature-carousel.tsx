@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   ArrowRight,
   AtSign,
@@ -41,6 +41,7 @@ function FeatureCard({ item, index }: { item: Feature; index: number }) {
   return (
     <article
       className="feature-loop-card"
+      data-tilt
       style={{ "--card-tilt": `${index % 2 ? 1.5 : -1.5}deg` } as CSSProperties}
     >
       <div>
@@ -62,20 +63,45 @@ function FeatureCard({ item, index }: { item: Feature; index: number }) {
 
 export function FeatureCarousel({ items }: { items: Feature[] }) {
   const split = Math.ceil(items.length / 2);
-  const rows = [items.slice(0, split), items.slice(split)].filter(
-    (row) => row.length,
+  return (
+    <InfiniteCardRails
+      label="Explore automation features"
+      rows={[items.slice(0, split), items.slice(split)]
+        .filter((row) => row.length)
+        .map((row, rowIndex) =>
+          row.map((item, index) => (
+            <FeatureCard
+              key={item.title}
+              item={item}
+              index={rowIndex * split + index}
+            />
+          )),
+        )}
+    />
   );
+}
+
+export function InfiniteCardRails({
+  rows,
+  label,
+  className = "",
+}: {
+  rows: ReactNode[][];
+  label: string;
+  className?: string;
+}) {
   return (
     <div
-      className="feature-carousel"
+      className={`feature-carousel ${className}`}
       role="region"
-      aria-label="Explore automation features"
+      aria-label={label}
+      data-motion-region
     >
       <div
         className="feature-carousel-stage"
         tabIndex={0}
         role="group"
-        aria-label="Feature cards; focus to pause animation"
+        aria-label="Cards; focus to pause animation"
       >
         <div className="feature-orbit" aria-hidden>
           <span />
@@ -89,30 +115,16 @@ export function FeatureCarousel({ items }: { items: Feature[] }) {
               data-direction={rowIndex ? "reverse" : "forward"}
               style={
                 {
-                  "--loop-duration": `${Math.max(row.length * 9, 25)}s`,
+                  "--loop-duration": `${Math.max(row.length * 12, 30)}s`,
                 } as CSSProperties
               }
             >
-              <div className="feature-loop-group">
-                {row.map((item, index) => (
-                  <FeatureCard
-                    key={item.title}
-                    item={item}
-                    index={rowIndex * split + index}
-                  />
-                ))}
-              </div>
+              <div className="feature-loop-group">{row}</div>
               <div
                 className="feature-loop-group feature-loop-clone"
                 aria-hidden="true"
               >
-                {row.map((item, index) => (
-                  <FeatureCard
-                    key={item.title}
-                    item={item}
-                    index={rowIndex * split + index}
-                  />
-                ))}
+                {row}
               </div>
             </div>
           </div>
