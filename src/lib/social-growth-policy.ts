@@ -13,6 +13,7 @@ export interface SocialCampaign {
   channel_id: string;
   platform: "instagram" | "messenger";
   post_id: string | null;
+  post_ids?: string[]; // Optional when reading campaigns written before the multi-post migration.
   keyword: string;
   facts: string;
   questions: string[];
@@ -174,4 +175,54 @@ export function minorUnitScale(currency: string): number {
   } catch {
     return 100;
   }
+}
+
+export interface SocialPost {
+  id: string;
+  caption: string;
+  permalink: string;
+  thumbnail: string;
+  mediaType: string;
+  timestamp: string;
+}
+export interface SocialPostPage {
+  posts: SocialPost[];
+  next: string | null;
+}
+export const MAX_CAMPAIGN_POSTS = 200;
+
+/** Legacy single-post campaigns still target that one post. */
+export function campaignPostIds(campaign: {
+  post_ids?: string[];
+  post_id?: string | null;
+}): string[] {
+  return campaign.post_ids?.length
+    ? campaign.post_ids
+    : campaign.post_id
+      ? [campaign.post_id]
+      : [];
+}
+export function parseCampaignPostIds(input: Record<string, unknown>): string[] {
+  if (!("post_ids" in input))
+    return typeof input.post_id === "string" && input.post_id.trim()
+      ? [input.post_id.trim().slice(0, 150)]
+      : [];
+  if (
+    !Array.isArray(input.post_ids) ||
+    input.post_ids.length > MAX_CAMPAIGN_POSTS
+  )
+    throw new Error(`Select up to ${MAX_CAMPAIGN_POSTS} posts`);
+  const ids = input.post_ids.map((value) => {
+    if (
+      typeof value !== "string" ||
+      !value.trim() ||
+      value.trim().length > 150 ||
+      !/^[a-zA-Z0-9_-]+$/.test(value.trim())
+    )
+      throw new Error(
+        "Invalid post selection. Refresh the posts and select again.",
+      );
+    return value.trim();
+  });
+  return [...new Set(ids)].sort();
 }

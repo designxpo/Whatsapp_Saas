@@ -5,6 +5,8 @@ import { checkFeature } from "./entitlements";
 import { tdb } from "./tenantdb";
 import {
   commitmentCandidate,
+  campaignPostIds,
+  parseCampaignPostIds,
   experimentReport,
   type SocialCampaign,
   type SocialJourney,
@@ -121,11 +123,12 @@ export async function saveSocialCampaign(
   const name = text(input.name, 100),
     facts = text(input.facts, 6000);
   if (!name) throw new Error("Name the campaign");
-  const postId = text(input.post_id, 150) || null,
+  const postIds = parseCampaignPostIds(input);
+  const postId = postIds[0] ?? null,
     keyword = text(input.keyword, 100);
   if (status === "active" && (!facts || (!postId && !keyword)))
     throw new Error(
-      "Add approved facts and a post ID or a distinctive keyword before activating.",
+      "Add approved facts and one or more posts or a distinctive keyword before activating.",
     );
   const questions = Array.isArray(input.questions)
     ? input.questions
@@ -165,6 +168,7 @@ export async function saveSocialCampaign(
     channel_id: channelId,
     platform: channel.kind,
     post_id: postId,
+    post_ids: postIds,
     keyword,
     questions,
     goal,
@@ -192,7 +196,8 @@ export async function saveSocialCampaign(
       assigned?.length &&
       (JSON.stringify(old.variants) !== JSON.stringify(clean) ||
         old.channel_id !== channelId ||
-        old.post_id !== postId ||
+        JSON.stringify([...campaignPostIds(old)].sort()) !==
+          JSON.stringify(postIds) ||
         old.keyword !== keyword ||
         old.goal !== goal)
     )
@@ -200,9 +205,26 @@ export async function saveSocialCampaign(
         "Create a new campaign to change targeting, goal or variants after participants have entered.",
       );
   }
-  const result = id
-    ? await socialDb(tid).from(C).update(row).eq("id", id).select("*").single()
-    : await socialDb(tid).from(C).insert(row).select("*").single();
+  const write = (payload: Record<string, unknown>) =>
+    id
+      ? socialDb(tid).from(C).update(payload).eq("id", id).select("*").single()
+      : socialDb(tid).from(C).insert(payload).select("*").single();
+  let result = await write(row);
+  const missingPostColumn =
+    result.error &&
+    ["42703", "PGRST204"].includes(result.error.code ?? "") &&
+    /post_ids/i.test(result.error.message);
+  if (missingPostColumn) {
+    if (postIds.length > 1)
+      throw new Error(
+        "Apply migration 20261104192813_social_campaign_multi_posts.sql to save campaigns on multiple posts.",
+      );
+    // Keep existing single-post and keyword campaigns usable during a rolling deployment.
+    const legacy: Record<string, unknown> = { ...row };
+    delete legacy.post_ids;
+    result = await write(legacy);
+  }
+  if (isMissing(result.error)) throw new Error(SOCIAL_SETUP);
   fail(result.error);
   return result.data as SocialCampaign;
 }
@@ -234,13 +256,15 @@ export async function enterSocialCampaign(
     (c) =>
       (!c.variants.length ||
         (input.source === "comment" && input.experimentEligible)) &&
-      (!c.post_id || c.post_id === input.postId) &&
+      (!campaignPostIds(c).length ||
+        (!!input.postId && campaignPostIds(c).includes(input.postId))) &&
       (!c.keyword ||
         input.text.toLowerCase().includes(c.keyword.toLowerCase())),
   );
   matches.sort(
     (a, b) =>
-      Number(!!b.post_id) - Number(!!a.post_id) ||
+      Number(!!campaignPostIds(b).length) -
+        Number(!!campaignPostIds(a).length) ||
       Number(!!b.keyword) - Number(!!a.keyword),
   );
   const campaign = matches[0] as SocialCampaign | undefined;

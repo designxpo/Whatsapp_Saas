@@ -513,3 +513,37 @@ describe("currency minor units", () => {
     expect(minorUnitScale("KWD")).toBe(1000);
   });
 });
+
+describe("multi-post campaign targeting",()=>{
+ it("saves a stable post set and matches any selected post, but not unselected posts or DMs",async()=>{
+  const c=await campaign({post_ids:["second","post","second"],keyword:""});
+  expect(c.post_ids).toEqual(["post","second"]);
+  expect(c.post_id).toBe("post");
+  const match=await enterSocialCampaign("t1",{channelId:"ig1",conversationId:"conv1",postId:"second",text:"hello",source:"comment"});
+  expect(match?.campaign.id).toBe(c.id);
+  expect(await enterSocialCampaign("t1",{channelId:"ig1",conversationId:"conv1",postId:"unselected",text:"hello",source:"comment"})).toBeNull();
+  expect(await enterSocialCampaign("t1",{channelId:"ig1",conversationId:"conv1",text:"hello",source:"dm"})).toBeNull();
+ });
+ it("still requires the keyword when posts and a keyword are both selected",async()=>{await campaign({post_ids:["post","second"]});expect(await enterSocialCampaign("t1",{channelId:"ig1",conversationId:"conv1",postId:"second",text:"unrelated",source:"comment"})).toBeNull();});
+ it("preserves legacy campaign targeting without the new field",async()=>{const c=await campaign();delete h.db.tables[C].find(row=>row.id===c.id)!.post_ids;expect((await enter())?.campaign.id).toBe(c.id);});
+ it("locks every selected post after a participant enters, but ignores selection order",async()=>{const c=await campaign({post_ids:["post","second"]});await enter();await expect(saveSocialCampaign("t1",{...c,post_ids:["second","post"]})).resolves.toMatchObject({id:c.id});await expect(saveSocialCampaign("t1",{...c,post_ids:["post","third"]})).rejects.toThrow("targeting");});
+ it("does not silently activate an empty selection without a keyword",async()=>{await expect(campaign({post_ids:[],keyword:""})).rejects.toThrow("one or more posts");});
+ it.each([null,[""],[42],["x".repeat(151)],Array.from({length:201},(_,index)=>`p${index}`)])("rejects malformed or oversized selections %j",async post_ids=>{await expect(campaign({post_ids})).rejects.toThrow();});
+ it("clears an old post when an explicit empty selection is saved",async()=>{const c=await campaign({post_ids:["post"]});const saved=await saveSocialCampaign("t1",{...c,post_ids:[]});expect(saved.post_ids).toEqual([]);expect(saved.post_id).toBeNull();expect((await enterSocialCampaign("t1",{channelId:"ig1",conversationId:"conv1",text:"guide",source:"dm"}))?.campaign.id).toBe(c.id);});
+});
+
+describe("multi-post rolling deployment",()=>{
+ function withoutPostColumn() {
+  const original=h.db.client.from;
+  h.db.client.from=(table:string)=>{
+   const builder=original(table) as {insert:(row:Record<string,unknown>)=>unknown};
+   if(table===C){const insert=builder.insert;builder.insert=(row)=>{
+    if("post_ids" in row){const failed={select:()=>failed,single:async()=>({data:null,error:{code:"PGRST204",message:"Could not find the post_ids column"}})};return failed;}
+    return insert(row);
+   };}
+   return builder;
+  };
+ }
+ it("keeps legacy single-post and keyword saves working until the migration is applied",async()=>{withoutPostColumn();expect((await campaign()).post_id).toBe("post");expect((await campaign({post_id:null,keyword:"hello"})).post_id).toBeNull();expect(h.db.tables[C]).toHaveLength(2);});
+ it("never downgrades a multiple-post campaign to a single post when the column is missing",async()=>{withoutPostColumn();await expect(campaign({post_ids:["one","two"]})).rejects.toThrow("20261104192813");expect(h.db.tables[C]??[]).toHaveLength(0);});
+});

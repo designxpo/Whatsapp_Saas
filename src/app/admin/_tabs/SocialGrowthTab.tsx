@@ -10,6 +10,7 @@ import {
 import { useVocab } from "@/lib/vocab-client";
 import {
   CREATOR_PLAYBOOKS,
+  campaignPostIds,
   minorUnitScale,
   type SocialCampaign,
   type SocialJourney,
@@ -18,6 +19,7 @@ import {
   type SocialLink,
   type SocialVariant,
 } from "@/lib/social-growth-policy";
+import { SocialPostPicker } from "../_components/SocialPostPicker";
 import { inp } from "../_shared";
 import { Drawer } from "@/components/overlay";
 
@@ -66,7 +68,8 @@ const blank = (channel = ""): Partial<SocialCampaign> => ({
   name: "",
   audience: "business",
   channel_id: channel,
-  post_id: "",
+  post_id: null,
+  post_ids: [],
   keyword: "",
   facts: "",
   questions: [],
@@ -282,7 +285,9 @@ export default function SocialGrowthTab() {
                     </button>
                   </div>
                   <p className="text-xs text-ink-500">
-                    {c.post_id ? `Post ${c.post_id}` : "Any post"}
+                    {campaignPostIds(c).length
+                      ? `${campaignPostIds(c).length} selected post${campaignPostIds(c).length === 1 ? "" : "s"}`
+                      : "Keyword across account"}
                     {c.keyword ? ` · keyword “${c.keyword}”` : ""}
                     {c.expires_at ? ` · ends ${date(c.expires_at)}` : ""}
                   </p>
@@ -668,6 +673,8 @@ export default function SocialGrowthTab() {
                     setForm({
                       ...form,
                       channel_id: e.target.value,
+                      post_id: null,
+                      post_ids: [],
                       variants: [],
                     })
                   }
@@ -682,16 +689,17 @@ export default function SocialGrowthTab() {
                 </select>
               </label>
             </div>
+            <SocialPostPicker
+              key={form.channel_id || "no-account"}
+              channelId={form.channel_id || ""}
+              value={campaignPostIds(form)}
+              disabled={busy}
+              onChange={(ids) =>
+                setForm({ ...form, post_ids: ids, post_id: ids[0] ?? null })
+              }
+            />
             <label className="block text-xs space-y-1">
-              Post ID (optional)
-              <input
-                className={`${inp} w-full`}
-                value={form.post_id ?? ""}
-                onChange={(e) => setForm({ ...form, post_id: e.target.value })}
-              />
-            </label>
-            <label className="block text-xs space-y-1">
-              Distinctive keyword (optional when a post is selected)
+              Distinctive keyword (optional when posts are selected)
               <input
                 className={`${inp} w-full`}
                 value={form.keyword ?? ""}
