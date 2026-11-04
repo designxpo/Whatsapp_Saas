@@ -1,6 +1,14 @@
 import Link from "next/link";
-import { Container, SectionTitle } from "./_components/ui";
-import { FeatureGrid, ThreeSteps, StatsBand, IntegrationsStrip, CtaBand, ProblemSolution, ComparisonTable, Glossary } from "./_components/sections";
+import { Container, SectionTitle, Button } from "./_components/ui";
+import {
+  FeatureGrid,
+  ThreeSteps,
+  StatsBand,
+  IntegrationsStrip,
+  ProblemSolution,
+  ComparisonTable,
+  Glossary,
+} from "./_components/sections";
 import { WhyChoose } from "./_components/why-choose";
 import { PricingTiers, RenewalNote } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
@@ -11,6 +19,12 @@ import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
 import { JsonLd } from "./_components/json-ld";
 import { webPageSchema } from "./_content/schema";
+import {
+  PlatformCapabilities,
+  GrowthSpotlight,
+  CreatorStory,
+  NextStepBand,
+} from "./_components/growth-story";
 import { FAQS } from "./_content/site";
 
 // FAQPage schema — the single structured-data type most correlated with AI
@@ -19,8 +33,9 @@ import { FAQS } from "./_content/site";
 const faqSchema = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
-  description: "Frequently asked questions about Talko AI's WhatsApp, Instagram, Messenger, YouTube and Google Reviews automation platform.",
-  mainEntity: FAQS.map(f => ({
+  description:
+    "Frequently asked questions about Talko AI's WhatsApp, Instagram, Messenger, YouTube and Google Reviews automation platform.",
+  mainEntity: FAQS.map((f) => ({
     "@type": "Question",
     name: f.q,
     text: f.q,
@@ -43,7 +58,8 @@ const homeWebPage = {
   ...webPageSchema({
     path: "",
     name: "Talko AI — WhatsApp, Instagram & YouTube Chat Automation with AI",
-    description: "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
+    description:
+      "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
     published: "2026-06-01",
     updated: "2026-11-01",
     breadcrumb: false,
@@ -61,91 +77,139 @@ const homeWebPage = {
 
 export default function HomePage() {
   return (
-    <>
+    <div className="marketing-home">
       <JsonLd data={faqSchema} />
       <JsonLd data={homeWebPage} />
-      {/* Hero — orbit panel */}
       <Hero />
 
-      {/* The "what is Talko AI" definition, collapsed by default.
-          It repeats the hero's channel list almost word for word, so on screen
-          it reads as padding — but it is also the one self-contained sentence
-          an answer engine can quote for "what is Talko AI", and the target of
-          `speakable` above, so deleting it costs something real.
-          A native <details> is the honest way to have both: closed by default
-          so the page stays clean, and openable by a reader, which is what
-          separates it from hidden text. Collapsed content is indexed normally
-          — CSS-hiding it from people while serving it to crawlers is cloaking,
-          a named Google spam policy, and the penalty is removal from the index
-          rather than a lower score.
-          The <summary> doubles as a question heading with its answer directly
-          beneath, which is the pattern answer engines extract from. */}
-      <details className="group mx-auto mb-10 max-w-2xl px-5">
+      <details className="marketing-definition group">
         <summary className="mx-auto flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-semibold text-slate-400 transition-colors hover:text-[#026cd4] [&::-webkit-details-marker]:hidden">
           What is Talko AI?
-          <svg className="h-3 w-3 transition-transform group-open:rotate-180" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-            <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <svg
+            className="h-3 w-3 transition-transform group-open:rotate-180"
+            viewBox="0 0 12 12"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M3 4.5 6 7.5 9 4.5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </summary>
-        <p id="site-tldr" className="mt-3 text-center text-sm leading-relaxed text-slate-500">
-          <strong className="font-semibold text-slate-700">Talko AI is an AI-powered customer conversation platform</strong>{" "}
-          for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.
-          It&apos;s built for small businesses, D2C brands and agencies that want one inbox to auto-reply, qualify leads and
-          sell across every channel — on their own AI key.
+        <p
+          id="site-tldr"
+          className="mt-3 text-center text-sm leading-relaxed text-slate-500"
+        >
+          <strong className="font-semibold text-slate-700">
+            Talko AI is an AI-powered customer conversation platform
+          </strong>{" "}
+          for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google
+          Business Profile reviews and website chat. It&apos;s built for small
+          businesses, D2C brands and agencies that want one inbox to auto-reply,
+          qualify leads and sell across every channel — on their own AI key.
         </p>
       </details>
 
-      {/* Platform glimpse — leads the page with a look inside the product */}
-      <PlatformGlimpse />
+      <PlatformCapabilities />
+      <GrowthSpotlight />
+      <CreatorStory />
+      <div className="marketing-overview">
+        <PlatformGlimpse />
+      </div>
 
-      {/* Signature n8n-style automation canvas */}
-      <div id="how-it-works" className="scroll-mt-20"><AgentCanvas /></div>
-
-      {/* Interactive: pick a business problem → see its flow */}
-      <FlowShowcase />
-
-      {/* Business problem → one-platform solution */}
-      <ProblemSolution />
-
-      {/* Industry playbooks teaser → /industries */}
-      <IndustryStrip />
-
-      <ThreeSteps />
-
-      {/* Features */}
-      <Container className="py-8">
-        <SectionTitle id="features" eyebrow="Everything you need" title="One platform for every conversation" subtitle="One AI-native inbox for WhatsApp, Instagram, Messenger, YouTube and your website — plus AI replies for your Google reviews." />
-        <FeatureGrid />
-      </Container>
-
-      <WhyChoose />
-
-      {/* Talko AI vs the alternatives */}
-      <ComparisonTable />
-
-      {/* Core concepts, defined plainly — extractable as direct answers */}
-      <Glossary />
-
-      <IntegrationsStrip />
-      <StatsBand />
-
-      {/* Pricing teaser */}
-      <Container className="py-12">
-        <SectionTitle id="pricing" eyebrow="Pricing" title="Simple, transparent pricing" subtitle="Free for 14 days. Cancel anytime." />
-        <PricingTiers />
-        <RenewalNote className="mt-8" />
-        <div className="mt-6 flex flex-col items-center gap-2 text-center">
-          <Link href="/pricing" className="text-sm font-bold text-[#026cd4] hover:underline">Compare all plans →</Link>
-          <Link href="/pricing" className="text-xs font-semibold text-slate-500 hover:text-[#026cd4]">Creating on Instagram? See Creator plans from ₹999/mo →</Link>
+      <section
+        className="marketing-container marketing-library"
+        id="features"
+        aria-labelledby="library-heading"
+      >
+        <div className="marketing-library-intro">
+          <div>
+            <p className="marketing-eyebrow mb-3">GO DEEPER WHEN YOU NEED TO</p>
+            <h2 id="library-heading">One platform for every conversation</h2>
+          </div>
+          <Link href="/features">Explore all features ↗</Link>
         </div>
-      </Container>
+        <details className="marketing-details">
+          <summary>Explore the tools behind the conversation</summary>
+          <div>
+            <p className="mb-8 text-sm text-slate-600">
+              One AI-native inbox for WhatsApp, Instagram, Messenger, YouTube
+              and your website — plus AI replies for your Google reviews.
+            </p>
+            <FeatureGrid />
+          </div>
+        </details>
+        <details className="marketing-details">
+          <summary>See how your automations connect</summary>
+          <div>
+            <AgentCanvas />
+            <FlowShowcase />
+          </div>
+        </details>
+        <details className="marketing-details">
+          <summary>Find the right playbook for your business</summary>
+          <div>
+            <IndustryStrip />
+            <ThreeSteps />
+          </div>
+        </details>
+        <details className="marketing-details">
+          <summary>Compare Talko AI and explore the details</summary>
+          <div>
+            <ProblemSolution />
+            <WhyChoose />
+            <ComparisonTable />
+            <Glossary />
+            <IntegrationsStrip />
+            <StatsBand />
+          </div>
+        </details>
+      </section>
 
-      <Container className="py-12">
-        <SectionTitle id="faq" eyebrow="FAQ" title="Frequently asked questions" />
+      <section
+        className="marketing-container marketing-plan-intro"
+        id="pricing"
+        aria-labelledby="plans-heading"
+      >
+        <div className="marketing-plan-heading">
+          <div>
+            <p className="marketing-eyebrow">SIMPLE, TRANSPARENT PRICING</p>
+            <h2 id="plans-heading">Your ambition. Your plan.</h2>
+            <p>
+              Free for 14 days. Cancel anytime.
+              <br />
+              Creator plans from ₹999/mo.
+            </p>
+          </div>
+          <div className="marketing-plan-actions">
+            <Button href="/pricing">Compare all plans →</Button>
+            <Link href="/pricing" className="text-xs">
+              Creating on Instagram? See Creator plans →
+            </Link>
+          </div>
+        </div>
+        <details className="marketing-details">
+          <summary>View plans and everything that’s included</summary>
+          <div>
+            <PricingTiers />
+            <RenewalNote className="mt-8" />
+          </div>
+        </details>
+      </section>
+
+      <Container className="marketing-faq">
+        <SectionTitle
+          id="faq"
+          eyebrow="FAQ"
+          title="Frequently asked questions"
+        />
         <Faq />
       </Container>
-
-      <CtaBand />
-    </>
+      <NextStepBand />
+    </div>
   );
 }

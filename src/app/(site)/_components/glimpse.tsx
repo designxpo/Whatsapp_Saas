@@ -6,10 +6,17 @@ import { ProductTour } from "./product-tour";
 
 export function PlatformGlimpse() {
   return (
-    <Container className="py-16">
-      <SectionTitle eyebrow="A peek inside" title="See the whole platform"
-        subtitle="Real screens from Talko AI — one workspace for every conversation, campaign and channel." />
-      <Reveal className="mt-10"><ProductTour /></Reveal>
-    </Container>
+    <section id="platform-explorer" aria-label="Explore the Talko AI platform">
+      <Container className="py-16">
+        <SectionTitle
+          eyebrow="A peek inside"
+          title="Every part of your customer journey"
+          subtitle="Explore the inbox, review replies, follow-ups, campaigns and commerce that work together in Talko AI."
+        />
+        <Reveal className="mt-10">
+          <ProductTour />
+        </Reveal>
+      </Container>
+    </section>
   );
 }

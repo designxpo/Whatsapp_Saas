@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteNav, SiteFooter } from "./_components/chrome";
 import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { ConsentBanner } from "@/components/ConsentBanner";
-import { SiteBackground } from "./_components/site-background";
+import "./marketing.css";
 import { JsonLd } from "./_components/json-ld";
 import { orgSchema, websiteSchema, softwareSchema } from "./_content/schema";
 
@@ -26,9 +26,14 @@ export const metadata: Metadata = {
 // "Talko AI" webchat channel below; an env var can override the site key
 // without a code change (e.g. to point staging at a different channel).
 const MARKETING_WEBCHAT_SITE_KEY =
-  process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SITE_KEY ?? "wc_2a942b232e74027a2e65f351116f6c8d";
+  process.env.NEXT_PUBLIC_MARKETING_WEBCHAT_SITE_KEY ??
+  "wc_2a942b232e74027a2e65f351116f6c8d";
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+export default function SiteLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <>
       {/* One shared entity graph on every page — Organization, WebSite and the
@@ -37,10 +42,11 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <JsonLd data={orgSchema} />
       <JsonLd data={websiteSchema} />
       <JsonLd data={softwareSchema} />
-      {/* Living gradient backdrop behind the whole site (drifts on scroll). */}
-      <SiteBackground />
-      <div className="relative min-h-screen overflow-x-hidden text-slate-600 antialiased">
-        <a href="#main-content" className="sr-only rounded-xl border border-slate-200 text-sm font-bold text-[#0783fd] focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:bg-white focus:px-4 focus:py-2.5 focus:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0783fd] focus:ring-offset-2">
+      <div className="marketing-site relative min-h-screen antialiased">
+        <a
+          href="#main-content"
+          className="sr-only rounded-xl border border-slate-200 text-sm font-bold text-[#0783fd] focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:bg-white focus:px-4 focus:py-2.5 focus:shadow-md focus:outline-none focus:ring-2 focus:ring-[#0783fd] focus:ring-offset-2"
+        >
           Skip to main content
         </a>
         <SiteNav />
@@ -54,7 +60,10 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <GoogleAnalytics />
       {MARKETING_WEBCHAT_SITE_KEY && (
         // eslint-disable-next-line @next/next/no-sync-scripts
-        <script src={`/api/widget/${MARKETING_WEBCHAT_SITE_KEY}/loader.js`} async />
+        <script
+          src={`/api/widget/${MARKETING_WEBCHAT_SITE_KEY}/loader.js`}
+          async
+        />
       )}
     </>
   );

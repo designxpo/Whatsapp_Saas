@@ -1,149 +1,81 @@
-// Home hero — a full-bleed white "orbit" hero: concentric rings, floating
-// channel/integration chips, dual CTAs and a live-activity card adapted to
-// Talko's inbox. Server-safe (no client hooks).
-import { ArrowRight, Check } from "lucide-react";
-import { Button, GradientText } from "./ui";
-import { Parallax } from "./motion";
-import { HERO, WORKS_WITH } from "../_content/site";
-
-// Chips that float around the orbit. Every logo is served from our own
-// /public/brand/logos — never an icon CDN, so a visitor's IP isn't sent to a
-// third party just for loading the homepage. Positions are percentages within
-// the centred stage; some hide on smaller screens. Every chip gently floats
-// (staggered).
-type Chip = { name: string; src: string; pos: string; size?: string; hide?: boolean };
-// The five CHANNEL chips stay visible from sm up (they are the product story);
-// AI + integration chips are lg-only so small screens don't get crowded.
-const CHIPS: Chip[] = [
-  { name: "WhatsApp", src: "/brand/logos/whatsapp.svg", pos: "left-[2%] top-[30%]", size: "h-14 w-14" },
-  { name: "Instagram", src: "/brand/logos/instagram.svg", pos: "left-[11%] top-[58%]" },
-  { name: "Google Reviews", src: "/brand/logos/google.svg", pos: "left-[5%] top-[76%]" },
-  { name: "Gemini", src: "/brand/logos/googlegemini.svg", pos: "left-[22%] top-[16%]", hide: true },
-  { name: "ChatGPT", src: "/brand/logos/openai.svg", pos: "left-[46%] top-[3%]", hide: true },
-  { name: "Shopify", src: "/brand/logos/shopify.svg", pos: "left-[26%] top-[84%]", size: "h-11 w-11", hide: true },
-  { name: "Messenger", src: "/brand/logos/messenger.svg", pos: "right-[2%] top-[28%]", size: "h-14 w-14" },
-  { name: "YouTube", src: "/brand/logos/youtube.svg", pos: "right-[11%] top-[56%]", size: "h-14 w-14" },
-  { name: "Claude", src: "/brand/logos/anthropic.svg", pos: "right-[22%] top-[15%]", hide: true },
-  { name: "Stripe", src: "/brand/logos/stripe.svg", pos: "right-[5%] top-[74%]", hide: true },
-  { name: "HubSpot", src: "/brand/logos/hubspot.svg", pos: "right-[26%] top-[84%]", size: "h-11 w-11", hide: true },
-];
-
-// Grayscale logo wall under the hero. Local files, except Meta (no local copy).
-const WORKS_WITH_LOGOS = [
-  { name: "Shopify", src: "/brand/logos/shopify.svg" }, { name: "Stripe", src: "/brand/logos/stripe.svg" },
-  { name: "Razorpay", src: "/brand/logos/razorpay.svg" }, { name: "HubSpot", src: "/brand/logos/hubspot.svg" },
-  { name: "Zapier", src: "/brand/logos/zapier.svg" }, { name: "Meta", src: "https://cdn.simpleicons.org/meta/94a3b8" },
-  { name: "WooCommerce", src: "/brand/logos/woocommerce.svg" },
-];
-
-// Staggered float classes so the chips don't bob in unison.
-const FLOATS = ["animate-floaty", "animate-floaty-slow", "animate-floaty-delay"];
-
-// Concentric ring diameters (px) — drawn as centred circles behind the headline.
-const RINGS = [280, 460, 660, 880];
-
-// The little "live in your inbox" activity feed that floats over the hero.
-const ACTIVITY = [
-  { initials: "PS", tone: "from-[#25D366] to-[#128C7E]", img: "https://randomuser.me/api/portraits/women/65.jpg", name: "Priya Sharma", action: "messaged on WhatsApp", meta: "AI replied in 2s · lead captured", dot: "#25D366" },
-  { initials: "RM", tone: "from-[#E1306C] to-[#C13584]", img: "https://randomuser.me/api/portraits/men/45.jpg", name: "Rahul Mehta", action: "DM'd on Instagram", meta: "Booked a demo for Fri 3pm", dot: "#E1306C" },
-  { initials: "AW", tone: "from-brand-500 to-brand-800", img: "https://randomuser.me/api/portraits/women/32.jpg", name: "Website visitor", action: "started a web chat", meta: "Answered from your knowledge base", dot: "#0783fd" },
-];
+// The H1 and channel definition remain server-rendered for search and answer engines.
+import { ArrowRight } from "lucide-react";
+import { Button } from "./ui";
+import { HERO } from "../_content/site";
+import { WorkflowDemo } from "./workflow-demo";
 
 export function Hero() {
   return (
-    <section className="relative overflow-hidden pb-4">
-      {/* Centred stage — rings, chips and content cluster here so they stay
-          balanced while the white background fills the full width (no side gap). */}
-      <div className="relative mx-auto max-w-6xl px-5">
-        {/* Concentric orbit rings, centred on the hero */}
-        <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 flex justify-center">
-          <div className="relative mt-[170px]">
-            {RINGS.map((d, i) => (
-              <span key={d} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: d, height: d }}>
-                {/* inner element rotates → carries a dot around the ring */}
-                <span className={`absolute inset-0 rounded-full border border-slate-200/70 ${i % 2 ? "animate-orbit-rev" : "animate-orbit"}`}>
-                  <span className={`absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full ${i % 2 ? "h-2 w-2 bg-[#7c5cff] opacity-50 shadow-[0_0_10px_rgba(124,92,255,0.6)]" : "h-2.5 w-2.5 bg-[#0783fd] opacity-70 shadow-[0_0_10px_rgba(7,131,253,0.6)]"}`} />
-                </span>
+    <section className="marketing-hero">
+      <div className="marketing-dot-grid" aria-hidden />
+      <div className="marketing-container marketing-hero-content">
+        <p className="marketing-eyebrow">
+          <span /> YOUR CUSTOMER ENGAGEMENT & GROWTH PLATFORM
+        </p>
+        <h1 id="hero-heading">
+          Turn every customer interaction into{" "}
+          <span className="marketing-hero-accent">growth.</span>
+        </h1>
+        <p className="marketing-hero-description">
+          Conversations, reviews, campaigns and follow-ups.
+          <br className="hidden sm:block" /> One AI workspace for the whole
+          customer journey.
+        </p>
+        <div className="marketing-hero-actions">
+          <Button href={HERO.primary.href}>
+            {HERO.primary.label}
+            <ArrowRight size={16} aria-hidden />
+          </Button>
+          <Button href="/contact" variant="ghost">
+            Talk to sales
+          </Button>
+        </div>
+        <p className="marketing-hero-note">{HERO.note}</p>
+        <WorkflowDemo />
+        <div
+          className="marketing-channel-strip"
+          aria-label="Supported channels"
+        >
+          <p>ONE WORKSPACE. WHEREVER THEY FIND YOU.</p>
+          <div>
+            {[
+              ["WhatsApp", "whatsapp"],
+              ["Instagram", "instagram"],
+              ["Messenger", "messenger"],
+              ["YouTube", "youtube"],
+              ["Google Reviews", "google"],
+            ].map(([label, icon]) => (
+              <span key={icon}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/brand/logos/${icon}.svg`}
+                  alt=""
+                  width={22}
+                  height={22}
+                />
+                {label}
               </span>
             ))}
+            <span>
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="9"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+                <path
+                  d="M3 12h18M12 3c5 5 5 13 0 18-5-5-5-13 0-18Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                />
+              </svg>
+              Website chat
+            </span>
           </div>
-        </div>
-        {/* Soft multi-colour ambient glow behind the headline — brand blue with
-            violet and mint accents so the hero light isn't mono-blue. The two
-            accent glows drift on scroll (opposite directions) for depth. */}
-        <div aria-hidden className="pointer-events-none absolute left-1/2 top-28 h-72 w-72 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(7,131,253,0.14),transparent_70%)] blur-2xl" />
-        <Parallax speed={80} className="pointer-events-none absolute inset-0">
-          <div className="absolute left-[34%] top-20 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(124,92,255,0.13),transparent_70%)] blur-2xl" />
-        </Parallax>
-        <Parallax speed={-64} className="pointer-events-none absolute inset-0">
-          <div className="absolute left-[66%] top-40 h-56 w-56 -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(52,211,153,0.12),transparent_70%)] blur-2xl" />
-        </Parallax>
-
-        {/* Floating brand chips */}
-        {CHIPS.map((c, i) => (
-          <div key={c.name}
-            className={`absolute z-10 ${c.pos} ${FLOATS[i % FLOATS.length]} ${c.hide ? "hidden lg:flex" : "hidden sm:flex"} items-center justify-center rounded-full bg-white shadow-[0_10px_30px_-10px_rgba(0,0,0,0.22)] ring-1 ring-slate-100 ${c.size ?? "h-12 w-12"}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={c.src} alt={c.name} title={c.name} width={28} height={28} className="h-1/2 w-1/2 object-contain" loading="lazy" />
-          </div>
-        ))}
-
-        {/* Centred hero content */}
-        <div className="relative z-20 pt-14 pb-12 text-center sm:pt-20">
-          <h1 id="hero-heading" className="mx-auto mt-6 max-w-3xl text-balance text-[2.5rem] font-extrabold leading-[1.05] tracking-tight text-slate-900 sm:text-6xl">
-            {HERO.titleAccent && HERO.title.endsWith(HERO.titleAccent)
-              ? <>{HERO.title.slice(0, -HERO.titleAccent.length)}<GradientText>{HERO.titleAccent}</GradientText></>
-              : HERO.title}
-          </h1>
-          <p className="mx-auto mt-5 max-w-xl text-balance text-base text-slate-500 sm:text-lg">{HERO.subtitle}</p>
-
-          <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button href={HERO.primary.href}>{HERO.primary.label} <ArrowRight className="h-4 w-4" /></Button>
-            <Button href="/contact" variant="ghost">Talk to sales team</Button>
-          </div>
-          <p className="mt-4 text-xs font-medium text-slate-500">{HERO.note}</p>
-
-          {/* Live-activity card — what the inbox does, in motion (drifts on scroll) */}
-          <Parallax speed={-34} className="relative mx-auto mt-12 max-w-md">
-            <div className="animate-floaty rounded-2xl border border-slate-200/80 bg-white/95 p-2.5 shadow-[0_24px_60px_-24px_rgba(7,131,253,0.45)] backdrop-blur">
-              <div className="flex items-center justify-between px-2 pb-2 pt-1">
-                <span className="text-xs font-semibold text-slate-500">Live in your inbox</span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#047857]">
-                  <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#2f9e6e] opacity-60" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#2f9e6e]" /></span>
-                  Auto-replied by AI
-                </span>
-              </div>
-              <div className="space-y-1.5">
-                {ACTIVITY.map(a => (
-                  <div key={a.name} className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2 text-left">
-                    <span className="relative h-9 w-9 shrink-0">
-                      <span className={`relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br ${a.tone} text-[11px] font-bold text-white`}>
-                        {a.initials}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={a.img} alt={a.name} width={36} height={36} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-                      </span>
-                      <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white" style={{ background: a.dot }} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] text-slate-900"><span className="font-bold">{a.name}</span> <span className="text-slate-500">{a.action}</span></p>
-                      <p className="flex items-center gap-1 truncate text-xs text-slate-500"><Check className="h-3 w-3 text-[#026cd4]" /> {a.meta}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Parallax>
-        </div>
-      </div>
-
-      {/* Line + grayscale logo wall — full width */}
-      <div className="mx-auto max-w-5xl px-5 pt-6">
-        <p className="text-center text-xs font-semibold text-slate-500">{WORKS_WITH}</p>
-        <div className="mt-5 flex flex-wrap items-center justify-center gap-x-9 gap-y-5 opacity-70 grayscale">
-          {WORKS_WITH_LOGOS.map(l => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={l.name} src={l.src} alt={l.name} title={l.name} width={28} height={28} className="h-6 w-auto object-contain sm:h-7" loading="lazy" />
-          ))}
         </div>
       </div>
     </section>
