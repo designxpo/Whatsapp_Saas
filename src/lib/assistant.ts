@@ -187,7 +187,10 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     } catch (e) { console.error("[assistant] auto-route:", e); }
 
     // ── Knowledge Router: memory → FAQ → semantic cache. RAG only on miss. ──
-    if (lastUserMsg && !lastHasMedia && !(iso.active && !kbTag)) {
+    // Campaign answers depend on the particular offer and prior channel context;
+    // bypass the generic FAQ/semantic cache for those conversations.
+    const socialCampaign = await import("./social-growth").then(m => m.campaignForConversation(conv.tenantId, conv.id)).catch(() => null);
+    if (!socialCampaign && lastUserMsg && !lastHasMedia && !(iso.active && !kbTag)) {
       const routed = await routeMessage({ conversationId, phone: conv.phone, message: lastUserMsg, lookup: question, agentId, queryEmbedding, tenantId: conv.tenantId, contactName: conv.name, primaryKbTag: kbTag, platform: conv.platform });
       queryEmbedding = routed.queryEmbedding ?? queryEmbedding;
       if (routed.answer) {
@@ -202,7 +205,7 @@ export async function respondToConversation(conversationId: string, opts: { inbo
 
     // ── RAG + agent persona + function-calling pipeline ──
     // Resolution: auto-routed/pinned agent → globally active agent.
-    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbScope, false, undefined, conv.platform, lastHasMedia ? undefined : question, { canAct: true });
+    const result = await generateReply(history, conv.phone, agentId, conv.tenantId, kbScope, false, undefined, conv.platform, lastHasMedia ? undefined : question, { canAct: true, conversationId: conv.id });
 
     if (result.escalate || !result.reply) {
       await setConversationStatus(conversationId, "escalated");

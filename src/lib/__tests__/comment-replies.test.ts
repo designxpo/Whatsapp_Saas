@@ -134,9 +134,9 @@ describe("every public reply path records itself", () => {
     for (const source of ["rule", "ai", "ai_followup"]) expect(s).toMatch(new RegExp(`platform: "youtube"[^}]*source: "${source}"`));
   });
   for (const [file, platform] of [["src/app/api/webhooks/instagram/route.ts", "instagram"], ["src/app/api/webhooks/messenger/route.ts", "facebook"]]) {
-    it(`${platform}: AI, both rule paths and thread follow-ups`, () => {
+    it(`${platform}: AI, public rule paths and thread follow-ups`, () => {
       const s = src(file);
-      expect((s.match(new RegExp(`recordCommentReply\\(\\{[^}]*platform: "${platform}"`, "g")) ?? []).length).toBe(4);
+      expect((s.match(new RegExp(`recordCommentReply\\(\\{[^}]*platform: "${platform}"`, "g")) ?? []).length).toBe(platform === "instagram" ? 5 : 4);
       for (const source of ["ai", "rule", "ai_followup"]) expect(s).toMatch(new RegExp(`platform: "${platform}"[^}]*source: "${source}"`));
     });
   }

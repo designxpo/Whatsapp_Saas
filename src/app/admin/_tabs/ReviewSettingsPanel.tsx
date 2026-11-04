@@ -4,8 +4,10 @@
 // wait for a person (with a preview on sample reviews — nothing is posted),
 // and who hears about new reviews, complaints and problems.
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Sparkles } from "lucide-react";
+import { useVocab } from "@/lib/vocab-client";
+import { reviewSamples } from "@/lib/industry-samples";
 import { inp } from "../_shared";
 
 type HoldCategory = "billing" | "safety" | "legal" | "personal_info" | "strong_complaint";
@@ -18,7 +20,7 @@ export interface ReviewSettingsValue {
 
 const TOPICS: { key: HoldCategory; label: string; hint: string }[] = [
   { key: "billing", label: "Refunds, billing disputes or overcharging", hint: "“charged twice”, “want my money back”" },
-  { key: "safety", label: "Injury, safety or a serious service failure", hint: "“got sick”, “allergic reaction”, “cockroach”" },
+  { key: "safety", label: "Injury, safety or a serious service failure", hint: "“unsafe”, “injured”, “serious service failure”" },
   { key: "legal", label: "Legal threats or allegations", hint: "“consumer court”, “fraud”, “police”" },
   { key: "personal_info", label: "Personal or sensitive information", hint: "a phone number, email or medical details" },
   { key: "strong_complaint", label: "Strong complaints, even with 4–5 stars", hint: "“rude staff”, “never again”" },
@@ -32,23 +34,22 @@ const ALERTS: { key: AlertKind; label: string }[] = [
   { key: "sync_failing", label: "Reviews keep failing to sync" },
   { key: "overdue", label: "A review stays unanswered" },
 ];
-const SAMPLES = [
-  { rating: 5, text: "Loved the biryani and the staff were so warm. Will come again!" },
-  { rating: 5, text: "Great food but I was charged twice on my card, please refund." },
-  { rating: 4, text: "Nice place, though the receptionist was rude to my mother." },
-  { rating: 2, text: "Waited 40 minutes for a table that was booked." },
-];
+
 
 export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailable, saving, onSave, onCancel, showActions = true }: {
   value: ReviewSettingsValue; signaturePlaceholder: string; emailAvailable: boolean; saving: boolean;
   onSave: (v: ReviewSettingsValue) => void; onCancel: () => void; showActions?: boolean;
 }) {
+  const { industry } = useVocab();
+  const samples = useMemo(() => reviewSamples(industry), [industry]);
   const [section, setSection] = useState<"replies" | "approval" | "alerts">("replies");
   const [f, setF] = useState<ReviewSettingsValue>(value);
   const [recipients, setRecipients] = useState(value.alerts.recipients.join(", "));
-  const [sample, setSample] = useState(SAMPLES[1]);
+  const [sample, setSample] = useState(samples[1]);
   const [preview, setPreview] = useState<null | { autoPost: boolean; reasons: string[]; reply: string | null; aiNote: string | null; note: string | null }>(null);
   const [previewing, setPreviewing] = useState<"rules" | "ai" | null>(null);
+
+  useEffect(() => { setSample(samples[1]); setPreview(null); }, [samples]);
 
   async function runPreview(withAi: boolean) {
     setPreviewing(withAi ? "ai" : "rules"); setPreview(null);
@@ -109,7 +110,7 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
           <div className="space-y-3 px-4 pb-4">
             <p className="text-xs text-ink-500">Use a sample review. Nothing is posted.</p>
             <div className="flex flex-wrap gap-1.5">
-              {SAMPLES.map((s, i) => (
+              {samples.map((s, i) => (
                 <button key={i} type="button" onClick={() => { setSample(s); setPreview(null); }} className={`rounded-full border px-2.5 py-1.5 text-[11px] font-semibold ${sample === s ? "bg-ink-900 text-white border-ink-900" : "bg-white border-line text-ink-600"}`}>{s.rating}★ sample {i + 1}</button>
               ))}
             </div>

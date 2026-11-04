@@ -1,6 +1,7 @@
 "use client";
 
 // Growth tools tab — extracted from admin/page.tsx, lazy-loaded.
+import dynamic from "next/dynamic";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { useVocab } from "@/lib/vocab-client";
@@ -14,7 +15,7 @@ type GrowthRow = { id: string; name: string; kind: string; slug: string; prefill
 const GROWTH_KINDS: [string, string][] = [["ref_link", "Referral link"], ["qr", "QR code"], ["widget_popup", "Website popup"], ["widget_bar", "Website bar"], ["landing", "Landing page"]];
 const EMPTY_GROWTH = { id: undefined as string | undefined, name: "", kind: "ref_link", slug: "", prefill: "", number: "", igUsername: "", url: "", tag: "", sequenceId: "", active: true };
 
-function GrowthTab() {
+function GrowthLinks() {
   const { vocab } = useVocab();
   const ask = useConfirm();
   const [tools, setTools] = useState<GrowthRow[]>([]);
@@ -129,4 +130,12 @@ function GrowthTab() {
   );
 }
 
+const SocialGrowthTab = dynamic(() => import("./SocialGrowthTab"), { ssr: false });
+function GrowthTab() {
+  const [section, setSection] = useState<"social" | "links">("social");
+  return <div className="space-y-5"><nav aria-label="Growth tools" className="flex gap-2">
+    <button onClick={() => setSection("social")} className={`rounded-control px-4 py-2 text-sm font-semibold ${section === "social" ? "bg-ink-900 text-white" : "border border-line"}`}>Social Growth & Creators</button>
+    <button onClick={() => setSection("links")} className={`rounded-control px-4 py-2 text-sm font-semibold ${section === "links" ? "bg-ink-900 text-white" : "border border-line"}`}>Links, QR & opt-in tools</button>
+  </nav>{section === "social" ? <SocialGrowthTab /> : <GrowthLinks />}</div>;
+}
 export default GrowthTab;

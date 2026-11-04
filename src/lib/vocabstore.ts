@@ -1,7 +1,5 @@
-// Server-side vocabulary lookup for a workspace. Only an explicit choice
-// (made at signup or in Settings) changes wording: a workspace with no
-// "vocab_industry" setting keeps the neutral pack, whatever its signup
-// metadata says, so existing tenants never see their labels shift unasked.
+// Workspace terminology follows an explicit Settings choice, then signup industry.
+import { getTenant } from "./tenants";
 import { getTenantSetting, setTenantSetting } from "./store";
 import { GENERIC_VOCAB, industryPack, resolveVocab, sanitizeOverrides, vocabPromptNote, type Vocab, type VocabOverrides } from "./vocab";
 
@@ -9,10 +7,11 @@ export interface VocabState { industry: string; overrides: VocabOverrides; vocab
 
 export async function getVocabState(tenantId: string): Promise<VocabState> {
   const [industry, rawOverrides] = await Promise.all([
-    getTenantSetting<string>(tenantId, "vocab_industry", "generic"),
+    getTenantSetting<string | null>(tenantId, "vocab_industry", null),
     getTenantSetting<unknown>(tenantId, "vocab_overrides", {}),
   ]);
-  const id = industryPack(industry).id;
+  const selected = industry ?? (await getTenant(tenantId))?.industry;
+  const id = industryPack(selected).id;
   const overrides = sanitizeOverrides(rawOverrides);
   return { industry: id, overrides, vocab: resolveVocab(id, overrides) };
 }
@@ -34,7 +33,7 @@ export const resetVocabNoteCache = () => noteCache.clear();
 
 /** Pipeline columns for a workspace's industry; null → use the neutral default. */
 export async function getIndustryStages(tenantId: string): Promise<string[] | null> {
-  const industry = await getTenantSetting<string>(tenantId, "vocab_industry", "generic");
+  const { industry } = await getVocabState(tenantId);
   return industryPack(industry).stages ?? null;
 }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { followCheckMode, followDmPrompt, followPublicPrompt, type FollowCheckMode } from "@/lib/ig-follow-policy";
+
 // Instagram (dedicated section) — extracted from admin/page.tsx, lazy-loaded. Logic unchanged.
 import { useBrand } from "@/components/BrandContext";
 import { HandoffOption } from "./HandoffOption";
@@ -53,7 +55,7 @@ type CommentRule = {
   id?: string; channelId: string | null; name: string; enabled: boolean;
   postId: string | null; postCaption: string | null; postPermalink: string | null; postThumbnail: string | null;
   keyword: string; dmMessage: string; buttons: RuleButton[]; publicReplies: string[];
-  replyOnly: boolean; requireFollow: boolean; followPrompt: string; matchCount?: number;
+  replyOnly: boolean; requireFollow: boolean; followCheckMode: FollowCheckMode; followPrompt: string; matchCount?: number;
   waHandoff?: boolean; waHandoffMessage?: string | null;
 };
 type IgPost = { id: string; caption: string; permalink: string; thumbnail: string; mediaType: string; timestamp: string };
@@ -65,7 +67,7 @@ type IgHealth = {
   messages: boolean; comments: boolean; fields: string[]; idMatches: boolean; liveId?: string;
   status: "ok" | "unverified" | "dms-only" | "wrong-id" | "error"; detail: string;
 };
-const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, requireFollow: false, followPrompt: "" };
+const BLANK_RULE: CommentRule = { channelId: null, name: "", enabled: true, postId: null, postCaption: null, postPermalink: null, postThumbnail: null, keyword: "", dmMessage: "", buttons: [], publicReplies: [], replyOnly: false, requireFollow: false, followCheckMode: "dm", followPrompt: "" };
 
 // One glance at whether Meta is actually delivering. "Connected" was doing this
 // job before and couldn't: it stayed green whether comments were flowing or not.
@@ -431,10 +433,10 @@ function InstagramManager() {
                 : <div className="w-10 h-10 rounded-lg bg-pink-50 text-pink-600 flex items-center justify-center shrink-0"><MessageCircle className="w-4 h-4" /></div>}
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold text-ink-900 truncate">{r.name || (r.keyword ? `“${r.keyword}”` : "Any comment")}{channels.length > 1 && r.channelId && <span className="text-[10px] font-bold text-pink-600"> · {channels.find(c => c.id === r.channelId)?.name ?? "IG"}</span>}{!r.enabled && <span className="text-[10px] font-bold text-red-700"> · OFF</span>}</p>
-                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? " · follow-gated" : ""} · {r.matchCount ?? 0} sent</p>
+                <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"}{ruleButtonsOf(r).length ? ` · ${ruleButtonsOf(r).length} button${ruleButtonsOf(r).length > 1 ? "s" : ""}` : ""}{r.requireFollow ? (r.followCheckMode === "comment" ? " · verify on comment" : " · verify in DM") : ""} · {r.matchCount ?? 0} sent</p>
               </div>
               <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+              <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followCheckMode: followCheckMode(r.followCheckMode), followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
               <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           );
@@ -463,7 +465,7 @@ function InstagramManager() {
                   <p className="text-[11px] text-ink-400 truncate">{r.postId ? `Post: ${(r.postCaption || post?.caption || r.postId).slice(0, 38) || r.postId}` : "All posts"} · {r.keyword ? `keyword “${r.keyword}”` : "any comment"} · {nReplies} repl{nReplies === 1 ? "y" : "ies"} · {r.matchCount ?? 0} sent</p>
                 </div>
                 <label className="flex items-center gap-1 text-[11px] text-ink-500 cursor-pointer shrink-0"><input type="checkbox" className="accent-brand-700" checked={r.enabled} onChange={() => toggleRule(r)} /> on</label>
-                <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+                <button onClick={() => { setRuleForm({ ...r, name: r.name ?? "", keyword: r.keyword ?? "", buttons: ruleButtonsOf(r), publicReplies: rulePublicRepliesOf(r), requireFollow: r.requireFollow ?? false, followCheckMode: followCheckMode(r.followCheckMode), followPrompt: r.followPrompt ?? "" }); setMsg(null); }} className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
                 <button onClick={() => delRule(r.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
               </div>
             );
@@ -553,6 +555,7 @@ function InstagramManager() {
               )}
             </div>
             )}
+            {(!ruleForm.requireFollow || ruleForm.followCheckMode === "dm" || ruleForm.replyOnly) && <>
             {/* Rotating public replies — the system picks one at random per comment
                 so replies never look identical (an IG spam/ban signal). */}
             <div className="space-y-2">
@@ -574,6 +577,8 @@ function InstagramManager() {
               )}
             </div>
 
+            </>}
+
             {/* Continue on WhatsApp (DM rules only — the button rides the DM) */}
             {!ruleForm.replyOnly && (
               <HandoffOption platform="instagram" on={!!ruleForm.waHandoff} message={ruleForm.waHandoffMessage ?? ""}
@@ -583,13 +588,25 @@ function InstagramManager() {
             {/* Follow-to-unlock gate (DM rules only — a reply-only rule sends no link) */}
             {!ruleForm.replyOnly && (
             <div className="rounded-control bg-canvas border border-line p-2.5 space-y-2">
-              <label className="flex items-center gap-2 text-xs font-semibold text-ink-700 cursor-pointer">
-                <input type="checkbox" className="accent-brand-700" checked={ruleForm.requireFollow} onChange={e => setRuleForm({ ...ruleForm, requireFollow: e.target.checked })} />
-                <Lock className="w-3.5 h-3.5" /> Require a follow before sending the link
+              <label className="block space-y-2 text-xs font-semibold text-ink-700">
+                <span className="flex items-center gap-2"><Lock className="w-3.5 h-3.5" /> Follow requirement</span>
+                <select aria-label="Follow requirement" className={`${inp} w-full`}
+                  value={ruleForm.requireFollow ? ruleForm.followCheckMode : "none"}
+                  onChange={e => setRuleForm({ ...ruleForm, requireFollow: e.target.value !== "none", followCheckMode: followCheckMode(e.target.value) })}>
+                  <option value="none">No follow requirement — send DM immediately</option>
+                  <option value="dm">Verify in DM — send the follow prompt in DM</option>
+                  <option value="comment">Verify on comment — check before sending DM</option>
+                </select>
               </label>
               {ruleForm.requireFollow && <>
-                <textarea className={`${inp} w-full`} rows={2} placeholder="Follow prompt, e.g. Almost there! Follow us, then tap “I've followed” to unlock your guide 🎁" value={ruleForm.followPrompt} onChange={e => setRuleForm({ ...ruleForm, followPrompt: e.target.value })} />
-                <p className="text-[11px] text-ink-400">We DM a “Visit profile” + “I’ve followed ✅” button. On tap we re-check the follow, then send the link. Verified follow-checking needs extra Meta approval; until then we trust the tap.</p>
+                <textarea className={`${inp} w-full`} rows={2}
+                  aria-label={ruleForm.followCheckMode === "dm" ? "DM follow prompt" : "Public reply introduction"}
+                  placeholder={ruleForm.followCheckMode === "dm" ? "DM follow prompt (optional)" : "Public reply introduction (optional), e.g. Your guide is ready!"}
+                  value={ruleForm.followPrompt} onChange={e => setRuleForm({ ...ruleForm, followPrompt: e.target.value })} />
+                <p className="rounded-control border border-line bg-white p-2 text-xs text-ink-700">{ruleForm.followCheckMode === "dm" ? followDmPrompt(ruleForm.followPrompt) : followPublicPrompt(ruleForm.keyword, ruleForm.followPrompt)}</p>
+                <p className="text-[11px] text-ink-400">{ruleForm.followCheckMode === "dm"
+                  ? "We send an opening DM with Visit profile and I've followed buttons. After they confirm, we check their follow and send the resource only when verified."
+                  : "We check follow status first. Verified followers receive the resource in DM. Otherwise, we reply publicly asking them to follow and DM a keyword. Meta may require that DM interaction before it allows verification."} If verification is unavailable, the resource stays pending.</p>
               </>}
             </div>
             )}

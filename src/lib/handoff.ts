@@ -25,7 +25,7 @@ export interface Handoff {
   id: string; tenantId: string; code: string; platform: HandoffPlatform; channelId: string | null;
   sourceKind: "comment" | "dm"; sourceRef: string | null; postId: string | null; sourceText: string | null; sourceAuthor: string | null;
   ruleId: string | null; message: string | null; createdAt: string; expiresAt: string;
-  claimedAt: string | null; claimedPhone: string | null; claimedConversationId: string | null;
+  sourceConversationId: string | null; claimedAt: string | null; claimedPhone: string | null; claimedConversationId: string | null;
 }
 
 const TABLE = "wa_handoffs";
@@ -36,6 +36,7 @@ export const SETUP_HINT = "WhatsApp handoff isn't set up in the database yet. Ap
 
 function map(r: Record<string, unknown>): Handoff {
   return {
+    sourceConversationId: (r.source_conversation_id as string | null) ?? null,
     id: r.id as string, tenantId: r.tenant_id as string, code: r.code as string, platform: r.platform as HandoffPlatform,
     channelId: (r.channel_id as string | null) ?? null, sourceKind: (r.source_kind as Handoff["sourceKind"]) ?? "comment",
     sourceRef: (r.source_ref as string | null) ?? null, postId: (r.post_id as string | null) ?? null,
@@ -65,16 +66,27 @@ export function handoffCodeIn(text: string, hiddenRef: string | null): string | 
 export async function createHandoff(h: {
   tenantId: string; platform: HandoffPlatform; channelId: string | null; sourceKind?: "comment" | "dm";
   sourceRef?: string | null; postId?: string | null; sourceText?: string | null; sourceAuthor?: string | null;
-  ruleId?: string | null; message?: string | null;
+  ruleId?: string | null; message?: string | null; sourceConversationId?: string | null;
 }): Promise<Handoff | null> {
+  if (h.sourceConversationId) {
+    const { data: source, error } = await tdb(h.tenantId).from("wa_conversations").select("id,channel_id,platform").eq("id", h.sourceConversationId).maybeSingle();
+    const sourceRow = source as unknown as { channel_id: string | null; platform: string } | null;
+    if (error || !sourceRow || sourceRow.channel_id !== h.channelId || sourceRow.platform !== (h.platform === "facebook" ? "messenger" : h.platform)) return null;
+  }
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = h.platform === "youtube" ? newTypedCode() : newLinkCode();
     try {
-      const { data, error } = await tdb(h.tenantId).from(TABLE).insert({
+      const row = {
+        ...(h.sourceConversationId ? { source_conversation_id: h.sourceConversationId } : {}),
         code, platform: h.platform, channel_id: h.channelId, source_kind: h.sourceKind ?? "comment",
         source_ref: h.sourceRef ?? null, post_id: h.postId ?? null, source_text: h.sourceText?.slice(0, 2000) ?? null,
         source_author: h.sourceAuthor?.slice(0, 200) || null, rule_id: h.ruleId ?? null, message: h.message?.trim().slice(0, 4000) || null,
-      }).select("*").maybeSingle();
+      };
+      let { data, error } = await tdb(h.tenantId).from(TABLE).insert(row).select("*").maybeSingle();
+      if (error && /source_conversation_id/.test(error.message)) {
+        const { source_conversation_id: _source, ...legacy } = row;
+        ({ data, error } = await tdb(h.tenantId).from(TABLE).insert(legacy).select("*").maybeSingle());
+      }
       if (!error && data) return map(data as unknown as Record<string, unknown>);
       if (error?.code !== "23505") { console.warn("[handoff] create failed:", error?.message); return null; }
       // 23505: that code is taken in this workspace — draw another.
@@ -119,7 +131,8 @@ export async function claimHandoff(tenantId: string, code: string, phone: string
 }
 
 export async function setHandoffConversation(tenantId: string, id: string, conversationId: string): Promise<void> {
-  await db().from(TABLE).update({ claimed_conversation_id: conversationId }).eq("tenant_id", tenantId).eq("id", id).then(() => {}, () => {});
+  const { error } = await db().from(TABLE).update({ claimed_conversation_id: conversationId }).eq("tenant_id", tenantId).eq("id", id);
+  if (!error) await import("./social-growth").then(m => m.continueSocialHandoff(tenantId, id, conversationId)).catch(() => {});
 }
 
 /** What the contact keeps about where it came from. */
@@ -199,7 +212,7 @@ export async function listHandoffs(tenantId: string, q: { platform: HandoffPlatf
 // ── Rules ───────────────────────────────────────────────────────────────────
 
 type InviteRule = { id: string; waHandoff: boolean; waHandoffMessage: string | null };
-type InviteCtx = { tenantId: string; channelId: string | null; commentId?: string | null; postId?: string | null; text?: string | null; author?: string | null };
+type InviteCtx = { conversationId?: string; tenantId: string; channelId: string | null; commentId?: string | null; postId?: string | null; text?: string | null; author?: string | null };
 
 /**
  * The "Continue on WhatsApp" link for an Instagram/Facebook rule's DM. Null when
@@ -211,7 +224,7 @@ export async function ruleInviteLink(rule: InviteRule, platform: "instagram" | "
   try {
     const num = await handoffNumber(ctx.tenantId);
     if (!num) return null;
-    const h = await createHandoff({ tenantId: ctx.tenantId, platform, channelId: ctx.channelId, sourceRef: ctx.commentId, postId: ctx.postId, sourceText: ctx.text, sourceAuthor: ctx.author, ruleId: rule.id, message: rule.waHandoffMessage });
+    const h = await createHandoff({ tenantId: ctx.tenantId, platform, channelId: ctx.channelId, sourceRef: ctx.commentId, postId: ctx.postId, sourceText: ctx.text, sourceAuthor: ctx.author, ruleId: rule.id, message: rule.waHandoffMessage, sourceConversationId: ctx.conversationId });
     return h ? handoffLink(num.number, h.code, num.greeting) : null;
   } catch { return null; }
 }
@@ -219,7 +232,7 @@ export async function ruleInviteLink(rule: InviteRule, platform: "instagram" | "
 /** A YouTube rule's reply with its WhatsApp code sentence, or unchanged when the option is off or the code can't be stored. */
 export async function withYoutubeInvite(rule: InviteRule, reply: string, ctx: InviteCtx): Promise<string> {
   if (!rule.waHandoff || !rule.waHandoffMessage?.trim()) return reply;
-  const h = await createHandoff({ tenantId: ctx.tenantId, platform: "youtube", channelId: ctx.channelId, sourceRef: ctx.commentId, postId: ctx.postId, sourceText: ctx.text, sourceAuthor: ctx.author, ruleId: rule.id, message: rule.waHandoffMessage }).catch(() => null);
+  const h = await createHandoff({ tenantId: ctx.tenantId, platform: "youtube", channelId: ctx.channelId, sourceRef: ctx.commentId, postId: ctx.postId, sourceText: ctx.text, sourceAuthor: ctx.author, ruleId: rule.id, message: rule.waHandoffMessage, sourceConversationId: ctx.conversationId }).catch(() => null);
   return h ? `${reply}\n\n${youtubeInvite(h.code)}` : reply;
 }
 

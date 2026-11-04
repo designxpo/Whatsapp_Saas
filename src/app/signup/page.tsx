@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { Loader2, MessageSquare } from "lucide-react";
 import { BrandLogo } from "@/components/BrandLogo";
 import { planFromHref, track } from "@/lib/analytics";
+import { INDUSTRY_PACKS } from "@/lib/vocab";
 import { cleanRef } from "@/lib/consent";
 
 const inp = "w-full border border-line rounded-control px-3 py-2.5 text-sm bg-white text-ink-900 placeholder:text-ink-400";
-const INDUSTRIES = ["E-commerce / D2C", "Education / EdTech", "Real estate", "Healthcare", "Travel & hospitality", "Financial services", "Agency / Marketing", "SaaS / Tech", "Other"];
+const INDUSTRIES = INDUSTRY_PACKS.map(p => p.label);
 const TEAM_SIZES = ["Just me", "2–10", "11–50", "51–200", "200+"];
 const GOALS = ["Lead generation & sales", "Customer support", "Marketing & broadcasts", "Instagram automation", "E-commerce / catalog", "Appointment booking", "Other"];
 const VOLUMES = ["< 1,000 / mo", "1,000–10,000 / mo", "10,000–100,000 / mo", "100,000+ / mo"];
@@ -25,9 +26,7 @@ export default function SignupPage() {
   // The plan is never rendered, only reported, so there is nothing to read it
   // for until an event actually fires.
   const plan = () => planFromHref(typeof window === "undefined" ? null : window.location.href) ?? undefined;
-  // The four "about you" questions are optional and start blank: nothing is
-  // assumed on the visitor's behalf, and leaving them empty changes nothing
-  // except that the workspace starts on neutral wording (industry picks it).
+  // Industry selects the workspace terminology and sample content.
   const [f, setF] = useState({ company: "", ownerName: "", ownerEmail: "", ownerPhone: "", password: "", industry: "", teamSize: "", useCase: "", expectedVolume: "" });
   const [accept, setAccept] = useState(false);
   // Product news is a separate, optional yes — never bundled into the terms
@@ -45,6 +44,7 @@ export default function SignupPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!f.industry) { setError("Select your business domain to personalise your workspace."); return; }
     if (!accept) { setError("Please accept the Terms of Service and Privacy Policy to continue."); return; }
     setLoading(true); setError(null);
     try {
@@ -145,8 +145,8 @@ export default function SignupPage() {
           <input className={inp} placeholder="Work email" type="email" value={f.ownerEmail} onChange={e => set("ownerEmail", e.target.value)} />
           <input className={inp} placeholder="Phone (WhatsApp)" value={f.ownerPhone} onChange={e => set("ownerPhone", e.target.value)} />
           <input className={`${inp} col-span-2`} type="password" placeholder="Create a password (8+ characters)" value={f.password} onChange={e => set("password", e.target.value)} />
-          <label className="text-xs text-ink-400 col-span-2 -mb-2">Optional — helps us set up your workspace:</label>
-          <select aria-label="Industry (optional)" className={inp} value={f.industry} onChange={e => set("industry", e.target.value)}><option value="">Industry (optional)</option>{INDUSTRIES.map(o => <option key={o}>{o}</option>)}</select>
+          <label className="text-xs text-ink-500 col-span-2 -mb-2">Business domain — used for terminology and sample content</label>
+          <select required aria-label="Business domain" className={inp} value={f.industry} onChange={e => set("industry", e.target.value)}><option value="">Select business domain</option>{INDUSTRIES.map(o => <option key={o}>{o}</option>)}</select>
           <select aria-label="Team size (optional)" className={inp} value={f.teamSize} onChange={e => set("teamSize", e.target.value)}><option value="">Team size (optional)</option>{TEAM_SIZES.map(o => <option key={o}>{o}</option>)}</select>
           <select aria-label="Main goal (optional)" className={inp} value={f.useCase} onChange={e => set("useCase", e.target.value)}><option value="">Main goal (optional)</option>{GOALS.map(o => <option key={o}>{o}</option>)}</select>
           <select aria-label="Monthly messages (optional)" className={inp} value={f.expectedVolume} onChange={e => set("expectedVolume", e.target.value)}><option value="">Monthly messages (optional)</option>{VOLUMES.map(o => <option key={o}>{o}</option>)}</select>

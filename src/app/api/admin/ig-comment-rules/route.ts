@@ -24,6 +24,9 @@ export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
+  if (body.followCheckMode !== undefined && body.followCheckMode !== "dm" && body.followCheckMode !== "comment") {
+    return NextResponse.json({ error: "Choose Verify in DM or Verify on comment." }, { status: 400 });
+  }
   const replyOnly = !!body.replyOnly;
   const dmMessage = String(body.dmMessage ?? "").trim();
   if (!replyOnly && !dmMessage) return NextResponse.json({ error: "DM message is required" }, { status: 400 });
@@ -66,6 +69,7 @@ export async function POST(req: Request) {
       publicReplies: publicReplies.slice(0, 5),
       replyOnly,
       requireFollow: !!body.requireFollow,
+      ...(body.followCheckMode !== undefined ? { followCheckMode: body.followCheckMode as "dm" | "comment" } : {}),
       followPrompt: String(body.followPrompt ?? "").slice(0, 640),
       // "Continue on WhatsApp" (handoff.ts) — only sent when the editor sends it.
       ...(body.waHandoff !== undefined ? { waHandoff: !!body.waHandoff, waHandoffMessage: String(body.waHandoffMessage ?? "").slice(0, 1000) } : {}),

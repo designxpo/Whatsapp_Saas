@@ -28,6 +28,8 @@ export interface IndustryPack { id: string; label: string; vocab: Partial<Vocab>
 
 export const INDUSTRY_PACKS: IndustryPack[] = [
   { id: "generic", label: "Other", vocab: {} },
+  { id: "creator", label: "Creator / Coach", vocab: { contact: t("Audience member"), lead: t("Enquiry", "Enquiries"), teamMember: t("Team member"), product: t("Offer"), booking: t("Session"), pipeline: t("Creator Pipeline", "Creator Pipelines") }, stages: ["New enquiry", "Interested", "Qualified", "Booked", "Customer", "Lost"] },
+  { id: "restaurant", label: "Restaurants & cafes", vocab: { contact: t("Guest"), product: t("Menu item"), booking: t("Reservation") }, stages: ["New", "Enquired", "Reserved", "Visited", "Lost"] },
   { id: "ecommerce", label: "E-commerce / D2C", vocab: { contact: t("Customer"), teamMember: t("Support agent"), booking: t("Order") }, stages: ["New", "Interested", "Checkout pending", "Ordered", "Lost"] },
   { id: "saas", label: "SaaS / Tech", vocab: { contact: t("User"), teamMember: t("Success manager"), product: t("Plan"), booking: t("Demo") }, stages: ["New", "Demo booked", "Trial", "Negotiation", "Customer", "Lost"] },
   { id: "education", label: "Education / EdTech", vocab: { contact: t("Student"), lead: t("Enquiry", "Enquiries"), teamMember: t("Counsellor"), product: t("Course"), booking: t("Counselling session"), pipeline: t("Admissions Pipeline", "Admissions Pipelines") }, stages: ["New enquiry", "Counselled", "Interested", "Applied", "Enrolled", "Dropped"] },

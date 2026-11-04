@@ -213,7 +213,7 @@ describe("workspace export", () => {
     expect(out.tables.contacts.map((c: { id: string }) => c.id)).toEqual(["k1", "k3"]);
     expect(out.summary.messages).toEqual({ rows: 2505, truncated: false });
     expect(Math.max(...h.limits)).toBeLessThanOrEqual(PAGE_SIZE);
-    expect(out.included).toEqual(["contacts", "conversations", "messages", "notes", "form_responses", "optouts", "orders", "reviews"]);
+    expect(out.included).toEqual(["contacts", "conversations", "messages", "notes", "form_responses", "optouts", "orders", "social_journeys", "social_commitments", "social_outcomes", "social_links", "reviews"]);
   });
 
   it("stops a table at the row cap and marks it truncated", async () => {
@@ -246,5 +246,26 @@ describe("one person's export (access request)", () => {
     expect(out.orders).toHaveLength(1);
     expect(out.questions_asked).toHaveLength(1);
     expect(out.contacts).toEqual([expect.objectContaining({ id: "k1" })]);
+  });
+});
+
+
+describe("Social Growth personal records", () => {
+  it("exports campaign journeys and removes copied context and outcomes without crossing tenants", async () => {
+    put("wa_social_journeys", [
+      { id: "root", tenant_id: T1, conversation_id: "c3", contact_key: IGSID, root_journey_id: null },
+      { id: "continued", tenant_id: T1, conversation_id: "c1", contact_key: PHONE, root_journey_id: "root", context: ["personal source question"] },
+      { id: "foreign", tenant_id: T2, conversation_id: "c2", contact_key: PHONE, root_journey_id: null },
+    ]);
+    put("wa_social_outcomes", [{ id: "o1", tenant_id: T1, journey_id: "root", reference: "receipt" }, { id: "o2", tenant_id: T2, journey_id: "foreign", reference: "keep" }]);
+    put("wa_social_commitments", [{ id: "p1", tenant_id: T1, conversation_id: "c1", evidence: "I will call tomorrow" }]);
+    const exported = await exportContactData(T1, PHONE);
+    expect((exported.social_journeys as unknown[]).length).toBe(1);
+    expect((exported.social_outcomes as unknown[]).length).toBe(1);
+    const erased = await eraseContact(T1, PHONE);
+    expect(erased.errors).toEqual([]);
+    expect(mem.tables.wa_social_journeys.map(r => r.id)).toEqual(["foreign"]);
+    expect(mem.tables.wa_social_outcomes.map(r => r.id)).toEqual(["o2"]);
+    expect(mem.tables.wa_social_commitments).toEqual([]);
   });
 });

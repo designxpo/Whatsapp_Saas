@@ -159,6 +159,10 @@ export const WORKSPACE_EXPORT: (PageSpec & { label: string })[] = [
   { label: "form_responses", table: "wa_form_responses", key: "id", cols: "id,conversation_id,phone,form_id,status,data,sent_at,submitted_at" },
   { label: "optouts", table: "wa_optouts", key: "phone", cols: "phone,reason,created_at" },
   { label: "orders", table: "wa_orders", key: "id", cols: "id,phone,items,total_cents,currency,status,paid_at,created_at" },
+  { label: "social_journeys", table: "wa_social_journeys", key: "id", cols: "*" },
+  { label: "social_commitments", table: "wa_social_commitments", key: "id", cols: "*" },
+  { label: "social_outcomes", table: "wa_social_outcomes", key: "id", cols: "*" },
+  { label: "social_links", table: "wa_social_links", key: "id", cols: "*" },
   { label: "reviews", table: "wa_reviews", key: "id", cols: "id,source,location_name,author,rating,text,review_created_at,reply_text,reply_status,posted_at,created_at" },
 ];
 
@@ -217,10 +221,17 @@ export async function exportContactData(tenantId: string, identifier: string, op
   const ids = who.identifiers, conv = who.convIds;
   const none = ["00000000-0000-0000-0000-000000000000"];   // `in ()` with no values matches nothing
   const convOr = conv.length ? conv : none;
+  const social = await tdb(tenantId).from("wa_social_journeys").select("id,root_journey_id").in("conversation_id", convOr);
+  const socialIds = uniq(((social.data ?? []) as unknown as { id: string; root_journey_id?: string | null }[]).flatMap(r => [r.id, ...(r.root_journey_id ? [r.root_journey_id] : [])]));
   const specs: Record<string, PageSpec> = {
     contacts: { table: "contacts", key: "id", cols: "*", filter: q => q.in("phone", ids) },
     conversations: { table: "wa_conversations", key: "id", cols: "id,phone,platform,name,status,lead_phone,handle,labels,last_inbound_at,last_outbound_at,created_at", filter: q => q.in("id", convOr) },
     messages: { table: "wa_conv_messages", key: "id", cols: "id,conversation_id,role,source,body,media_url,media_type,created_at", filter: q => q.in("conversation_id", convOr) },
+    social_journeys: { table: "wa_social_journeys", key: "id", cols: "*", filter: q => q.in("conversation_id", convOr) },
+    social_commitments: { table: "wa_social_commitments", key: "id", cols: "*", filter: q => q.in("conversation_id", convOr) },
+    social_links_from: { table: "wa_social_links", key: "id", cols: "*", filter: q => q.in("source_conversation_id", convOr) },
+    social_links_to: { table: "wa_social_links", key: "id", cols: "*", filter: q => q.in("target_conversation_id", convOr) },
+    social_outcomes: { table: "wa_social_outcomes", key: "id", cols: "*", filter: q => q.in("journey_id", socialIds.length ? socialIds : none) },
     notes: { table: "wa_conversation_notes", key: "id", cols: "id,conversation_id,author_name,body,created_at", filter: q => q.in("conversation_id", convOr) },
     form_responses: { table: "wa_form_responses", key: "id", cols: "*", filter: q => q.in("phone", ids) },
     optouts: { table: "wa_optouts", key: "phone", cols: "phone,reason,created_at", filter: q => q.in("phone", ids) },
@@ -295,6 +306,15 @@ export async function eraseContact(tenantId: string, identifier: string, opts: {
 
   // 1. Everything hanging off their conversations.
   const conv = who.convIds;
+  const socialRows = conv.length ? await raw.from("wa_social_journeys").select("id,root_journey_id").eq("tenant_id", tenantId).in("conversation_id", conv) : null;
+  const socialIds = uniq(((socialRows?.data ?? []) as { id: string; root_journey_id?: string | null }[]).flatMap(r => [r.id, ...(r.root_journey_id ? [r.root_journey_id] : [])]));
+  await del("wa_social_outcomes", "journey_id", socialIds);
+  await del("wa_social_commitments", "conversation_id", conv);
+  await del("wa_social_links", "source_conversation_id", conv);
+  await del("wa_social_links", "target_conversation_id", conv);
+  await del("wa_social_journeys", "root_journey_id", socialIds);
+  await del("wa_social_journeys", "id", socialIds);
+  await del("wa_social_journeys", "conversation_id", conv); // FK cascades remove copied context in linked journeys.
   await del("wa_conv_messages", "conversation_id", conv);
   await del("wa_flow_sessions", "conversation_id", conv);
   await del("wa_conversation_notes", "conversation_id", conv);

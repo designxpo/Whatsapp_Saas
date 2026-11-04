@@ -217,7 +217,7 @@ export async function markOrderPaid(m: {
   provider?: "razorpay" | "stripe";
   expectTenantId?: string;     // per-tenant webhook: order must belong to the URL's tenant
 }): Promise<{ ok: boolean; orderId?: string; alreadyPaid?: boolean }> {
-  const sel = db().from("wa_orders").select("id, tenant_id, phone, cart_id, total_cents, currency, status");
+  const sel = db().from("wa_orders").select("id, tenant_id, phone, cart_id, total_cents, currency, status, created_at");
   const { data: order } = m.orderId
     ? await sel.eq("id", m.orderId).maybeSingle()
     : m.paymentRef
@@ -234,7 +234,16 @@ export async function markOrderPaid(m: {
   }
   const orderId = order.id as string;
   const totalCents = (order.total_cents as number) ?? 0;
-  if (order.status === "paid" || order.status === "fulfilled") return { ok: true, orderId, alreadyPaid: true };
+  const attributeSocialPurchase = async () => {
+    await import("./social-growth").then(async m => {
+      const cart = order.cart_id ? await db().from("wa_carts").select("conversation_id").eq("id", order.cart_id).eq("tenant_id", tenantId).maybeSingle() : null;
+      await m.attributeSocialOrder(tenantId, { id: orderId, phone: order.phone as string, total_cents: totalCents, currency: (order.currency as string) || "INR", conversationId: cart?.data?.conversation_id ?? null, createdAt: order.created_at as string });
+    }).catch(e => console.warn("[social-growth] payment attribution unavailable", e instanceof Error ? e.message : "unknown"));
+  };
+  if (order.status === "paid" || order.status === "fulfilled") {
+    await attributeSocialPurchase(); // idempotent retry repairs an earlier attribution outage
+    return { ok: true, orderId, alreadyPaid: true };
+  }
 
   // Never confirm on a short payment — leave it pending for reconciliation.
   if (typeof m.amountPaidCents === "number" && m.amountPaidCents < totalCents) {
@@ -257,6 +266,8 @@ export async function markOrderPaid(m: {
   }
 
   if (order.cart_id) await db().from("wa_carts").update({ status: "ordered" }).eq("id", order.cart_id as string).then(() => {}, () => {});
+
+  await attributeSocialPurchase();
 
   // Notify the brand + fan out to connected integrations (Slack/Sheets/Zapier).
   void emitEvent(tenantId, "order.paid", { orderId, phone: order.phone, totalCents, provider: m.provider, paymentId: m.providerPaymentId });

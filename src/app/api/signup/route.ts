@@ -9,6 +9,7 @@ import { encryptSecret } from "@/lib/crypto";
 import { checkEmail } from "@/lib/emailcheck";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
+import { INDUSTRY_PACKS } from "@/lib/vocab";
 import { REF_COOKIE, cleanRef } from "@/lib/consent";
 
 export const dynamic = "force-dynamic";
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
   const ownerEmail = body.ownerEmail?.trim().toLowerCase();
   const password = body.password ?? "";
   if (!company || !ownerName || !ownerEmail) return NextResponse.json({ error: "Company, your name and work email are required" }, { status: 400 });
+  const industry = typeof body.industry === "string" ? body.industry.trim() : "";
+  if (!INDUSTRY_PACKS.some(p => p.id === industry || p.label === industry)) {
+    return NextResponse.json({ error: "Select a business domain, or choose Other." }, { status: 400 });
+  }
   // Local, privacy-safe email quality gate (format + disposable inbox + typo) —
   // the email never leaves the system. Blocks throwaway addresses that would
   // never complete signup or become a real customer; nudges obvious typos.
@@ -82,7 +87,7 @@ export async function POST(req: Request) {
       // encrypt it at rest; verify-otp decrypts just before account creation.
       company, ownerName, ownerEmail, password: encryptSecret(password),
       // Blank answers are left out rather than stored as empty strings.
-      ownerPhone: body.ownerPhone?.trim() || undefined, industry: body.industry?.trim() || undefined,
+      ownerPhone: body.ownerPhone?.trim() || undefined, industry,
       teamSize: body.teamSize?.trim() || undefined, useCase: body.useCase?.trim() || undefined, expectedVolume: body.expectedVolume?.trim() || undefined,
       termsVersion: LEGAL_VERSION, referralCode,
       // The record of what was agreed and when: the moment this form was sent

@@ -3,6 +3,7 @@ import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/
 import { recordCommentReply } from "@/lib/comment-replies";
 import { ruleInviteLink, withInviteButton } from "@/lib/handoff";
 import { NextResponse, after } from "next/server";
+import { followCheckMode, followDmKeyword, followDmPrompt, followPublicPrompt } from "@/lib/ig-follow-policy";
 import { constEq, verifyMetaSignature } from "@/lib/apiauth";
 import { getChannelByIgId, getChannelById, repairIgChannelId, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
 import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, getContactByPhone, setConversationLeadPhone, landCapturedLead, addOptout, isOptedOut, incAiReplies, escalateConversation, setConversationAvatar, setConversationComment, claimWebhookEvent, logSendFailure, type Conversation } from "@/lib/store";
@@ -184,6 +185,8 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   if (OPTOUT_RE.test(text)) { await addOptout(senderId, "ig stop", channel.tenantId); return; }
   if (await isOptedOut(senderId, channel.tenantId)) return;
 
+  const gate = await getFollowGate(senderId, channel.tenantId);
+  const gateOnChannel = gate?.channelId === channel.id;
   let conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
   // Webhooks only carry the IGSID — resolve the @handle once (while unnamed).
   if (!conv.name || !conv.avatarUrl) {
@@ -198,12 +201,13 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   // (e.g. the same user first engaged another of the tenant's accounts), persona,
   // KB and send creds must follow the account the conversation is on — not bleed
   // in the wrong (or global-default) persona/KB. New threads: ids match, no-op.
-  if (conv.channelId && conv.channelId !== channel.id) {
+  if (!gateOnChannel && conv.channelId && conv.channelId !== channel.id) {
     const owner = await getChannelById(conv.channelId);
     if (owner) channel = owner;
   }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, channelId: channel.id, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24-hour window
+  await import("@/lib/social-growth").then(m => m.enterSocialCampaign(channel.tenantId, { conversationId: conv.id, channelId: channel.id, text, source: "dm" })).catch(() => null);
   // Capture a phone the lead shares (IG has no number of its own) so the chat can
   // be matched to a CRM lead by phone, now and on later messages.
   if (!conv.leadPhone) {
@@ -218,9 +222,13 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
   after(() => syncIgToLsq(channel, conv, text, "inbound", "lead"));   // mirror to LeadSquared timeline
 
-  // Follow-gate: a waiting user's "done"/"followed" re-checks their follow.
-  const gate = await getFollowGate(senderId, channel.tenantId);
-  if (gate && CONFIRM_RE.test(text)) { await resolveFollowGate(channel, senderId, gate.ruleId); return; }
+  // The person's DM opens the messaging window and allows a profile check.
+  if (gate && gateOnChannel) {
+    const rule = await getCommentRule(gate.ruleId, channel.tenantId);
+    if (rule && (CONFIRM_RE.test(text) || text.trim().toLowerCase() === followDmKeyword(rule.keyword).toLowerCase())) {
+      await resolveFollowGate(channel, senderId, gate.ruleId); return;
+    }
+  }
 
   // Story-reply automation: a reply to one of our stories carries reply_to.story.
   const repliedToStory = !!(msg?.reply_to as Record<string, unknown> | undefined)?.story;
@@ -299,7 +307,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // allocated KB → tenant-global (used to hardcode a null KB scope).
   // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
   // built-in commerce tools; public comment replies never sell.
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), askPhone, commentId ? undefined : { platform: "instagram", conversationId: conv.id }, "instagram", undefined, { canAct: !commentId });
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), askPhone, commentId ? undefined : { platform: "instagram", conversationId: conv.id }, "instagram", undefined, { canAct: !commentId, conversationId: conv.id });
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
@@ -312,10 +320,8 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   if (commentId) await incAiReplies(conv.id, conv.aiReplyCount);
 }
 
-// Comment → ManyChat-style automation. Matches the comment against this tenant's
-// rules (account + per-post + keyword), then sends ONE private DM (the comment
-// is the opt-in; Meta allows a single private reply per comment), optionally
-// behind a follow gate, with a link button + optional public reply.
+// Comment rules match by account, post and keyword. Normal rules send one
+// private reply; follow gates can open in DM or start with a comment check.
 async function handleComment(channel: Channel, value: Record<string, unknown>) {
   const commentId = String(value.id ?? "");
   const text = String(value.text ?? "");
@@ -344,7 +350,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     }
   }
 
-  const rule = await matchCommentRule(text, mediaId, tid, channel.id);
+  let rule = await matchCommentRule(text, mediaId, tid, channel.id);
 
   // No fixed rule matched → let the AI answer the comment contextually (public
   // reply + DM), capped + escalating to a human after AI_REPLY_CAP replies.
@@ -364,6 +370,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
       if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
     }
     // This thread came from a COMMENT → keep it in the Comments section.
+    await import("@/lib/social-growth").then(m => m.enterSocialCampaign(tid, { conversationId: conv.id, channelId: channel.id, postId: mediaId, text, source: "comment" })).catch(() => null);
     await setConversationComment(conv.id, true);
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
@@ -389,6 +396,10 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     if (display && display !== conv.name) conv = await getOrCreateConversation(fromId, display, channel.id, "instagram", tid);
     if (prof.profilePic && !conv.avatarUrl) await setConversationAvatar(conv.id, prof.profilePic).catch(() => undefined);
   }
+  const socialEntry = await import("@/lib/social-growth").then(m => m.enterSocialCampaign(tid, { conversationId: conv.id, channelId: channel.id, postId: mediaId, text, source: "comment", experimentEligible: rule?.replyOnly === false })).catch(() => null);
+  const variant = socialEntry?.campaign.variants.find(v => v.id === socialEntry.journey?.variant);
+  if (socialEntry?.expired) rule = { ...rule, replyOnly: true, requireFollow: false, publicReplies: ["This offer has ended. Please message us for current options."], publicReply: "This offer has ended. Please message us for current options." };
+  if (variant) rule = { ...rule, requireFollow: variant.mode !== "direct", followCheckMode: variant.mode === "comment" ? "comment" : "dm" };
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
 
@@ -426,17 +437,29 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     return;
   }
 
-  const followGate = rule.requireFollow && (await getFollowStatus(creds, fromId)) !== true;
-  const dmBody = followGate ? followPromptText(rule) : rule.dmMessage;
-  let sent;
-  if (followGate) {
-    sent = await sendPrivateReply(creds, commentId, followPromptText(rule), await followButtons(channel, rule), tid);
-    if (sent.ok) await setFollowGate(fromId, rule.id, channel.id, tid);
-  } else {
-    // "Continue on WhatsApp" (handoff.ts): their own code, hidden in the link.
-    const invite = await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, commentId, postId: mediaId, text, author: handle || null });
-    sent = await sendPrivateReply(creds, commentId, rule.dmMessage, withInviteButton(rewardButtons(rule), invite), tid);
+  if (rule.requireFollow && (!fromId || await isOptedOut(fromId, tid))) return;
+  const checkInComment = rule.requireFollow && followCheckMode(rule.followCheckMode) === "comment";
+  // Only a positive pre-check can release the resource. Unknown is not false:
+  // first-time commenters may need to initiate a DM before Meta permits lookup.
+  const commentVerified = checkInComment && await getFollowStatus(creds, fromId) === true;
+  if (checkInComment && !commentVerified) {
+    const publicReply = followPublicPrompt(rule.keyword, rule.followPrompt);
+    await setFollowGate(fromId, rule.id, channel.id, tid);
+    const pr = await replyToComment(creds, commentId, publicReply, tid);
+    if (pr.ok) {
+      await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${publicReply}`, source: "bot", tenantId: tid, channelId: channel.id });
+      await recordCommentReply({ tenantId: tid, channelId: channel.id, platform: "instagram", parentCommentId: commentId, replyId: pr.id, replyText: publicReply, source: "rule", commentText: text, commentAuthor: handle || null, commentAuthorId: fromId, postId: mediaId });
+    } else {
+      await logSendFailure(conv.id, channel.id, pr.error || "Comment reply failed", tid);
+    }
+    return;
   }
+  const dmFollowGate = rule.requireFollow && !checkInComment;
+  const dmBody = dmFollowGate ? followDmPrompt(rule.followPrompt) : rule.dmMessage;
+  if (dmFollowGate) await setFollowGate(fromId, rule.id, channel.id, tid);
+  const invite = dmFollowGate ? null : await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, conversationId: conv.id, commentId, postId: mediaId, text, author: handle || null });
+  const buttons = dmFollowGate ? await followButtons(channel, rule) : withInviteButton(rewardButtons(rule), invite);
+  const sent = await sendPrivateReply(creds, commentId, dmBody, buttons, tid);
   if (!sent.ok) {
     // The commenter gets nothing — record it in the thread like the AI path does,
     // so the portal shows WHY instead of the DM vanishing into the logs.
@@ -445,11 +468,17 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     return;
   }
 
+  // A successful comment-time check may fulfil a previously pending request.
+  if (commentVerified) {
+    const pending = await getFollowGate(fromId, tid);
+    if (pending?.ruleId === rule.id && pending.channelId === channel.id) await clearFollowGate(fromId, tid);
+  }
+
   // Mirror the automated DM into the portal thread so the team sees what was sent.
   await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${dmBody}`, source: "bot", tenantId: tid, channelId: channel.id });
   await touchOutbound(conv.id, dmBody);
 
-  await bumpRuleMatch(rule.id, rule.matchCount, tid);
+  if (!dmFollowGate) await bumpRuleMatch(rule.id, rule.matchCount, tid);
   // Public reply: pick ONE variant at random so repeated comments never get an
   // identical reply (identical automated replies are an IG spam/ban signal).
   const publicReply = pickPublicReply(rule);
@@ -510,33 +539,63 @@ async function handlePostback(channel: Channel, ev: Record<string, unknown>) {
   const payload = String((ev.postback as Record<string, unknown>)?.payload ?? "");
   if (!senderId) return;
   if (payload.startsWith("FOLLOWCHK:")) {
+    if (await isOptedOut(senderId, channel.tenantId)) return;
+    const gate = await getFollowGate(senderId, channel.tenantId);
+    if (!gate || gate.channelId !== channel.id || gate.ruleId !== payload.slice("FOLLOWCHK:".length)) return;
+    const mid = String((ev.postback as Record<string, unknown>)?.mid ?? "");
+    if (mid && !(await claimWebhookEvent(`ig:postback:${mid}`))) return;
     // Mirror the tap so the portal thread shows the user confirmed the follow
     // (a tap carries no text, so nothing else records it).
     const conv = await getOrCreateConversation(senderId, "", channel.id, "instagram", channel.tenantId);
     await appendConvMessage({ conversationId: conv.id, role: "user", body: "[comment] tapped “I've followed ✅”", source: "inbound", tenantId: channel.tenantId, channelId: channel.id }).catch(() => {});
+    await touchInbound(conv.id, "Tapped follow check");
     await resolveFollowGate(channel, senderId, payload.slice("FOLLOWCHK:".length));
   }
 }
 
-// Re-check follow and deliver the held reward or re-prompt. When Meta can't
-// verify (null, pre-App-Review) we trust the tap so real followers aren't blocked.
+// Re-check follow after a user-initiated DM or button tap. Only a confirmed
+// true releases the reward; unavailable verification keeps the gate pending.
 // Every DM we send here is mirrored into the portal thread so Live Chat shows the
 // full conversation (the reward link, not just the earlier follow prompt).
 async function resolveFollowGate(channel: Channel, igsid: string, ruleId: string) {
   const tid = channel.tenantId;
-  const rule = await getCommentRule(ruleId, tid);
-  if (!rule) { await clearFollowGate(igsid, tid); return; }
+  const gate = await getFollowGate(igsid, tid);
+  if (!gate || gate.ruleId !== ruleId || gate.channelId !== channel.id) return;
+  let rule = await getCommentRule(ruleId, tid);
+  const conv = await getOrCreateConversation(igsid, "", channel.id, "instagram", tid);
+  const socialEntry = await import("@/lib/social-growth").then(m => m.campaignForConversation(tid, conv.id)).catch(() => null);
+  const variant = socialEntry?.campaign.variants.find(v => v.id === socialEntry.journey?.variant);
+  if (rule && variant && !socialEntry?.expired) rule = { ...rule, requireFollow: variant.mode !== "direct", followCheckMode: variant.mode === "comment" ? "comment" : "dm" };
+  if (socialEntry?.expired) {
+    await clearFollowGate(igsid, tid);
+    if (!rule?.enabled || !conv.botEnabled || !(await accountCanSend(tid))) return;
+    const body = "This offer has ended. Please ask us about current options.";
+    const sent = await sendIgMessage(credsOf(channel), igsid, body, { lastInboundAt: new Date().toISOString() });
+    if (sent.ok) {
+      await appendConvMessage({ conversationId: conv.id, role: "assistant", body, source: "bot", tenantId: tid, channelId: channel.id });
+      await touchOutbound(conv.id, body);
+    }
+    return;
+  }
+  if (!rule || !rule.enabled || !rule.requireFollow || rule.replyOnly || (rule.channelId && rule.channelId !== channel.id)) {
+    await clearFollowGate(igsid, tid); return;
+  }
+  if (await isOptedOut(igsid, tid) || !(await accountCanSend(tid))) return;
   const creds = credsOf(channel);
   const follows = await getFollowStatus(creds, igsid);
   const now = new Date().toISOString();
-  const conv = await getOrCreateConversation(igsid, "", channel.id, "instagram", tid);
-  if (follows === false) {
-    const reprompt = "I don't see a follow yet 👀 — tap Visit profile, hit Follow, then tap “I've followed”.";
-    await sendIgButtons(creds, igsid, reprompt, await followButtons(channel, rule), { lastInboundAt: now });
+  if (!conv.botEnabled) return;
+  if (follows !== true) {
+    const reprompt = follows === false
+      ? "I don't see a follow yet — follow this account, then tap “I've followed” to check again."
+      : "I couldn't verify your follow right now. Your link is still waiting — please tap “I've followed” to try again shortly.";
+    const sent = await sendIgButtons(creds, igsid, reprompt, await followButtons(channel, rule), { lastInboundAt: now });
+    if (!sent.ok) { await logSendFailure(conv.id, channel.id, sent.error || "Follow check reply failed", tid); return; }
     await appendConvMessage({ conversationId: conv.id, role: "assistant", body: `[comment] ${reprompt}`, source: "bot", tenantId: tid, channelId: channel.id }).catch(() => {});
+    await touchOutbound(conv.id, reprompt).catch(() => {});
     return;
   }
-  const invite = await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, author: conv.name || null });
+  const invite = await ruleInviteLink(rule, "instagram", { tenantId: tid, channelId: channel.id, conversationId: conv.id, author: conv.name || null });
   const buttons = withInviteButton(rewardButtons(rule), invite);
   const sent = buttons.length
     ? await sendIgButtons(creds, igsid, rule.dmMessage, buttons, { lastInboundAt: now })
@@ -560,9 +619,6 @@ function rewardButtons(rule: IgCommentRule): IgButton[] {
     ? rule.buttons
     : rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : [];
   return list.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) }));
-}
-function followPromptText(rule: IgCommentRule): string {
-  return rule.followPrompt?.trim() || "Almost there! Follow us first, then tap “I've followed” to get your link 🎁";
 }
 async function followButtons(channel: Channel, rule: IgCommentRule): Promise<IgButton[]> {
   const buttons: IgButton[] = [];

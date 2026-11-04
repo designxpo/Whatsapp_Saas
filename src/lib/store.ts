@@ -1293,6 +1293,10 @@ export async function appendConvMessage(p: { conversationId: string; role: "user
   // Duplicate meta_message_id (webhook retry) is expected — swallow unique violations.
   if (error && error.code !== "23505") throw error;
   if (!data) return null;
+  if (p.role === "assistant") {
+    await import("./social-growth").then(m => m.observeSocialMessage(p.tenantId ?? DEFAULT_TENANT_ID, { conversationId: p.conversationId, id: data.id as string, role: p.role, body: p.body }))
+      .catch(e => console.warn("[social-growth] commitment observation unavailable", e instanceof Error ? e.message : "unknown"));
+  }
   return { id: (data as Record<string, unknown>).id as string, createdAt: (data as Record<string, unknown>).created_at as string };
 }
 

@@ -4,23 +4,24 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { GENERIC_VOCAB, type Vocab, type VocabKey } from "./vocab";
 
-interface Ctx { vocab: Vocab; reload: () => void }
-const VocabContext = createContext<Ctx>({ vocab: GENERIC_VOCAB, reload: () => {} });
+interface Ctx { industry: string; vocab: Vocab; reload: () => void }
+const VocabContext = createContext<Ctx>({ industry: "generic", vocab: GENERIC_VOCAB, reload: () => {} });
 
 export function VocabProvider({ children }: { children: ReactNode }) {
+  const [industry, setIndustry] = useState("generic");
   const [vocab, setVocab] = useState<Vocab>(GENERIC_VOCAB);
   const reload = useCallback(() => {
-    fetch("/api/admin/vocab").then(r => (r.ok ? r.json() : null)).then(d => { if (d?.vocab) setVocab(d.vocab as Vocab); }).catch(() => {});
+    fetch("/api/admin/vocab").then(r => (r.ok ? r.json() : null)).then(d => { if (d?.vocab) { setVocab(d.vocab as Vocab); setIndustry(d.industry ?? "generic"); } }).catch(() => {});
   }, []);
   useEffect(reload, [reload]);
-  const value = useMemo(() => ({ vocab, reload }), [vocab, reload]);
+  const value = useMemo(() => ({ industry, vocab, reload }), [industry, vocab, reload]);
   return <VocabContext.Provider value={value}>{children}</VocabContext.Provider>;
 }
 
 /** `const { vocab, one, many } = useVocab(); many("contact") → "Students"`. */
 export function useVocab() {
-  const { vocab, reload } = useContext(VocabContext);
+  const { industry, vocab, reload } = useContext(VocabContext);
   const one = useCallback((k: VocabKey) => vocab[k].one, [vocab]);
   const many = useCallback((k: VocabKey) => vocab[k].many, [vocab]);
-  return { vocab, one, many, reload };
+  return { industry, vocab, one, many, reload };
 }

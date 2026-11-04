@@ -1,13 +1,14 @@
 // Instagram comment-to-DM rules — ManyChat-style automation (multi-tenant).
 //
 // Each rule watches comments (optionally on ONE post, optionally keyword-gated)
-// and on a match sends the commenter a single private DM (the comment is the
-// opt-in — Meta allows one private reply per comment), optionally behind a
-// follow gate, with a link button and/or a public reply.
+// and on a match sends one private reply, or posts a public follow + DM
+// instruction. Follow-gated rewards wait for a user-initiated DM and a confirmed
+// follow relationship.
 //
 // Tenancy: db() uses the service role (RLS bypassed), so EVERY read filters by
 // tenant_id and EVERY write stamps it — app-layer scoping is the real guard.
 
+import { followCheckMode, type FollowCheckMode } from "./ig-follow-policy";
 import { db } from "./supabase";
 import { assertTextsAllowed } from "./moderation";
 
@@ -89,6 +90,7 @@ export interface IgCommentRule {
   waHandoff: boolean;           // the DM carries a "Continue on WhatsApp" button (handoff.ts)
   waHandoffMessage: string | null;  // what to send on WhatsApp when they arrive
   requireFollow: boolean;
+  followCheckMode: FollowCheckMode;
   followPrompt: string | null;
   matchCount: number;
   createdAt: string;
@@ -125,6 +127,7 @@ function mapRule(r: Record<string, unknown>): IgCommentRule {
     waHandoff: (r.wa_handoff as boolean) ?? false,
     waHandoffMessage: (r.wa_handoff_message as string | null) ?? null,
     requireFollow: (r.require_follow as boolean) ?? false,
+    followCheckMode: followCheckMode(r.follow_check_mode),
     followPrompt: (r.follow_prompt as string | null) ?? null,
     matchCount: (r.match_count as number) ?? 0,
     createdAt: r.created_at as string,
@@ -154,6 +157,7 @@ export interface CommentRuleInput {
   publicReply?: string | null;   // legacy single-reply input (still accepted)
   replyOnly?: boolean;
   requireFollow?: boolean;
+  followCheckMode?: FollowCheckMode;
   followPrompt?: string | null;
   waHandoff?: boolean;
   waHandoffMessage?: string | null;
@@ -207,6 +211,7 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     public_reply: publicReplies[0] || null,
     reply_only: replyOnly,
     require_follow: replyOnly ? false : (input.requireFollow ?? false),
+    ...(input.followCheckMode !== undefined ? { follow_check_mode: replyOnly ? "dm" : followCheckMode(input.followCheckMode) } : {}),
     follow_prompt: replyOnly ? null : (input.followPrompt?.trim() || null),
     // Only sent when set, so a save works before the handoff migration is applied.
     ...(replyOnly ? (input.waHandoff !== undefined ? { wa_handoff: false, wa_handoff_message: null } : {}) : handoff.row),
@@ -227,6 +232,9 @@ export async function saveCommentRule(input: CommentRuleInput, tenantId: string)
     if (/public_replies/i.test(error.message ?? "")) delete attempt.public_replies;
     if (/reply_only/i.test(error.message ?? "")) delete attempt.reply_only;
     ({ data, error } = await runSave(attempt));
+  }
+  if (error && /follow_check_mode/i.test(error.message ?? "")) {
+    throw new Error("The follow-check options need the latest database migration before this rule can be saved.");
   }
   if (error) throw error;
   return mapRule(data as Record<string, unknown>);
@@ -289,7 +297,8 @@ export async function bumpRuleMatch(id: string, current: number, tenantId: strin
 
 // ── Follow gates ──────────────────────────────────────────────────────────────
 export async function setFollowGate(igsid: string, ruleId: string, channelId: string | null, tenantId: string): Promise<void> {
-  await db().from("wa_ig_follow_gates").upsert({ igsid, rule_id: ruleId, channel_id: channelId, tenant_id: tenantId }, { onConflict: "tenant_id,igsid" }).then(() => {}, () => {});
+  const { error } = await db().from("wa_ig_follow_gates").upsert({ igsid, rule_id: ruleId, channel_id: channelId, tenant_id: tenantId }, { onConflict: "tenant_id,igsid" });
+  if (error) throw error;
 }
 export async function getFollowGate(igsid: string, tenantId: string): Promise<{ ruleId: string; channelId: string | null } | null> {
   const { data } = await db().from("wa_ig_follow_gates").select("rule_id, channel_id").eq("igsid", igsid).eq("tenant_id", tenantId).maybeSingle();

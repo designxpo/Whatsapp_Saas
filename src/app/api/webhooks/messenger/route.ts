@@ -145,6 +145,7 @@ async function handleMessage(channel: Channel, ev: Record<string, unknown>) {
   }
   await appendConvMessage({ conversationId: conv.id, role: "user", body: text, source: "inbound", tenantId: channel.tenantId, channelId: channel.id, mediaUrl, mediaType });
   await touchInbound(conv.id, text || (mediaType?.startsWith("video/") ? "🎥 Video" : "📷 Photo"));   // opens / refreshes the 24h window
+  await import("@/lib/social-growth").then(m => m.enterSocialCampaign(channel.tenantId, { conversationId: conv.id, channelId: channel.id, text, source: "dm" })).catch(() => null);
   // Capture a phone the lead types (Messenger has no number of its own) so the
   // chat can be matched to a CRM lead by phone — now and on later messages.
   if (!conv.leadPhone) {
@@ -247,7 +248,7 @@ async function aiRespond(channel: Channel, conv: Conversation, userText: string,
   // → tenant-global (used to hardcode a null KB scope and skip the pin).
   // Direct DMs get the cross-channel cart (list/add/checkout) via the AI's
   // built-in commerce tools; public comment replies never sell.
-  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger", undefined, { canAct: !commentId });
+  const r = await generateReply(history.map(h => ({ role: h.role, body: h.body.replace(/^\[comment\] /, ""), mediaUrl: h.mediaUrl, mediaType: h.mediaType })), conv.phone, effectiveAgentId(conv, channel), tid, effectiveKbScope(conv, channel), false, commentId ? undefined : { platform: "messenger", conversationId: conv.id }, "messenger", undefined, { canAct: !commentId, conversationId: conv.id });
   if (!r.reply || r.escalate) { await closeOut(); return; }
 
   if (!(await deliver(r.reply))) return;
@@ -291,7 +292,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     }
   }
 
-  const rule = await matchCommentRule(text, postId, tid, channel.id);
+  let rule = await matchCommentRule(text, postId, tid, channel.id);
 
   // No fixed rule matched → let the AI answer the comment publicly, capped and
   // escalating to a human after AI_REPLY_CAP replies.
@@ -299,6 +300,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
     if (!(await claimComment(commentId, null, tid))) return;
     const conv = await getOrCreateConversation(fromId, fromName, channel.id, "messenger", tid);
     // This thread came from a COMMENT → keep it in the Comments section.
+    await import("@/lib/social-growth").then(m => m.enterSocialCampaign(tid, { conversationId: conv.id, channelId: channel.id, postId: postId, text, source: "comment" })).catch(() => null);
     await setConversationComment(conv.id, true);
     if (!conv.botEnabled) return;   // a human is handling this thread
     // Marker so Live Chat shows this came from a COMMENT, not a DM.
@@ -315,6 +317,8 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // comment sent its DM silently and never appeared in the portal (only AI-handled
   // comments were stored), so the team couldn't see which comments fired a rule.
   const conv = await getOrCreateConversation(fromId, fromName, channel.id, "messenger", tid);
+  const socialEntry = await import("@/lib/social-growth").then(m => m.enterSocialCampaign(tid, { conversationId: conv.id, channelId: channel.id, postId: postId, text, source: "comment" })).catch(() => null);
+  if (socialEntry?.expired) rule = { ...rule, replyOnly: true, publicReplies: ["This offer has ended. Please message us for current options."], publicReply: "This offer has ended. Please message us for current options." };
   await setConversationComment(conv.id, true);
   await appendConvMessage({ conversationId: conv.id, role: "user", body: `[comment] ${text}`, source: "inbound", tenantId: tid, channelId: channel.id });
   await touchInbound(conv.id, `[comment] ${text}`);   // bump so the thread sorts to the top of Live Chat
@@ -358,7 +362,7 @@ async function handleComment(channel: Channel, value: Record<string, unknown>) {
   // Up to 3 link buttons (Meta button-template cap); fall back to legacy single.
   const btnList = rule.buttons?.length ? rule.buttons : (rule.buttonUrl ? [{ label: rule.buttonLabel || "", url: rule.buttonUrl }] : []);
   // "Continue on WhatsApp" (handoff.ts): their own code, hidden in the link.
-  const invite = await ruleInviteLink(rule, "facebook", { tenantId: tid, channelId: channel.id, commentId, postId, text, author: fromName || null });
+  const invite = await ruleInviteLink(rule, "facebook", { tenantId: tid, channelId: channel.id, conversationId: conv.id, commentId, postId, text, author: fromName || null });
   const buttons: FbButton[] = withInviteButton(btnList.slice(0, 3).map(b => ({ type: "web_url", url: b.url, title: (b.label || "Open link").slice(0, 20) })), invite);
   const sent = await sendFbPrivateReply(creds, commentId, rule.dmMessage, buttons, tid);
   if (!sent.ok) {
