@@ -162,7 +162,7 @@ export const ABOUT_SEO: PageSeo = {
 // ── /blog ───────────────────────────────────────────────────────────────────
 
 export const BLOG_SEO: PageSeo = {
-  updated: "2026-08-27",
+  updated: "2026-11-05",
   published: "2026-06-01",
   faqs: [
     {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { BlogCoverImage } from "../../_components/blog-cover-image";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
@@ -11,16 +12,17 @@ import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { PageFaq, SourceList } from "../../_components/seo";
 import { AUTHOR, POSTS, type PostBlock } from "../../_content/site";
 import { TemplateChecker } from "../../_components/template-checker";
+import { SupportHandoffPlanner } from "../../_components/support-handoff-planner";
 import { SITE_URL } from "@/lib/siteurl";
 
 export function generateStaticParams() {
   return POSTS.map(p => ({ slug: p.slug }));
 }
 
-// The only inline formatting a post body supports: `[label](/path)`, so an
-// internal link can live in plain data without pulling in a Markdown renderer.
+// Inline links allow internal paths and HTTPS citations only. Other schemes
+// remain plain text; no raw HTML is interpreted.
 // Anything that isn't that exact pattern renders as plain text, untouched.
-const INLINE_LINK = /\[([^\]]+)\]\((\/[^)]+)\)/g;
+const INLINE_LINK = /\[([^\]]+)\]\((\/(?!\/)[^)]+|https:\/\/[^)]+)\)/g;
 function renderInline(text: string): ReactNode {
   const parts: ReactNode[] = [];
   let last = 0;
@@ -28,7 +30,9 @@ function renderInline(text: string): ReactNode {
   INLINE_LINK.lastIndex = 0;
   while ((m = INLINE_LINK.exec(text))) {
     if (m.index > last) parts.push(text.slice(last, m.index));
-    parts.push(<Link key={m.index} href={m[2]} className="font-semibold text-[#026cd4] hover:underline">{m[1]}</Link>);
+    parts.push(m[2].startsWith("https://")
+      ? <a key={m.index} href={m[2]} className="font-semibold text-[#026cd4] hover:underline">{m[1]}</a>
+      : <Link key={m.index} href={m[2]} className="font-semibold text-[#026cd4] hover:underline">{m[1]}</Link>);
     last = m.index + m[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -42,13 +46,30 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
   return (
     <>
       {blocks.map((b, i) => {
-        if (b.type === "h2") return <h2 key={i} className="!mt-10 text-xl font-extrabold text-slate-900">{renderInline(b.text)}</h2>;
+        if (b.type === "h2") return <h2 id={`section-${i}`} key={i} className="!mt-10 scroll-mt-32 text-xl font-extrabold text-slate-900">{renderInline(b.text)}</h2>;
         if (b.type === "h3") return <h3 key={i} className="text-base font-bold text-slate-900">{renderInline(b.text)}</h3>;
         if (b.type === "tool") {
           // Interactive widgets are keyed by id so _content/site.ts stays pure
           // data — no JSX, no client imports in the content layer.
-          return b.id === "template-checker" ? <TemplateChecker key={i} /> : null;
+          return b.id === "template-checker" ? <TemplateChecker key={i} /> : <SupportHandoffPlanner key={i} />;
         }
+        if (b.type === "image") return (
+          <figure key={i} className="not-prose my-8">
+            <Image src={b.src} alt={b.alt} width={b.width} height={b.height} sizes="(min-width: 768px) 672px, 100vw" className="h-auto w-full rounded-2xl border border-slate-200" />
+            <figcaption className="mt-3 text-xs leading-relaxed text-slate-500">{b.caption}</figcaption>
+          </figure>
+        );
+        if (b.type === "table") return (
+          <div key={i} className="not-prose overflow-x-auto rounded-xl border border-slate-200 bg-white" tabIndex={0} role="region" aria-label={b.caption}>
+            <table className="w-full min-w-[560px] text-left text-sm">
+              <caption className="p-4 text-left font-semibold text-slate-800">{b.caption}</caption>
+              <thead className="bg-[#0783fd]/5"><tr>{b.headers.map(header => <th scope="col" key={header} className="border-t border-slate-200 px-4 py-3 font-bold text-slate-800">{header}</th>)}</tr></thead>
+              <tbody>{b.rows.map((row, index) => <tr key={index}>{row.map((cell, column) => column === 0
+                ? <th scope="row" key={column} className="border-t border-slate-200 px-4 py-3 align-top font-semibold text-slate-800">{renderInline(cell)}</th>
+                : <td key={column} className="border-t border-slate-200 px-4 py-3 align-top leading-relaxed text-slate-600">{renderInline(cell)}</td>)}</tr>)}</tbody>
+            </table>
+          </div>
+        );
         if (b.type === "callout") {
           const warn = b.tone === "warn";
           return (
@@ -102,11 +123,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   // Point og:image at this post's own generated cover, so a share on WhatsApp
   // or LinkedIn previews THIS article rather than the identical site-wide card
   // every post used to fall back to.
-  const cover = `${SITE_URL}/blog/${post.slug}/cover`;
+  const cover = `${SITE_URL}${post.shareImage ?? `/blog/${post.slug}/cover`}`;
   return {
     title: `${post.title} — Talko AI`,
     description: post.excerpt,
-    openGraph: { type: "article", images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
+    alternates: { canonical: `${SITE_URL}/blog/${post.slug}` },
+    openGraph: { type: "article", title: post.title, description: post.excerpt, url: `${SITE_URL}/blog/${post.slug}`, publishedTime: new Date(post.date).toISOString(), modifiedTime: new Date(post.dateModified ?? post.date).toISOString(), images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
     twitter: { card: "summary_large_image", images: [cover] },
   };
 }
@@ -130,7 +152,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
     ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
     ...(Number.isFinite(parsedMod) ? { dateModified: new Date(parsedMod).toISOString() } : {}),
     articleSection: post.category,
-    image: `${SITE_URL}/blog/${post.slug}/cover`,
+    image: `${SITE_URL}${post.shareImage ?? `/blog/${post.slug}/cover`}`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
     // The Organization, by the owner's choice. Declaring a Person named
@@ -164,11 +186,17 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
           <figure className="relative mx-auto mt-10 aspect-[1200/630] w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
             <BlogCoverImage slug={post.slug} title={post.title} priority sizes="(min-width: 1024px) 896px, 100vw" />
           </figure>
+          {post.coverCaption && <p className="mx-auto mt-3 max-w-4xl text-xs text-slate-500">{post.coverCaption}</p>}
         </Container>
       </section>
 
       <Container className="py-12">
         <article className="mx-auto max-w-2xl space-y-6">
+          {post.showContents && <nav aria-label="In this article" className="rounded-2xl border border-slate-200 bg-white p-5">
+            <details><summary className="cursor-pointer text-sm font-bold text-slate-700">In this article</summary>
+            <ul className="mt-3 space-y-2 text-sm">{post.body.map((block, index) => block.type === "h2" ? <li key={index}><a href={`#section-${index}`} className="text-[#026cd4] hover:underline">{block.text}</a></li> : null)}</ul>
+            </details>
+          </nav>}
           <BlockRenderer blocks={post.body} />
         </article>
 

@@ -1,0 +1,13 @@
+{
+  "mode": "Built-in image_gen tool",
+  "images": [
+    {
+      "asset": "public/blog/ai-customer-service-vs-human-support.webp",
+      "prompt": "Use case: photorealistic-natural. Asset type: Talko AI editorial blog cover and thumbnail, landscape 1.91:1 composition. Primary request: show AI customer service and human support working together in an instantly understandable realistic photo. A real Indian small-business support professional in a bright modern office, wearing a discreet headset, hand on laptop, with a smartphone prominent in the foreground showing a generic large blue chat bubble connected by a simple cyan line to a human avatar bubble. Warm natural window light, authentic skin and material texture, understated electric blue and cyan accents, navy and off-white brand palette. Human and phone both visible and clearly separated, key subjects within central 80% for thumbnail cropping. Generic illustrative UI only, simple icons and unreadable short lines. No robots, no brand logos, no headlines, no lettering, no fabricated screenshot or statistical chart, no watermark. Commercial editorial photography, calm capable mood, crisp detail."
+    },
+    {
+      "asset": "public/blog/ai-customer-service-handoff.webp",
+      "prompt": "Use case: photorealistic-natural. Asset type: in-article editorial photograph for Talko AI article about AI customer service and human handoffs. Landscape 3:2 composition. A small Indian online shop team, two colleagues seated side by side at a real wooden desk in a bright airy office. One colleague passes a laptop view to a colleague in a discreet headset. The laptop displays a generic customer conversation and a simple blue summary card with short unreadable lines and a check icon. Nearby a parcel and smartphone subtly establish a customer order problem. The visual story is a human receiving the conversation context without starting again. Natural window light, realistic hands and faces, lived-in authentic workspace, blue/cyan accents against off-white and navy. Keep visual composition uncluttered and approachable. No readable words, no logos, no fake real-platform screenshot, no charts, no robot, no watermark."
+    }
+  ]
+}

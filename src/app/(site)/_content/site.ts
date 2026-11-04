@@ -1,5 +1,6 @@
 // Marketing-site content for Talko AI. Single source of truth for all copy
 // so pages stay consistent. Pure data — no JSX — usable from server components.
+import { AI_CUSTOMER_SERVICE_POST } from "./ai-customer-service-post";
 
 export const SITE = {
   name: "Talko AI",
@@ -167,7 +168,9 @@ export type PostBlock =
   | { type: "compare"; caption?: string; badLabel: string; bad: string; goodLabel: string; good: string }
   // Mounts a named interactive widget. Kept as an id rather than a component so
   // this file stays pure data with no JSX and no client imports.
-  | { type: "tool"; id: "template-checker" };
+  | { type: "tool"; id: "template-checker" | "support-handoff-planner" }
+  | { type: "image"; src: string; alt: string; caption: string; width: number; height: number }
+  | { type: "table"; caption: string; headers: string[]; rows: string[][] };
 const p = (text: string): PostBlock => ({ type: "p", text });
 const h2 = (text: string): PostBlock => ({ type: "h2", text });
 const list = (items: string[]): PostBlock => ({ type: "list", items });
@@ -175,6 +178,9 @@ const list = (items: string[]): PostBlock => ({ type: "list", items });
 export type Post = {
   slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
   dateModified?: string;   // freshness signal; falls back to `date` when unset
+  shareImage?: string;
+  coverCaption?: string;
+  showContents?: boolean;
   body: PostBlock[];
   faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
   sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
@@ -195,6 +201,7 @@ export const AUTHOR = {
 } as const;
 
 export const POSTS: Post[] = [
+  AI_CUSTOMER_SERVICE_POST,
   {
     slug: "whatsapp-quality-rating-red-flagged-restricted",
     title: "Red, Flagged, Restricted: What WhatsApp Is Actually Telling You",

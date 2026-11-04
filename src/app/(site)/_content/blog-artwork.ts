@@ -1,5 +1,9 @@
 // Generated editorial artwork, kept separate from article copy and SEO metadata.
 export const BLOG_ARTWORK: Record<string, { src: string; alt: string }> = {
+  "ai-customer-service-vs-human-support": {
+    src: "/blog/ai-customer-service-vs-human-support.webp",
+    alt: "A support professional with a headset beside a phone showing connected AI and human conversation symbols.",
+  },
   "whatsapp-quality-rating-red-flagged-restricted": {
     src: "/blog/whatsapp-quality-rating-red-flagged-restricted.webp",
     alt: "A phone with messaging account status indicators for quality warnings and restrictions.",

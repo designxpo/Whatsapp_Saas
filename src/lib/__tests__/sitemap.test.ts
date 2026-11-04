@@ -3,7 +3,7 @@
 // not indexed" with last-crawled 1970-01-01, and both are the kind that come
 // back silently the next time someone adds a route.
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import sitemap from "../../app/sitemap";
 
 const entries = sitemap();
@@ -23,11 +23,21 @@ describe("sitemap", () => {
     // The original bug: `new Date()` for every entry meant each fetch claimed
     // all ~45 pages had just changed, which teaches Google to ignore lastmod
     // for the whole site. Any entry within a minute of now is that bug back.
-    const now = Date.now();
-    for (const e of entries) {
-      const t = new Date(e.lastModified as Date).getTime();
-      expect(Number.isFinite(t)).toBe(true);
-      expect(now - t).toBeGreaterThan(60_000);
+    // Use a fixed clock beyond the latest editorial date. Local publication
+    // can already be tomorrow in UTC; this guard tests dynamic stamps, not
+    // the machine's timezone on publication day. Generate under the fake
+    // clock so a regression to `new Date()` is still caught.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+    try {
+      const now = Date.now();
+      for (const e of sitemap()) {
+        const t = new Date(e.lastModified as Date).getTime();
+        expect(Number.isFinite(t)).toBe(true);
+        expect(now - t).toBeGreaterThan(60_000);
+      }
+    } finally {
+      vi.useRealTimers();
     }
   });
 

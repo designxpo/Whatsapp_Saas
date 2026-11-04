@@ -19,6 +19,7 @@ Key facts:
 - [About](https://www.thetalko.in/about): company mission and values.
 
 ## Blog
+- [AI customer service vs human support: where to draw the line](https://www.thetalko.in/blog/ai-customer-service-vs-human-support): a sourced 2026 comparison with an interactive support handoff planner.
 - [How automation is transforming customer messaging](https://www.thetalko.in/blog/whatsapp-automation-guide)
 - [Why we let you bring your own AI key](https://www.thetalko.in/blog/bring-your-own-ai-key)
 - [Instagram DMs: what's allowed, and what gets you blocked](https://www.thetalko.in/blog/instagram-dm-best-practices)
