@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { BlogCoverImage } from "../../_components/blog-cover-image";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Container, Glow } from "../../_components/ui";
@@ -160,6 +161,9 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             </div>
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
+          <figure className="relative mx-auto mt-10 aspect-[1200/630] w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+            <BlogCoverImage slug={post.slug} title={post.title} priority sizes="(min-width: 1024px) 896px, 100vw" />
+          </figure>
         </Container>
       </section>
 
