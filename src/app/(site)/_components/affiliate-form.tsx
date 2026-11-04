@@ -57,7 +57,7 @@ export function AffiliateForm() {
         </span>
       </label>
       {error && <p className="text-sm text-red-600">{error}</p>}
-      <button disabled={loading || !accepted} className="w-full py-2.5 rounded-full bg-gradient-to-br from-[#0783fd] via-[#3274ff] to-[#6a5cff] hover:opacity-90 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-60 transition-opacity">
+      <button disabled={loading || !accepted} className="marketing-button marketing-button-primary w-full disabled:opacity-60">
         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Join now — it&apos;s free
       </button>
       <p className="text-center text-xs text-slate-400">

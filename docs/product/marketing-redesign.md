@@ -27,3 +27,11 @@ Root metadata, sitemap, robots, middleware, `llms.txt`, shared schema and SEO co
 - Chrome checks at 1440, 768, 390 and 320px: workflow switching, navigation, keyboard Escape, expandable content, signup links, hydration errors and horizontal overflow.
 
 These checks protect the technical search contracts. Search rankings and AI-engine citations depend on external systems and are not guaranteed by a visual redesign.
+
+## Shared theme and moving feature cards
+
+The full marketing route group now shares the logo's blue-to-cyan gradient, white foregrounds on gradient buttons and icon tiles, a 22px dotted canvas, consistent headings, card borders and section widths. Pricing, forms, expanded details and the shared CTA use these same styles.
+
+The feature grid is now two continuously scrolling rails with alternating card tilts, faded edges and travelling corner sparks. It has no control buttons: hovering pauses the animation and leaving resumes it. Keyboard focus also pauses it. Reduced-motion preferences show all fourteen features in a static layout. The carousel is server-rendered with CSS animation, and duplicate loop copies are hidden from assistive technology. Existing feature wording remains available in the HTML.
+
+Additional browser checks cover hover pause/resume, absence of carousel buttons, reduced-motion layouts, white icon foregrounds and gradient button backgrounds. Expanded content and inner pages are checked for horizontal overflow.

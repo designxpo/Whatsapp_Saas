@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ClipboardList, MessageCircle, ShieldCheck, ShoppingBag, Sparkles, Users } from "lucide-react";
-import { Container, Glow, SectionTitle, Card, GRADIENTS } from "../_components/ui";
+import { Container, Glow, SectionTitle, Card } from "../_components/ui";
 import { Reveal } from "../_components/motion";
 import { CtaBand } from "../_components/sections";
 import { JsonLd } from "../_components/json-ld";
@@ -59,7 +59,7 @@ export default function ExtensionPage() {
 
           <Reveal className="mx-auto mt-10 flex max-w-2xl flex-col items-center gap-3 sm:flex-row sm:justify-center">
             <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer"
-              className={`inline-flex items-center justify-center gap-2 rounded-full ${GRADIENTS.brand} px-6 py-3 text-sm font-bold uppercase tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(7,131,253,0.8)] transition-opacity hover:opacity-90`}>
+              className="marketing-button marketing-button-primary">
               Add to Chrome — it&apos;s free
             </a>
             <Link href="/signup" className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#026cd4]">

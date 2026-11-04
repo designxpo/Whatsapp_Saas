@@ -25,7 +25,7 @@ export function PricingTiers({ tiers = TIERS }: { tiers?: Tier[] }) {
           return (
             <Reveal key={t.name} delay={ti * 100} className="h-full">
             <div
-              className={`relative h-full rounded-2xl border p-7 transition-shadow ${t.highlighted ? "border-[#0783fd] bg-white shadow-[0_22px_55px_-20px_rgba(106,92,255,0.5)]" : "border-slate-200 bg-white hover:shadow-[0_12px_30px_-16px_rgba(7,131,253,0.4)]"}`}
+              className={`site-plan-card relative h-full rounded-2xl border p-7 transition-shadow ${t.highlighted ? "border-[#0783fd] bg-white shadow-[0_22px_55px_-20px_rgba(106,92,255,0.5)]" : "border-slate-200 bg-white hover:shadow-[0_12px_30px_-16px_rgba(7,131,253,0.4)]"}`}
             >
               {t.highlighted && <span className={`absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full ${GRADIENTS.brand} px-3 py-1 text-[11px] font-bold text-white ring-4 ring-white`}>Most popular</span>}
               <h3 className="text-sm font-extrabold text-slate-900">{t.name}</h3>

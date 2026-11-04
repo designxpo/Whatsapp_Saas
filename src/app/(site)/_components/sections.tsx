@@ -1,13 +1,14 @@
-// Composable marketing sections — light TimBot-style theme. Server-safe.
+// Composable marketing sections using the shared Talko canvas theme.
 
 import Link from "next/link";
 import {
-  Bot, Megaphone, Workflow, Repeat, ShoppingBag, Instagram, Inbox, ShieldCheck,
-  Check, Star, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
-  Rocket, TrendingUp, MessagesSquare, Globe, ArrowRight, AtSign, Sparkles, Youtube, type LucideIcon,
+  Megaphone, Workflow, ShoppingBag, Inbox, ShieldCheck,
+  Check, Search, GitCompare, BadgeCheck, X, Minus, Clock, CheckCheck, Zap,
+  Rocket, TrendingUp, ArrowRight, type LucideIcon,
 } from "lucide-react";
-import { Container, SectionTitle, Card, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
+import { Container, SectionTitle, Button, TONES, GRADIENTS, ICON_GRADIENTS } from "./ui";
 import { Parallax, Reveal, CountUp } from "./motion";
+import { FeatureCarousel } from "./feature-carousel";
 import { Marquee } from "./marquee";
 import { BrandMark } from "./logos";
 import {
@@ -15,37 +16,8 @@ import {
   PROBLEMS, COMPARE_COLS, COMPARE_ROWS, COMPARE_NOTE, GLOSSARY,
 } from "../_content/site";
 
-const ICONS: Record<string, LucideIcon> = {
-  bot: Bot, megaphone: Megaphone, workflow: Workflow, repeat: Repeat,
-  shopping: ShoppingBag, instagram: Instagram, inbox: Inbox, shield: ShieldCheck,
-  messenger: MessagesSquare, webchat: Globe, comment: AtSign, star: Star, sparkles: Sparkles, youtube: Youtube,
-};
-
-// Gradient icon chip (white icon). `i` cycles through the harmonised palette so
-// a dense grid reads as a gradient family, not a wall of blue.
-function FeatureIcon({ name, i = 0 }: { name: string; i?: number }) {
-  const Icon = ICONS[name] ?? Bot;
-  return (
-    <span className={`flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-[0_8px_20px_-10px_rgba(7,131,253,0.6)] ${ICON_GRADIENTS[i % ICON_GRADIENTS.length]}`}>
-      <Icon className="h-5 w-5" />
-    </span>
-  );
-}
-
 export function FeatureGrid({ items = FEATURES }: { items?: Feature[] }) {
-  return (
-    <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((f, i) => (
-        <Reveal key={f.title} delay={(i % 3) * 90} className="h-full">
-          <Card className="h-full">
-            <FeatureIcon name={f.icon} i={i} />
-            <h3 className="mt-4 text-base font-bold text-slate-900">{f.title}</h3>
-            <p className="mt-2 text-sm leading-relaxed text-slate-500">{f.body}</p>
-          </Card>
-        </Reveal>
-      ))}
-    </div>
-  );
+  return <FeatureCarousel items={items} />;
 }
 
 // "Simplified in three easy steps" — pastel cards in a soft gray container.
@@ -54,7 +26,7 @@ const STEP_TONES = ["peach", "violet", "mint"] as const;
 export function ThreeSteps() {
   return (
     <Container className="py-16">
-      <div className="relative overflow-hidden rounded-[28px] px-5 py-12 sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_100%_0%,#FFF4E8_0%,#FFFFFF_46%,#EFF4FF_100%)]">
+      <div className="site-panel relative overflow-hidden rounded-[28px] px-5 py-12 sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_100%_0%,#FFF4E8_0%,#FFFFFF_46%,#EFF4FF_100%)]">
         <Parallax speed={90} className="pointer-events-none absolute inset-0">
           <div className="absolute -right-10 -top-10 h-64 w-64 rounded-full bg-[#F6B26B]/18 blur-3xl" />
         </Parallax>
@@ -149,7 +121,7 @@ export function StatsBand() {
 export function IntegrationsStrip() {
   return (
     <Container className="py-16">
-      <div className="relative overflow-hidden rounded-[28px] px-5 py-10 text-center sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_0%_100%,#EAFBF1_0%,#FFFFFF_50%,#F4F0FF_100%)]">
+      <div className="site-panel relative overflow-hidden rounded-[28px] px-5 py-10 text-center sm:px-10 ring-1 ring-slate-100 bg-[radial-gradient(120%_120%_at_0%_100%,#EAFBF1_0%,#FFFFFF_50%,#F4F0FF_100%)]">
         <Parallax speed={84} className="pointer-events-none absolute inset-0">
           <div className="absolute -left-12 -bottom-10 h-56 w-56 rounded-full bg-[#34d399]/16 blur-3xl" />
         </Parallax>
@@ -318,7 +290,7 @@ export function Glossary() {
 export function CtaBand() {
   return (
     <Container className="py-16">
-      <div className={`relative overflow-hidden rounded-[28px] ${GRADIENTS.aurora} px-6 py-14 sm:px-12`}>
+      <div className={`site-cta relative overflow-hidden rounded-[28px] ${GRADIENTS.deep} px-6 py-14 sm:px-12`}>
         {/* Soft colour-mesh overlay so the block reads rich, not a flat slab. */}
         <div aria-hidden className="pointer-events-none absolute inset-0 opacity-70 [background:radial-gradient(60%_80%_at_15%_10%,rgba(52,211,153,0.28),transparent_60%),radial-gradient(50%_70%_at_95%_90%,rgba(255,180,107,0.22),transparent_60%)]" />
         {/* Drifting light blooms — parallax depth on the CTA block. */}
@@ -337,8 +309,8 @@ export function CtaBand() {
               ))}
             </ul>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-              <Button href="/signup" variant="ghost" className="border-white/0 bg-white text-[#026cd4] hover:bg-slate-100">Start free trial</Button>
-              <a href="/pricing" className="inline-flex items-center justify-center rounded-full border border-white/40 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">See pricing</a>
+              <Button href="/signup">Start free trial</Button>
+              <a href="/pricing" className="marketing-button marketing-button-ghost">See pricing</a>
             </div>
           </div>
           <div className="hidden lg:block">

@@ -2340,3 +2340,470 @@
     font-size: 9px;
   }
 }
+
+/* Shared finish for every marketing section, including expanded details and inner pages. */
+.marketing-site {
+  --mk-brand-gradient: linear-gradient(120deg, #0783fd 0%, #04b9e7 100%);
+  --mk-brand-ink: #fff;
+  --mk-ink: #142d45;
+  --mk-paper: #fafcfe;
+  --mk-panel: #eff5fb;
+  --mk-line: #d7e4ef;
+  background-color: var(--mk-paper);
+  background-image: radial-gradient(circle, #cbd8e4 0.85px, transparent 1px);
+  background-size: 22px 22px;
+  overflow-x: clip;
+}
+.marketing-dot-grid {
+  display: none;
+}
+.marketing-site :is(h2, h3, h4) {
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+.marketing-site h2 {
+  line-height: 1.12;
+}
+.marketing-site .site-section-title {
+  font-size: clamp(32px, 3.7vw, 50px);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
+}
+.marketing-site .site-section-subtitle {
+  font-size: 15px;
+  line-height: 1.8;
+  color: #61758a;
+}
+.marketing-site .site-eyebrow {
+  background: none;
+  border: 0;
+  padding: 0;
+  border-radius: 0;
+  font:
+    10px/1.5 ui-monospace,
+    monospace;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: #536c83;
+}
+.marketing-site .site-glow {
+  display: none;
+}
+.marketing-site .marketing-button-primary,
+.marketing-site .creator-story-copy .marketing-button {
+  background: var(--mk-brand-gradient);
+  color: var(--mk-brand-ink);
+  border: 1px solid #0783fd33;
+  box-shadow: 0 7px 18px -12px #0783fdaa;
+  font-weight: 650;
+}
+.marketing-site .marketing-button-primary:hover,
+.marketing-site .creator-story-copy .marketing-button:hover {
+  background: var(--mk-brand-gradient);
+  color: var(--mk-brand-ink);
+  box-shadow: 0 9px 24px -12px #0783fdbb;
+  filter: brightness(1.04);
+}
+.marketing-site .marketing-button:disabled {
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}
+.marketing-site .site-brand-fill,
+.marketing-site .site-icon-chip {
+  background: var(--mk-brand-gradient);
+  color: var(--mk-brand-ink);
+}
+.marketing-site .site-brand-hover:hover {
+  filter: brightness(1.04);
+}
+.marketing-site .site-brand-surface {
+  background: linear-gradient(120deg, #063e7e, #0878c2 65%, #0785a6);
+  color: white;
+}
+.marketing-site .site-dark-surface {
+  background: #102d4c;
+}
+.marketing-site .site-icon-chip {
+  box-shadow: none;
+  border: 1px solid #0783fd26;
+  border-radius: 12px 12px 12px 4px;
+}
+.marketing-site .site-gradient-text {
+  background: linear-gradient(120deg, #0564c7, #087b9e);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+.marketing-site .site-soft-panel {
+  background: #edf5fc;
+}
+.marketing-site .site-panel {
+  background: #eff5fbef;
+  border: 1px solid #d7e4ef;
+  border-radius: 20px;
+  box-shadow: none;
+}
+.marketing-site .site-panel > [aria-hidden] {
+  display: none;
+}
+.marketing-site .site-why-choose [aria-hidden] {
+  display: none;
+}
+.marketing-site .site-card,
+.marketing-site .site-plan-card {
+  background: #ffffffed;
+  border: 1px solid #d7e4ef;
+  border-radius: 18px;
+  box-shadow: none;
+}
+.marketing-site .site-plan-card:has(> .site-brand-fill) {
+  border-color: #0783fd;
+  box-shadow: 0 0 0 3px #0783fd0c;
+}
+.marketing-site .site-cta {
+  border-radius: 22px;
+  border: 1px solid #234969;
+}
+.marketing-site .site-cta > [aria-hidden] {
+  display: none;
+}
+.marketing-site .site-cta h2 {
+  font-size: clamp(32px, 3.7vw, 50px);
+  font-weight: 500;
+  letter-spacing: -0.045em;
+}
+.marketing-site .site-cta .marketing-button-ghost {
+  color: #e1efff;
+  border-color: #456583;
+  background: #ffffff0d;
+}
+.marketing-site .site-cta .marketing-button-ghost:hover {
+  background: #ffffff18;
+}
+.marketing-site .growth-card {
+  background: #eff5fb;
+  border-color: #dce6ef;
+}
+.marketing-site .growth-card-wide {
+  background: #eaf3fd;
+}
+.marketing-site .growth-card-promise {
+  background: #e8f3f7;
+}
+.marketing-site .promise-visual {
+  background: #f7fbff;
+  border-color: #d1e0eb;
+}
+.marketing-site .promise-review {
+  background: #ddeef8;
+  color: #365e7c;
+}
+.marketing-site .promise-visual > p {
+  color: #58748b !important;
+  border-color: #d6e5ef;
+}
+.marketing-site .campaign-source,
+.marketing-site .campaign-answer {
+  border-color: #ccdfee;
+  background: #f9fcff;
+}
+.marketing-site .campaign-connector {
+  background: #b2cfe7;
+}
+.marketing-site .capability-card {
+  background: #ffffffed;
+}
+.marketing-site .capability-card .capability-icon {
+  background: var(--mk-brand-gradient);
+  border-color: #0783fd30;
+  color: var(--mk-brand-ink);
+}
+.marketing-site .marketing-next-step {
+  border: 1px solid #234969;
+}
+.marketing-site .next-step-art > div:nth-of-type(2) {
+  background: var(--mk-brand-gradient);
+  border-color: #0783fd;
+  color: var(--mk-brand-ink);
+}
+.marketing-site .marketing-library-intro,
+.marketing-site .marketing-details {
+  border-color: #cfdde9;
+}
+.marketing-site .marketing-details > summary {
+  color: #1e3c57;
+  font-weight: 500;
+}
+.marketing-site .marketing-details[open] > summary {
+  color: #026cd4;
+}
+.marketing-site .marketing-details > div {
+  border-radius: 18px;
+}
+.marketing-site .marketing-faq > div:last-child {
+  border-color: #d7e4ef;
+  border-radius: 18px;
+  background: #ffffffed;
+}
+.marketing-site .marketing-faq h3 button {
+  font-size: 14px;
+}
+.marketing-site .marketing-faq h3 button span {
+  font-weight: 500;
+}
+.marketing-site .marketing-footer {
+  background: #edf4fa;
+  border-top: 1px solid #d9e6f1;
+}
+.marketing-site .workflow-demo {
+  background: #eef5fb;
+}
+.marketing-site .workflow-demo-canvas {
+  background-color: #fbfdff;
+  border-color: #d4e3f0;
+}
+@media (max-width: 640px) {
+  .marketing-site .site-section-title {
+    font-size: 32px;
+  }
+  .marketing-site .site-section-subtitle {
+    font-size: 13px;
+  }
+  .marketing-site .site-panel {
+    border-radius: 18px;
+  }
+}
+/* Keep decorative content inside expandable sections; wide diagrams scroll locally. */
+.marketing-site .marketing-details > div {
+  overflow-x: clip;
+}
+
+/* Playful feature carousel: opposing rails, tilted cards and travelling sparks. */
+.feature-carousel {
+  margin-top: 38px;
+  position: relative;
+  isolation: isolate;
+  min-width: 0;
+}
+.feature-carousel-stage {
+  position: relative;
+  padding: 13px 0;
+}
+.feature-loop-window {
+  overflow: hidden;
+  padding: 16px 0;
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 5%,
+    #000 95%,
+    transparent
+  );
+}
+.feature-loop-track {
+  display: flex;
+  width: max-content;
+  animation: feature-conveyor var(--loop-duration, 63s) linear infinite;
+}
+.feature-loop-track[data-direction="reverse"] {
+  animation-direction: reverse;
+}
+.feature-loop-group {
+  display: flex;
+  flex-shrink: 0;
+  gap: 20px;
+  padding-right: 20px;
+  align-items: stretch;
+}
+.feature-loop-card {
+  position: relative;
+  width: 302px;
+  min-height: 225px;
+  flex-shrink: 0;
+  background: #ffffffed;
+  border: 1px solid #d0e2f0;
+  border-radius: 20px 20px 20px 5px;
+  padding: 24px;
+  transform: rotate(var(--card-tilt));
+  transition:
+    transform 0.25s,
+    border-color 0.25s,
+    box-shadow 0.25s;
+}
+.feature-loop-card:hover {
+  transform: translateY(-6px) rotate(0deg);
+  border-color: #45a8f3;
+  box-shadow: 0 13px 28px -20px #0783fd77;
+}
+.feature-loop-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.feature-loop-card .site-icon-chip {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+.feature-card-number {
+  color: #87a2ba;
+  font:
+    9px ui-monospace,
+    monospace;
+}
+.marketing-site .feature-loop-card h3 {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  margin-top: 24px;
+  color: #1e3e59;
+  line-height: 1.3;
+}
+.feature-loop-card > p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #617b91;
+  margin-top: 11px;
+  padding-bottom: 14px;
+}
+.feature-card-spark {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  width: 25px;
+  height: 25px;
+  bottom: 14px;
+  right: 14px;
+  border-radius: 50%;
+  color: #7da5c5;
+  background: #f1f7fc;
+  transform: rotate(-35deg);
+  transition:
+    transform 0.25s,
+    color 0.25s;
+}
+.feature-loop-card:hover .feature-card-spark {
+  transform: rotate(0);
+  color: #0783fd;
+}
+.feature-carousel-stage:is(:hover, :focus-within)
+  :is(.feature-loop-track, .feature-orbit > span) {
+  animation-play-state: paused;
+}
+.feature-orbit {
+  position: absolute;
+  z-index: -1;
+  inset: 5px 12px;
+  border: 1px dashed #bcd9ef;
+  border-radius: 90px;
+  transform: rotate(-2deg);
+  pointer-events: none;
+}
+.feature-orbit > span {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: #0783fd;
+  border-radius: 50%;
+  box-shadow: 0 0 16px #0783fd66;
+  offset-path: inset(0 round 90px);
+  animation: feature-orbit-lap 18s linear infinite;
+}
+.feature-orbit > span:nth-child(2) {
+  animation-delay: -6s;
+  background: #04b9e7;
+}
+.feature-orbit > span:nth-child(3) {
+  animation-delay: -12s;
+  width: 5px;
+  height: 5px;
+}
+.feature-carousel-hint {
+  text-align: center;
+  font-size: 10px;
+  color: #7890a5;
+  margin-top: 13px;
+}
+@keyframes feature-conveyor {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes feature-orbit-lap {
+  to {
+    offset-distance: 100%;
+  }
+}
+@media (max-width: 640px) {
+  .feature-loop-card {
+    width: 262px;
+    min-height: 215px;
+    padding: 22px;
+  }
+  .feature-loop-group {
+    gap: 17px;
+    padding-right: 17px;
+  }
+  .feature-loop-window {
+    padding: 13px 0;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 3%,
+      #000 97%,
+      transparent
+    );
+  }
+  .feature-orbit {
+    inset: 0 0;
+    border-radius: 55px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .feature-loop-track {
+    animation: none;
+    width: 100%;
+  }
+  .feature-loop-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    padding: 0;
+    gap: 16px;
+  }
+  .feature-loop-clone {
+    display: none;
+  }
+  .feature-loop-card {
+    width: auto;
+    min-width: 0;
+    transform: none;
+    transition: none;
+  }
+  .feature-loop-card:hover {
+    transform: none;
+  }
+  .feature-orbit {
+    display: none;
+  }
+  .feature-loop-window {
+    mask-image: none;
+    overflow: visible;
+  }
+  .feature-carousel-hint {
+    display: none !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) and (max-width: 850px) {
+  .feature-loop-group {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (prefers-reduced-motion: reduce) and (max-width: 640px) {
+  .feature-loop-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

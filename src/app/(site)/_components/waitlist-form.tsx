@@ -101,7 +101,7 @@ export function WaitlistForm({ initialPlan = "" }: { initialPlan?: string }) {
       {err && <p className="mt-4 text-sm text-red-600">{err}</p>}
 
       <button type="submit" disabled={busy}
-        className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0783fd] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#0668d6] disabled:opacity-60">
+        className="marketing-button marketing-button-primary mt-6 w-full disabled:opacity-60">
         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} {busy ? "Joining…" : "Join the waitlist"}
       </button>
       <p className="mt-3 text-center text-[11px] text-slate-400">No spam. We&apos;ll only email you about early access and launch.</p>
