@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, MailCheck } from "lucide-react";
-import { track } from "@/lib/analytics";
+import { blogSourceFromSearch, track } from "@/lib/analytics";
 
 const TOPICS = ["Sales", "Support", "Partnership", "General"];
 const field = "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-500 outline-none focus:border-[#0783fd] focus:ring-2 focus:ring-[#0783fd]/20 transition";
@@ -12,6 +12,13 @@ export function ContactForm() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [blogSource, setBlogSource] = useState<string | undefined>();
+
+  useEffect(() => {
+    const source = blogSourceFromSearch(window.location.search);
+    setBlogSource(source);
+    if (source) setForm(current => ({ ...current, topic: "Sales" }));
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,13 +27,14 @@ export function ContactForm() {
     try {
       const res = await fetch("/api/contact", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, message: blogSource
+          ? `${form.message}\n\nArticle: /blog/${blogSource}` : form.message }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) { setErr(d.error || "Something went wrong — please try again."); return; }
       // `topic` is the useful dimension here — it separates a sales enquiry
       // from a support question, which are different leads entirely.
-      track("generate_lead", { topic: form.topic });
+      track("generate_lead", { topic: form.topic, article: blogSource });
       setDone(true);
     } catch { setErr("Connection error — please try again."); }
     finally { setBusy(false); }

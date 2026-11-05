@@ -1,6 +1,7 @@
 // Marketing-site content for Talko AI. Single source of truth for all copy
 // so pages stay consistent. Pure data — no JSX — usable from server components.
 import { AI_CUSTOMER_SERVICE_POST } from "./ai-customer-service-post";
+import { SCHEDULED_POSTS } from "./scheduled-posts";
 
 export const SITE = {
   name: "Talko AI",
@@ -178,6 +179,8 @@ const list = (items: string[]): PostBlock => ({ type: "list", items });
 export type Post = {
   slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
   dateModified?: string;   // freshness signal; falls back to `date` when unset
+  publishAt?: string;     // Exact ISO instant; future posts are private until then.
+  leadCta?: { title: string; text: string; label: string };
   shareImage?: string;
   coverCaption?: string;
   showContents?: boolean;
@@ -201,6 +204,7 @@ export const AUTHOR = {
 } as const;
 
 export const POSTS: Post[] = [
+  ...SCHEDULED_POSTS,
   AI_CUSTOMER_SERVICE_POST,
   {
     slug: "whatsapp-quality-rating-red-flagged-restricted",

@@ -9,10 +9,12 @@ import { Breadcrumbs } from "../_components/breadcrumbs";
 import { LastUpdated, PageSummary, PageFaq, SourceList } from "../_components/seo";
 import { webPageSchema } from "../_content/schema";
 import { BLOG_SEO } from "../_content/pageseo";
-import { POSTS } from "../_content/site";
+import { getBlogUpdated, getPublishedPosts } from "../_content/blog-publication";
 import { SITE_URL } from "@/lib/siteurl";
 
 const PATH = "/blog";
+// Evaluate the publication clock per request, including after a future slug 404.
+export const dynamic = "force-dynamic";
 const TITLE = "WhatsApp & Instagram Automation Blog — Talko AI";
 const DESCRIPTION = "Playbooks, product updates and compliance guides for automating WhatsApp, Instagram, Messenger, YouTube, Google reviews and website chat.";
 
@@ -46,6 +48,8 @@ const TOPICS: { name: string; body: string }[] = [
 ];
 
 export default function BlogPage() {
+  const posts = getPublishedPosts();
+  const updated = getBlogUpdated(BLOG_SEO.updated);
   // CollectionPage + ItemList: this page's job is to point at the articles, so
   // the accurate schema describes an ordered list of them — not a fabricated
   // Article about the index itself.
@@ -54,8 +58,8 @@ export default function BlogPage() {
     "@type": "ItemList",
     "@id": `${SITE_URL}${PATH}#posts`,
     name: "Talko AI blog posts",
-    itemListElement: POSTS.map((p, i) => {
-      const t = Date.parse(p.dateModified ?? p.date);
+    itemListElement: posts.map((p, i) => {
+      const t = Date.parse(p.publishAt ?? p.date);
       return {
         "@type": "ListItem",
         position: i + 1,
@@ -75,7 +79,7 @@ export default function BlogPage() {
 
   return (
     <>
-      <JsonLd data={webPageSchema({ path: PATH, name: TITLE, description: DESCRIPTION, updated: BLOG_SEO.updated, published: BLOG_SEO.published, extraTypes: ["CollectionPage"] })} />
+      <JsonLd data={webPageSchema({ path: PATH, name: TITLE, description: DESCRIPTION, updated, published: BLOG_SEO.published, extraTypes: ["CollectionPage"] })} />
       <JsonLd data={postList} />
 
       <section className="relative overflow-hidden">
@@ -98,7 +102,7 @@ export default function BlogPage() {
             </p>
           </PageSummary>
           <div className="mt-4 text-center text-sm text-slate-500">
-            <LastUpdated iso={BLOG_SEO.updated} />
+            <LastUpdated iso={updated} />
           </div>
         </Container>
       </section>
@@ -108,7 +112,7 @@ export default function BlogPage() {
       <Container className="pt-12 pb-12">
         <SectionTitle title="Latest articles" eyebrow="Reading list" id="latest" />
         <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {POSTS.map(p => (
+          {posts.map(p => (
             <Link key={p.slug} href={`/blog/${p.slug}`}
               className="group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_-6px_rgba(0,0,0,0.08)] transition-shadow hover:shadow-[0_12px_30px_-12px_rgba(7,131,253,0.3)]">
               <div className="relative aspect-[1200/630] w-full overflow-hidden bg-slate-100">

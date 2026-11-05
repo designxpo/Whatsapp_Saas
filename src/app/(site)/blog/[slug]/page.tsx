@@ -10,14 +10,14 @@ import { CtaBand } from "../../_components/sections";
 import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { PageFaq, SourceList } from "../../_components/seo";
-import { AUTHOR, POSTS, type PostBlock } from "../../_content/site";
+import { AUTHOR, type PostBlock } from "../../_content/site";
+import { getPublishedPost, getPublishedPosts } from "../../_content/blog-publication";
+import { BlogLeadCta } from "../../_components/blog-lead-cta";
 import { TemplateChecker } from "../../_components/template-checker";
 import { SupportHandoffPlanner } from "../../_components/support-handoff-planner";
 import { SITE_URL } from "@/lib/siteurl";
 
-export function generateStaticParams() {
-  return POSTS.map(p => ({ slug: p.slug }));
-}
+export const dynamic = "force-dynamic";
 
 // Inline links allow internal paths and HTTPS citations only. Other schemes
 // remain plain text; no raw HTML is interpreted.
@@ -118,8 +118,8 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const post = POSTS.find(p => p.slug === slug);
-  if (!post) return { title: "Article — Talko AI" };
+  const post = getPublishedPost(slug);
+  if (!post) notFound();
   // Point og:image at this post's own generated cover, so a share on WhatsApp
   // or LinkedIn previews THIS article rather than the identical site-wide card
   // every post used to fall back to.
@@ -128,22 +128,22 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     title: `${post.title} — Talko AI`,
     description: post.excerpt,
     alternates: { canonical: `${SITE_URL}/blog/${post.slug}` },
-    openGraph: { type: "article", title: post.title, description: post.excerpt, url: `${SITE_URL}/blog/${post.slug}`, publishedTime: new Date(post.date).toISOString(), modifiedTime: new Date(post.dateModified ?? post.date).toISOString(), images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
+    openGraph: { type: "article", title: post.title, description: post.excerpt, url: `${SITE_URL}/blog/${post.slug}`, publishedTime: new Date(post.publishAt ?? post.date).toISOString(), modifiedTime: new Date(post.dateModified ?? post.publishAt ?? post.date).toISOString(), images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
     twitter: { card: "summary_large_image", images: [cover] },
   };
 }
 
 export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const post = POSTS.find(p => p.slug === slug);
+  const post = getPublishedPost(slug);
   if (!post) notFound();
-  const more = POSTS.filter(p => p.slug !== slug).slice(0, 2);
+  const more = getPublishedPosts().filter(p => p.slug !== slug).slice(0, 2);
 
   // BlogPosting schema — lets AI engines attribute and cite the article, and
   // enables article rich results. `date` is a human string ("June 12, 2026");
   // Date.parse handles it, and we emit an ISO date when parseable.
-  const parsed = Date.parse(post.date);
-  const parsedMod = Date.parse(post.dateModified ?? post.date);
+  const parsed = Date.parse(post.publishAt ?? post.date);
+  const parsedMod = Date.parse(post.dateModified ?? post.publishAt ?? post.date);
   const blogSchema = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
@@ -198,6 +198,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             </details>
           </nav>}
           <BlockRenderer blocks={post.body} />
+          {post.leadCta && <BlogLeadCta slug={post.slug} {...post.leadCta} />}
         </article>
 
         {(post.faqs?.length || post.sources?.length) ? (

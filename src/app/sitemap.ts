@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
-import { POSTS, COMPETITORS } from "./(site)/_content/site";
+import { COMPETITORS } from "./(site)/_content/site";
+import { getBlogUpdated, getPublishedPosts } from "./(site)/_content/blog-publication";
 import { INDUSTRIES } from "./(site)/_content/industries";
 import { LEGAL_DOCS, LEGAL_VERSION } from "./(site)/_content/legal";
 import { GUIDES } from "./(site)/_content/guides";
@@ -40,6 +41,7 @@ import { SITE_URL } from "@/lib/siteurl";
  * costs nothing; one that is always "now" costs the trust of every other date.
  */
 const CONTENT_REVISION = "2026-08-21";
+export const dynamic = "force-dynamic";
 
 /** Safe ISO → Date. Falls back to CONTENT_REVISION rather than to "now". */
 function on(iso: string | undefined): Date {
@@ -59,7 +61,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["/industries", INDUSTRIES_SEO.updated],
     ["/pricing", PRICING_SEO.updated],
     ["/about", ABOUT_SEO.updated],
-    ["/blog", BLOG_SEO.updated],
+    ["/blog", getBlogUpdated(BLOG_SEO.updated)],
     ["/vs", CONTENT_REVISION],
     ["/guides", GUIDES_SEO.updated],
     ["/changelog", CONTENT_REVISION],
@@ -83,9 +85,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${SITE_URL}/industries/${i.slug}`, lastModified: on(CONTENT_REVISION), changeFrequency: "monthly" as const,
   }));
 
-  const posts = POSTS.map(p => ({
+  const posts = getPublishedPosts().map(p => ({
     url: `${SITE_URL}/blog/${p.slug}`,
-    lastModified: on(p.dateModified ?? p.date),
+    lastModified: on(p.dateModified ?? p.publishAt ?? p.date),
     changeFrequency: "monthly" as const,
   }));
 

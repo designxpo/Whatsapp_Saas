@@ -27,6 +27,7 @@ export type TrackEvent =
   | "select_plan"        // a "start free trial" CTA clicked anywhere on the site
   | "affiliate_signup"   // affiliate program joined
   | "generate_lead"      // contact form submitted
+  | "blog_cta_click"     // article-specific sales enquiry CTA
   | "login";
 
 type Params = Record<string, string | number | boolean | undefined>;
@@ -51,6 +52,12 @@ export function track(name: TrackEvent, params?: Params): void {
   } catch {
     /* analytics must never take a user flow down with it */
   }
+}
+
+/** Accept an article slug, never arbitrary query text or personal data. */
+export function blogSourceFromSearch(search: string): string | undefined {
+  const value = new URLSearchParams(search).get("blog");
+  return value && value.length <= 120 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ? value : undefined;
 }
 
 /**
