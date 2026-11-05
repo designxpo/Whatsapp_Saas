@@ -2,6 +2,7 @@
 // so pages stay consistent. Pure data — no JSX — usable from server components.
 import { AI_CUSTOMER_SERVICE_POST } from "./ai-customer-service-post";
 import { SCHEDULED_POSTS } from "./scheduled-posts";
+import { WINTER_FEATURE_POSTS } from "./winter-feature-posts";
 
 export const SITE = {
   name: "Talko AI",
@@ -182,7 +183,7 @@ export type Post = {
   slug: string; title: string; excerpt: string; date: string; category: string; readTime: string;
   dateModified?: string;   // freshness signal; falls back to `date` when unset
   publishAt?: string;     // Exact ISO instant; future posts are private until then.
-  leadCta?: { title: string; text: string; label: string };
+  leadCta?: { title: string; text: string; label: string; campaign?: string };
   shareImage?: string;
   coverCaption?: string;
   showContents?: boolean;
@@ -206,6 +207,7 @@ export const AUTHOR = {
 } as const;
 
 export const POSTS: Post[] = [
+  ...WINTER_FEATURE_POSTS,
   ...SCHEDULED_POSTS,
   AI_CUSTOMER_SERVICE_POST,
   {

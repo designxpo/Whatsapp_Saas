@@ -7,11 +7,11 @@ import sitemap from "../../app/sitemap";
 afterEach(() => vi.useRealTimers());
 
 describe("finite blog publication campaign", () => {
-  it("has ten distinct articles exactly three days apart at 14:00 UTC", () => {
-    expect(SCHEDULED_POSTS).toHaveLength(10);
-    expect(new Set(SCHEDULED_POSTS.map(p => p.slug)).size).toBe(10);
+  it("preserves eight November releases exactly three days apart at 14:00 UTC", () => {
+    expect(SCHEDULED_POSTS).toHaveLength(8);
+    expect(new Set(SCHEDULED_POSTS.map(p => p.slug)).size).toBe(8);
     expect(SCHEDULED_POSTS[0].publishAt).toBe("2026-11-08T14:00:00Z");
-    expect(SCHEDULED_POSTS.at(-1)?.publishAt).toBe("2026-12-05T14:00:00Z");
+    expect(SCHEDULED_POSTS.at(-1)?.publishAt).toBe("2026-11-29T14:00:00Z");
     SCHEDULED_POSTS.forEach((post, index) => {
       expect(post.publishAt).toMatch(/T14:00:00Z$/);
       expect(post.leadCta?.label).toBeTruthy();
