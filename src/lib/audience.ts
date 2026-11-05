@@ -303,8 +303,8 @@ export async function consentMissing(phones: string[], tenantId = DEFAULT_TENANT
     if (error) throw error;
     for (const r of data ?? []) if (r.opted_in === true) consented.add(last10(r.phone as string));
   }
-  // Tolerant pass over the rest. A TYPED number ("8368872108") is not equal to
-  // the stored country-coded row ("918368872108"), so exact-match-only would
+  // Tolerant pass over the rest. A TYPED number ("9876500101") is not equal to
+  // the stored country-coded row ("919876500101"), so exact-match-only would
   // report a pasted recipient as not opted in even though they are. Match on the
   // last 10 digits, like markOptedIn / isOptedOut already do. Usually runs on
   // zero phones, so the extra queries only happen for hand-entered lists.
@@ -334,8 +334,8 @@ export async function consentStats(tenantId = DEFAULT_TENANT_ID): Promise<{ gran
 
 // Batches key on contacts.id but Live Chat keys on a conversation, so the phone
 // is the join — and it must be country-code tolerant for the same reason
-// markOptedIn is: a lead who typed "8368872108" has to resolve to the stored
-// "918368872108" rather than looking like a different person.
+// markOptedIn is: a lead who typed "9876500101" has to resolve to the stored
+// "919876500101" rather than looking like a different person.
 export async function contactIdForPhone(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<string | null> {
   const d = digits(phone);
   if (d.length < 10) return null;

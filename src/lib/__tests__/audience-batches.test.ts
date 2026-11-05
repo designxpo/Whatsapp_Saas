@@ -273,27 +273,27 @@ describe("batches", () => {
     // Live Chat keys on a conversation; batches key on contacts.id. The join is
     // the phone, and a lead who typed 10 digits must reach the stored
     // country-coded row rather than looking like someone else.
-    contact("c1", "918368872108");
-    expect(await contactIdForPhone("8368872108")).toBe("c1");
-    expect(await contactIdForPhone("+91 83688 72108")).toBe("c1");
-    expect(await contactIdForPhone("918368872108")).toBe("c1");
+    contact("c1", "919876500101");
+    expect(await contactIdForPhone("9876500101")).toBe("c1");
+    expect(await contactIdForPhone("+91 98765 00101")).toBe("c1");
+    expect(await contactIdForPhone("919876500101")).toBe("c1");
   });
 
   it("prefers the country-coded row when both forms exist", async () => {
-    contact("short", "8368872108");
-    contact("full", "918368872108");
-    expect(await contactIdForPhone("8368872108")).toBe("full");
+    contact("short", "9876500101");
+    contact("full", "919876500101");
+    expect(await contactIdForPhone("9876500101")).toBe("full");
   });
 
   it("returns null for an unknown or too-short number", async () => {
-    contact("c1", "918368872108");
+    contact("c1", "919876500101");
     expect(await contactIdForPhone("919999999999")).toBeNull();
     expect(await contactIdForPhone("12345")).toBeNull();
     expect(await contactIdForPhone("")).toBeNull();
   });
 
   it("lists the static batches a lead belongs to", async () => {
-    contact("c1", "918368872108");
+    contact("c1", "919876500101");
     const a = await createBatch({ name: "Aug weekend" });
     const b = await createBatch({ name: "Dynamic one", kind: "dynamic", filter: { tag: "x" } });
     await addBatchMembers(a.id, ["c1"]);
@@ -306,7 +306,7 @@ describe("batches", () => {
   });
 
   it("hides an archived batch from a lead's list", async () => {
-    contact("c1", "918368872108");
+    contact("c1", "919876500101");
     const a = await createBatch({ name: "Old batch" });
     await addBatchMembers(a.id, ["c1"]);
     expect((await batchesForContact("c1")).length).toBe(1);
@@ -334,18 +334,18 @@ describe("batches", () => {
   });
 
   it("matches a TYPED number against the stored country-coded contact", async () => {
-    // A pasted recipient "8368872108" compared exactly against contacts.phone
-    // "918368872108" finds nothing and would be treated as not opted in, even
+    // A pasted recipient "9876500101" compared exactly against contacts.phone
+    // "919876500101" finds nothing and would be treated as not opted in, even
     // though that contact consented — so the whole send reaches nobody.
-    contact("c1", "918368872108");
-    expect((await consentMissing(["8368872108"])).size).toBe(0);
-    expect((await consentMissing(["+91 83688 72108"])).size).toBe(0);
+    contact("c1", "919876500101");
+    expect((await consentMissing(["9876500101"])).size).toBe(0);
+    expect((await consentMissing(["+91 98765 00101"])).size).toBe(0);
   });
 
   it("still reports a typed number whose contact has NOT opted in", async () => {
     // The tolerant match must not become a blanket pass.
-    contact("c1", "918368872108", { opted_in: false });
-    expect((await consentMissing(["8368872108"])).has("8368872108")).toBe(true);
+    contact("c1", "919876500101", { opted_in: false });
+    expect((await consentMissing(["9876500101"])).has("9876500101")).toBe(true);
   });
 
   it("counts a number that isn't a contact at all as not opted in", async () => {

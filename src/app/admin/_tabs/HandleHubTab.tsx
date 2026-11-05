@@ -105,7 +105,7 @@ function HandleHubTab() {
             </label>
             <label className="block">
               <span className="text-[11px] text-slate-500">WhatsApp number (with country code)</span>
-              <input className={`${inp} w-full mt-1`} placeholder="919555219007" value={newEp.number} onChange={e => setNewEp({ ...newEp, number: e.target.value.replace(/\D/g, "") })} />
+              <input className={`${inp} w-full mt-1`} placeholder="919876500104" value={newEp.number} onChange={e => setNewEp({ ...newEp, number: e.target.value.replace(/\D/g, "") })} />
             </label>
           </div>
           <label className="block">

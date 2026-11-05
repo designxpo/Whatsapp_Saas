@@ -90,7 +90,7 @@ Authorization: Bearer <OTP_API_KEY>
 **Body**
 ```jsonc
 {
-  "phone": "919555525908",   // required — country code + number, digits (see §7)
+  "phone": "919876500105",   // required — country code + number, digits (see §7)
   "area": "delhi",           // optional — route to this area's number
   "channelId": "…"           // optional — pin a specific number by id (advanced)
 }
@@ -127,7 +127,7 @@ Checks a code the user submitted. Single-use; 5 wrong guesses invalidate the cod
 
 **Body**
 ```json
-{ "phone": "919555525908", "code": "1234" }
+{ "phone": "919876500105", "code": "1234" }
 ```
 
 **Response — always `200`** (branch on `valid`)
@@ -165,9 +165,9 @@ prompt them to request a new code.
 ## 7. Phone number format
 
 - Send **country code + subscriber number**. The service strips non-digits, so
-  `919555525908`, `+91 95555 25908`, and `+919555525908` all normalise to the
+  `919876500105`, `+91 98765 00105`, and `+919876500105` all normalise to the
   same value. **Recommended:** digits only, with country code, no `+`
-  (e.g. `919555525908`). A bare local number without the country code will
+  (e.g. `919876500105`). A bare local number without the country code will
   **not** be delivered by Meta.
 - Must be **8–15 digits** after stripping.
 - Use the **same phone string** for `send` and `verify` (normalisation makes
@@ -260,13 +260,13 @@ on the server.
 curl -sS -X POST "$OTP_BASE_URL/api/otp/send" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OTP_API_KEY" \
-  -d '{"phone":"919555525908"}'
+  -d '{"phone":"919876500105"}'
 
 # verify
 curl -sS -X POST "$OTP_BASE_URL/api/otp/verify" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $OTP_API_KEY" \
-  -d '{"phone":"919555525908","code":"1234"}'
+  -d '{"phone":"919876500105","code":"1234"}'
 ```
 
 ---

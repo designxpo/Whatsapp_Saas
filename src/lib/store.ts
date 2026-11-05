@@ -55,7 +55,7 @@ export interface Campaign {
 const digits = (p: string) => (p || "").replace(/\D/g, "");
 const last10 = (p: string) => digits(p).slice(-10);
 // Two numbers are the same person if one is a suffix of the other (a local
-// "8368904146" vs its country-coded "918368904146"). Numbers that merely share
+// "9876500103" vs its country-coded "919876500103"). Numbers that merely share
 // 10 trailing digits but neither is a suffix of the other are kept separate.
 const samePerson = (a: string, b: string) => a === b || a.endsWith(b) || b.endsWith(a);
 
@@ -388,8 +388,8 @@ export async function countContacts(tenantId = DEFAULT_TENANT_ID): Promise<numbe
 
 // ── Opt-outs ──────────────────────────────────────────────────────────────────
 // Contact-status updates match by last-10 (same identity as the suppression
-// rows and the send-time optoutSet), so a contact imported as "8368904146"
-// flips to optedout when the webhook's "918368904146" sends STOP —
+// rows and the send-time optoutSet), so a contact imported as "9876500103"
+// flips to optedout when the webhook's "919876500103" sends STOP —
 // exact-digits matching missed it (contact stayed "active" in the UI).
 export async function addOptout(phone: string, reason?: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
   await db().from("wa_optouts").upsert({ tenant_id: tenantId, phone: last10(phone), reason: reason ?? null }, { onConflict: "tenant_id,phone" });

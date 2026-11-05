@@ -149,8 +149,8 @@ describe("matching a contact to a conversation", () => {
   it("matches on the last ten digits, not the exact string", async () => {
     // LeadSquared stores ten digits, WhatsApp stores the country code. An
     // exact join finds nothing and reports every lead as unattributed.
-    h.convs = [conv("918368872108")];
-    h.contacts = [contact("8368872108", { utm_source: "google", utm_medium: "cpc" })];
+    h.convs = [conv("919876500101")];
+    h.contacts = [contact("9876500101", { utm_source: "google", utm_medium: "cpc" })];
     const d = await getLeadSources("30d");
     expect(d.coverage.attributed).toBe(1);
   });

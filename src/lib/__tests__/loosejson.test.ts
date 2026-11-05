@@ -16,7 +16,7 @@ import { parseLooseJson, parseLooseJsonObject } from "../loosejson";
 
 /** Byte-for-byte what LeadSquared put on the wire. */
 const LSQ_BODY =
-  '{\\n  \\"phone\\": \\"+91-8368872108\\",\\n  \\"leadId\\": \\"805c64a2-142e-4fe2-a368-75390eadc316\\",' +
+  '{\\n  \\"phone\\": \\"+91-9876500101\\",\\n  \\"leadId\\": \\"805c64a2-142e-4fe2-a368-75390eadc316\\",' +
   '\\n  \\"counsellor\\": \\"Jahnabi\\",\\n  \\"name\\": \\"Priyesh\\",\\n  \\"course\\": \\"\\"\\n}';
 
 describe("the body LeadSquared actually sends", () => {
@@ -26,7 +26,7 @@ describe("the body LeadSquared actually sends", () => {
 
   it("parses, with every field intact", () => {
     expect(parseLooseJson(LSQ_BODY)).toEqual({
-      phone: "+91-8368872108",
+      phone: "+91-9876500101",
       leadId: "805c64a2-142e-4fe2-a368-75390eadc316",
       counsellor: "Jahnabi",
       name: "Priyesh",
@@ -37,7 +37,7 @@ describe("the body LeadSquared actually sends", () => {
   it("keeps the phone exactly, including the + and the dash", () => {
     // The route strips non-digits itself; silently mangling it here would
     // move the failure somewhere much harder to see.
-    expect((parseLooseJson(LSQ_BODY) as { phone: string }).phone).toBe("+91-8368872108");
+    expect((parseLooseJson(LSQ_BODY) as { phone: string }).phone).toBe("+91-9876500101");
   });
 });
 

@@ -7,7 +7,7 @@
 //
 // Matching is on the LAST 10 DIGITS, not the full number. wa_crm_session.phone
 // stores whatever digits arrived on the message, so the same person shows up as
-// "8368872108" there and "918368872108" on the conversation. An exact-string
+// "9876500101" there and "919876500101" on the conversation. An exact-string
 // join therefore finds nothing and reports every one of those chats as "clear" —
 // the same country-code mismatch that already made consentMissing report zero.
 //

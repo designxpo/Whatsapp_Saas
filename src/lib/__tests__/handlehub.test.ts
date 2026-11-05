@@ -8,8 +8,8 @@ import { parseRef, stripRef, trackedLink, REF_RE } from "../handlehub";
 // the stored/answered message is the customer's real, visible text.
 describe("Handle Hub — invisible ref encoding", () => {
   it("builds a wa.me link whose VISIBLE text is exactly the greeting — nothing bracketed", () => {
-    const link = trackedLink({ number: "919555219007", handle: "analytixlabs", greeting: "Hi! I'd like to know more." }, { refCode: "ab12cd" });
-    expect(link).toContain("https://wa.me/919555219007?text=");
+    const link = trackedLink({ number: "919876500104", handle: "analytixlabs", greeting: "Hi! I'd like to know more." }, { refCode: "ab12cd" });
+    expect(link).toContain("https://wa.me/919876500104?text=");
     const prefilled = decodeURIComponent(link!.split("text=")[1]);
     expect(prefilled).not.toContain("[");
     expect(prefilled).not.toContain("ref");
@@ -21,7 +21,7 @@ describe("Handle Hub — invisible ref encoding", () => {
   });
 
   it("round-trips: the code minted into a link is exactly what parseRef recovers, and stripRef leaves the greeting untouched", () => {
-    const cfg = { number: "919555219007", handle: "x", greeting: "Hello!" };
+    const cfg = { number: "919876500104", handle: "x", greeting: "Hello!" };
     const link = trackedLink(cfg, { refCode: "k7m2q9" })!;
     const prefilled = decodeURIComponent(link.split("text=")[1]);   // what WhatsApp sends as msg 1
     expect(parseRef(prefilled)).toBe("k7m2q9");
@@ -30,7 +30,7 @@ describe("Handle Hub — invisible ref encoding", () => {
 
   it("round-trips codes of varying length (genCode doesn't always yield exactly 7 chars)", () => {
     for (const code of ["a", "ab12", "z9x8w7v6", "0123456789abcdef"]) {
-      const link = trackedLink({ number: "919555219007", handle: "", greeting: "Hi" }, { refCode: code })!;
+      const link = trackedLink({ number: "919876500104", handle: "", greeting: "Hi" }, { refCode: code })!;
       const prefilled = decodeURIComponent(link.split("text=")[1]);
       expect(parseRef(prefilled)).toBe(code);
     }

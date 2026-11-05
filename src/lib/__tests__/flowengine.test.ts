@@ -109,9 +109,9 @@ describe("validateInput — phone must be landable, not merely plausible", () =>
     expect(await validateInput("phone", "12345678901234567")).toBe(false); // 17 digits — beyond E.164
   });
   it("accepts real 10-15 digit numbers, with or without formatting", async () => {
-    expect(await validateInput("phone", "8368872108")).toBe(true);
-    expect(await validateInput("phone", "+91 83688 72108")).toBe(true);
-    expect(await validateInput("phone", "918368872108")).toBe(true);
+    expect(await validateInput("phone", "9876500101")).toBe(true);
+    expect(await validateInput("phone", "+91 98765 00101")).toBe(true);
+    expect(await validateInput("phone", "919876500101")).toBe(true);
   });
   it("email stays strict alongside", async () => {
     expect(await validateInput("email", "tanvvitest82828@mail.com")).toBe(true);

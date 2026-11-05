@@ -7,7 +7,7 @@
 // literal \n — but sends it WITHOUT the enclosing quotes. The result is
 // neither valid JSON nor a valid JSON string:
 //
-//   {\n  \"phone\": \"+91-8368872108\",\n  \"course\": \"\"\n}
+//   {\n  \"phone\": \"+91-9876500101\",\n  \"course\": \"\"\n}
 //
 // Measured on the live connector, 12 Oct 2026, after the probe was taught to
 // record the structure of a body it could not parse. The same connector

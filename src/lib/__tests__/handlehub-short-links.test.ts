@@ -79,7 +79,7 @@ import {
 } from "../handlehub";
 
 const EP = {
-  id: "ep1", label: "Organic", number: "919266090124", handle: "",
+  id: "ep1", label: "Organic", number: "919876500106", handle: "",
   greeting: "Hi, I want to Know about AnalytixLabs courses", created_at: "2026-01-01",
 };
 const SRC = {
@@ -140,7 +140,7 @@ describe("resolving /s/<slug>", () => {
   it("returns the source, its number's entry point, and the owning tenant", async () => {
     const t = await resolveShortLink("k7m2p");
     expect(t?.source.refCode).toBe("1kgvrrb");
-    expect(t?.entryPoint.number).toBe("919266090124");
+    expect(t?.entryPoint.number).toBe("919876500106");
     // The tenant is RETURNED, not adopted: /s/ has no session, so the slug is
     // what says which business this is — the same job a site_key does.
     expect(t?.tenantId).toBe("tenant-a");
@@ -298,21 +298,21 @@ describe("the /s/<slug> route", () => {
 // The country code, which every entry point was missing.
 //
 // All three were stored as bare 10-digit numbers, so every tracked link, QR
-// code and short link pointed at wa.me/9266090124 — which WhatsApp reads as
+// code and short link pointed at wa.me/9876500106 — which WhatsApp reads as
 // country code 92, Pakistan. Nothing normalised, validated or warned. Google
 // Business Profile refused the link ("Invalid WhatsApp click to chat link"),
 // which is how it was noticed, after weeks of assets carrying it.
 describe("an entry point number must carry its country code", () => {
   it("accepts a full international number", async () => {
     const { entryPointNumberProblem } = await import("../handlehub");
-    expect(entryPointNumberProblem("919266090124")).toBeNull();
-    expect(entryPointNumberProblem("+91 92660 90124")).toBeNull();   // punctuation is stripped
+    expect(entryPointNumberProblem("919876500106")).toBeNull();
+    expect(entryPointNumberProblem("+91 98765 00106")).toBeNull();   // punctuation is stripped
     expect(entryPointNumberProblem("14155552671")).toBeNull();       // US, 11 digits
   });
 
   it("rejects the bare national number that caused this", async () => {
     const { entryPointNumberProblem } = await import("../handlehub");
-    for (const n of ["9266090124", "9555525908"]) {
+    for (const n of ["9876500106", "9876500105"]) {
       const p = entryPointNumberProblem(n);
       expect(p, n).toMatch(/country code/i);
       expect(p, n).toContain(`91${n}`);   // says what it should have been
@@ -324,12 +324,12 @@ describe("an entry point number must carry its country code", () => {
     // number saved under the wrong country fails exactly as invisibly as no
     // country at all. Refuse and explain instead.
     const { entryPointNumberProblem } = await import("../handlehub");
-    expect(entryPointNumberProblem("9266090124")).not.toBeNull();
+    expect(entryPointNumberProblem("9876500106")).not.toBeNull();
   });
 
   it("catches a leading national dialling 0", async () => {
     const { entryPointNumberProblem } = await import("../handlehub");
-    expect(entryPointNumberProblem("09555219007")).toMatch(/leading 0/);
+    expect(entryPointNumberProblem("09876500104")).toMatch(/leading 0/);
   });
 
   it("still refuses an empty number, and an absurdly long one", async () => {

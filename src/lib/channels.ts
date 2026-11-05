@@ -401,7 +401,7 @@ export async function verifyWhatsappPhoneId(phoneId: string, token: string): Pro
 }
 
 /**
- * The number a lead will see a message arrive FROM, e.g. "+91 95555 25908".
+ * The number a lead will see a message arrive FROM, e.g. "+91 98765 00105".
  *
  * A counsellor pressing "Send WhatsApp" on a lead they have been chatting to
  * from their own line gets a message sent from a DIFFERENT number — the

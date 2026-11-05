@@ -2,8 +2,8 @@
 //
 // The whole feature is a lookup between two tables that store phone numbers in
 // DIFFERENT shapes: wa_crm_session.phone holds whatever digits arrived on the
-// message ("8368872108"), while a conversation holds the full international
-// number ("918368872108"). An exact-string join finds nothing and paints every
+// message ("9876500101"), while a conversation holds the full international
+// number ("919876500101"). An exact-string join finds nothing and paints every
 // chat green — a status indicator that is confidently wrong is worse than no
 // indicator, because it is the thing people will trust instead of looking.
 //
@@ -81,8 +81,8 @@ async function statuses() {
 describe("crmChatKey", () => {
   it("matches the same person across country-code shapes", () => {
     // The bug this whole module exists to avoid.
-    expect(crmChatKey("8368872108")).toBe(crmChatKey("918368872108"));
-    expect(crmChatKey("+91 83688 72108")).toBe(crmChatKey("918368872108"));
+    expect(crmChatKey("9876500101")).toBe(crmChatKey("919876500101"));
+    expect(crmChatKey("+91 98765 00101")).toBe(crmChatKey("919876500101"));
     expect(crmChatKey("12813872780")).toBe("2813872780");
   });
 
@@ -109,9 +109,9 @@ describe("crmChatStatuses", () => {
   });
 
   it("reports a failed buffer as held, carrying the attempt count", async () => {
-    h.sessions.push({ phone: "8368872108", attempts: 4, last_message_at: new Date().toISOString() });
+    h.sessions.push({ phone: "9876500101", attempts: 4, last_message_at: new Date().toISOString() });
     const r = await statuses();
-    expect(r.statuses["8368872108"]).toMatchObject({ state: "held", attempts: 4 });
+    expect(r.statuses["9876500101"]).toMatchObject({ state: "held", attempts: 4 });
   });
 
   it("has no entry for a chat with nothing pending", async () => {
@@ -119,16 +119,16 @@ describe("crmChatStatuses", () => {
     // this must stay absent rather than becoming an explicit row.
     h.sessions.push({ phone: "919876543210", attempts: 0, last_message_at: new Date().toISOString() });
     const r = await statuses();
-    expect(r.statuses["8368872108"]).toBeUndefined();
+    expect(r.statuses["9876500101"]).toBeUndefined();
   });
 
   it("lets an abandoned push outrank a buffered one for the same person", async () => {
     // Dead means data is missing for good; queued means it is on its way. If a
     // person has both, the one that needs a human wins.
-    h.sessions.push({ phone: "918368872108", attempts: 0, last_message_at: new Date().toISOString() });
-    h.sync.push({ status: "dead", payload: { phone: "8368872108" } });
+    h.sessions.push({ phone: "919876500101", attempts: 0, last_message_at: new Date().toISOString() });
+    h.sync.push({ status: "dead", payload: { phone: "9876500101" } });
     const r = await statuses();
-    expect(r.statuses["8368872108"].state).toBe("dead");
+    expect(r.statuses["9876500101"].state).toBe("dead");
   });
 
   it("keys an abandoned push for a phone-less lead by its handle", async () => {
@@ -139,7 +139,7 @@ describe("crmChatStatuses", () => {
 
   it("says nothing at all when LeadSquared isn't configured", async () => {
     vi.stubEnv("LSQ_ACCESS_KEY", "");
-    h.sessions.push({ phone: "918368872108", attempts: 9, last_message_at: new Date().toISOString() });
+    h.sessions.push({ phone: "919876500101", attempts: 9, last_message_at: new Date().toISOString() });
     const r = await statuses();
     expect(r).toEqual({ configured: false, statuses: {}, lastError: "" });
   });

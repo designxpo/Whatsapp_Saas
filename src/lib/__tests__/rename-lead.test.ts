@@ -40,30 +40,30 @@ describe("renameLeadConversations — a human rename reaches every thread", () =
 
   it("renames the WhatsApp thread AND the opaque-id threads that carry the number in lead_phone", async () => {
     rows = [{ id: "wa" }, { id: "ig" }];
-    expect(await renameLeadConversations("918368872108", "Priyesh Mishra", TENANT)).toBe(2);
+    expect(await renameLeadConversations("919876500101", "Priyesh Mishra", TENANT)).toBe(2);
     const [c] = calls;
     expect(c.table).toBe("wa_conversations");
     expect(c.update).toEqual({ name: "Priyesh Mishra" });
     // Instagram / web-chat / Messenger conversations are keyed by an opaque id,
     // so matching only `phone` would leave them showing the old name.
-    expect(c.or).toBe("phone.eq.918368872108,lead_phone.eq.918368872108");
+    expect(c.or).toBe("phone.eq.919876500101,lead_phone.eq.919876500101");
   });
 
   it("stays inside the tenant", async () => {
-    await renameLeadConversations("918368872108", "Priyesh Mishra", TENANT);
+    await renameLeadConversations("919876500101", "Priyesh Mishra", TENANT);
     expect(calls[0].eq).toContainEqual(["tenant_id", TENANT]);
   });
 
   it("normalizes a formatted number before matching", async () => {
-    await renameLeadConversations("+91 83688 72108", "Priyesh Mishra", TENANT);
-    expect(calls[0].or).toBe("phone.eq.918368872108,lead_phone.eq.918368872108");
+    await renameLeadConversations("+91 98765 00101", "Priyesh Mishra", TENANT);
+    expect(calls[0].or).toBe("phone.eq.919876500101,lead_phone.eq.919876500101");
   });
 
   // Live Chat falls back to the bare phone number when a thread has no name, so
   // clearing the contact name must not blank the threads — a stale name beats a
   // wall of digits in the inbox.
   it("does not blank the threads when the name is cleared", async () => {
-    expect(await renameLeadConversations("918368872108", "   ", TENANT)).toBe(0);
+    expect(await renameLeadConversations("919876500101", "   ", TENANT)).toBe(0);
     expect(calls).toHaveLength(0);
   });
 
@@ -73,7 +73,7 @@ describe("renameLeadConversations — a human rename reaches every thread", () =
   });
 
   it("truncates an over-long name to the column's limit", async () => {
-    await renameLeadConversations("918368872108", "x".repeat(400), TENANT);
+    await renameLeadConversations("919876500101", "x".repeat(400), TENANT);
     expect((calls[0].update?.name as string).length).toBe(120);
   });
 
@@ -81,6 +81,6 @@ describe("renameLeadConversations — a human rename reaches every thread", () =
   // must not be able to swallow the failure silently and report a rename.
   it("throws when the update fails, rather than reporting success", async () => {
     failure = "permission denied";
-    await expect(renameLeadConversations("918368872108", "Priyesh Mishra", TENANT)).rejects.toThrow("permission denied");
+    await expect(renameLeadConversations("919876500101", "Priyesh Mishra", TENANT)).rejects.toThrow("permission denied");
   });
 });

@@ -16,7 +16,7 @@
 //
 // The real safety comes from the `facts` list, not the extra click. A dialog
 // that only says "Are you sure?" adds a click and no information; one that says
-// "1,224 recipients · offer__independence_day · +91 95552 19007" is what
+// "1,224 recipients · offer__independence_day · +91 98765 00104" is what
 // actually stops the wrong send, because the wrong number is visible in it.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";

@@ -207,8 +207,8 @@ describe("a claim expires so a dead drain cannot strand recipients", () => {
 
 describe("phonesAlreadySent — the guard behind the claim", () => {
   it("matches a stored country-coded log row against a 10-digit queue phone", async () => {
-    h.log = [{ tenant_id: T, campaign_id: C, phone: "918368872108", status: "sent" }];
-    expect([...await phonesAlreadySent(C, ["8368872108"])]).toEqual(["8368872108"]);
+    h.log = [{ tenant_id: T, campaign_id: C, phone: "919876500101", status: "sent" }];
+    expect([...await phonesAlreadySent(C, ["9876500101"])]).toEqual(["9876500101"]);
   });
 
   it("ignores a 'skipped' row — nothing was sent, so a later attempt is legitimate", async () => {

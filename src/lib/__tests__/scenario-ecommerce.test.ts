@@ -289,8 +289,8 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
       expect(mocks.createPaymentLink).not.toHaveBeenCalled();
 
       // Free-sample cart (0 total) — nothing to pay, no link either.
-      await upsertCart({ phone: "918368904146", items: [{ productId: "p-sample", name: "Sachet Sample", qty: 1, priceCents: 0 }] }, GLOW);
-      const free = await checkoutCart({ phone: "918368904146" }, GLOW);
+      await upsertCart({ phone: "919876500103", items: [{ productId: "p-sample", name: "Sachet Sample", qty: 1, priceCents: 0 }] }, GLOW);
+      const free = await checkoutCart({ phone: "919876500103" }, GLOW);
       expect(free!.totalCents).toBe(0);
       expect(free!.paymentUrl).toBeNull();
       expect(mocks.createPaymentLink).not.toHaveBeenCalled();
@@ -323,7 +323,7 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
 
     it("skips fresh carts, empty carts, and tenants without a recovery sequence", async () => {
       tables["wa_carts"] = [
-        { id: "cart-fresh", tenant_id: GLOW, phone: "918368904146", platform: "whatsapp", conversation_id: null, items: [spfItem], status: "open", recovery_sent: false, updated_at: new Date().toISOString() },
+        { id: "cart-fresh", tenant_id: GLOW, phone: "919876500103", platform: "whatsapp", conversation_id: null, items: [spfItem], status: "open", recovery_sent: false, updated_at: new Date().toISOString() },
         { id: "cart-empty", tenant_id: GLOW, phone: "917000000001", platform: "whatsapp", conversation_id: null, items: [], status: "open", recovery_sent: false, updated_at: idleSince },
         { id: "cart-other", tenant_id: OTHER, phone: "916000000002", platform: "whatsapp", conversation_id: null, items: [serumItem], status: "open", recovery_sent: false, updated_at: idleSince },
       ];
@@ -394,13 +394,13 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
     it("drainAutoSends sends due rows with the campaign template and marks each by its real outcome", async () => {
       tables["wa_scheduled_sends"] = [
         { id: "s1", tenant_id: GLOW, campaign_id: "camp-vip", phone: AISHA, recipient_name: "Aisha", trigger: "tag_added", status: "pending", send_after: "2026-07-05T09:30:00.000Z" },
-        { id: "s2", tenant_id: GLOW, campaign_id: "camp-vip", phone: "918368904146", recipient_name: "Meera", trigger: "tag_added", status: "pending", send_after: "2026-07-05T09:45:00.000Z" },
+        { id: "s2", tenant_id: GLOW, campaign_id: "camp-vip", phone: "919876500103", recipient_name: "Meera", trigger: "tag_added", status: "pending", send_after: "2026-07-05T09:45:00.000Z" },
         { id: "s3", tenant_id: GLOW, campaign_id: "camp-vip", phone: "917000000001", recipient_name: "Zoya", trigger: "tag_added", status: "pending", send_after: "2026-07-05T09:50:00.000Z" },
         { id: "s4", tenant_id: GLOW, campaign_id: "camp-vip", phone: "916000000002", recipient_name: "Later", trigger: "tag_added", status: "pending", send_after: "2026-07-05T18:00:00.000Z" }, // not due yet
       ];
       // Meta processed only 2 of the 3 due recipients (early-abort contract).
       mocks.sendCampaign.mockResolvedValue({
-        results: [{ phone: AISHA, status: "sent" }, { phone: "918368904146", status: "failed" }],
+        results: [{ phone: AISHA, status: "sent" }, { phone: "919876500103", status: "failed" }],
         errors: ["(#131026) Message undeliverable"], sentCount: 1,
       });
 
@@ -412,7 +412,7 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
       expect(args.tenantId).toBe(GLOW);
       expect(args.recipients).toEqual([
         { phone: AISHA, fullName: "Aisha" },
-        { phone: "918368904146", fullName: "Meera" },
+        { phone: "919876500103", fullName: "Meera" },
         { phone: "917000000001", fullName: "Zoya" },
       ]); // due rows only, in send_after order — the 18:00 row is untouched
 
@@ -496,14 +496,14 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
     });
 
     it("a contact imported with a bare local phone flips to 'optedout' when STOP arrives country-coded", async () => {
-      // Meera was CSV-imported as "8368904146" (no +91); her STOP arrives from
-      // WhatsApp as "918368904146".
-      tables["contacts"].push({ id: "c-meera", tenant_id: GLOW, phone: "8368904146", name: "Meera", status: "active" });
-      await addOptout("918368904146", "inbound STOP", GLOW);
+      // Meera was CSV-imported as "9876500103" (no +91); her STOP arrives from
+      // WhatsApp as "919876500103".
+      tables["contacts"].push({ id: "c-meera", tenant_id: GLOW, phone: "9876500103", name: "Meera", status: "active" });
+      await addOptout("919876500103", "inbound STOP", GLOW);
 
       // Suppression is last-10 based, so compliance holds for every variant…
-      expect(await isOptedOut("8368904146", GLOW)).toBe(true);
-      expect(await isOptedOut("918368904146", GLOW)).toBe(true);
+      expect(await isOptedOut("9876500103", GLOW)).toBe(true);
+      expect(await isOptedOut("919876500103", GLOW)).toBe(true);
       // …and the contact row is matched by last-10 too (was a bug: exact-digits
       // matching left the local-format row "active" in the UI/audience counts).
       const meera = tables["contacts"].find(c => c.id === "c-meera")!;
@@ -535,13 +535,13 @@ describe("D2C e-commerce (skincare brand) — Glow & Co on Talko AI", () => {
       id: "g-glow", tenant_id: GLOW, name: "GET GLOW packaging QR", kind: "qr", slug: "get-glow",
       active: true, clicks: 4, conversions: 0, prefill: "GET GLOW", tag: "glow-club",
       flow_id: null, sequence_id: null, channel_id: null,
-      config: { number: "+91 95552-19007" }, created_at: "2026-06-01T00:00:00Z",
+      config: { number: "+91 98765-00104" }, created_at: "2026-06-01T00:00:00Z",
     };
 
     it("scanning the QR redirects to a digits-only wa.me link with the prefill and counts the click", async () => {
       tables["wa_growth_tools"] = [{ ...glowTool }];
       const url = await resolveGrowthRedirect("get-glow");
-      expect(url).toBe(`https://wa.me/919555219007?text=${encodeURIComponent("GET GLOW")}`);
+      expect(url).toBe(`https://wa.me/919876500104?text=${encodeURIComponent("GET GLOW")}`);
       expect(tables["wa_growth_tools"][0].clicks).toBe(5);
     });
 

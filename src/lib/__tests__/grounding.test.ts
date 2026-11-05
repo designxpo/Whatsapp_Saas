@@ -41,11 +41,11 @@ describe("GroundingFirewall — contact classes (default on)", () => {
   });
 
   it("defers an invented phone, keeps an approved one", () => {
-    const invented = enforceGrounding("Call us at +91 90000 11111 anytime.", "", { approvedPhones: ["+91 9555219007"] });
+    const invented = enforceGrounding("Call us at +91 90000 11111 anytime.", "", { approvedPhones: ["+91 9876500104"] });
     expect(invented.text).not.toContain("90000");
     expect(invented.actions.some(a => a.cls === "PHONE")).toBe(true);
-    const approved = enforceGrounding("Call us at +91 9555219007 anytime.", "", { approvedPhones: ["+91 9555219007"] });
-    expect(approved.text).toContain("9555219007");
+    const approved = enforceGrounding("Call us at +91 9876500104 anytime.", "", { approvedPhones: ["+91 9876500104"] });
+    expect(approved.text).toContain("9876500104");
   });
 });
 

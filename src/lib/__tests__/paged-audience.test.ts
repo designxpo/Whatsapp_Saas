@@ -140,8 +140,8 @@ describe("the suppression list is read in full", () => {
   });
 
   it("keys on the last 10 digits so country-code variants suppress too", async () => {
-    h.optouts = [{ tenant_id: T, phone: "918368872108" }];
-    expect((await optoutSet()).has("8368872108")).toBe(true);
+    h.optouts = [{ tenant_id: T, phone: "919876500101" }];
+    expect((await optoutSet()).has("9876500101")).toBe(true);
   });
 });
 

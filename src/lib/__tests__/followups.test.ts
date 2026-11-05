@@ -87,7 +87,7 @@ describe("composeFollowup — quiet-lead re-engagement nudge (SaaS, per-tenant)"
 
   it("ignores a phone-number-like 'name' and falls back to no-name", async () => {
     runChat.mockResolvedValue({ text: "Just checking in — any questions?", toolCalls: [] });
-    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111", customerName: "+91 83688 72108" });
+    await composeFollowup(TRANSCRIPT, { tenantId: "11111111-1111-1111-1111-111111111111", customerName: "+91 98765 00101" });
     const system = (runChat.mock.calls[0][0] as { system: string }).system;
     expect(system).toMatch(/Do NOT address them by any name/i);
     expect(system).not.toContain("use EXACTLY");

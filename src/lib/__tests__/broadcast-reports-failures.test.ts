@@ -27,7 +27,7 @@ const send = (over: Partial<typeof h.start>) => {
   h.start = { sentNow: 0, queuedRemaining: 0, status: "sent", message: "", failed: 0, skipped: 0, reason: null, enqueued: 1, ...over };
   return runBroadcast({
     mode: "recipients", templateName: "image_test", languageCode: "en_US",
-    variables: [], recipients: [{ phone: "918368872108", name: "P" }],
+    variables: [], recipients: [{ phone: "919876500101", name: "P" }],
   });
 };
 

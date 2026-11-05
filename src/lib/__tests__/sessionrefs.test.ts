@@ -123,8 +123,8 @@ describe("resolving a session", () => {
 
   it("records the match against the SENDER, so the row joins to a contact", async () => {
     const code = (await createSessionRef({ tenantId: T1, utm: { gclid: "g" } }))!;
-    await markSessionRefMatched(code, "918368872108");
-    expect(h.rows[0].matched_wa_id).toBe("918368872108");
+    await markSessionRefMatched(code, "919876500101");
+    expect(h.rows[0].matched_wa_id).toBe("919876500101");
     expect(h.rows[0].matched_at).toBeTruthy();
   });
 });
@@ -132,7 +132,7 @@ describe("resolving a session", () => {
 describe("the /chat bridge, in a multi-tenant product", () => {
   beforeEach(() => {
     h.sources = [{ id: "s1", tenant_id: T2, entry_point_id: "e1", label: "ppc-wa-delhi", ref_code: "abc1234", kind: "ad", touches: 0, created_at: "" }];
-    h.entryPoints = [{ id: "e1", tenant_id: T2, label: "PPC", number: "919555525908", handle: "", greeting: "Hi!", created_at: "" }];
+    h.entryPoints = [{ id: "e1", tenant_id: T2, label: "PPC", number: "919876500105", handle: "", greeting: "Hi!", created_at: "" }];
   });
 
   it("resolves the owning tenant from the ref code alone", async () => {
@@ -140,7 +140,7 @@ describe("the /chat bridge, in a multi-tenant product", () => {
     // whose ad this was.
     const t = await resolveBridgeTarget("abc1234", { utm: { source: "google", medium: "cpc" } });
     expect(t?.tenantId).toBe(T2);
-    expect(t?.link).toContain("wa.me/919555525908");
+    expect(t?.link).toContain("wa.me/919876500105");
   });
 
   it("puts the SESSION code in the link when there is attribution to carry", async () => {

@@ -5,7 +5,7 @@ describe("parseLsqWebhook", () => {
   it("parses the recommended explicit mail-merge payload", () => {
     const ev = parseLsqWebhook({
       event: "owner_changed",
-      Phone: "+91-83688 72108",
+      Phone: "+91-98765 00101",
       FirstName: "Asha",
       LastName: "Verma",
       EmailAddress: "asha@example.com",
@@ -18,7 +18,7 @@ describe("parseLsqWebhook", () => {
     expect(ev).toEqual({
       city: null, course: null, leadScore: null,
       event: "owner_changed",
-      phone: "918368872108",
+      phone: "919876500101",
       name: "Asha Verma",
       email: "asha@example.com",
       ownerEmail: "counselor.one@analytixlabs.co.in",
@@ -33,13 +33,13 @@ describe("parseLsqWebhook", () => {
     const ev = parseLsqWebhook({
       ProspectID: "guid-1",
       FirstName: "Ravi",
-      Mobile: "8368872108",
+      Mobile: "9876500101",
       OwnerIdEmailAddress: "owner@org.in",
       OwnerIdName: "Owner Person",
       ProspectStage: "New",
     });
     expect(ev.event).toBe("unknown");            // no explicit marker
-    expect(ev.phone).toBe("8368872108");
+    expect(ev.phone).toBe("9876500101");
     expect(ev.name).toBe("Ravi");
     expect(ev.ownerEmail).toBe("owner@org.in");
     expect(ev.ownerName).toBe("Owner Person");
@@ -50,11 +50,11 @@ describe("parseLsqWebhook", () => {
   it("unwraps Before/After update shapes — After wins over the root", () => {
     const ev = parseLsqWebhook({
       ProspectID: "guid-2",
-      Before: { ProspectStage: "New", Phone: "918368872108" },
-      After: { ProspectStage: "Qualified", Phone: "918368872108" },
+      Before: { ProspectStage: "New", Phone: "919876500101" },
+      After: { ProspectStage: "Qualified", Phone: "919876500101" },
     });
     expect(ev.stage).toBe("Qualified");
-    expect(ev.phone).toBe("918368872108");
+    expect(ev.phone).toBe("919876500101");
   });
 
   it("never mistakes owner fields for the lead's phone/email; skips unresolved merge tokens and 'null'", () => {
@@ -63,9 +63,9 @@ describe("parseLsqWebhook", () => {
       Phone: "@{Lead:Phone,}",           // unresolved mail-merge → absent
       EmailAddress: "null",
       OwnerEmail: "owner@org.in",
-      Mobile: "83688 72108",
+      Mobile: "98765 00101",
     });
-    expect(ev.phone).toBe("8368872108");   // from Mobile, not OwnerPhone
+    expect(ev.phone).toBe("9876500101");   // from Mobile, not OwnerPhone
     expect(ev.email).toBeNull();
     expect(ev.ownerEmail).toBe("owner@org.in");
   });
@@ -78,14 +78,14 @@ describe("parseLsqWebhook", () => {
   });
 
   it("owner given as a bare name lands in ownerName, not ownerEmail", () => {
-    const ev = parseLsqWebhook({ Owner: "Jahnabi", Phone: "918368872108" });
+    const ev = parseLsqWebhook({ Owner: "Jahnabi", Phone: "919876500101" });
     expect(ev.ownerEmail).toBeNull();
     expect(ev.ownerName).toBe("Jahnabi");
   });
 
   it("exact Phone/Mobile beats fuzzy phone-ish fields regardless of key order", () => {
-    const ev = parseLsqWebhook({ AlternatePhone: "911111111111", Phone: "918368872108" });
-    expect(ev.phone).toBe("918368872108");
+    const ev = parseLsqWebhook({ AlternatePhone: "911111111111", Phone: "919876500101" });
+    expect(ev.phone).toBe("919876500101");
     // fuzzy fallback still works when no exact field carries a usable number
     const ev2 = parseLsqWebhook({ Phone: "", AlternatePhone: "911111111111" });
     expect(ev2.phone).toBe("911111111111");

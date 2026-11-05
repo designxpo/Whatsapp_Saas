@@ -43,14 +43,14 @@ beforeEach(() => { h.inserted = []; h.throwOnInsert = false; });
 
 describe("a drip send leaves a receipt Meta's callback can find", () => {
   it("writes the message id, which is the only key the callback has", async () => {
-    await recordSequenceSend({ phone: "918268872108", name: "Priyesh", metaMessageId: "wamid.ABC" });
+    await recordSequenceSend({ phone: "919876500102", name: "Priyesh", metaMessageId: "wamid.ABC" });
     expect(h.inserted).toHaveLength(1);
     expect(h.inserted[0]).toMatchObject({ meta_message_id: "wamid.ABC", status: "sent" });
   });
 
   it("normalises the phone, so the row matches the rest of the system", async () => {
-    await recordSequenceSend({ phone: "+91 82688 72108", metaMessageId: "wamid.ABC" });
-    expect(h.inserted[0].phone).toBe("918268872108");
+    await recordSequenceSend({ phone: "+91 98765 00102", metaMessageId: "wamid.ABC" });
+    expect(h.inserted[0].phone).toBe("919876500102");
   });
 
   it("starts at 'sent' — delivered and failed are the callback's to write", async () => {
