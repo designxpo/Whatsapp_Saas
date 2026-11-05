@@ -664,6 +664,16 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
   // our numbers/accounts, label each message with the number it went through.
   const threadChannels = useChannelList();
   const channelName = (cid?: string | null) => threadChannels.find(c => c.id === cid)?.name ?? null;
+  // Which of our numbers a message went through, said so it can't be misread.
+  // Numbers are often named after the person who works them ("Kushal"), and
+  // "via Kushal" under a CUSTOMER's message read as though Kushal had written
+  // it. So: received on / sent from, and the word "number" (or "account").
+  const channelNote = (m: { role: string; channelId?: string | null }) => {
+    const ch = threadChannels.find(c => c.id === m.channelId);
+    if (!ch?.name) return null;
+    const noun = (ch.kind ?? "whatsapp") === "whatsapp" ? "number" : "account";
+    return `${m.role === "user" ? "received on" : "sent from"} the \u201c${ch.name}\u201d ${noun}`;
+  };
   const multiChannelThread = new Set(messages.map(m => m.channelId).filter(Boolean)).size > 1;
   // Ownership trail: where the lead came from and who has held it since.
   const [ownerHistory, setOwnerHistory] = useState<OwnerHistoryRow[]>([]);
@@ -998,7 +1008,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError }: { id: string; onChange
                   {!contNext && (
                     <p className={`text-[10px] mt-1 text-right ${m.role === "user" ? "text-ink-400" : "text-brand-900/50"}`}>
                       {m.role === "user" ? "" : m.source === "bot" ? "AI · " : `${vocab.teamMember.one.toLowerCase()} · `}{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                      {multiChannelThread && m.channelId && channelName(m.channelId) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· via {channelName(m.channelId)}</span>}
+                      {multiChannelThread && channelNote(m) && <span className="ml-1.5 font-semibold opacity-80" title={m.role === "user" ? "The number this message arrived on" : "The number this message was sent from"}>· {channelNote(m)}</span>}
                     </p>
                   )}
                 </div>
