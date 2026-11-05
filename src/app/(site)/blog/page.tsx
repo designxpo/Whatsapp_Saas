@@ -10,6 +10,7 @@ import { LastUpdated, PageSummary, PageFaq, SourceList } from "../_components/se
 import { webPageSchema } from "../_content/schema";
 import { BLOG_SEO } from "../_content/pageseo";
 import { getBlogUpdated, getPublishedPosts } from "../_content/blog-publication";
+import { loadPublishOverrides } from "@/lib/blog-schedule";
 import { SITE_URL } from "@/lib/siteurl";
 
 const PATH = "/blog";
@@ -47,9 +48,10 @@ const TOPICS: { name: string; body: string }[] = [
   },
 ];
 
-export default function BlogPage() {
-  const posts = getPublishedPosts();
-  const updated = getBlogUpdated(BLOG_SEO.updated);
+export default async function BlogPage() {
+  const overrides = await loadPublishOverrides();
+  const posts = getPublishedPosts(Date.now(), overrides);
+  const updated = getBlogUpdated(BLOG_SEO.updated, Date.now(), overrides);
   // CollectionPage + ItemList: this page's job is to point at the articles, so
   // the accurate schema describes an ordered list of them — not a fabricated
   // Article about the index itself.

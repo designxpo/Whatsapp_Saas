@@ -11,7 +11,8 @@ import { JsonLd } from "../../_components/json-ld";
 import { Breadcrumbs } from "../../_components/breadcrumbs";
 import { PageFaq, SourceList } from "../../_components/seo";
 import { AUTHOR, type PostBlock } from "../../_content/site";
-import { getPublishedPost, getPublishedPosts } from "../../_content/blog-publication";
+import { getPostForPreview, getPublishedPost, getPublishedPosts } from "../../_content/blog-publication";
+import { loadPublishOverrides, verifyPreview } from "@/lib/blog-schedule";
 import { BlogLeadCta } from "../../_components/blog-lead-cta";
 import { TemplateChecker } from "../../_components/template-checker";
 import { SupportHandoffPlanner } from "../../_components/support-handoff-planner";
@@ -116,10 +117,24 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
   );
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ preview?: string | string[] }> };
+
+// The live article, or — for someone holding a valid preview link — the
+// article as it will look before it goes public. A preview is never indexed.
+async function resolvePost({ params, searchParams }: Props) {
   const { slug } = await params;
-  const post = getPublishedPost(slug);
-  if (!post) notFound();
+  const overrides = await loadPublishOverrides();
+  const live = getPublishedPost(slug, Date.now(), overrides);
+  if (live) return { slug, post: live, preview: null as string | null, overrides };
+  const token = (await searchParams).preview;
+  const t = Array.isArray(token) ? token[0] : token;
+  const draft = t && verifyPreview(slug, t) ? getPostForPreview(slug, overrides) : undefined;
+  if (!draft) notFound();
+  return { slug, post: draft, preview: t as string, overrides };
+}
+
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const { post, preview } = await resolvePost(props);
   // Point og:image at this post's own generated cover, so a share on WhatsApp
   // or LinkedIn previews THIS article rather than the identical site-wide card
   // every post used to fall back to.
@@ -130,14 +145,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     alternates: { canonical: `${SITE_URL}/blog/${post.slug}` },
     openGraph: { type: "article", title: post.title, description: post.excerpt, url: `${SITE_URL}/blog/${post.slug}`, publishedTime: new Date(post.publishAt ?? post.date).toISOString(), modifiedTime: new Date(post.dateModified ?? post.publishAt ?? post.date).toISOString(), images: [{ url: cover, width: 1200, height: 630, alt: post.title }] },
     twitter: { card: "summary_large_image", images: [cover] },
+    ...(preview ? { robots: { index: false, follow: false } } : {}),
   };
 }
 
-export default async function PostPage({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  const post = getPublishedPost(slug);
-  if (!post) notFound();
-  const more = getPublishedPosts().filter(p => p.slug !== slug).slice(0, 2);
+export default async function PostPage(props: Props) {
+  const { slug, post, preview, overrides } = await resolvePost(props);
+  const more = getPublishedPosts(Date.now(), overrides).filter(p => p.slug !== slug).slice(0, 2);
 
   // BlogPosting schema — lets AI engines attribute and cite the article, and
   // enables article rich results. `date` is a human string ("June 12, 2026");
@@ -163,7 +177,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
   return (
     <>
-      <JsonLd data={blogSchema} />
+      {preview ? <PreviewBar publishAt={post.publishAt} /> : <JsonLd data={blogSchema} />}
       <section className="relative overflow-hidden">
         <Glow className="left-1/2 top-[-200px] -translate-x-1/2" />
         <Container className="relative pt-16 pb-4">
@@ -184,7 +198,7 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
             <h1 className="mt-5 text-balance text-3xl font-extrabold leading-tight tracking-tight text-slate-900 sm:text-4xl">{post.title}</h1>
           </div>
           <figure className="relative mx-auto mt-10 aspect-[1200/630] w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-            <BlogCoverImage slug={post.slug} title={post.title} priority sizes="(min-width: 1024px) 896px, 100vw" />
+            <BlogCoverImage slug={post.slug} title={post.title} priority sizes="(min-width: 1024px) 896px, 100vw" preview={preview} />
           </figure>
           {post.coverCaption && <p className="mx-auto mt-3 max-w-4xl text-xs text-slate-500">{post.coverCaption}</p>}
         </Container>
@@ -232,5 +246,16 @@ export default async function PostPage({ params }: { params: Promise<{ slug: str
 
       <CtaBand />
     </>
+  );
+}
+
+// A banner saying this page isn't public yet, so a preview is never
+// mistaken for (or screenshotted as) the live article.
+function PreviewBar({ publishAt }: { publishAt?: string }) {
+  const when = publishAt ? new Date(publishAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+  return (
+    <div role="status" className="relative z-10 mx-auto mt-4 max-w-4xl rounded-xl bg-amber-400 px-4 py-2.5 text-center text-sm font-bold text-amber-950">
+      Preview — not public yet.{when ? ` Scheduled for ${when} IST.` : ""} Only people with this link can see it.
+    </div>
   );
 }

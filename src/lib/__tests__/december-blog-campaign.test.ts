@@ -4,6 +4,9 @@ import { WINTER_FEATURE_POSTS } from "../../app/(site)/_content/winter-feature-p
 import { getPublishedPost, getPublishedPosts } from "../../app/(site)/_content/blog-publication";
 import sitemap from "../../app/sitemap";
 
+// The sitemap reads the owner's publish overrides from the database; none here.
+vi.mock("@/lib/blog-schedule", () => ({ loadPublishOverrides: async () => ({}) }));
+
 afterEach(() => vi.useRealTimers());
 
 describe("December 2026 feature campaign", () => {
@@ -21,19 +24,19 @@ describe("December 2026 feature campaign", () => {
       .toBe("2026-12-31T14:00:00Z");
   });
 
-  it("releases each finished article into lookup, index and sitemap at its exact instant", () => {
+  it("releases each finished article into lookup, index and sitemap at its exact instant", async () => {
     vi.useFakeTimers();
     for (const [index, post] of WINTER_FEATURE_POSTS.entries()) {
       const instant = Date.parse(post.publishAt!);
       vi.setSystemTime(instant - 1);
       expect(getPublishedPost(post.slug)).toBeUndefined();
       expect(getPublishedPosts().some(item => item.slug === post.slug)).toBe(false);
-      expect(sitemap().some(item => item.url.endsWith(`/blog/${post.slug}`))).toBe(false);
+      expect((await sitemap()).some(item => item.url.endsWith(`/blog/${post.slug}`))).toBe(false);
       expect(getPublishedPosts().filter(item => WINTER_FEATURE_POSTS.includes(item))).toHaveLength(index);
       vi.setSystemTime(instant);
       expect(getPublishedPost(post.slug)).toBe(post);
       expect(getPublishedPosts()[0]).toBe(post);
-      expect(sitemap().find(item => item.url.endsWith(`/blog/${post.slug}`))?.lastModified)
+      expect((await sitemap()).find(item => item.url.endsWith(`/blog/${post.slug}`))?.lastModified)
         .toEqual(new Date(instant));
       expect(getPublishedPosts().filter(item => WINTER_FEATURE_POSTS.includes(item))).toHaveLength(index + 1);
     }

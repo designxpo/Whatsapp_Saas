@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { COMPETITORS, HOMEPAGE_UPDATED } from "./(site)/_content/site";
 import { getBlogUpdated, getPublishedPosts } from "./(site)/_content/blog-publication";
+import { loadPublishOverrides } from "@/lib/blog-schedule";
 import { INDUSTRIES } from "./(site)/_content/industries";
 import { LEGAL_DOCS, LEGAL_VERSION } from "./(site)/_content/legal";
 import { GUIDES } from "./(site)/_content/guides";
@@ -49,7 +50,8 @@ function on(iso: string | undefined): Date {
   return new Date(Number.isFinite(t) ? t : Date.parse(CONTENT_REVISION));
 }
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const overrides = await loadPublishOverrides();
   // Static routes paired with the editorial date that already governs them.
   // /vs and /changelog have no `updated` of their own (a changelog's real date
   // is its newest entry, which isn't modelled), so they take the revision date.
@@ -61,7 +63,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ["/industries", INDUSTRIES_SEO.updated],
     ["/pricing", PRICING_SEO.updated],
     ["/about", ABOUT_SEO.updated],
-    ["/blog", getBlogUpdated(BLOG_SEO.updated)],
+    ["/blog", getBlogUpdated(BLOG_SEO.updated, Date.now(), overrides)],
     ["/vs", CONTENT_REVISION],
     ["/guides", GUIDES_SEO.updated],
     ["/changelog", CONTENT_REVISION],
@@ -85,7 +87,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${SITE_URL}/industries/${i.slug}`, lastModified: on(CONTENT_REVISION), changeFrequency: "monthly" as const,
   }));
 
-  const posts = getPublishedPosts().map(p => ({
+  const posts = getPublishedPosts(Date.now(), overrides).map(p => ({
     url: `${SITE_URL}/blog/${p.slug}`,
     lastModified: on(p.dateModified ?? p.publishAt ?? p.date),
     changeFrequency: "monthly" as const,

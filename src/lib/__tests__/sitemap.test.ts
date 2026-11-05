@@ -6,7 +6,10 @@
 import { describe, it, expect, vi } from "vitest";
 import sitemap from "../../app/sitemap";
 
-const entries = sitemap();
+// The sitemap reads the owner's publish overrides from the database; none here.
+vi.mock("@/lib/blog-schedule", () => ({ loadPublishOverrides: async () => ({}) }));
+
+const entries = await sitemap();
 
 /** Paths that 308-redirect to the app host (see middleware.ts's host split). */
 const REDIRECTING = ["/login", "/signup"];
@@ -19,7 +22,7 @@ describe("sitemap", () => {
     for (const bad of REDIRECTING) expect(paths).not.toContain(bad);
   });
 
-  it("never stamps lastModified with the current time", () => {
+  it("never stamps lastModified with the current time", async () => {
     // The original bug: `new Date()` for every entry meant each fetch claimed
     // all ~45 pages had just changed, which teaches Google to ignore lastmod
     // for the whole site. Any entry within a minute of now is that bug back.
@@ -31,7 +34,7 @@ describe("sitemap", () => {
     vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
     try {
       const now = Date.now();
-      for (const e of sitemap()) {
+      for (const e of await sitemap()) {
         const t = new Date(e.lastModified as Date).getTime();
         expect(Number.isFinite(t)).toBe(true);
         expect(now - t).toBeGreaterThan(60_000);

@@ -12,7 +12,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ShieldCheck, LayoutDashboard, Users, CreditCard, Activity, Megaphone, Inbox,
-  TrendingUp, LogIn, LogOut, Settings, Search, CornerDownLeft, Loader2, Handshake, FileText, Mail, Building2,
+  TrendingUp, LogIn, LogOut, Settings, Search, CornerDownLeft, Loader2, Handshake, FileText, Newspaper, Mail, Building2,
 } from "lucide-react";
 import { Badge, useDebounced, useLatest } from "./_ui";
 import { usePresence } from "@/lib/use-presence";
@@ -29,6 +29,7 @@ const NAV = [
   { href: "/admin/owner/waitlist", label: "Waitlist", icon: Inbox },
   { href: "/admin/owner/emails", label: "Emails", icon: Mail },
   { href: "/admin/owner/content", label: "Content", icon: FileText },
+  { href: "/admin/owner/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/owner/plans", label: "Plans & pricing", icon: CreditCard },
   { href: "/admin/owner/platform", label: "Platform", icon: Megaphone },
 ];

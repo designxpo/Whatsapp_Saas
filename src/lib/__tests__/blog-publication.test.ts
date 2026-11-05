@@ -4,6 +4,9 @@ import { getBlogUpdated, getPublishedPost, getPublishedPosts, isPostPublished } 
 import { blogSourceFromSearch } from "../analytics";
 import sitemap from "../../app/sitemap";
 
+// The sitemap reads the owner's publish overrides from the database; none here.
+vi.mock("@/lib/blog-schedule", () => ({ loadPublishOverrides: async () => ({}) }));
+
 afterEach(() => vi.useRealTimers());
 
 describe("finite blog publication campaign", () => {
@@ -20,18 +23,18 @@ describe("finite blog publication campaign", () => {
     });
   });
 
-  it("keeps each future article out of lookup, index and sitemap until its exact release instant", () => {
+  it("keeps each future article out of lookup, index and sitemap until its exact release instant", async () => {
     vi.useFakeTimers();
     for (const post of SCHEDULED_POSTS) {
       const release = Date.parse(post.publishAt!);
       vi.setSystemTime(release - 1);
       expect(getPublishedPost(post.slug)).toBeUndefined();
       expect(getPublishedPosts().some(p => p.slug === post.slug)).toBe(false);
-      expect(sitemap().some(e => e.url.endsWith(`/blog/${post.slug}`))).toBe(false);
+      expect((await sitemap()).some(e => e.url.endsWith(`/blog/${post.slug}`))).toBe(false);
       vi.setSystemTime(release);
       expect(getPublishedPost(post.slug)).toBe(post);
       expect(getPublishedPosts()[0]).toBe(post);
-      expect(sitemap().find(e => e.url.endsWith(`/blog/${post.slug}`))?.lastModified)
+      expect((await sitemap()).find(e => e.url.endsWith(`/blog/${post.slug}`))?.lastModified)
         .toEqual(new Date(release));
       expect(getBlogUpdated("2026-11-05")).toBe(post.publishAt);
     }
