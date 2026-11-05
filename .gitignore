@@ -19,3 +19,35 @@ tmp/
 
 # Local recordings, previews and capture-tool scratch files.
 /output/
+
+# ── Never in the public repo ──────────────────────────────────────────────
+# Security scanner output (vulnerability reports, scanner state/logs).
+strix_runs/
+# AI-tool config and vendored agent skills (local tooling, not the app).
+.agents/
+.claude/
+.mcp.json
+supabase/.temp/
+.next-marketing-dev/
+# Personal / account records, app-review notes and business-only documents.
+/GOOGLE-REVIEWS-APPLICATION.txt
+/META-RESUBMISSION-RECORDING-GUIDE.md
+/MARKETING-AUDIT.md
+/GAP-ANALYSIS.md
+/PLATFORM-PLAN.md
+/SAAS-ROADMAP.md
+/docs/CLIENT-SELF-SETUP.md
+/docs/CLIENT-ONBOARDING-REQUIREMENTS.md
+/docs/ai-security-hardening.md
+/docs/superpowers/specs/2026-11-01-whatsapp-handoff-design.md
+# Put any other private notes here; this folder is never committed.
+/private/
+
+# Generated task research and agent dependency metadata (local only).
+/skills-lock.json
+/docs/product/2026-11-blog-campaign.md
+/docs/product/ai-customer-service-blog-prompts.json
+/docs/product/ai-customer-service-blog-research.md
+/docs/product/blog-image-prompts.json
+/docs/product/marketing-navigation-and-globe.md
+/docs/product/voice-foundation.md
