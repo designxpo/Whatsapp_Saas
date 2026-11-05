@@ -8,6 +8,7 @@ import {
   CRM_KINDS, PAYMENT_KINDS, STORE_KINDS, SCHEDULE_KINDS, WEBHOOK_KINDS, EVENT_KINDS, formatForKind, freshsalesBase, type IntegrationEvent, type IntegrationKind,
 } from "@/lib/integrations";
 import { errorMessage } from "@/lib/errors";
+import { lsqConnection } from "@/lib/leadsquared";
 import { connectMezmitra } from "@/lib/mezmitra-link";
 import { guardFeature } from "@/lib/feature-guard";
 
@@ -24,7 +25,10 @@ export async function GET() {
   try {
     // googleShareEmail: the address a business shares a Google Sheet or
     // Calendar with. Public by design; the service account key never leaves.
-    return NextResponse.json({ integrations: await listIntegrations(tid), googleShareEmail: googleRobotEmail() });
+    // LeadSquared can be connected three ways (Integrations hub, older settings,
+    // or the server's environment for the default workspace); the list above
+    // only holds the first. The sync's own answer says whether it runs.
+    return NextResponse.json({ integrations: await listIntegrations(tid), leadsquared: await lsqConnection(tid), googleShareEmail: googleRobotEmail() });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }

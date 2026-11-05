@@ -105,6 +105,9 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     : e.key === "contact.optout" ? { ...e, label: `${vocab.contact.one} opted out` }
     : e);
   const [items, setItems] = useState<Integration[] | null>(null);
+  // LeadSquared can be connected outside this list (older workspace settings,
+  // or the server's environment). The server says whether the sync runs.
+  const [lsq, setLsq] = useState<{ connected: boolean; via: "hub" | "settings" | "server" | null }>({ connected: false, via: null });
   const [adding, setAdding] = useState(false);
   const [form, setForm] = useState({ kind: "webhook", name: "", url: "", format: "generic", token: "", keyId: "", shopDomain: "", storeUrl: "", consumerKey: "", eventTypeId: "", fsDomain: "", lsqAccessKey: "", lsqHost: "", lsqActivityCode: "", lsqTaskCategory: "", lsqIgHandleField: "", lsqAutoCreate: false, spreadsheetUrl: "", leadsTab: "", calendarId: "", slotMinutes: "", workStart: "", workEnd: "", workDays: "", noticeHours: "", daysAhead: "", eventTitle: "", events: ["contact.created", "conversation.escalated"] as string[] });
   const isCrm = CRM_KINDS.includes(form.kind);
@@ -123,7 +126,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [testing, setTesting] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    fetch("/api/admin/integrations").then(r => r.json()).then(d => { setItems(d.integrations ?? []); setGoogleEmail(d.googleShareEmail ?? null); }).catch(() => setItems([]));
+    fetch("/api/admin/integrations").then(r => r.json()).then(d => { setItems(d.integrations ?? []); setGoogleEmail(d.googleShareEmail ?? null); if (d.leadsquared) setLsq(d.leadsquared); }).catch(() => setItems([]));
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -202,7 +205,7 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
     { kind: "slack", group: "more" }, { kind: "teams", group: "more" }, { kind: "webhook", group: "more" }, { kind: "mezmitra", group: "more" },
   ].map(x => {
     const c = CATALOG.find(k => k.kind === x.kind)!;
-    return { kind: x.kind, name: KIND_LABELS[x.kind], logo: c.logo, color: "#334155", blurb: c.blurb, group: x.group as ExtraTool["group"], connected: countOf(x.kind) };
+    return { kind: x.kind, name: KIND_LABELS[x.kind], logo: c.logo, color: "#334155", blurb: c.blurb, group: x.group as ExtraTool["group"], connected: x.kind === "leadsquared" ? Math.max(countOf(x.kind), lsq.connected ? 1 : 0) : countOf(x.kind) };
   });
   const accountLinks: Record<string, AccountLink> = {
     shopify: { kind: "shopify", title: "Import your product catalog", blurb: `Bring your Shopify products into ${who} so the AI and checkout can use them.`, connected: countOf("shopify") },
@@ -277,8 +280,17 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
         ))}
       </div>}
 
+      {/* Connected, but not through this list: say so, rather than showing a
+          working CRM as "not connected". */}
+      {lsq.connected && lsq.via !== "hub" && !items?.some(i => i.kind === "leadsquared") && (
+        <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-control px-3 py-2.5 flex items-start gap-1.5">
+          <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span><b>LeadSquared is connected</b> {lsq.via === "server" ? "with keys set on the server" : "through your earlier LeadSquared settings"}, and chats are syncing. Connect it here as well if you want to manage the keys from this page.</span>
+        </p>
+      )}
+
       {/* LSQ → portal inbound webhook: only meaningful once LSQ is connected */}
-      {!!items?.some(i => i.kind === "leadsquared") && <LsqInboundCard />}
+      {(lsq.connected || !!items?.some(i => i.kind === "leadsquared")) && <LsqInboundCard />}
 
       {/* ONE catalog: the incoming-events tools, plus the tools that only act from the
           portal side. Shopify, WooCommerce, Razorpay and Cal.com are one card each —

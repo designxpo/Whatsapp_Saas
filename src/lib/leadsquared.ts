@@ -104,7 +104,7 @@ function envCfg(): LsqCreds | null {
 //   2) legacy per-tenant settings (configured before LSQ moved into the hub)
 //   3) platform env — default tenant only
 // Returns null when this tenant has no CRM configured.
-export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<LsqCreds | null> {
+async function resolveLsqWithSource(tenantId: string): Promise<{ creds: LsqCreds; via: LsqSource } | null> {
   // 1) Integrations hub connection — both keys live in its encrypted secret as
   //    JSON {accessKey, secretKey}; host/activityCode/etc. live in its config.
   try {
@@ -116,13 +116,13 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
       const host = lsqApiHost(cfg.host);   // anything not LeadSquared reads as unset (lsqhost.ts)
       const activityCode = parseInt(String(cfg.activityCode ?? ""), 10);
       if (accessKey && secretKey && host && Number.isFinite(activityCode)) {
-        return {
+        return { via: "hub", creds: {
           accessKey, secretKey, host, activityCode,
           taskCategory: String(cfg.taskCategory ?? "") || "2",
           igHandleField: String(cfg.igHandleField ?? "").trim(),
           waHandleField: String(cfg.waHandleField ?? "").trim(),
           autoCreate: !!cfg.autoCreate,
-        };
+        } };
       }
     }
   } catch (err) {
@@ -136,21 +136,35 @@ export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<
     const host = lsqApiHost(await getTenantSetting<string | null>(tenantId, LSQ_KEYS.host, null));
     const activityCode = parseInt((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.activityCode, null)) ?? "", 10);
     if (accessKey && secretKey && host && Number.isFinite(activityCode)) {
-      return {
+      return { via: "settings", creds: {
         accessKey, secretKey, host, activityCode,
         taskCategory: (await getTenantSetting<string | null>(tenantId, LSQ_KEYS.taskCategory, null)) || "2",
         igHandleField: ((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.igHandleField, null)) ?? "").trim(),
         waHandleField: ((await getTenantSetting<string | null>(tenantId, LSQ_KEYS.waHandleField, null)) ?? "").trim(),
         autoCreate: boolish(await getTenantSetting<string | null>(tenantId, LSQ_KEYS.autoCreate, null)),
-      };
+      } };
     }
   } catch (err) {
     console.error("[leadsquared] legacy cred resolve failed:", errorMessage(err));
   }
 
   // 3) Platform env — default tenant only.
-  if (tenantId === DEFAULT_TENANT_ID) return envCfg();
+  if (tenantId === DEFAULT_TENANT_ID) { const creds = envCfg(); return creds ? { via: "server", creds } : null; }
   return null;
+}
+
+export async function resolveLsq(tenantId: string = DEFAULT_TENANT_ID): Promise<LsqCreds | null> {
+  return (await resolveLsqWithSource(tenantId))?.creds ?? null;
+}
+
+/** Where a workspace's LeadSquared keys come from: the Integrations hub, the
+ *  older per-workspace settings, or the server's environment (default
+ *  workspace only). Lets the portal say "connected" exactly when the sync
+ *  would run, whichever way it was set up. */
+export type LsqSource = "hub" | "settings" | "server";
+export async function lsqConnection(tenantId: string = DEFAULT_TENANT_ID): Promise<{ connected: boolean; via: LsqSource | null }> {
+  const r = await resolveLsqWithSource(tenantId).catch(() => null);
+  return { connected: !!r, via: r?.via ?? null };
 }
 
 export async function lsqConfigured(tenantId: string = DEFAULT_TENANT_ID): Promise<boolean> {

@@ -9,7 +9,7 @@ import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
 import { TEAMS, TEAM_LABELS, TEAM_SHORT, type Team, type Role } from "@/lib/team-vocab";
 import { useState, useEffect, useCallback, useRef } from "react";
-import { AlertTriangle, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
+import { AlertTriangle, ChevronRight, CircleCheck, Search, Plus, Trash2, RefreshCw, Phone, Smartphone, Loader2, Facebook, MessageSquare, MessageCircle, Copy, Check, UploadCloud, Star, Link2, Send, ThumbsUp, Zap } from "lucide-react";
 import { inp, RailCard, StatRow, ConvAvatar, type ChannelRow, setChannelCache, type Tab, DEFAULT_TENANT_ID, useChannelList } from "../_shared";
 import { launchWhatsAppSignup, whatsappSignupReady, whatsappSignupMissing, launchFacebookSignup, facebookSignupReady, facebookSignupMissing, metaPreview } from "@/lib/embedded-signup-client";
 import { qrImageUrl, waClickToChatUrl } from "@/lib/qrcode";
@@ -67,6 +67,10 @@ function TeamManager() {
   const [form, setForm] = useState<{ id?: string; email: string; name: string; title: string; role: Role; team: Team | null; channelId: string | null; password: string; active: boolean } | null>(null);
   // This workspace's own WhatsApp numbers, for "the number this person works".
   const numbers = useChannelList().filter(c => (c.kind ?? "whatsapp") === "whatsapp" && c.active);
+  // Long teams: search, a filter, and the first eight with the rest one click away.
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberFilter, setMemberFilter] = useState<"all" | "admin" | "lead" | "member" | "noteam" | "disabled">("all");
+  const [showAllMembers, setShowAllMembers] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -121,7 +125,40 @@ function TeamManager() {
         </div>
       )}
 
-      {users.map(u => (
+      {users.length > 5 && (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input className={`${inp} w-full !pl-8 text-xs`} placeholder={`Search ${users.length} people by name, email or title`} value={memberQuery} onChange={e => setMemberQuery(e.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              ["all", "Everyone", users.length],
+              ["admin", "Admins", users.filter(u => u.role === "admin").length],
+              ["lead", "Team leads", users.filter(u => u.role === "lead").length],
+              ["member", "Members", users.filter(u => u.role === "member").length],
+              ["noteam", "No team", users.filter(u => !u.team && u.role !== "admin").length],
+              ["disabled", "Disabled", users.filter(u => !u.active).length],
+            ] as const).filter(([k, , n]) => k === "all" || n > 0).map(([k, label, n]) => (
+              <button key={k} onClick={() => setMemberFilter(k)}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${memberFilter === k ? "bg-ink-900 border-ink-900 text-white" : "bg-white border-line text-ink-600 hover:border-brand-500"}`}>
+                {label} <span className={memberFilter === k ? "text-white/70" : "text-ink-400"}>{n}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(() => {
+        const q = memberQuery.trim().toLowerCase();
+        const matched = users.filter(u =>
+          (memberFilter === "all" || (memberFilter === "disabled" ? !u.active : memberFilter === "noteam" ? !u.team && u.role !== "admin" : u.role === memberFilter))
+          && (!q || [u.name, u.email, u.title ?? ""].some(v => String(v ?? "").toLowerCase().includes(q))));
+        const LIMIT = 8;
+        const shown = showAllMembers || q || memberFilter !== "all" ? matched : matched.slice(0, LIMIT);
+        return (<>
+          {(q || memberFilter !== "all") && !matched.length && <p className="text-xs text-ink-400">Nobody matches.</p>}
+          {shown.map(u => (
         <div key={u.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
           <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${u.active ? "bg-brand-50 text-brand-700" : "bg-canvas text-ink-400"}`}>
             {(u.name || u.email).slice(0, 1).toUpperCase()}
@@ -139,6 +176,13 @@ function TeamManager() {
           <button onClick={() => remove(u)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
         </div>
       ))}
+          {!showAllMembers && !q && memberFilter === "all" && matched.length > LIMIT && (
+            <button onClick={() => setShowAllMembers(true)} className="w-full py-2 rounded-control border border-dashed border-line text-xs font-semibold text-brand-700 hover:bg-canvas">
+              Show all {matched.length} people
+            </button>
+          )}
+        </>);
+      })()}
 
       <Drawer open={!!form} onClose={() => setForm(null)} width="md" title={form?.id ? "Edit team member" : "Add team member"}>
         {form && (<div className="space-y-3">
@@ -257,6 +301,8 @@ function ChannelsManager() {
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
   const [kbTags, setKbTags] = useState<string[]>([]);
   const [form, setForm] = useState<typeof EMPTY_CHANNEL | null>(null);
+  const [numQuery, setNumQuery] = useState("");
+  const [foldedTeams, setFoldedTeams] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [note, setMsg] = useNotice();
   const msg = note?.text ?? null;
@@ -350,20 +396,59 @@ function ChannelsManager() {
 
       {envMode && <p className="text-[11px] text-ink-400 bg-canvas rounded-control px-3 py-2">Currently running on the <code className="font-mono">META_WA_*</code> env credentials (single-number mode). Adding numbers here switches inbound routing to per-number.</p>}
 
-      {channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp").map(c => (
-        <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
-          <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
-            <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
-          </div>
-          <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
-            className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
-          <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", team: (c.team ?? "") as Team | "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
-            className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
-          <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
-        </div>
-      ))}
+      {(() => {
+        // Long lists: grouped by team, folded once there are more than five
+        // numbers, and searchable. A flat list of every number pushed the rest
+        // of Settings out of reach.
+        const wa = channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp");
+        const q = numQuery.trim().toLowerCase();
+        const many = wa.length > 5;
+        const groups = ([...TEAMS, null] as (Team | null)[])
+          .map(t => [t, wa.filter(c => ((c.team ?? null) as Team | null) === t)] as const)
+          .filter(([, cs]) => cs.length > 0);
+        const oneGroup = groups.length === 1 && groups[0][0] === null;
+        return (<>
+          {many && (
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input className={`${inp} w-full !pl-8 text-xs`} placeholder={`Search ${wa.length} numbers by name or phone id`} value={numQuery} onChange={e => setNumQuery(e.target.value)} />
+            </div>
+          )}
+          {groups.map(([team, all]) => {
+            const chans = q ? all.filter(c => [c.name, c.phoneId, c.wabaId].some(v => String(v ?? "").toLowerCase().includes(q))) : all;
+            if (q && !chans.length) return null;
+            const key = team ?? "none";
+            const folded = q || oneGroup ? false : (foldedTeams[key] ?? many);
+            return (
+              <div key={key} className="space-y-2">
+                {!oneGroup && (
+                  <button onClick={() => setFoldedTeams(f => ({ ...f, [key]: !folded }))} aria-expanded={!folded} className="w-full flex items-center gap-2 pt-1 text-left">
+                    <ChevronRight className={`w-3.5 h-3.5 text-ink-400 shrink-0 transition-transform ${folded ? "" : "rotate-90"}`} />
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-ink-600">{team ? TEAM_LABELS[team] : "No team"}</p>
+                    <span className="text-[10px] font-bold text-ink-400 bg-canvas rounded-full px-1.5 py-0.5">{chans.length}</span>
+                    {folded && <span className="text-[11px] text-ink-400 truncate">{all.slice(0, 3).map(c => c.name).join(", ")}{all.length > 3 ? ` +${all.length - 3}` : ""}</span>}
+                    <div className="flex-1 h-px bg-line" />
+                  </button>
+                )}
+                {!folded && chans.map(c => (
+                  <div key={c.id} className="flex items-center gap-3 border border-line rounded-control px-3 py-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-brand-50 text-brand-700 flex items-center justify-center shrink-0"><Phone className="w-4 h-4" /></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-ink-900 truncate">{c.name} {c.isDefault && <span className="text-[10px] font-bold text-brand-700">· DEFAULT</span>}{c.mode === "manual" && <span className="text-[10px] font-bold text-amber-600"> · MANUAL</span>}{c.coex && <span className="text-[10px] font-bold text-sky-600" title="Coexistence — this number is also active on the WhatsApp Business phone app; replies sent from the app show up here and pause the bot"> · APP+API</span>}{!c.active && <span className="text-[10px] font-bold text-red-500"> · OFF</span>}</p>
+                      <p className="text-[11px] text-ink-400 font-mono truncate">phone {c.phoneId} · waba {c.wabaId} · {c.agentId ? `AI: ${agents.find(a => a.id === c.agentId)?.name ?? "custom"}` : "AI: global default"}{c.crmSource ? ` · CRM: ${c.crmSource}` : ""}</p>
+                    </div>
+                    <button onClick={() => { setProfileFor(profileFor?.id === c.id ? null : { id: c.id, name: c.name, coex: !!c.coex }); setForm(null); }}
+                      className={`px-2.5 py-1 rounded-control border text-xs font-bold shrink-0 ${profileFor?.id === c.id ? "border-brand-700 text-brand-700 bg-brand-50" : "border-line text-ink-600 hover:bg-canvas"}`}>Profile</button>
+                    <button onClick={() => { setForm({ id: c.id, name: c.name, phoneId: c.phoneId, wabaId: c.wabaId, token: "", appId: c.appId ?? "", agentId: c.agentId ?? "", kbTag: c.kbTag ?? "", crmSource: c.crmSource ?? "", team: (c.team ?? "") as Team | "", mode: c.mode ?? "full", active: c.active, isDefault: c.isDefault }); setMsg(null); setProfileFor(null); }}
+                      className="px-2.5 py-1 rounded-control border border-line text-xs font-bold text-ink-600 hover:bg-canvas shrink-0">Edit</button>
+                    <button onClick={() => remove(c.id)} className="p-1.5 text-ink-400 hover:text-red-600 hover:bg-red-50 rounded-lg shrink-0"><Trash2 className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </>);
+      })()}
 
       {channels.filter(c => (c.kind ?? "whatsapp") === "whatsapp").length === 0 && (
         <p className="text-[11px] text-ink-400 border border-dashed border-line rounded-control px-3 py-3">
@@ -2056,6 +2141,60 @@ function QrTool() {
   );
 }
 
+// ── Settings sections ────────────────────────────────────────────────────────
+//
+// Settings was one long column of every card: plan, numbers, team, CRM,
+// automatic messages, privacy. Now one section shows at a time, picked from a
+// bar at the top and remembered in the address (?section=) so a refresh keeps
+// it. Members only see the sections they can use.
+type SettingsSection = "general" | "numbers" | "team" | "crm" | "automation" | "replies" | "privacy";
+const SETTINGS_SECTIONS: { key: SettingsSection; label: string; adminOnly: boolean }[] = [
+  { key: "general", label: "General", adminOnly: false },
+  { key: "numbers", label: "WhatsApp numbers", adminOnly: true },
+  { key: "team", label: "Team", adminOnly: true },
+  { key: "crm", label: "CRM & API", adminOnly: true },
+  { key: "automation", label: "Automatic messages", adminOnly: false },
+  { key: "replies", label: "Quick replies", adminOnly: false },
+  { key: "privacy", label: "Data & privacy", adminOnly: true },
+];
+const SECTION_PARAM = "section";
+
+function sectionFromUrl(): SettingsSection | null {
+  if (typeof window === "undefined") return null;
+  const v = new URLSearchParams(window.location.search).get(SECTION_PARAM);
+  return SETTINGS_SECTIONS.some(x => x.key === v) ? (v as SettingsSection) : null;
+}
+
+function useSettingsSection(isAdmin: boolean): [SettingsSection, (s: SettingsSection) => void] {
+  const [section, setState] = useState<SettingsSection>(() => sectionFromUrl() ?? "general");
+  const set = useCallback((s: SettingsSection) => {
+    setState(s);
+    try {
+      const q = new URLSearchParams(window.location.search);
+      q.set(SECTION_PARAM, s);
+      // Replace, not push: Back should leave Settings, not step through sections.
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}?${q}${window.location.hash}`);
+    } catch { /* the view still switches */ }
+  }, []);
+  useEffect(() => {
+    if (!isAdmin && SETTINGS_SECTIONS.find(x => x.key === section)?.adminOnly) setState("general");
+  }, [isAdmin, section]);
+  return [section, set];
+}
+
+function SettingsSectionBar({ section, onPick, isAdmin }: { section: SettingsSection; onPick: (s: SettingsSection) => void; isAdmin: boolean }) {
+  return (
+    <nav aria-label="Settings sections" className="flex flex-wrap gap-1.5">
+      {SETTINGS_SECTIONS.filter(x => isAdmin || !x.adminOnly).map(x => (
+        <button key={x.key} onClick={() => onPick(x.key)} aria-current={section === x.key ? "page" : undefined}
+          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${section === x.key ? "bg-ink-900 border-ink-900 text-white" : "bg-white border-line text-ink-600 hover:border-brand-500"}`}>
+          {x.label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const ask = useConfirm();
   const [welcome, setWelcome] = useState<WelcomeS | null>(null);
@@ -2072,6 +2211,14 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
   const [isAdmin, setIsAdmin] = useState(true);
   // A team lead is scoped like a member, not an admin — only "admin" opens these panels.
   useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "admin")).catch(() => {}); }, []);
+  const [section, setSection] = useSettingsSection(isAdmin);
+  // Whether LeadSquared is actually connected — the same answer the sync uses,
+  // whichever way it was set up. Read when the CRM section opens.
+  const [lsqConn, setLsqConn] = useState<{ connected: boolean; via: "hub" | "settings" | "server" | null } | null>(null);
+  useEffect(() => {
+    if (!isAdmin || section !== "crm") return;
+    fetch("/api/admin/integrations").then(r => (r.ok ? r.json() : null)).then(d => setLsqConn(d?.leadsquared ?? null)).catch(() => {});
+  }, [isAdmin, section]);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [quickReplies, setQuickReplies] = useState<{ id: string; shortcut: string; body: string }[]>([]);
@@ -2189,47 +2336,45 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
     <div className="flex gap-6 items-start">
     <div className="flex-1 min-w-0 max-w-2xl space-y-5">
       <div>
-        <h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><p className="text-sm text-slate-500">WhatsApp numbers, automatic messages, and canned responses.</p>
+        <h2 className="text-xl font-extrabold text-brand-dark">Settings</h2><p className="text-sm text-slate-500">Plan, numbers, team, CRM and automatic messages. Pick a section below.</p>
       </div>
 
+      <SettingsSectionBar section={section} onPick={setSection} isAdmin={isAdmin} />
+
+      {section === "general" && (<>
       <UsageCard />
       {isAdmin && <TerminologyCard />}
-      {isAdmin && <ChannelsManager />}
       <QrTool />
+      </>)}
+
+      {section === "numbers" && (<>
+      {isAdmin && <ChannelsManager />}
+      {isAdmin && <OtpServiceCard />}
+      </>)}
+
+      {section === "team" && (<>
       {isAdmin && <TeamManager />}
       {isAdmin && <ActivityLog />}
+      </>)}
 
-      {/* AI auto-replies — the ONE master switch for the AI on every channel */}
-      <section className="bg-white rounded-card border border-line p-5 space-y-1">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-bold text-slate-400 uppercase">AI auto-replies</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              One switch for the AI assistant everywhere — WhatsApp, Instagram, Facebook Messenger, website chat, and AI follow-ups.
-              Chatbot flows, welcome/away messages and human agents keep working when it&apos;s off.
-            </p>
-          </div>
-          {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : isAdmin ? (
-            <button onClick={toggleAi} disabled={saving}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
-              {aiOn ? "ON" : "OFF"}
-            </button>
-          ) : (
-            /* Members can see the switch but not flip it — the API rejects it
-               ("Only admins can toggle the AI switch"), and the old optimistic
-               button showed the new state over that 403. */
-            <span title="Only an admin can change this" className={`px-3 py-1.5 rounded-full text-xs font-bold ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
-              {aiOn ? "ON" : "OFF"}
-            </span>
-          )}
-        </div>
-        {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
-      </section>
-
+      {section === "crm" && (<>
       {/* LeadSquared controls — only meaningful for a workspace that has connected it. */}
       {isAdmin && (
         <section className="bg-white rounded-card border border-line p-5 space-y-4">
           <p className="text-xs font-bold text-slate-400 uppercase">LeadSquared</p>
+          {lsqConn && (
+            <div className={`rounded-control px-3 py-2.5 text-xs flex items-start gap-2 ${lsqConn.connected ? "bg-brand-50 text-brand-700" : "bg-amber-50 text-amber-800"}`}>
+              {lsqConn.connected ? <CircleCheck className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+              <p>
+                <b>{lsqConn.connected ? "Connected" : "Not connected"}.</b>{" "}
+                {lsqConn.connected
+                  ? lsqConn.via === "server" ? "Using the LeadSquared keys set on the server. Chats are syncing to your leads."
+                    : lsqConn.via === "settings" ? "Using your earlier LeadSquared settings. Chats are syncing to your leads."
+                    : "Connected in Integrations. Chats are syncing to your leads."
+                  : <>Connect LeadSquared in <b>Integrations</b> to sync chats to your leads. The switches below do nothing until then.</>}
+              </p>
+            </div>
+          )}
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-ink-900">Follow the CRM&apos;s lead owner</p>
@@ -2265,6 +2410,37 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           {crmErr && <p className="text-[11px] text-red-600 bg-red-50 rounded-control px-3 py-2">{crmErr}</p>}
         </section>
       )}
+
+      {isAdmin && <ApiKeysCard />}
+      </>)}
+
+      {section === "automation" && (<>
+      {/* AI auto-replies — the ONE master switch for the AI on every channel */}
+      <section className="bg-white rounded-card border border-line p-5 space-y-1">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-bold text-slate-400 uppercase">AI auto-replies</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              One switch for the AI assistant everywhere — WhatsApp, Instagram, Facebook Messenger, website chat, and AI follow-ups.
+              Chatbot flows, welcome/away messages and human agents keep working when it&apos;s off.
+            </p>
+          </div>
+          {aiOn === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : isAdmin ? (
+            <button onClick={toggleAi} disabled={saving}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {aiOn ? "ON" : "OFF"}
+            </button>
+          ) : (
+            /* Members can see the switch but not flip it — the API rejects it
+               ("Only admins can toggle the AI switch"), and the old optimistic
+               button showed the new state over that 403. */
+            <span title="Only an admin can change this" className={`px-3 py-1.5 rounded-full text-xs font-bold ${aiOn ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+              {aiOn ? "ON" : "OFF"}
+            </span>
+          )}
+        </div>
+        {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
+      </section>
 
       <EscalationSweepCard isAdmin={isAdmin} />
 
@@ -2399,6 +2575,10 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         {saving ? <Loader2 className="w-4 h-4 animate-spin inline" /> : savedAt && Date.now() - savedAt < 3000 ? <span className="inline-flex items-center gap-1.5"><Check className="w-4 h-4" /> Saved</span> : "Save messages"}
       </button>
 
+      {isAdmin && <VoiceSettingsCard />}
+      </>)}
+
+      {section === "replies" && (<>
       {isAdmin && <CannedTemplatesCard />}
 
       {/* Quick replies */}
@@ -2424,7 +2604,9 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           {quickReplies.length === 0 && <p className="text-center text-slate-400 text-sm py-4">No quick replies yet — add shortcuts like “fees”, “location”, “demo”.</p>}
         </div>
       </section>
+      </>)}
 
+      {section === "privacy" && (<>
       {isAdmin && (
         <section className="bg-white rounded-card border border-line p-5 space-y-3">
           <p className="text-xs font-bold text-slate-400 uppercase">Data &amp; privacy (GDPR)</p>
@@ -2452,10 +2634,7 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
           <p className="text-[11px] text-ink-400">Workspace export includes contacts, conversations, message text (media as links), team notes, form responses, opt‑outs and orders — not media files, AI settings, knowledge base, flows or send logs. A very large workspace is cut off at the size or time limit, and the file says which parts were. Export one person gives everything held about them, for an access request. Erase fulfils a right‑to‑be‑forgotten request for one person (removes the contact, conversations, messages, notes, media they sent, form responses, opt‑outs, queue/log and more; orders are kept with their number removed).</p>
         </section>
       )}
-
-      {isAdmin && <VoiceSettingsCard />}
-      {isAdmin && <ApiKeysCard />}
-      {isAdmin && <OtpServiceCard />}
+      </>)}
     </div>
     <SettingsRail goTo={goTo} />
     </div>
