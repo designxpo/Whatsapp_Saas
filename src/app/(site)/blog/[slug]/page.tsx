@@ -1,3 +1,4 @@
+import { blogShareImage } from "../../_content/blog-artwork";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -138,7 +139,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   // Point og:image at this post's own generated cover, so a share on WhatsApp
   // or LinkedIn previews THIS article rather than the identical site-wide card
   // every post used to fall back to.
-  const cover = `${SITE_URL}${post.shareImage ?? `/blog/${post.slug}/cover`}`;
+  const cover = `${SITE_URL}${blogShareImage(post)}`;
   return {
     title: `${post.title} — Talko AI`,
     description: post.excerpt,
@@ -166,7 +167,7 @@ export default async function PostPage(props: Props) {
     ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
     ...(Number.isFinite(parsedMod) ? { dateModified: new Date(parsedMod).toISOString() } : {}),
     articleSection: post.category,
-    image: `${SITE_URL}${post.shareImage ?? `/blog/${post.slug}/cover`}`,
+    image: `${SITE_URL}${blogShareImage(post)}`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
     // The Organization, by the owner's choice. Declaring a Person named
