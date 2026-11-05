@@ -1531,6 +1531,13 @@ export async function resetStaleEscalations(tenantId: string, olderThanDays: num
 
 export async function setBotEnabled(id: string, enabled: boolean): Promise<void> {
   await db().from("wa_conversations").update({ bot_enabled: enabled }).eq("id", id);
+  // When it went off (botresume.ts counts the quiet from here); a person turning
+  // it on clears the "came back by itself" mark. Separate and best-effort: before
+  // the bot_auto_resume migration these columns don't exist, and that must never
+  // stop a person taking over a chat.
+  await db().from("wa_conversations")
+    .update(enabled ? { bot_resumed_at: null } : { bot_off_at: new Date().toISOString() })
+    .eq("id", id).then(() => {}, () => {});
 }
 
 export async function touchInbound(id: string, lastMessage: string): Promise<void> {

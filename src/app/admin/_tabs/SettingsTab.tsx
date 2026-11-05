@@ -827,6 +827,80 @@ type SweepStatus = {
   lastRunAt: string | null; lastResetCount: number | null; dueNow: number; nextRunAt: string | null;
 };
 
+// ── Bot back on after the team goes quiet (lib/botresume.ts) ─────────────────
+type BotResumeS = { enabled: boolean; afterHours: number; available: boolean; botOff: number | null; dueNow: number | null; lastRun: { at: string; resumed: number } | null };
+
+function BotResumeCard({ isAdmin }: { isAdmin: boolean }) {
+  const [s, setS] = useState<BotResumeS | null>(null);
+  const [hours, setHours] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const load = useCallback(() => {
+    fetch("/api/admin/bot-resume").then(r => r.json()).then(d => { if (!d.error) { setS(d); setHours(String(d.afterHours)); } }).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  async function post(body: Record<string, unknown>) {
+    const r = await fetch("/api/admin/bot-resume", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  }
+  async function save(patch: Partial<{ enabled: boolean; afterHours: number }>) {
+    if (!s) return;
+    setBusy(true); setMsg(null);
+    try {
+      const d = await post({ enabled: s.enabled, afterHours: Number(hours) || s.afterHours, ...patch }) as BotResumeS;
+      setS(d); setHours(String(d.afterHours)); setMsg({ ok: true, text: "Saved." });
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); }
+    finally { setBusy(false); }
+  }
+  async function runNow() {
+    setBusy(true); setMsg(null);
+    try {
+      const d = await post({ runNow: true }) as { resumed: number; status: BotResumeS };
+      setS(d.status); setMsg({ ok: true, text: d.resumed ? `Bot back on in ${d.resumed} chat${d.resumed === 1 ? "" : "s"}.` : "No chat was due." });
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : String(e) }); }
+    finally { setBusy(false); }
+  }
+
+  if (!s) return null;
+  return (
+    <section className="bg-white rounded-card border border-line p-5 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold text-slate-400 uppercase">Bot back on when the team goes quiet</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            When someone on your team replies in a chat, the bot steps aside. If nobody from your team sends anything in that
+            chat for the time below, the bot comes back on and answers the customer&apos;s next message. It never messages
+            anyone first: follow-ups and drips wait until the customer writes again. Personal (manual) numbers are left alone.
+          </p>
+        </div>
+        <button onClick={() => isAdmin && save({ enabled: !s.enabled })} disabled={busy || !isAdmin}
+          className={`px-3 py-1.5 rounded-full text-xs font-bold disabled:opacity-60 shrink-0 ${s.enabled ? "bg-brand-100 text-brand-700" : "bg-slate-100 text-slate-500"}`}>
+          {s.enabled ? "ON" : "OFF"}
+        </button>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        <label htmlFor="bot-resume-hours" className="text-xs text-ink-600">Turn the bot back on after</label>
+        <input id="bot-resume-hours" type="number" min={1} max={168} disabled={!isAdmin} className={`${inp} w-20 !py-1.5 text-xs`} value={hours} onChange={e => setHours(e.target.value)} />
+        <span className="text-xs text-ink-600">hours with no reply from the team</span>
+        {isAdmin && <button onClick={() => save({})} disabled={busy || String(s.afterHours) === hours} className="px-3 py-1 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-50">Save</button>}
+      </div>
+      {s.available ? (
+        <p className="text-[11px] text-ink-400">
+          {s.botOff ?? 0} chat{s.botOff === 1 ? " has" : "s have"} the bot off right now{s.enabled ? `; ${s.dueNow ?? 0} will come back on at the next check (every minute)` : ""}.
+          {s.lastRun ? ` Last turned back on: ${s.lastRun.resumed} on ${new Date(s.lastRun.at).toLocaleString()}.` : ""}
+          {isAdmin && !!s.dueNow && <> <button onClick={runNow} disabled={busy} className="font-semibold text-brand-700 hover:underline">Do it now</button></>}
+        </p>
+      ) : (
+        <p className="text-[11px] text-amber-700 bg-amber-50 rounded-control px-3 py-2">Waiting for a database update. Until it is applied, the bot stays off in a chat until someone turns it on.</p>
+      )}
+      {msg && <p className={`text-[11px] ${msg.ok ? "text-brand-700" : "text-red-600"}`}>{msg.text}</p>}
+    </section>
+  );
+}
+
 function EscalationSweepCard({ isAdmin }: { isAdmin: boolean }) {
   const ask = useConfirm();
   const [s, setS] = useState<SweepStatus | null>(null);
@@ -2441,6 +2515,8 @@ function SettingsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
         {aiOn === false && <p className="text-[11px] text-amber-600">The AI is silent on all channels — your team replies from Live Chat. Per-conversation “Turn bot off” still works independently.</p>}
       </section>
+
+      <BotResumeCard isAdmin={isAdmin} />
 
       <EscalationSweepCard isAdmin={isAdmin} />
 

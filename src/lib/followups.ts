@@ -19,6 +19,7 @@
 //   wa_settings.followup_delay_minutes — per-tenant quiet time before a nudge (env default 60)
 //   wa_settings.followup_max_attempts  — per-tenant nudges per silent stretch (env default 1)
 
+import { resumedQuiet } from "./botresume";
 import { db } from "./supabase";
 import type { GroundingAction } from "./guard/sanitize";
 import { getChannel, effectiveAgentId, effectiveKbScope, type Channel } from "./channels";
@@ -121,6 +122,7 @@ export async function drainAiFollowups(max = 50): Promise<number> {
       if (oo.has(last10(phone))) continue;   // opt-out (WhatsApp is phone-keyed)
     }
     if (inFlow.has(id)) continue;                                                  // a flow owns this thread
+    if (resumedQuiet(r as { bot_resumed_at?: string | null; last_inbound_at?: string | null })) continue;   // bot came back by itself: it answers, never nudges first
     if (await hasActiveEnrollment(phone, tenantId).catch(() => false)) continue;   // a drip/inactivity sequence owns it
 
     // Atomic claim BEFORE the (slow) compose: compare-and-swap the attempt counter so

@@ -1,4 +1,5 @@
 import { db } from "./supabase";
+import { resumedQuiet } from "./botresume";
 import { accountCanSend } from "./feature-guard";
 import { assertTextsAllowed } from "./moderation";
 import { markNumberNotOnWhatsApp, recordSequenceSend, countAutomatedSends } from "./dripstore";
@@ -1261,7 +1262,9 @@ async function drainInactiveLeadsForTenant(max = 100, tenantId = DEFAULT_TENANT_
   const idleMinutes = Math.max(1, parseInt(seq.triggerValue ?? "", 10) || 10);
   const cutoff = new Date(Date.now() - idleMinutes * 60_000).toISOString();
   const { data } = await tdb(tenantId).from("wa_conversations")
-    .select("id, phone, platform, last_inbound_at, last_outbound_at")
+    // "*", not a column list: bot_resumed_at only exists after the bot_auto_resume
+    // migration, and naming it would fail the whole read before then.
+    .select("*")
     .eq("status", "active").eq("bot_enabled", true).eq("platform", seq.platform)
     .not("last_outbound_at", "is", null).lte("last_outbound_at", cutoff)
     .limit(max);
@@ -1274,6 +1277,9 @@ async function drainInactiveLeadsForTenant(max = 100, tenantId = DEFAULT_TENANT_
     const lo = c.last_outbound_at as string | null;
     // Only chats genuinely awaiting a reply (the bot spoke last).
     if (!lo || (li && new Date(li) >= new Date(lo))) continue;
+    // A bot that came back on by itself answers; it never starts a drip on an
+    // old chat before the customer writes again (botresume.ts).
+    if (resumedQuiet(c as { bot_resumed_at?: string | null; last_inbound_at?: string | null })) continue;
     // Don't collide with an active drip (this or any other sequence).
     if (await hasActiveEnrollment(phone, tenantId)) continue;
     // Don't re-nudge the same silent stretch: if we already ran this sequence for

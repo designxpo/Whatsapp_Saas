@@ -29,6 +29,7 @@ import { drainOnboardingNudges } from "@/lib/onboardingnudge";
 import { drainWeeklyRecaps } from "@/lib/weeklyrecap";
 import { drainOwnerEmailCampaigns } from "@/lib/ownerbroadcast";
 import { drainEscalationSweeps } from "@/lib/escalations";
+import { drainBotResumes } from "@/lib/botresume";
 import { drainDailyDigests } from "@/lib/dailydigest";
 import { drainMetaUsageAlert } from "@/lib/metausage";
 import { recordStageTick } from "@/lib/cronstages";
@@ -55,7 +56,7 @@ export async function GET(req: Request) {
 const STAGES = [
   "autosends", "rulesends", "flowreminders", "adrules", "cartrecovery", "inactivity", "stagepoll",
   "sequences", "aifollowups", "crmsync", "crmsessions", "crmowners", "onboardingnudges", "weeklyrecaps",
-  "ownerbroadcast", "escalationsweeps", "dailydigests", "metausage", "integrationdeliveries",
+  "ownerbroadcast", "escalationsweeps", "botresumes", "dailydigests", "metausage", "integrationdeliveries",
   "ytcomments", "googlereviews", "kbsync", "igtokens", "partnerbilling", "replyhistory", "reviewbooster",
   "metadeletion", "retention", "sheetrows", "tenantmetrics", "leadscore", "reviewalerts",
 ];
@@ -289,6 +290,11 @@ export async function POST(req: Request) {
     let escalationSweeps = { tenants: 0, reset: 0 };
     escalationSweeps = await stage("escalationsweeps", escalationSweeps, () => drainEscalationSweeps());
 
+    // Bot back on in chats the team has gone quiet in — per workspace, on by
+    // default (12 hours), Settings → Automatic messages. Answers only; starts nothing.
+    let botResumes = { tenants: 0, resumed: 0 };
+    botResumes = await stage("botresumes", botResumes, () => drainBotResumes());
+
     // Daily digest — per workspace, for those that switched it on: one email a
     // business morning to its admins and owner (dailydigest.ts).
     let dailyDigests = { tenants: 0, sent: 0 };
@@ -321,7 +327,7 @@ export async function POST(req: Request) {
     let adChatsPurged = 0;
     try { adChatsPurged = await purgeOldAdChats(30); } catch (e) { console.error("[cron] adchatpurge", e); }
 
-    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, dailyDigests, metaUsage, crmSync, crmSessions, crmOwners, integrationDeliveries, adChatsPurged, pollers: "after-response" });
+    return NextResponse.json({ scheduledFired, queuesDrained, sent, autoSends, ruleSends, flowReminders, adRules, cartRecoveries, inactiveNudges, sequences, aiFollowups, aiReplies, onboardingNudges, weeklyRecaps, ownerEmails, escalationSweeps, botResumes, dailyDigests, metaUsage, crmSync, crmSessions, crmOwners, integrationDeliveries, adChatsPurged, pollers: "after-response" });
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 });
   }
