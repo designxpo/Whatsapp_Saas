@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { queryReviews, getReview, saveReview, deleteReview, getReviewSettings, getGoogleSyncStatus, REVIEW_VIEWS, type ReviewQuery, type ReviewView, type ReplyStatus } from "@/lib/reviews";
+import { queryReviews, hasSavedReviewSettings, getReview, saveReview, deleteReview, getReviewSettings, getGoogleSyncStatus, REVIEW_VIEWS, CASE_STATUSES, type ReviewQuery, type ReviewView, type ReplyStatus, type CaseStatus } from "@/lib/reviews";
+import { listUsers } from "@/lib/team";
+import { viewerUserId, reviewViewer } from "@/lib/review-access";
 import { listChannels } from "@/lib/channels";
-import { currentUser, currentTenantId, requireAdmin, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, requireAdmin, requireRoleAdmin } from "@/lib/auth";
 import { visibleChannelIds } from "@/lib/teams";
 import { guardFeature } from "@/lib/feature-guard";
 import { emailConfigured } from "@/lib/review-alerts";
@@ -18,7 +20,8 @@ const STATUSES: ReplyStatus[] = ["none", "draft", "posted"];
 // alert or email link can open it whatever page it falls on.
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 401 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
   try {
@@ -41,6 +44,16 @@ export async function GET(req: Request) {
       page: num("page"),
       pageSize: num("pageSize"),
     };
+    // "Assigned to": me, nobody, or a teammate in this workspace.
+    const assignee = sp.get("assignee");
+    const viewer = await reviewViewer();
+    const myId = viewer ? await viewerUserId(viewer) : null;
+    const team = (await listUsers(tid)).filter(u => u.active);
+    q.assignee = assignee === "me" ? (myId ?? "00000000-0000-0000-0000-000000000000")
+      : assignee === "unassigned" ? "unassigned"
+      : assignee && team.some(u => u.id === assignee) ? assignee : null;
+    const cs = sp.get("case") as CaseStatus | null;
+    q.caseStatus = cs && CASE_STATUSES.includes(cs) ? cs : null;
     const id = sp.get("id");
     const [page, settings, sync, channels, focus] = await Promise.all([
       queryReviews(tid, q),
@@ -67,7 +80,13 @@ export async function GET(req: Request) {
     // Members can read the inbox but not change settings; they don't need the
     // admins' alert email addresses.
     const visibleSettings = user?.role === "admin" ? settings : { ...settings, alerts: { ...settings.alerts, recipients: [] } };
-    return NextResponse.json({ ...page, focus: visibleFocus, settings: visibleSettings, locations, emailAlertsAvailable: emailConfigured() });
+    return NextResponse.json({
+      ...page, focus: visibleFocus, settings: visibleSettings, locations, emailAlertsAvailable: emailConfigured(),
+      // Who a review can be assigned to (names only), and who is asking.
+      team: team.map(u => ({ id: u.id, name: u.name || u.email.split("@")[0], team: u.team })),
+      me: { id: myId, canManage: !!viewer?.canManage, isAdmin: user?.role === "admin" },
+      settingsSaved: await hasSavedReviewSettings(tid),
+    });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
   }
@@ -77,7 +96,8 @@ export async function GET(req: Request) {
 // edited here: a Google review's text comes from Google.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
   let body: Record<string, unknown>;
@@ -109,7 +129,8 @@ export async function POST(req: Request) {
 // DELETE — remove a review by id (scoped to this tenant). The review stays on Google.
 export async function DELETE(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });

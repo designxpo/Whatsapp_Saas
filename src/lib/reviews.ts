@@ -9,6 +9,7 @@ import { db } from "./supabase";
 import { getTenantSetting, setTenantSetting } from "./store";
 import { tdb } from "./tenantdb";
 import { DEFAULT_HOLD_FOR, normalizeHoldFor, type HoldFor } from "./review-policy";
+import { BUSINESS_PRESETS, isBusinessType, isReplyLanguage, type BusinessType, type ReplyLanguage } from "./review-presets";
 
 export type ReviewSource = "manual" | "google";
 export type ReplyStatus = "none" | "draft" | "posted";
@@ -39,9 +40,17 @@ export interface Review {
   postError: string | null;
   postFailedAt: string | null;
   draftError: string | null;
+  /** Complaint handling — internal, separate from the public reply. */
+  assigneeId: string | null;
+  caseStatus: CaseStatus | null;
+  followUpAt: string | null;
+  linkedContactId: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type CaseStatus = "new" | "in_progress" | "waiting_customer" | "resolved";
+export const CASE_STATUSES: CaseStatus[] = ["new", "in_progress", "waiting_customer", "resolved"];
 
 export type AlertKind = "new_review" | "needs_approval" | "complaint" | "post_failed" | "reauth" | "sync_failing" | "overdue";
 export const ALERT_KINDS: AlertKind[] = ["new_review", "needs_approval", "complaint", "post_failed", "reauth", "sync_failing", "overdue"];
@@ -54,6 +63,8 @@ export interface AlertSettings {
   events: Record<AlertKind, boolean>;
   /** A review still without a public reply after this long raises "overdue". */
   unansweredHours: number;
+  /** A summary email of the reviews: never, every morning, or every Monday. */
+  summary: "off" | "daily" | "weekly";
 }
 
 export interface ReviewSettings {
@@ -63,14 +74,29 @@ export interface ReviewSettings {
   /** Topics that hold an AI reply for approval whatever the rating. */
   holdFor: HoldFor;
   alerts: AlertSettings;
+  /** What kind of business, which seeds the reply guidance (review-presets.ts). */
+  businessType: BusinessType;
+  businessDescription: string;
+  replyGuidance: string;
+  /** A contact the business approves for public replies ("call us on …"); never invented. */
+  supportContact: string;
+  language: ReplyLanguage;
 }
+
+/** What a location may set for itself; anything unset uses the workspace's value. */
+export const LOCATION_FIELDS = ["autoMinStars", "signature", "tone", "holdFor", "businessType", "businessDescription", "replyGuidance", "supportContact", "language"] as const;
+export type LocationOverrides = Partial<Pick<ReviewSettings, typeof LOCATION_FIELDS[number]>>;
 
 export const DEFAULT_ALERTS: AlertSettings = {
   email: true, recipients: [],
   events: { new_review: true, needs_approval: true, complaint: true, post_failed: true, reauth: true, sync_failing: true, overdue: true },
   unansweredHours: 48,
+  summary: "off",
 };
-const DEFAULT_SETTINGS: ReviewSettings = { autoMinStars: 4, signature: "", tone: "", holdFor: DEFAULT_HOLD_FOR, alerts: DEFAULT_ALERTS };
+const DEFAULT_SETTINGS: ReviewSettings = {
+  autoMinStars: 4, signature: "", tone: "", holdFor: DEFAULT_HOLD_FOR, alerts: DEFAULT_ALERTS,
+  businessType: "other", businessDescription: "", replyGuidance: "", supportContact: "", language: "match",
+};
 
 function clampRating(n: unknown, fallback = 5): number {
   const v = Math.round(Number(n));
@@ -117,6 +143,10 @@ function mapReview(r: Record<string, unknown>): Review {
     postError: (r.post_error as string | null) ?? null,
     postFailedAt: (r.post_failed_at as string | null) ?? null,
     draftError: (r.draft_error as string | null) ?? null,
+    assigneeId: (r.assignee_id as string | null) ?? null,
+    caseStatus: (r.case_status as CaseStatus | null) ?? null,
+    followUpAt: (r.follow_up_at as string | null) ?? null,
+    linkedContactId: (r.linked_contact_id as string | null) ?? null,
     createdAt: r.created_at as string,
     updatedAt: (r.updated_at as string) ?? (r.created_at as string),
   };
@@ -124,7 +154,8 @@ function mapReview(r: Record<string, unknown>): Review {
 
 // Columns added by 20261104120000_reviews_inbox_alerts.sql. Until it is
 // applied, writes drop them and retry, so imports and replies keep working.
-const STAGE1_COLS = ["channel_id", "review_updated_at", "approval_reasons", "topics", "is_complaint", "reply_source", "post_error", "post_failed_at", "draft_error", "draft_claimed_at"];
+// The same for 20261105120000_reviews_cases_requests_reports.sql.
+const STAGE1_COLS = ["channel_id", "review_updated_at", "approval_reasons", "topics", "is_complaint", "reply_source", "post_error", "post_failed_at", "draft_error", "draft_claimed_at", "assignee_id", "case_status", "follow_up_at", "linked_contact_id"];
 const missingColumn = (e: { code?: string } | null | undefined) => !!e && (e.code === "42703" || e.code === "PGRST204");
 function legacyRow(row: Record<string, unknown>) {
   const out = { ...row };
@@ -141,8 +172,9 @@ export async function listReviews(tenantId: string): Promise<Review[]> {
 }
 
 // ── The review inbox ─────────────────────────────────────────────────────────
-export type ReviewView = "all" | "approval" | "unanswered" | "complaints" | "replied" | "failed";
-export const REVIEW_VIEWS: ReviewView[] = ["all", "approval", "unanswered", "complaints", "replied", "failed"];
+export type ReviewView = "all" | "approval" | "unanswered" | "complaints" | "cases" | "overdue" | "replied" | "failed";
+export const REVIEW_VIEWS: ReviewView[] = ["all", "approval", "unanswered", "complaints", "cases", "overdue", "replied", "failed"];
+const OPEN_CASES: CaseStatus[] = ["new", "in_progress", "waiting_customer"];
 
 export interface ReviewQuery {
   view?: ReviewView;
@@ -156,6 +188,11 @@ export interface ReviewQuery {
   sort?: "newest" | "oldest_unanswered";
   /** A team member's visible locations (null = everything). Manual reviews belong to no location. */
   channelIds?: string[] | null;
+  /** A teammate's id, or "unassigned". */
+  assignee?: string | null;
+  caseStatus?: CaseStatus | null;
+  /** "Now", for the overdue view (tests pin it). */
+  now?: number;
   page?: number;
   pageSize?: number;
 }
@@ -175,6 +212,9 @@ function applyFilters(qb: Builder, tenantId: string, f: ReviewQuery, view: Revie
   else if (f.location) b = b.eq("channel_id", f.location);
   if (f.rating) b = b.eq("rating", f.rating);
   if (f.status) b = b.eq("reply_status", f.status);
+  if (f.assignee === "unassigned") b = b.is("assignee_id", null);
+  else if (f.assignee) b = b.eq("assignee_id", f.assignee);
+  if (f.caseStatus) b = b.eq("case_status", f.caseStatus);
   if (f.from) b = b.gte("review_created_at", f.from);
   if (f.to) b = b.lte("review_created_at", f.to.length <= 10 ? `${f.to}T23:59:59.999Z` : f.to);
   const term = searchTerm(f.q);
@@ -182,6 +222,8 @@ function applyFilters(qb: Builder, tenantId: string, f: ReviewQuery, view: Revie
   if (view === "approval") b = b.eq("reply_status", "draft");
   else if (view === "unanswered") b = b.neq("reply_status", "posted");
   else if (view === "complaints") b = b.eq("is_complaint", true);
+  else if (view === "cases") b = b.in("case_status", OPEN_CASES);
+  else if (view === "overdue") b = b.in("case_status", OPEN_CASES).lt("follow_up_at", new Date(f.now ?? Date.now()).toISOString());
   else if (view === "replied") b = b.eq("reply_status", "posted");
   else if (view === "failed") b = b.not("post_error", "is", null).neq("reply_status", "posted");
   if (f.sort === "oldest_unanswered" && view !== "unanswered") b = b.neq("reply_status", "posted");
@@ -287,6 +329,8 @@ export interface ReplyPatch {
   replySource?: ReplySource | null;
   postError?: string | null;
   draftError?: string | null;
+  /** When the public reply was actually made (Google's time for a reply written there). */
+  postedAt?: string | null;
 }
 
 // Save/replace a review's reply. `status` reflects where it is in the flow;
@@ -297,7 +341,7 @@ export async function setReviewReply(id: string, tenantId: string, replyText: st
     reply_text: replyText.trim() || null,
     reply_status: status,
     auto,
-    posted_at: status === "posted" ? now : null,
+    posted_at: status === "posted" ? (patch.postedAt ?? now) : null,
     updated_at: now,
   };
   if (patch.approvalReasons !== undefined) row.approval_reasons = patch.approvalReasons;
@@ -315,6 +359,12 @@ export async function setReviewReply(id: string, tenantId: string, replyText: st
   let { data, error } = await run(row);
   if (missingColumn(error)) ({ data, error } = await run(legacyRow(row)));
   if (error) throw error;
+  // A complaint becomes an open case the first time it is recognised. A case
+  // someone already moved (or resolved) is left exactly where they put it.
+  if (patch.isComplaint && !(data as Record<string, unknown>).case_status) {
+    const opened = await db().from("wa_reviews").update({ case_status: "new" }).eq("id", id).eq("tenant_id", tenantId).is("case_status", null).select().maybeSingle();
+    if (opened.data) data = opened.data;
+  }
   return mapReview(data as Record<string, unknown>);
 }
 
@@ -362,6 +412,7 @@ function normalizeAlerts(v: unknown): AlertSettings {
     recipients: strArr(o.recipients).map(e => e.trim().toLowerCase()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).slice(0, 10),
     events: Object.fromEntries(ALERT_KINDS.map(k => [k, typeof ev[k] === "boolean" ? ev[k] : true])) as Record<AlertKind, boolean>,
     unansweredHours: Number.isFinite(hours) ? Math.min(24 * 14, Math.max(1, hours)) : DEFAULT_ALERTS.unansweredHours,
+    summary: o.summary === "daily" || o.summary === "weekly" ? o.summary : "off",
   };
 }
 
@@ -376,8 +427,60 @@ export async function getReviewSettings(tenantId: string): Promise<ReviewSetting
       tone: (p.tone ?? "").toString().slice(0, 600),
       holdFor: normalizeHoldFor(p.holdFor),
       alerts: normalizeAlerts(p.alerts),
+      ...normalizeBusiness(p),
     };
   } catch { return { ...DEFAULT_SETTINGS }; }
+}
+
+function normalizeBusiness(p: Partial<ReviewSettings>): Pick<ReviewSettings, "businessType" | "businessDescription" | "replyGuidance" | "supportContact" | "language"> {
+  return {
+    businessType: isBusinessType(p.businessType) ? p.businessType : DEFAULT_SETTINGS.businessType,
+    businessDescription: String(p.businessDescription ?? "").slice(0, 400),
+    replyGuidance: String(p.replyGuidance ?? "").slice(0, 800),
+    supportContact: String(p.supportContact ?? "").slice(0, 120),
+    language: isReplyLanguage(p.language) ? p.language : DEFAULT_SETTINGS.language,
+  };
+}
+
+/** Pure: a location's overrides, keeping only fields a location may set, valid values only. */
+export function normalizeOverrides(v: unknown): LocationOverrides {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const out: LocationOverrides = {};
+  if (o.autoMinStars !== undefined && o.autoMinStars !== null) out.autoMinStars = clampThreshold(o.autoMinStars, 4);
+  if (typeof o.signature === "string") out.signature = o.signature.slice(0, 120);
+  if (typeof o.tone === "string") out.tone = o.tone.slice(0, 600);
+  if (o.holdFor && typeof o.holdFor === "object") out.holdFor = normalizeHoldFor(o.holdFor);
+  if (isBusinessType(o.businessType)) out.businessType = o.businessType;
+  if (typeof o.businessDescription === "string") out.businessDescription = o.businessDescription.slice(0, 400);
+  if (typeof o.replyGuidance === "string") out.replyGuidance = o.replyGuidance.slice(0, 800);
+  if (typeof o.supportContact === "string") out.supportContact = o.supportContact.slice(0, 120);
+  if (isReplyLanguage(o.language)) out.language = o.language;
+  return out;
+}
+
+const LOCATION_PREFIX = "review_settings:";
+
+export async function getLocationOverrides(tenantId: string, channelId: string): Promise<LocationOverrides> {
+  return normalizeOverrides(await getTenantSetting<unknown>(tenantId, LOCATION_PREFIX + channelId, null).catch(() => null));
+}
+
+/** Replace a location's overrides; null (or empty) goes back to the workspace's settings. */
+export async function setLocationOverrides(tenantId: string, channelId: string, v: unknown): Promise<LocationOverrides> {
+  const next = normalizeOverrides(v);
+  await setTenantSetting(tenantId, LOCATION_PREFIX + channelId, Object.keys(next).length ? next : null);
+  return next;
+}
+
+/** The settings that apply to one location: the workspace's, with that location's overrides on top. */
+export async function getEffectiveSettings(tenantId: string, channelId: string | null | undefined): Promise<ReviewSettings> {
+  const base = await getReviewSettings(tenantId);
+  if (!channelId) return base;
+  return { ...base, ...(await getLocationOverrides(tenantId, channelId)) };
+}
+
+/** Whether this workspace has saved its review settings at least once. */
+export async function hasSavedReviewSettings(tenantId: string): Promise<boolean> {
+  return !!(await getTenantSetting(tenantId, SETTINGS_KEY, "").catch(() => ""));
 }
 
 export async function setReviewSettings(tenantId: string, input: Partial<ReviewSettings>): Promise<ReviewSettings> {
@@ -388,6 +491,13 @@ export async function setReviewSettings(tenantId: string, input: Partial<ReviewS
     tone: input.tone !== undefined ? String(input.tone).slice(0, 600) : current.tone,
     holdFor: input.holdFor !== undefined ? normalizeHoldFor({ ...current.holdFor, ...input.holdFor }) : current.holdFor,
     alerts: input.alerts !== undefined ? normalizeAlerts({ ...current.alerts, ...input.alerts, events: { ...current.alerts.events, ...(input.alerts.events ?? {}) } }) : current.alerts,
+    ...normalizeBusiness({
+      businessType: input.businessType ?? current.businessType,
+      businessDescription: input.businessDescription ?? current.businessDescription,
+      replyGuidance: input.replyGuidance ?? current.replyGuidance,
+      supportContact: input.supportContact ?? current.supportContact,
+      language: input.language ?? current.language,
+    }),
   };
   await setTenantSetting(tenantId, SETTINGS_KEY, JSON.stringify(next));
   return next;
@@ -465,4 +575,28 @@ export async function recordGoogleSync(tenantId: string, channelId: string, erro
     : { ...cur, ok: true, error: null, kind: null, at, lastSuccessAt: at, failures: 0 };
   await saveChannelSync(tenantId, channelId, next);
   return next;
+}
+
+// ── What the reply AI is told ────────────────────────────────────────────────
+/** This location's latest public replies, newest first (so the next one doesn't repeat them). */
+export async function recentReplies(tenantId: string, channelId: string | null, limit = 5): Promise<string[]> {
+  let q = db().from("wa_reviews").select("reply_text").eq("tenant_id", tenantId).eq("reply_status", "posted").not("reply_text", "is", null);
+  if (channelId) q = q.eq("channel_id", channelId);
+  const { data, error } = await q.order("posted_at", { ascending: false }).limit(limit);
+  if (error) return [];
+  return ((data ?? []) as { reply_text: string | null }[]).map(r => r.reply_text ?? "").filter(Boolean);
+}
+
+/** The reply AI's input for a review under these (location) settings. Pure. */
+export function replyInputFor(review: { author?: string; rating: number; text: string }, settings: ReviewSettings, extra: { businessName?: string; recentReplies?: string[] } = {}) {
+  return {
+    author: review.author, rating: review.rating, text: review.text,
+    businessName: extra.businessName, tone: settings.tone, signature: settings.signature,
+    businessType: settings.businessType !== "other" ? BUSINESS_PRESETS[settings.businessType].label : undefined,
+    businessDescription: settings.businessDescription || undefined,
+    replyGuidance: settings.replyGuidance || undefined,
+    supportContact: settings.supportContact || undefined,
+    language: settings.language,
+    recentReplies: extra.recentReplies,
+  };
 }

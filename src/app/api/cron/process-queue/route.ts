@@ -24,7 +24,7 @@ import { answerUnanswered, SETTLE_MS } from "@/lib/replybackstop";
 import { purgeOldAdChats } from "@/lib/adchats";
 import { drainYtComments } from "@/lib/ytpoller";
 import { drainGoogleReviews } from "@/lib/reviewpoller";
-import { sweepOverdueReviews, drainAlertEmails } from "@/lib/review-alerts";
+import { sweepOverdueReviews, drainAlertEmails, drainReviewSummaries } from "@/lib/review-alerts";
 import { drainOnboardingNudges } from "@/lib/onboardingnudge";
 import { drainWeeklyRecaps } from "@/lib/weeklyrecap";
 import { drainOwnerEmailCampaigns } from "@/lib/ownerbroadcast";
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
     const googleReviews = await stage("googlereviews", 0, () => drainGoogleReviews(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // Review alerts (review-alerts.ts): reviews left unanswered too long, then
     // one email per workspace with whatever was raised since the last run.
-    const reviewAlerts = await stage("reviewalerts", null, async () => ({ overdue: await sweepOverdueReviews(), emails: await drainAlertEmails() }), pollStart, POLL_BUDGET);
+    const reviewAlerts = await stage("reviewalerts", null, async () => ({ overdue: await sweepOverdueReviews(), emails: await drainAlertEmails(), summaries: await drainReviewSummaries() }), pollStart, POLL_BUDGET);
     const kbSync = await stage("kbsync", null, () => refreshDueUrlDocuments({ olderThanHours: 6, max: 3 }), pollStart, POLL_BUDGET);
     const igTokens = await stage("igtokens", null, () => sweepIgTokensIfDue(pollStart + POLL_BUDGET), pollStart, POLL_BUDGET);
     // White-label billing: partners' prepaid monthly charges, and the payment

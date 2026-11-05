@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
 import { saveGoogleReviewsChannel } from "@/lib/channels";
+import { checkFeature } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,9 @@ export async function GET(req: NextRequest) {
   const cookieState = req.cookies.get(STATE_COOKIE)?.value;
 
   if (err) return back("gr_error=denied");
+  // The plan is checked at the start too; checking again here means a plan
+  // that lapsed mid-connect never ends up with a stored Google connection.
+  if (!(await checkFeature((await currentTenantId()) ?? DEFAULT_TENANT_ID, "reviews").catch(() => ({ ok: false }))).ok) return back("gr_error=not_in_plan");
   // A missing/mismatched state most often means the connect link sat open past
   // its cookie's life, or was opened in a different browser/session than the
   // one that started it — say that, not the unhelpful "something went wrong".

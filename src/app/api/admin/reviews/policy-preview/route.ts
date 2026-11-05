@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getReviewSettings } from "@/lib/reviews";
+import { getEffectiveSettings, normalizeOverrides, replyInputFor, recentReplies } from "@/lib/reviews";
 import { decideAutoPost, normalizeHoldFor, type AiRead } from "@/lib/review-policy";
 import { draftReviewReply } from "@/lib/llm";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireRoleAdmin } from "@/lib/auth";
 import { guardFeature } from "@/lib/feature-guard";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 
@@ -15,14 +15,16 @@ export const maxDuration = 60;
 // the AI also drafts a sample reply, exactly as it would for a real review.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
-  let body: { rating?: number; text?: string; withAi?: boolean; autoMinStars?: number; holdFor?: unknown; author?: string };
+  let body: { rating?: number; text?: string; withAi?: boolean; autoMinStars?: number; holdFor?: unknown; author?: string; channelId?: string; settings?: unknown };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const rating = Math.min(5, Math.max(1, Math.round(Number(body.rating) || 5)));
   const text = String(body.text ?? "").slice(0, 2000);
-  const saved = await getReviewSettings(tid);
+  // The settings being edited (not yet saved) on top of what applies to this location.
+  const saved = { ...(await getEffectiveSettings(tid, body.channelId || null)), ...normalizeOverrides(body.settings) };
   const autoMinStars = Number.isFinite(Number(body.autoMinStars)) ? Math.min(6, Math.max(1, Math.round(Number(body.autoMinStars)))) : saved.autoMinStars;
   const holdFor = body.holdFor ? normalizeHoldFor(body.holdFor) : saved.holdFor;
 
@@ -31,7 +33,7 @@ export async function POST(req: Request) {
   let aiNote: string | null = null;
   if (body.withAi) {
     try {
-      const d = await draftReviewReply({ author: String(body.author ?? "Priya"), rating, text, tone: saved.tone, signature: saved.signature }, tid);
+      const d = await draftReviewReply(replyInputFor({ author: String(body.author ?? "Priya"), rating, text }, saved, { recentReplies: await recentReplies(tid, body.channelId || null) }), tid);
       ai = d.ai; reply = d.reply;
     } catch (e) {
       aiNote = e instanceof AiKeyMissingError ? "Add an AI key in AI Hub to preview AI replies." : /AI_BUSY/.test(e instanceof Error ? e.message : "") ? "The AI is busy or out of quota right now — the rules below still apply." : "The AI couldn't draft a sample reply right now.";

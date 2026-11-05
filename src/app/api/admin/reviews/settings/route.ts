@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { setReviewSettings, type ReviewSettings } from "@/lib/reviews";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireRoleAdmin } from "@/lib/auth";
 import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage } from "@/lib/errors";
 
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 // Anything left out keeps its current value.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
   let body: Partial<ReviewSettings>;
@@ -23,6 +24,11 @@ export async function POST(req: Request) {
       tone: body.tone,
       ...(body.holdFor && typeof body.holdFor === "object" ? { holdFor: body.holdFor } : {}),
       ...(body.alerts && typeof body.alerts === "object" ? { alerts: body.alerts } : {}),
+      businessType: body.businessType,
+      businessDescription: body.businessDescription,
+      replyGuidance: body.replyGuidance,
+      supportContact: body.supportContact,
+      language: body.language,
     });
     return NextResponse.json({ settings });
   } catch (err) {

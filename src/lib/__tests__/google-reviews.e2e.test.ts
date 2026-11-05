@@ -2,19 +2,19 @@
 // Google HTTP, AI and the database are isolated; nothing is publicly posted.
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { memdb } from './helpers/memdb';
-const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, aiBusy: 0, canSend: true, aiRead: { concerns: [], confident: true } as { concerns: string[]; confident: boolean } | null, pages: null as Record<string, { reviews: Record<string, unknown>[]; next?: string }> | null, tokenError: null as string | null, flaky: 0, team: null as string | null, emails: [] as { to: string; subject: string; text: string }[], google: [] as Record<string, unknown>[], calls: [] as {
+const h = vi.hoisted(() => ({ db: null as unknown as import('./helpers/memdb').MemDb, tenant: 'tenant-a', admin: true, allowed: true, failReviews: false, failPost: false, aiBusy: 0, canSend: true, aiRead: { concerns: [], confident: true } as { concerns: string[]; confident: boolean } | null, pages: null as Record<string, { reviews: Record<string, unknown>[]; next?: string }> | null, tokenError: null as string | null, flaky: 0, team: null as string | null, lead: false, emails: [] as { to: string; subject: string; text: string }[], codeResult: 'ok' as 'ok' | 'invalid_grant' | 'bad_client' | 'no_refresh', lastDraft: null as Record<string, unknown> | null, google: [] as Record<string, unknown>[], calls: [] as {
         url: string;
         method: string;
         body: string;
         auth: string;
     }[] }));
 vi.mock('../supabase', () => ({ db: () => h.db.client }));
-vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async () => h.tenant, requireRoleAdmin: async () => h.admin, requireAdmin: async () => true, currentUser: async () => ({ email: 'a@b.in', name: 'A', role: h.admin ? 'admin' : 'member', team: h.team ?? undefined, tenantId: h.tenant }) }));
+vi.mock('../auth', () => ({ DEFAULT_TENANT_ID: 'owner', currentTenantId: async () => h.tenant, requireRoleAdmin: async () => h.admin, requireAdmin: async () => true, currentUser: async () => ({ email: h.admin ? 'owner@biz.in' : 'agent@biz.in', name: h.admin ? 'Owner' : 'Ravi', role: h.admin ? 'admin' : (h.lead ? 'lead' : 'member'), team: h.team ?? undefined, tenantId: h.tenant }) }));
 vi.mock('../email', () => ({ sendEmail: vi.fn(async (o: { to: string; subject: string; text: string }) => { h.emails.push({ to: o.to, subject: o.subject, text: o.text }); return { ok: true }; }) }));
-vi.mock('../team', () => ({ listUsers: async () => [{ email: 'owner@biz.in', role: 'admin', active: true }, { email: 'agent@biz.in', role: 'member', active: true }], logActivity: () => undefined }));
+vi.mock('../team', () => ({ listUsers: async () => [{ id: 'u-owner', name: 'Owner', email: 'owner@biz.in', role: 'admin', active: true, team: null }, { id: 'u-ravi', name: 'Ravi', email: 'agent@biz.in', role: 'member', active: true, team: null }], logActivity: () => undefined }));
 vi.mock('../brand-lookup', async () => ({ brandForTenant: async () => (await import('../whitelabel')).TALKO_BRAND }));
 vi.mock('../llm', () => {
-    const draft = async (_input: unknown, tenant: string) => { if (h.aiBusy > 0) { h.aiBusy--; throw new Error('AI_BUSY'); } return { reply: `Thank you — ${tenant}`, ai: h.aiRead }; };
+    const draft = async (input: unknown, tenant: string) => { h.lastDraft = input as Record<string, unknown>; if (h.aiBusy > 0) { h.aiBusy--; throw new Error('AI_BUSY'); } return { reply: `Thank you — ${tenant}`, ai: h.aiRead }; };
     return { draftReviewReply: vi.fn(draft), generateReviewReply: vi.fn(async (i: unknown, t: string) => (await draft(i, t)).reply) };
 });
 vi.mock('../feature-guard', () => ({ guardFeature: async () => (h.allowed ? null : Response.json({ error: 'not in plan' }, { status: 402 })), accountCanSend: async () => h.canSend }));
@@ -28,10 +28,20 @@ import { POST as syncNow } from '../../app/api/admin/reviews/sync/route';
 import { GET as inbox, POST as addReview } from '../../app/api/admin/reviews/route';
 import { POST as preview } from '../../app/api/admin/reviews/policy-preview/route';
 import { GET as bellAlerts } from '../../app/api/admin/reviews/alerts/route';
-import { raiseAlert, drainAlertEmails, sweepOverdueReviews } from '../review-alerts';
+import { raiseAlert, drainAlertEmails, sweepOverdueReviews, drainReviewSummaries } from '../review-alerts';
+import { GET as reportGet } from '../../app/api/admin/reviews/report/route';
+import { GET as exportGet } from '../../app/api/admin/reviews/export/route';
+import { summarizeThemes } from '../review-themes';
+import { csvCell } from '../review-reports';
+import { POST as caseUpdate } from '../../app/api/admin/reviews/case/route';
+import { GET as activityGet, POST as activityPost } from '../../app/api/admin/reviews/activity/route';
+import { GET as contactSearch } from '../../app/api/admin/reviews/contacts/route';
+import { GET as locGet, POST as locPost } from '../../app/api/admin/reviews/location-settings/route';
 import { POST as reply } from '../../app/api/admin/reviews/reply/route';
 import { POST as pickLocation } from '../../app/api/admin/reviews/google-locations/route';
 import { GET as start } from '../../app/api/admin/onboarding/google-reviews/start/route';
+import { GET as callback } from '../../app/api/admin/onboarding/google-reviews/callback/route';
+import { NextRequest } from 'next/server';
 const request = (body: unknown) => new Request('https://app.thetalko.in/api/admin/reviews/reply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 const channel = (tenant = 'tenant-a', id = 'a', account = 'accounts/a', location = 'locations/a') => ({ id, tenant_id: tenant, kind: 'google_reviews', name: `Business ${id}`, active: true, access_token: `refresh-${id}`, google_account_id: account, google_location_id: location });
 const review = (id: string, stars = 'FIVE', extra: Record<string, unknown> = {}) => ({ name: `accounts/a/locations/a/reviews/${id}`, reviewId: id, reviewer: { displayName: 'Customer' }, starRating: stars, comment: 'Good service', createTime: new Date().toISOString(), ...extra });
@@ -49,6 +59,9 @@ beforeEach(() => {
     h.tokenError = null;
     h.flaky = 0;
     h.team = null;
+    h.lead = false;
+    h.lastDraft = null;
+    h.codeResult = 'ok';
     h.emails = [];
     process.env.RESEND_API_KEY = 're_test';
     retryDelays.ms = [0, 0];
@@ -61,6 +74,11 @@ beforeEach(() => {
         const url = String(input), method = init.method ?? 'GET', body = String(init.body ?? ''), auth = new Headers(init.headers).get('Authorization') ?? '';
         h.calls.push({ url, method, body, auth });
         if (url === 'https://oauth2.googleapis.com/token') {
+            if (new URLSearchParams(body).get('grant_type') === 'authorization_code') {
+                if (h.codeResult === 'invalid_grant') return Response.json({ error: 'invalid_grant' }, { status: 400 });
+                if (h.codeResult === 'bad_client') return Response.json({ error: 'invalid_client' }, { status: 401 });
+                return Response.json({ access_token: 'acc', ...(h.codeResult === 'no_refresh' ? {} : { refresh_token: 'refresh-new' }) });
+            }
             if (h.tokenError) return Response.json({ error: h.tokenError }, { status: 400 });
             const token = new URLSearchParams(body).get('refresh_token');
             return Response.json({ access_token: `access-${token}`, expires_in: 0 });
@@ -407,7 +425,7 @@ describe('Google Reviews stage 1', () => {
             { ...seed('other'), tenant_id: 'tenant-b', text: 'Paneer elsewhere' },
         ];
         const all = await (await inbox(get())).json();
-        expect(all.counts).toEqual({ all: 5, approval: 2, unanswered: 4, complaints: 1, replied: 1, failed: 1 });
+        expect(all.counts).toEqual({ all: 5, approval: 2, unanswered: 4, complaints: 1, cases: 0, overdue: 0, replied: 1, failed: 1 });
         expect(all.reviews.map((r: { id: string }) => r.id)).toEqual(['m1', 'n4', 'n3', 'n2', 'n1']);
         expect((await (await inbox(get('?q=paneer'))).json()).reviews.map((r: { id: string }) => r.id)).toEqual(['n1']);
         expect((await (await inbox(get('?q=ravi'))).json()).total).toBe(1);
@@ -467,6 +485,263 @@ describe('Google Reviews stage 1', () => {
         await Promise.all([drainGoogleReviews(), drainGoogleReviews()]);
         expect(h.db.tables.wa_reviews).toHaveLength(1);
         expect(h.calls.filter(c => c.method === 'PUT')).toHaveLength(1);
+    });
+});
+
+// ── Stage 2: complaint cases, business replies and location settings ────────
+describe('Google Reviews stage 2', () => {
+    const team = () => {
+        h.db.tables.wa_users = [
+            { id: 'u-owner', tenant_id: 'tenant-a', name: 'Owner', email: 'owner@biz.in', role: 'admin', active: true },
+            { id: 'u-ravi', tenant_id: 'tenant-a', name: 'Ravi', email: 'agent@biz.in', role: 'member', active: true },
+            { id: 'u-other', tenant_id: 'tenant-b', name: 'Elsewhere', email: 'x@other.in', role: 'admin', active: true },
+        ];
+    };
+    const kase = (body: Record<string, unknown>) => caseUpdate(request(body));
+    it('a complaint opens a case on its own; replying publicly does not close it', async () => {
+        h.google = [review('c1', 'FIVE', { comment: 'Great food but the staff were rude, never again' })];
+        await drainGoogleReviews();
+        const row = h.db.tables.wa_reviews[0];
+        expect(row).toMatchObject({ is_complaint: true, case_status: 'new' });
+        expect((await reply(request({ id: row.id, action: 'post', text: 'Sorry to hear this — please reach us privately.' }))).status).toBe(200);
+        expect(h.db.tables.wa_reviews[0]).toMatchObject({ reply_status: 'posted', case_status: 'new' });
+    });
+    it('assign, progress, follow up, note and resolve — with a full history', async () => {
+        team();
+        h.db.tables.wa_reviews = [seed('k1', { is_complaint: true, case_status: 'new', rating: 2 })];
+        expect((await kase({ id: 'k1', assigneeId: 'u-ravi' })).status).toBe(200);
+        expect((await kase({ id: 'k1', caseStatus: 'in_progress', followUpAt: day(2).slice(0, 10) })).status).toBe(200);
+        expect((await (await inbox(get('?view=overdue'))).json()).total).toBe(1);
+        expect((await (await inbox(get('?assignee=u-ravi'))).json()).total).toBe(1);
+        expect((await (await inbox(get('?assignee=unassigned'))).json()).total).toBe(0);
+        expect((await activityPost(request({ id: 'k1', body: 'Called the customer, refund being checked.' }))).status).toBe(200);
+        expect((await kase({ id: 'k1', caseStatus: 'resolved' })).status).toBe(200);
+        expect((await (await inbox(get('?view=overdue'))).json()).total).toBe(0);
+        expect((await (await inbox(get('?view=cases'))).json()).total).toBe(0);
+        const act = (await (await activityGet(get('?id=k1'))).json()).activity as { kind: string; body: string; actorName: string }[];
+        expect(act.map(a => a.kind)).toEqual(['assigned', 'status', 'follow_up', 'note', 'status']);
+        expect(act[0]).toMatchObject({ body: 'Assigned to Ravi', actorName: 'Owner' });
+        expect(act[3].body).toBe('Called the customer, refund being checked.');
+    });
+    it('a member can update status and add notes, but not assign or link a contact', async () => {
+        team();
+        h.db.tables.wa_reviews = [seed('k2', { is_complaint: true, case_status: 'new' })];
+        h.admin = false;
+        expect((await kase({ id: 'k2', caseStatus: 'waiting_customer' })).status).toBe(200);
+        expect((await activityPost(request({ id: 'k2', body: 'Waiting for their bill photo.' }))).status).toBe(200);
+        expect((await kase({ id: 'k2', assigneeId: 'u-ravi' })).status).toBe(403);
+        expect((await kase({ id: 'k2', linkedContactId: 'k' })).status).toBe(403);
+        h.lead = true;
+        expect((await kase({ id: 'k2', assigneeId: 'u-ravi' })).status).toBe(200);
+        // "Assigned to me" for the person signed in.
+        expect((await (await inbox(get('?assignee=me'))).json()).reviews.map((r: { id: string }) => r.id)).toEqual(['k2']);
+    });
+    it('refuses guessed ids from another workspace', async () => {
+        team();
+        h.db.tables.wa_reviews = [seed('k3', { case_status: 'new' }), { ...seed('theirs'), tenant_id: 'tenant-b' }];
+        h.db.tables.contacts = [{ id: 'ct-b', tenant_id: 'tenant-b', name: 'Not yours', phone: '919800000009' }];
+        expect((await kase({ id: 'k3', assigneeId: 'u-other' })).status).toBe(400);
+        expect((await kase({ id: 'k3', linkedContactId: 'ct-b' })).status).toBe(400);
+        expect((await kase({ id: 'theirs', caseStatus: 'resolved' })).status).toBe(404);
+        expect((await activityGet(get('?id=theirs'))).status).toBe(404);
+        expect((await activityPost(request({ id: 'theirs', body: 'x' }))).status).toBe(404);
+        expect((await (await contactSearch(get('?q=Not yours'))).json()).contacts).toEqual([]);
+    });
+    it('links a CRM contact only when a person picks and confirms one', async () => {
+        h.db.tables.wa_reviews = [seed('k4', { author: 'Asha K', case_status: 'new' })];
+        h.db.tables.contacts = [{ id: 'ct-1', tenant_id: 'tenant-a', name: 'Asha Kapoor', phone: '919812345678' }];
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_reviews[0].linked_contact_id ?? null).toBeNull();   // never matched by name
+        expect((await (await contactSearch(get('?q=asha'))).json()).contacts).toEqual([{ id: 'ct-1', name: 'Asha Kapoor', phone: '919812345678' }]);
+        expect((await kase({ id: 'k4', linkedContactId: 'ct-1' })).status).toBe(200);
+        const act = (await (await activityGet(get('?id=k4'))).json()).activity;
+        expect(act[0].body).toMatch(/Linked to contact Asha Kapoor \(confirmed by Owner\)/);
+    });
+    it('replies follow the business preset, language and contact — per location', async () => {
+        await setReviewSettings('tenant-a', { businessType: 'restaurant', supportContact: 'care@biz.in', language: 'hinglish', replyGuidance: 'Mention the dish.' } as never);
+        h.google = [review('r-a')];
+        await drainGoogleReviews();
+        expect(h.lastDraft).toMatchObject({ businessType: 'Restaurant or café', supportContact: 'care@biz.in', language: 'hinglish', replyGuidance: 'Mention the dish.', businessName: 'Business a' });
+        expect((await locPost(request({ channelId: 'a', overrides: { businessType: 'clinic', language: 'hi', supportContact: '+91 98000 11111', autoMinStars: 6 } }))).status).toBe(200);
+        expect((await (await locGet(get('?channelId=a'))).json()).overrides).toMatchObject({ businessType: 'clinic', language: 'hi', autoMinStars: 6 });
+        h.google = [review('r-b')];
+        h.calls = [];
+        await drainGoogleReviews();
+        expect(h.lastDraft).toMatchObject({ businessType: 'Clinic or professional practice', language: 'hi', supportContact: '+91 98000 11111', replyGuidance: 'Mention the dish.' });
+        expect(h.calls.some(c => c.method === 'PUT')).toBe(false);   // this location never auto-posts
+        expect((await locPost(request({ channelId: 'someone-else', overrides: {} }))).status).toBe(404);
+        expect((await locPost(request({ channelId: 'a', overrides: null }))).status).toBe(200);
+        expect((await (await locGet(get('?channelId=a'))).json()).overrides).toEqual({});
+    });
+    it("won't claim a reply was removed from Google when its location isn't connected", async () => {
+        h.db.tables.wa_reviews = [seed('gone', { reply_status: 'posted', reply_text: 'Thanks!', external_id: 'accounts/z/locations/z/reviews/gone', channel_id: null })];
+        expect((await reply(request({ id: 'gone', action: 'unpost' }))).status).toBe(400);
+        expect(h.db.tables.wa_reviews[0].reply_status).toBe('posted');
+    });
+});
+
+// ── Stage 4: reporting, themes, export and summaries ─────────────────────────
+describe('Google Reviews stage 4', () => {
+    const NOW = Date.parse('2026-11-05T06:30:00Z');   // noon in India
+    const at = (days: number, h = 0) => new Date(NOW - days * 86_400_000 + h * 3_600_000).toISOString();
+    const syncA = { tenant_id: 'tenant-a', key: 'google_reviews_sync:a', value: { ok: true, at: at(0), lastSuccessAt: at(0), averageRating: 4.6, totalReviewCount: 120, ratingAt: at(0), highWater: at(1), backfillDone: true } };
+    const syncB = { tenant_id: 'tenant-a', key: 'google_reviews_sync:b', value: { ok: true, at: at(0), lastSuccessAt: at(0), averageRating: 3.6, totalReviewCount: 30, ratingAt: at(0), highWater: at(1), backfillDone: false } };
+    const twoLocations = () => {
+        h.db.tables.wa_channels = [{ ...channel(), team: 'sales' }, { ...channel('tenant-a', 'b', 'accounts/b', 'locations/b'), team: 'ops' }];
+        h.db.tables.wa_settings = [syncA, syncB];
+        h.db.tables.wa_reviews = [
+            seed('p1', { rating: 5, review_created_at: at(3), reply_status: 'posted', reply_source: 'talko', posted_at: at(3, 2) }),
+            seed('p2', { rating: 1, review_created_at: at(4), is_complaint: true, case_status: 'in_progress', follow_up_at: at(1) }),
+            seed('p3', { rating: 4, review_created_at: at(5), reply_status: 'posted', reply_source: 'google', posted_at: at(5, 6) }),
+            seed('p4', { rating: 3, review_created_at: at(6), reply_status: 'draft' }),
+            seed('old', { rating: 2, review_created_at: at(60) }),
+            seed('b1', { channel_id: 'b', external_id: 'accounts/b/locations/b/reviews/b1', rating: 0, review_created_at: at(2) }),
+            { ...seed('theirs', { rating: 1 }), tenant_id: 'tenant-b' },
+        ];
+        h.db.tables.wa_review_requests = [
+            { id: 'q1', tenant_id: 'tenant-a', phone: '91981', status: 'sent', created_at: at(2), clicked_at: at(1) },
+            { id: 'q2', tenant_id: 'tenant-a', phone: '91982', status: 'sent', created_at: at(2), clicked_at: null },
+            { id: 'q3', tenant_id: 'tenant-a', phone: '91983', status: 'skipped', created_at: at(2) },
+            { id: 'q4', tenant_id: 'tenant-b', phone: '91984', status: 'sent', created_at: at(2) },
+        ];
+    };
+    const period = `?from=${at(29).slice(0, 10)}&to=${at(0).slice(0, 10)}`;
+    it('themes: nothing from too few reviews; otherwise counted with real examples, polarity from the star rating', () => {
+        const few = summarizeThemes([{ id: '1', rating: 5, text: 'Great staff' }]);
+        expect(few).toMatchObject({ insufficient: true, reviewsRead: 1, themes: [] });
+        const rs = [
+            ...[1, 2, 3].map(i => ({ id: `s${i}`, rating: 5, text: `The staff were so friendly ${i}` })),
+            { id: 'w1', rating: 1, text: 'We had to wait an hour. Staff ignored us.' },
+            { id: 'w2', rating: 2, text: 'Very slow service' },
+            { id: 'h1', rating: 2, text: 'खाना ठंडा था और बहुत देर लगी' },
+            ...[1, 2, 3, 4].map(i => ({ id: `n${i}`, rating: 4, text: `Nice ${i}` })),
+        ];
+        const t = summarizeThemes(rs);
+        expect(t.insufficient).toBe(false);
+        const staff = t.themes.find(x => x.key === 'staff')!;
+        expect(staff).toMatchObject({ mentions: 4, positive: 3, negative: 1 });
+        expect(staff.examples.negative[0]).toMatchObject({ id: 'w1', snippet: 'Staff ignored us.' });
+        expect(t.themes.find(x => x.key === 'speed')).toMatchObject({ mentions: 3, negative: 3 });   // incl. Hindi "देर"
+        expect(t.themes.find(x => x.key === 'pricing')).toBeUndefined();   // under 3 mentions: not shown
+    });
+    it('spreadsheet cells can never run as formulas', () => {
+        expect(csvCell('=HYPERLINK("http://x","click")')).toBe(`"'=HYPERLINK(""http://x"",""click"")"`);
+        expect(csvCell('+91 98000')).toBe(`"'+91 98000"`);
+        expect(csvCell('-2+3')).toBe(`"'-2+3"`);
+        expect(csvCell('@SUM(A1)')).toBe(`"'@SUM(A1)"`);
+        expect(csvCell('Great food')).toBe('"Great food"');
+        expect(csvCell(null)).toBe('""');
+    });
+    it("report: Google's figures kept apart from Talko's, every number from real rows", async () => {
+        twoLocations();
+        const { report } = await (await reportGet(get(`/report${period}`))).json();
+        expect(report.totals).toMatchObject({
+            googleRating: 4.4, googleTotal: 150, importedTotal: 6, newReviews: 5, averageRating: 3.3,
+            distribution: { 1: 1, 2: 0, 3: 1, 4: 1, 5: 1, unrated: 1 },
+            responseRate: 40, medianResponseHours: 4, unanswered: 4, approvalBacklog: 1, openComplaints: 1, overdue: 1,
+        });
+        expect(report.requests).toMatchObject({ sent: 2, opened: 1, skipped: 1, available: true });
+        expect(report.locations.map((l: { name: string; newReviews: number }) => [l.name, l.newReviews])).toEqual([['Business a', 4], ['Business b', 1]]);
+        expect(report.notes.join(' ')).toMatch(/Business b: older reviews are still being brought in/);
+        expect(report.notes.join(' ')).toMatch(/one location at a time/);
+        expect(report.ratingHistory).toEqual([]);
+        expect(report.themes.insufficient).toBe(true);
+        expect(JSON.stringify(report)).not.toContain('theirs');
+    });
+    it('rating history only from days Talko recorded, for one location', async () => {
+        twoLocations();
+        h.db.tables.wa_review_rating_snapshots = [
+            { tenant_id: 'tenant-a', channel_id: 'a', day: at(3).slice(0, 10), average_rating: 4.5, total_review_count: 117 },
+            { tenant_id: 'tenant-a', channel_id: 'a', day: at(0).slice(0, 10), average_rating: 4.6, total_review_count: 120 },
+        ];
+        const { report } = await (await reportGet(get(`/report${period}&location=a`))).json();
+        expect(report.ratingHistory.map((p: { averageRating: number }) => p.averageRating)).toEqual([4.5, 4.6]);
+        expect(report.ratingHistoryFrom).toBe(at(3).slice(0, 10));
+        expect(report.totals.newReviews).toBe(4);
+    });
+    it("a team member's report covers only their locations", async () => {
+        twoLocations();
+        h.admin = false;
+        h.team = 'ops';
+        const { report, canExport } = await (await reportGet(get(`/report${period}`))).json();
+        expect(report.locations.map((l: { name: string }) => l.name)).toEqual(['Business b']);
+        expect(report.totals.newReviews).toBe(1);
+        expect(canExport).toBe(false);
+        expect((await reportGet(get(`/report${period}&location=a`))).status).toBe(404);
+        expect((await exportGet(get(`/export${period}`))).status).toBe(403);
+    });
+    it('CSV export: admins only, this workspace only, formula-safe, no internal ids', async () => {
+        twoLocations();
+        h.db.tables.wa_reviews.push(seed('evil', { author: '=cmd|"/c calc"!A1', text: '@SUM(1)', review_created_at: at(1) }));
+        const res = await exportGet(get(`/export${period}`));
+        expect(res.status).toBe(200);
+        expect(res.headers.get('content-type')).toBe('text/csv; charset=utf-8');
+        const csv = await res.text();
+        expect(csv).toContain(`"'=cmd|""/c calc""!A1"`);
+        expect(csv).toContain(`"'@SUM(1)"`);
+        expect(csv).not.toContain('theirs');
+        expect(csv).not.toMatch(/p1|accounts\/a|refresh-a/);
+        expect(csv.split('\r\n')[0]).toContain('"Written","Location","Source","Reviewer","Stars"');
+    });
+    it("records one rating snapshot a day from Google's own figures", async () => {
+        h.pages = { '': { reviews: [review('snap')] } };
+        await drainGoogleReviews();
+        await drainGoogleReviews();
+        expect(h.db.tables.wa_review_rating_snapshots).toEqual([expect.objectContaining({ tenant_id: 'tenant-a', channel_id: 'a', average_rating: 4.6, total_review_count: 120 })]);
+    });
+    it('a daily summary email goes out once a day, from 9 am, when switched on', async () => {
+        twoLocations();
+        await setReviewSettings('tenant-a', { alerts: { email: true, summary: 'daily' } } as never);
+        expect(await drainReviewSummaries(Date.parse('2026-11-05T02:00:00Z'))).toBe(0);   // 7:30 am India
+        expect(await drainReviewSummaries(NOW)).toBe(1);
+        expect(await drainReviewSummaries(NOW + 3_600_000)).toBe(0);
+        expect(h.emails[0]).toMatchObject({ to: 'owner@biz.in', subject: expect.stringMatching(/^Reviews since yesterday:/) });
+    });
+});
+
+describe('Google Reviews connection callback', () => {
+    const cb = (qs: string, cookie = 'st8') => callback(new NextRequest(`https://app.thetalko.in/api/admin/onboarding/google-reviews/callback?${qs}`, { headers: { cookie: `gr_oauth_state=${cookie}` } }));
+    const where = (r: Response) => new URL(r.headers.get('location') ?? 'https://x').searchParams;
+    it('maps every way the Google round trip can fail to a clear message', async () => {
+        expect(where(await cb('error=access_denied')).get('gr_error')).toBe('denied');
+        expect(where(await cb('code=c&state=other')).get('gr_error')).toBe('state_mismatch');
+        expect(where(await cb('code=c&state=st8', '')).get('gr_error')).toBe('state_mismatch');
+        h.codeResult = 'invalid_grant';
+        expect(where(await cb('code=c&state=st8')).get('gr_error')).toBe('code_expired');
+        h.codeResult = 'bad_client';
+        expect(where(await cb('code=c&state=st8')).get('gr_error')).toBe('exchange_failed');
+        h.codeResult = 'no_refresh';
+        expect(where(await cb('code=c&state=st8')).get('gr_error')).toBe('no_refresh_token');
+        h.codeResult = 'ok';
+        h.allowed = false;
+        expect(where(await cb('code=c&state=st8')).get('gr_error')).toBe('not_in_plan');
+        expect(h.db.tables.wa_channels).toHaveLength(1);   // nothing was saved by any of these
+    });
+    it('a good round trip saves an inactive connection for the location picker, without exposing the token', async () => {
+        process.env.SECRET_ENC_KEY = 'test-only-key-0123456789abcdefghijklmnopqrstuvwxyz';
+        const res = await cb('code=c&state=st8');
+        const q = where(res);
+        expect(q.get('gr')).toBe('pick');
+        const saved = h.db.tables.wa_channels.find(c => c.id === q.get('channelId'))!;
+        expect(saved).toMatchObject({ kind: 'google_reviews', active: false, tenant_id: 'tenant-a' });
+        expect(res.headers.get('location')).not.toContain('refresh-new');
+        expect(res.headers.get('set-cookie')).toMatch(/gr_oauth_state=;/);
+        expect(String(saved.access_token)).not.toBe('refresh-new');   // stored encrypted, never as-is
+    });
+    it('an assignee must be able to see the review\'s location', async () => {
+        h.db.tables.wa_channels = [{ ...channel(), team: 'sales' }];
+        h.db.tables.wa_users = [{ id: 'u-ops', tenant_id: 'tenant-a', name: 'Opsy', email: 'o@biz.in', role: 'member', team: 'ops', active: true }];
+        h.db.tables.wa_reviews = [seed('k9', { case_status: 'new' })];
+        const r = await caseUpdate(request({ id: 'k9', assigneeId: 'u-ops' }));
+        expect(r.status).toBe(400);
+        expect((await r.json()).error).toMatch(/can't see this location/);
+    });
+    it('no overdue alerts for a workspace whose plan no longer includes Google Reviews', async () => {
+        h.db.tables.wa_reviews = [seed('late', { review_created_at: day(3), reply_status: 'draft' })];
+        h.allowed = false;
+        expect(await sweepOverdueReviews()).toBe(0);
+        h.allowed = true;
+        expect(await sweepOverdueReviews()).toBe(1);
     });
 });
 

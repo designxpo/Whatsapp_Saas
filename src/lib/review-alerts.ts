@@ -19,6 +19,9 @@ import { unsubscribedRecipients, unsubscribeUrl } from "./emailprefs";
 import { SITE_URL } from "./siteurl";
 import { listUsers } from "./team";
 import { getReviewSettings, type AlertKind } from "./reviews";
+import { checkFeature } from "./entitlements";
+import { claimTenantSettingOnce } from "./store";
+import { partsIn, weekdayIn } from "./businessclock";
 
 export interface ReviewAlert {
   id: string;
@@ -174,8 +177,10 @@ export async function sweepOverdueReviews(now = Date.now(), max = 200): Promise<
   const hoursFor = new Map<string, number>();
   let raised = 0;
   for (const r of data as unknown as { id: string; tenant_id: string; author: string; rating: number; review_created_at: string; source: string }[]) {
-    if (!hoursFor.has(r.tenant_id)) hoursFor.set(r.tenant_id, (await getReviewSettings(r.tenant_id)).alerts.unansweredHours);
+    // A workspace whose plan no longer includes Google Reviews isn't alerted (-1).
+    if (!hoursFor.has(r.tenant_id)) hoursFor.set(r.tenant_id, (await checkFeature(r.tenant_id, "reviews").catch(() => ({ ok: false }))).ok ? (await getReviewSettings(r.tenant_id)).alerts.unansweredHours : -1);
     const hours = hoursFor.get(r.tenant_id)!;
+    if (hours < 0) continue;
     if (now - Date.parse(r.review_created_at) < hours * 3_600_000) continue;
     if (await raiseAlert(r.tenant_id, {
       kind: "overdue", dedupeKey: `review:${r.id}:overdue`, reviewId: r.id,
@@ -183,4 +188,57 @@ export async function sweepOverdueReviews(now = Date.now(), max = 200): Promise<
     })) raised++;
   }
   return raised;
+}
+
+/**
+ * The optional review summary email — every morning (daily) or Monday morning
+ * (weekly), from 9 am business time. Sent once per period per workspace
+ * (claimed before sending), to the same people as review alerts.
+ */
+export async function drainReviewSummaries(now = Date.now(), maxTenants = 20): Promise<number> {
+  const at = new Date(now);
+  if (partsIn(at).hour < 9) return 0;
+  const { data } = await db().from("wa_settings").select("tenant_id,value").eq("key", "review_settings");
+  let sent = 0, tenants = 0;
+  for (const row of (data ?? []) as { tenant_id: string; value: unknown }[]) {
+    if (tenants >= maxTenants) break;
+    const settings = await getReviewSettings(row.tenant_id);
+    const mode = settings.alerts.summary;
+    if (mode === "off" || !settings.alerts.email || !emailConfigured()) continue;
+    if (mode === "weekly" && weekdayIn(at) !== 1) continue;
+    if (!(await checkFeature(row.tenant_id, "reviews").catch(() => ({ ok: false }))).ok) continue;
+    const day = at.toISOString().slice(0, 10);
+    if (!(await claimTenantSettingOnce(row.tenant_id, `review_summary:${mode}:${day}`))) continue;
+    tenants++;
+    const days = mode === "weekly" ? 7 : 1;
+    const { reviewReport } = await import("./review-reports");
+    const r = await reviewReport(row.tenant_id, { from: new Date(now - days * 86_400_000).toISOString(), to: at.toISOString(), now }).catch(() => null);
+    if (!r) continue;
+    const t = r.totals;
+    const optedOut = await unsubscribedRecipients(row.tenant_id, "review_alerts");
+    const to = (await alertRecipients(row.tenant_id, settings.alerts.recipients)).filter(e => !optedOut.has(e));
+    if (!to.length) continue;
+    const brand = await brandForTenant(row.tenant_id);
+    const label = mode === "weekly" ? "this past week" : "since yesterday";
+    const subject = `Reviews ${label}: ${t.newReviews} new${t.averageRating != null ? `, ${t.averageRating}★ average` : ""}`;
+    for (const addr of to) {
+      const unsub = unsubscribeUrl(row.tenant_id, "review_alerts", addr);
+      const mail = applyEmailBrand(brand, {
+        preheader: `${t.unanswered} without a reply · ${t.openComplaints} open complaint${t.openComplaints === 1 ? "" : "s"}`,
+        heading: mode === "weekly" ? "Your weekly review summary" : "Your daily review summary",
+        paragraphs: [
+          `${t.newReviews} new review${t.newReviews === 1 ? "" : "s"} ${label}${t.averageRating != null ? `, averaging ${t.averageRating}★` : ""}.${t.googleRating != null ? ` Google shows ${t.googleRating}★ from ${t.googleTotal} reviews.` : ""}`,
+          `${t.unanswered} review${t.unanswered === 1 ? "" : "s"} without a public reply, ${t.approvalBacklog} waiting for approval, ${t.openComplaints} open complaint${t.openComplaints === 1 ? "" : "s"}${t.overdue ? ` (${t.overdue} past follow-up)` : ""}.`,
+          ...(r.requests.sent ? [`${r.requests.sent} review request${r.requests.sent === 1 ? "" : "s"} sent; ${r.requests.opened} opened the review link.`] : []),
+        ],
+        cta: { label: "Open Reviews", href: "/admin?tab=reviews" },
+        footerReason: `You're getting this because a ${mode} review summary is on for your workspace. Change it in Reviews → Settings → Alerts.`,
+        unsubscribeHref: unsub,
+      }, SITE_URL, subject);
+      const { html, text } = renderEmail(mail.opts, mail.siteUrl);
+      const res = await sendEmail({ to: addr, subject: mail.subject, html, text, unsubscribeUrl: mail.opts.unsubscribeHref ?? unsub, type: "review_alert", tenantId: row.tenant_id, ...(mail.fromName ? { fromName: mail.fromName, fromEmail: mail.fromEmail } : {}) }).catch(() => ({ ok: false }));
+      if (res.ok) sent++;
+    }
+  }
+  return sent;
 }

@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
 import { errorMessage, describeChannelSaveError } from "@/lib/errors";
+import { cancelForLocation } from "@/lib/review-booster";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,10 @@ export async function DELETE(req: Request) {
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
   try {
     const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    // Disconnecting a Google location stops what was queued for it; other
+    // locations are untouched.
+    const ch = await getChannel(body.id, tid);
+    if (ch?.kind === "google_reviews") await cancelForLocation(tid, ch.id).catch(() => undefined);
     await deleteChannel(body.id, tid);
     logActivity(await currentUser(), "channel.delete", body.id);
     return NextResponse.json({ success: true });

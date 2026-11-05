@@ -11,6 +11,7 @@ import { listProducts, getOpenCart, upsertCart, checkoutCart, findProductByQuery
 import { sanitizeOutbound, PUBLIC_CONTACT_EMAIL, type GroundingAction } from "./guard/sanitize";
 import { moderateText } from "./moderation";
 import { parseAiDraft, type AiRead } from "./review-policy";
+import { languageRule, type ReplyLanguage } from "./review-presets";
 import { getIsolation, NEUTRAL_AGENT } from "./isolation";
 import { getVocabPromptNote } from "./vocabstore";
 import { accountCanSend } from "./feature-guard";
@@ -1170,6 +1171,15 @@ export interface ReviewReplyInput {
   businessName?: string;       // for tone; never invented into promises
   tone?: string;               // freeform brand/tone guidance
   signature?: string;          // appended verbatim if provided (e.g. "— Team X")
+  /** Business-specific guidance (review-presets.ts), all optional. */
+  businessType?: string;       // e.g. "Restaurant or café"
+  businessDescription?: string;
+  replyGuidance?: string;
+  /** A contact the business approved for public replies; the only one the AI may give. */
+  supportContact?: string;
+  language?: ReplyLanguage;
+  /** This location's recent public replies, so a new one doesn't repeat them. */
+  recentReplies?: string[];
 }
 
 export interface ReviewDraft {
@@ -1197,7 +1207,11 @@ export async function draftReviewReply(input: ReviewReplyInput, tenantId: string
     `- Reply to what THIS review actually says. NEVER invent facts, offers, refunds, discounts, investigations, names or commitments.\n` +
     `- Address the reviewer by first name if given; otherwise a warm neutral greeting.\n` +
     `- Tone for a ${band} review: ${guide[band]}\n` +
-    `- If the review raises a refund, billing, safety, health, legal or personal matter, do not discuss details in public: acknowledge it and invite them to contact the business privately.\n` +
+    `- If the review raises a refund, billing, safety, health, legal or personal matter, do not discuss details in public: acknowledge it and invite them to contact the business privately${input.supportContact ? ` at ${input.supportContact}` : ""}.\n` +
+    (input.supportContact ? `- The ONLY contact detail you may give is: ${input.supportContact}. Never make up a phone number, email or address.\n` : `- Never write a phone number, email or address — none has been approved.\n`) +
+    `- ${languageRule(input.language ?? "match")}\n` +
+    (input.replyGuidance ? `- Business guidance: ${input.replyGuidance}\n` : "") +
+    (input.recentReplies?.length ? `- Don't reuse the openings or phrases of these recent replies from this business:\n${input.recentReplies.slice(0, 5).map(r => `  • ${r.replace(/\s+/g, " ").slice(0, 160)}`).join("\n")}\n` : "") +
     `- Never repeat or reveal personal information (phone numbers, emails, medical or order details) in the reply.\n` +
     `- Sound human and specific to THIS review — not a generic template. No hashtags; at most one emoji, only if it fits.\n` +
     (input.tone ? `- Brand voice guidance: ${input.tone}\n` : "") +
@@ -1208,7 +1222,8 @@ export async function draftReviewReply(input: ReviewReplyInput, tenantId: string
     `{"reply": "<the reply>", "concerns": [<zero or more of "billing","safety","legal","personal_info","strong_complaint">], "confident": <true if the review's meaning and tone are clear to you, false if it is ambiguous, sarcastic, in a language you can't read well, or you are unsure>}`;
 
   const ctx =
-    `Business: ${input.businessName || "(unspecified)"}\n` +
+    `Business: ${input.businessName || "(unspecified)"}${input.businessType ? ` — ${input.businessType}` : ""}\n` +
+    (input.businessDescription ? `About the business: ${input.businessDescription}\n` : "") +
     `Reviewer: ${input.author?.trim() || "(anonymous)"}\n` +
     `Rating: ${input.rating ? `${rating} / 5` : "not given"}\n` +
     `Review: ${(input.text || "").trim() || "(no text — rating only)"}`;

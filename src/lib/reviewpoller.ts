@@ -24,8 +24,8 @@
 import { listChannels, isLiveChannel, type Channel } from "./channels";
 import { googleReviewsConfigured, fetchReviewPage, replyToReview, locationLinks, GoogleReviewsError, type GrCreds, type GrReview } from "./googlereviews";
 import {
-  getReviewByExternalId, saveReview, setReviewReply, getReviewSettings, getChannelSync, saveChannelSync,
-  claimDraft, releaseDraft, type Review, type ReviewSettings, type GoogleSyncStatus,
+  getReviewByExternalId, saveReview, setReviewReply, getEffectiveSettings, getChannelSync, saveChannelSync,
+  claimDraft, releaseDraft, recentReplies, replyInputFor, type Review, type ReviewSettings, type GoogleSyncStatus,
 } from "./reviews";
 import { draftReviewReply } from "./llm";
 import { decideAutoPost, type PolicyDecision } from "./review-policy";
@@ -33,6 +33,7 @@ import { raiseAlert } from "./review-alerts";
 import { checkFeature } from "./entitlements";
 import { accountCanSend } from "./feature-guard";
 import { db } from "./supabase";
+import { tdb } from "./tenantdb";
 
 const RETRY_FOR_MS = 24 * 3_600_000;
 const MAX_RETRIES_PER_RUN = 5;
@@ -86,7 +87,7 @@ async function draftAndDecide(ctx: Ctx, reviewId: string, r: GrReview): Promise<
     let draft;
     try {
       draft = await draftReviewReply(
-        { author: r.author, rating: r.rating, text: r.text, businessName: channel.name, tone: settings.tone, signature: settings.signature },
+        replyInputFor(r, settings, { businessName: channel.name, recentReplies: await recentReplies(tenantId, channel.id) }),
         tenantId,
       );
     } catch (e) {
@@ -164,7 +165,7 @@ async function processReview(ctx: Ctx, r: GrReview): Promise<void> {
     if (r.existingReply) {
       // Already answered on Google directly — keep their reply, never draft over it.
       const d = rulesOnly(r, settings);
-      await setReviewReply(saved.id, tenantId, r.existingReply, "posted", false, { replySource: "google", topics: d.topics, isComplaint: d.complaint });
+      await setReviewReply(saved.id, tenantId, r.existingReply, "posted", false, { replySource: "google", topics: d.topics, isComplaint: d.complaint, postedAt: r.existingReplyTime });
       return;
     }
     if (!isRecent(r.createTime ?? new Date(now).toISOString(), now)) {
@@ -203,7 +204,7 @@ async function processReview(ctx: Ctx, r: GrReview): Promise<void> {
   }
   if (r.existingReply) {
     if (known.replyStatus !== "posted" || (known.replyText ?? "").trim() !== r.existingReply.trim()) {
-      await setReviewReply(known.id, tenantId, r.existingReply, "posted", known.auto, { replySource: "google" });
+      await setReviewReply(known.id, tenantId, r.existingReply, "posted", known.auto, { replySource: "google", postedAt: r.existingReplyTime });
       ctx.counts.updated++;
     }
     return;
@@ -267,7 +268,7 @@ async function syncChannel(channel: Channel, opts: { topPages: number; historyPa
   }
 
   const ctx: Ctx = {
-    channel, creds: credsOf(channel), settings: await getReviewSettings(tenantId),
+    channel, creds: credsOf(channel), settings: await getEffectiveSettings(tenantId, channel.id),
     canAutomate: await accountCanSend(tenantId).catch(() => false), now, retries: 0, counts,
   };
   const next: GoogleSyncStatus = { ...state };
@@ -323,6 +324,17 @@ async function syncChannel(channel: Channel, opts: { topPages: number; historyPa
     }
 
     await saveChannelSync(tenantId, channel.id, { ...next, ok: true, error: null, kind: null, at, lastSuccessAt: at, failures: 0 });
+
+    // 4. Today's rating snapshot (Google's own figures), so trends are drawn
+    // only from days that were actually recorded. One row per day; later runs
+    // the same day just refresh it.
+    if (next.totalReviewCount != null || next.averageRating != null) {
+      const { error } = await tdb(tenantId).from("wa_review_rating_snapshots").upsert(
+        { channel_id: channel.id, day: day(now), average_rating: next.averageRating, total_review_count: next.totalReviewCount },
+        { onConflict: "tenant_id,channel_id,day" },
+      );
+      if (error && !/wa_review_rating_snapshots|PGRST205|42P01/.test(`${error.code} ${error.message}`)) console.error("[reviewpoller] snapshot", channel.id, error.message);
+    }
   } catch (e) {
     console.error("[reviewpoller] channel", channel.id, e instanceof Error ? e.message : e);
     await failRun(channel, e, now);

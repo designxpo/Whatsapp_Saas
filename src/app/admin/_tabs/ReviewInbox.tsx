@@ -2,14 +2,16 @@
 
 // The review inbox: every review (Google-imported and pasted by hand) with its
 // reply, in views an owner works through — Needs approval, Unanswered,
-// Complaints, Replied, Failed — with filters, search, paging and the reasons a
-// reply is waiting. Google reviews post to Google; pasted reviews never claim
+// Complaints, Open cases, Overdue, Replied, Failed — with filters, search,
+// paging, the reasons a reply is waiting, and each complaint's case
+// (ReviewCase.tsx). Google reviews post to Google; pasted reviews never claim
 // to: their reply is copied and marked posted by hand.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Check, Copy, ExternalLink, Loader2, RefreshCw, Search, Send, SlidersHorizontal, Sparkles, Star, Trash2 } from "lucide-react";
 import { inp } from "../_shared";
 import { useConfirm } from "@/components/confirm-dialog";
+import { ReviewCase, isOverdue, type CaseStatus, type Teammate } from "./ReviewCase";
 
 export type ReplyStatus = "none" | "draft" | "posted";
 export interface InboxReview {
@@ -17,19 +19,22 @@ export interface InboxReview {
   author: string; rating: number; text: string; reviewCreatedAt: string | null; createdAt: string;
   replyText: string | null; replyStatus: ReplyStatus; replySource: "talko" | "google" | "manual" | null; postedAt: string | null;
   approvalReasons: string[]; isComplaint: boolean; postError: string | null; draftError: string | null;
+  assigneeId: string | null; caseStatus: CaseStatus | null; followUpAt: string | null; linkedContactId: string | null;
 }
 export interface LocationInfo {
   id: string; name: string;
   sync: null | { ok: boolean; error: string | null; kind: string | null; at: string; lastSuccessAt: string | null; failures: number; importingHistory: boolean; averageRating: number | null; totalReviewCount: number | null; mapsUri: string | null; reviewUri: string | null };
 }
-export interface InboxMeta { settings: { autoMinStars: number } & Record<string, unknown>; locations: LocationInfo[]; emailAlertsAvailable: boolean }
+export interface InboxMeta { settings: { autoMinStars: number } & Record<string, unknown>; locations: LocationInfo[]; emailAlertsAvailable: boolean; settingsSaved?: boolean }
 
-type View = "all" | "approval" | "unanswered" | "complaints" | "replied" | "failed";
+type View = "all" | "approval" | "unanswered" | "complaints" | "cases" | "overdue" | "replied" | "failed";
 const VIEWS: { key: View; label: string; empty: string }[] = [
   { key: "all", label: "All", empty: "No reviews match these filters." },
   { key: "approval", label: "Needs approval", empty: "Nothing is waiting for your approval." },
   { key: "unanswered", label: "Unanswered", empty: "Every review has a public reply." },
   { key: "complaints", label: "Complaints", empty: "No complaints match these filters." },
+  { key: "cases", label: "Open cases", empty: "No open cases. Complaints become cases automatically." },
+  { key: "overdue", label: "Overdue", empty: "Nothing is past its follow-up date." },
   { key: "replied", label: "Replied", empty: "No replied reviews match these filters." },
   { key: "failed", label: "Failed", empty: "No replies have failed to post." },
 ];
@@ -45,8 +50,8 @@ function Stars({ n }: { n: number }) {
   );
 }
 
-interface Filters { location: string; rating: string; status: string; from: string; to: string; q: string; sort: "newest" | "oldest_unanswered" }
-const NO_FILTERS: Filters = { location: "", rating: "", status: "", from: "", to: "", q: "", sort: "newest" };
+interface Filters { location: string; rating: string; status: string; assignee: string; from: string; to: string; q: string; sort: "newest" | "oldest_unanswered" }
+const NO_FILTERS: Filters = { location: "", rating: "", status: "", assignee: "", from: "", to: "", q: "", sort: "newest" };
 
 export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus }: {
   reloadKey: number; focusId: string | null; isAdmin: boolean;
@@ -58,7 +63,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
   const [filters, setFilters] = useState<Filters>(NO_FILTERS);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [data, setData] = useState<{ reviews: InboxReview[]; total: number; pageSize: number; counts: Record<View, number>; setupPending: boolean; focus: InboxReview | null; locations: LocationInfo[] } | null>(null);
+  const [data, setData] = useState<{ reviews: InboxReview[]; total: number; pageSize: number; counts: Record<View, number>; setupPending: boolean; focus: InboxReview | null; locations: LocationInfo[]; team?: Teammate[]; me?: { id: string | null; canManage: boolean } } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -75,7 +80,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
 
   const qs = useMemo(() => {
     const p = new URLSearchParams({ view, page: String(page), pageSize: "20", sort: filters.sort });
-    for (const k of ["location", "rating", "status", "from", "to", "q"] as const) if (filters[k]) p.set(k, filters[k]);
+    for (const k of ["location", "rating", "status", "assignee", "from", "to", "q"] as const) if (filters[k]) p.set(k, filters[k]);
     if (focusId) p.set("id", focusId);
     return p.toString();
   }, [view, page, filters, focusId]);
@@ -87,7 +92,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
       const d = await r.json().catch(() => ({}));
       if (!r.ok) { setError(d.error || "Reviews couldn't be loaded."); return; }
       setData(d);
-      onMetaRef.current({ settings: d.settings, locations: d.locations ?? [], emailAlertsAvailable: !!d.emailAlertsAvailable });
+      onMetaRef.current({ settings: d.settings, locations: d.locations ?? [], emailAlertsAvailable: !!d.emailAlertsAvailable, settingsSaved: !!d.settingsSaved });
     } catch {
       setError("Couldn't reach Talko — check your connection and try again.");
     } finally { setLoading(false); }
@@ -145,7 +150,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
   const filtered = Object.entries(filters).some(([k, v]) => k !== "sort" && v) || filters.sort !== "newest";
-  const filterCount = [filters.location, filters.rating, filters.status, filters.from, filters.to].filter(Boolean).length;
+  const filterCount = [filters.location, filters.rating, filters.status, filters.assignee, filters.from, filters.to].filter(Boolean).length;
   const focus = data?.focus && !data.reviews.some(r => r.id === data.focus!.id) ? data.focus : null;
 
   const card = (r: InboxReview, highlighted = false) => {
@@ -176,6 +181,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
                   ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">Waiting for approval</span>
                   : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">No reply yet</span>}
               {r.postError && !posted && <span className="px-1.5 py-0.5 rounded-full bg-red-600 text-white">Post failed</span>}
+              {isOverdue(r) && <span className="px-1.5 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">Follow-up overdue</span>}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -185,6 +191,8 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
         </header>
 
         {r.text ? <p className="text-sm text-ink-700 whitespace-pre-wrap">{r.text}</p> : <p className="text-sm text-ink-400 italic">Rating only — no written review.</p>}
+
+        <ReviewCase review={r} team={data?.team ?? []} canManage={!!data?.me?.canManage} onChanged={load} />
 
         {!posted && r.approvalReasons.length > 0 && (
           <div className="rounded-control bg-amber-50 border border-amber-200 px-3 py-2 text-[12px] text-amber-900">
@@ -283,7 +291,7 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
           {filtered && <button onClick={() => { setFilters(NO_FILTERS); setSearch(""); }} className="px-2 py-1.5 text-xs font-semibold text-ink-500 hover:text-ink-900">Clear filters</button>}
         </div>
         <div id="review-inbox-filters" hidden={!showFilters}>
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 rounded-xl border border-line bg-white p-4 sm:grid-cols-3 lg:grid-cols-6">
             <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
               <span>Location</span>
               <select className={`${inp} w-full`} value={filters.location} onChange={e => setFilters({ ...filters, location: e.target.value })}>
@@ -303,6 +311,13 @@ export function ReviewInbox({ reloadKey, focusId, isAdmin, onMeta, onClearFocus 
               <span>Reply status</span>
               <select className={`${inp} w-full`} value={filters.status} onChange={e => setFilters({ ...filters, status: e.target.value })}>
                 <option value="">Any status</option><option value="none">No reply yet</option><option value="draft">Draft waiting</option><option value="posted">Replied</option>
+              </select>
+            </label>
+            <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">
+              <span>Assigned to</span>
+              <select className={`${inp} w-full`} value={filters.assignee} onChange={e => setFilters({ ...filters, assignee: e.target.value })}>
+                <option value="">Anyone</option><option value="me">Me</option><option value="unassigned">Nobody yet</option>
+                {(data?.team ?? []).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </select>
             </label>
             <label className="space-y-1.5 text-[11px] font-semibold text-ink-500">

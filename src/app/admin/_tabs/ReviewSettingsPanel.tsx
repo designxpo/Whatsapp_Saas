@@ -1,22 +1,34 @@
 "use client";
 
-// Review settings: when AI replies may post on their own, which topics always
-// wait for a person (with a preview on sample reviews — nothing is posted),
-// and who hears about new reviews, complaints and problems.
+// Review settings: when AI replies may post on their own, what kind of business
+// is replying (a preset the owner edits, language, an approved support
+// contact), which topics always wait for a person (with a preview on sample
+// reviews — nothing is posted), who hears about problems, and per-location
+// overrides of the workspace's settings.
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { useVocab } from "@/lib/vocab-client";
 import { reviewSamples } from "@/lib/industry-samples";
 import { inp } from "../_shared";
+import { BUSINESS_PRESETS, BUSINESS_TYPES, LANGUAGE_LABELS, type BusinessType, type ReplyLanguage } from "@/lib/review-presets";
+import { LocationSettings } from "./ReviewLocationSettings";
+import { PREVIEWED_KEY } from "./ReviewSetup";
 
 type HoldCategory = "billing" | "safety" | "legal" | "personal_info" | "strong_complaint";
 type AlertKind = "new_review" | "needs_approval" | "complaint" | "post_failed" | "reauth" | "sync_failing" | "overdue";
 export interface ReviewSettingsValue {
   autoMinStars: number; signature: string; tone: string;
   holdFor: Record<HoldCategory, boolean>;
-  alerts: { email: boolean; recipients: string[]; events: Record<AlertKind, boolean>; unansweredHours: number };
+  alerts: { email: boolean; recipients: string[]; events: Record<AlertKind, boolean>; unansweredHours: number; summary?: "off" | "daily" | "weekly" };
+  businessType: BusinessType; businessDescription: string; replyGuidance: string; supportContact: string; language: ReplyLanguage;
 }
+
+// The workspace's industry (Settings) suggests a starting preset.
+const INDUSTRY_PRESET: Record<string, BusinessType> = {
+  restaurant: "restaurant", healthcare: "clinic", education: "education", travel: "hotel", ecommerce: "retail",
+  finance: "services", agency: "services", saas: "services", creator: "services", realestate: "services",
+};
 
 const TOPICS: { key: HoldCategory; label: string; hint: string }[] = [
   { key: "billing", label: "Refunds, billing disputes or overcharging", hint: "“charged twice”, “want my money back”" },
@@ -36,14 +48,18 @@ const ALERTS: { key: AlertKind; label: string }[] = [
 ];
 
 
-export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailable, saving, onSave, onCancel, showActions = true }: {
+export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailable, saving, onSave, onCancel, showActions = true, locations = [] }: {
   value: ReviewSettingsValue; signaturePlaceholder: string; emailAvailable: boolean; saving: boolean;
   onSave: (v: ReviewSettingsValue) => void; onCancel: () => void; showActions?: boolean;
+  locations?: { id: string; name: string }[];
 }) {
   const { industry } = useVocab();
   const samples = useMemo(() => reviewSamples(industry), [industry]);
-  const [section, setSection] = useState<"replies" | "approval" | "alerts">("replies");
-  const [f, setF] = useState<ReviewSettingsValue>(value);
+  const [section, setSection] = useState<"replies" | "business" | "approval" | "alerts" | "locations">("replies");
+  const [f, setF] = useState<ReviewSettingsValue>(() => {
+    const suggested = value.businessType === "other" ? INDUSTRY_PRESET[industry ?? ""] : undefined;
+    return suggested && !value.replyGuidance ? { ...value, businessType: suggested, replyGuidance: BUSINESS_PRESETS[suggested].guidance } : value;
+  });
   const [recipients, setRecipients] = useState(value.alerts.recipients.join(", "));
   const [sample, setSample] = useState(samples[1]);
   const [preview, setPreview] = useState<null | { autoPost: boolean; reasons: string[]; reply: string | null; aiNote: string | null; note: string | null }>(null);
@@ -54,9 +70,11 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
   async function runPreview(withAi: boolean) {
     setPreviewing(withAi ? "ai" : "rules"); setPreview(null);
     try {
-      const r = await fetch("/api/admin/reviews/policy-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...sample, withAi, autoMinStars: f.autoMinStars, holdFor: f.holdFor }) });
+      const settings = { tone: f.tone, signature: f.signature, businessType: f.businessType, businessDescription: f.businessDescription, replyGuidance: f.replyGuidance, supportContact: f.supportContact, language: f.language };
+      const r = await fetch("/api/admin/reviews/policy-preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...sample, withAi, autoMinStars: f.autoMinStars, holdFor: f.holdFor, settings }) });
       const d = await r.json().catch(() => ({}));
       setPreview(r.ok ? d : { autoPost: false, reasons: [d.error || "Preview isn't available right now."], reply: null, aiNote: null, note: null });
+      if (r.ok) { try { localStorage.setItem(PREVIEWED_KEY, "1"); } catch { /* this visit only */ } }
     } finally { setPreviewing(null); }
   }
 
@@ -64,8 +82,8 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
 
   return (
     <form id="review-settings-form" noValidate onSubmit={e => { e.preventDefault(); save(); }} className="space-y-6">
-      <nav aria-label="Review settings sections" className="grid grid-cols-3 gap-1 rounded-xl bg-canvas p-1">
-        {([{ key: "replies", label: "Replies" }, { key: "approval", label: "Approval rules" }, { key: "alerts", label: "Alerts" }] as const).map(item => (
+      <nav aria-label="Review settings sections" className={`grid gap-1 rounded-xl bg-canvas p-1 ${locations.length ? "grid-cols-5" : "grid-cols-4"}`}>
+        {([{ key: "replies", label: "Replies" }, { key: "business", label: "Business" }, { key: "approval", label: "Approval" }, { key: "alerts", label: "Alerts" }, ...(locations.length ? [{ key: "locations", label: "Locations" }] : [])] as { key: typeof section; label: string }[]).map(item => (
           <button key={item.key} type="button" aria-pressed={section === item.key} onClick={() => setSection(item.key)}
             className={`rounded-lg px-2 py-2.5 text-xs font-semibold transition-colors ${section === item.key ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}>
             {item.label}
@@ -93,6 +111,43 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
           <textarea className={`${inp} w-full`} rows={3} maxLength={600} placeholder="Warm, friendly and concise." value={f.tone} onChange={e => setF({ ...f, tone: e.target.value })} />
         </label>
         <p className="rounded-xl bg-canvas px-4 py-3 text-xs leading-relaxed text-ink-500">Automatic replies apply to reviews from the last 7 days. Older reviews and anything flagged by your approval rules wait for you.</p>
+      </section>
+
+      <section hidden={section !== "business"} className="space-y-5">
+        <div><h3 className="text-sm font-bold text-ink-900">Your business</h3><p className="mt-1 text-xs text-ink-500">Replies follow this. Start from a preset for your kind of business and edit it.</p></div>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Kind of business</span>
+          <select className={`${inp} w-full`} value={f.businessType} onChange={e => { const t = e.target.value as BusinessType; setF({ ...f, businessType: t, replyGuidance: !f.replyGuidance || Object.values(BUSINESS_PRESETS).some(p => p.guidance === f.replyGuidance) ? BUSINESS_PRESETS[t].guidance : f.replyGuidance }); setPreview(null); }}>
+            {BUSINESS_TYPES.map(t => <option key={t} value={t}>{BUSINESS_PRESETS[t].label}</option>)}
+          </select>
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>About the business <span className="font-normal text-ink-400">· optional</span></span>
+          <textarea className={`${inp} w-full`} rows={2} maxLength={400} placeholder={BUSINESS_PRESETS[f.businessType].describe} value={f.businessDescription} onChange={e => setF({ ...f, businessDescription: e.target.value })} />
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span className="flex items-center justify-between gap-2">Reply guidance
+            {f.replyGuidance !== BUSINESS_PRESETS[f.businessType].guidance && <button type="button" onClick={() => setF({ ...f, replyGuidance: BUSINESS_PRESETS[f.businessType].guidance })} className="font-normal text-brand-700">Use the preset text</button>}
+          </span>
+          <textarea className={`${inp} w-full`} rows={4} maxLength={800} value={f.replyGuidance} onChange={e => setF({ ...f, replyGuidance: e.target.value })} />
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Contact for customers with a problem <span className="font-normal text-ink-400">· optional</span></span>
+          <input className={`${inp} w-full`} maxLength={120} placeholder="e.g. care@yourbusiness.in or +91 98XXX XXXXX" value={f.supportContact} onChange={e => setF({ ...f, supportContact: e.target.value })} />
+          <span className="block font-normal text-ink-500">Replies to complaints invite people to reach you here. Leave it empty and replies won&apos;t include any contact details — the AI never makes one up.</span>
+        </label>
+        <label className="block space-y-2 text-xs font-semibold text-ink-700">
+          <span>Reply language</span>
+          <select className={`${inp} w-full`} value={f.language} onChange={e => setF({ ...f, language: e.target.value as ReplyLanguage })}>
+            {(Object.keys(LANGUAGE_LABELS) as ReplyLanguage[]).map(l => <option key={l} value={l}>{LANGUAGE_LABELS[l]}</option>)}
+          </select>
+        </label>
+        <p className="rounded-xl bg-canvas px-4 py-3 text-xs leading-relaxed text-ink-500">Replies never promise refunds, discounts or investigations, and never repeat a customer&apos;s personal details. Try it under Approval → Test your rules.</p>
+      </section>
+
+      <section hidden={section !== "locations"} className="space-y-4">
+        <div><h3 className="text-sm font-bold text-ink-900">Location settings</h3><p className="mt-1 text-xs text-ink-500">A location uses the workspace settings unless you give it its own.</p></div>
+        <LocationSettings locations={locations} workspace={f} />
       </section>
 
       <section hidden={section !== "approval"} className="space-y-4">
@@ -157,6 +212,12 @@ export function ReviewSettingsPanel({ value, signaturePlaceholder, emailAvailabl
           {f.alerts.email && <label className="block space-y-2 text-xs font-semibold text-ink-700">
             <span>Recipients <span className="font-normal text-ink-400">· leave empty for all admins</span></span>
             <input className={`${inp} w-full`} placeholder="owner@business.in, manager@business.in" value={recipients} onChange={e => setRecipients(e.target.value)} />
+          </label>}
+          {f.alerts.email && <label className="block space-y-2 text-xs font-semibold text-ink-700">
+            <span>Summary email</span>
+            <select className={`${inp} w-full`} value={f.alerts.summary ?? "off"} onChange={e => setF({ ...f, alerts: { ...f.alerts, summary: e.target.value as "off" | "daily" | "weekly" } })}>
+              <option value="off">None</option><option value="daily">Every morning</option><option value="weekly">Every Monday morning</option>
+            </select>
           </label>}
         </div> : <p className="rounded-xl bg-canvas px-4 py-3 text-xs text-ink-500">Email alerts aren&apos;t available yet. You&apos;ll still see alerts in the bell.</p>}
       </section>

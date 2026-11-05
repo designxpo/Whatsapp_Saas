@@ -350,6 +350,16 @@ function AdsTab({ goTo }: { goTo: (t: Tab) => void }) {
         </div>
       </div>
 
+      {isAdmin && (
+        <div className="flex items-center justify-between gap-3 flex-wrap rounded-card border border-line bg-white p-4">
+          <p className="text-sm text-slate-500">Review your Meta permissions or connect a different ad account.</p>
+          <button onClick={() => connectWithMeta()} disabled={busy === "meta"}
+            className="px-4 py-2 rounded-control border border-brand-300 text-brand-700 text-sm font-semibold flex items-center gap-1.5 hover:bg-brand-50 disabled:opacity-60">
+            {busy === "meta" && <Loader2 className="w-4 h-4 animate-spin" />}
+            Reconnect with Meta
+          </button>
+        </div>
+      )}
       {msg && <div className="bg-red-50 border border-red-200 rounded-card px-4 py-3 text-sm text-red-700">{msg}</div>}
       {data && !data.pageId && isAdmin && (
         <div className="bg-amber-50 border border-amber-200 rounded-card px-4 py-3 text-sm text-amber-800 flex items-center gap-2 flex-wrap">

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
-import { getReview, setReviewReply, getReviewSettings, autoPosts, markPostFailed } from "@/lib/reviews";
+import { getReview, setReviewReply, getEffectiveSettings, autoPosts, markPostFailed, recentReplies, replyInputFor } from "@/lib/reviews";
+import { logReviewActivity } from "@/lib/review-cases";
 import { draftReviewReply } from "@/lib/llm";
 import { decideAutoPost } from "@/lib/review-policy";
 import { guardFeature } from "@/lib/feature-guard";
 import { listChannels } from "@/lib/channels";
 import { replyToReview, deleteReviewReply, type GrCreds } from "@/lib/googlereviews";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, currentUser, requireRoleAdmin } from "@/lib/auth";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 import { errorMessage } from "@/lib/errors";
 
@@ -33,7 +34,8 @@ export const maxDuration = 60; // LLM call — must outlast Vercel's ~10s defaul
 //   action "unpost"   → revert a posted reply back to draft
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return NextResponse.json({ error: "Workspace required" }, { status: 401 });
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
   let body: { id?: string; action?: string; text?: string };
@@ -42,13 +44,15 @@ export async function POST(req: Request) {
 
   const review = await getReview(body.id, tid);
   if (!review) return NextResponse.json({ error: "Review not found" }, { status: 404 });
-  const settings = await getReviewSettings(tid);
+  const settings = await getEffectiveSettings(tid, review.channelId);
+  const me = await currentUser();
+  const actor = me ? { email: me.email, name: me.name } : null;
   const auto = autoPosts(review.rating, settings);
 
   try {
     if (body.action === "generate") {
       const draft = await draftReviewReply(
-        { author: review.author, rating: review.rating, text: review.text, businessName: review.locationName ?? undefined, tone: settings.tone, signature: settings.signature },
+        replyInputFor(review, settings, { businessName: review.locationName ?? undefined, recentReplies: await recentReplies(tid, review.channelId) }),
         tid,
       );
       // The same reading the automation uses, so a person sees why this one
@@ -80,17 +84,20 @@ export async function POST(req: Request) {
         }
       }
       const saved = await setReviewReply(review.id, tid, text, "posted", auto, { replySource: review.source === "google" ? "talko" : "manual" });
+      await logReviewActivity(tid, review.id, "reply_posted", review.source === "google" ? (review.replyStatus === "posted" ? "Public reply updated on Google" : "Reply posted on Google") : "Reply marked as posted", actor);
       return NextResponse.json({ review: saved });
     }
     if (body.action === "unpost") {
       if (review.source === "google" && review.externalId) {
         const creds = await googleCredsFor(tid, review.externalId);
-        if (creds) {
-          const removed = await deleteReviewReply(creds, review.externalId);
-          if (!removed.ok) return NextResponse.json({ error: removed.error || "Google refused to remove the reply" }, { status: 502 });
-        }
+        // Without the location's connection the reply stays on Google; saying
+        // it was removed would be untrue.
+        if (!creds) return NextResponse.json({ error: "This review's Google location isn't connected, so the reply can't be removed from Google. Reconnect the location first." }, { status: 400 });
+        const removed = await deleteReviewReply(creds, review.externalId);
+        if (!removed.ok) return NextResponse.json({ error: removed.error || "Google refused to remove the reply" }, { status: 502 });
       }
       const saved = await setReviewReply(review.id, tid, review.replyText ?? "", "draft", auto);
+      await logReviewActivity(tid, review.id, "reply_removed", review.source === "google" ? "Public reply removed from Google" : "Moved back to draft", actor);
       return NextResponse.json({ review: saved });
     }
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });

@@ -16,3 +16,6 @@ tsconfig.tsbuildinfo
 # Vendored codebase-memory-mcp tool clone (external toolchain — not part of the app)
 codebase-memory-mcp/
 tmp/
+
+# Local recordings, previews and capture-tool scratch files.
+/output/

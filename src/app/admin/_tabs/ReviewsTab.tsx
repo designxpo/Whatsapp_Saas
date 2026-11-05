@@ -15,6 +15,8 @@ import { ReviewBooster } from "./ReviewBooster";
 import { ReviewInbox, type InboxMeta, type LocationInfo } from "./ReviewInbox";
 import { ReviewSettingsPanel, type ReviewSettingsValue } from "./ReviewSettingsPanel";
 import { takeReviewFocus, onReviewFocus } from "@/lib/review-focus";
+import { ReviewReports } from "./ReviewReports";
+import { ReviewSetup } from "./ReviewSetup";
 
 type GrLocation = { accountId: string; id: string; name: string; address: string };
 
@@ -60,6 +62,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey(k => k + 1);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [mode, setMode] = useState<"inbox" | "insights">("inbox");
   const [msg, setMsg] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -98,7 +101,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
   }, []);
 
   // The bell asking for a review while this tab is already open.
-  useEffect(() => onReviewFocus(id => { setFocusId(id); window.scrollTo({ top: 0, behavior: "smooth" }); }), []);
+  useEffect(() => onReviewFocus(id => { setFocusId(id); setMode("inbox"); window.scrollTo({ top: 0, behavior: "smooth" }); }), []);
 
   useEffect(() => {
     if (!pickerChannelId) { setPickerLocations([]); return; }
@@ -189,6 +192,10 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
           {isAdmin && <button onClick={() => { setShowAdd(true); setShowSettings(false); }} className="px-3 py-1.5 rounded-control bg-white border border-line hover:bg-canvas text-ink-700 text-xs font-bold flex items-center gap-1.5" title="Paste a review from anywhere. Talko drafts a reply you copy and post yourself."><Plus className="w-3.5 h-3.5" /> Paste a review</button>}
         </div>
       </div>
+
+      {isAdmin && meta && (
+        <ReviewSetup locations={locations.length} settingsSaved={!!meta.settingsSaved} lastSync={lastSync} onOpenSettings={() => { setShowSettings(true); setShowAdd(false); }} />
+      )}
 
       {/* Keep connection management out of the daily inbox unless it needs attention. */}
       <details className="group rounded-card border border-line bg-white" open={failing.length > 0 || locations.length === 0}>
@@ -283,7 +290,15 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
       {msg && <p className="text-xs text-red-700 flex items-center gap-1.5" role="alert"><AlertTriangle className="w-3.5 h-3.5" aria-hidden /> {msg}</p>}
       {syncNote && <p className="text-xs font-semibold text-emerald-700" role="status">{syncNote}</p>}
 
-      <ReviewInbox reloadKey={reloadKey} focusId={focusId} isAdmin={isAdmin} onMeta={setMeta} onClearFocus={() => setFocusId(null)} />
+      <div className="flex gap-1 rounded-xl bg-canvas p-1 w-fit" role="tablist" aria-label="Reviews sections">
+        {(["inbox", "insights"] as const).map(m => (
+          <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)} className={`rounded-lg px-4 py-1.5 text-xs font-semibold ${mode === m ? "bg-white text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-900"}`}>{m === "inbox" ? "Inbox" : "Insights"}</button>
+        ))}
+      </div>
+      <div hidden={mode !== "inbox"}>
+        <ReviewInbox reloadKey={reloadKey} focusId={focusId} isAdmin={isAdmin} onMeta={setMeta} onClearFocus={() => setFocusId(null)} />
+      </div>
+      {mode === "insights" && <ReviewReports locations={locations.map(l => ({ id: l.id, name: l.name }))} />}
 
       {/* Secondary owner tool stays below the review inbox, collapsed by default. */}
       <ReviewBooster />
@@ -295,7 +310,7 @@ export default function ReviewsTab({ isAdmin = true }: { isAdmin?: boolean }) {
         </div>}>
         {showSettings && settings && (
           <ReviewSettingsPanel value={settings} signaturePlaceholder={`— Team ${who}`} emailAvailable={!!meta?.emailAlertsAvailable}
-            saving={savingSettings} showActions={false} onSave={saveSettings} onCancel={() => setShowSettings(false)} />
+            saving={savingSettings} showActions={false} onSave={saveSettings} onCancel={() => setShowSettings(false)} locations={locations.map(l => ({ id: l.id, name: l.name }))} />
         )}
         {msg && <p className="text-xs font-semibold text-amber-700 mt-3">{msg}</p>}
       </Drawer>

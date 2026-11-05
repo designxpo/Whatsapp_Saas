@@ -313,6 +313,14 @@ export async function processEvent(params: {
   dryRun?: boolean;
 }, tenantId = DEFAULT_TENANT_ID): Promise<RuleFireResult[]> {
   const payload = params.payload ?? {};
+  // A review request after this event, when the workspace asks for one
+  // (review-booster.ts). Independent of API rules, so it runs even when no
+  // rule listens for the event. Never blocks or fails the event itself.
+  if (!params.dryRun) {
+    await import("./review-booster")
+      .then(m => m.queueFromEvent(tenantId, params.event.trim(), params.phone, params.name, (payload && typeof payload === "object" && !Array.isArray(payload) ? payload : {}) as Record<string, unknown>))
+      .catch(e => console.error("[apirules] review request", tenantId, params.event, e instanceof Error ? e.message : e));
+  }
   const { data, error } = await db().from("wa_api_rules").select("*").eq("tenant_id", tenantId).eq("event_key", params.event.trim()).eq("active", true);
   if (error) throw error;
   const rules = (data ?? []).map(mapRule);

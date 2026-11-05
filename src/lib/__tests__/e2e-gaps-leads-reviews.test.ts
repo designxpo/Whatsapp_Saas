@@ -40,11 +40,8 @@ import { memdb } from "./helpers/memdb";
 import { knowledgeGapReason, recordGap } from "../ai-gaps";
 import { scoreLead } from "../hot-leads";
 import { renderDigest } from "../dailydigest";
-import { drainReviewBooster, REVIEW_BOOSTER_LIVE } from "../review-booster";
 import { GET as gapsGet, POST as gapsPost } from "../../app/api/admin/ai/gaps/route";
 import { GET as leadsGet } from "../../app/api/admin/hot-leads/route";
-import { GET as boosterGet, POST as boosterPost } from "../../app/api/admin/review-booster/route";
-import { GET as openLink } from "../../app/r/rv/[token]/route";
 
 const T1 = "00000000-0000-0000-0000-000000000001";   // the owner's own workspace
 const T2 = "22222222-2222-4222-8222-222222222222";   // a tenant
@@ -160,95 +157,5 @@ describe("hot leads", () => {
     expect(mail.text).toContain("Call these first: Asha (asked about price, wants to book or join)");
     expect(mail.text).toContain("3 questions the AI couldn't answer this week");
     expect(mail.text).toContain("Do you ship to Dubai?");
-  });
-});
-
-// ── 3. Google review booster (owner preview) ───────────────────────────────
-describe("google review booster — owner only until launched", () => {
-  it("doesn't exist for a tenant, nor for the owner inside a tenant's workspace", async () => {
-    expect(REVIEW_BOOSTER_LIVE).toBe(false);
-    h.who = { email: "admin@clinic.in", tenantId: T2, admin: true, owner: false };
-    expect((await boosterGet()).status).toBe(404);
-    expect((await boosterPost(req("/api/admin/review-booster", { enabled: true, reviewUrl: "https://g.page/r/x/review" }))).status).toBe(404);
-    h.who = { email: "owner@talko.in", tenantId: T2, admin: true, owner: true };
-    expect((await boosterGet()).status).toBe(404);
-  });
-
-  it("paid order → WhatsApp request with a tracked link → opened → counted, once per order", async () => {
-    expect((await boosterPost(req("/api/admin/review-booster", { enabled: true, reviewUrl: "https://example.com/review" }))).status).toBe(400);
-    const saved = await json(await boosterPost(req("/api/admin/review-booster", { enabled: true, reviewUrl: "https://g.page/r/CTalko/review", delayHours: 2 })));
-    expect(saved.status).toBe(200);
-
-    const t = h.db.tables;
-    t.wa_conversations = [
-      { id: "c1", tenant_id: T1, phone: "919800000001", platform: "whatsapp", last_inbound_at: hoursAgo(1) },
-      { id: "c2", tenant_id: T1, phone: "919800000002", platform: "whatsapp", last_inbound_at: hoursAgo(30) },
-    ];
-    t.wa_orders = [
-      { id: "11111111-1111-4111-8111-000000000001", tenant_id: T1, phone: "919800000001", status: "paid", paid_at: hoursAgo(3), created_at: hoursAgo(3) },
-      { id: "11111111-1111-4111-8111-000000000002", tenant_id: T1, phone: "919800000002", status: "paid", paid_at: hoursAgo(3), created_at: hoursAgo(3) },
-      { id: "11111111-1111-4111-8111-000000000003", tenant_id: T1, phone: "919800000001", status: "paid", paid_at: hoursAgo(1), created_at: hoursAgo(1) },   // inside the 2h delay
-      { id: "11111111-1111-4111-8111-000000000009", tenant_id: T2, phone: "919800000009", status: "paid", paid_at: hoursAgo(3), created_at: hoursAgo(3) },   // a tenant: not live
-    ];
-    t.wa_settings ??= [];
-    t.wa_settings.push({ tenant_id: T2, key: "review_booster", value: { enabled: true, reviewUrl: "https://g.page/r/x/review", message: "x", delayHours: 0 } });
-
-    expect(await drainReviewBooster()).toEqual({ asked: 1 });
-    expect(h.sent).toHaveLength(1);
-    expect(h.sent[0].phone).toBe("919800000001");
-    const token = (h.sent[0].body.match(/\/r\/rv\/([a-z0-9]{12})/) ?? [])[1];
-    expect(token).toBeTruthy();
-    expect(h.sent[0].body).toMatch(/Something not right\? Just reply here/);   // offered to everyone, alongside — no gating
-    expect(t.wa_review_requests.find(r => r.phone === "919800000002")).toMatchObject({ status: "skipped", detail: expect.stringMatching(/24-hour window/) });
-    expect(t.wa_review_requests.some(r => r.tenant_id === T2)).toBe(false);
-
-    // Once per order: the next run asks no one again.
-    expect(await drainReviewBooster()).toEqual({ asked: 0 });
-    expect(h.sent).toHaveLength(1);
-
-    // The customer opens the link → counted → sent on to Google.
-    const open = await openLink(new Request(`https://app.thetalko.in/r/rv/${token}`), { params: Promise.resolve({ token }) });
-    expect(open.status).toBe(302);
-    expect(open.headers.get("location")).toBe("https://g.page/r/CTalko/review");
-    expect((await openLink(new Request("https://app.thetalko.in/r/rv/zzzzzzzzzzzz"), { params: Promise.resolve({ token: "zzzzzzzzzzzz" }) })).status).toBe(404);
-
-    const stats = (await json(await boosterGet())).body.stats;
-    expect(stats).toMatchObject({ sent: 1, opened: 1, skipped: 1, failed: 0 });
-  });
-
-  it("the owner can ask one customer now, and only inside the 24-hour window", async () => {
-    await boosterPost(req("/api/admin/review-booster", { reviewUrl: "https://g.page/r/CTalko/review" }));
-    h.db.tables.wa_conversations = [{ id: "c1", tenant_id: T1, phone: "919800000001", platform: "whatsapp", last_inbound_at: hoursAgo(2) }];
-    expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "+91 98000 00001" })))).body).toEqual({ status: "sent" });
-    expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "919800000777" })))).body.status).toBe("skipped");
-  });
-
-  it("accepts Google's share.google links, and a number typed without the country code", async () => {
-    const saved = await json(await boosterPost(req("/api/admin/review-booster", { reviewUrl: "https://share.google/ZBbNt32G4TQlio5xh" })));
-    expect(saved.status).toBe(200);
-    expect(saved.body.config.reviewUrl).toBe("https://share.google/ZBbNt32G4TQlio5xh");
-    h.db.tables.wa_conversations = [{ id: "c1", tenant_id: T1, phone: "918368872108", platform: "whatsapp", last_inbound_at: hoursAgo(1) }];
-    expect((await json(await boosterPost(req("/api/admin/review-booster", { sendTo: "8368872108" })))).body).toEqual({ status: "sent" });
-    expect(h.sent[0].phone).toBe("918368872108");
-    // The request shows in the customer's chat, sent from the business number.
-    expect(h.db.tables.wa_conv_messages).toEqual([expect.objectContaining({ tenant_id: T1, conversation_id: "c1", role: "assistant", source: "bot", body: h.sent[0].body, meta_message_id: "wamid.1" })]);
-    expect((await boosterPost(req("/api/admin/review-booster", { sendTo: "12345" }))).status).toBe(400);
-  });
-
-  it("fills the review link from the connected Google Business Profile", async () => {
-    expect((await json(await boosterGet())).body.googleConnected).toBe(false);
-    expect((await boosterPost(req("/api/admin/review-booster", { fromGoogle: true }))).status).toBe(400);
-    h.gbp = { id: "gbp1", googleAccountId: "accounts/1", googleLocationId: "locations/1" };
-    expect((await json(await boosterGet())).body.googleConnected).toBe(true);
-    const filled = await json(await boosterPost(req("/api/admin/review-booster", { fromGoogle: true })));
-    expect(filled.body.config.reviewUrl).toBe("https://g.page/r/CFromGoogle/review");
-    h.reviewUri = { error: "Google refused access" };
-    expect((await json(await boosterPost(req("/api/admin/review-booster", { fromGoogle: true })))).body.error).toBe("Google refused access");
-  });
-
-  it("is not on the website or any tenant screen: the section renders only when its API answers", () => {
-    const ui = readFileSync(join(process.cwd(), "src/app/admin/_tabs/ReviewBooster.tsx"), "utf8");
-    expect(ui).toMatch(/if \(!r\?\.ok\) \{ setHidden\(true\); return; \}/);
-    expect(ui).toMatch(/if \(hidden \|\| !cfg\) return null;/);
   });
 });
