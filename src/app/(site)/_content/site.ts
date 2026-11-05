@@ -8,6 +8,8 @@ export const SITE = {
   tagline: "AI conversations for WhatsApp, Instagram, Facebook, YouTube, Google Reviews & web chat",
 };
 
+export const HOMEPAGE_UPDATED = "2026-11-05";
+
 export const NAV: { label: string; href: string }[] = [
   { label: "Features", href: "/features" },
   { label: "Industries", href: "/industries" },

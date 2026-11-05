@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assertPublicUrl } from "@/lib/ssrf";
+import { assertPublicUrl, readCappedBytes } from "@/lib/ssrf";
 
 // All cases use literal IPs or special hostnames so the guard never performs a
 // real DNS lookup — the tests are fully offline and deterministic.
@@ -31,6 +31,33 @@ describe("assertPublicUrl — blocks unsafe targets", () => {
 
   it("rejects a malformed URL", async () => {
     await expect(assertPublicUrl("not a url")).rejects.toThrow();
+  });
+});
+
+describe("readCappedBytes", () => {
+  it("preserves binary media without text decoding", async () => {
+    const bytes = new Uint8Array([0, 255, 128, 17]);
+    expect(await readCappedBytes(new Response(bytes), 4)).toEqual(Buffer.from(bytes));
+  });
+  it("cancels a lying stream as soon as the accumulated limit is crossed", async () => {
+    let delivered = 0;
+    let cancelled = false;
+    const body = new ReadableStream({
+      pull(controller) { delivered++; controller.enqueue(new Uint8Array([0, 1, 2, 3])); },
+      cancel() { cancelled = true; },
+    });
+    await expect(readCappedBytes(new Response(body, { headers: { "content-length": "1" } }), 5)).rejects.toThrow(/too large/);
+    expect(cancelled).toBe(true); expect(delivered).toBeLessThan(5);
+    expect(body.locked).toBe(false);
+  });
+  it("aborts a pending read and releases the stream lock", async () => {
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    const controller = new AbortController();
+    const pending = readCappedBytes(new Response(body), 100, controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(cancelled).toBe(true); expect(body.locked).toBe(false);
   });
 });
 

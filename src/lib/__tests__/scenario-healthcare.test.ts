@@ -551,7 +551,7 @@ describe("Healthcare clinic (Sunrise Family Clinic)", () => {
 
       const text = await transcribeAudio({ data: Buffer.from("mp3-bytes"), mimeType: "audio/mpeg" }, CLINIC);
       expect(text).toBe("Please book a flu shot for Saturday.");
-      expect(h.voice.openaiCtor).toHaveBeenCalledWith({ apiKey: "sk-oa-clinic" });
+      expect(h.voice.openaiCtor).toHaveBeenCalledWith({ apiKey: "sk-oa-clinic", timeout: 30_000, maxRetries: 0 });
       const req = h.voice.transcriptionsCreate.mock.calls[0][0];
       expect(req.model).toBe("whisper-1");
       expect(req.file.name).toBe("voice.mp3");                    // Whisper infers the format from the name
@@ -566,7 +566,7 @@ describe("Healthcare clinic (Sunrise Family Clinic)", () => {
       h.storeOverrides.getTenantSecret.mockResolvedValue("sk-voice-dedicated");
       expect(await transcribeAudio(voiceNote, CLINIC)).toBe("My son has a fever since last night.");
       expect(h.storeOverrides.getTenantSecret).toHaveBeenCalledWith(CLINIC, "voice_openai_key");
-      expect(h.voice.openaiCtor).toHaveBeenCalledWith({ apiKey: "sk-voice-dedicated" });
+      expect(h.voice.openaiCtor).toHaveBeenCalledWith({ apiKey: "sk-voice-dedicated", timeout: 30_000, maxRetries: 0 });
 
       // Without one → null (caller treats the message as un-transcribed audio).
       h.voice.openaiCtor.mockClear();

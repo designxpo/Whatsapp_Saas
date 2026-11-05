@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { COMPETITORS } from "./(site)/_content/site";
+import { COMPETITORS, HOMEPAGE_UPDATED } from "./(site)/_content/site";
 import { getBlogUpdated, getPublishedPosts } from "./(site)/_content/blog-publication";
 import { INDUSTRIES } from "./(site)/_content/industries";
 import { LEGAL_DOCS, LEGAL_VERSION } from "./(site)/_content/legal";
@@ -54,7 +54,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   // /vs and /changelog have no `updated` of their own (a changelog's real date
   // is its newest entry, which isn't modelled), so they take the revision date.
   const STATIC: [path: string, updated: string | undefined][] = [
-    ["", CONTENT_REVISION],
+    ["", HOMEPAGE_UPDATED],
     ["/features", FEATURES_SEO.updated],
     ["/extension", EXTENSION_SEO.updated],
     ["/affiliate", AFFILIATE_SEO.updated],

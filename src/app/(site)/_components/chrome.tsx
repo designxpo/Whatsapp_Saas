@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Menu, X, ChevronDown, ArrowUpRight } from "lucide-react";
-import { NAV, SITE, FAQS } from "../_content/site";
+import { ChevronDown, ArrowUpRight } from "lucide-react";
+import { MarketingNavigation } from "./mega-navigation";
+import { SITE, FAQS } from "../_content/site";
 import { LEGAL_NAV, LEGAL_META } from "../_content/legal";
 import { BrandLogo } from "@/components/BrandLogo";
 import { CookieSettingsLink } from "@/components/ConsentBanner";
@@ -22,129 +23,8 @@ function Wordmark() {
   );
 }
 
-const MENUS = [
-  {
-    label: "Platform",
-    links: [
-      ["Explore the platform", "/features"],
-      ["Social growth workflows", "/features#social-growth"],
-      ["Chrome extension", "/extension"],
-    ],
-  },
-  {
-    label: "Solutions",
-    links: [
-      ["Find your industry", "/industries"],
-      ["For creators & coaches", "/#for-creators"],
-    ],
-  },
-  {
-    label: "Resources",
-    links: [
-      ["Guides", "/guides"],
-      ["Blog", "/blog"],
-      ["About Talko AI", "/about"],
-      ["Affiliate program", "/affiliate"],
-      ["Changelog", "/changelog"],
-      ["Status", "/status"],
-    ],
-  },
-];
-
 export function SiteNav() {
-  const [open, setOpen] = useState(false);
-  return (
-    <header className="marketing-nav-shell">
-      <nav
-        aria-label="Main navigation"
-        className="marketing-nav"
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            setOpen(false);
-            event.currentTarget
-              .querySelectorAll("details[open]")
-              .forEach((el) => {
-                (el as HTMLDetailsElement).open = false;
-              });
-          }
-        }}
-      >
-        <Wordmark />
-        <div className="marketing-nav-links">
-          {MENUS.map((menu) => (
-            <details key={menu.label}>
-              <summary>
-                {menu.label}
-                <ChevronDown size={12} aria-hidden />
-              </summary>
-              <div className="marketing-nav-dropdown">
-                {menu.links.map(([label, href]) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    onClick={(event) => {
-                      const details = event.currentTarget.closest("details");
-                      if (details) details.open = false;
-                    }}
-                  >
-                    {label}
-                    <ArrowUpRight size={13} aria-hidden />
-                  </Link>
-                ))}
-              </div>
-            </details>
-          ))}
-          <Link href="/pricing">Pricing</Link>
-        </div>
-        <div className="marketing-nav-actions">
-          <Link href="/login">Log in</Link>
-          <Link
-            href="/signup"
-            className="marketing-button marketing-button-primary"
-          >
-            Start free trial <ArrowUpRight size={14} aria-hidden />
-          </Link>
-        </div>
-        <button
-          type="button"
-          className="marketing-mobile-toggle"
-          aria-label={open ? "Close menu" : "Open menu"}
-          aria-expanded={open}
-          aria-controls="marketing-mobile-menu"
-          onClick={() => setOpen(!open)}
-        >
-          {open ? <X size={22} /> : <Menu size={22} />}
-        </button>
-        {open && (
-          <div className="marketing-mobile-menu" id="marketing-mobile-menu">
-            {[
-              ...NAV,
-              { label: "For creators", href: "/#for-creators" },
-              { label: "Guides", href: "/guides" },
-              { label: "Blog", href: "/blog" },
-              { label: "Contact", href: "/contact" },
-              { label: "Log in", href: "/login" },
-            ].map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
-            <Link
-              href="/signup"
-              className="marketing-button marketing-button-primary"
-              onClick={() => setOpen(false)}
-            >
-              Start free trial <ArrowUpRight size={14} aria-hidden />
-            </Link>
-          </div>
-        )}
-      </nav>
-    </header>
-  );
+  return <MarketingNavigation brand={<Wordmark />} />;
 }
 
 export function SiteFooter() {

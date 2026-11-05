@@ -7,6 +7,7 @@ import { generateReply, standaloneQuestion, deferredToTeam } from "./llm";
 import { isAiEnabled } from "./messaging-settings";
 import { sendText, sendCtaUrl, sendMedia } from "./whatsapp";
 import { getVoiceReplyMode, shouldSpeak, synthesizeSpeech, visionInlineMime } from "./voice";
+import { deliverVoiceReply } from "./voice/delivery";
 import type { ChannelCreds } from "./channels";
 import { pushWaActivity } from "./leadsquared";
 import { emitEvent } from "./integrations";
@@ -139,11 +140,11 @@ export async function respondToConversation(conversationId: string, opts: { inbo
     const voiceMode = await getVoiceReplyMode(conv.tenantId).catch(() => "off" as const);
     const speakReply = shouldSpeak(voiceMode, !!opts.inboundWasVoice);   // WhatsApp only, by the guard above
     const sendReply = async (body: string): Promise<{ id?: string; error?: string }> => {
-      if (speakReply) {
-        const v = await synthesizeSpeech(body, conv.tenantId);
-        if (v) return sendMedia(conv.phone, "audio", v.url, undefined, channel);
-      }
-      return sendSmart(conv.phone, body, channel);
+      return deliverVoiceReply(body, speakReply, {
+        synthesize: () => synthesizeSpeech(body, conv.tenantId),
+        sendAudio: url => sendMedia(conv.phone, "audio", url, undefined, channel),
+        sendText: () => sendSmart(conv.phone, body, channel),
+      });
     };
 
     // ── Auto agent routing FIRST — every message, before any answer layer, so

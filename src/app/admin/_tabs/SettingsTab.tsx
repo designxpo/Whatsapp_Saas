@@ -1226,40 +1226,61 @@ function OtpServiceCard() {
 
 // Voice replies — inbound voice notes are transcribed; optionally reply in voice.
 function VoiceSettingsCard() {
-  type VoiceState = { mode: "off" | "mirror" | "always"; keySet: boolean; providerIsOpenai: boolean };
+  type VoiceState = { mode: "off" | "mirror" | "always"; keySet: boolean; providerIsOpenai: boolean; transcriptionAvailable: boolean; speechAvailable: boolean };
   const [st, setSt] = useState<VoiceState | null>(null);
   const [mode, setMode] = useState<"off" | "mirror" | "always">("off");
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [note, setMsg] = useNotice();
   const msg = note?.text ?? null;
 
-  const load = useCallback(() => {
-    fetch("/api/admin/voice").then(r => r.json()).then((d: VoiceState) => { setSt(d); setMode(d.mode ?? "off"); }).catch(() => {});
-  }, []);
-  useEffect(() => { load(); }, [load]);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/admin/voice");
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Unable to load voice settings.");
+      setSt(data as VoiceState); setMode(data.mode);
+    } catch {
+      setSt(null); setMsg("Unable to load voice settings. Try again.", "error");
+    } finally { setLoading(false); }
+  }, [setMsg]);
+  useEffect(() => { void load(); }, [load]);
 
   async function save() {
     setBusy(true); setMsg(null);
     try {
-      const d = await fetch("/api/admin/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, openaiKey: key }) }).then(r => r.json());
-      setMsg(d.error ? d.error : "Saved.", d.error ? "error" : "ok");
-      if (!d.error) { setKey(""); load(); }
+      const response = await fetch("/api/admin/voice", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode, openaiKey: key }) });
+      const d = await response.json();
+      setMsg(response.ok ? "Saved." : d.error || "Unable to save voice settings.", response.ok ? "ok" : "error");
+      if (response.ok) { setKey(""); await load(); }
     } catch { setMsg("Connection error."); }
     finally { setBusy(false); }
   }
 
-  const needsKey = st && !st.providerIsOpenai && !st.keySet && mode !== "off";
+  async function removeKey() {
+    setBusy(true); setMsg(null);
+    try {
+      const response = await fetch("/api/admin/voice", { method: "DELETE" });
+      const data = await response.json();
+      if (!response.ok) { setMsg(data.error || "Unable to remove voice key.", "error"); return; }
+      setKey(""); setMsg("Voice key removed.", "ok"); await load();
+    } catch { setMsg("Connection error.", "error"); }
+    finally { setBusy(false); }
+  }
+
+  const needsKey = st && !st.speechAvailable && mode !== "off";
 
   return (
     <section className="bg-white rounded-card border border-line p-5 space-y-3">
       <div>
-        <h3 className="text-sm font-bold text-ink-900">Voice replies</h3><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Customers can <span className="font-semibold">send voice notes</span> (auto-transcribed and answered) on WhatsApp &amp; Instagram.</>}>Optionally have the AI <span className="font-semibold">reply in voice</span> too.</PageInfo>
+        <h3 className="text-sm font-bold text-ink-900">Voice notes and replies</h3><PageInfo className="text-xs text-slate-500 mt-0.5" lead={<>Transcribe incoming voice notes on WhatsApp, Instagram and Messenger.</>}>Optionally send AI-generated voice replies on WhatsApp. These settings apply to voice messages; live telephone calling is a separate feature.</PageInfo>
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
         <div>
-          <label className="text-xs font-bold text-slate-400 uppercase">Reply in voice</label>
-          <select className={`${inp} w-full mt-1`} value={mode} onChange={e => setMode(e.target.value as VoiceState["mode"])}>
+          <label htmlFor="voice-reply-mode" className="text-xs font-bold text-slate-400 uppercase">Reply in voice</label>
+          <select id="voice-reply-mode" disabled={busy || loading || !st} className={`${inp} w-full mt-1`} value={mode} onChange={e => setMode(e.target.value as VoiceState["mode"])}>
             <option value="off">Off — always reply with text</option>
             <option value="mirror">Mirror — voice only when they send voice</option>
             <option value="always">Always — reply in voice every time</option>
@@ -1267,21 +1288,25 @@ function VoiceSettingsCard() {
         </div>
         {st && !st.providerIsOpenai && (
           <div>
-            <label className="text-xs font-bold text-slate-400 uppercase">OpenAI voice key {st.keySet ? "(set)" : "(optional)"}</label>
-            <input className={`${inp} w-full mt-1`} type="password" placeholder={st.keySet ? "Leave blank to keep current" : "sk-… (for speech)"} value={key} onChange={e => setKey(e.target.value)} />
+            <label htmlFor="voice-openai-key" className="text-xs font-bold text-slate-400 uppercase">OpenAI voice key {st.keySet ? "(set)" : "(optional)"}</label>
+            <input id="voice-openai-key" disabled={busy || loading} className={`${inp} w-full mt-1`} type="password" autoComplete="off" placeholder={st.keySet ? "Leave blank to keep current" : "sk-… (for speech)"} value={key} onChange={e => setKey(e.target.value)} />
           </div>
         )}
       </div>
       <p className="text-[11px] text-slate-500">
         {st?.providerIsOpenai
           ? "Transcription + speech use your OpenAI AI key — nothing else to add."
-          : "Incoming voice notes are transcribed by your AI (Gemini does this natively). Replying in voice uses OpenAI text-to-speech, so add an OpenAI key above to enable it."}
+          : "Gemini can transcribe with your configured AI key. Other providers need a dedicated OpenAI voice key for transcription. Spoken replies use an OpenAI key. If speech is unavailable, the full answer is sent as text."}
       </p>
+      {loading && <p className="text-xs text-slate-500" role="status">Loading voice settings…</p>}
+      {st && !st.transcriptionAvailable && <p className="text-xs text-amber-600">Transcription needs a configured Gemini or OpenAI AI key, or a dedicated OpenAI voice key.</p>}
+      {st && <p className="text-[11px] text-slate-500">Voice replies are AI-generated. Share that with customers. Replies containing web links stay as text so customers can open them.</p>}
       {needsKey && <p className="text-[12px] font-medium text-amber-600">Add an OpenAI voice key to enable spoken replies — until then replies stay as text.</p>}
       <Notice notice={note} />
       <div className="flex items-center gap-2">
-        <button onClick={save} disabled={busy} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save"}</button>
-        {st?.keySet && <button onClick={async () => { await fetch("/api/admin/voice", { method: "DELETE" }); load(); }} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50">Remove key</button>}
+        <button onClick={save} disabled={busy || loading || !st} className="px-4 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold disabled:opacity-60">{busy ? "Saving…" : "Save"}</button>
+        {st?.keySet && <button onClick={removeKey} disabled={busy || loading} className="px-3 py-1.5 rounded-control border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-60">Remove key</button>}
+        {!loading && !st && <button onClick={() => { void load(); }} className="px-3 py-1.5 rounded-control border border-line text-xs font-bold">Try again</button>}
       </div>
     </section>
   );

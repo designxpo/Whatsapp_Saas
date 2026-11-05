@@ -1,157 +1,80 @@
-// Voice AI — speech-to-text for inbound voice notes and text-to-speech for voice
-// replies, both PER TENANT (they bring their own AI key).
-//
-//   Transcription: Gemini understands audio natively (the default + cheapest
-//   path); OpenAI tenants use Whisper. Anthropic has no audio input, so it falls
-//   back to a dedicated OpenAI "voice key" if the tenant added one, else null.
-//
-//   Speech: OpenAI's speech API → an mp3 hosted on our public bucket, sent back
-//   as a WhatsApp/Instagram audio message. Uses the tenant's OpenAI chat key when
-//   their provider is OpenAI, otherwise the dedicated voice key.
-//
-// Everything is best-effort and NEVER throws into the message path: a failed
-// transcription/synthesis just falls back to text, so voice can't break replies.
-
-import { GoogleGenAI } from "@google/genai";
-import OpenAI from "openai";
-import { resolveTenantAi } from "./ai/keys";
-import { getTenantSecret, getTenantSetting } from "./store";
+// Recorded voice-note facade. Existing callers retain null/text fallback;
+// detailed results and replaceable adapters prepare the foundation for calling.
+import { randomUUID } from "node:crypto";
+import { getTenantSetting } from "./store";
 import { uploadPublic } from "./supabase";
-import { errorMessage } from "./errors";
+import { safeFetch, readCappedBytes } from "./ssrf";
+import { createVoiceService, baseMime, audioExtension, VOICE_LIMITS, type InboundAudio, type VoiceOptions } from "./voice/core";
+import { resolveVoiceProviders, VOICE_KEYS } from "./voice/providers";
 
-const DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001";
-
-// Tenant config keys.
-export const VOICE_KEYS = {
-  mode: "voice_reply_mode",       // off | mirror | always
-  openaiKey: "voice_openai_key",  // optional dedicated OpenAI key for STT/TTS
-} as const;
-
+export { VOICE_KEYS };
+export { VOICE_LIMITS } from "./voice/core";
+export type { InboundAudio, VoiceOptions, VoiceResult, SpeechTranscriber, SpeechSynthesizer } from "./voice/core";
 export type VoiceReplyMode = "off" | "mirror" | "always";
-const TRANSCRIBE_MODEL_GEMINI = "gemini-2.5-flash";   // audio-capable + cheap
-const TTS_MODEL = "tts-1";
-const TTS_VOICE = "alloy";
 
-export interface InboundAudio { data: Buffer; mimeType: string }
+const service = createVoiceService({
+  resolveProviders: resolveVoiceProviders,
+  async storeSpeech(audio, { signal }) {
+    signal.throwIfAborted();
+    const file = new File([new Uint8Array(audio.data)], `reply_${randomUUID()}.${audioExtension(audio.mimeType)}`, { type: audio.mimeType });
+    return { url: await uploadPublic(file) };
+  },
+  report(event) { console.info(JSON.stringify({ tag: "voice_operation", ...event })); },
+});
 
-// Pure: should this reply be spoken? "always" = every reply; "mirror" = only when
-// the customer themselves sent a voice note. Exported for unit tests.
 export function shouldSpeak(mode: VoiceReplyMode, inboundWasVoice: boolean): boolean {
   return mode === "always" || (mode === "mirror" && inboundWasVoice);
 }
 
-export async function getVoiceReplyMode(tenantId: string = DEFAULT_TENANT_ID): Promise<VoiceReplyMode> {
-  const v = (await getTenantSetting<string | null>(tenantId, VOICE_KEYS.mode, null)) ?? "off";
-  return v === "always" || v === "mirror" ? v : "off";
+export async function getVoiceReplyMode(tenantId: string): Promise<VoiceReplyMode> {
+  if (!tenantId?.trim()) return "off";
+  const value = await getTenantSetting<string | null>(tenantId, VOICE_KEYS.mode, null);
+  return value === "always" || value === "mirror" ? value : "off";
 }
 
-// mime "audio/ogg; codecs=opus" → "audio/ogg"; pick a filename extension for the
-// OpenAI upload (Whisper infers the format from the name).
-function baseMime(m: string): string { return (m || "").split(";")[0].trim().toLowerCase(); }
-
-// Maps an inbound media MIME type to the type a vision model can SEE in a chat
-// turn — images, PDFs, and (short) videos. Audio is handled via transcription;
-// other documents (docx, xlsx…) aren't supported as inline data → null. The
-// reply pipeline filters this further by what the tenant's provider accepts.
 export function visionInlineMime(mime?: string | null): string | null {
   const m = baseMime(mime || "");
-  if (!m) return null;
   if (m === "image/jpg") return "image/jpeg";
-  if (m.startsWith("image/")) return m;
-  if (m.startsWith("video/")) return m;
-  if (m === "application/pdf") return m;
-  return null;
-}
-function extFor(mime: string): string {
-  const m = baseMime(mime);
-  if (m.includes("ogg")) return "ogg";
-  if (m.includes("mpeg") || m.includes("mp3")) return "mp3";
-  if (m.includes("mp4") || m.includes("m4a")) return "m4a";
-  if (m.includes("wav")) return "wav";
-  if (m.includes("amr")) return "amr";
-  if (m.includes("webm")) return "webm";
-  if (m.includes("aac")) return "aac";
-  return "ogg";
+  return m.startsWith("image/") || m.startsWith("video/") || m === "application/pdf" ? m : null;
 }
 
-// Transcribe an inbound voice note to text. Returns null when the tenant's
-// provider can't do audio and no voice key is set, or on any failure.
-export async function transcribeAudio(audio: InboundAudio, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
+export const transcribeAudioDetailed = service.transcribe;
+export const synthesizeSpeechDetailed = service.synthesize;
+
+export async function transcribeAudio(audio: InboundAudio, tenantId: string, options: VoiceOptions = {}): Promise<string | null> {
+  const result = await transcribeAudioDetailed(audio, tenantId, options);
+  return result.ok ? result.value : null;
+}
+
+// Shared Instagram/Messenger download path for audio, images and video.
+// Redirects and DNS are validated, and bytes are bounded as they arrive.
+export async function downloadRemoteMedia(url: string, options: Pick<VoiceOptions, "signal"> = {}): Promise<InboundAudio | null> {
+  const signal = options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(VOICE_LIMITS.downloadTimeoutMs)])
+    : AbortSignal.timeout(VOICE_LIMITS.downloadTimeoutMs);
   try {
-    const ai = await resolveTenantAi(tenantId).catch(() => null);
-
-    // Gemini — native audio understanding (default path).
-    if (ai?.provider === "gemini") {
-      const res = await new GoogleGenAI({ apiKey: ai.apiKey }).models.generateContent({
-        model: TRANSCRIBE_MODEL_GEMINI,
-        contents: [{ role: "user", parts: [
-          { inlineData: { mimeType: baseMime(audio.mimeType), data: audio.data.toString("base64") } },
-          { text: "Transcribe this voice message verbatim. Return ONLY the transcript text, no quotes or commentary. If there is no intelligible speech, return an empty string." },
-        ] }],
-        config: { temperature: 0, maxOutputTokens: 1024, thinkingConfig: { thinkingBudget: 0 } },
-      });
-      return ((res.text ?? "").trim()) || null;
-    }
-
-    // OpenAI — Whisper. Use the tenant's chat key, or the dedicated voice key.
-    const openaiKey = ai?.provider === "openai" ? ai.apiKey : await getTenantSecret(tenantId, VOICE_KEYS.openaiKey);
-    if (!openaiKey) return null;   // anthropic / no key → can't transcribe
-    const file = new File([new Uint8Array(audio.data)], `voice.${extFor(audio.mimeType)}`, { type: baseMime(audio.mimeType) });
-    const r = await new OpenAI({ apiKey: openaiKey }).audio.transcriptions.create({ file, model: "whisper-1" });
-    return (r.text ?? "").trim() || null;
-  } catch (err) {
-    console.error("[voice] transcription failed:", errorMessage(err));
+    const response = await safeFetch(url, { signal });
+    if (!response.ok) { await response.body?.cancel().catch(() => {}); return null; }
+    const data = await readCappedBytes(response, VOICE_LIMITS.remoteMediaBytes, signal);
+    return data.length ? { data, mimeType: response.headers.get("content-type") || "application/octet-stream" } : null;
+  } catch {
+    console.warn(JSON.stringify({ tag: "voice_media_download_failed", code: signal.aborted ? "cancelled_or_timeout" : "download_error" }));
     return null;
   }
 }
 
-// Download a remote media file (Instagram delivers a CDN URL, not bytes). Returns
-// the raw bytes so the caller can transcribe (audio) and/or re-host it for display
-// (IG CDN URLs are short-lived, so we never store them directly). Used for voice
-// notes AND inbound images/videos. Never throws.
-export async function downloadRemoteMedia(url: string): Promise<InboundAudio | null> {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-    if (!res.ok) return null;
-    const data = Buffer.from(await res.arrayBuffer());
-    if (data.length > 25 * 1024 * 1024) return null;
-    return { data, mimeType: res.headers.get("content-type") || "application/octet-stream" };
-  } catch (err) {
-    console.error("[voice] remote download failed:", errorMessage(err));
-    return null;
-  }
+export async function transcribeRemoteAudio(url: string, tenantId: string, options: VoiceOptions = {}): Promise<string | null> {
+  if (!tenantId?.trim()) return null;
+  const audio = await downloadRemoteMedia(url, options);
+  return audio ? transcribeAudio(audio, tenantId, options) : null;
 }
 
-// Transcribe a remote audio file by URL.
-export async function transcribeRemoteAudio(url: string, tenantId: string = DEFAULT_TENANT_ID): Promise<string | null> {
-  const audio = await downloadRemoteMedia(url);
-  return audio ? transcribeAudio(audio, tenantId) : null;
+export async function synthesizeSpeech(text: string, tenantId: string, options: VoiceOptions = {}): Promise<{ url: string } | null> {
+  const result = await synthesizeSpeechDetailed(text, tenantId, options);
+  return result.ok ? result.value : null;
 }
 
-// Synthesize speech for a reply and host it (public mp3 URL). Returns null when
-// no usable OpenAI key is configured, or on failure — caller falls back to text.
-export async function synthesizeSpeech(text: string, tenantId: string = DEFAULT_TENANT_ID): Promise<{ url: string } | null> {
-  const clean = (text || "").trim();
-  if (!clean) return null;
-  try {
-    const ai = await resolveTenantAi(tenantId).catch(() => null);
-    const key = ai?.provider === "openai" ? ai.apiKey : await getTenantSecret(tenantId, VOICE_KEYS.openaiKey);
-    if (!key) return null;
-    const speech = await new OpenAI({ apiKey: key }).audio.speech.create({
-      model: TTS_MODEL, voice: TTS_VOICE, input: clean.slice(0, 4000), response_format: "mp3",
-    });
-    const buf = Buffer.from(await speech.arrayBuffer());
-    const file = new File([new Uint8Array(buf)], `reply_${Date.now()}.mp3`, { type: "audio/mpeg" });
-    return { url: await uploadPublic(file) };
-  } catch (err) {
-    console.error("[voice] synthesis failed:", errorMessage(err));
-    return null;
-  }
-}
-
-// Does this tenant have voice replies usable at all (a key to synthesize with)?
-export async function voiceReplyAvailable(tenantId: string = DEFAULT_TENANT_ID): Promise<boolean> {
-  const ai = await resolveTenantAi(tenantId).catch(() => null);
-  if (ai?.provider === "openai") return true;
-  return !!(await getTenantSecret(tenantId, VOICE_KEYS.openaiKey));
+export async function voiceReplyAvailable(tenantId: string): Promise<boolean> {
+  if (!tenantId?.trim()) return false;
+  try { return !!(await resolveVoiceProviders(tenantId, "synthesize")).synthesizer; }
+  catch { return false; }
 }

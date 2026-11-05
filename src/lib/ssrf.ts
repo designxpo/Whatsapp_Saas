@@ -110,6 +110,7 @@ export async function safeFetch(raw: string, init: RequestInit = {}, maxRedirect
     // extension to RequestInit, hence the cast.
     const res = await fetch(url, { ...init, signal, redirect: "manual", dispatcher: pinnedAgent } as RequestInit);
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
+      await res.body?.cancel().catch(() => {});
       url = new URL(res.headers.get("location")!, url).toString();
       continue;
     }
@@ -124,18 +125,37 @@ export async function safeFetch(raw: string, init: RequestInit = {}, maxRedirect
  * make the function hold a gigabyte in memory.
  */
 export async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  return new TextDecoder().decode(await readCappedBytes(res, maxBytes));
+}
+
+/** Bounded binary reads for media; abort also interrupts a pending stream read. */
+export async function readCappedBytes(res: Response, maxBytes: number, signal?: AbortSignal): Promise<Buffer> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) throw new Error("Invalid response size limit");
+  signal?.throwIfAborted();
   const declared = Number(res.headers.get("content-length") ?? "");
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error(`Response too large (${declared} bytes; limit ${maxBytes})`);
-  if (!res.body) return "";
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await res.body?.cancel().catch(() => {});
+    throw new Error(`Response too large (${declared} bytes; limit ${maxBytes})`);
+  }
+  if (!res.body) return Buffer.alloc(0);
   const reader = res.body.getReader();
+  const cancel = () => { void reader.cancel(signal?.reason).catch(() => {}); };
+  signal?.addEventListener("abort", cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) { await reader.cancel().catch(() => {}); throw new Error(`Response too large (over ${maxBytes} bytes)`); }
-    chunks.push(value);
+  try {
+    for (;;) {
+      signal?.throwIfAborted();
+      const { done, value } = await reader.read();
+      signal?.throwIfAborted();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) { await reader.cancel().catch(() => {}); throw new Error(`Response too large (over ${maxBytes} bytes)`); }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, total);
+  } finally {
+    signal?.removeEventListener("abort", cancel);
+    reader.releaseLock();
   }
-  return new TextDecoder().decode(Buffer.concat(chunks.map(c => Buffer.from(c))));
 }

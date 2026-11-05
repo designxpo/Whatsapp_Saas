@@ -3,7 +3,6 @@ import { requireRoleAdmin, currentTenantId } from "@/lib/auth";
 import { getTenantSetting, setTenantSetting, getTenantSecret, setTenantSecret } from "@/lib/store";
 import { getTenantAiStatus } from "@/lib/ai/keys";
 import { VOICE_KEYS } from "@/lib/voice";
-import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +15,18 @@ export async function GET() {
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const mode = (await getTenantSetting<string | null>(tid, VOICE_KEYS.mode, null)) ?? "off";
-    const ai = await getTenantAiStatus(tid).catch(() => ({ provider: "gemini" as const }));
+    const ai = await getTenantAiStatus(tid);
+    const keySet = !!(await getTenantSecret(tid, VOICE_KEYS.openaiKey));
+    const providerIsOpenai = ai.configured && ai.provider === "openai";
     return NextResponse.json({
       mode: MODES.includes(mode) ? mode : "off",
-      keySet: !!(await getTenantSecret(tid, VOICE_KEYS.openaiKey)),
-      providerIsOpenai: ai.provider === "openai",   // then no separate voice key is needed
+      keySet,
+      providerIsOpenai,
+      transcriptionAvailable: keySet || (ai.configured && (ai.provider === "gemini" || ai.provider === "openai")),
+      speechAvailable: keySet || providerIsOpenai,
     });
-  } catch (err) {
-    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Unable to load voice settings" }, { status: 500 });
   }
 }
 
@@ -32,15 +35,24 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const tid = await currentTenantId();
   if (!tid) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  let b: { mode?: string; openaiKey?: string };
+  let b: unknown;
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const mode = MODES.includes(b.mode ?? "") ? b.mode! : "off";
+  if (!b || typeof b !== "object" || Array.isArray(b)) return NextResponse.json({ error: "Expected a settings object" }, { status: 400 });
+  const { mode, openaiKey } = b as Record<string, unknown>;
+  if (mode !== undefined && (typeof mode !== "string" || !MODES.includes(mode))) {
+    return NextResponse.json({ error: "Choose off, mirror or always for voice replies" }, { status: 400 });
+  }
+  if (openaiKey !== undefined && (typeof openaiKey !== "string" || openaiKey.trim().length > 1024)) {
+    return NextResponse.json({ error: "Voice key must be a string of at most 1024 characters" }, { status: 400 });
+  }
   try {
-    await setTenantSetting(tid, VOICE_KEYS.mode, mode);
-    if (b.openaiKey?.trim()) await setTenantSecret(tid, VOICE_KEYS.openaiKey, b.openaiKey.trim());
+    // A key-only update must not reset the existing reply mode. Blank means
+    // keep the key; DELETE is the explicit removal operation.
+    if (typeof openaiKey === "string" && openaiKey.trim()) await setTenantSecret(tid, VOICE_KEYS.openaiKey, openaiKey.trim());
+    if (mode !== undefined) await setTenantSetting(tid, VOICE_KEYS.mode, mode);
     return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Unable to save voice settings" }, { status: 500 });
   }
 }
 
@@ -52,7 +64,7 @@ export async function DELETE() {
   try {
     await setTenantSecret(tid, VOICE_KEYS.openaiKey, "");
     return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Unable to remove voice key" }, { status: 500 });
   }
 }

@@ -16,6 +16,7 @@ import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
 import { PlatformGlimpse } from "./_components/glimpse";
 import { Hero } from "./_components/hero";
+import { GlobalConversations } from "./_components/global-conversations";
 import { IndustryStrip } from "./_components/industries";
 import { Faq } from "./_components/chrome";
 import { JsonLd } from "./_components/json-ld";
@@ -26,7 +27,7 @@ import {
   CreatorStory,
   NextStepBand,
 } from "./_components/growth-story";
-import { FAQS } from "./_content/site";
+import { FAQS, HOMEPAGE_UPDATED } from "./_content/site";
 
 // FAQPage schema — the single structured-data type most correlated with AI
 // answer-engine citation, since it's already the Q&A an engine wants to quote.
@@ -62,7 +63,7 @@ const homeWebPage = {
     description:
       "AI-powered customer conversation platform for WhatsApp, Instagram, Facebook Messenger, YouTube comments, Google Business Profile reviews and website chat.",
     published: "2026-06-01",
-    updated: "2026-11-01",
+    updated: HOMEPAGE_UPDATED,
     breadcrumb: false,
   }),
   speakable: {
@@ -118,6 +119,7 @@ export default function HomePage() {
       <PlatformCapabilities />
       <GrowthSpotlight />
       <CreatorStory />
+      <GlobalConversations />
       <div className="marketing-overview">
         <PlatformGlimpse />
       </div>

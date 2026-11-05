@@ -6,6 +6,7 @@ import { enqueueCrmSyncBatch, lsqConfigured } from "./leadsquared";
 import type { ChannelCreds } from "./channels";
 import { templatePlaceholders, bodyParameters, isNamedFormat, bodyVariableError } from "./template-params";
 import { moderateText, collectStrings } from "./moderation";
+import { safeFetch, readCappedBytes } from "./ssrf";
 
 const GRAPH = "https://graph.facebook.com/v22.0";
 const MSG_DELAY_MS = 100;   // ~10 msg/s
@@ -33,14 +34,17 @@ export async function downloadMedia(mediaId: string, channel?: ChannelCreds): Pr
   const { token } = getCreds(channel);
   if (!token || !mediaId) return null;
   try {
-    const meta = await fetch(`${GRAPH}/${mediaId}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+    const meta = await fetch(`${GRAPH}/${encodeURIComponent(mediaId)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000), redirect: "error" });
     if (!meta.ok) return null;
     const { url, mime_type } = (await meta.json()) as { url?: string; mime_type?: string };
     if (!url) return null;
-    const bin = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15000) });
-    if (!bin.ok) return null;
-    const buf = Buffer.from(await bin.arrayBuffer());
-    if (buf.length > 25 * 1024 * 1024) return null;
+    const signal = AbortSignal.timeout(15000);
+    // Meta's authenticated download is direct. Refuse redirects rather than
+    // forwarding the channel token to a different host.
+    const bin = await safeFetch(url, { headers: { Authorization: `Bearer ${token}` }, signal }, 0);
+    if (!bin.ok) { await bin.body?.cancel().catch(() => {}); return null; }
+    const buf = await readCappedBytes(bin, 25 * 1024 * 1024, signal);
+    if (!buf.length) return null;
     return { data: buf, mimeType: mime_type ?? "audio/ogg" };
   } catch {
     return null;
@@ -505,7 +509,7 @@ export async function sendCarouselTemplate(
 
 // Sends a media message (image/video/document/audio) by public URL. Free-form,
 // so 24h-window rules apply just like sendText.
-export async function sendMedia(phone: string, kind: "image" | "video" | "document" | "audio", url: string, caption?: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number }> {
+export async function sendMedia(phone: string, kind: "image" | "video" | "document" | "audio", url: string, caption?: string, channel?: ChannelCreds): Promise<{ id?: string; error?: string; code?: number; deliveryUnknown?: boolean }> {
   const { token, phoneId } = getCreds(channel);
   if (!token || !phoneId) return { error: "WhatsApp credentials not configured" };
   const media: Record<string, unknown> = { link: url };
@@ -521,12 +525,14 @@ export async function sendMedia(phone: string, kind: "image" | "video" | "docume
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ messaging_product: "whatsapp", to: (phone || "").replace(/\D/g, ""), type: kind, [kind]: media }),
+      signal: AbortSignal.timeout(15000),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data?.messages?.[0]?.id) return { id: data.messages[0].id as string };
-    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code };
+    return { error: data?.error?.message || `HTTP ${res.status}`, code: data?.error?.code,
+      ...(res.ok || res.status >= 500 || res.status === 408 ? { deliveryUnknown: true } : {}) };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) };
+    return { error: err instanceof Error ? err.message : String(err), deliveryUnknown: true };
   }
 }
 
