@@ -1,5 +1,7 @@
 "use client";
 
+import { CharacterStory } from "./character-story";
+import type { CharacterStoryId } from "../_content/character-stories";
 import { useState, type CSSProperties } from "react";
 import {
   ArrowRight,
@@ -465,6 +467,8 @@ const EXAMPLES: {
   },
 ];
 
+const STORY_FOR_WORKFLOW: Record<string, CharacterStoryId> = { journey: "team", reviews: "reviews", sequence: "followthrough", creator: "creator", business: "booking", promise: "followthrough", broadcasts: "insights", commerce: "commerce", audiences: "agency", knowledge: "knowledge", youtube: "creator", webchat: "team", handoff: "handoff", experiments: "insights" };
+
 export function WorkflowDemo() {
   const [selected, setSelected] = useState(EXAMPLES[0].id);
   const [inspecting, setInspecting] = useState<number | null>(null);
@@ -521,6 +525,8 @@ export function WorkflowDemo() {
         aria-live="polite"
         aria-atomic="true"
       >
+        <div className="workflow-story-layout">
+        <CharacterStory scene={STORY_FOR_WORKFLOW[example.id] ?? "team"} compact priority={example.id === "journey"} />
         <div className="workflow-message">
           <span className="workflow-message-icon">
             <MessageSquare size={19} aria-hidden />
@@ -530,6 +536,7 @@ export function WorkflowDemo() {
             <p>{example.message}</p>
           </div>
           <span className="workflow-message-tag">Trigger</span>
+        </div>
         </div>
         <ol className="workflow-nodes" aria-label="Workflow steps">
           {example.nodes.map((node, index) => (

@@ -1,3 +1,4 @@
+import { CharacterStory } from "../_components/character-story";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ClipboardList, MessageCircle, ShieldCheck, ShoppingBag, Sparkles, Users } from "lucide-react";
@@ -66,6 +67,7 @@ export default function ExtensionPage() {
               No Talko AI account yet? Start a free trial →
             </Link>
           </Reveal>
+          <CharacterStory scene="browser" />
         </Container>
       </section>
 

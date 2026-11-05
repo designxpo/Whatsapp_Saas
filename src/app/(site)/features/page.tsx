@@ -1,3 +1,4 @@
+import { CharacterStory } from "../_components/character-story";
 import type { Metadata } from "next";
 import { Container, Glow, SectionTitle } from "../_components/ui";
 import {
@@ -94,6 +95,7 @@ export default function FeaturesPage() {
           <div className="mt-4 text-center text-sm text-slate-500">
             <LastUpdated iso={FEATURES_SEO.updated} />
           </div>
+          <CharacterStory scene="knowledge" />
         </Container>
       </section>
 

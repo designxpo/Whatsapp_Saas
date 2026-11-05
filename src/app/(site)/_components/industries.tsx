@@ -6,6 +6,7 @@
 // compact homepage teaser grid linking into /industries#<slug>.
 
 import Link from "next/link";
+import { CharacterStory } from "./character-story";
 import {
   ShoppingBag, BookOpen, ShieldCheck, Building2, UtensilsCrossed, Plane,
   ArrowRight, Check, type LucideIcon,
@@ -169,6 +170,7 @@ export function IndustryDetail({ ind, index = 0 }: { ind: Industry; index?: numb
           </ul>
         </Reveal>
         <Reveal delay={120}>
+          <CharacterStory scene={ind.slug === "ecommerce" ? "commerce" : ind.slug === "edtech" ? "booking" : ind.slug === "restaurants" ? "reviews" : "handoff"} compact />
           <PhoneChat ind={ind} />
         </Reveal>
       </div>

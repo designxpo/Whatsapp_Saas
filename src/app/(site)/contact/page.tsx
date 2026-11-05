@@ -1,3 +1,4 @@
+import { CharacterStory } from "../_components/character-story";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container, Glow, SectionTitle, Eyebrow } from "../_components/ui";
@@ -90,6 +91,7 @@ export default function ContactPage() {
               <LastUpdated iso={CONTACT_SEO.updated} />
             </div>
           </div>
+          <CharacterStory scene="handoff" />
         </Container>
       </section>
 

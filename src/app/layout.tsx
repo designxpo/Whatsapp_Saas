@@ -44,7 +44,7 @@ export const metadata: Metadata = {
     // the openGraph field per segment, and auto-infers og:title/og:description
     // from each page's top-level `title`/`description` ONLY when they're absent
     // here. Hardcoding them would pin every page's og:title to the homepage's.
-    // The og:image is supplied by (site)/opengraph-image.tsx and inherited.
+    // The og:image is supplied by (site)/opengraph-image.png and inherited.
     // No static `url` either — it would force every page's og:url to the homepage;
     // per-page canonical (alternates.canonical "./") carries the correct URL.
   },

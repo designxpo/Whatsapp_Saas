@@ -1,3 +1,4 @@
+import { CharacterStory } from "./character-story";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -228,6 +229,7 @@ export function CreatorStory() {
         aria-label="Illustrative creator growth loop"
       >
         <span className="marketing-kicker">YOUR CONTENT, WITH A NEXT STEP</span>
+        <CharacterStory scene="creator" compact />
         <div className="creator-content-tile">
           <span>
             <Instagram size={20} aria-hidden /> Your next post

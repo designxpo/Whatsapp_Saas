@@ -1,3 +1,4 @@
+import { CharacterStory } from "../_components/character-story";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Container, Glow, SectionTitle, Card } from "../_components/ui";
@@ -78,6 +79,7 @@ export default function PricingPage() {
           <div className="mt-4 text-center text-sm text-slate-500">
             <LastUpdated iso={PRICING_SEO.updated} />
           </div>
+          <CharacterStory scene="start" />
         </Container>
       </section>
 

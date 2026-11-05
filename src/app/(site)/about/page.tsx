@@ -1,3 +1,4 @@
+import { CharacterStory } from "../_components/character-story";
 import type { Metadata } from "next";
 import { Container, Glow, SectionTitle, Card, Eyebrow } from "../_components/ui";
 import { StatsBand, CtaBand } from "../_components/sections";
@@ -47,6 +48,7 @@ export default function AboutPage() {
           <div className="mt-4 text-center text-sm text-slate-500">
             <LastUpdated iso={ABOUT_SEO.updated} />
           </div>
+          <CharacterStory scene="agency" />
         </Container>
       </section>
 
