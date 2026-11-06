@@ -15,7 +15,7 @@ import { useTabInUrl } from "@/lib/tab-url";
 import { TabErrorBoundary } from "@/components/tab-error-boundary";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, btnPrimary } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, LogOut, MessageSquare, ShieldCheck, ListTodo, ChevronDown, AlertTriangle, Eye, CreditCard, Menu, Search, X } from "lucide-react";
+import { Send, LogOut, MessageSquare, ShieldCheck, ListTodo, ChevronDown, AlertTriangle, Eye, CreditCard, Menu, Search, X, LifeBuoy } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { Toaster } from "@/components/toast";
 import { Modal } from "@/components/overlay";
@@ -230,6 +230,25 @@ function AdminShell() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const asideRef = useRef<HTMLElement>(null);
   const closeNav = useCallback(() => setNavOpen(false), []);
+
+  // The support chat (layout.tsx loads it for customers) floats a round button
+  // over the bottom-right corner — on a phone that sits on top of the chat
+  // list and the reply box. Once it has loaded, it opens from "Chat with
+  // support" in the menu instead; the loader hides its floating button on
+  // phones whenever the page carries data-twc-trig (and opens on any
+  // [data-alabs-chat] click). Laptops keep the floating button.
+  const [hasSupport, setHasSupport] = useState(false);
+  useEffect(() => {
+    let tries = 0;
+    const t = setInterval(() => {
+      if ((window as unknown as { AlabsWC?: unknown }).AlabsWC) {
+        document.documentElement.setAttribute("data-twc-trig", "1");
+        setHasSupport(true);
+        clearInterval(t);
+      } else if (++tries > 40) clearInterval(t);
+    }, 750);
+    return () => clearInterval(t);
+  }, []);
   useDrawerFocus(navOpen && !isDesktop, asideRef, closeNav);
   useEffect(() => { if (isDesktop) setNavOpen(false); }, [isDesktop]);
 
@@ -404,6 +423,11 @@ function AdminShell() {
               <ShieldCheck className="w-4 h-4" aria-hidden /> Exit to Owner Portal
             </button>
           )}
+          {hasSupport && (
+            <button type="button" data-alabs-chat onClick={closeNav} className="min-[769px]:hidden w-full flex items-center gap-3 min-h-11 px-3 rounded-full text-[13px] font-medium text-ink-600 hover:bg-canvas transition-colors">
+              <LifeBuoy className="w-[18px] h-[18px]" aria-hidden /> Chat with support
+            </button>
+          )}
           <button type="button" onClick={logout} className="w-full flex items-center gap-3 min-h-11 lg:min-h-0 lg:h-10 px-3 rounded-full text-[13px] font-medium text-ink-600 hover:bg-red-50 hover:text-red-600 transition-colors">
             <LogOut className="w-[18px] h-[18px]" aria-hidden /> Log out
           </button>
@@ -425,15 +449,20 @@ function AdminShell() {
           </div>
         )}
         {me?.isPlatformOwner && !impersonating && (
-          <div className="min-h-9 py-1.5 px-4 shrink-0 bg-brand-50 border-b border-brand-100 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px] text-brand-800 font-semibold text-center">
-            <ShieldCheck className="w-3.5 h-3.5" aria-hidden /> Owner preview — this is the platform&apos;s default workspace
-            <a href="/admin/owner" className="px-2.5 py-1 rounded-control bg-brand-700 text-white text-[12px] font-bold hover:bg-brand-800">Open Owner Portal</a>
+          <div className="min-h-9 py-1 sm:py-1.5 px-4 shrink-0 bg-brand-50 border-b border-brand-100 flex items-center justify-center gap-x-3 text-[12px] text-brand-800 font-semibold text-center">
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            {/* One line on a phone: the inbox needs the height more than the sentence does. */}
+            <span className="sm:hidden">Owner preview</span>
+            <span className="hidden sm:inline">Owner preview — this is the platform&apos;s default workspace</span>
+            <a href="/admin/owner" className="shrink-0 px-2.5 py-1 rounded-control bg-brand-700 text-white text-[12px] font-bold hover:bg-brand-800"><span className="sm:hidden">Owner Portal</span><span className="hidden sm:inline">Open Owner Portal</span></a>
           </div>
         )}
         {impersonating && (
-          <div className="min-h-9 py-1.5 px-4 shrink-0 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[12px] text-amber-800 font-semibold text-center">
-            <Eye className="w-3.5 h-3.5" aria-hidden /> You&apos;re viewing a tenant&apos;s workspace as the owner
-            <button type="button" onClick={exitImpersonation} className="px-2.5 py-1 rounded-control bg-amber-700 text-white text-[12px] font-bold hover:bg-amber-800">Exit to Owner Portal</button>
+          <div className="min-h-9 py-1 sm:py-1.5 px-4 shrink-0 bg-amber-50 border-b border-amber-200 flex items-center justify-center gap-x-3 text-[12px] text-amber-800 font-semibold text-center">
+            <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            <span className="sm:hidden">Viewing a customer&apos;s workspace</span>
+            <span className="hidden sm:inline">You&apos;re viewing a tenant&apos;s workspace as the owner</span>
+            <button type="button" onClick={exitImpersonation} className="shrink-0 px-2.5 py-1 rounded-control bg-amber-700 text-white text-[12px] font-bold hover:bg-amber-800"><span className="sm:hidden">Exit</span><span className="hidden sm:inline">Exit to Owner Portal</span></button>
           </div>
         )}
         {/* Topbar */}

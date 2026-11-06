@@ -5,7 +5,7 @@
 // (also used by the Contacts tab). Pure relocation.
 import { useVocab } from "@/lib/vocab-client";
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useId, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical, CreditCard, Tag, UserCheck, History, Layers, ClipboardList, Megaphone } from "lucide-react";
+import { MessageSquare, Instagram, Search, SlidersHorizontal, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical, CreditCard, Tag, UserCheck, History, Layers, ClipboardList, Megaphone } from "lucide-react";
 import { type Conversation, ConvAvatar, ChannelNameBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
@@ -638,6 +638,9 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
   const [showShortcuts, setShowShortcuts] = useState(false);
+  // Phones: channel, stage, "More filters" and sort fold behind one Filters
+  // button so the chats get the screen. Laptops always show them.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
   // Chats the alerts endpoint says are waiting for a person (ready to pay,
   // approvals, or all of them while the AI is off) — joined into "Waiting for
@@ -827,6 +830,9 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const filterLabel = INBOX_FILTERS.find(f => f.key === filter)?.label ?? "All";
   const platformCount: Record<PlatformKey, number> = { all: inView.length, whatsapp: waCount, instagram: igCount, messenger: fbCount, webchat: wcCount };
   const channelNoun = platform === "instagram" ? "account" : platform === "messenger" ? "Page" : platform === "webchat" ? "site" : "number";
+  // How many of the folded-away filters are doing something, for the badge.
+  const foldedActive = (view === "chats" && platform !== "all" ? 1 : 0) + (channelFilter ? 1 : 0) + (stageFilter ? 1 : 0)
+    + (CHIP_FILTERS.includes(filter) ? 0 : 1) + (sort !== "newest" ? 1 : 0);
 
   return (
     // Fills the screen between where it starts (measured: header + any banner)
@@ -838,9 +844,9 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
       <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-80 shrink-0 md:border-r border-line flex-col min-h-0`}>
-        <div className="px-3 pt-3 pb-3 md:p-4 md:pb-3 space-y-3 border-b border-line">
-          <div className="relative flex items-center justify-between gap-2">
-            <h2 className="min-w-0 truncate text-[17px] md:text-[15px] font-bold text-ink-900">
+        <div className="px-3 pt-2.5 pb-2.5 md:p-4 md:pb-3 space-y-2.5 md:space-y-3 border-b border-line">
+          <div className="relative max-md:sr-only flex items-center justify-between gap-2">
+            <h2 className="min-w-0 truncate text-[15px] font-bold text-ink-900">
               {view === "comments" ? "Comments" : "Live Chat"}{" "}
               <span className="text-xs font-normal text-ink-500 tabular-nums">({loaded ? fmtNum(visible.length) : "…"})<span className="sr-only"> shown</span></span>
             </h2>
@@ -858,31 +864,19 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               { value: "chats", label: "Chats", count: chatsCount, icon: <MessageSquare className="w-3 h-3" aria-hidden /> },
               { value: "comments", label: "Comments", count: commentsCount, icon: <MessageCircle className="w-3 h-3 text-ink-500" aria-hidden /> },
             ]} />
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
-            <input type="search" aria-label="Search chats by name or number"
-              className="w-full h-11 md:h-auto border border-line rounded-control pl-8 pr-3 md:py-2 text-base md:text-sm bg-canvas text-ink-900 placeholder:text-ink-500 focus:bg-white"
-              placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          {/* Channel — only for Chats; comments are Instagram/Facebook posts. */}
-          {view === "chats" && (
-            <div role="group" aria-label="Channel" className="flex flex-wrap gap-1 p-0.5 bg-canvas rounded-control">
-              {PLATFORMS.map(p => (
-                <button key={p.key} type="button" aria-pressed={platform === p.key} onClick={() => { setPlatform(p.key); setChannelFilter(null); }}
-                  className={`flex-1 min-w-[96px] md:min-w-[68px] min-h-9 md:min-h-0 px-2 py-1.5 rounded-[7px] text-[11px] font-bold whitespace-nowrap flex items-center justify-center gap-1 transition-colors ${platform === p.key ? "bg-white shadow-sm text-ink-900" : "text-ink-500 hover:text-ink-800"}`}>
-                  {p.icon && <span aria-hidden className="flex [&>svg]:w-3 [&>svg]:h-3">{p.icon}</span>}
-                  {p.label} <span className="opacity-60 tabular-nums">{loaded ? fmtNum(platformCount[p.key]) : ""}</span>
-                </button>
-              ))}
+          <div className="flex gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
+              <input type="search" aria-label="Search chats by name or number"
+                className="w-full h-10 md:h-auto border border-line rounded-control pl-8 pr-3 md:py-2 text-base md:text-sm bg-canvas text-ink-900 placeholder:text-ink-500 focus:bg-white"
+                placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
-          )}
-          {/* Which number/account/Page — once a platform with 2+ connected channels is chosen. */}
-          {platformChannels.length > 1 && (
-            <select aria-label={`Filter by ${channelNoun}`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}>
-              <option value="">{channelNoun === "number" ? "All numbers" : channelNoun === "Page" ? "All Pages" : channelNoun === "site" ? "All sites" : "All accounts"}</option>
-              {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
+            <button type="button" onClick={() => setFiltersOpen(o => !o)} aria-expanded={filtersOpen} aria-controls="inbox-filters"
+              className={`md:hidden relative shrink-0 h-10 px-3 inline-flex items-center gap-1.5 rounded-control border text-[13px] font-semibold ${filtersOpen || foldedActive ? "border-brand-200 bg-brand-50 text-brand-800" : "border-line bg-white text-ink-700"}`}>
+              <SlidersHorizontal className="w-4 h-4" aria-hidden /> Filters
+              {foldedActive > 0 && <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-brand-700 text-white text-[11px] leading-[18px] text-center tabular-nums">{foldedActive}<span className="sr-only"> on</span></span>}
+            </button>
+          </div>
           {/* A pinned member's inbox is a subset by design. Saying so stops it
               reading as missing data — the failure mode this whole split risks. */}
           {scopedTeam && (
@@ -890,36 +884,60 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
               Showing the <b>{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only. Other teams&apos; chats are handled in their own inbox.
             </p>
           )}
-          {/* Pipeline stage — the "where is this lead" axis. */}
-          {stageNames.length > 0 && (
-            <select aria-label={`Show only ${vocab.lead.many.toLowerCase()} at one ${vocab.pipeline.one.toLowerCase()} stage`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={stageFilter}
-              onChange={e => { setStageFilter(e.target.value); setSelected(null); }}>
-              <option value="">All stages</option>
-              {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
-              <option value="__none">No stage set</option>
-            </select>
-          )}
-          <div role="group" aria-label="Show" className="flex gap-1 flex-wrap">
+          {/* Phones: folded behind the Filters button. Laptops: always shown. */}
+          <div id="inbox-filters" className={`${filtersOpen ? "block" : "hidden"} md:block empty:hidden space-y-2.5 md:space-y-3`}>
+            {/* Channel — only for Chats; comments are Instagram/Facebook posts. */}
+            {view === "chats" && (
+              <div role="group" aria-label="Channel" className="flex flex-wrap gap-1 p-0.5 bg-canvas rounded-control">
+                {PLATFORMS.map(p => (
+                  <button key={p.key} type="button" aria-pressed={platform === p.key} onClick={() => { setPlatform(p.key); setChannelFilter(null); }}
+                    className={`flex-1 min-w-[96px] md:min-w-[68px] min-h-9 md:min-h-0 px-2 py-1.5 rounded-[7px] text-[11px] font-bold whitespace-nowrap flex items-center justify-center gap-1 transition-colors ${platform === p.key ? "bg-white shadow-sm text-ink-900" : "text-ink-500 hover:text-ink-800"}`}>
+                    {p.icon && <span aria-hidden className="flex [&>svg]:w-3 [&>svg]:h-3">{p.icon}</span>}
+                    {p.label} <span className="opacity-60 tabular-nums">{loaded ? fmtNum(platformCount[p.key]) : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Which number/account/Page — once a platform with 2+ connected channels is chosen. */}
+            {platformChannels.length > 1 && (
+              <select aria-label={`Filter by ${channelNoun}`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}>
+                <option value="">{channelNoun === "number" ? "All numbers" : channelNoun === "Page" ? "All Pages" : channelNoun === "site" ? "All sites" : "All accounts"}</option>
+                {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+            {/* Pipeline stage — the "where is this lead" axis. */}
+            {stageNames.length > 0 && (
+              <select aria-label={`Show only ${vocab.lead.many.toLowerCase()} at one ${vocab.pipeline.one.toLowerCase()} stage`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={stageFilter}
+                onChange={e => { setStageFilter(e.target.value); setSelected(null); }}>
+                <option value="">All stages</option>
+                {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
+                <option value="__none">No stage set</option>
+              </select>
+            )}
+          </div>
+          <div role="group" aria-label="Show" className="flex gap-1 max-md:-mx-3 max-md:px-3 max-md:overflow-x-auto max-md:[scrollbar-width:none] md:flex-wrap">
             {CHIP_FILTERS.map(k => {
               const full = INBOX_FILTERS.find(f => f.key === k)?.label ?? k;
               return (
                 <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}
-                  className={`min-h-9 md:min-h-0 px-2.5 md:px-2 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-500 hover:text-ink-800"}`}>
+                  className={`shrink-0 min-h-8 md:min-h-0 px-3 md:px-2 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-500 hover:text-ink-800"}`}>
                   {CHIP_LABEL[k]}{CHIP_LABEL[k] !== full && <span className="sr-only"> ({full})</span>}
                   {k === "waiting" && loaded && <span className="ml-1 opacity-70 tabular-nums">{fmtNum(counts[k])}</span>}
                 </button>
               );
             })}
           </div>
-          <div className="flex gap-2">
-            <select aria-label="More filters" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`}
-              value={CHIP_FILTERS.includes(filter) ? "" : filter} onChange={e => setFilter(normalizeFilter(e.target.value || "all"))}>
-              <option value="">More filters…</option>
-              {INBOX_FILTERS.filter(f => !CHIP_FILTERS.includes(f.key)).map(f => <option key={f.key} value={f.key}>{f.label}{loaded ? ` (${counts[f.key]})` : ""}</option>)}
-            </select>
-            <select aria-label="Sort chats" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`} value={sort} onChange={e => setSort(normalizeSort(e.target.value))}>
-              {INBOX_SORTS.map(o => <option key={o.key} value={o.key}>{o.key === "newest" ? "Newest first" : "Longest waiting first"}</option>)}
-            </select>
+          <div className={`${filtersOpen ? "block" : "hidden"} md:block`}>
+            <div className="flex gap-2">
+              <select aria-label="More filters" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`}
+                value={CHIP_FILTERS.includes(filter) ? "" : filter} onChange={e => setFilter(normalizeFilter(e.target.value || "all"))}>
+                <option value="">More filters…</option>
+                {INBOX_FILTERS.filter(f => !CHIP_FILTERS.includes(f.key)).map(f => <option key={f.key} value={f.key}>{f.label}{loaded ? ` (${counts[f.key]})` : ""}</option>)}
+              </select>
+              <select aria-label="Sort chats" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`} value={sort} onChange={e => setSort(normalizeSort(e.target.value))}>
+                {INBOX_SORTS.map(o => <option key={o.key} value={o.key}>{o.key === "newest" ? "Newest first" : "Longest waiting first"}</option>)}
+              </select>
+            </div>
           </div>
         </div>
         <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
