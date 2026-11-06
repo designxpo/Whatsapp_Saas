@@ -181,10 +181,31 @@ export const CATALOG: CatalogEntry[] = [
     ],
   },
   {
-    id: "cashfree", name: "Cashfree", category: "payments", color: "#5C2D91", logo: "/integrations/cashfree.png", availability: "next",
-    blurb: "Payment success and failure messages for Cashfree payments and payment links.",
-    gives: ["Payment receipts", "Failed and dropped payment nudges"],
-    pending: "Cashfree's signature format needs a live sandbox test before we trust it. Next wave.",
+    id: "cashfree", name: "Cashfree", category: "payments", color: "#5C2D91", logo: "/integrations/cashfree.png", availability: "available",
+    blurb: "Payment receipts, and a helpful nudge when a payment fails or is abandoned.",
+    gives: [
+      "A receipt on WhatsApp the moment a payment succeeds",
+      "A nudge with help when a payment fails",
+      "A reminder when someone leaves the payment page",
+      "A pending failed-payment message is cancelled if they pay first",
+    ],
+    docsUrl: "https://www.cashfree.com/docs/payments/online/webhooks/configure",
+    fields: [
+      { key: "clientSecret", label: "Client secret", secret: true, required: true, hint: "Cashfree Dashboard → Developers → API Keys. Cashfree signs every webhook with it. Test and Live mode have different secrets." },
+      TAGS_FIELD("Cashfree customer"), COUNTRY_FIELD,
+    ],
+    steps: [
+      "In the Cashfree Dashboard, open Developers → Webhooks → Add Webhook Endpoint.",
+      "Endpoint URL: the URL above.",
+      "Choose the Payments events: success, failed and user dropped. Save.",
+      "Paste your client secret here (Developers → API Keys) so the portal can check each webhook really came from Cashfree.",
+      "Make a test payment in Test mode and check it appears under Recent events.",
+    ],
+    events: [
+      { key: "cashfree.payment_success", label: "Payment received", suggestion: "Receipt with the amount and order id", fields: [NAME, p("amount", "Amount", "₹1,499"), p("order_id", "Order id", "order_1042"), p("payment_id", "Payment id", "1453995084705707520")] },
+      { key: "cashfree.payment_failed", label: "Payment failed", suggestion: "\"Your payment didn't go through — here's how to retry\"", fields: [NAME, p("amount", "Amount", "₹1,499"), p("error", "Reason", "Payment declined by bank")] },
+      { key: "cashfree.payment_dropped", label: "Left the payment page", suggestion: "\"Need help finishing your payment?\"", fields: [NAME, p("amount", "Amount", "₹1,499"), p("order_id", "Order id", "order_1042")] },
+    ],
   },
 
   // ── Appointments & bookings ───────────────────────────────────────────────
@@ -279,7 +300,7 @@ export const CATALOG: CatalogEntry[] = [
     id: "meta_lead_ads", name: "Facebook & Instagram Lead Ads", category: "leads", color: "#0866FF", logo: "/integrations/meta_lead_ads.svg", availability: "next",
     blurb: "Message every Lead Ad lead on WhatsApp the second they submit the form.",
     gives: ["Instant first message to ad leads", "Lead Ad answers in Contacts"],
-    pending: "Each business's Page must grant the portal lead access, which needs Meta app review for that permission.",
+    pending: "Built and waiting on Meta: reading a lead needs the leads_retrieval permission, which Meta grants through app review. Once approved, each lead arrives as a contact (with its ad) and raises the meta_lead_ads.lead event, so a message rule can greet it on WhatsApp.",
   },
   {
     id: "justdial", name: "JustDial", category: "leads", color: "#FF6F00", logo: "/integrations/justdial.png", availability: "next",

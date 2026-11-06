@@ -10,6 +10,7 @@ import { woocommerceProvider } from "./connectors/woocommerce";
 import { razorpayProvider } from "./connectors/razorpay";
 import { calendlyProvider } from "./connectors/calendly";
 import { calcomProvider } from "./connectors/calcom";
+import { cashfreeProvider } from "./connectors/cashfree";
 import { typeformProvider } from "./connectors/typeform";
 import { indiamartProvider } from "./connectors/indiamart";
 import { googleSheetsProvider } from "./connectors/google-sheets";
@@ -101,6 +102,7 @@ export const PROVIDERS: Record<string, Provider> = {
   razorpay: razorpayProvider,
   calendly: calendlyProvider,
   calcom: calcomProvider,
+  cashfree: cashfreeProvider,
   typeform: typeformProvider,
   indiamart: indiamartProvider,
   google_sheets: googleSheetsProvider,

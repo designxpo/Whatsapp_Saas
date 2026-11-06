@@ -1,5 +1,6 @@
 export const maxDuration = 180;   // inline transcription + LLM reply — match WhatsApp so a slow turn isn't killed
 import { verifyPartnerWebhook, partnerVerifyTokenOk, partnerScope } from "@/lib/partner-meta";
+import { processEvent } from "@/lib/apirules";
 import { recordCommentReply } from "@/lib/comment-replies";
 import { ruleInviteLink, withInviteButton } from "@/lib/handoff";
 import { NextResponse, after } from "next/server";
@@ -195,6 +196,12 @@ async function handleLeadgen(channel: Channel, value: Record<string, unknown>) {
       ...(lead.city ? [{ Attribute: "mx_City", Value: lead.city }] : []),
     ],
   }, channel.tenantId).catch(() => {});
+  // The event a business's message rules listen for (Integrations → when this
+  // happens, send…): the instant first WhatsApp message to a Lead Ad lead.
+  await processEvent({
+    event: "meta_lead_ads.lead", phone: lead.phone, name: lead.fullName || undefined,
+    payload: { form_id: lead.formId ?? "", ad_id: value?.ad_id ? String(value.ad_id) : "", email: lead.email ?? "", city: lead.city ?? "", leadgen_id: leadgenId },
+  }, channel.tenantId).catch(e => console.error("[leadgen] rules", e));
 }
 
 // Mirror a Messenger message onto the lead's LeadSquared timeline. FB users have
