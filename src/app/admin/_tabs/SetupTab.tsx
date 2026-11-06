@@ -2,6 +2,7 @@
 
 // Setup & status tab — extracted from admin/page.tsx, lazy-loaded.
 import { PageInfo } from "@/components/PageInfo";
+import { SetupPacksCard } from "./SetupPacksCard";
 import { useState, useEffect, useCallback } from "react";
 import { AlertTriangle, CircleCheck, CircleDashed, ListChecks, Loader2, RefreshCw, X } from "lucide-react";
 import { type Tab } from "../_shared";
@@ -66,6 +67,8 @@ function SetupTab({ goTo }: { goTo: (t: Tab) => void }) {
           {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Re-check
         </button>
       </div>
+
+      <SetupPacksCard />
 
       {plan && (
         <div className="rounded-card border border-brand-100 bg-brand-50 px-4 py-3">

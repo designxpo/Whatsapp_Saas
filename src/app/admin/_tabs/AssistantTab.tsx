@@ -3,6 +3,7 @@
 // AI Knowledge Base (Assistant) tab — KnowledgeRail + AssistantTab + KB add form
 // + test box, extracted from admin/page.tsx and lazy-loaded. Logic unchanged.
 import { Notice, useNotice } from "@/components/Notice";
+import { KbChecksCard } from "./KbChecksCard";
 import { PageInfo } from "@/components/PageInfo";
 import { AiGaps } from "./AiGaps";
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -179,6 +180,9 @@ function AssistantTab({ goTo }: { goTo: (t: Tab) => void }) {
 
       {/* Test the assistant (no WhatsApp send) */}
       <TestAssistantBox />
+
+      {/* Saved questions the AI should get right, and documents that may be stale */}
+      <KbChecksCard />
 
       {/* What customers asked that the knowledge base didn't cover */}
       <AiGaps />
