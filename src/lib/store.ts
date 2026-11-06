@@ -1,4 +1,5 @@
 import { db } from "./supabase";
+import { UNVERIFIED_PHONE_LABEL } from "./lead-labels";
 import { pageAll } from "./pagedselect";
 import { tdb } from "./tenantdb";
 import { encryptSecret, readSecret } from "./crypto";
@@ -2186,12 +2187,27 @@ export async function renameLeadConversations(phoneKey: string, name: string, te
 // is filled from the chat, and the conversation's placeholder name is replaced
 // with who we already know they are. Pass rawPhone=null to re-land from the
 // stored lead_phone (e.g. the name arrived after the number). Tenant-scoped.
-export async function landCapturedLead(phoneKey: string, rawPhone: string | null, channel: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
-  if (!phoneKey) return;
+//
+// Web chat is the exception to the merge. A website visitor is anonymous, so a
+// number they type is only a claim: anyone can type a real customer's number.
+// When it matches an EXISTING contact the chat is NOT renamed to that person
+// and their contact is NOT changed; the conversation keeps its anonymous name,
+// keeps the number in lead_phone (so agents see it), and is labelled
+// UNVERIFIED_PHONE_LABEL with a team note saying so. The widget route skips the
+// CRM timeline sync for a labelled chat. A NEW number still becomes a contact,
+// exactly as before (that is the lead-capture feature).
+//
+// Returns what happened: "new" (contact created), "matched" (merged into an
+// existing contact), "unverified" (web chat claimed an existing contact's
+// number) or null (nothing landed).
+export { UNVERIFIED_PHONE_LABEL };
+export type LandedLead = "new" | "matched" | "unverified" | null;
+export async function landCapturedLead(phoneKey: string, rawPhone: string | null, channel: string, tenantId = DEFAULT_TENANT_ID): Promise<LandedLead> {
+  if (!phoneKey) return null;
   try {
-    const { data: conv } = await db().from("wa_conversations").select("name, lead_phone").eq("tenant_id", tenantId).eq("phone", phoneKey).maybeSingle();
+    const { data: conv } = await db().from("wa_conversations").select("id, name, lead_phone, labels").eq("tenant_id", tenantId).eq("phone", phoneKey).maybeSingle();
     const d = digits((rawPhone ?? (conv?.lead_phone as string | null)) || "");
-    if (d.length < 10 || d.length > 15) return;
+    if (d.length < 10 || d.length > 15) return null;
     const convName = ((conv?.name as string) || "").trim();
     const chatName = convName && convName.toLowerCase() !== "website visitor" ? convName : undefined;
     // Country-code tolerant lookup — a lead typing 83688… must merge into the
@@ -2203,16 +2219,41 @@ export async function landCapturedLead(phoneKey: string, rawPhone: string | null
       .sort((a, b) => b.phone.length - a.phone.length)[0];
     if (!existing) {
       await upsertContacts([{ phone: d, ...(chatName ? { name: chatName } : {}), tags: [channel] }], channel.replace(/-/g, "_"), tenantId);
-      return;
+      return "new";
+    }
+    if (channel === "web-chat") {
+      // A re-land (rawPhone null) of a chat that was NOT flagged means its number
+      // was new when typed: the contact was created by this very chat, so the
+      // normal merge below is safe. Anything else is an unverified claim.
+      const labels = ((conv?.labels as string[] | null) ?? []);
+      if (rawPhone !== null || labels.includes(UNVERIFIED_PHONE_LABEL)) {
+        if (conv?.id) await flagUnverifiedPhone(conv.id as string, labels, d, tenantId);
+        return "unverified";
+      }
     }
     const patch: Record<string, unknown> = {};
     if (!existing.tags.includes(channel)) patch.tags = [...existing.tags, channel];
     if (!existing.name && chatName) patch.name = chatName;
     if (Object.keys(patch).length) await db().from("contacts").update(patch).eq("tenant_id", tenantId).eq("id", existing.id);
     if (existing.name) await setConversationName(phoneKey, existing.name, tenantId);   // returning lead recognized
+    return "matched";
   } catch (err) {
     console.error("[contacts] landCapturedLead failed:", err);   // best-effort — never breaks the message flow
+    return null;
   }
+}
+
+// Web chat only: label the conversation as carrying an unverified phone, and
+// leave the team a note explaining it (once — the label says it was already
+// flagged). The note is best-effort: before the notes migration it is skipped.
+async function flagUnverifiedPhone(convId: string, labels: string[], phone: string, tenantId: string): Promise<void> {
+  if (labels.includes(UNVERIFIED_PHONE_LABEL)) return;
+  // First in the list: setConvLabels keeps at most 10, and this one must survive.
+  await setConvLabels(convId, [UNVERIFIED_PHONE_LABEL, ...labels])
+    .catch(err => console.error("[contacts] could not label an unverified web-chat phone:", err));
+  await addConversationNote(tenantId, convId, { email: "system", name: "Talko" },
+    `The visitor typed the phone number ${phone} in web chat. It matches an existing contact, but it was not verified, so this chat was not linked to that contact or their CRM lead. Confirm who you are talking to before sharing anything about that contact. If it really is them, remove the "${UNVERIFIED_PHONE_LABEL}" label.`,
+  ).catch(() => undefined);
 }
 
 // Atomically claims the welcome send: only the first caller gets true.

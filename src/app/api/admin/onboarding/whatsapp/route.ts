@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { exchangeSignupCode, subscribeWaba, registerPhone, grantedScopes, noGrantMessage } from "@/lib/embeddedsignup";
 import { saveChannel, listWhatsappChannelsStrict, type Channel } from "@/lib/channels";
 
@@ -20,7 +20,8 @@ const TAG = "[wa-onboarding]";
 // number. New numbers get a best-effort /register so they can send right away.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
 
   let body: { code?: string; wabaId?: string; phoneNumberId?: string; name?: string; coex?: boolean; mode?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }

@@ -18,6 +18,7 @@ import { cookies, headers } from "next/headers";
 import { db } from "./supabase";
 import { PARTNER_SESSION_COOKIE, verifyPartnerSessionToken } from "./auth";
 import { hashPassword, verifyPassword } from "./team";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "./reserved-email";
 import { getPartner, partnerAudit, getPartnerWorkspace, type Partner } from "./partners";
 import { listPlans, type Plan } from "./plans";
 import { getEntitlements } from "./entitlements";
@@ -105,6 +106,7 @@ export function checkNewWorkspace(
   if (company.length < 2) return { ok: false, error: "Enter the customer's business name." };
   if (ownerName.length < 2) return { ok: false, error: "Enter the name of the person who will run the workspace." };
   if (!EMAIL_RE.test(ownerEmail)) return { ok: false, error: "Enter a valid email for that person." };
+  if (isReservedEmail(ownerEmail)) return { ok: false, error: RESERVED_EMAIL_MESSAGE };
   if (!allowedPlans.includes(plan)) return { ok: false, error: "Choose one of your plans." };
   return { ok: true, v: { company, ownerName, ownerEmail, ownerPhone, plan } };
 }
@@ -154,6 +156,7 @@ export async function invitePartnerUser(
   const name = (input.name ?? "").trim().slice(0, 80);
   const role: PartnerRole = input.role === "owner" ? "owner" : "staff";
   if (!EMAIL_RE.test(email)) return { error: "Enter a valid email address." };
+  if (isReservedEmail(email)) return { error: RESERVED_EMAIL_MESSAGE };
   const token = randomBytes(32).toString("base64url");
   const { data, error } = await db().from("wa_partner_users").insert({
     partner_id: partner.id, email, name, role,

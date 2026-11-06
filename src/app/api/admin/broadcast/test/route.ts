@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { sendTemplateTest } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
@@ -18,7 +18,8 @@ export async function POST(req: Request) {
   if (!isLikelyValidE164(phone)) return NextResponse.json({ error: "Enter a valid number with country code and no leading 0, e.g. 919876543210" }, { status: 400 });
   if (!body.templateName?.trim()) return NextResponse.json({ error: "Pick a template first" }, { status: 400 });
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const r = await sendTemplateTest({
     phone,
     name: body.name,

@@ -284,7 +284,7 @@ function ProfileModal({ me, onClose, onSaved }: { me: Profile; onClose: () => vo
             <input className={`${inp} w-full mt-1`} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Support Specialist" />
           </label>
           <label className="block text-[11px] font-bold text-ink-600">New password
-            <input type="password" className={`${inp} w-full mt-1`} value={password} onChange={e => setPassword(e.target.value)} placeholder="Leave blank to keep current" autoComplete="new-password" />
+            <input type="password" className={`${inp} w-full mt-1`} value={password} onChange={e => setPassword(e.target.value)} placeholder="Leave blank to keep current (8+ characters)" autoComplete="new-password" minLength={8} />
           </label>
         </div>
         )}

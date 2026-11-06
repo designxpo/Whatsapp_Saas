@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getAdChat, deleteAdChat } from "@/lib/adchats";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +10,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
     const { id } = await params;
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const session = await getAdChat(id, tid);
     if (!session) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ session });
@@ -24,7 +25,8 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
     const { id } = await params;
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     await deleteAdChat(id, tid);
     return NextResponse.json({ success: true });
   } catch (err) {

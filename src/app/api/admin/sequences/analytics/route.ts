@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getDripAnalytics } from "@/lib/sequences";
 import { errorMessage } from "@/lib/errors";
 
@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 //   platform   – "all" | "whatsapp" | "instagram"
 export async function GET(req: NextRequest) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const url = new URL(req.url);
     const analytics = await getDripAnalytics({

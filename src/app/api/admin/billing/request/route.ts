@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { getTenant, ownerAudit } from "@/lib/tenants";
 import { getPlan } from "@/lib/plans";
 import { errorMessage } from "@/lib/errors";
@@ -16,7 +16,8 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.planKey?.trim()) return NextResponse.json({ error: "planKey required" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     const plan = await getPlan(body.planKey.trim());

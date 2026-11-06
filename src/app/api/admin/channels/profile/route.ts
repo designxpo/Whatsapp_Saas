@@ -1,6 +1,6 @@
 export const maxDuration = 60;
 import { NextResponse } from "next/server";
-import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { getBusinessProfile, updateBusinessProfile, setProfilePicture, type BusinessProfile } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
 import { logActivity } from "@/lib/team";
@@ -16,7 +16,8 @@ const PHOTO_TYPES = new Set(["image/jpeg", "image/png"]);
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const channel = await credsFor(new URL(req.url).searchParams.get("channelId"), tid);
     const r = await getBusinessProfile(channel);
     if (r.error) return NextResponse.json({ profile: null, notice: r.error });
@@ -31,7 +32,8 @@ export async function GET(req: Request) {
 // photo) shown to every customer — a brand/config change, not a member task.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const ctype = req.headers.get("content-type") || "";
   try {
     if (ctype.includes("multipart/form-data")) {

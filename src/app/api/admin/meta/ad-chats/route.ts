@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { listAdChats, saveAdChat } from "@/lib/adchats";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     return NextResponse.json({ sessions: await listAdChats(tid) });
   } catch (err) {
     return NextResponse.json({ sessions: [], error: errorMessage(err) });
@@ -25,7 +26,8 @@ export async function POST(req: Request) {
   try { b = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!Array.isArray(b.messages)) return NextResponse.json({ error: "messages must be an array" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const { id } = await saveAdChat({ id: b.id ?? null, messages: b.messages, plan: b.plan ?? null }, tid);
     return NextResponse.json({ success: true, id });
   } catch (err) {

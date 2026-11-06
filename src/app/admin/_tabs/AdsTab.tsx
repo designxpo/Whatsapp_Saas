@@ -6,6 +6,8 @@
 
 import { useBrand } from "@/components/BrandContext";
 import { PageInfo } from "@/components/PageInfo";
+import { MetaPreviewFrame } from "@/components/MetaPreviewFrame";
+import { metaPreviewFrame } from "@/lib/meta-preview";
 import { useState, useEffect, useCallback, useRef, type Dispatch, type SetStateAction } from "react";
 import dynamic from "next/dynamic";
 import { Loader2, Send, Plus, Trash2, Copy, Globe, Search, RefreshCw, ArrowLeft, ChevronRight, MapPin, Megaphone, FileText, CircleCheck, Heart, MessageCircle, Bookmark, MoreHorizontal, ThumbsUp, Reply, UploadCloud, Image as ImageIcon, Video, GalleryHorizontalEnd, Sparkles, Target, FlaskConical, Bot, Compass, User, Minus } from "lucide-react";
@@ -1894,7 +1896,9 @@ function AdMockPreview({ placement, setPlacement, format = "single", imageUrl, v
           {realPreviews.map(p => <button key={p.key} onClick={() => setPlacement(p.key)} className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${placement === p.key ? "bg-ink-950 text-white" : "bg-canvas text-slate-500"}`}>{p.label}</button>)}
         </div>
         <div className="overflow-hidden rounded-lg border border-line bg-canvas mx-auto" style={{ width: Math.ceil(w * scale), height: Math.ceil(h * scale) }}>
-          <div style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: "top left" }} dangerouslySetInnerHTML={{ __html: active.html }} />
+          <div style={{ width: w, height: h, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+            <MetaPreviewFrame key={active.key} title={`${active.label} preview`} html={active.html} width={w} height={h} style={{ border: "none", display: "block" }} />
+          </div>
         </div>
         <p className="text-[11px] text-slate-400">Rendered by Meta — exactly how it appears in {active.label}.</p>
       </div>
@@ -2221,7 +2225,7 @@ function AdNodeDetail({ node, preset, currency, isAdmin, onBack, onOpen }: {
           {node.level === "ad" && (
             <section className="bg-white rounded-card border border-line p-4">
               <p className="text-[11px] font-bold text-slate-400 uppercase mb-2">Ad preview</p>
-              {preview ? <div className="overflow-auto" dangerouslySetInnerHTML={{ __html: preview }} /> : <Loader2 className="w-4 h-4 animate-spin text-slate-300" />}
+              {preview ? <div className="overflow-auto"><MetaPreviewFrame title="Ad preview" html={preview} width={metaPreviewFrame(preview)?.width ?? 540} height={metaPreviewFrame(preview)?.height ?? 690} style={{ border: "none", display: "block" }} /></div> : <Loader2 className="w-4 h-4 animate-spin text-slate-300" />}
             </section>
           )}
 

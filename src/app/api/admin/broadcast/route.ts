@@ -2,7 +2,7 @@ export const maxDuration = 300;
 import { NextResponse } from "next/server";
 import { runBroadcast, BroadcastError, type BroadcastInput } from "@/lib/broadcast";
 import { recipientsForAudience } from "@/lib/store";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { checkLimit } from "@/lib/usage";
 import { guardFeature, guardAccount } from "@/lib/feature-guard";
@@ -20,7 +20,8 @@ export async function GET(req: Request) {
   const batchId = url.searchParams.get("batchId");
   if (mode !== "all" && mode !== "tag" && mode !== "attribute" && mode !== "batch") return NextResponse.json({ count: 0 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     // Marketing audience → opted-in only, so the preview count matches the send.
     const args = { mode: mode as "all" | "tag" | "attribute" | "batch", tag: tag ?? undefined, key: key ?? undefined, value: value ?? undefined, batchId: batchId ?? undefined };
     const r = await recipientsForAudience(args, tid, true);
@@ -36,17 +37,19 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: BroadcastInput;
   try { body = (await req.json()) as BroadcastInput; } catch { return NextResponse.json({ success: false, error: "Invalid JSON" }, { status: 400 }); }
-  { const tid0 = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  { const tid0 = await currentTenantId(); if (!tid0) return noSession();
     const acct = await guardAccount(tid0); if (acct) return acct;
     const gate = await guardFeature(tid0, "broadcasts"); if (gate) return gate; }
   // Enforce the monthly-message cap before sending (best-effort recipient count).
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const c = await checkLimit(tid, "messages", 0);
     if (!c.allowed) return NextResponse.json({ success: false, error: `You've reached your plan's monthly message limit (${c.used}/${c.limit}). Upgrade to send more.`, upgrade: true }, { status: 402 });
   } catch (e) { console.error("[broadcast] limit check", errorMessage(e)); }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const result = await runBroadcast(body, tid);
     logActivity(await currentUser(), "broadcast.send", `${body.templateName ?? "campaign"} → ${result.totalRecipients ?? 0} recipients (${result.status ?? ""})`);
     return NextResponse.json(result);

@@ -98,4 +98,22 @@ describe("the routes actually apply it", () => {
     const res = await GET(new Request("https://x.test/r/abc"), { params: Promise.resolve({ code: "abc" }) });
     expect(res.headers.get("location")).toBe("https://customer.example/offer");
   });
+
+  it("/r/rv/<token> treats a script review target like an expired link", async () => {
+    vi.doMock("@/lib/review-booster", () => ({ openReviewLink: async () => "javascript:alert(1)" }));
+    const { GET } = await import("../../app/r/rv/[token]/route");
+    const res = await GET(new Request("https://x.test/r/rv/abc"), { params: Promise.resolve({ token: "abc" }) });
+    expect(res.status).toBe(404);
+  });
+
+  it("/r/rv/<token> still follows a real review page, Google or not", async () => {
+    for (const target of ["https://g.page/r/CabcXYZ/review", "https://www.trustpilot.com/evaluate/example.com"]) {
+      vi.resetModules();
+      vi.doMock("@/lib/review-booster", () => ({ openReviewLink: async () => target }));
+      const { GET } = await import("../../app/r/rv/[token]/route");
+      const res = await GET(new Request("https://x.test/r/rv/abc"), { params: Promise.resolve({ token: "abc" }) });
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe(target);
+    }
+  });
 });

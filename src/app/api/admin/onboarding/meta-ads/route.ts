@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { exchangeSignupCode, exchangeForLongLivedToken, resolveAdAccounts } from "@/lib/embeddedsignup";
 import { setAdsToken, setAdsAccountId, getAdAccount } from "@/lib/ads";
 import { logActivity } from "@/lib/team";
@@ -20,7 +20,8 @@ const TAG = "[ads-onboarding]";
 // log in with.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
 
   let body: { code?: string; accountId?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }

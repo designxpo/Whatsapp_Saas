@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, noSession } from "@/lib/auth";
 import { getTenant } from "@/lib/tenants";
 import { listPlans } from "@/lib/plans";
 import { stripeConfigured, getStripePriceSummary } from "@/lib/stripe";
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 // GET — current subscription state for the tenant + the purchasable plans.
 export async function GET() {
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     const plans = (await listPlans()).filter(p => p.active);
     const stripeOn = stripeConfigured();

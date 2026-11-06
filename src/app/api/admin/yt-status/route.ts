@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/supabase";
 import { drainYtComments } from "@/lib/ytpoller";
-import { currentTenantId, requireAdmin, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireAdmin, requireRoleAdmin, noSession } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,8 @@ export const maxDuration = 60;   // a poll can involve several Google round-trip
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const { data, error } = await db().from("wa_yt_poll_cursor").select("*").eq("tenant_id", tid);
     // Pre-0097 DB (or table absent) → no status rather than a hard failure.
     if (error) return NextResponse.json({ status: [] });
@@ -42,7 +43,8 @@ export async function GET() {
 // respects the dedupe log and rate caps; it can't double-reply.
 export async function POST() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const acted = await drainYtComments(tid);
     return NextResponse.json({ acted });

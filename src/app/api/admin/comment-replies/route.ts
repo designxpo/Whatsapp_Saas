@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { listCommentReplies, REPLY_PLATFORMS, type ReplyPlatform } from "@/lib/comment-replies";
 import { historyStatus } from "@/lib/comment-history";
 import { errorMessage } from "@/lib/errors";
@@ -16,7 +16,8 @@ export async function GET(req: Request) {
   const platform = url.searchParams.get("platform") as ReplyPlatform;
   if (!REPLY_PLATFORMS.includes(platform)) return NextResponse.json({ error: "Unknown platform" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const cursor = url.searchParams.get("cursor");
     const r = await listCommentReplies(tid, { platform, channelId: url.searchParams.get("channelId"), days: Number(url.searchParams.get("days")) || null, cursor });
     const history = cursor || r.setupNeeded ? undefined : await historyStatus(tid, platform).catch(() => undefined);

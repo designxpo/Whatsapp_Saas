@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { editCommentReply, deleteCommentReply } from "@/lib/comment-replies";
 import { guardAccount } from "@/lib/feature-guard";
 import { logActivity } from "@/lib/team";
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 // the workspace must be in good standing). DELETE — take it down.
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const blocked = await guardAccount(tid);
   if (blocked) return blocked;
   const body = await req.json().catch(() => ({})) as { text?: unknown };
@@ -29,7 +30,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const user = await currentUser();
     const id = (await params).id;

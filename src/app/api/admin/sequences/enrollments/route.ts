@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { listRecentEnrollments } from "@/lib/sequences";
 import { errorMessage } from "@/lib/errors";
 
@@ -18,7 +18,8 @@ export const dynamic = "force-dynamic";
 //   range      – "all" | "today" | "7d" | "14d" | "30d" | "90d"
 export async function GET(req: NextRequest) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const url = new URL(req.url);
     const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 50));

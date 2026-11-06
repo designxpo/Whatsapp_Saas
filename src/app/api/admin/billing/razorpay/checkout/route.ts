@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { getTenant, ownerAudit, hasBillingIdentity } from "@/lib/tenants";
 import { getPlan } from "@/lib/plans";
 import { razorpayConfigured, createSubscription, resolveRazorpayPlan, RAZORPAY_INTERVAL } from "@/lib/razorpay";
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
   if (!hasAutoRenewAck(body)) return NextResponse.json({ error: AUTO_RENEW_ACK_REQUIRED, needsAutoRenewAck: true }, { status: 400 });
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
 

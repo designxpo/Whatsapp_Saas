@@ -181,6 +181,7 @@ function InstagramManager() {
       if (!res.ok) setMsg(d.error || "Couldn't save the account. Please try again.");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this account: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing permission to read messages.`, "warn"); load(); }
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setForm(null); load(); }
+      else if (d.shared) { setMsg("Account saved. It is also connected in another Talko workspace — new messages and comments now arrive here, and that workspace stops receiving them.", "warn"); setForm(null); load(); }
       else { toast(form.id ? "Account saved" : "Instagram account connected"); setForm(null); load(); }
     } finally { setBusy(false); }
   }

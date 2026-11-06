@@ -6,6 +6,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { db } from "./supabase";
 import { asTeam, asRole, type Team, type Role } from "./teams";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "./reserved-email";
 
 export interface TeamUser {
   id: string;
@@ -118,6 +119,8 @@ export async function listUsers(tenantId = DEFAULT_TENANT_ID): Promise<TeamUser[
 }
 
 export async function saveUser(input: { id?: string; email: string; name: string; title?: string; role: Role; team?: Team | null; channelId?: string | null; password?: string; active?: boolean }, tenantId = DEFAULT_TENANT_ID): Promise<TeamUser> {
+  // The platform owner's address is never a member account — see reserved-email.ts.
+  if (isReservedEmail(input.email)) throw new Error(RESERVED_EMAIL_MESSAGE);
   const role = asRole(input.role);
   const row: Record<string, unknown> = {
     email: input.email.trim().toLowerCase(),

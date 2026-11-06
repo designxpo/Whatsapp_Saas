@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { setSetting } from "@/lib/store";
+import { cronOk } from "@/lib/apiauth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +38,8 @@ export interface ContentReport {
 }
 
 export async function POST(req: Request) {
-  const auth = req.headers.get("authorization") ?? "";
-  const secret = process.env.CRON_SECRET;
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  // Constant-time compare; fails closed when CRON_SECRET is unset.
+  if (!cronOk(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const body = (await req.json()) as Partial<ContentReport>;
     if (!Array.isArray(body.gaps)) return NextResponse.json({ error: "gaps[] required" }, { status: 400 });

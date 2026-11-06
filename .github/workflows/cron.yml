@@ -50,5 +50,6 @@ jobs:
             --connect-timeout 15 -m 290 \
             -X POST "$URL" -H "Authorization: Bearer $SECRET")
           echo "HTTP $code"
-          cat /tmp/resp.json
+          # The body is NOT printed: this repo is public, and the response names
+          # tenants' channels and carries error text. The status is enough to page on.
           [ "$code" = "200" ] || { echo "::error::cron endpoint returned $code"; exit 1; }

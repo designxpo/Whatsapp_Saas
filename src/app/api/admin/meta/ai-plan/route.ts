@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { planAdCampaign, type AdGoal } from "@/lib/adplanner";
 import { AiKeyMissingError } from "@/lib/ai/keys";
 import { errorMessage } from "@/lib/errors";
@@ -24,7 +24,8 @@ export async function POST(req: Request) {
   if (goal === "WEBSITE" && !b.websiteUrl?.trim()) return NextResponse.json({ error: "Add the website URL to send people to." }, { status: 400 });
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const plan = await planAdCampaign({
       goal,
       websiteUrl: b.websiteUrl?.trim(),

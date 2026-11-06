@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { listCommentRules, saveCommentRule, deleteCommentRule } from "@/lib/fbcomments";
 import { listChannels } from "@/lib/channels";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 // GET — this tenant's Facebook comment-to-DM rules.
 export async function GET() {
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     return NextResponse.json({ rules: await listCommentRules(tid) });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
@@ -20,7 +21,8 @@ export async function GET() {
 // POST — create or update a rule for this tenant.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
@@ -79,7 +81,8 @@ export async function POST(req: Request) {
 // DELETE — remove a rule by id (scoped to this tenant).
 export async function DELETE(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });

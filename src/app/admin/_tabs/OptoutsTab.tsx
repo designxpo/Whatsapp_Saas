@@ -12,6 +12,10 @@ type Optout = { phone: string; reason: string | null; createdAt?: string };
 
 function OptoutsTab() {
   const ask = useConfirm();
+  // Taking someone off the list is admin-only on the server (DELETE
+  // /api/admin/optouts); adding someone stays open to everyone.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "admin")).catch(() => {}); }, []);
   const [list, setList] = useState<Optout[]>([]);
   const [phone, setPhone] = useState("");
   const [search, setSearch] = useState("");
@@ -76,7 +80,7 @@ function OptoutsTab() {
                 {o.createdAt ? ` · ${new Date(o.createdAt).toLocaleDateString()}` : ""}
               </p>
             </div>
-            <button onClick={() => remove(o.phone)} aria-label={`Remove ${o.phone} from the list`} className="min-h-8 px-2 rounded-control text-xs font-semibold text-red-700 hover:bg-red-50 shrink-0">Remove</button>
+            {isAdmin && <button onClick={() => remove(o.phone)} aria-label={`Remove ${o.phone} from the list`} className="min-h-8 px-2 rounded-control text-xs font-semibold text-red-700 hover:bg-red-50 shrink-0">Remove</button>}
           </div>
         ))}
         {visible.length === 0 && (list.length === 0

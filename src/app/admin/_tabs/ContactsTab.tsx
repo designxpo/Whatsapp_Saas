@@ -13,6 +13,7 @@ type BatchDetail = {
   memberTotal: number; offset: number; limit: number;
 };
 import { mapCsvRows, readTable, type ImportRow } from "@/lib/csv-import";
+import { downloadCsv, toCsv } from "@/lib/csv-export";
 import { useVocab } from "@/lib/vocab-client";
 import { Filter, Send, Plus, UploadCloud, Download, X, Loader2, Check, ChevronLeft, ChevronRight, Users, RefreshCw } from "lucide-react";
 import { inp, type Tab, useChannelList, EmptyState } from "../_shared";
@@ -145,11 +146,10 @@ function ContactsTab({ goTo }: { goTo: (t: Tab) => void }) {
 
   function exportCsv() {
     const rows = selected.size ? contacts.filter(c => selected.has(c.id)) : visible;
-    const body = ["phone,name,email,tags,status,source", ...rows.map(c =>
-      [c.phone, `"${(c.name || "").replaceAll('"', '""')}"`, c.email ?? "", `"${c.tags.join(";")}"`, c.status, c.source ?? ""].join(","))].join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([body], { type: "text/csv" }));
-    a.download = "contacts.csv"; a.click(); URL.revokeObjectURL(a.href);
+    // toCsv quotes every cell and neutralises a leading = + - @, so a contact's
+    // name, email or tag can never run as a formula when the file is opened.
+    downloadCsv("contacts.csv", toCsv(["phone", "name", "email", "tags", "status", "source"],
+      rows.map(c => [c.phone, c.name || "", c.email ?? "", c.tags.join(";"), c.status, c.source ?? ""])));
     toast(`Downloaded ${fmtNum(rows.length)} ${rows.length === 1 ? cLc : csLc}`);
   }
 

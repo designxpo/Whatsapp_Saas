@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { extractText } from "@/lib/kb";
 import { runChat, providerSupportsMedia } from "@/lib/ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "@/lib/ai/keys";
@@ -39,7 +39,8 @@ export async function POST(req: Request) {
 
     // Image (screenshot of a plan) → transcribe with the tenant's vision model.
     if (mime.startsWith("image/")) {
-      const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+      const tid = await currentTenantId();
+      if (!tid) return noSession();
       let ai;
       try { ai = await resolveTenantAi(tid); }
       catch (err) { if (err instanceof AiKeyMissingError) return NextResponse.json({ error: "Add your AI key first (AI Hub) so I can read images." }, { status: 400 }); throw err; }

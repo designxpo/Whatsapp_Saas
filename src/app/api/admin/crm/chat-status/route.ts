@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { crmChatStatuses } from "@/lib/leadsquared";
 import { errorMessage } from "@/lib/errors";
 
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 // along. Both are DB counters only — no LeadSquared round trip.
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     return NextResponse.json(await crmChatStatuses(tid));
   } catch (err) {

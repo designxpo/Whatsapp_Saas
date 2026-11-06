@@ -103,17 +103,17 @@ export default function SignupPage() {
             } />
             <div>
               <h1 className="text-lg font-bold text-ink-900">Verify your email</h1>
-              <p className="text-sm text-ink-400">We emailed a 4-digit code to {f.ownerEmail} — enter it to finish creating your account.</p>
+              <p className="text-sm text-ink-400">We emailed a 6-digit code to {f.ownerEmail} — enter it to finish creating your account.</p>
             </div>
           </div>
           <input
             className={`${inp} text-center text-2xl font-bold tracking-[0.5em] placeholder:tracking-normal placeholder:text-base`}
-            placeholder="0000" inputMode="numeric" maxLength={4} value={otpCode}
-            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 4))} autoFocus
+            placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otpCode}
+            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus
           />
           {error && <p className="text-sm text-red-600">{error}</p>}
           {resendMsg && <p className="text-sm text-emerald-700">{resendMsg}</p>}
-          <button disabled={loading || otpCode.length !== 4} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
+          <button disabled={loading || otpCode.length !== 6} className="w-full py-2.5 rounded-control bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800 text-white font-semibold flex items-center justify-center gap-2 disabled:opacity-60 transition-colors">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Verify &amp; create account
           </button>
           <p className="text-center text-xs text-ink-400">

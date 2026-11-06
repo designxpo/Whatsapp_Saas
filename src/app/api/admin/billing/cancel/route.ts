@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { getTenant } from "@/lib/tenants";
 import { razorpayConfigured } from "@/lib/razorpay";
 import { cancelRazorpayAtPeriodEnd } from "@/lib/billing-cancel";
@@ -15,7 +15,8 @@ export async function POST() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   if (!razorpayConfigured()) return NextResponse.json({ error: "Online billing isn't enabled — contact support to cancel." }, { status: 503 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     const out = await cancelRazorpayAtPeriodEnd(tenant, (await currentUser())?.email ?? "tenant");

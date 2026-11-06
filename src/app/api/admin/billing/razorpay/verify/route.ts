@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getTenant, applySubscription } from "@/lib/tenants";
 import { verifySubscriptionSignature, getSubscriptionDetail } from "@/lib/razorpay";
 import { getPlan } from "@/lib/plans";
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
   }
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     // Only proceed if this is actually the subscription we created for this

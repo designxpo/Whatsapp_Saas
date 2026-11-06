@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { runChat, type ChatTool, type ChatTurn } from "@/lib/ai/chat";
 import { resolveTenantAi, AiKeyMissingError } from "@/lib/ai/keys";
 import { planAdCampaign, type AdGoal } from "@/lib/adplanner";
@@ -73,7 +73,8 @@ export async function POST(req: Request) {
   if (!history.length) return NextResponse.json({ error: "Say what you'd like to advertise to get started." }, { status: 400 });
 
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const currency = (b.currency || "INR").toUpperCase();
     let ai;
     try { ai = await resolveTenantAi(tid); }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID, noSession } from "@/lib/auth";
 import { createTemplate, fetchTemplates } from "@/lib/whatsapp";
 import { credsFor, explicitDefaultChannel, type ChannelCreds } from "@/lib/channels";
 import { ORDER_CONFIRM_TEMPLATE, ORDER_CONFIRM_LANG, ORDER_CONFIRM_BODY, ORDER_CONFIRM_EXAMPLES } from "@/lib/commerce";
@@ -23,7 +23,8 @@ async function resolveChannel(tid: string): Promise<{ channel?: ChannelCreds; er
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const r = await resolveChannel(tid);
     if (r.error) return NextResponse.json({ state: "none", notice: r.error });
     const found = (await fetchTemplates(r.channel)).find(t => t.name === ORDER_CONFIRM_TEMPLATE);
@@ -37,7 +38,8 @@ export async function GET() {
 export async function POST() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const r = await resolveChannel(tid);
     if (r.error) return NextResponse.json({ error: r.error }, { status: r.status ?? 400 });
 

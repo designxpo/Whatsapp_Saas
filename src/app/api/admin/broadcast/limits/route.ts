@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getCreds } from "@/lib/whatsapp";
 import { credsFor, recordChannelQuality, tierDailyCap } from "@/lib/channels";
 import { dailySentCount } from "@/lib/store";
@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const channelId = new URL(req.url).searchParams.get("channelId");
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const { token, phoneId } = getCreds(await credsFor(channelId, tid));
 
   const sentToday = await dailySentCount(tid).catch(() => 0);

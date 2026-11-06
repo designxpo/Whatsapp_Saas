@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { assertPublicUrl, readCappedBytes } from "@/lib/ssrf";
+import { assertPublicUrl, readCappedBytes, stripCredentialHeaders, isCredentialHeader, sameSiteRedirect } from "@/lib/ssrf";
 
 // All cases use literal IPs or special hostnames so the guard never performs a
 // real DNS lookup — the tests are fully offline and deterministic.
@@ -79,5 +79,58 @@ describe("readCapped — a tenant URL cannot make the server hold an unbounded b
   it("refuses a body that grows past the limit with no declared length", async () => {
     const stream = new ReadableStream({ start(c) { for (let i = 0; i < 5; i++) c.enqueue(new TextEncoder().encode("abcd")); c.close(); } });
     await expect(readCapped(new Response(stream), 10)).rejects.toThrow(/too large/);
+  });
+});
+
+describe("stripCredentialHeaders — a cross-origin redirect never carries our credentials", () => {
+  const sent = {
+    Authorization: "Basic Y2s6Y3M=",
+    "X-Shopify-Access-Token": "shpat_secret",
+    Cookie: "sid=1",
+    "Proxy-Authorization": "Basic x",
+    "X-API-Key": "k",
+    "api-key": "k2",
+    "X-Talko-Signature": "sha256=abc",
+    "Content-Type": "application/json",
+    "User-Agent": "Talko",
+  };
+  const kept = (h: Headers) => [...h.keys()].sort();
+
+  it("drops credentials from a plain object, case-insensitively", () => {
+    expect(kept(stripCredentialHeaders(sent))).toEqual(["content-type", "user-agent", "x-talko-signature"]);
+  });
+
+  it("drops credentials from an array of pairs", () => {
+    expect(kept(stripCredentialHeaders(Object.entries(sent)))).toEqual(["content-type", "user-agent", "x-talko-signature"]);
+  });
+
+  it("drops credentials from a Headers object without mutating it", () => {
+    const h = new Headers(sent);
+    expect(kept(stripCredentialHeaders(h))).toEqual(["content-type", "user-agent", "x-talko-signature"]);
+    expect(h.get("authorization")).toBe("Basic Y2s6Y3M=");
+  });
+
+  it("copes with no headers at all", () => {
+    expect(kept(stripCredentialHeaders(undefined))).toEqual([]);
+  });
+
+  it("knows which names are credentials", () => {
+    for (const n of ["AUTHORIZATION", "x-access-token", "x-auth-token", "x-goog-api-key", "X-Secret"]) expect(isCredentialHeader(n), n).toBe(true);
+    for (const n of ["accept", "content-type", "x-request-id", "user-agent", "x-forwarded-for", "x-talko-signature"]) expect(isCredentialHeader(n), n).toBe(false);
+  });
+});
+
+describe("sameSiteRedirect — which redirects keep the credentials", () => {
+  const u = (x: string) => new URL(x);
+  it("keeps them for the usual redirects a shop's own server sends", () => {
+    expect(sameSiteRedirect(u("http://shop.in/wp-json"), u("https://shop.in/wp-json"))).toBe(true);
+    expect(sameSiteRedirect(u("https://shop.in/a"), u("https://www.shop.in/a"))).toBe(true);
+    expect(sameSiteRedirect(u("https://www.shop.in/a"), u("https://shop.in/b"))).toBe(true);
+  });
+  it("drops them for another host, a downgrade or another port", () => {
+    expect(sameSiteRedirect(u("https://shop.in/a"), u("https://evil.example/a"))).toBe(false);
+    expect(sameSiteRedirect(u("https://shop.in/a"), u("https://shop.in.evil.example/a"))).toBe(false);
+    expect(sameSiteRedirect(u("https://shop.in/a"), u("http://shop.in/a"))).toBe(false);
+    expect(sameSiteRedirect(u("https://shop.in/a"), u("https://shop.in:8443/a"))).toBe(false);
   });
 });

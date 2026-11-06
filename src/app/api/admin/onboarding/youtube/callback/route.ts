@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { listChannels, saveYoutubeChannel } from "@/lib/channels";
 import { resolveChannelsForToken } from "@/lib/youtube";
 import { enforceLimit } from "@/lib/usage";
@@ -42,7 +42,8 @@ export async function GET(req: NextRequest) {
   if (!code || !state || !cookieState || state !== cookieState) return back("yt_error=state_mismatch");
 
   try {
-    const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tenantId = await currentTenantId();
+    if (!tenantId) return noSession();
     const redirectUri = `${origin}/api/admin/onboarding/youtube/callback`;
     const tokenRes = await fetch(TOKEN_URL, {
       method: "POST",

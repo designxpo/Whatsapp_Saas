@@ -3,7 +3,7 @@ import {
   getBatch, updateBatch, archiveBatch, addBatchMembers, removeBatchMembers,
   addBatchMembersFromFilter, resolveBatch, consentMissing, batchMembers, type BatchFilter,
 } from "@/lib/audience";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10) || 0);
   const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10) || 50));
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const batch = await getBatch(id, tid);
     if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 404 });
     const recipients = await resolveBatch(id, tid);
@@ -46,7 +47,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   let body: { name?: string; description?: string; filter?: BatchFilter };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const batch = await getBatch(id, tid);
     if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 404 });
     // A static batch has no filter to change — accepting one silently would
@@ -70,7 +72,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   let body: { action?: string; contactIds?: string[]; filter?: BatchFilter };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const batch = await getBatch(id, tid);
     if (!batch) return NextResponse.json({ error: "Batch not found" }, { status: 404 });
     const who = await currentUser();

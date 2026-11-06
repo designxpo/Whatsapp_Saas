@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { eraseContact } from "@/lib/gdpr";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   const who = (body.phone ?? body.id ?? "").trim();
   if (!who) return NextResponse.json({ error: "phone required" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const result = await eraseContact(tid, who);
     const total = Object.values(result.deleted).reduce((a, b) => a + b, 0);
     logActivity(await currentUser(), "gdpr.erase", `${result.phone} (${total} rows deleted, ${result.anonymised.wa_orders ?? 0} orders anonymised)`);

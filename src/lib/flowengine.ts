@@ -1216,7 +1216,15 @@ export async function handleFlowMessage(
           const phoneAns = phoneDigits.length >= 10 && phoneDigits.length <= 15 ? phoneDigits : undefined;
           if (name) await setConversationName(phone, name, tid).catch(() => undefined);
           if (phoneAns) await setConversationLeadPhone(convKey, phoneAns).catch(() => undefined);
-          const realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
+          let realPhone = phoneAns ?? ((send.kind ?? "whatsapp") === "whatsapp" && phone.replace(/\D/g, "").length >= 10 ? phone.replace(/\D/g, "") : undefined);
+          // A website visitor is anonymous: a number typed into a web-chat form
+          // is only a claim. When it matches an EXISTING contact, landCapturedLead
+          // flags the chat as unverified and nothing here may overwrite that
+          // contact's name, email or attributes, or push to their CRM lead.
+          if (realPhone && phoneAns && send.kind === "webchat") {
+            const landed = await landCapturedLead(phone, phoneAns, "web-chat", tid).catch(() => null);
+            if (landed === "unverified") realPhone = undefined;
+          }
           if (realPhone) {
             await upsertContacts([{ phone: realPhone, name, email, tags: ["chat-form", channelTag(send.kind)] }], "chat_form", tid).catch(() => undefined);
             await updateContactProfile(realPhone, { ...(name ? { name } : {}), ...(email ? { email } : {}) }, tid).catch(() => undefined);

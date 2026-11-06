@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { buildFlowJson, createWaForm, publishWaForm, listWaForms, deleteWaForm, getWaFormDef, updateWaFormJson, renameWaForm, type WaFormField } from "@/lib/waforms";
 import { credsFor, listChannels } from "@/lib/channels";
 import { saveFormLinks, getFormLinks } from "@/lib/store";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,8 @@ async function waCreds(channelId: string | null | undefined, tid: string) {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const channel = await waCreds(url.searchParams.get("channelId"), tid);
     const def = url.searchParams.get("def");
     if (def) return NextResponse.json(await getWaFormDef(def, channel));
@@ -43,7 +44,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: { id?: string; name?: string; title?: string; fields?: WaFormField[]; publish?: boolean; publishToAll?: boolean; rename?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const channel = await waCreds(body.channelId, tid);
 
   // Rename a form (works for published too — only content is locked on publish).
@@ -168,7 +170,8 @@ export async function DELETE(req: Request) {
   let body: { id?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const r = await deleteWaForm(body.id, await waCreds(body.channelId, tid));
   if (!r.success) return NextResponse.json({ error: r.error }, { status: 502 });
   logActivity(await currentUser(), r.deprecated ? "form.deprecate" : "form.delete", body.id);

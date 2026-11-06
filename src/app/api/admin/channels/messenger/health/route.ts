@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { brandForTenant } from "@/lib/brand-server";
 import { brandJson } from "@/lib/whitelabel";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { listChannels, getChannel, resolvePageId, subscribePageToApp, type Channel } from "@/lib/channels";
 import { fbTokenInfo, pageSubscribedFields, FB_COMMENT_SCOPE } from "@/lib/embeddedsignup";
 import { logActivity } from "@/lib/team";
@@ -107,14 +107,16 @@ async function report(ch: Channel): Promise<Report> {
 
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   const channels = (await listChannels(tenantId)).filter(c => c.kind === "messenger" && c.active);
   return NextResponse.json(brandJson({ accounts: await Promise.all(channels.map(report)) }, await brandForTenant(tenantId)));
 }
 
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
 
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }

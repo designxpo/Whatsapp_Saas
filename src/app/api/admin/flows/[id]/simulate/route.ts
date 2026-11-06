@@ -6,7 +6,7 @@ import { cacheLookup } from "@/lib/router/cache";
 import { routerEnabled } from "@/lib/router";
 import { generateReply, applyPersonaTone } from "@/lib/llm";
 import { resolveAgent } from "@/lib/aihub";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, noSession, requireTenantId } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -33,13 +33,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       sender: drySender(outputs),
       onlyFlowId: id,
       allowInactive: true,
-      tenantId: (await currentTenantId()) ?? DEFAULT_TENANT_ID,
+      tenantId: (await requireTenantId()),
     });
     if (handled) return NextResponse.json({ outputs, handled, note: null });
 
     // Flow didn't consume it — answer like production would.
     try {
-      const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+      const tid = await currentTenantId();
+      if (!tid) return noSession();
       if (routerEnabled()) {
         const faqHit = matchFaq(message);
         if (faqHit) {

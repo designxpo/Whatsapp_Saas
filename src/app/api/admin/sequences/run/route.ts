@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { drainSequences } from "@/lib/sequences";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 // does), so you can verify a drip without waiting for the scheduler. Admin only.
 export async function POST() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const processed = await drainSequences(200, tid);
     logActivity(await currentUser(), "sequence.run", `processed ${processed} due step(s)`);

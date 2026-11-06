@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { getSequence, getSequenceSteps, enroll, drainSequences } from "@/lib/sequences";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 // The enrollment (and any send error) shows up in the monitor. Admin only.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { sequenceId?: string; phone?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const sequenceId = (body.sequenceId || "").trim();

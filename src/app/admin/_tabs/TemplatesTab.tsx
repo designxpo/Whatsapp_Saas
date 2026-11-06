@@ -190,6 +190,10 @@ function TplPreview({ mode, headerType, headerText, headerExample, headerPreview
 
 function TemplatesTab() {
   const ask = useConfirm();
+  // Deleting a template at Meta is admin-only on the server (DELETE
+  // /api/admin/templates), so the button is only offered to admins.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { fetch("/api/admin/me").then(r => r.json()).then(d => setIsAdmin(d.user?.role === "admin")).catch(() => {}); }, []);
   const [templates, setTemplates] = useState<WaTemplateRow[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -648,11 +652,13 @@ function TemplatesTab() {
               <button onClick={() => toggleFav(t.name)} title="Favourite" aria-label={favs.includes(t.name) ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`} aria-pressed={favs.includes(t.name)} className={`grid place-items-center w-9 h-9 rounded-lg hover:bg-slate-100 ${favs.includes(t.name) ? "text-amber-400" : "text-slate-300 hover:text-slate-500"}`}>
                 <Star className="w-4 h-4" fill={favs.includes(t.name) ? "currentColor" : "none"} />
               </button>
-              {t.id && EDITABLE_TPL_STATUSES.includes(t.status) && (
+              {isAdmin && t.id && EDITABLE_TPL_STATUSES.includes(t.status) && (
                 <button onClick={() => copyTemplate(t, true)} title="Edit this template" aria-label={`Edit ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Pencil className="w-4 h-4" /></button>
               )}
               <button onClick={() => copyTemplate(t)} title="Make a copy to edit" aria-label={`Copy ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-brand-dark hover:bg-slate-100 rounded-lg"><Copy className="w-4 h-4" /></button>
-              <button onClick={() => remove(t.name)} title="Delete" aria-label={`Delete ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              {isAdmin && (
+                <button onClick={() => remove(t.name)} title="Delete" aria-label={`Delete ${t.name}`} className="grid place-items-center w-9 h-9 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+              )}
               </div>
             </div>
           ))}
@@ -668,7 +674,7 @@ function TemplatesTab() {
 
       {viewing && (
         <TemplateViewer t={viewing} type={tplType(viewing)} onClose={() => setViewing(null)}
-          onEdit={EDITABLE_TPL_STATUSES.includes(viewing.status) && viewing.id ? () => { copyTemplate(viewing, true); setViewing(null); } : undefined}
+          onEdit={isAdmin && EDITABLE_TPL_STATUSES.includes(viewing.status) && viewing.id ? () => { copyTemplate(viewing, true); setViewing(null); } : undefined}
           onCopy={() => { copyTemplate(viewing); setViewing(null); }} />
       )}
     </div>

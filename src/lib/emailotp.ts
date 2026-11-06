@@ -14,9 +14,9 @@
 
 import { brandForEmail } from "./brand-lookup";
 import { TALKO_BRAND, brandCopy, brandJson, brandOrigin, whiteLabelConfig, type Brand } from "./whitelabel";
-import { createHash } from "crypto";
+import { createHash, randomInt } from "crypto";
 import { db } from "./supabase";
-import { newOtpCode, safeEqual, otpPepper } from "./otp";
+import { safeEqual, otpPepper } from "./otp";
 import { sendEmail } from "./email";
 import { renderEmail } from "./emailtemplate";
 import { SITE_URL } from "./siteurl";
@@ -25,6 +25,15 @@ export const EMAIL_OTP_COOLDOWN_SECONDS = 45;   // min gap between sends to one 
 export const EMAIL_OTP_DAILY_CAP = 10;          // sends per email per calendar day
 export const EMAIL_OTP_MAX_ATTEMPTS = 5;        // wrong guesses before the code dies
 export const EMAIL_OTP_EXPIRY_MINUTES = 10;
+export const EMAIL_OTP_LENGTH = 6;
+
+// Six digits, full 10^6 range (leading zeros kept), crypto-random. These codes
+// guard sign-in, signup and password reset, so they get their own generator:
+// the 4-digit newOtpCode() in otp.ts is the TENANT'S customer-facing WhatsApp
+// OTP product, whose length tenants' own sites and templates depend on.
+export function newEmailOtpCode(): string {
+  return String(randomInt(0, 10 ** EMAIL_OTP_LENGTH)).padStart(EMAIL_OTP_LENGTH, "0");
+}
 
 export type EmailOtpPurpose = "login" | "signup" | "reset";
 
@@ -113,7 +122,7 @@ export function composeOtpEmail(purpose: EmailOtpPurpose, code: string, brand: B
     // The code in the preview line so it can be read from the notification
     // without opening anything. It stays out of the plain-text part (the shell
     // builds that from the other fields), which keeps the code appearing exactly
-    // once there — no ambiguity about which four digits to type.
+    // once there — no ambiguity about which six digits to type.
     preheader: brandCopy(`${code} is your Talko AI code — good for ${EMAIL_OTP_EXPIRY_MINUTES} minutes.`, brand),
     heading: copy.heading,
     paragraphs: copy.paragraphs,
@@ -143,7 +152,7 @@ export async function sendEmailOtp(rawEmail: string, purpose: EmailOtpPurpose): 
   if (!email) return { ok: false, error: "email required" };
 
   const now = new Date();
-  const code = newOtpCode();
+  const code = newEmailOtpCode();
   let gate: { allowed?: boolean; retry_after?: number; reason?: string } | undefined;
   try {
     const { data, error } = await db().rpc("email_otp_reserve_send", {
@@ -187,7 +196,7 @@ export interface VerifyOtpResult { ok: boolean; error?: string }
 export async function verifyEmailOtp(rawEmail: string, purpose: EmailOtpPurpose, rawCode: string): Promise<VerifyOtpResult> {
   const email = rawEmail.trim().toLowerCase();
   const code = (rawCode || "").trim();
-  if (!email || !/^\d{4}$/.test(code)) return { ok: false, error: "Enter the 4-digit code" };
+  if (!email || !/^\d{6}$/.test(code)) return { ok: false, error: "Enter the 6-digit code" };
 
   let claim: { ok?: boolean; out_hash?: string; reason?: string } | undefined;
   try {

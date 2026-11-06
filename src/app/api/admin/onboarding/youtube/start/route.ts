@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { checkFeature } from "@/lib/entitlements";
 import { youtubeConfigured } from "@/lib/youtube";
 
@@ -26,7 +26,8 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return back("/login");
   // Plan gate. This is a browser navigation, not a fetch, so redirect back with
   // a flag rather than returning guardFeature's raw 402 JSON.
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   if (!(await checkFeature(tenantId, "ch_youtube")).ok) return back("/admin?tab=youtube&yt_error=not_in_plan");
   if (!youtubeConfigured()) return back("/admin?tab=youtube&yt_error=not_configured");
 

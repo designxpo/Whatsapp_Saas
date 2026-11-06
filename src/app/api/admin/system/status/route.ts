@@ -3,7 +3,7 @@ import { countContacts, listDocuments, listConversations } from "@/lib/store";
 import { verifyLsq } from "@/lib/leadsquared";
 import { routerEnabled } from "@/lib/router";
 import { faqCount } from "@/lib/router/faq";
-import { currentTenantId, isPlatformOwner, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, isPlatformOwner, noSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,8 @@ const isReal = (v: string | undefined) => Boolean(v && v !== "test" && v !== "te
 // in every answer: leaving router out once crashed the portal for everyone who
 // was not the owner.
 export async function GET() {
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const owner = await isPlatformOwner().catch(() => false);
   // Light health probes — each independent, none may throw the whole route.
   const [dbOk, kbDocs, convs] = await Promise.all([

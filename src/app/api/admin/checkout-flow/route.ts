@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { buildCheckoutFlowJson, createWaForm, publishWaForm } from "@/lib/waforms";
 import { credsFor, getDefaultChannel } from "@/lib/channels";
 import { getTenantSetting, setTenantSetting } from "@/lib/store";
@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   let body: { name?: string; channelId?: string | null };
   try { body = await req.json().catch(() => ({})); } catch { body = {}; }
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const channel = (await credsFor(body.channelId, tid)) ?? (await getDefaultChannel(tid)) ?? undefined;
   // One checkout flow per number is enough, so reuse it: Meta rejects duplicate
   // flow NAMES within a WABA, so a fixed "Checkout" fails on the 2nd click.

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { listContacts, upsertContacts, getContactByPhone, type ContactAttrFilter } from "@/lib/store";
 import { fireTrigger } from "@/lib/autosend";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { isLikelyValidE164, toDigits } from "@/lib/phone";
@@ -25,7 +25,8 @@ export async function GET(req: Request) {
     if (raw) attrs = (JSON.parse(raw) as ContactAttrFilter[]).filter(a => a?.key && ["is", "is_not", "contains"].includes(a.op)).slice(0, 10);
   } catch { /* malformed attrs → ignore */ }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const { data, total } = await listContacts({
       tag, search, offset, limit, attrs, tenantId: tid,
       source: url.searchParams.get("source"),
@@ -61,7 +62,8 @@ export async function POST(req: Request) {
   const invalid = allRows.length - rows.length;
   if (rows.length === 0) return NextResponse.json({ error: `All ${invalid} number(s) were invalid. Use full international format with country code, e.g. 919876543210.`, invalid }, { status: 400 });
   // Enforce the plan's contact cap (counts the batch being added).
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try { await enforceLimit(tid, "contacts", rows.length); }
   catch (e) { return NextResponse.json({ error: errorMessage(e), upgrade: true }, { status: 402 }); }
   try {

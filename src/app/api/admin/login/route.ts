@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { checkCredentials, createSession, createPendingToken, SESSION_COOKIE, DEFAULT_TENANT_ID, PENDING_LOGIN_COOKIE, PENDING_LOGIN_PURPOSE, PENDING_TOTP_PURPOSE, type SessionUser } from "@/lib/auth";
 import { verifyTeamLogin, logActivity } from "@/lib/team";
-import { loginKey, loginThrottle, recordLoginFailure, clearLoginFailures } from "@/lib/loginthrottle";
+import { loginKey, accountKey, loginThrottleBoth, recordLoginFailure, clearLoginFailures, lockedMessage } from "@/lib/loginthrottle";
 import { isTrustedDevice, DEVICE_COOKIE } from "@/lib/devices";
 import { sendEmailOtp } from "@/lib/emailotp";
 import { twoFactorStatus } from "@/lib/twofactor";
@@ -23,13 +23,16 @@ export async function POST(req: Request) {
   const login = (body.user ?? "").trim();
   const password = body.password ?? "";
 
-  // Brute-force throttle (per IP + username) — unchanged; the OTP step below
-  // is additive 2FA, not a replacement for this gate.
+  // Brute-force throttle: per IP + username, AND per username across every
+  // address (the IP is a header the caller sets, so the first key alone does
+  // not stop a spread-out guess at one account). The OTP step below is
+  // additive 2FA, not a replacement for this gate.
   const key = loginKey(req, login);
-  const gate = await loginThrottle(key);
+  const acct = accountKey(login);
+  const gate = await loginThrottleBoth(key, acct);
   if (!gate.allowed) {
     return NextResponse.json(
-      { error: "Too many failed attempts. Try again later." },
+      { error: lockedMessage(gate.retryAfterSec) },
       { status: 429, headers: { "Retry-After": String(gate.retryAfterSec ?? 900) } },
     );
   }
@@ -43,10 +46,10 @@ export async function POST(req: Request) {
     if (member) user = { email: member.email, name: member.name || member.email, role: member.role, tenantId: member.tenantId, tokenVersion: member.tokenVersion };
   }
   if (!user) {
-    await recordLoginFailure(key);
+    await recordLoginFailure(key, acct);
     return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
   }
-  await clearLoginFailures(key);
+  await clearLoginFailures(key, acct);
 
   // White-label: a partner's address admits only that partner's users, and
   // Talko's address sends a partner's users to theirs. Null (allowed) for

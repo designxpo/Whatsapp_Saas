@@ -4,6 +4,7 @@
 
 import { db } from "./supabase";
 import { hashPassword } from "./team";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "./reserved-email";
 
 export type PaymentStatus = "trialing" | "active" | "past_due" | "cancelled" | "none";
 export type TenantStatus = "active" | "trialing" | "suspended" | "cancelled";
@@ -291,6 +292,7 @@ export async function createTenantFromSignup(p: {
   marketingOptIn?: boolean;
 }): Promise<{ tenantId: string; email: string }> {
   const email = p.ownerEmail.trim().toLowerCase();
+  if (isReservedEmail(email)) throw new Error(RESERVED_EMAIL_MESSAGE);
   // Reject if the email already has an account.
   const existing = await db().from("wa_users").select("id").eq("email", email).maybeSingle();
   if (existing.data) throw new Error("An account with this email already exists — try logging in.");

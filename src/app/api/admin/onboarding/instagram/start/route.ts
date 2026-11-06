@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { guardFeature } from "@/lib/feature-guard";
 import { igLoginReady, igLoginMissing, igRedirectUri, igAuthorizeUrl, signState, IG_SCOPES } from "@/lib/iglogin";
 import { popupHtml } from "@/lib/igpopup";
@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
 // signed with a server secret.
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return fail("Admins only — ask your workspace owner to connect Instagram.");
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
 
   const gate = await guardFeature(tenantId, "ch_instagram");
   if (gate) {

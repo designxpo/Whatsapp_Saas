@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentTenantId, noSession, requireTenantId } from "@/lib/auth";
 import { adPreview, generateAdPreviews, getAdsAccountId, getAdsPageId, type CtwaInput, type AdObjective } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const adId = new URL(req.url).searchParams.get("adId");
   if (!adId) return NextResponse.json({ error: "adId required" }, { status: 400 });
-  const r = await adPreview(adId, (await currentTenantId()) ?? DEFAULT_TENANT_ID);
+  const r = await adPreview(adId, (await requireTenantId()));
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: 502 });
   return NextResponse.json({ html: r.html });
 }
@@ -27,7 +27,8 @@ export async function POST(req: Request) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   if (!pageId) return NextResponse.json({ error: "Set your Facebook Page ID first" }, { status: 400 });

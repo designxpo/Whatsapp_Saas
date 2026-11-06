@@ -149,5 +149,43 @@ describe("inbound media, which we cannot refuse", () => {
   it("handles a missing or malformed type", () => {
     expect(inertContentType("")).toBe("application/octet-stream");
     expect(inertContentType("IMAGE/SVG+XML; q=1")).toBe("application/octet-stream");
+    expect(inertContentType("image")).toBe("application/octet-stream");
+    expect(inertContentType("image/")).toBe("application/octet-stream");
+    expect(inertContentType("video/mp4 x")).toBe("application/octet-stream");
+  });
+
+  it("is an allowlist: any XML dialect or unknown type is stored as bytes", () => {
+    // The denylist this replaced let these keep their type, and every one of
+    // them can render as a document (and run script) on the storage origin.
+    for (const t of [
+      "application/rss+xml", "application/atom+xml", "application/mathml+xml",
+      "application/vnd.foo+xml", "text/xsl", "application/xslt+xml",
+      "text/javascript", "application/javascript", "application/x-shockwave-flash",
+      "multipart/x-mixed-replace", "text/vtt", "image/bmp", "application/json",
+      "audio/x+xml", "video/foo+xml",
+    ]) {
+      expect(inertContentType(t), t).toBe("application/octet-stream");
+    }
+  });
+
+  it("keeps the real type for what WhatsApp actually delivers", () => {
+    for (const t of [
+      "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+      "video/mp4", "video/3gpp", "video/quicktime",
+      "audio/ogg", "audio/mpeg", "audio/aac", "audio/amr", "audio/mp4",
+      "application/pdf", "text/plain", "text/csv",
+      "application/msword", "application/vnd.ms-excel", "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/zip",
+    ]) {
+      expect(inertContentType(t), t).toBe(t);
+    }
+  });
+
+  it("drops parameters, so a voice note with a codecs parameter still plays", () => {
+    expect(inertContentType("audio/ogg; codecs=opus")).toBe("audio/ogg");
+    expect(inertContentType("Video/MP4; codecs=\"avc1.42E01E\"")).toBe("video/mp4");
   });
 });

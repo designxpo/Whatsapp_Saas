@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchTemplates, createTemplate, editTemplate, deleteTemplate, EDITABLE_TEMPLATE_STATUSES, type CreateTemplateInput, type TemplateButton } from "@/lib/whatsapp";
 import { credsFor, explicitDefaultChannel, type ChannelCreds } from "@/lib/channels";
 import { setTemplateMeta, getTrackedUrls, siteUrl, trackingOrigin, type TrackedUrl } from "@/lib/links";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,8 @@ async function tenantChannel(tid: string, channelId: string | null | undefined):
 // GET ?channelId=… — templates live on the WABA, so each channel can differ.
 export async function GET(req: Request) {
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const r = await tenantChannel(tid, new URL(req.url).searchParams.get("channelId"));
     if (r.error) return NextResponse.json({ templates: [], notice: r.error });   // graceful — the UI still renders
     return NextResponse.json({ templates: await fetchTemplates(r.channel) });
@@ -53,7 +54,8 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.bodyText?.trim()) return NextResponse.json({ error: "name and bodyText are required" }, { status: 400 });
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const resolved = await tenantChannel(tid, body.channelId);
   if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
   const channel = resolved.channel;
@@ -135,7 +137,8 @@ export async function PATCH(req: Request) {
   if (!body.id || !/^\d+$/.test(body.id)) return NextResponse.json({ error: "id required" }, { status: 400 });
   if (!body.bodyText?.trim()) return NextResponse.json({ error: "bodyText is required" }, { status: 400 });
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const resolved = await tenantChannel(tid, body.channelId);
   if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
   const channel = resolved.channel;
@@ -173,11 +176,15 @@ export async function PATCH(req: Request) {
 }
 
 // DELETE — remove a template by name. Body: { name, channelId? }
+// Admin-only, like PATCH: deleting at Meta removes every language variant of an
+// approved template for good, and breaks any broadcast or flow still using it.
 export async function DELETE(req: Request) {
+  if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: { name?: string; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim()) return NextResponse.json({ error: "name required" }, { status: 400 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const resolved = await tenantChannel(tid, body.channelId);
   if (resolved.error) return NextResponse.json({ error: resolved.error }, { status: resolved.status ?? 400 });
   const r = await deleteTemplate(body.name.trim(), resolved.channel);

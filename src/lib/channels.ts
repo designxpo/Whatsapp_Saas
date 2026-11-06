@@ -293,6 +293,76 @@ export async function getChannelByPageId(pageId: string): Promise<Channel | null
   return routeByColumn("page_id", pageId, "messenger");
 }
 
+// ── Proving a manually connected Page / Instagram account is the caller's ──
+// The "paste a token" forms used to fall back to the TYPED id whenever Meta
+// couldn't resolve the token (`resolved.id || typedId`). A junk token plus
+// someone else's public Page id therefore saved THEIR Page into this
+// workspace, and inbound routing (newest active row wins) then delivered
+// that business's customer messages here. The id saved must be one the token
+// itself proves:
+//   • the token's own /me id equals the typed id               → ok
+//   • it differs, but the token could open the TYPED Page
+//     (derivePageToken succeeded), so /me is that Page's
+//     canonical id                                              → ok, use /me
+//   • Meta couldn't resolve the token at all                     → refuse,
+//     unless this is an edit that keeps the saved id AND token
+//     (an expired token must not block renaming/pausing a
+//     channel that is already connected)
+//   • it resolved to a different account the token can't prove
+//     is the typed one                                          → refuse, and
+//     say which account the token belongs to
+export type ChannelProof =
+  | { ok: true; id: string; corrected: boolean }
+  | { ok: false; error: string };
+
+export function proveChannelId(input: {
+  kind: "page" | "instagram";
+  typedId: string;
+  resolved: { id?: string; name?: string; username?: string; error?: string };
+  /** The supplied token could open the typed Page (derivePageToken returned a Page token). */
+  tokenOpensTypedPage?: boolean;
+  /** Editing a saved channel without changing its id or its token. */
+  unchangedEdit?: boolean;
+}): ChannelProof {
+  const typed = input.typedId.trim();
+  const what = input.kind === "page" ? "Facebook Page" : "Instagram account";
+  const rid = input.resolved.id?.trim();
+  if (!rid) {
+    if (input.unchangedEdit && typed) return { ok: true, id: typed, corrected: false };
+    return {
+      ok: false,
+      error: `Meta didn't accept this access token${input.resolved.error ? ` (${input.resolved.error})` : ""}, so we can't confirm the ${what} is yours. Paste a current access token for it, or use ${input.kind === "page" ? "Connect with Facebook" : "Connect Instagram"} instead.`,
+    };
+  }
+  if (rid === typed) return { ok: true, id: rid, corrected: false };
+  if (input.kind === "instagram") {
+    // An Instagram-login token's /me IS the account it belongs to: the token can
+    // only ever prove its own account, so its id (not the typed one) is saved.
+    return { ok: true, id: rid, corrected: true };
+  }
+  if (input.tokenOpensTypedPage) return { ok: true, id: rid, corrected: true };
+  const label = input.resolved.name ? `“${input.resolved.name}” (${rid})` : rid;
+  return {
+    ok: false,
+    error: `This access token belongs to ${label}, not to Page ${typed}. Paste the access token of the Page you want to connect, or a token from someone who manages that Page.`,
+  };
+}
+
+/**
+ * Whether another workspace already has an active channel on this Page /
+ * Instagram account. Allowed (an agency and its client can both connect the
+ * same account, each proving it with their own token), but inbound messages
+ * go to ONE workspace — the newest active connection — so the admin must be
+ * told the other workspace will stop receiving them.
+ */
+export async function heldByAnotherWorkspace(column: "page_id" | "ig_user_id", value: string, kind: "messenger" | "instagram", tenantId: string): Promise<boolean> {
+  if (!value) return false;
+  try {
+    const { data, error } = await db().from("wa_channels").select("tenant_id").eq(column, value).eq("kind", kind).eq("active", true).neq("tenant_id", tenantId).limit(1);
+    return !error && !!data?.length;
+  } catch { return false; }
+}
+
 // Inbound web-chat routing: the widget carries its public site key.
 export async function getChannelBySiteKey(siteKey: string): Promise<Channel | null> {
   if (!siteKey) return null;

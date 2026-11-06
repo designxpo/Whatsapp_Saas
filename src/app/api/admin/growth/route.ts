@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { listGrowthTools, saveGrowthTool, deleteGrowthTool, type GrowthTool, type GrowthKind } from "@/lib/growth";
 import { logActivity } from "@/lib/team";
 import { guardFeature } from "@/lib/feature-guard";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  try { const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID; return NextResponse.json({ tools: await listGrowthTools(tid) }); }
+  try { const tid = await currentTenantId(); if (!tid) return noSession(); return NextResponse.json({ tools: await listGrowthTools(tid) }); }
   catch (err) { return NextResponse.json({ tools: [], error: errorMessage(err) }); }
 }
 
@@ -19,7 +19,8 @@ export async function POST(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.name?.trim() || !body.kind || !body.slug?.trim()) return NextResponse.json({ error: "name, kind and slug are required" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const gate = await guardFeature(tid, "growth"); if (gate) return gate;
     const t = await saveGrowthTool({ ...body, name: body.name!, kind: body.kind!, slug: body.slug! }, tid);
     logActivity(await currentUser(), "growth.save", t.name);
@@ -32,6 +33,6 @@ export async function DELETE(req: Request) {
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  try { const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID; await deleteGrowthTool(body.id, tid); return NextResponse.json({ success: true }); }
+  try { const tid = await currentTenantId(); if (!tid) return noSession(); await deleteGrowthTool(body.id, tid); return NextResponse.json({ success: true }); }
   catch (err) { return NextResponse.json({ error: errorMessage(err) }, { status: 500 }); }
 }

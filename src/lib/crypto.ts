@@ -14,6 +14,8 @@ import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypt
 // module is the at-rest layer that makes a DB dump useless on its own.
 
 const VERSION = "v1";
+/** GCM tag length — the Node default that encryptSecret has always produced. */
+const AUTH_TAG_BYTES = 16;
 let keyCache: Buffer | null = null;
 
 function masterKey(): Buffer {
@@ -45,8 +47,13 @@ export function decryptSecret(blob: string): string {
     throw new Error("Unrecognized secret format");
   }
   const [, ivB64, tagB64, ctB64] = parts;
-  const decipher = createDecipheriv("aes-256-gcm", masterKey(), Buffer.from(ivB64, "base64"));
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  // GCM accepts truncated tags (down to 4 bytes) unless told otherwise, which
+  // would let a forger brute-force a short tag. encryptSecret has always written
+  // the default full 16-byte tag, so anything shorter is not ours.
+  const tag = Buffer.from(tagB64, "base64");
+  if (tag.length !== AUTH_TAG_BYTES) throw new Error("Unrecognized secret format");
+  const decipher = createDecipheriv("aes-256-gcm", masterKey(), Buffer.from(ivB64, "base64"), { authTagLength: AUTH_TAG_BYTES });
+  decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]).toString("utf8");
 }
 

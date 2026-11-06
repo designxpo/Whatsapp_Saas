@@ -1,4 +1,4 @@
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { metaCredsForTenant } from "@/lib/partner-meta";
 import { brandForTenant } from "@/lib/brand-server";
 import { brandCopy } from "@/lib/whitelabel";
@@ -24,7 +24,8 @@ const html = (r: { ok: boolean; warn?: boolean; error?: string; detail?: string 
 // the outcome to the opener and closes.
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return html({ ok: false, error: "Your session expired. Sign in again and retry." });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   if (await guardFeature(tenantId, "ch_instagram")) return html({ ok: false, error: "Instagram isn't included in your plan." });
 
   const url = new URL(req.url);

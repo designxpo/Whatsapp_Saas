@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { ensureSeeded, saveStage, deleteStage, reorderStages } from "@/lib/pipeline";
 import { logActivity } from "@/lib/team";
 import { guardFeature } from "@/lib/feature-guard";
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 // GET — this tenant's stages (seeds a default pipeline on first use).
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     return NextResponse.json({ stages: await ensureSeeded(tid) });
   } catch (err) {
@@ -21,7 +22,8 @@ export async function GET() {
 // POST — reorder ({ order: [ids] }) OR create/update a single stage.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   { const gate = await guardFeature(tid, "pipeline"); if (gate) return gate; }
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -54,7 +56,8 @@ export async function POST(req: Request) {
 // DELETE — remove a stage (its cards fall off the board; contacts are kept).
 export async function DELETE(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChannel, saveYoutubeChannel } from "@/lib/channels";
 import { listMyChannelOptions, youtubeConfigured } from "@/lib/youtube";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const channelId = new URL(req.url).searchParams.get("channelId");
     if (!channelId) return NextResponse.json({ channels: [], error: "channelId required" }, { status: 400 });
     const channel = await getChannel(channelId, tid);
@@ -31,7 +32,8 @@ export async function GET(req: Request) {
 // the provisional row and activate it.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { channelId?: string; ytChannelId?: string; name?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.channelId || !body.ytChannelId) return NextResponse.json({ error: "channelId and ytChannelId are required" }, { status: 400 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { listApiKeys, createApiKey, revokeApiKey } from "@/lib/apikeys";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -10,7 +10,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     return NextResponse.json({ keys: await listApiKeys(tid) });
   } catch (err) { return NextResponse.json({ keys: [], error: errorMessage(err) }); }
 }
@@ -21,7 +22,8 @@ export async function POST(req: Request) {
   let body: { name?: string };
   try { body = await req.json(); } catch { body = {}; }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const { key, row } = await createApiKey(tid, body.name ?? "API key");
     logActivity(await currentUser(), "apikey.create", row.prefix);
     return NextResponse.json({ key, row });
@@ -35,7 +37,8 @@ export async function DELETE(req: Request) {
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     await revokeApiKey(body.id, tid);
     logActivity(await currentUser(), "apikey.revoke", body.id);
     return NextResponse.json({ success: true });

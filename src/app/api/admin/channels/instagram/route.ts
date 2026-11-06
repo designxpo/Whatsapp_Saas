@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { saveInstagramChannel, getChannel, subscribeIgToApp, resolveIgAccountId } from "@/lib/channels";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { saveInstagramChannel, getChannel, subscribeIgToApp, resolveIgAccountId, proveChannelId, heldByAnotherWorkspace } from "@/lib/channels";
+import { currentUser, currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
@@ -14,7 +14,8 @@ const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` 
 // on edit (blank/masked), encrypted at rest.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   { const gate = await guardFeature(tenantId, "ch_instagram"); if (gate) return gate; }
   let body: { id?: string; name?: string; igUserId?: string; pageId?: string; token?: string; agentId?: string | null; kbTag?: string | null; commentAi?: boolean; active?: boolean; isDefault?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -27,10 +28,12 @@ export async function POST(req: Request) {
   }
   try {
     let token = (body.token ?? "").trim();
+    let keptIgUserId: string | null = null;   // the saved account id, when this edit keeps the saved token
     if ((!token || token.includes("…")) && body.id) {
       const existing = await getChannel(body.id, tenantId);
       if (!existing) return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       token = existing.token;
+      keptIgUserId = existing.igUserId ?? null;
     }
     if (!token) return NextResponse.json({ error: "Access token is required" }, { status: 400 });
     // Trust Graph's own answer for the account id over whatever was pasted in —
@@ -38,7 +41,14 @@ export async function POST(req: Request) {
     // silently drops every DM/comment (sends keep working, masking the problem).
     const typedIgUserId = body.igUserId!.trim();
     const resolved = await resolveIgAccountId(token);
-    const igUserId = resolved.id || typedIgUserId;
+    // Save only the account the token proves (channels.ts proveChannelId).
+    const proof = proveChannelId({
+      kind: "instagram", typedId: typedIgUserId, resolved,
+      unchangedEdit: keptIgUserId !== null && keptIgUserId === typedIgUserId,
+    });
+    if (!proof.ok) return NextResponse.json({ error: proof.error }, { status: 400 });
+    const igUserId = proof.id;
+    const shared = await heldByAnotherWorkspace("ig_user_id", igUserId, "instagram", tenantId);
     const saved = await saveInstagramChannel({
       id: body.id, tenantId, name: body.name!, igUserId, pageId: body.pageId ?? null,
       token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, commentAi: body.commentAi, active: body.active, isDefault: body.isDefault,
@@ -46,9 +56,9 @@ export async function POST(req: Request) {
     // Subscribe the IG account to the app — without this Meta never delivers
     // DM/comment events for a freshly added account.
     const webhook = await subscribeIgToApp(saved.igUserId ?? igUserId, token);
-    const idCorrected = !!resolved.id && resolved.id !== typedIgUserId;
+    const idCorrected = proof.corrected;
     logActivity(await currentUser(), "channel.save", `${saved.name} (IG ${saved.igUserId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}${idCorrected ? ` — account id corrected from ${typedIgUserId} to Meta's canonical id` : ""}`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected });
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected, shared });
   } catch (err) {
     return NextResponse.json({ error: describeChannelSaveError(err, "migrations 0021_instagram_channel.sql and 0070_channel_kb.sql") }, { status: 500 });
   }

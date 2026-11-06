@@ -1,6 +1,6 @@
 export const maxDuration = 30;
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { setTenantSetting } from "@/lib/store";
 import { fetchTemplates, createAuthTemplate } from "@/lib/whatsapp";
 import { otpStatus, setOtpRoutes, resolveOtpCreds, OTP_CHANNEL_KEY, OTP_TEMPLATE_LANG, type OtpRoute } from "@/lib/otp";
@@ -37,7 +37,8 @@ async function fullStatus(tenantId: string) {
 
 export async function GET() {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   return NextResponse.json(await fullStatus(tenantId));
 }
 
@@ -47,7 +48,8 @@ export async function GET() {
 //   { createTemplate: true, channelId? }      create the auth template on a number's WABA
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   let body: { defaultChannelId?: string | null; routes?: OtpRoute[]; createTemplate?: boolean; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

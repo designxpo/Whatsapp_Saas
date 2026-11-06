@@ -1,10 +1,12 @@
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 import { cache } from "react";
 import { timingSafeEqual } from "crypto";
 import { verifyPassword, getMemberAuthState, getMemberIdentity } from "./team";
 import type { Team } from "./teams";
 import { DEFAULT_TENANT_ID } from "./tenant";
+import { isWorkspaceSessionClaims } from "./session-claims";
 
 const COOKIE = "wa_admin_session";
 
@@ -46,11 +48,13 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(s);
 }
 
-export async function createSession(user: SessionUser): Promise<string> {
+// `ttl` defaults to the normal 7-day sign-in; an owner's support visit into a
+// customer's workspace passes "1h" so the TOKEN dies with the cookie.
+export async function createSession(user: SessionUser, ttl = "7d"): Promise<string> {
   return new SignJWT({ sub: user.email, n: user.name, r: user.role, t: user.tenantId, v: user.tokenVersion ?? 0 })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime(ttl)
     .sign(secret());
 }
 
@@ -84,7 +88,7 @@ export async function createPendingToken(payload: Record<string, unknown>, purpo
 export async function verifyPendingToken<T = Record<string, unknown>>(token: string | undefined, purpose: string): Promise<T | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (payload.purpose !== purpose) return null;
     return payload as T;
   } catch {
@@ -113,7 +117,7 @@ export async function createAffiliateSession(a: AffiliateSessionUser): Promise<s
 export async function verifyAffiliateSession(token: string | undefined): Promise<AffiliateSessionUser | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (payload.purpose !== AFFILIATE_SESSION_PURPOSE || typeof payload.sub !== "string") return null;
     return { affiliateId: payload.sub, email: typeof payload.email === "string" ? payload.email : "", name: typeof payload.name === "string" ? payload.name : "" };
   } catch {
@@ -148,7 +152,7 @@ export async function createPartnerSession(c: PartnerSessionClaims): Promise<str
 export async function verifyPartnerSessionToken(token: string | undefined): Promise<PartnerSessionClaims | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
     if (payload.purpose !== PARTNER_SESSION_PURPOSE || typeof payload.sub !== "string" || typeof payload.pid !== "string") return null;
     return { userId: payload.sub, partnerId: payload.pid, email: typeof payload.email === "string" ? payload.email : "", tokenVersion: typeof payload.v === "number" ? payload.v : 0 };
   } catch {
@@ -159,8 +163,10 @@ export async function verifyPartnerSessionToken(token: string | undefined): Prom
 export async function verifySession(token: string | undefined): Promise<SessionUser | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secret());
-    if (typeof payload.sub !== "string") return null;
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ["HS256"] });
+    // Only a workspace session — never an affiliate, partner or pending-login
+    // token, which share the secret (see session-claims.ts).
+    if (!isWorkspaceSessionClaims(payload) || typeof payload.sub !== "string") return null;
     const email = payload.sub;
     const ver = typeof payload.v === "number" ? payload.v : 0;
     const tenantId = typeof payload.t === "string" && payload.t ? payload.t : DEFAULT_TENANT_ID;
@@ -231,6 +237,31 @@ export async function requireRoleAdmin(): Promise<boolean> {
 // Every tenant-scoped data access (tdb(...)) MUST be keyed on this value.
 export async function currentTenantId(): Promise<string | null> {
   return (await currentUser())?.tenantId ?? null;
+}
+
+// A request that reached a workspace route without a LIVE session: signed out,
+// password changed, member removed or deactivated, or a token that was never a
+// workspace session at all. Routes used to answer these with
+// `currentTenantId() ?? DEFAULT_TENANT_ID`, which handed the caller the
+// platform's own Default workspace. Never fall back: refuse.
+export class NoSessionError extends Error {
+  readonly status = 401;
+  constructor() {
+    super("Your session has ended. Sign in again.");
+    this.name = "NoSessionError";
+  }
+}
+
+/** The caller's workspace, or a thrown NoSessionError. Never the Default workspace by accident. */
+export async function requireTenantId(): Promise<string> {
+  const tid = await currentTenantId();
+  if (!tid) throw new NoSessionError();
+  return tid;
+}
+
+/** The 401 a route handler returns when currentTenantId() comes back empty. */
+export function noSession(): NextResponse {
+  return NextResponse.json({ error: "Your session has ended. Sign in again." }, { status: 401 });
 }
 
 // The PRODUCT OWNER (super-admin) is the env ADMIN_USER account — the only one

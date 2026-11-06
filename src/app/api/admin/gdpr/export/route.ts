@@ -1,6 +1,6 @@
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { exportTenantStream, exportContactData } from "@/lib/gdpr";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -19,7 +19,8 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const day = new Date().toISOString().slice(0, 10);
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const contact = new URL(req.url).searchParams.get("contact")?.trim();
 
     if (contact) {

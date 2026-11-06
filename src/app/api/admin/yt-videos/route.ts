@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { listChannels } from "@/lib/channels";
 import { listVideos, youtubeConfigured } from "@/lib/youtube";
-import { currentTenantId, requireAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireAdmin, noSession } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const channelId = new URL(req.url).searchParams.get("channelId");
     const yts = (await listChannels(tid)).filter(c => c.kind === "youtube" && c.ytChannelId && c.token);
     const yt = (channelId && yts.find(c => c.id === channelId)) || yts.find(c => c.active) || yts[0];

@@ -138,7 +138,7 @@ export async function sealChallenge(challenge: string, purpose: "register" | "lo
 export async function openChallenge(token: string | undefined, purpose: "register" | "login"): Promise<{ challenge: string; email?: string } | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, challengeKey());
+    const { payload } = await jwtVerify(token, challengeKey(), { algorithms: ["HS256"] });
     if (payload.p !== purpose || typeof payload.c !== "string") return null;
     return { challenge: payload.c, email: typeof payload.e === "string" ? payload.e : undefined };
   } catch {

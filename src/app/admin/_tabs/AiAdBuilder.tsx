@@ -8,6 +8,7 @@
 // the campaign + ad set 1, each further ad set is added to that campaign. Nothing
 // touches Meta before "Publish".
 import { PageInfo } from "@/components/PageInfo";
+import { MetaPreviewFrame } from "@/components/MetaPreviewFrame";
 import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Sparkles, Loader2, ImagePlus, CheckCircle2, Megaphone, Trash2, Users, Send, MessageSquareText, FormInput, Image as ImageIcon, ArrowRight, Paperclip, Images, Video, History, Plus, BrainCircuit, PartyPopper, Lightbulb, Check, RefreshCw } from "lucide-react";
 import { inp, btnPrimary } from "../_shared";
@@ -721,7 +722,7 @@ export default function AiAdBuilder({ currency, hasPage, onClose, onCreated }: {
                 {previews.slice(0, 3).map(p => (
                   <div key={p.key} className="shrink-0">
                     <p className="text-[10px] font-bold text-ink-400 mb-1">{p.label}</p>
-                    <iframe title={p.label} srcDoc={p.html} className="w-[300px] h-[420px] rounded-card border border-line bg-white" sandbox="allow-scripts allow-same-origin" />
+                    <MetaPreviewFrame title={p.label} html={p.html} className="w-[300px] h-[420px] rounded-card border border-line bg-white" />
                   </div>
                 ))}
               </div>

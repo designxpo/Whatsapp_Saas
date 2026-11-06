@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { listFlowTriggers, setFlowTrigger, removeFlowTrigger, type FlowTriggerScope } from "@/lib/adflow";
 import { getAdsAccountId, listAdCampaigns, listAds } from "@/lib/ads";
 
@@ -11,7 +11,8 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   const url = new URL(req.url);
   const adsForCampaign = url.searchParams.get("ads");
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   if (adsForCampaign) {
     const r = await listAds(adsForCampaign, "last_30d", undefined, tenantId);
     return NextResponse.json({ ads: r.ads.map(a => ({ id: a.id, name: a.name })) });
@@ -34,7 +35,8 @@ export async function POST(req: Request) {
   if (!body.flowId || !body.refId || (body.scope !== "ad" && body.scope !== "campaign")) {
     return NextResponse.json({ error: "flowId, scope (ad|campaign) and refId required" }, { status: 400 });
   }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   await setFlowTrigger({ flowId: body.flowId, scope: body.scope, refId: body.refId, label: body.label ?? null, tenantId: tid });
   return NextResponse.json({ success: true });
 }
@@ -47,7 +49,8 @@ export async function DELETE(req: Request) {
   if (!body.refId || (body.scope !== "ad" && body.scope !== "campaign")) {
     return NextResponse.json({ error: "scope and refId required" }, { status: 400 });
   }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   await removeFlowTrigger(body.scope, body.refId, tid);
   return NextResponse.json({ success: true });
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getTenant } from "@/lib/tenants";
 import { stripeConfigured, createBillingPortalSession } from "@/lib/stripe";
 import { errorMessage } from "@/lib/errors";
@@ -13,7 +13,8 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   if (!stripeConfigured()) return NextResponse.json({ error: "Billing isn't enabled yet (STRIPE_SECRET_KEY unset)." }, { status: 503 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const tenant = await getTenant(tid);
     if (!tenant) return NextResponse.json({ error: "Tenant not found" }, { status: 404 });
     if (!tenant.stripeCustomerId) return NextResponse.json({ error: "No subscription yet — choose a plan first." }, { status: 400 });

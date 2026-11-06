@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { getNodeInsights, getNodeChildren, getAdsAccountId, getAccountTimezone, type DatePreset, type NodeInsights } from "@/lib/ads";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,8 @@ export async function GET(req: Request) {
   const preset: DatePreset = presetRaw === "today" || presetRaw === "last_30d" ? presetRaw : "last_7d";
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const tz = await getAccountTimezone(await getAdsAccountId(tid), tid).catch(() => undefined);
   const [node, children] = await Promise.all([
     getNodeInsights(id, level, preset, tz, tid),

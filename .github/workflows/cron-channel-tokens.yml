@@ -54,5 +54,6 @@ jobs:
           code=$(curl -sS -o /tmp/resp.json -w "%{http_code}" -m 290 --retry 1 --retry-delay 10 \
             -X POST "$URL" -H "Authorization: Bearer $SECRET")
           echo "HTTP $code"
-          cat /tmp/resp.json
+          # The body is NOT printed: this repo is public, and the response names
+          # tenants' channels and carries error text. The status is enough to page on.
           [ "$code" = "200" ] || { echo "::error::token refresh returned $code"; exit 1; }

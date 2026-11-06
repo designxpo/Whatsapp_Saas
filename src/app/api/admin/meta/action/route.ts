@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { setCampaignStatus, setCampaignDailyBudget, renameNode, duplicateCampaign } from "@/lib/ads";
 import { logActivity } from "@/lib/team";
 
@@ -15,7 +15,8 @@ export async function POST(req: Request) {
   if (!body.campaignId) return NextResponse.json({ error: "campaignId required" }, { status: 400 });
 
   // Campaign writes are signed with THIS workspace's Meta token.
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let r: { ok: boolean; error?: string };
   if (body.action === "pause") r = await setCampaignStatus(body.campaignId, "PAUSED", tid);
   else if (body.action === "resume") r = await setCampaignStatus(body.campaignId, "ACTIVE", tid);

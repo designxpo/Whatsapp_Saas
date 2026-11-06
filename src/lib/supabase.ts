@@ -1,5 +1,6 @@
 import { uploadProblem, safeStorageName, storedContentType, inertContentType } from "./uploadguard";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { randomBytes } from "crypto";
 
 // Defense-in-depth: this service-role client bypasses RLS and must never run in
 // the browser. Hard runtime guard — throws loudly if the module is ever imported
@@ -21,6 +22,10 @@ export function db(): SupabaseClient {
   return cached;
 }
 
+// PUBLIC bucket: anyone holding a URL can read the file, so every object name
+// carries 128 bits from the CSPRNG (randomBytes) — customers' photos, documents
+// and voice notes must not be guessable or enumerable. (Making the bucket private
+// with signed URLs is a separate job: Meta fetches outbound media URLs unsigned.)
 const BUCKET = "wa-uploads";
 let bucketEnsured = false;
 
@@ -51,7 +56,7 @@ export async function uploadPublic(file: File): Promise<string> {
   // The readable original name is kept (a document sent over WhatsApp is shown to
   // the recipient by it) with everything dangerous about it removed, behind a
   // random token so two uploads of "brochure.pdf" can never collide or be guessed.
-  const filename = `upload/${Math.random().toString(36).slice(2, 10)}_${safeStorageName(file.name, file.type)}`;
+  const filename = `upload/${randomBytes(16).toString("hex")}_${safeStorageName(file.name, file.type)}`;
   const { error } = await supabase.storage.from(BUCKET).upload(filename, file, {
     // OUR content type for the accepted kind, never the client's string.
     contentType: storedContentType(file.type),
@@ -77,7 +82,7 @@ export async function uploadAudio(data: Buffer, mimeType: string): Promise<strin
     const ext = AUDIO_EXT[sub] || sub;
     await ensureBucket();
     const supabase = db();
-    const filename = `voice/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filename = `voice/${Date.now()}_${randomBytes(16).toString("hex")}.${ext}`;
     const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: inertContentType(mime), upsert: false });   // the sender chooses the declared type, and this bucket is public
     if (error) return null;
     return supabase.storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;
@@ -109,7 +114,7 @@ export async function uploadMedia(data: Buffer, mimeType: string): Promise<strin
     const folder = type === "image" ? "img" : type === "video" ? "vid" : type === "audio" ? "voice" : "file";
     await ensureBucket();
     const supabase = db();
-    const filename = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${mediaExt(type, sub)}`;
+    const filename = `${folder}/${Date.now()}_${randomBytes(16).toString("hex")}.${mediaExt(type, sub)}`;
     const { error } = await supabase.storage.from(BUCKET).upload(filename, data, { contentType: inertContentType(mime), upsert: false });   // the sender chooses the declared type, and this bucket is public
     if (error) return null;
     return supabase.storage.from(BUCKET).getPublicUrl(filename).data.publicUrl;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomBytes } from "crypto";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { checkFeature } from "@/lib/entitlements";
 import { googleReviewsConfigured, GOOGLE_REVIEWS_SCOPE } from "@/lib/googlereviews";
 
@@ -23,7 +23,8 @@ export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return back("/login");
   // Plan gate (Growth and above). Browser navigation → redirect with a flag
   // rather than guardFeature's raw 402 JSON.
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   if (!(await checkFeature(tenantId, "reviews")).ok) return back("/admin?tab=reviews&gr_error=not_in_plan");
   if (!googleReviewsConfigured()) return back("/admin?tab=reviews&gr_error=not_configured");
 

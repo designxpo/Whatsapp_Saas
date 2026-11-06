@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listRules, saveRule, setRuleActive, deleteRule, RuleConfigError, type ApiRule } from "@/lib/apirules";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -8,7 +8,8 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     return NextResponse.json({ rules: await listRules(tid) });
   } catch (err) {
     // Migration 0012 not applied yet — let the UI render with a notice.
@@ -20,7 +21,8 @@ export async function GET() {
 export async function POST(req: Request) {
   let body: Partial<ApiRule> & { name?: string; eventKey?: string; templateName?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     if (body.id && typeof body.active === "boolean" && !body.name) {
       await setRuleActive(body.id, body.active, tid);
@@ -45,7 +47,8 @@ export async function DELETE(req: Request) {
   let body: { id?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     await deleteRule(body.id, tid);
     logActivity(await currentUser(), "rule.delete", body.id);

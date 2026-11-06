@@ -25,6 +25,7 @@ import { tdb } from "./tenantdb";
 import { runChat } from "./ai/chat";
 import { resolveTenantAi } from "./ai/keys";
 import { getTenantSetting, setTenantSetting, isOptedOut } from "./store";
+import { UNVERIFIED_PHONE_LABEL } from "./lead-labels";
 import { emitEvent } from "./integrations";
 import { getLeadIdByPhone, lsqConfigured, setLeadField, plausiblePhone } from "./leadsquared";
 import { errorMessage } from "./errors";
@@ -148,6 +149,7 @@ export function readChanged(prev: { status: string | null; readyToPay: boolean; 
 
 type ConvRow = {
   id: string; tenant_id: string; phone: string; name: string | null; platform: string | null; lead_phone: string | null;
+  labels?: string[] | null;
   last_inbound_at: string | null; lead_scored_at: string | null; lead_status: string | null; ready_to_pay: boolean | null; lead_action: string | null;
 };
 const LOOKBACK_MS = 7 * 86_400_000;
@@ -155,15 +157,22 @@ const SETTLE_MS = 45_000;          // let the AI reply land first, and a burst o
 const PER_TICK = 15;
 const MESSAGES = 16;
 
-/** A real phone for the CRM: the WhatsApp number, or one an Instagram/Messenger lead shared. */
-export function crmPhoneOf(c: { platform: string | null; phone: string; lead_phone: string | null }): string | null {
+/**
+ * A real phone for the CRM: the WhatsApp number, or one an Instagram/Messenger
+ * lead shared. Never a number a web-chat visitor typed that matched someone
+ * else's contact (labelled UNVERIFIED_PHONE_LABEL by landCapturedLead) — the
+ * score and reason would land on that other person's CRM lead.
+ */
+export function crmPhoneOf(c: { platform: string | null; phone: string; lead_phone: string | null; labels?: string[] | null }): string | null {
+  if ((c.platform ?? "whatsapp") !== "whatsapp" && (c.labels ?? []).includes(UNVERIFIED_PHONE_LABEL)) return null;
   const p = (c.platform ?? "whatsapp") === "whatsapp" ? c.phone : c.lead_phone;
   return p && plausiblePhone(p) ? p : null;
 }
 
 async function facts(c: ConvRow): Promise<LeadFacts> {
   const t = tdb(c.tenant_id);
-  const phones = [...new Set([c.phone, c.lead_phone].filter((x): x is string => !!x))];
+  const unverified = (c.labels ?? []).includes(UNVERIFIED_PHONE_LABEL);
+  const phones = [...new Set([c.phone, unverified ? null : c.lead_phone].filter((x): x is string => !!x))];
   const [paid, open, opted] = await Promise.all([
     t.from("wa_orders").select("id").in("phone", phones).in("status", ["paid", "fulfilled"]).gte("created_at", new Date(Date.now() - 30 * 86_400_000).toISOString()).limit(1),
     t.from("wa_approval_requests").select("kind").eq("conversation_id", c.id).eq("status", "pending").limit(2),
@@ -210,7 +219,7 @@ export async function scoreConversation(c: ConvRow): Promise<LeadRead | null> {
 }
 
 /** Send a changed read to the workspace's CRMs. */
-export async function syncToCrm(c: Pick<ConvRow, "id" | "tenant_id" | "phone" | "name" | "platform" | "lead_phone">, read: LeadRead): Promise<void> {
+export async function syncToCrm(c: Pick<ConvRow, "id" | "tenant_id" | "phone" | "name" | "platform" | "lead_phone" | "labels">, read: LeadRead): Promise<void> {
   const phone = crmPhoneOf(c);
   await emitEvent(c.tenant_id, "lead.scored", {
     conversationId: c.id, phone: phone ?? "", name: c.name ?? "", channel: c.platform ?? "whatsapp",
@@ -231,7 +240,7 @@ const BACKOFF_MS = 30 * 60_000;
 
 export async function drainLeadScoring(deadlineAt: number, max = PER_TICK, now = Date.now()): Promise<{ scored: number; skipped: number }> {
   const { data, error } = await db().from("wa_conversations")
-    .select("id,tenant_id,phone,name,platform,lead_phone,last_inbound_at,lead_scored_at,lead_status,ready_to_pay,lead_action")
+    .select("id,tenant_id,phone,name,platform,lead_phone,labels,last_inbound_at,lead_scored_at,lead_status,ready_to_pay,lead_action")
     .gte("last_inbound_at", new Date(now - LOOKBACK_MS).toISOString())
     .lte("last_inbound_at", new Date(now - SETTLE_MS).toISOString())
     .order("last_inbound_at", { ascending: false }).limit(300);

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { exchangeSignupCode, resolveInstagramAsset, grantedScopes } from "@/lib/embeddedsignup";
 import { saveInstagramChannel, resolveIgAccountId, subscribeIgToApp } from "@/lib/channels";
 import { guardFeature } from "@/lib/feature-guard";
@@ -20,7 +20,8 @@ const TAG = "[ig-onboarding]";
 // token and saves an Instagram channel (token encrypted at rest).
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
 
   // Parity with the manual "Add manually" route, which has always enforced both.
   // Skipping them here meant Embedded Signup could add an Instagram channel to a

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { listAutomations, createCampaign, disableAutomation, type AutoTrigger } from "@/lib/store";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, noSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 const TRIGGERS: AutoTrigger[] = ["contact_added", "tag_added", "api_event"];
 
 export async function GET() {
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   return NextResponse.json({ automations: await listAutomations(tid) });
 }
 
@@ -19,7 +20,8 @@ export async function POST(req: Request) {
     delayValue?: number; delayUnit?: string;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
 
   if (body.id && body.enabled === false) {
     await disableAutomation(body.id, tid);

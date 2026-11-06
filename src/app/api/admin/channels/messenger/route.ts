@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { saveMessengerChannel, getChannel, subscribePageToApp, derivePageToken, resolvePageId } from "@/lib/channels";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { saveMessengerChannel, getChannel, subscribePageToApp, derivePageToken, resolvePageId, proveChannelId, heldByAnotherWorkspace } from "@/lib/channels";
+import { currentUser, currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { enforceLimit } from "@/lib/usage";
 import { guardFeature } from "@/lib/feature-guard";
@@ -14,7 +14,8 @@ const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` 
 // Token kept on edit (blank/masked), encrypted at rest.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   { const gate = await guardFeature(tenantId, "ch_messenger"); if (gate) return gate; }
   let body: { id?: string; name?: string; pageId?: string; token?: string; agentId?: string | null; kbTag?: string | null; active?: boolean; isDefault?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -27,10 +28,12 @@ export async function POST(req: Request) {
   }
   try {
     let token = (body.token ?? "").trim();
+    let keptPageId: string | null = null;   // the saved Page id, when this edit keeps the saved token
     if ((!token || token.includes("…")) && body.id) {
       const existing = await getChannel(body.id, tenantId);
       if (!existing) return NextResponse.json({ error: "Channel not found" }, { status: 404 });
       token = existing.token;
+      keptPageId = existing.pageId ?? null;
     }
     if (!token) return NextResponse.json({ error: "Page access token is required" }, { status: 400 });
     // Upgrade a pasted user / system-user token to the PAGE's own token — page
@@ -43,7 +46,16 @@ export async function POST(req: Request) {
     // silently drops every message (sends keep working, masking the problem).
     const typedPageId = body.pageId!.trim();
     const resolvedPage = await resolvePageId(token);
-    const pageId = resolvedPage.id || typedPageId;
+    // Save only an id the token proves (channels.ts proveChannelId) — never
+    // the typed one on its own word.
+    const proof = proveChannelId({
+      kind: "page", typedId: typedPageId, resolved: resolvedPage,
+      tokenOpensTypedPage: !!pageToken,
+      unchangedEdit: keptPageId !== null && keptPageId === typedPageId,
+    });
+    if (!proof.ok) return NextResponse.json({ error: proof.error }, { status: 400 });
+    const pageId = proof.id;
+    const shared = await heldByAnotherWorkspace("page_id", pageId, "messenger", tenantId);
     const saved = await saveMessengerChannel({
       id: body.id, tenantId, name: body.name!, pageId,
       token, agentId: body.agentId ?? null, kbTag: body.kbTag ?? null, active: body.active, isDefault: body.isDefault,
@@ -51,9 +63,9 @@ export async function POST(req: Request) {
     // Subscribe the Page to the app — without this Meta never delivers a single
     // message event, which is exactly why a portal-added Page "didn't work".
     const webhook = await subscribePageToApp(saved.pageId ?? pageId, token);
-    const idCorrected = !!resolvedPage.id && resolvedPage.id !== typedPageId;
+    const idCorrected = proof.corrected;
     logActivity(await currentUser(), "channel.save", `${saved.name} (Messenger ${saved.pageId}) — webhook ${webhook.ok ? "subscribed" : `FAILED: ${webhook.detail}`}${idCorrected ? ` — page id corrected from ${typedPageId} to Meta's canonical id` : ""}`);
-    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected });
+    return NextResponse.json({ success: true, channel: { ...saved, token: mask(saved.token) }, webhook, idCorrected, shared });
   } catch (err) {
     return NextResponse.json({ error: describeChannelSaveError(err, "migrations 0053 and 0070_channel_kb.sql") }, { status: 500 });
   }

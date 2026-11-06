@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getChannel, saveGoogleReviewsChannel, listChannels, deleteChannel } from "@/lib/channels";
 import { listAccounts, listLocations, googleReviewsConfigured, type GrLocation } from "@/lib/googlereviews";
-import { currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { errorMessage } from "@/lib/errors";
 import { guardFeature } from "@/lib/feature-guard";
 
@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Sign in required" }, { status: 403 });
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const gate = await guardFeature(tid, "reviews");
     if (gate) return gate;
     const channelId = new URL(req.url).searchParams.get("channelId");
@@ -48,7 +49,8 @@ export async function GET(req: Request) {
 // activate it.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const gate = await guardFeature(tid, "reviews");
   if (gate) return gate;
   let body: { channelId?: string; accountId?: string; locationId?: string; locationName?: string };

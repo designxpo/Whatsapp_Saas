@@ -96,6 +96,49 @@ const pinnedAgent = new Agent({ connect: { lookup: pinnedLookup } });
 /** Default limit for one tenant-supplied fetch, end to end. */
 export const SAFE_FETCH_TIMEOUT_MS = 15_000;
 
+// ── What a redirect may carry ────────────────────────────────────────────────
+//
+// safeFetch follows redirects itself (redirect: "manual"), so it must do what
+// fetch() would: a tenant URL that redirects to another host must not receive
+// the credentials meant for the first one (a Shopify access token, WooCommerce
+// basic auth, a bearer key).
+
+const CREDENTIAL_HEADERS = new Set(["authorization", "proxy-authorization", "cookie"]);
+
+/** True for a header that carries a credential: auth, cookies, x-*-token, api keys. */
+export function isCredentialHeader(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  if (CREDENTIAL_HEADERS.has(n)) return true;
+  if (/^x-.*(token|key|secret|auth|password|session)/.test(n)) return true;
+  return /(^|-)api-?key$/.test(n);
+}
+
+/**
+ * The same headers minus every credential. Accepts all three HeadersInit forms
+ * (Headers, [name, value][] and a plain object); names compare case-insensitively.
+ */
+export function stripCredentialHeaders(headers: HeadersInit | undefined): Headers {
+  const out = new Headers(headers);
+  for (const name of [...out.keys()]) if (isCredentialHeader(name)) out.delete(name);
+  return out;
+}
+
+/**
+ * Whether a redirect stays with the SAME site, so it may keep the credentials.
+ * The ordinary redirects a tenant's own server sends — http→https, and the bare
+ * domain ↔ www — are the same site: dropping the token there would break a
+ * working Shopify / WooCommerce / webhook connection for no gain. Anything
+ * else (another host, a downgrade to http, another port) is not.
+ */
+export function sameSiteRedirect(from: URL, to: URL): boolean {
+  const host = (u: URL) => u.hostname.toLowerCase().replace(/^www\./, "");
+  const port = (u: URL) => u.port || (u.protocol === "https:" ? "443" : "80");
+  if (host(from) !== host(to)) return false;
+  if (from.protocol === to.protocol) return port(from) === port(to);
+  // http → https on the default ports is the upgrade every site does.
+  return from.protocol === "http:" && to.protocol === "https:" && port(from) === "80" && port(to) === "443";
+}
+
 // fetch() wrapper that validates the URL (and each redirect hop) against the
 // SSRF guard, connects only to the address it validated, and gives up after
 // SAFE_FETCH_TIMEOUT_MS unless the caller passed its own signal. Use for all
@@ -103,15 +146,24 @@ export const SAFE_FETCH_TIMEOUT_MS = 15_000;
 export async function safeFetch(raw: string, init: RequestInit = {}, maxRedirects = 3): Promise<Response> {
   let url = raw;
   const signal = init.signal ?? AbortSignal.timeout(SAFE_FETCH_TIMEOUT_MS);
+  let headers = init.headers;
+  let first: URL | undefined;
   for (let i = 0; i <= maxRedirects; i++) {
-    await assertPublicUrl(url);
+    const checked = await assertPublicUrl(url);
+    first ??= checked;
     // The global fetch (Node's bundled undici) with our agent as its dispatcher:
     // the connection goes through pinnedLookup. `dispatcher` is an undici
     // extension to RequestInit, hence the cast.
-    const res = await fetch(url, { ...init, signal, redirect: "manual", dispatcher: pinnedAgent } as RequestInit);
+    const res = await fetch(url, { ...init, headers, signal, redirect: "manual", dispatcher: pinnedAgent } as RequestInit);
     if (res.status >= 300 && res.status < 400 && res.headers.get("location")) {
       await res.body?.cancel().catch(() => {});
-      url = new URL(res.headers.get("location")!, url).toString();
+      const next = new URL(res.headers.get("location")!, url);
+      // Another site never sees the credentials meant for the first one — and
+      // once dropped they stay dropped, even if a later hop comes back. The
+      // method and body are re-sent as before: tenant webhooks behind a
+      // redirect have always received their POST.
+      if (!sameSiteRedirect(first, next)) headers = stripCredentialHeaders(headers);
+      url = next.toString();
       continue;
     }
     return res;

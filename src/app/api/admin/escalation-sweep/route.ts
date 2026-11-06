@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser, currentTenantId, requireRoleAdmin, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, requireRoleAdmin, noSession } from "@/lib/auth";
 import { escalationSweepStatus, setEscalationSweep, sweepTenantEscalations } from "@/lib/escalations";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 // GET — this tenant's config + last run + how many of its chats would be reset now.
 export async function GET() {
   try {
-    const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tenantId = await currentTenantId();
+    if (!tenantId) return noSession();
     return NextResponse.json(await escalationSweepStatus(tenantId));
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
@@ -24,7 +25,8 @@ export async function GET() {
 // POST { runNow: true }                            → sweep this tenant now
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   let body: { enabled?: boolean; staleAfterDays?: number; everyDays?: number; runNow?: boolean };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 

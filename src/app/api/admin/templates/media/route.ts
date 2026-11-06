@@ -2,7 +2,7 @@ export const maxDuration = 60;
 import { NextResponse } from "next/server";
 import { uploadSampleMedia } from "@/lib/whatsapp";
 import { credsFor } from "@/lib/channels";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, noSession } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +25,8 @@ export async function POST(req: Request) {
     const f = file as File;
     if (!ALLOWED.has(f.type)) return NextResponse.json({ error: `Unsupported type ${f.type || "unknown"} — use JPEG/PNG, MP4, or PDF` }, { status: 400 });
     if (f.size > MAX_BYTES) return NextResponse.json({ error: "File too large (max 16 MB)" }, { status: 400 });
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const channel = await credsFor((form.get("channelId") as string) || null, tid);
     const r = await uploadSampleMedia({ bytes: await f.arrayBuffer(), mime: f.type }, channel);
     if (r.error) return NextResponse.json({ error: r.error }, { status: 502 });

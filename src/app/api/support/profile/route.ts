@@ -45,7 +45,8 @@ export async function POST(req: Request) {
     if (!row) return NextResponse.json({ error: "This account has no editable profile (owner accounts are managed in the environment)." }, { status: 400 });
 
     const password = (body.password ?? "").trim();
-    if (password && password.length < 6) return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    // 8, the same floor as signup and the affiliate program.
+    if (password && password.length < 8) return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
     // Name can't be blanked (it's the assignee label); title may be cleared.
     const name = (typeof body.name === "string" ? body.name.trim() : row.name) || row.name || user.email;
     const title = typeof body.title === "string" ? body.title.trim() : row.title;

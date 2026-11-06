@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { metaCredsForTenant } from "@/lib/partner-meta";
-import { requireRoleAdmin, currentTenantId, currentUser, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentTenantId, currentUser, noSession } from "@/lib/auth";
 import { exchangeSignupCode, exchangeForLongLivedToken, resolveFacebookPages, grantedScopes, noGrantMessage, FB_COMMENT_SCOPE, fbScopesKey } from "@/lib/embeddedsignup";
 import { saveMessengerChannel, subscribePageToApp, findMessengerChannelId } from "@/lib/channels";
 import { enforceLimit } from "@/lib/usage";
@@ -56,7 +56,8 @@ const mask = (t: string) => (t.length > 8 ? `${t.slice(0, 4)}…${t.slice(-4)}` 
 // access tokens never touch the client.
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tenantId = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tenantId = await currentTenantId();
+  if (!tenantId) return noSession();
   // A plan without ch_messenger refuses here, before any Meta round-trip. Logged
   // because the tenant only sees "not in your plan" and support needs to know
   // which workspace and plan produced it.

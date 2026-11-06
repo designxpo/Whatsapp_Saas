@@ -34,7 +34,7 @@ export async function POST(req: Request) {
 
   // Owner sessions must carry the owner epoch — verifySession rejects any other
   // value, so omitting it here would break impersonation once the epoch is bumped.
-  const token = await createSession({ email: me.email, name: body.reset ? "Owner" : "Owner (support)", role: "admin", tenantId: targetTenant, tokenVersion: Number(process.env.ADMIN_TOKEN_EPOCH ?? "0") || 0 });
+  const token = await createSession({ email: me.email, name: body.reset ? "Owner" : "Owner (support)", role: "admin", tenantId: targetTenant, tokenVersion: Number(process.env.ADMIN_TOKEN_EPOCH ?? "0") || 0 }, body.reset ? "7d" : "1h");
   const res = NextResponse.json({ success: true, tenantId: targetTenant });
   // An impersonation session is a support action, not a login: it expires in an
   // hour rather than inheriting the owner's 7-day cookie, so closing the tab

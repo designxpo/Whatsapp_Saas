@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentTenantId, noSession } from "@/lib/auth";
 import {
   listEntryPoints, createEntryPoint, updateEntryPoint, deleteEntryPoint,
   listSources, createSource, updateSource, deleteSource,
@@ -11,7 +11,8 @@ export const dynamic = "force-dynamic";
 // GET — every entry point (WhatsApp number) with its sources, each carrying a
 // tracked link + QR.
 export async function GET(req: Request) {
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const [entryPoints, sources] = await Promise.all([listEntryPoints(tid), listSources(tid)]);
   const withEntryPoints = await Promise.all(entryPoints.map(async ep => {
     const own = sources.filter(s => s.entryPointId === ep.id);
@@ -40,7 +41,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   let body: { shortLink?: { id: string; slug: string }; entryPoint?: Partial<HandleEntryPoint> & { id?: string }; source?: { id?: string; entryPointId?: string; label?: string; kind?: string; message?: string } };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
 
   if (body.shortLink) {
     if (!(await listSources(tid)).some(s => s.id === body.shortLink!.id)) return NextResponse.json({ error: "Source not found" }, { status: 404 });
@@ -97,7 +99,8 @@ export async function DELETE(req: Request) {
   const { searchParams } = new URL(req.url);
   const entryPointId = searchParams.get("entryPointId");
   const sourceId = searchParams.get("sourceId");
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   if (entryPointId) await deleteEntryPoint(entryPointId, tid);
   else if (sourceId) await deleteSource(sourceId, tid);
   else return NextResponse.json({ error: "Missing entryPointId or sourceId" }, { status: 400 });

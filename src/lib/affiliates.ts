@@ -8,6 +8,7 @@ import { db } from "./supabase";
 import { hashPassword, verifyPassword } from "./team";
 import { ownerAudit } from "./tenants";
 import { sendEmail } from "./email";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "./reserved-email";
 
 export interface Affiliate {
   id: string; email: string; name: string; phone: string | null;
@@ -36,6 +37,7 @@ function generateCode(name: string): string {
 
 export async function enrollAffiliate(p: { email: string; name: string; password: string; phone?: string }): Promise<Affiliate> {
   const email = p.email.trim().toLowerCase();
+  if (isReservedEmail(email)) throw new Error(RESERVED_EMAIL_MESSAGE);
   const existing = await db().from("wa_affiliates").select("id").eq("email", email).maybeSingle();
   if (existing.data) throw new Error("An affiliate account with this email already exists — try logging in.");
 
@@ -54,10 +56,17 @@ export async function enrollAffiliate(p: { email: string; name: string; password
   return mapAffiliate(data as Record<string, unknown>);
 }
 
+// A well-formed scrypt hash that no password matches. Checked against when the
+// email is unknown, so an unknown address costs the same scrypt run as a known
+// one with a wrong password — the response time can't be used to find out
+// which addresses are affiliates.
+const DUMMY_PASSWORD_HASH = `${"0".repeat(32)}:${"0".repeat(128)}`;
+
 export async function verifyAffiliateLogin(email: string, password: string): Promise<Affiliate | null> {
   const { data } = await db().from("wa_affiliates").select("*").eq("email", email.trim().toLowerCase()).maybeSingle();
-  if (!data) return null;
-  if (!verifyPassword(password, data.password_hash as string)) return null;
+  const stored = typeof data?.password_hash === "string" && data.password_hash ? data.password_hash : DUMMY_PASSWORD_HASH;
+  const ok = verifyPassword(password, stored);
+  if (!data || !ok) return null;
   return mapAffiliate(data as Record<string, unknown>);
 }
 

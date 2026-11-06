@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { getAdsAccountId, getAdsPageId, createCtwaCampaign, type CtwaInput, type AdObjective, type BidStrategy } from "@/lib/ads";
 import { setFlowTrigger } from "@/lib/adflow";
 import { recordPortalCampaign } from "@/lib/adsmeta";
@@ -29,7 +29,8 @@ export async function POST(req: Request) {
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const [accountId, pageId] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid)]);
   if (!accountId) return NextResponse.json({ error: "Connect an ad account first" }, { status: 400 });
   if (!pageId) return NextResponse.json({ error: "Set your Facebook Page ID first (Meta Ads → settings)" }, { status: 400 });

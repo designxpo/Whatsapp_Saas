@@ -8,6 +8,7 @@ import { asTeam, asRole } from "@/lib/teams";
 import { tdb } from "@/lib/tenantdb";
 import { enforceLimit } from "@/lib/usage";
 import { errorMessage } from "@/lib/errors";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "@/lib/reserved-email";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
   let body: { id?: string; email?: string; name?: string; title?: string; role?: string; password?: string; active?: boolean; team?: string | null; channelId?: string | null };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (!body.email?.trim()) return NextResponse.json({ error: "email required" }, { status: 400 });
+  if (isReservedEmail(body.email)) return NextResponse.json({ error: RESERVED_EMAIL_MESSAGE }, { status: 400 });
   const tid = (await teamTenant(req)) ?? DEFAULT_TENANT_ID;
   // New seat → enforce the plan's team-seat limit.
   if (!body.id) {
@@ -72,6 +74,7 @@ export async function POST(req: Request) {
     // Our own validation messages are already written for the person editing the
     // team; the schema hint below would only confuse them.
     if (/has to be assigned to a team|need the 2026\d+_port_wab_parity/i.test(msg)) return NextResponse.json({ error: msg }, { status: 400 });
+    if (msg === RESERVED_EMAIL_MESSAGE) return NextResponse.json({ error: msg }, { status: 400 });
     // wa_users.email is unique across ALL workspaces — surface that plainly
     // instead of the misleading migration hint (a 23505 is not a schema gap).
     if (/duplicate key|23505/i.test(msg) && /email/i.test(msg)) {

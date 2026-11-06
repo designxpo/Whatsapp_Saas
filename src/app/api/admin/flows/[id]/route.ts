@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getFlow, updateFlow, deleteFlow, type FlowGraph } from "@/lib/flowengine";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 import { errorMessage } from "@/lib/errors";
 
@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const flow = await getFlow(id, tid);
     if (!flow) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ flow });
@@ -24,7 +25,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
   let body: { name?: string; active?: boolean; triggerKeywords?: string[]; platform?: string; channelId?: string | null; channelIds?: string[]; graph?: FlowGraph };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     await updateFlow(id, body, tid);
     logActivity(await currentUser(), "flow.save", `${body.name ?? id}${body.active !== undefined ? ` (${body.active ? "active" : "inactive"})` : ""}`);
     return NextResponse.json({ flow: await getFlow(id, tid) });
@@ -36,7 +38,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     await deleteFlow(id, tid);
     logActivity(await currentUser(), "flow.delete", id);
     return NextResponse.json({ success: true });

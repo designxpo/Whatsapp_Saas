@@ -4,6 +4,7 @@ import { DEFAULT_TENANT_ID } from "./tenant";
 // carts into. Browse/checkout reuse the WhatsApp product messages + Flows.
 
 import { syncToCrm, type LeadRead } from "./lead-intel";
+import { UNVERIFIED_PHONE_LABEL } from "./lead-labels";
 import { db } from "./supabase";
 import { getSequenceByTrigger, enroll } from "./sequences";
 import { emitEvent, createPaymentLink, type ImportedProduct } from "./integrations";
@@ -198,11 +199,14 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string; disc
 }
 
 async function markLeadWon(tenantId: string, phone: string, orderId: string): Promise<void> {
-  const { data, error } = await db().from("wa_conversations").select("id,tenant_id,phone,name,platform,lead_phone,lead_status")
+  const { data, error } = await db().from("wa_conversations").select("id,tenant_id,phone,name,platform,lead_phone,labels,lead_status")
     .eq("tenant_id", tenantId).or(`phone.eq.${phone},lead_phone.eq.${phone}`);
   if (error) return;   // no lead columns yet (migration 20261103120000)
   const read: LeadRead = { status: "Won", score: 100, reason: `Paid order ${orderId.slice(0, 8)}.`, readyToPay: false, action: null };
-  for (const c of (data ?? []) as { id: string; tenant_id: string; phone: string; name: string | null; platform: string | null; lead_phone: string | null; lead_status: string | null }[]) {
+  for (const c of (data ?? []) as { id: string; tenant_id: string; phone: string; name: string | null; platform: string | null; lead_phone: string | null; labels: string[] | null; lead_status: string | null }[]) {
+    // A web chat that only CLAIMED this number (unverified) didn't pay — the
+    // real customer did. Don't mark that anonymous chat as won.
+    if (c.phone !== phone && (c.labels ?? []).includes(UNVERIFIED_PHONE_LABEL)) continue;
     await db().from("wa_conversations").update({ lead_status: "Won", intent_score: 100, lead_reason: read.reason, ready_to_pay: false, lead_action: null }).eq("id", c.id);
     if (c.lead_status !== "Won") await syncToCrm(c, read);
   }

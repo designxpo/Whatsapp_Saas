@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { getAdsAccountId, setAdsAccountId, getAdsPageId, setAdsPageId, setAdsToken, getAdsTokenStatus, getAdAccount, listAdCampaigns, adAttribution, type DatePreset } from "@/lib/ads";
 import { listPortalCampaignIds } from "@/lib/adsmeta";
 import { logActivity } from "@/lib/team";
@@ -13,7 +13,8 @@ export async function GET(req: Request) {
   const presetRaw = new URL(req.url).searchParams.get("preset") ?? "last_7d";
   const preset: DatePreset = presetRaw === "today" || presetRaw === "last_30d" ? presetRaw : "last_7d";
 
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   const [accountId, pageId, token] = await Promise.all([getAdsAccountId(tid), getAdsPageId(tid), getAdsTokenStatus(tid)]);
   if (!accountId) return NextResponse.json({ connected: false, accountId: "", pageId, token });
 
@@ -48,7 +49,8 @@ export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
   let body: { accountId?: string; pageId?: string; token?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
 
   if (body.token !== undefined) {
     const tok = body.token.trim();

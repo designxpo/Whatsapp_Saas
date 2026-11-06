@@ -211,14 +211,14 @@ function LoginForm() {
             {logo}
             <div>
               <h1 className="text-lg font-bold text-ink-900">Verify it&apos;s you</h1>
-              <p className="text-sm text-ink-400">We emailed a 4-digit code to {otpEmail} — this browser hasn&apos;t signed in before.</p>
+              <p className="text-sm text-ink-400">We emailed a 6-digit code to {otpEmail} — this browser hasn&apos;t signed in before.</p>
             </div>
           </div>
-          <input className={codeInput} placeholder="0000" inputMode="numeric" maxLength={4} value={otpCode}
-            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 4))} autoFocus />
+          <input className={codeInput} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otpCode}
+            onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus />
           {error && <p className="text-sm text-red-600">{error}</p>}
           {resendMsg && <p className="text-sm text-emerald-600">{resendMsg}</p>}
-          <button disabled={loading || otpCode.length !== 4} className={primary}>
+          <button disabled={loading || otpCode.length !== 6} className={primary}>
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Verify &amp; sign in
           </button>
           <p className="text-center text-xs text-ink-400">
@@ -283,8 +283,8 @@ function LoginForm() {
               {notice && <p className="text-sm text-ink-400">{notice}</p>}
             </div>
           </div>
-          <input className={codeInput} placeholder="0000" inputMode="numeric" maxLength={4} value={resetCode}
-            onChange={e => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 4))} autoFocus />
+          <input className={codeInput} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={resetCode}
+            onChange={e => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))} autoFocus />
           <input type="password" className={input} placeholder="New password (10+ characters)" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
           <p className="text-xs text-ink-400 -mt-2">If you use an authenticator or a passkey, you&apos;ll still be asked for it when you sign in.</p>
           {error && <p className="text-sm text-red-600">{error}</p>}

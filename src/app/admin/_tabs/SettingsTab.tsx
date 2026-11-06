@@ -1570,6 +1570,7 @@ export function MessengerCard() {
       if (!res.ok) setMsg(d.error || "Save failed");
       else if (d.webhook && !d.webhook.ok) { setMsg(`Saved, but Meta wouldn't finish connecting this Page: ${d.webhook.detail}. Messages won't arrive until it's fixed — the access token may be missing messaging permission.`, "warn"); load(); }
       else if (d.webhook?.degraded) { setMsg(d.webhook.detail, "warn"); setForm(null); load(); }
+      else if (d.shared) { setMsg("Page saved. This Page is also connected in another Talko workspace — new messages now arrive here, and that workspace stops receiving them.", "warn"); setForm(null); load(); }
       else { toast("Page saved"); setForm(null); load(); }
     } finally { setBusy(false); }
   }

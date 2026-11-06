@@ -152,12 +152,25 @@ export function safeStorageName(name: string, type: string): string {
   return `${Date.now()}_${base || "file"}.${ext}`;
 }
 
-// Types a browser will EXECUTE when it opens the URL, rather than display.
-// Relevant to inbound media, which arrives from Meta rather than from a file
-// picker: a customer can send a .svg or .html as a WhatsApp document, and an
-// agent opening it from the inbox would be running it on the storage origin.
-const EXECUTABLE = new Set([
-  "image/svg+xml", "text/html", "application/xhtml+xml", "text/xml", "application/xml",
+// Inbound media arrives from Meta, not from a file picker: the SENDER declares
+// its type, and this bucket is public. Anything a browser could render as a
+// document (svg, html, xhtml, any xml or "+xml" such as rss/atom) would run
+// script on the storage origin when an agent opened it from the inbox. A
+// denylist always misses one, so this is an ALLOWLIST of the types WhatsApp,
+// Instagram and Messenger actually deliver — they keep their real type so
+// images preview and video/voice notes play. Everything else is stored as
+// bytes.
+const INERT_EXACT = new Set([
+  "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif",
+  "application/pdf",
+  "text/plain", "text/csv",
+  "application/msword",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip", "application/x-zip-compressed",
 ]);
 
 /**
@@ -165,11 +178,18 @@ const EXECUTABLE = new Set([
  *
  * Unlike uploadProblem() this never refuses, because the caller is the inbound
  * message path and dropping a customer's attachment is worse than storing it:
- * the file is still saved and still downloadable, it just arrives as bytes
- * instead of as a page. Everything else keeps its real type so images preview
- * and video plays.
+ * a file whose type is not on the list is still saved and still downloadable,
+ * it just arrives as bytes instead of as a page. Parameters such as
+ * "; codecs=opus" are dropped (normaliseMime), so a voice note declared as
+ * "audio/ogg; codecs=opus" is served as audio/ogg and still plays.
  */
 export function inertContentType(mime: string): string {
   const m = normaliseMime(mime);
-  return !m || EXECUTABLE.has(m) ? "application/octet-stream" : m;
+  const OCTET = "application/octet-stream";
+  if (INERT_EXACT.has(m)) return m;
+  // Any audio/ or video/ type plays rather than renders — but only a
+  // well-formed one, and never anything XML-flavoured even under those
+  // prefixes ("+xml" is how every XML dialect is declared).
+  if (!/^(audio|video)\/[a-z0-9][a-z0-9.+-]*$/.test(m) || m.includes("xml")) return OCTET;
+  return m;
 }

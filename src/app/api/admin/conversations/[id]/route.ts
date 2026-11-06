@@ -201,6 +201,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       if (!url || (kind !== "image" && kind !== "video" && kind !== "document" && kind !== "audio")) {
         return NextResponse.json({ error: "url and a valid kind (image|video|document|audio) are required" }, { status: 400 });
       }
+      // The URL is stored and rendered by the web-chat widget as an src/href, so
+      // only a clean public https link is accepted: no quotes, angle brackets,
+      // backticks or spaces that could break out of the attribute. Meta needs a
+      // public https link for the send anyway, and /api/upload returns exactly that.
+      if (!isCleanHttpsUrl(url)) {
+        return NextResponse.json({ error: "The media link must be a public https:// address with no spaces or quote marks. Upload the file instead, or paste a different link." }, { status: 400 });
+      }
       if (kind === "image" && !(await moderateImageUrl(url, { tenantId: tid, surface: "upload" })).allowed) {
         return NextResponse.json({ error: "This image was blocked by the content safety filter." }, { status: 400 });
       }
@@ -445,5 +452,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (err) {
     return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+  }
+}
+
+// A media link an agent sends: must parse, be https, and carry none of the
+// characters that could close or extend an HTML attribute (" ' < > backtick)
+// or whitespace. Checked on the raw string, since that is what gets stored.
+function isCleanHttpsUrl(raw: string): boolean {
+  if (!raw || /["'<>`\s]/.test(raw)) return false;
+  try {
+    return new URL(raw).protocol === "https:";
+  } catch {
+    return false;
   }
 }

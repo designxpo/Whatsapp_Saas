@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireAdmin, currentTenantId, noSession } from "@/lib/auth";
 import { crmPushHealth, retryHeldCrmSessions } from "@/lib/leadsquared";
 import { errorMessage } from "@/lib/errors";
 
@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
 // status bar, which polls while someone works the inbox. This reads counters only.
 export async function GET() {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     return NextResponse.json(await crmPushHealth(tid));
   } catch (err) {
@@ -34,7 +35,8 @@ export async function GET() {
 // though the problem is already fixed.
 export async function POST(req: Request) {
   if (!(await requireAdmin())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { action?: string };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   if (body.action !== "retry") return NextResponse.json({ error: "Unknown action" }, { status: 400 });

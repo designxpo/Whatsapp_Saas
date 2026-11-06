@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { listBatches, createBatch, batchSize, consentStats, type BatchFilter } from "@/lib/audience";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { logActivity } from "@/lib/team";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const includeArchived = new URL(req.url).searchParams.get("archived") === "1";
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const batches = await listBatches(tid, includeArchived);
     const sized = await Promise.all(batches.map(async b => ({
       ...b,
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
   if (!name) return NextResponse.json({ error: "name is required" }, { status: 400 });
   const kind = body.kind === "dynamic" ? "dynamic" : "static";
   try {
-    const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+    const tid = await currentTenantId();
+    if (!tid) return noSession();
     const who = await currentUser();
     const batch = await createBatch({
       name, description: body.description ?? null, kind,

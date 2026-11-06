@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { CONSENT_COOKIE, REF_COOKIE, REF_MAX_AGE, cleanRef, parseConsent, sharedCookieDomain } from "@/lib/consent";
 import { jwtVerify } from "jose";
+import { isWorkspaceSessionClaims } from "@/lib/session-claims";
 import { partnerHostKind, whiteLabelConfig } from "@/lib/whitelabel";
 
 const COOKIE = "wa_admin_session";
@@ -48,12 +49,13 @@ async function valid(token: string | undefined): Promise<boolean> {
   const s = process.env.ADMIN_JWT_SECRET;
   if (!s || s.length < 32) return false;
   try {
-    await jwtVerify(token, new TextEncoder().encode(s));
-    return true;
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s), { algorithms: ["HS256"] });
+    return isWorkspaceSessionClaims(payload);
   } catch {
     return false;
   }
 }
+
 
 // Same secret/algorithm as valid(), but also checks the `purpose` claim so a
 // tenant-admin session token (which has no `purpose` claim) can never pass as
@@ -64,7 +66,7 @@ async function validAffiliate(token: string | undefined): Promise<boolean> {
   const s = process.env.ADMIN_JWT_SECRET;
   if (!s || s.length < 32) return false;
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s), { algorithms: ["HS256"] });
     return payload.purpose === "affiliate_session";
   } catch {
     return false;
@@ -109,7 +111,7 @@ async function validPartner(token: string | undefined): Promise<boolean> {
   const s = process.env.ADMIN_JWT_SECRET;
   if (!s || s.length < 32) return false;
   try {
-    const { payload } = await jwtVerify(token, new TextEncoder().encode(s));
+    const { payload } = await jwtVerify(token, new TextEncoder().encode(s), { algorithms: ["HS256"] });
     return payload.purpose === "partner_session";
   } catch {
     return false;
@@ -299,5 +301,7 @@ export async function middleware(req: NextRequest) {
 // Run on every request EXCEPT Next internals and static files (anything with a
 // file extension). The host split needs to see marketing pages, /signup and the
 // app-host root; the auth/CSRF gate still only ACTS on the portal + cookie-API
-// paths and falls through to next() for everything else.
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)"] };
+// paths and falls through to next() for everything else. Every /api path runs
+// it too, dot or no dot: the static-file exclusion used to skip the auth gate
+// for an API path whose last segment contained a dot (/api/admin/x/y.json).
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.[\\w]+$).*)", "/api/:path*"] };

@@ -7,6 +7,7 @@ import { loginKey, loginThrottle, recordLoginFailure } from "@/lib/loginthrottle
 import { sendEmailOtp } from "@/lib/emailotp";
 import { encryptSecret } from "@/lib/crypto";
 import { checkEmail } from "@/lib/emailcheck";
+import { isReservedEmail, RESERVED_EMAIL_MESSAGE } from "@/lib/reserved-email";
 import { errorMessage } from "@/lib/errors";
 import { LEGAL_VERSION } from "@/app/(site)/_content/legal";
 import { INDUSTRY_PACKS } from "@/lib/vocab";
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
       ...(emailQ.suggestion ? { suggestion: emailQ.suggestion } : {}),
     }, { status: 400 });
   }
+  if (isReservedEmail(ownerEmail)) return NextResponse.json({ error: RESERVED_EMAIL_MESSAGE }, { status: 400 });
   if (password.length < 8) return NextResponse.json({ error: "Use a password of at least 8 characters" }, { status: 400 });
   // Legal consent is mandatory — the account cannot be created without it.
   if (body.acceptTerms !== true) return NextResponse.json({ error: "You must accept the Terms of Service and Privacy Policy to continue." }, { status: 400 });

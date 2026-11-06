@@ -1,6 +1,6 @@
 export const maxDuration = 300;
 import { NextResponse } from "next/server";
-import { requireRoleAdmin, currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { requireRoleAdmin, currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { fetchLeads, type LeadCond } from "@/lib/leadsquared";
 import { getSequence, enroll } from "@/lib/sequences";
 import { optoutSet } from "@/lib/store";
@@ -15,7 +15,8 @@ const last10 = (p: string) => p.replace(/\D/g, "").slice(-10);
 //   enroll  → pulls matching LeadSquared leads and enrolls them into the drip
 export async function POST(req: Request) {
   if (!(await requireRoleAdmin())) return NextResponse.json({ error: "Admins only" }, { status: 403 });
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   let body: { action?: string; conditions?: LeadCond[]; sequenceId?: string; max?: number };
   try { body = await req.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
   const conditions = (body.conditions ?? []).filter(c => c?.field?.trim() && c?.value?.trim());

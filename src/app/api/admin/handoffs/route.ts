@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentUser, currentTenantId, DEFAULT_TENANT_ID } from "@/lib/auth";
+import { currentUser, currentTenantId, noSession } from "@/lib/auth";
 import { listHandoffs, handoffNumber, type HandoffPlatform } from "@/lib/handoff";
 import { errorMessage } from "@/lib/errors";
 
@@ -12,7 +12,8 @@ const PLATFORMS: HandoffPlatform[] = ["instagram", "facebook", "youtube"];
 export async function GET(req: Request) {
   if (!(await currentUser())) return NextResponse.json({ error: "Sign in first" }, { status: 401 });
   const url = new URL(req.url);
-  const tid = (await currentTenantId()) ?? DEFAULT_TENANT_ID;
+  const tid = await currentTenantId();
+  if (!tid) return noSession();
   try {
     const num = await handoffNumber(tid);
     if (url.searchParams.get("setup")) return NextResponse.json({ number: num?.number ?? null });

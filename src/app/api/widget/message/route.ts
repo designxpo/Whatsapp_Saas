@@ -1,14 +1,34 @@
 export const maxDuration = 180;   // runs an LLM reply (match the WhatsApp webhook so a slow turn isn't killed)
 import { NextResponse, after } from "next/server";
 import { getChannelBySiteKey, effectiveAgentId, effectiveKbScope, type Channel } from "@/lib/channels";
-import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, setContactAttributes, landCapturedLead, type Conversation } from "@/lib/store";
+import { getOrCreateConversation, appendConvMessage, touchInbound, touchOutbound, getConvHistory, escalateConversation, getContactByPhone, setConversationLeadPhone, setConversationName, setContactAttributes, landCapturedLead, UNVERIFIED_PHONE_LABEL, type Conversation } from "@/lib/store";
 import { generateReply, deferredToTeam } from "@/lib/llm";
 import { isAiEnabled } from "@/lib/messaging-settings";
 import { handleFlowMessage, type WebchatOut } from "@/lib/flowengine";
 import { pushChatActivity, phoneFromAttributes, extractPhone } from "@/lib/leadsquared";
 import { corsHeaders, originAllowed, webchatConvId, verifyWidgetIdentity } from "@/lib/webchat";
+import { rateLimitAll, clientIp, WIDGET_PER_IP, widgetPerSite } from "@/lib/ratelimit";
 
 const CLOSING_MSG = "Thanks! Our team will follow up with you shortly. 🙌";
+const SLOW_DOWN_MSG = "Too many messages right now. Please wait a moment, then send that again.";
+
+// What the model is shown of the chat. getConvHistory caps the COUNT (20), but a
+// stored message can be 4,000 characters, so a visitor pasting walls of text
+// would make every turn ~80k characters of paid input. Each message is trimmed
+// and the newest messages are kept within a total budget.
+const HISTORY_MSG_CHARS = 2000;
+const HISTORY_TOTAL_CHARS = 12000;
+function capHistory<T extends { body: string }>(rows: T[]): T[] {
+  const out: T[] = [];
+  let used = 0;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const body = (rows[i].body || "").slice(0, HISTORY_MSG_CHARS);
+    if (out.length && used + body.length > HISTORY_TOTAL_CHARS) break;
+    used += body.length;
+    out.unshift({ ...rows[i], body });
+  }
+  return out;
+}
 
 // Web chat has no native ad-referral the way WhatsApp/Meta ads do, so the
 // widget captures the landing page's own utm_source/utm_medium/utm_campaign
@@ -24,8 +44,13 @@ function utmSourceLabel(utm?: Record<string, string>): string | undefined {
 // Mirror a web-chat message onto the lead's LeadSquared timeline. Website
 // visitors have no phone, so the lead is matched by a phone shared in chat /
 // captured by a flow. Never throws — CRM sync must not break the widget reply.
+// A number typed in chat that already belonged to an existing contact is only a
+// CLAIM (anyone can type anyone's number), so the conversation is labelled
+// UNVERIFIED_PHONE_LABEL and nothing is written to that lead's CRM timeline. An
+// agent who confirms it is really them removes the label, and sync resumes.
 async function syncWebToLsq(channel: Channel, conv: Conversation, body: string, direction: "inbound" | "outbound", via: "lead" | "bot" | "agent", visitSource?: string) {
   try {
+    if ((conv.labels ?? []).includes(UNVERIFIED_PHONE_LABEL)) return;
     const phone = conv.leadPhone || phoneFromAttributes((await getContactByPhone(conv.phone, channel.tenantId).catch(() => null))?.attributes);
     if (!phone) return;   // no phone to match a CRM lead — skip
     await pushChatActivity({ phone, direction, body, via, channel: "Web chat", tenantId: channel.tenantId, source: visitSource || channel.crmSource || undefined });
@@ -55,6 +80,16 @@ export async function POST(req: Request) {
   const channel = await getChannelBySiteKey(siteKey);
   if (!channel || !channel.active) return NextResponse.json({ error: "Unknown or inactive web-chat key" }, { status: 404, headers: cors });
   if (!originAllowed(origin, channel.allowedOrigins)) return NextResponse.json({ error: "Origin not allowed for this web-chat key" }, { status: 403, headers: cors });
+  // Public endpoint (the site key is in the business's page source) and every
+  // accepted message costs an AI turn: per caller address first, then a ceiling
+  // for the whole site. Nothing is stored for a refused message.
+  const rl = await rateLimitAll([
+    { bucket: `widget:ip:${clientIp(req)}`, limit: WIDGET_PER_IP },
+    { bucket: `widget:site:${channel.id}`, limit: widgetPerSite() },
+  ]);
+  if (!rl.allowed) {
+    return NextResponse.json({ error: SLOW_DOWN_MSG }, { status: 429, headers: { ...cors, "Retry-After": String(rl.retryAfterSec) } });
+  }
 
   const tid = channel.tenantId;
   const id = webchatConvId(visitorId);
@@ -81,13 +116,16 @@ export async function POST(req: Request) {
     if (shared) {
       await setConversationLeadPhone(conv.id, shared).catch(() => undefined);
       conv = { ...conv, leadPhone: shared };
-      // New number → a Contacts row tagged web-chat; a returning lead → their
-      // existing contact gains the tag and this chat picks up their known name.
-      await landCapturedLead(conv.phone, shared, "web-chat", tid);
+      // New number → a Contacts row tagged web-chat (the lead-capture feature).
+      // A number that already belongs to a contact is unverified: the chat keeps
+      // its anonymous name, gets the unverified label (which stops the CRM sync
+      // below) and the existing contact is left untouched.
+      const landed = await landCapturedLead(conv.phone, shared, "web-chat", tid);
+      if (landed === "unverified") conv = { ...conv, labels: [...new Set([...(conv.labels ?? []), UNVERIFIED_PHONE_LABEL])] };
       // Stamp the raw utm_ fields onto the contact (mirrors WhatsApp's ad_id/
       // ad_headline pattern) so they show up in the contact drawer even though
       // the combined label above is what actually reaches the CRM Source.
-      if (body.utm) {
+      if (body.utm && landed !== "unverified") {
         const attrs: Record<string, string> = {};
         for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"]) {
           const v = (body.utm[k] || "").trim();
@@ -134,7 +172,7 @@ export async function POST(req: Request) {
   // forever, which read exactly as "the bot stopped working". The AI keeps
   // answering; only a human (or a genuine model escalate below) hands it off.
 
-  const history = await getConvHistory(conv.id, 20);
+  const history = capHistory(await getConvHistory(conv.id, 20));
   // Same resolution chain as WhatsApp: conversation pin / flow-stamped KB tag
   // first, then this widget's own persona + allocated KB, then tenant-global
   // (this route used to hardcode a null KB scope and skip the conversation pin).
