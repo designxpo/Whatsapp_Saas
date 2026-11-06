@@ -38,7 +38,7 @@ import { backfillMetricsRows, refreshTenantMetrics } from "@/lib/ownermetrics";
 import { drainReplyHistory, fillReplyAuthors } from "@/lib/comment-history";
 import { drainLeadScoring } from "@/lib/lead-intel";
 import { drainReviewBooster } from "@/lib/review-booster";
-import { sweepWorkAlerts, drainWorkAlertEmails } from "@/lib/work-alerts";
+import { sweepWorkAlerts, sweepIntegrationAlerts, drainWorkAlertEmails } from "@/lib/work-alerts";
 import { drainUnpaidReminders } from "@/lib/unpaid-orders";
 import { runRetention } from "@/lib/retention";
 import { drainDeletionRequests } from "@/lib/metadeletion";
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
     const reviewBooster = await stage("reviewbooster", null, () => drainReviewBooster(), pollStart, POLL_BUDGET);
     // Today (work-alerts.ts): chats past the reply target and tasks past due,
     // emailed to whoever owns them — only where a workspace turned it on.
-    const workAlerts = await stage("workalerts", null, async () => ({ raised: await sweepWorkAlerts(), emails: await drainWorkAlertEmails() }), pollStart, POLL_BUDGET);
+    const workAlerts = await stage("workalerts", null, async () => ({ raised: await sweepWorkAlerts(), integration: await sweepIntegrationAlerts(), emails: await drainWorkAlertEmails() }), pollStart, POLL_BUDGET);
     // One pay-link reminder per unpaid order, inside the 24h window, opt-in per workspace.
     const unpaidOrders = await stage("unpaidorders", null, () => drainUnpaidReminders(), pollStart, POLL_BUDGET);
     // The AI's read of each lead with new messages — status, intent, ready to

@@ -212,6 +212,21 @@ async function markLeadWon(tenantId: string, phone: string, orderId: string): Pr
 // trusted from the webhook payload. Exactly-once: the pending→paid transition is
 // a guarded UPDATE, so a duplicate/late webhook updates 0 rows and fires no
 // side-effects again.
+/**
+ * A payment that matched no order, or paid less than the order total — kept
+ * for the business to reconcile (integration-health.ts) instead of only being
+ * logged. Upserted on the payment's own id, so webhook retries don't repeat it.
+ * Best-effort: never blocks the webhook.
+ */
+async function recordUnmatchedPayment(tenantId: string, m: { paymentRef?: string; orderId?: string; providerPaymentId?: string; amountPaidCents?: number; provider?: string }, reason: "no_order" | "short_payment", orderId: string | null): Promise<void> {
+  const key = m.providerPaymentId || m.paymentRef || m.orderId;
+  if (!key) return;
+  await db().from("wa_unmatched_payments").upsert({
+    tenant_id: tenantId, provider: m.provider ?? "unknown", payment_key: key, payment_ref: m.paymentRef ?? null,
+    provider_payment_id: m.providerPaymentId ?? null, amount_cents: m.amountPaidCents ?? null, order_id: orderId, reason,
+  }, { onConflict: "tenant_id,provider,payment_key", ignoreDuplicates: true }).then(() => {}, () => {});
+}
+
 export async function markOrderPaid(m: {
   paymentRef?: string;         // provider hosted-link id (matches wa_orders.payment_ref)
   orderId?: string;            // or an explicit order id
@@ -226,13 +241,20 @@ export async function markOrderPaid(m: {
     : m.paymentRef
       ? await sel.eq("payment_ref", m.paymentRef).maybeSingle()
       : { data: null };
-  if (!order) { console.warn("[order paid] no order matched", m.paymentRef ?? m.orderId ?? "(none)"); return { ok: false }; }
+  if (!order) {
+    console.warn("[order paid] no order matched", m.paymentRef ?? m.orderId ?? "(none)");
+    // Only a per-tenant webhook knows whose money this is; record it for that business.
+    if (m.expectTenantId) await recordUnmatchedPayment(m.expectTenantId, m, "no_order", null);
+    return { ok: false };
+  }
 
   const tenantId = order.tenant_id as string;
   // Defense in depth: a per-tenant webhook (signature verified with tenant X's
   // secret) may only confirm tenant X's orders — never another tenant's.
   if (m.expectTenantId && tenantId !== m.expectTenantId) {
     console.warn(`[order paid] tenant mismatch: order ${order.id} is ${tenantId}, webhook is ${m.expectTenantId}`);
+    // To the business whose gateway sent it, this payment matches none of ITS orders.
+    await recordUnmatchedPayment(m.expectTenantId, m, "no_order", null);
     return { ok: false };
   }
   const orderId = order.id as string;
@@ -251,6 +273,7 @@ export async function markOrderPaid(m: {
   // Never confirm on a short payment — leave it pending for reconciliation.
   if (typeof m.amountPaidCents === "number" && m.amountPaidCents < totalCents) {
     console.warn(`[order paid] short payment for ${orderId}: ${m.amountPaidCents} < ${totalCents}`);
+    await recordUnmatchedPayment(tenantId, m, "short_payment", orderId);
     return { ok: false, orderId };
   }
 

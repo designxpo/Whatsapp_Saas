@@ -11,13 +11,13 @@ import { Notice, useNotice } from "@/components/Notice";
 import { requestReviewFocus } from "@/lib/review-focus";
 import { inp, type GoTo } from "../_shared";
 
-type Kind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment";
+type Kind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection";
 type Item = {
   key: string; kind: Kind; title: string; detail: string; person: string | null; action: string;
   dueAt: string | null; overdue: boolean; mine: boolean; taskId?: string;
-  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId: string } | { tab: "catalog" } | { tab: "growth" } | { tab: "today" };
+  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" };
 };
-type Settings = { replyTargetMinutes: number; alertEmails: boolean; alertHours: { start: number; end: number } | null; unpaidReminder: { enabled: boolean; afterMinutes: number } };
+type Settings = { replyTargetMinutes: number; alertEmails: boolean; alertHours: { start: number; end: number } | null; unpaidReminder: { enabled: boolean; afterMinutes: number }; integrationEmails: boolean };
 type Times = { days: number; answered: number; medianMinutes: number | null; p90Minutes: number | null; withinTargetPct: number | null; byPeople: { answered: number; medianMinutes: number | null }; partial: boolean };
 type Data = {
   items: Item[]; settings: Settings; setupPending: boolean; responseTimes: Times | null;
@@ -28,7 +28,7 @@ type Filter = "all" | "mine" | "unassigned";
 
 const KIND_LABEL: Record<Kind, string> = {
   reply: "Customer waiting", ready_to_pay: "Ready to pay", approval: "Approval", unpaid_order: "Unpaid order",
-  task: "Task", review_case: "Review complaint", commitment: "Promise made",
+  task: "Task", review_case: "Review complaint", commitment: "Promise made", connection: "Connection",
 };
 
 function dueText(iso: string | null, overdue: boolean): string {
@@ -65,8 +65,8 @@ export default function TodayTab({ goTo }: { goTo: GoTo }) {
 
   function open(i: Item) {
     if (i.open.tab === "livechat") goTo("livechat", { openPhone: i.open.phone });
-    else if (i.open.tab === "reviews") { requestReviewFocus(i.open.reviewId); goTo("reviews"); }
-    else if (i.open.tab === "catalog" || i.open.tab === "growth") goTo(i.open.tab);
+    else if (i.open.tab === "reviews") { if (i.open.reviewId) requestReviewFocus(i.open.reviewId); goTo("reviews"); }
+    else if (i.open.tab !== "today") goTo(i.open.tab);
   }
 
   async function finish(i: Item) {
@@ -301,6 +301,10 @@ function TodaySettings({ initial, onSaved, onClose }: { initial: Settings; onSav
           </p>
         )}
       </div>
+      <label className="flex items-start gap-2 rounded-control bg-canvas p-3 text-[13px] text-ink-800">
+        <input type="checkbox" checked={s.integrationEmails} onChange={e => setS({ ...s, integrationEmails: e.target.checked })} className="mt-0.5" />
+        <span><b>Email admins when a connection breaks</b> — a WhatsApp number restricted, Instagram or Google access lost, updates failing to deliver, or a payment that matches no order. Once per problem.</span>
+      </label>
       <div className="space-y-2 rounded-control bg-canvas p-3">
         <label className="flex items-start gap-2 text-[13px] text-ink-800">
           <input type="checkbox" checked={s.unpaidReminder.enabled} onChange={e => setS({ ...s, unpaidReminder: { ...s.unpaidReminder, enabled: e.target.checked } })} className="mt-0.5" />

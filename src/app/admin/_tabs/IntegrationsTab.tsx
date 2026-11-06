@@ -2,6 +2,7 @@
 
 // Integrations hub tab — extracted from admin/page.tsx, lazy-loaded.
 import { useBrand } from "@/components/BrandContext";
+import { ConnectionHealth } from "./ConnectionHealth";
 import { PageInfo } from "@/components/PageInfo";
 import { useState, useEffect, useCallback } from "react";
 import { Copy, Loader2, Trash2, Check, X } from "lucide-react";
@@ -221,6 +222,8 @@ function IntegrationsTab({ goTo }: { goTo: (t: Tab) => void }) {
       <div>
         <h2 className="text-xl font-extrabold text-brand-dark">Integrations</h2><PageInfo className="text-sm text-slate-500" lead={<>Connect the tools you already use — no code required.</>}><p>Connect the tools you already use — no code required. Each tool appears once below. Most turn what happens in your store, payments, bookings and lead sources into WhatsApp messages; some also let {who} act in your account (import a catalog, send payment links, sync {vocab.lead.many.toLowerCase()} to a CRM, post alerts to Slack, Teams or Zapier).</p><p>Pick a tool below. Most tell {who} when something happens (an order, a payment, a booking, a new lead) and Talko sends the matching WhatsApp message. Cards marked “+” also let {who} act in your account, and the CRM, alert and webhook cards work from Talko outwards.</p></PageInfo>
       </div>
+
+      <ConnectionHealth goTo={goTo} />
 
       {msg && !adding && <p className={`text-[13px] font-medium ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>{msg.ok ? <Check className="inline w-3.5 h-3.5 mr-1 align-[-2px]" /> : <X className="inline w-3.5 h-3.5 mr-1 align-[-2px]" />}{msg.text}</p>}
 

@@ -23,26 +23,27 @@ import { unsubscribedRecipients, unsubscribeUrl } from "./emailprefs";
 import { SITE_URL } from "./siteurl";
 import { isAiEnabled } from "./messaging-settings";
 import { UNANSWERED_AFTER_MS } from "./store";
-import { normalizeWorkSettings, WORK_SETTINGS_KEY, type WorkSettings } from "./work-settings";
+import { normalizeWorkSettings, DEFAULT_WORK_SETTINGS, WORK_SETTINGS_KEY, type WorkSettings } from "./work-settings";
+import { healthReport } from "./integration-health";
 import { hourIn } from "./businessclock";
 
 type AlertRow = {
-  id: string; tenant_id: string; kind: "reply_overdue" | "task_due"; conversation_id: string | null; task_id: string | null;
+  id: string; tenant_id: string; kind: "reply_overdue" | "task_due" | "integration"; conversation_id: string | null; task_id: string | null;
   channel_id: string | null; recipient: string | null; title: string; body: string; created_at: string; dedupe_key: string;
 };
 
 const DAY = 86_400_000;
 const missing = (e: { code?: string } | null | undefined) => !!e && ["42P01", "PGRST205", "42703", "PGRST204"].includes(e.code ?? "");
 
-/** Workspaces that want alert emails, with their settings. */
-async function enabledTenants(limit = 200): Promise<Map<string, WorkSettings>> {
+/** Every workspace's saved Today settings; a workspace with none uses the defaults. */
+async function savedSettings(limit = 1000): Promise<Map<string, WorkSettings>> {
   const { data } = await db().from("wa_settings").select("tenant_id,value").eq("key", WORK_SETTINGS_KEY).limit(limit);
-  const out = new Map<string, WorkSettings>();
-  for (const r of (data ?? []) as { tenant_id: string; value: unknown }[]) {
-    const s = normalizeWorkSettings(r.value);
-    if (s.alertEmails) out.set(r.tenant_id, s);
-  }
-  return out;
+  return new Map(((data ?? []) as { tenant_id: string; value: unknown }[]).map(r => [r.tenant_id, normalizeWorkSettings(r.value)]));
+}
+
+/** Workspaces that want overdue-chat and task emails, with their settings. */
+async function enabledTenants(): Promise<Map<string, WorkSettings>> {
+  return new Map([...(await savedSettings())].filter(([, s]) => s.alertEmails));
 }
 
 async function insertAlert(tenantId: string, a: Omit<AlertRow, "id" | "tenant_id" | "created_at">): Promise<boolean> {
@@ -89,12 +90,41 @@ export async function sweepWorkAlerts(now = Date.now(), maxTenants = 50): Promis
   return raised;
 }
 
+/**
+ * Raise one alert per broken connection (integration-health.ts) for every
+ * workspace that has connections, unless it switched these emails off. Runs
+ * once an hour (the first tick after the hour). The dedupe key includes when
+ * the problem started, so a problem that's fixed and later returns alerts again.
+ */
+export async function sweepIntegrationAlerts(now = Date.now(), maxTenants = 100): Promise<number> {
+  if (new Date(now).getUTCMinutes() >= 5) return 0;
+  const settings = await savedSettings();
+  const { data } = await db().from("wa_channels").select("tenant_id").eq("active", true).limit(5000);
+  const tenants = [...new Set(((data ?? []) as { tenant_id: string }[]).map(r => r.tenant_id).filter(Boolean))].slice(0, maxTenants);
+  let raised = 0;
+  for (const tenantId of tenants) {
+    if (!(settings.get(tenantId) ?? DEFAULT_WORK_SETTINGS).integrationEmails) continue;
+    const report = await healthReport(tenantId, now).catch(() => null);
+    for (const p of report?.problems ?? []) {
+      // Critical problems always; a warning only for money or failing deliveries, where something is actually lost.
+      if (p.severity !== "critical" && p.area !== "payments" && p.area !== "deliveries") continue;
+      if (await insertAlert(tenantId, { kind: "integration", dedupe_key: `integration:${p.key}:${p.since}`, conversation_id: null, task_id: null, channel_id: null, recipient: null, title: p.title, body: p.detail.slice(0, 300) })) raised++;
+    }
+  }
+  return raised;
+}
+
 /** Is this alert still true? A chat answered, or a task done, is never emailed about. */
 async function stillLate(a: AlertRow): Promise<boolean> {
   if (a.kind === "reply_overdue" && a.conversation_id) {
     const { data } = await db().from("wa_conversations").select("needs_reply,last_inbound_at").eq("tenant_id", a.tenant_id).eq("id", a.conversation_id).maybeSingle();
     const c = data as { needs_reply: boolean; last_inbound_at: string } | null;
     return !!c?.needs_reply && a.dedupe_key.endsWith(`:${c.last_inbound_at}`);
+  }
+  if (a.kind === "integration") {
+    // Still the same problem (same key, same start) — fixed ones aren't mailed.
+    const report = await healthReport(a.tenant_id).catch(() => null);
+    return !!report?.problems.some(p => a.dedupe_key === `integration:${p.key}:${p.since}`);
   }
   if (a.kind === "task_due" && a.task_id) {
     const { data } = await tdb(a.tenant_id).from("wa_tasks").select("status").eq("id", a.task_id).maybeSingle();
@@ -126,15 +156,19 @@ export async function drainWorkAlertEmails(now = Date.now()): Promise<{ emails: 
   const { data, error } = await db().from("wa_work_alerts").select("id,tenant_id,kind,conversation_id,task_id,channel_id,recipient,title,body,created_at,dedupe_key")
     .is("emailed_at", null).order("created_at", { ascending: true }).limit(300);
   if (error || !data?.length) return { emails: 0 };
-  const tenants = await enabledTenants();
+  const tenants = await savedSettings();
   const byTenant = new Map<string, AlertRow[]>();
   for (const r of data as unknown as AlertRow[]) byTenant.set(r.tenant_id, [...(byTenant.get(r.tenant_id) ?? []), r]);
 
   let emails = 0;
-  for (const [tenantId, rows] of byTenant) {
-    const s = tenants.get(tenantId);
+  for (let [tenantId, rows] of byTenant) {
+    const s = tenants.get(tenantId) ?? DEFAULT_WORK_SETTINGS;
     const mark = (ids: string[], why: string | null) => tdb(tenantId).from("wa_work_alerts").update({ emailed_at: new Date(now).toISOString(), email_error: why }).in("id", ids);
-    if (!s) { await mark(rows.map(r => r.id), "Alert emails are off"); continue; }
+    const wanted = (r: AlertRow) => (r.kind === "integration" ? s.integrationEmails : s.alertEmails);
+    const off = rows.filter(r => !wanted(r));
+    if (off.length) await mark(off.map(r => r.id), "These emails are off");
+    rows = rows.filter(wanted);
+    if (!rows.length) continue;
     if (s.alertHours) {
       const h = hourIn(new Date(now));
       if (h < s.alertHours.start || h >= s.alertHours.end) continue;   // wait for working hours
@@ -162,13 +196,16 @@ export async function drainWorkAlertEmails(now = Date.now()): Promise<{ emails: 
     for (const [to, list] of perPerson) {
       const unsub = unsubscribeUrl(tenantId, "work_alerts", to);
       const chats = list.filter(a => a.kind === "reply_overdue").length;
-      const subject = list.length === 1 ? list[0].title : `${list.length} things are waiting for you${chats ? ` (${chats} customer${chats === 1 ? "" : "s"})` : ""}`;
+      const integration = list.every(a => a.kind === "integration");
+      const subject = list.length === 1 ? list[0].title : integration ? `${list.length} connections need attention` : `${list.length} things are waiting for you${chats ? ` (${chats} customer${chats === 1 ? "" : "s"})` : ""}`;
       const mail = applyEmailBrand(brand, {
         preheader: list.map(a => a.title).join(" · ").slice(0, 110),
-        heading: chats ? "Customers are waiting" : "Tasks are due",
+        heading: integration ? "Something needs your attention" : chats ? "Customers are waiting" : "Tasks are due",
         paragraphs: list.slice(0, 10).map(a => `${a.title}${a.body ? ` — “${a.body}”` : ""}`).concat(list.length > 10 ? [`…and ${list.length - 10} more in Today.`] : []),
-        cta: { label: "Open Today", href: "/admin?tab=today" },
-        footerReason: "You're getting this because overdue alerts are on for your workspace. An admin can turn them off in Today → Settings.",
+        cta: integration ? { label: "Open Integrations", href: "/admin?tab=integrations" } : { label: "Open Today", href: "/admin?tab=today" },
+        footerReason: integration
+          ? "You're getting this because you're an admin of this workspace. An admin can turn connection alerts off in Today → Settings."
+          : "You're getting this because overdue alerts are on for your workspace. An admin can turn them off in Today → Settings.",
         unsubscribeHref: unsub,
       }, SITE_URL, subject);
       const { html, text } = renderEmail(mail.opts, mail.siteUrl);

@@ -208,3 +208,5 @@ export async function refreshIgToken(longLivedToken: string): Promise<IgTokenRes
 
 /** Where a channel's last successful token refresh is remembered (wa_settings). */
 export const igTokenRefreshedKey = (channelId: string) => `ig_token_refreshed_at:${channelId}`;
+/** The last refresh failure, cleared on the next success: { error, at } | null. */
+export const igTokenErrorKey = (channelId: string) => `ig_token_error:${channelId}`;

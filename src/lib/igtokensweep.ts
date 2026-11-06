@@ -18,7 +18,7 @@
 
 import { listChannels, updateChannelToken, isLiveChannel } from "./channels";
 import { getTenantSetting, setTenantSetting } from "./store";
-import { refreshIgToken, igTokenRefreshedKey } from "./iglogin";
+import { refreshIgToken, igTokenRefreshedKey, igTokenErrorKey } from "./iglogin";
 import { errorMessage } from "./errors";
 
 const REFRESH_AFTER_DAYS = 25;          // half the 60-day life — a month of slack
@@ -57,6 +57,8 @@ export async function sweepInstagramTokens(deadlineAt: number): Promise<TokenSwe
         channelId: ch.id, tenantId: ch.tenantId, name: ch.name, error: r.error,
       });
       result.errors.push(`${ch.name}: ${r.error}`);
+      // Remembered so the business sees it (integration-health.ts), not just our logs.
+      await setTenantSetting(ch.tenantId, igTokenErrorKey(ch.id), { error: String(r.error ?? "refresh failed").slice(0, 300), at: new Date().toISOString() }).catch(() => undefined);
       continue;
     }
 
@@ -65,6 +67,7 @@ export async function sweepInstagramTokens(deadlineAt: number): Promise<TokenSwe
       // Stamp only after the token is safely stored. Stamping first would mean
       // a failed write silently pushes the next attempt out by another 25 days.
       await setTenantSetting(ch.tenantId, igTokenRefreshedKey(ch.id), new Date().toISOString());
+      await setTenantSetting(ch.tenantId, igTokenErrorKey(ch.id), null).catch(() => undefined);
       result.refreshed++;
       console.log("[cron channel-tokens] refreshed", { channelId: ch.id, tenantId: ch.tenantId, expiresInDays: r.expiresIn ? Math.round(r.expiresIn / 86_400) : null });
     } catch (e) {

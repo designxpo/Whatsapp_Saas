@@ -11,6 +11,10 @@
 //   11 pm message doesn't page anyone; the chat still shows as overdue.
 // unpaidReminder — one WhatsApp reminder with the pay link for an order left
 //   unpaid. Off by default; it messages customers.
+// integrationEmails — tell admins when a connection breaks (number restricted,
+//   Instagram/Google access lost, deliveries failing, a payment with no order).
+//   On by default: it's a service notice about their own account, sent once
+//   per problem, and they can switch it off.
 
 import { getTenantSetting, setTenantSetting } from "./store";
 
@@ -19,6 +23,7 @@ export interface WorkSettings {
   alertEmails: boolean;
   alertHours: { start: number; end: number } | null;
   unpaidReminder: { enabled: boolean; afterMinutes: number };
+  integrationEmails: boolean;
 }
 
 export const WORK_SETTINGS_KEY = "work_settings";
@@ -28,6 +33,7 @@ export const DEFAULT_WORK_SETTINGS: WorkSettings = {
   alertEmails: false,
   alertHours: { start: 9, end: 20 },
   unpaidReminder: { enabled: false, afterMinutes: 60 },
+  integrationEmails: true,
 };
 
 const clamp = (n: unknown, lo: number, hi: number, fb: number) => {
@@ -53,6 +59,7 @@ export function normalizeWorkSettings(raw: unknown): WorkSettings {
       // At least 15 minutes, and under a day so it still lands inside WhatsApp's 24-hour window.
       afterMinutes: clamp(u.afterMinutes, 15, 20 * 60, d.unpaidReminder.afterMinutes),
     },
+    integrationEmails: r.integrationEmails !== false,
   };
 }
 

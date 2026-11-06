@@ -14,8 +14,9 @@ import { getWorkSettings, type WorkSettings } from "./work-settings";
 import { UNANSWERED_AFTER_MS } from "./store";
 import { listTasks, type WorkViewer } from "./tasks";
 import { addDaysIn, startOfDayIn } from "./businessclock";
+import { healthReport } from "./integration-health";
 
-export type TodayKind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment";
+export type TodayKind = "reply" | "ready_to_pay" | "approval" | "unpaid_order" | "task" | "review_case" | "commitment" | "connection";
 
 export interface TodayItem {
   key: string;
@@ -29,7 +30,7 @@ export interface TodayItem {
   overdue: boolean;
   mine: boolean;
   /** Where the item opens. */
-  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId: string } | { tab: "catalog" } | { tab: "growth" } | { tab: "today" };
+  open: { tab: "livechat"; phone: string } | { tab: "reviews"; reviewId?: string } | { tab: "catalog" | "growth" | "today" | "integrations" | "setup" | "instagram" | "facebook" };
   taskId?: string;
 }
 
@@ -184,6 +185,19 @@ export async function buildToday(v: WorkViewer, myId: string | null, now: number
         key: `commitment:${x.id}`, kind: "commitment", title: x.title, detail: x.evidence.slice(0, 140),
         person: x.owner_email, action: "Keep the promise, then mark it done", dueAt: x.due_at,
         overdue: Date.parse(x.due_at) <= now, mine: same(x.owner_email, me.email), open: { tab: "growth" },
+      });
+    }
+  }
+
+  // 7. Broken connections (admins): a restricted number, lost Instagram/Google
+  // access, failing deliveries, money with no order. Due as soon as noticed.
+  if (v.user.role === "admin") {
+    const report = await healthReport(v.tenantId, now).catch(() => null);
+    for (const p of report?.problems ?? []) {
+      items.push({
+        key: `connection:${p.key}`, kind: "connection", title: p.title, detail: p.detail.slice(0, 160),
+        person: "Admins", action: p.fix.label, dueAt: p.since, overdue: p.severity === "critical", mine: true,
+        open: p.fix.tab === "reviews" ? { tab: "reviews" } : { tab: p.fix.tab },
       });
     }
   }
