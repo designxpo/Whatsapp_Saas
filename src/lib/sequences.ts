@@ -431,6 +431,29 @@ export async function enroll(
  * counsellor to another is a change of owner, not a reason to abandon the
  * nurture the lead is already receiving.
  */
+/**
+ * Record why journeys stopped, when, and who stopped them (shown per customer
+ * in Live Chat — automations.ts). A separate, best-effort update AFTER the
+ * stop itself, so a stop never fails because these columns don't exist yet
+ * (migration 20261106140000) — it just goes unexplained.
+ */
+export async function noteStopReason(
+  tenantId: string,
+  match: { ids?: string[]; sequenceId?: string; phone?: string },
+  reason: string, by: string | null = null,
+): Promise<void> {
+  if (match.ids && !match.ids.length) return;
+  try {
+    let q = tdb(tenantId).from("wa_sequence_enrollments")
+      .update({ stop_reason: reason.slice(0, 300), stopped_at: new Date().toISOString(), stopped_by: by })
+      .eq("status", "stopped").is("stop_reason", null);
+    if (match.ids) q = q.in("id", match.ids);
+    if (match.sequenceId) q = q.eq("sequence_id", match.sequenceId);
+    if (match.phone) q = q.eq("phone", match.phone);
+    await q;
+  } catch { /* the stop itself already happened; only its explanation is lost */ }
+}
+
 export async function stopMarketingEnrollments(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<number> {
   const { data } = await tdb(tenantId).from("wa_sequences").select("id").eq("team", "marketing");
   const ids = ((data ?? []) as unknown as { id: string }[]).map(r => r.id);
@@ -439,12 +462,14 @@ export async function stopMarketingEnrollments(phone: string, tenantId = DEFAULT
     .update({ status: "stopped", updated_at: new Date().toISOString() })
     .eq("phone", phone).eq("status", "active").in("sequence_id", ids)
     .select("id");
+  await noteStopReason(tenantId, { ids: ((stopped ?? []) as unknown as { id: string }[]).map(r => r.id) }, "Moved to a new owner — marketing journeys stop on reassignment");
   return ((stopped ?? []) as unknown[]).length;
 }
 
-export async function stopEnrollment(sequenceId: string, phone: string, tenantId = DEFAULT_TENANT_ID): Promise<void> {
+export async function stopEnrollment(sequenceId: string, phone: string, tenantId = DEFAULT_TENANT_ID, reason = "The CRM stage changed"): Promise<void> {
   await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped", updated_at: new Date().toISOString() })
     .eq("sequence_id", sequenceId).eq("phone", phone);
+  await noteStopReason(tenantId, { sequenceId, phone }, reason);
 }
 
 /**
@@ -462,11 +487,12 @@ export async function stopEnrollment(sequenceId: string, phone: string, tenantId
  * completed journey, and the returned count stays truthful on a retry: the
  * second delivery reports 0, which is exactly what happened.
  */
-export async function stopAllEnrollments(phone: string, tenantId = DEFAULT_TENANT_ID): Promise<number> {
+export async function stopAllEnrollments(phone: string, tenantId = DEFAULT_TENANT_ID, reason = "A teammate replied in the chat", by: string | null = null): Promise<number> {
   const { data } = await tdb(tenantId).from("wa_sequence_enrollments")
     .update({ status: "stopped", updated_at: new Date().toISOString() })
     .eq("phone", phone).eq("status", "active")
     .select("id");
+  await noteStopReason(tenantId, { ids: ((data ?? []) as unknown as { id: string }[]).map(r => r.id) }, reason, by);
   return data?.length ?? 0;
 }
 
@@ -1085,7 +1111,7 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
   for (const enr of (data ?? []) as unknown as Record<string, unknown>[]) {
     try {
       const seq = await getSequence(enr.sequence_id as string, tenantId);
-      if (!seq || !seq.active) { await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped" }).eq("id", enr.id as string); continue; }
+      if (!seq || !seq.active) { await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped" }).eq("id", enr.id as string); await noteStopReason(tenantId, { ids: [enr.id as string] }, "The journey was switched off or deleted"); continue; }
       // ── Stop the moment the lead comes back ──────────────────────────────
       //
       // This used to run for `inactivity` journeys only, on the reasoning that
@@ -1101,6 +1127,7 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
         const conv = await getConversationByPhone(enr.phone as string, tenantId).catch(() => null);
         if (shouldStopForReply(conv, enr.updated_at as string | null)) {
           await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped", updated_at: new Date().toISOString() }).eq("id", enr.id as string);
+          await noteStopReason(tenantId, { ids: [enr.id as string] }, "The customer replied");
           continue;
         }
       }
@@ -1116,6 +1143,7 @@ async function drainSequencesForTenant(max = 100, tenantId = DEFAULT_TENANT_ID):
       // retried, never sent blind.
       if (await isOptedOutStrict(enr.phone as string, tenantId)) {
         await tdb(tenantId).from("wa_sequence_enrollments").update({ status: "stopped", last_error: "opted out", updated_at: new Date().toISOString() }).eq("id", enr.id as string);
+        await noteStopReason(tenantId, { ids: [enr.id as string] }, "The customer opted out of messages");
         continue;
       }
 

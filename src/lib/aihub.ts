@@ -125,20 +125,40 @@ function cosine(a: number[], b: number[]): number {
 // Returns the agent the conversation should use for this query, or null to
 // keep the current behavior. Sticky: switching needs a clear margin over the
 // conversation's current agent so chat doesn't ping-pong between personas.
-export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null, tenantId: string): Promise<{ agentId: string; name: string; score: number } | null> {
+export interface AgentScore { agentId: string; name: string; score: number }
+export type RouteDecision =
+  | { pick: AgentScore; reason: "best_fit" | "already_best" }
+  | { pick: null; reason: "too_few_agents" | "no_good_fit" | "not_clearly_better"; best: AgentScore | null };
+
+/** Every agent with a routing description, scored against the query, best first. */
+export async function scoreAgents(queryEmbedding: number[], tenantId: string): Promise<AgentScore[]> {
   const { data } = await db().from("wa_ai_agents").select("id, name, embedding").eq("tenant_id", tenantId).not("embedding", "is", null);
-  const scored = (data ?? [])
+  return (data ?? [])
     .map(r => ({ agentId: r.id as string, name: r.name as string, score: cosine(queryEmbedding, r.embedding as number[]) }))
     .sort((a, b) => b.score - a.score);
-  if (scored.length < 2) return null;                       // routing needs alternatives
+}
 
+/**
+ * The routing rule itself, pure: switch to the best-fit agent only when there's
+ * a choice, it fits well enough, and it's clearly better than the current one.
+ * The live assistant and the AI Hub preview both use this, so the preview says
+ * exactly what a real message would do.
+ */
+export function decideRoute(scored: AgentScore[], currentAgentId: string | null): RouteDecision {
+  if (scored.length < 2) return { pick: null, reason: "too_few_agents", best: scored[0] ?? null };   // routing needs alternatives
   const best = scored[0];
-  if (best.score < ROUTE_MIN_SIMILARITY) return null;       // off-topic for everyone
-  if (!currentAgentId) return best;
-  if (best.agentId === currentAgentId) return best;
+  if (best.score < ROUTE_MIN_SIMILARITY) return { pick: null, reason: "no_good_fit", best };       // off-topic for everyone
+  if (!currentAgentId) return { pick: best, reason: "best_fit" };
+  if (best.agentId === currentAgentId) return { pick: best, reason: "already_best" };
   const current = scored.find(s => s.agentId === currentAgentId);
-  if (current && best.score - current.score < ROUTE_SWITCH_MARGIN) return null; // not clearly better
-  return best;
+  if (current && best.score - current.score < ROUTE_SWITCH_MARGIN) return { pick: null, reason: "not_clearly_better", best }; // not clearly better
+  return { pick: best, reason: "best_fit" };
+}
+
+export const ROUTING_THRESHOLDS = { minSimilarity: ROUTE_MIN_SIMILARITY, switchMargin: ROUTE_SWITCH_MARGIN };
+
+export async function pickAgentForQuery(queryEmbedding: number[], currentAgentId: string | null, tenantId: string): Promise<{ agentId: string; name: string; score: number } | null> {
+  return decideRoute(await scoreAgents(queryEmbedding, tenantId), currentAgentId).pick;
 }
 
 export async function deleteAgent(id: string, tenantId: string): Promise<void> {

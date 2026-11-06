@@ -9,6 +9,7 @@ import { type Tab, inp, type AiAgentT, type AiParamT, type AiFunctionT, type AiP
 import { useConfirm } from "@/components/confirm-dialog";
 import { Drawer } from "@/components/overlay";
 import { SalesCloserCard } from "./SalesCloserCard";
+import { RoutePreviewCard } from "./RoutePreviewCard";
 
 // Business isolation — each channel answers with its own persona and its own
 // knowledge, and a channel that hasn't chosen falls back to a neutral assistant,
@@ -267,6 +268,8 @@ function AiHubTab({ goTo }: { goTo: (t: Tab) => void }) {
           </button>
         </div>
       </section>
+
+      <RoutePreviewCard agents={agents.filter(a => a.id).map(a => ({ id: a.id as string, name: a.name }))} />
 
       <IsolationCard goTo={goTo} />
 

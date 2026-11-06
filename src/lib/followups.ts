@@ -42,7 +42,7 @@ const SAFE_WINDOW_MS = 23.5 * 3600_000;
 const FLOOR_MINUTES = 5;
 const last10 = (p: string) => (p || "").replace(/\D/g, "").slice(-10);
 
-interface FollowupCfg { enabled: boolean; delayMinutes: number; maxAttempts: number }
+export interface FollowupCfg { enabled: boolean; delayMinutes: number; maxAttempts: number }
 
 async function tenantCfg(tenantId: string, cache: Map<string, FollowupCfg>): Promise<FollowupCfg> {
   const hit = cache.get(tenantId);
@@ -63,6 +63,14 @@ async function tenantCfg(tenantId: string, cache: Map<string, FollowupCfg>): Pro
   cache.set(tenantId, cfg);
   return cfg;
 }
+
+/** This workspace's AI follow-up settings (for explaining them per chat — automations.ts). */
+export function followupConfig(tenantId: string): Promise<FollowupCfg> {
+  return tenantCfg(tenantId, new Map());
+}
+
+/** How long after the customer's last message a follow-up may still go out (inside WhatsApp's 24h window). */
+export const FOLLOWUP_SAFE_WINDOW_MS = SAFE_WINDOW_MS;
 
 export async function drainAiFollowups(max = 50): Promise<number> {
   if (process.env.AI_FOLLOWUP_ENABLED === "false") return 0;   // global kill switch (all tenants)
