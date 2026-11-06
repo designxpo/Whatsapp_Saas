@@ -43,6 +43,7 @@ const tabLoading = (
 // analysis), so these stay inline. ssr:false — tabs mount only once opened.
 const AdsTab = dynamic(() => import("./_tabs/AdsTab"), { ssr: false, loading: () => tabLoading });
 const TodayTab = dynamic(() => import("./_tabs/TodayTab"), { ssr: false, loading: () => tabLoading });
+const ResultsTab = dynamic(() => import("./_tabs/ResultsTab"), { ssr: false, loading: () => tabLoading });
 const AnalyticsTab = dynamic(() => import("./_tabs/AnalyticsTab"), { ssr: false, loading: () => tabLoading });
 const CampaignsTab = dynamic(() => import("./_tabs/CampaignsTab"), { ssr: false, loading: () => tabLoading });
 const SequencesTab = dynamic(() => import("./_tabs/SequencesTab"), { ssr: false, loading: () => tabLoading });
@@ -119,6 +120,8 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" />, hint: "Everyone who has ever messaged you" },
       { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
       { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" />, hint: "See what's working — messages, replies, sales" },
+      // Admins only (tabRoleAllowed): it shows revenue.
+      { key: "results", label: "Results", icon: <TrendingUp className="w-[18px] h-[18px]" />, hint: "Paid orders and revenue by where customers came from" },
       // Only a team lead or an admin ever sees this (tabRoleAllowed filters the nav).
       { key: "team", label: "Team Progress", icon: <Users className="w-[18px] h-[18px]" />, hint: "Is your team keeping up, and who is behind" },
     ],
@@ -172,7 +175,7 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
   },
 ];
 const TAB_TITLES: Record<Tab, string> = {
-  home: "Home", today: "Today", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
+  home: "Home", today: "Today", results: "Results", livechat: "Live Chat", broadcast: "Broadcast", ads: "Meta Ads", instagram: "Instagram", facebook: "Facebook", youtube: "YouTube", webchat: "Website Chat", reviews: "Google Reviews", assistant: "AI Knowledge Base", flows: "Chatbot Flows",
   sequences: "Sequences", catalog: "Catalog", growth: "Growth Tools", handlehub: "Links & QR Codes",
   aihub: "AI Hub", templates: "Templates", forms: "WhatsApp Forms", analytics: "Analytics",
   contacts: "Contacts", pipeline: "Sales Pipeline", campaigns: "History", optouts: "Do Not Contact", settings: "Settings", setup: "Setup Guide", integrations: "Integrations", security: "Sign-in security", team: "Team Progress",
@@ -400,6 +403,7 @@ function AdminShell() {
           {roleBlocked ? <AdminOnlyTab title={tabLabel(tab, vocab)} goTo={goTo} /> : <>
           {tab === "home" && <HomeTab goTo={goTo} />}
           {tab === "today" && <TodayTab goTo={goTo} />}
+          {tab === "results" && <ResultsTab />}
           {tab === "livechat" && <LiveChatTab goTo={goTo} intent={chatIntent} clearIntent={clearChatIntent} />}
           {tab === "broadcast" && <BroadcastTab goTo={goTo} />}
           {tab === "ads" && <AdsTab goTo={goTo} />}

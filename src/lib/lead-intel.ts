@@ -201,6 +201,10 @@ export async function scoreConversation(c: ConvRow): Promise<LeadRead | null> {
   }).eq("id", c.id);
   if (readChanged(before, read)) {
     await syncToCrm(c, read).catch(e => console.warn("[lead-intel] CRM sync failed:", errorMessage(e)));
+    // History of reads, for Results' "was the AI right?" (best-effort; table from migration 20261106200000).
+    await Promise.resolve(tdb(c.tenant_id).from("wa_lead_reads").insert({
+      conversation_id: c.id, phone: c.lead_phone || c.phone, status: read.status, score: read.score, ready_to_pay: read.readyToPay, reason: read.reason?.slice(0, 500) ?? null,
+    })).then(() => {}, () => {});
   }
   return read;
 }

@@ -25,6 +25,7 @@ export const RETENTION_DAYS = {
   reviewAlerts: 90,         // wa_review_alerts: notices that are only useful for weeks; the review itself is kept.
   reviewRequests: 400,      // wa_review_requests: phone numbers — enough for the yearly frequency limit and reports.
   workAlerts: 90,           // wa_work_alerts: overdue-chat and task-due notices; the chat and task themselves are kept.
+  leadReads: 400,           // wa_lead_reads: the AI's past reads of a lead — enough for year-on-year "was it right?" figures.
 } as const;
 
 type Builder = { lt: (c: string, v: string) => Builder; eq: (c: string, v: unknown) => Builder; is: (c: string, v: null) => Builder; not: (c: string, op: string, v: null) => Builder };
@@ -50,6 +51,7 @@ export const RETENTION_RULES: RetentionRule[] = [
   { name: "review_alerts", table: "wa_review_alerts", column: "created_at", days: RETENTION_DAYS.reviewAlerts },
   { name: "review_requests", table: "wa_review_requests", column: "created_at", days: RETENTION_DAYS.reviewRequests },
   { name: "work_alerts", table: "wa_work_alerts", column: "created_at", days: RETENTION_DAYS.workAlerts },
+  { name: "lead_reads", table: "wa_lead_reads", column: "created_at", days: RETENTION_DAYS.leadReads },
 ];
 
 // The ids go into a DELETE … WHERE id IN (…) URL: 200 uuids keep it ~8KB.

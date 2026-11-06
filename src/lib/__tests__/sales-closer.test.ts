@@ -141,6 +141,8 @@ describe("the lead-scoring sweep", () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ event: "lead.scored", data: { conversationId: "c1", phone: "919812345678", leadStatus: "Hot", intentScore: 85, readyToPay: true } });
     expect(lsqWrites).toEqual(["mx_AI_Status=Hot", "mx_AI_Score=85"]);
+    // The changed read is kept as history for Results' "was the AI right?".
+    expect(m.tables.wa_lead_reads).toEqual([expect.objectContaining({ tenant_id: T, conversation_id: "c1", phone: "919812345678", status: "Hot", ready_to_pay: true })]);
     // c2 was read after its last message; c3 is still mid-burst.
     expect(m.tables.wa_conversations.find(c => c.id === "c2")!.lead_status).toBe("Warm");
     expect(m.tables.wa_conversations.find(c => c.id === "c3")!.lead_scored_at).toBeNull();

@@ -167,9 +167,12 @@ export async function checkoutCart(p: { phone: string; paymentRef?: string; disc
   const subtotal = cart.items.reduce((s, i) => s + i.priceCents * i.qty, 0);
   const off = Math.min(100, Math.max(0, Math.round(p.discountPercent ?? 0)));
   const total = off ? Math.round(subtotal * (100 - off) / 100) : subtotal;
-  const { data, error } = await db().from("wa_orders").insert({
-    tenant_id: tenantId, cart_id: cart.id, phone: p.phone, items: cart.items, total_cents: total, status: p.paymentRef ? "paid" : "pending", payment_ref: p.paymentRef ?? null,
-  }).select("id").single();
+  const row: Record<string, unknown> = { tenant_id: tenantId, cart_id: cart.id, phone: p.phone, items: cart.items, total_cents: total, status: p.paymentRef ? "paid" : "pending", payment_ref: p.paymentRef ?? null };
+  // Where this customer came from, kept with the order for Results (order-source.ts).
+  const source = await import("./order-source").then(m => m.sourceForPhone(tenantId, p.phone)).catch(() => null);
+  let { data, error } = await db().from("wa_orders").insert(source ? { ...row, source } : row).select("id").single();
+  // Before migration 20261106200000 there's no source column: place the order without it.
+  if (error && source && /source/.test(error.message ?? "")) ({ data, error } = await db().from("wa_orders").insert(row).select("id").single());
   if (error) throw error;
   await db().from("wa_carts").update({ status: "ordered", updated_at: new Date().toISOString() }).eq("id", cart.id);
   const orderId = data!.id as string;
