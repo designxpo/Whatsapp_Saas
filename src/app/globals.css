@@ -158,8 +158,9 @@ button.w-full:not([disabled]):not(.no-press):active { scale: .985; }
 
 /* ── Top bar: a translucent layer the page scrolls under ────────────────────
    Its edge appears only once there is content beneath it. */
-.glass-bar { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); border-bottom-color: transparent; transition: border-color .2s ease; }
-.glass-bar[data-scrolled] { border-bottom-color: var(--border); }
+/* The top bar keeps its hairline at all times: screens that never scroll
+   (Live Chat) would otherwise run the header straight into their columns. */
+.glass-bar { background: rgba(255, 255, 255, .78); -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); border-bottom-color: var(--border); }
 
 /* ── Marketing-site motion (subtle, decorative) ───────────────────────────── */
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }

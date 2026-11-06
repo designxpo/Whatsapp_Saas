@@ -5,7 +5,7 @@
 // anything stopped, and a Stop button for each (automations.ts).
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Square } from "lucide-react";
+import { Loader2, Square, Zap } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DetailsSection } from "@/components/details-section";
 
@@ -67,7 +67,7 @@ export function CustomerAutomations({ conversationId }: { conversationId: string
   const shown = showAll ? [...live, ...rest] : live;
 
   return (
-    <DetailsSection id="automations" title="Automations" collapsible meta={list && live.length ? `${live.length} running` : undefined}>
+    <DetailsSection id="automations" title="Automations" icon={<Zap />} hint="What runs for this customer, and what happens next.">
       {list === null ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-ink-300" aria-label="Loading automations" /> : (
         <>
           {!shown.length && <p className="text-[12px] text-ink-500">Nothing is running for this customer.</p>}

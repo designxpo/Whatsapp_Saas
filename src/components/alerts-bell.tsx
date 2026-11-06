@@ -68,7 +68,7 @@ export function AlertsBell({ alerts, onOpen, onOpenReview, onOpenAll }: { alerts
       <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-haspopup="dialog"
         aria-label={bellLabel(alerts.count, reviews.length)}
         data-help="Chats waiting for you and review updates, and how you're told about them."
-        className="relative inline-flex items-center justify-center w-10 h-10 lg:w-8 lg:h-8 rounded-full lg:rounded-lg border border-line bg-white text-ink-600 hover:bg-canvas hover:text-ink-900 transition-colors">
+        className="relative inline-flex items-center justify-center w-10 h-10 rounded-full border border-line bg-white text-ink-600 hover:bg-canvas hover:text-ink-900 transition-colors">
         {alerts.sound || alerts.desktop ? <Bell className="w-4 h-4" aria-hidden /> : <BellOff className="w-4 h-4" aria-hidden />}
         {n > 0 && (
           <span aria-hidden className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center tabular-nums">

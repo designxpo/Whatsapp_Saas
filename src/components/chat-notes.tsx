@@ -9,7 +9,7 @@
 // so, and the notes are tinted so nobody mistakes one for a message.
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Trash2 } from "lucide-react";
+import { FileText, Loader2, Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
 import { DetailsSection } from "@/components/details-section";
 
@@ -68,8 +68,7 @@ export function ChatNotes({ conversationId }: { conversationId: string }) {
   const canDelete = (n: Note) => !!viewer && (viewer.isAdmin || viewer.email === n.authorEmail);
 
   return (
-    <DetailsSection id="notes" title="Team notes" collapsible meta={notes?.length ? notes.length : undefined}>
-      <p className="text-[12px] text-ink-500 mb-2">Only your team sees these. Never sent to the customer or read by the AI.</p>
+    <DetailsSection id="notes" title="Team notes" icon={<FileText />} hint="Only your team sees these. Never sent to the customer or read by the AI.">
 
       {notes === null ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-ink-300" aria-label="Loading notes" /> : notes.length > 0 && (
         <ul className="space-y-1.5 mb-2">

@@ -46,7 +46,7 @@ export function workspaceTourSteps(): DriveStep[] {
   const replay = firstShown('[data-tour="replay"]');
   steps.push({ ...(replay ? { element: replay } : {}), popover: {
     title: "Help whenever you need it",
-    description: "Choose Take a tour to restart this walkthrough. On a computer, rest the pointer on a control for a moment to see what it does. Keyboard focus works too.",
+    description: "Choose Take a tour to restart this walkthrough. To find any screen and see what it's for, use Search (Ctrl+K, or ⌘K on a Mac).",
     side: "bottom",
   } });
   return steps;

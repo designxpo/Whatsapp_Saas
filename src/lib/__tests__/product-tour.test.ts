@@ -114,3 +114,11 @@ describe("workspace onboarding", () => {
     expect(steps.some(st => st.popover?.description === "Everything else.")).toBe(true);
   });
 });
+
+describe("the tour's closing step", () => {
+  it("points at Search, not at hover help (which was removed)", async () => {
+    const src = (await import("node:fs")).readFileSync((await import("node:path")).join(process.cwd(), "src/lib/product-tour.ts"), "utf8");
+    expect(src).not.toMatch(/rest the pointer|hover/i);
+    expect(src).toContain("use Search (Ctrl+K");
+  });
+});

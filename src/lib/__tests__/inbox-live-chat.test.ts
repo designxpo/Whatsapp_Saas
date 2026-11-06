@@ -56,10 +56,13 @@ async function mount(intent: Record<string, unknown> | null = null) {
 }
 const button = (el: HTMLElement, re: RegExp) => [...el.querySelectorAll("button")].find(b => re.test((b.textContent ?? "").trim()) || re.test(b.getAttribute("aria-label") ?? ""));
 const rows = (el: HTMLElement) => [...el.querySelectorAll<HTMLElement>("[data-inbox-row]")].map(r => r.dataset.id);
-const filtersButton = (el: HTMLElement) => el.querySelector<HTMLButtonElement>("button[aria-haspopup='menu'][aria-label^='Filters']")!;
-const openMenu = (el: HTMLElement) => act(async () => { filtersButton(el).click(); });
-const menuItem = (el: HTMLElement, re: RegExp) => [...el.querySelectorAll<HTMLElement>("[role='menu'] [role='menuitemradio']")].find(b => re.test((b.textContent ?? "").trim()));
-const pill = (el: HTMLElement, label: string) => el.querySelector<HTMLButtonElement>(`button[aria-label='Remove filter: ${label}']`);
+const group = (el: HTMLElement, label: string) => el.querySelector<HTMLElement>(`[role='group'][aria-label='${label}']`)!;
+const inGroup = (el: HTMLElement, label: string, re: RegExp) => [...group(el, label).querySelectorAll("button")].find(b => re.test((b.textContent ?? "").trim()));
+const choose = (el: HTMLElement, ariaLabel: string, value: string) => act(async () => {
+  const sel = el.querySelector<HTMLSelectElement>(`select[aria-label='${ariaLabel}']`)!;
+  Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(sel, value);
+  sel.dispatchEvent(new Event("change", { bubbles: true }));
+});
 
 describe("Live Chat inbox", () => {
   it("shows placeholders, not 'No conversations yet', until the list arrives", async () => {
@@ -83,67 +86,45 @@ describe("Live Chat inbox", () => {
     expect(el.textContent).toMatch(/Needs a person/);
     expect(el.textContent).toMatch(/AI paused/);
     expect(el.textContent).not.toMatch(/ESCALATED|BOT OFF/);
-    // Assigned to the signed-in person reads "You".
-    expect(el.textContent).toMatch(/Assigned to You/);
+    // Assigned to the signed-in person reads "@You".
+    expect(el.textContent).toMatch(/Assigned to @You/);
   });
 
-  it("quick view: All / Waiting for you / Mine, with counts, remembered for the visit", async () => {
+  it("shows the filters like yesterday: chips for All / Waiting / Mine / Needs a person, remembered for the visit", async () => {
     const el = await mount();
     await tick();
-    expect(button(el, /^Waiting for you/)?.textContent).toMatch(/Waiting for you2/);
-    await act(async () => { button(el, /^Mine/)!.click(); });
+    // Waiting carries its count; screen readers hear the full name.
+    expect(inGroup(el, "Show", /^Waiting/)?.textContent).toMatch(/Waiting \(Waiting for you\)2/);
+    await act(async () => { inGroup(el, "Show", /^Mine/)!.click(); });
     expect(rows(el)).toEqual(["c2"]);
-    expect(button(el, /^Mine/)?.getAttribute("aria-pressed")).toBe("true");
+    expect(inGroup(el, "Show", /^Mine/)?.getAttribute("aria-pressed")).toBe("true");
     expect(JSON.parse(sessionStorage.getItem("talko-inbox-view")!).filter).toBe("mine");
+    await act(async () => { inGroup(el, "Show", /^Needs a person/)!.click(); });
+    expect(rows(el)).toEqual(["c1"]);
+    expect(JSON.parse(sessionStorage.getItem("talko-inbox-view")!).filter).toBe("needs_person");
+    await act(async () => { inGroup(el, "Show", /^All/)!.click(); });
+    expect(rows(el)).toHaveLength(3);
   });
 
-  it("keeps the rarer filters, the channel and the sort in one Filters menu", async () => {
+  it("filters by channel in the channel box, and keeps the rarer filters and the sort in two small selects", async () => {
     const el = await mount();
     await tick();
-    // Nothing narrowed yet: no pills, no dot on the button.
-    expect(filtersButton(el).getAttribute("aria-label")).toBe("Filters");
-    expect(el.querySelector("[aria-label^='Remove filter']")).toBeNull();
-
-    await openMenu(el);
-    expect(el.querySelector("[role='menu']")).toBeTruthy();
-    expect(filtersButton(el).getAttribute("aria-expanded")).toBe("true");
-    // Counts ride along in the menu.
-    expect(menuItem(el, /^Unassigned/)?.textContent).toMatch(/Unassigned1/);
-    expect(menuItem(el, /^Instagram/)?.textContent).toMatch(/Instagram1/);
-
-    // Instagram: one chat, the menu closes, and one removable pill says so.
-    await act(async () => { menuItem(el, /^Instagram/)!.click(); });
-    expect(el.querySelector("[role='menu']")).toBeNull();
+    expect(inGroup(el, "Channel", /^Instagram/)?.textContent).toMatch(/Instagram 1/);
+    await act(async () => { inGroup(el, "Channel", /^Instagram/)!.click(); });
     expect(rows(el)).toEqual(["c2"]);
-    expect(pill(el, "Instagram")).toBeTruthy();
-    expect(filtersButton(el).getAttribute("aria-label")).toMatch(/some are on/);
-    await act(async () => { pill(el, "Instagram")!.click(); });
+    expect(inGroup(el, "Channel", /^Instagram/)?.getAttribute("aria-pressed")).toBe("true");
+    await act(async () => { inGroup(el, "Channel", /^All/)!.click(); });
     expect(rows(el)).toHaveLength(3);
 
-    // Needs a person: no quick segment is pressed, the pill names it, and it is remembered.
-    await openMenu(el);
-    await act(async () => { menuItem(el, /^Needs a person/)!.click(); });
+    // Unassigned (and AI paused) live in "More filters", with counts; no chip is pressed then.
+    expect(el.querySelector("select[aria-label='More filters']")?.textContent).toMatch(/Unassigned \(1\)/);
+    await choose(el, "More filters", "unassigned");
     expect(rows(el)).toEqual(["c1"]);
-    expect(pill(el, "Needs a person")).toBeTruthy();
-    expect(["All", "Waiting", "Mine"].map(l => button(el, new RegExp(`^${l}`))?.getAttribute("aria-pressed"))).toEqual(["false", "false", "false"]);
-    expect(JSON.parse(sessionStorage.getItem("talko-inbox-view")!).filter).toBe("needs_person");
-    await openMenu(el);
-    expect(menuItem(el, /^Needs a person/)?.getAttribute("aria-checked")).toBe("true");
-    // Escape closes the menu and gives focus back to the button.
-    await act(async () => { el.querySelector("[role='menu']")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
-    expect(el.querySelector("[role='menu']")).toBeNull();
-    expect(document.activeElement).toBe(filtersButton(el));
-    await act(async () => { pill(el, "Needs a person")!.click(); });
+    expect(["All", "Waiting", "Mine", "Needs a person"].map(l => inGroup(el, "Show", new RegExp(`^${l}`))?.getAttribute("aria-pressed"))).toEqual(["false", "false", "false", "false"]);
+    await choose(el, "More filters", "");
     expect(rows(el)).toHaveLength(3);
-    expect(button(el, /^All/)?.getAttribute("aria-pressed")).toBe("true");
 
-    // Unassigned and the sort live there too.
-    await openMenu(el);
-    await act(async () => { menuItem(el, /^Unassigned/)!.click(); });
-    expect(rows(el)).toEqual(["c1"]);
-    await act(async () => { pill(el, "Unassigned")!.click(); });
-    await openMenu(el);
-    await act(async () => { menuItem(el, /^Longest waiting/)!.click(); });
+    await choose(el, "Sort chats", "longest");
     expect(rows(el)).toEqual(["c1", "c2", "c3"]);
     expect(JSON.parse(sessionStorage.getItem("talko-inbox-view")!).sort).toBe("longest");
   });
@@ -152,28 +133,24 @@ describe("Live Chat inbox", () => {
     const el = await mount({ filter: "escalated" });
     await tick();
     expect(rows(el)).toEqual(["c1"]);
-    expect(pill(el, "Needs a person")).toBeTruthy();
-    await openMenu(el);
-    expect(menuItem(el, /^Needs a person/)?.getAttribute("aria-checked")).toBe("true");
+    expect(inGroup(el, "Show", /^Needs a person/)?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("an intent for one channel shows its pill", async () => {
+  it("an intent for one channel selects it in the channel box", async () => {
     const el = await mount({ platform: "instagram" });
     await tick();
     expect(rows(el)).toEqual(["c2"]);
-    expect(pill(el, "Instagram")).toBeTruthy();
+    expect(inGroup(el, "Channel", /^Instagram/)?.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("opens with filter 'waiting' from Home / the shell", async () => {
     const el = await mount({ filter: "waiting" });
     await tick();
     expect(rows(el).sort()).toEqual(["c1", "c2"]);
-    expect(button(el, /^Waiting for you/)?.getAttribute("aria-pressed")).toBe("true");
-    expect(el.querySelector("[aria-label^='Remove filter']")).toBeNull();
+    expect(inGroup(el, "Show", /^Waiting/)?.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("folds a details section away and remembers it", async () => {
-    localStorage.removeItem("talko-details-open:notes");
+  it("shows the contact details as labelled sections, all open", async () => {
     const el = await mount();
     await tick();
     await act(async () => { (el.querySelector("[data-id='c1']") as HTMLElement).click(); });
@@ -181,12 +158,11 @@ describe("Live Chat inbox", () => {
     // jsdom is phone-width: the details open as a side panel from the header.
     await act(async () => { button(el, /^Contact details$/)!.click(); });
     await tick();
-    const toggle = button(document.body, /^Team notes/)!;
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    await act(async () => { toggle.click(); });
-    expect(button(document.body, /^Team notes/)!.getAttribute("aria-expanded")).toBe("false");
-    expect(document.querySelector("textarea[aria-label='Add a team note']")?.closest("[hidden]")).toBeTruthy();
-    expect(localStorage.getItem("talko-details-open:notes")).toBe("0");
+    const headings = [...document.querySelectorAll("section[aria-labelledby^='details-'] h3")].map(h => h.textContent?.trim());
+    expect(headings).toEqual(expect.arrayContaining(["Labels", "Team notes", "Assigned to"]));
+    const notes = document.querySelector("textarea[aria-label='Add a team note']");
+    expect(notes).toBeTruthy();
+    expect(notes?.closest("[hidden]")).toBeNull();
   });
 
   it("shows an error with Retry when the list fails, and recovers", async () => {

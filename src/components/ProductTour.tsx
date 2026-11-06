@@ -35,7 +35,7 @@ export function TourButton({ onStart, blocked, className = "" }: { onStart: () =
   return (
     <button type="button" data-tour="replay" disabled={blocked} onClick={onStart}
       data-help-disabled="Available again once your plan is active."
-      className={`inline-flex h-10 lg:h-8 shrink-0 items-center gap-2 lg:gap-1.5 rounded-full lg:rounded-lg border border-line bg-white px-3 lg:px-2.5 text-xs lg:text-[13px] font-semibold lg:font-medium text-ink-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-700 disabled:opacity-50 ${className}`}>
+      className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-line bg-white px-3 text-xs lg:text-[13px] font-semibold text-ink-900 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-700 disabled:opacity-50 ${className}`}>
       <Compass className="h-4 w-4" aria-hidden="true" />
       <span>Take a tour</span>
     </button>

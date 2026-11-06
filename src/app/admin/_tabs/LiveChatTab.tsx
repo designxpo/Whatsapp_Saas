@@ -5,8 +5,8 @@
 // (also used by the Contacts tab). Pure relocation.
 import { useVocab } from "@/lib/vocab-client";
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useId, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical, ListFilter } from "lucide-react";
-import { type Conversation, ConvAvatar, inp, type Tab, type ChatIntent, type GoTo, useChannelList } from "../_shared";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical, CreditCard, Tag, UserCheck, History, Layers, ClipboardList, Megaphone } from "lucide-react";
+import { type Conversation, ConvAvatar, ChannelNameBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
 import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
@@ -16,8 +16,9 @@ import { ChatNotes } from "@/components/chat-notes";
 import { CustomerWork } from "@/components/customer-work";
 import { CustomerAutomations } from "@/components/customer-automations";
 import { LeadWord, LeadReason, ApprovalCard } from "./LeadInsight";
-import { DetailsRow, DetailsSection, detailsButton, detailsControl } from "@/components/details-section";
+import { DetailsSection, detailsButton, detailsControl } from "@/components/details-section";
 import { Drawer } from "@/components/overlay";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { toast } from "@/components/toast";
 import { fmtAgo, fmtNum, fmtUpdated } from "@/lib/format";
 import { waitInfo, replyTarget, DEFAULT_REPLY_TARGET_MINUTES, type WaitInfo, type WaitLevel } from "@/lib/wait-urgency";
@@ -324,6 +325,30 @@ function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: 
 
 // True while the viewport is at least `px` wide. Live Chat is client-only
 // (dynamic, ssr:false), so the first render can read the real answer.
+// Where the inbox starts on the page (below the header and any banner — the
+// owner preview, a plan notice, an announcement), so it can fill exactly the
+// rest of the screen. A fixed guess made the page taller than the window
+// whenever a banner showed: the page scrolled and the reply box was cut off.
+function useTopOffset(ref: React.RefObject<HTMLElement | null>): number | null {
+  const [top, setTop] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const t = Math.round(el.getBoundingClientRect().top + window.scrollY);
+      setTop(prev => (prev === t ? prev : t));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // Banners come and go (and fonts load) without a resize; the body's size
+    // changes when they do. Our own height change doesn't move our top, so this settles.
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.body);
+    return () => { window.removeEventListener("resize", measure); ro?.disconnect(); };
+  }, [ref]);
+  return top;
+}
+
 function useMinWidth(px: number): boolean {
   const query = `(min-width: ${px}px)`;
   const [ok, setOk] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(query).matches);
@@ -502,86 +527,53 @@ function Segments<T extends string>({ label, value, options, onChange }: {
   );
 }
 
-// ── The list's filter menu ──────────────────────────────────────────────────
-// Everything that narrows the list but isn't used every minute: the rarer
-// "who needs to act" filters, the channel, one number, the pipeline stage and
-// the sort. One button in the header instead of four rows of chips.
+// ── The list's filters, shown like yesterday: a channel box, then one row of
+// chips for the views used all day, and a small select for the rest. ──
 
 type PlatformKey = "all" | "whatsapp" | "instagram" | "messenger" | "webchat";
 const PLATFORMS: { key: PlatformKey; label: string; pill: string; icon: React.ReactNode }[] = [
-  { key: "all", label: "All channels", pill: "All channels", icon: null },
+  { key: "all", label: "All", pill: "All channels", icon: null },
   { key: "whatsapp", label: "WhatsApp", pill: "WhatsApp", icon: <MessageCircle className="w-3.5 h-3.5 text-green-600" /> },
   { key: "instagram", label: "Instagram", pill: "Instagram", icon: <Instagram className="w-3.5 h-3.5 text-pink-600" /> },
   // Every channel always shows, so a connected one is visible before its first chat lands.
   { key: "messenger", label: "Facebook", pill: "Facebook", icon: <Facebook className="w-3.5 h-3.5 text-blue-600" /> },
   { key: "webchat", label: "Web chat", pill: "Web chat", icon: <MessageSquare className="w-3.5 h-3.5 text-brand-700" /> },
 ];
-/** The two filters that live in the quick segmented control; the rest are in the menu. */
-const QUICK_FILTERS: readonly InboxFilter[] = ["all", "waiting", "mine"];
+/** The views used all day sit as chips; the rest are in the "More filters" select. */
+const CHIP_FILTERS: readonly InboxFilter[] = ["all", "waiting", "mine", "needs_person"];
+const CHIP_LABEL: Partial<Record<InboxFilter, string>> = { all: "All", waiting: "Waiting", mine: "Mine", needs_person: "Needs a person" };
 
-function MenuHeading({ children }: { children: React.ReactNode }) {
-  return <div role="presentation" className="px-2 pt-2 pb-0.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-500">{children}</div>;
+type ChipTone = "red" | "amber" | "grey" | "green" | "brand";
+const CHIP_TONE: Record<ChipTone, string> = {
+  red: "bg-red-50 text-red-700",
+  amber: "bg-amber-50 text-amber-800",
+  grey: "bg-canvas text-ink-600",
+  green: "bg-emerald-50 text-emerald-700",
+  brand: "bg-brand-50 text-brand-700",
+};
+/** Yesterday's small uppercase tag (11px at the smallest). */
+function Chip({ tone, title, children }: { tone: ChipTone; title?: string; children: React.ReactNode }) {
+  return <span title={title} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-[0.02em] whitespace-nowrap ${CHIP_TONE[tone]}`}>{children}</span>;
 }
-function MenuRadio({ checked, onSelect, icon, label, count }: { checked: boolean; onSelect: () => void; icon?: React.ReactNode; label: React.ReactNode; count?: number | null }) {
+/** "WAITING 42 MIN" as a tag: grey, then amber, then red against the reply target, with a changing icon. */
+function WaitChip({ info }: { info: WaitInfo }) {
+  const Icon = info.level === "late" ? AlertTriangle : info.level === "soon" ? Hourglass : Clock;
   return (
-    <button type="button" role="menuitemradio" aria-checked={checked} onClick={onSelect}
-      className="w-full flex items-center gap-2 min-h-11 md:min-h-8 lg:min-h-7 pl-1.5 pr-2 rounded-[6px] text-left text-[14px] md:text-[13px] text-ink-800 hover:bg-canvas focus-visible:bg-canvas">
-      <span aria-hidden className="w-4 shrink-0 flex justify-center">{checked && <Check className="w-3.5 h-3.5 text-brand-700" />}</span>
-      {icon && <span aria-hidden className="shrink-0 flex">{icon}</span>}
-      <span className="flex-1 min-w-0 truncate">{label}</span>
-      {count != null && <span className="tabular-nums text-[12px] text-ink-500">{fmtNum(count)}</span>}
-    </button>
+    <Chip tone={info.level === "late" ? "red" : info.level === "soon" ? "amber" : "grey"} title={`${info.label}, ${info.explain}`}>
+      <Icon className="w-3 h-3" aria-hidden /><span className="tabular-nums">{info.label}</span><span className="sr-only">, {info.explain}</span>
+    </Chip>
   );
 }
-
-function FilterMenu({ active, children, onShortcuts }: { active: boolean; children: (close: () => void) => React.ReactNode; onShortcuts: () => void }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  const trigger = useRef<HTMLButtonElement | null>(null);
-  const menu = useRef<HTMLDivElement | null>(null);
-  const close = useCallback((refocus = true) => { setOpen(false); if (refocus) trigger.current?.focus(); }, []);
-  // Opening puts focus on the first ticked item, the way a Mac menu does.
-  useEffect(() => {
-    if (!open) return;
-    const items = menu.current ? Array.from(menu.current.querySelectorAll<HTMLElement>("[role^='menuitem']")) : [];
-    (items.find(i => i.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
-  }, [open]);
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    const items = menu.current ? Array.from(menu.current.querySelectorAll<HTMLElement>("[role^='menuitem']")) : [];
-    const at = items.indexOf(document.activeElement as HTMLElement);
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
-    else if (e.key === "Tab") close(false);
-    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      const next = e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
-      items[next]?.focus();
-    } else if (e.key === "Home" || e.key === "End") { e.preventDefault(); items[e.key === "Home" ? 0 : items.length - 1]?.focus(); }
-  };
+/** The AI's lead read as tags: "HOT 88", plus "PAY" when they're ready to pay. */
+function LeadChips({ lead }: { lead?: Conversation["lead"] }) {
+  if (!lead) return null;
+  const tone: ChipTone = lead.status === "Hot" ? "red" : lead.status === "Warm" ? "amber" : lead.status === "Won" ? "green" : "grey";
+  const label = lead.status === "OptOut" ? "Opted out" : lead.status;
   return (
-    <div className="relative">
-      <button ref={trigger} type="button" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
-        aria-label={active ? "Filters (some are on)" : "Filters"} title="Filter and sort"
-        className={`relative inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 lg:w-7 lg:h-7 rounded-[8px] hover:bg-canvas ${open || active ? "text-brand-700" : "text-ink-600 hover:text-ink-900"} ${open ? "bg-canvas" : ""}`}>
-        <ListFilter className="w-[18px] h-[18px] md:w-4 md:h-4" aria-hidden />
-        {active && <span aria-hidden className="absolute top-2 right-2 md:top-1 md:right-1 w-1.5 h-1.5 rounded-full bg-brand-700 ring-2 ring-white" />}
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={() => close(false)} aria-hidden />
-          <div ref={menu} id={id} role="menu" aria-label="Filter and sort chats" onKeyDown={onKeyDown}
-            className="absolute right-0 top-full mt-1 z-30 w-64 max-h-[min(70dvh,560px)] overflow-y-auto rounded-[12px] border border-line bg-white shadow-lg p-1 u-scale-in origin-top-right">
-            {children(() => close())}
-            <div role="separator" className="hidden md:block my-1 h-px bg-line" />
-            <button type="button" role="menuitem" onClick={() => { close(false); onShortcuts(); }}
-              className="hidden md:flex w-full items-center gap-2 min-h-8 lg:min-h-7 pl-1.5 pr-2 rounded-[6px] text-left text-[13px] text-ink-800 hover:bg-canvas focus-visible:bg-canvas">
-              <span aria-hidden className="w-4 shrink-0" />
-              <Keyboard className="w-3.5 h-3.5 text-ink-500" aria-hidden />
-              <span className="flex-1">Keyboard shortcuts</span>
-            </button>
-          </div>
-        </>
-      )}
-    </div>
+    <>
+      <Chip tone={tone} title={lead.reason ?? "AI lead read"}><span className="sr-only">Lead: </span>{label}{lead.score != null && lead.status !== "OptOut" ? <span className="tabular-nums">{lead.score}</span> : null}</Chip>
+      {lead.readyToPay && <Chip tone="green" title="Ready to pay"><CreditCard className="w-3 h-3" aria-hidden />Pay</Chip>}
+    </>
   );
 }
 
@@ -615,6 +607,8 @@ function fetchProblem(status: number | null): string {
 }
 
 function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIntent | null; clearIntent: () => void }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const inboxTop = useTopOffset(frameRef);
   const { vocab } = useVocab();
   const [convos, setConvos] = useState<Conversation[]>([]);
   // Until the first answer, the list shows placeholders, not "No conversations yet".
@@ -834,126 +828,101 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const platformCount: Record<PlatformKey, number> = { all: inView.length, whatsapp: waCount, instagram: igCount, messenger: fbCount, webchat: wcCount };
   const channelNoun = platform === "instagram" ? "account" : platform === "messenger" ? "Page" : platform === "webchat" ? "site" : "number";
 
-  // What the filter menu has narrowed the list to, each as one removable pill
-  // under the search. The quick All / Waiting / Mine choice shows itself in its
-  // own control, so it never needs a pill.
-  const pills: { key: string; label: string; clear: () => void }[] = [];
-  if (!QUICK_FILTERS.includes(filter)) pills.push({ key: "filter", label: filterLabel, clear: () => setFilter("all") });
-  if (platform !== "all") pills.push({ key: "platform", label: PLATFORMS.find(p => p.key === platform)?.pill ?? platform, clear: () => { setPlatform("all"); setChannelFilter(null); } });
-  if (channelFilter) pills.push({ key: "channel", label: channelList.find(c => c.id === channelFilter)?.name ?? `One ${channelNoun}`, clear: () => setChannelFilter(null) });
-  if (stageFilter) pills.push({ key: "stage", label: stageFilter === "__none" ? "No stage set" : `Stage: ${stageFilter}`, clear: () => setStageFilter("") });
-
   return (
-    // Fills the screen between the shell's header and (on phones) its bottom tab
-    // bar, cancelling <main>'s padding: p-4 / sm:p-6, pb-24 under md for the bar.
-    <div className="-mx-4 -mt-4 -mb-24 sm:-mx-6 sm:-mt-6 md:-mb-6 h-[calc(100dvh-112px-env(safe-area-inset-bottom))] sm:h-[calc(100dvh-120px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-64px)] flex flex-col bg-white overflow-hidden">
+    // Fills the screen between where it starts (measured: header + any banner)
+    // and the bottom — on phones, the 56px tab bar — cancelling <main>'s
+    // padding: p-4 / sm:p-6, pb-24 under md for the bar.
+    <div ref={frameRef} style={inboxTop === null ? undefined : ({ "--inbox-top": `${inboxTop}px` } as React.CSSProperties)}
+      className="-mx-4 -mt-4 -mb-24 sm:-mx-6 sm:-mt-6 md:-mb-6 h-[calc(100dvh-var(--inbox-top,56px)-56px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-var(--inbox-top,56px))] flex flex-col bg-white overflow-hidden">
       <CrmStatusBar />
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
-      <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-[300px] xl:w-[320px] shrink-0 md:border-r border-line flex-col min-h-0`}>
-        <div className="px-3 pt-2.5 md:pt-3 pb-2 space-y-2">
-          {/* One header row: the title and its count, and one Filter button. */}
-          <div className="relative flex items-center justify-between gap-2 pl-1">
-            <h2 className="min-w-0 truncate text-[17px] md:text-[15px] font-semibold text-ink-900">
-              {view === "comments" ? "Comments" : "Live Chat"}
-              <span className="ml-1.5 text-[13px] md:text-[12px] font-normal text-ink-500 tabular-nums">{loaded ? fmtNum(visible.length) : ""}<span className="sr-only"> shown</span></span>
+      <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-80 shrink-0 md:border-r border-line flex-col min-h-0`}>
+        <div className="px-3 pt-3 pb-3 md:p-4 md:pb-3 space-y-3 border-b border-line">
+          <div className="relative flex items-center justify-between gap-2">
+            <h2 className="min-w-0 truncate text-[17px] md:text-[15px] font-bold text-ink-900">
+              {view === "comments" ? "Comments" : "Live Chat"}{" "}
+              <span className="text-xs font-normal text-ink-500 tabular-nums">({loaded ? fmtNum(visible.length) : "…"})<span className="sr-only"> shown</span></span>
             </h2>
-            <FilterMenu active={pills.length > 0} onShortcuts={() => setShowShortcuts(true)}>
-              {close => (
-                <>
-                  <MenuHeading>Show</MenuHeading>
-                  <div role="group" aria-label="Show">
-                    {INBOX_FILTERS.map(f => (
-                      <MenuRadio key={f.key} checked={filter === f.key} label={f.label} count={loaded ? counts[f.key] : null}
-                        onSelect={() => { setFilter(f.key); close(); }} />
-                    ))}
-                  </div>
-                  {view === "chats" && (
-                    <>
-                      <div role="separator" className="my-1 h-px bg-line" />
-                      <MenuHeading>Channel</MenuHeading>
-                      <div role="group" aria-label="Channel">
-                        {PLATFORMS.map(p => (
-                          <MenuRadio key={p.key} checked={platform === p.key} icon={p.icon} label={p.label} count={loaded ? platformCount[p.key] : null}
-                            onSelect={() => { setPlatform(p.key); setChannelFilter(null); close(); }} />
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {/* Which number/account/Page — once a platform with 2+ connected channels is chosen. */}
-                  {platformChannels.length > 1 && (
-                    <>
-                      <div role="separator" className="my-1 h-px bg-line" />
-                      <MenuHeading>{channelNoun === "number" ? "WhatsApp number" : channelNoun === "Page" ? "Facebook Page" : channelNoun === "site" ? "Web-chat site" : "Instagram account"}</MenuHeading>
-                      <div role="group" aria-label={`Filter by ${channelNoun}`}>
-                        <MenuRadio checked={!channelFilter} label={`All ${channelNoun}s`} onSelect={() => { setChannelFilter(null); close(); }} />
-                        {platformChannels.map(c => <MenuRadio key={c.id} checked={channelFilter === c.id} label={c.name} onSelect={() => { setChannelFilter(c.id); close(); }} />)}
-                      </div>
-                    </>
-                  )}
-                  {/* Pipeline stage — the "where is this lead" axis. */}
-                  {stageNames.length > 0 && (
-                    <>
-                      <div role="separator" className="my-1 h-px bg-line" />
-                      <MenuHeading>{vocab.pipeline.one} stage</MenuHeading>
-                      <div role="group" aria-label={`Show only ${vocab.lead.many.toLowerCase()} at one ${vocab.pipeline.one.toLowerCase()} stage`}>
-                        <MenuRadio checked={!stageFilter} label="All stages" onSelect={() => { setStageFilter(""); close(); }} />
-                        {stageNames.map(n => <MenuRadio key={n} checked={stageFilter === n} label={n} onSelect={() => { setStageFilter(n); setSelected(null); close(); }} />)}
-                        <MenuRadio checked={stageFilter === "__none"} label="No stage set" onSelect={() => { setStageFilter("__none"); setSelected(null); close(); }} />
-                      </div>
-                    </>
-                  )}
-                  <div role="separator" className="my-1 h-px bg-line" />
-                  <MenuHeading>Sort by</MenuHeading>
-                  <div role="group" aria-label="Sort chats">
-                    {INBOX_SORTS.map(o => <MenuRadio key={o.key} checked={sort === o.key} label={o.label} onSelect={() => { setSort(normalizeSort(o.key)); close(); }} />)}
-                  </div>
-                </>
-              )}
-            </FilterMenu>
+            <button type="button" onClick={() => setShowShortcuts(s => !s)} aria-label="Keyboard shortcuts" aria-expanded={showShortcuts} title="Keyboard shortcuts"
+              className="hidden md:inline-flex w-7 h-7 items-center justify-center rounded-[8px] text-ink-500 hover:text-ink-900 hover:bg-canvas">
+              <Keyboard className="w-4 h-4" aria-hidden />
+            </button>
             {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
           </div>
+          {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
+              their own section so they don't clutter real DM conversations. */}
+          <SegmentedControl ariaLabel="Conversation type" value={view}
+            onChange={v => { setView(v); setSelected(null); setPlatform("all"); setChannelFilter(null); }}
+            options={[
+              { value: "chats", label: "Chats", count: chatsCount, icon: <MessageSquare className="w-3 h-3" aria-hidden /> },
+              { value: "comments", label: "Comments", count: commentsCount, icon: <MessageCircle className="w-3 h-3 text-ink-500" aria-hidden /> },
+            ]} />
           <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden />
+            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
             <input type="search" aria-label="Search chats by name or number"
-              className="w-full h-11 md:h-8 rounded-[8px] border border-transparent bg-canvas pl-8 pr-3 text-base md:text-[13px] text-ink-900 placeholder:text-ink-500 focus:bg-white focus:border-line"
+              className="w-full h-11 md:h-auto border border-line rounded-control pl-8 pr-3 md:py-2 text-base md:text-sm bg-canvas text-ink-900 placeholder:text-ink-500 focus:bg-white"
               placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          {pills.length > 0 && (
-            <div className="flex flex-wrap gap-1.5" aria-label="Filters on">
-              {pills.map(p => (
-                <button key={p.key} type="button" onClick={p.clear} aria-label={`Remove filter: ${p.label}`} title="Remove this filter"
-                  className="inline-flex items-center gap-1 min-h-9 md:min-h-6 pl-2.5 pr-1.5 rounded-full bg-brand-50 text-brand-800 text-[12px] font-medium hover:bg-brand-100">
-                  <span className="truncate max-w-[180px]">{p.label}</span>
-                  <X className="w-3 h-3 shrink-0" aria-hidden />
+          {/* Channel — only for Chats; comments are Instagram/Facebook posts. */}
+          {view === "chats" && (
+            <div role="group" aria-label="Channel" className="flex flex-wrap gap-1 p-0.5 bg-canvas rounded-control">
+              {PLATFORMS.map(p => (
+                <button key={p.key} type="button" aria-pressed={platform === p.key} onClick={() => { setPlatform(p.key); setChannelFilter(null); }}
+                  className={`flex-1 min-w-[96px] md:min-w-[68px] min-h-9 md:min-h-0 px-2 py-1.5 rounded-[7px] text-[11px] font-bold whitespace-nowrap flex items-center justify-center gap-1 transition-colors ${platform === p.key ? "bg-white shadow-sm text-ink-900" : "text-ink-500 hover:text-ink-800"}`}>
+                  {p.icon && <span aria-hidden className="flex [&>svg]:w-3 [&>svg]:h-3">{p.icon}</span>}
+                  {p.label} <span className="opacity-60 tabular-nums">{loaded ? fmtNum(platformCount[p.key]) : ""}</span>
                 </button>
               ))}
             </div>
           )}
-          {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
-              their own section so they don't clutter real DM conversations. */}
-          <Segments label="Conversation type" value={view}
-            onChange={v => { setView(v); setSelected(null); setPlatform("all"); setChannelFilter(null); }}
-            options={[
-              { value: "chats", label: "Chats", count: chatsCount },
-              { value: "comments", label: "Comments", count: commentsCount },
-            ]} />
-          {/* Who needs to act, the three views used all day. The rest are in Filters. */}
-          <Segments label="Quick view" value={QUICK_FILTERS.includes(filter) ? filter : null} onChange={setFilter}
-            options={[
-              { value: "all", label: "All", count: loaded ? counts.all : undefined },
-              { value: "waiting", label: "Waiting", sr: " for you", count: loaded ? counts.waiting : undefined },
-              { value: "mine", label: "Mine", count: loaded ? counts.mine : undefined },
-            ]} />
+          {/* Which number/account/Page — once a platform with 2+ connected channels is chosen. */}
+          {platformChannels.length > 1 && (
+            <select aria-label={`Filter by ${channelNoun}`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}>
+              <option value="">{channelNoun === "number" ? "All numbers" : channelNoun === "Page" ? "All Pages" : channelNoun === "site" ? "All sites" : "All accounts"}</option>
+              {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
           {/* A pinned member's inbox is a subset by design. Saying so stops it
               reading as missing data — the failure mode this whole split risks. */}
           {scopedTeam && (
-            <p className="text-[12px] text-ink-600 px-1">
-              Showing the <b className="font-semibold text-ink-800">{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only.
+            <p className="text-[11px] text-blue-700 bg-blue-50 rounded-control px-2.5 py-1.5">
+              Showing the <b>{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only. Other teams&apos; chats are handled in their own inbox.
             </p>
           )}
+          {/* Pipeline stage — the "where is this lead" axis. */}
+          {stageNames.length > 0 && (
+            <select aria-label={`Show only ${vocab.lead.many.toLowerCase()} at one ${vocab.pipeline.one.toLowerCase()} stage`} className={`${inp} w-full !py-1.5 !text-base md:!text-xs`} value={stageFilter}
+              onChange={e => { setStageFilter(e.target.value); setSelected(null); }}>
+              <option value="">All stages</option>
+              {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
+              <option value="__none">No stage set</option>
+            </select>
+          )}
+          <div role="group" aria-label="Show" className="flex gap-1 flex-wrap">
+            {CHIP_FILTERS.map(k => {
+              const full = INBOX_FILTERS.find(f => f.key === k)?.label ?? k;
+              return (
+                <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}
+                  className={`min-h-9 md:min-h-0 px-2.5 md:px-2 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${filter === k ? "bg-ink-950 text-white" : "bg-canvas text-ink-500 hover:text-ink-800"}`}>
+                  {CHIP_LABEL[k]}{CHIP_LABEL[k] !== full && <span className="sr-only"> ({full})</span>}
+                  {k === "waiting" && loaded && <span className="ml-1 opacity-70 tabular-nums">{fmtNum(counts[k])}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-2">
+            <select aria-label="More filters" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`}
+              value={CHIP_FILTERS.includes(filter) ? "" : filter} onChange={e => setFilter(normalizeFilter(e.target.value || "all"))}>
+              <option value="">More filters…</option>
+              {INBOX_FILTERS.filter(f => !CHIP_FILTERS.includes(f.key)).map(f => <option key={f.key} value={f.key}>{f.label}{loaded ? ` (${counts[f.key]})` : ""}</option>)}
+            </select>
+            <select aria-label="Sort chats" className={`${inp} flex-1 min-w-0 !py-1.5 !text-base md:!text-xs`} value={sort} onChange={e => setSort(normalizeSort(e.target.value))}>
+              {INBOX_SORTS.map(o => <option key={o.key} value={o.key}>{o.key === "newest" ? "Newest first" : "Longest waiting first"}</option>)}
+            </select>
+          </div>
         </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain border-t border-line px-1.5 py-1">
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
           {/* A refresh that failed after the list had loaded: keep what we had, say so. */}
           {loaded && listError && (
             <div role="alert" className="flex items-center gap-2 mx-0.5 my-1 px-3 py-1.5 rounded-[8px] text-[12px] text-amber-900 bg-amber-50 border border-amber-200">
@@ -982,37 +951,20 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             const name = contactDisplayName(c);
             const on = selected === c.id;
             const stage = stages[c.phone];
-            // One quiet line of words, not pills. The wait comes first and is the
-            // only coloured thing; everything after it is secondary grey.
-            const status: React.ReactNode[] = [];
-            if (wait) status.push(<WaitText info={wait} />);
-            else if (awaiting) status.push(<span className="font-medium text-ink-700"><Clock className="inline w-3 h-3 mr-1 -mt-0.5 align-middle" aria-hidden />Awaiting reply</span>);
-            if (c.status === "escalated") status.push(<span className="font-medium text-ink-700">Needs a person</span>);
-            if (!c.botEnabled) status.push(<span title="The AI won't reply in this chat until it is resumed">AI paused</span>);
-            if (c.assignedTo) status.push(<span title={`Assigned to ${c.assignedTo}`}><span className="sr-only">Assigned to </span>{mine ? "You" : c.assignedTo}</span>);
-            if (c.lead) status.push(<LeadWord lead={c.lead} />);
-            if (stage) status.push(
-              <span title={`${vocab.pipeline.one} stage: ${stage.name}`}>
-                <span aria-hidden className="inline-block w-1.5 h-1.5 mr-1 rounded-full align-middle" style={{ backgroundColor: stage.color ?? "#64748b" }} />{stage.name}
-              </span>,
-            );
+            const tags = awaiting || c.status === "escalated" || !c.botEnabled || !!c.lead || !!stage || !!c.assignedTo;
             return (
             <button key={c.id} data-inbox-row data-id={c.id} onClick={() => openChat(c.id)}
               aria-current={on ? "true" : undefined}
-              className={`relative w-full flex items-start gap-2.5 pl-0.5 pr-2.5 py-2.5 text-left rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 after:content-[''] after:absolute after:bottom-0 after:right-2.5 after:left-[74px] md:after:left-[66px] after:h-px after:bg-line/70 ${on ? "bg-brand-50 after:hidden" : "hover:bg-canvas"}`}>
-              {/* Awaiting a reply: a blue dot in the gutter (and a bold name), like unread mail. */}
-              <span aria-hidden className="w-3 shrink-0 flex justify-center pt-1.5">
-                {awaiting && <span className="w-2 h-2 rounded-full bg-brand-700" />}
-              </span>
+              className={`relative w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${on ? "bg-brand-50" : "hover:bg-canvas"}`}>
               <div className="relative shrink-0 mt-0.5">
-                <ConvAvatar url={c.avatarUrl} label={name} size={twoPane ? 32 : 40} />
-                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white ring-1 ring-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
-                  {c.platform === "instagram" ? <Instagram className="w-2 h-2 text-pink-600" aria-hidden /> : c.platform === "messenger" ? <Facebook className="w-2 h-2 text-blue-600" aria-hidden /> : c.platform === "webchat" ? <MessageSquare className="w-2 h-2 text-brand-700" aria-hidden /> : <MessageCircle className="w-2 h-2 text-green-600" aria-hidden />}
+                <ConvAvatar url={c.avatarUrl} label={name} size={twoPane ? 36 : 40} />
+                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
+                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" aria-hidden /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" aria-hidden /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-700" aria-hidden /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" aria-hidden />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <p className={`flex-1 min-w-0 truncate text-[14px] lg:text-[13px] leading-5 ${awaiting ? "font-semibold text-ink-950" : "font-medium text-ink-800"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 truncate text-[14px] md:text-[13px] font-semibold text-ink-900">
                     {name}
                     <span className="sr-only">{awaiting ? ", awaiting a reply" : ""}, on {channelShort(contactChannel(c))}</span>
                   </p>
@@ -1020,11 +972,23 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
                       entirely when LeadSquared isn't configured, so a workspace
                       that doesn't use it sees no unexplained dots. */}
                   {crmOn && <CrmChatDot status={crmStatusFor(c, crmChats)} lastError={crmErr} />}
-                  <span className={`text-[12px] shrink-0 tabular-nums ${awaiting ? "text-brand-800 font-medium" : "text-ink-500"}`}>{shortAgo(lastTouch(c), now)}</span>
+                  <span className={`text-[11px] shrink-0 tabular-nums ${awaiting ? "text-brand-700 font-semibold" : "text-ink-500"}`}>{shortAgo(lastTouch(c), now)}</span>
                 </div>
-                <p className={`text-[13px] leading-[18px] truncate ${awaiting ? "text-ink-700" : "text-ink-500"}`}>{c.lastMessage ?? "—"}</p>
-                {status.length > 0 && (
-                  <p className="mt-0.5 text-[12px] leading-4 text-ink-500 truncate"><Dotted items={status} /></p>
+                <p className="text-[13px] md:text-[12px] text-ink-500 truncate">{c.lastMessage ?? "—"}</p>
+                {tags && (
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    {awaiting && <span aria-hidden className="w-2 h-2 rounded-full bg-brand-500" title="Awaiting reply" />}
+                    {wait && <WaitChip info={wait} />}
+                    {c.status === "escalated" && <Chip tone="red">Needs a person</Chip>}
+                    {!c.botEnabled && <Chip tone="grey" title="The AI won't reply in this chat until it is resumed">AI paused</Chip>}
+                    <LeadChips lead={c.lead} />
+                    {stage && (
+                      <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-full uppercase whitespace-nowrap"
+                        style={{ backgroundColor: `${stage.color ?? "#64748b"}1a`, color: stage.color ?? "#64748b" }}
+                        title={`${vocab.pipeline.one} stage: ${stage.name}`}>{stage.name}</span>
+                    )}
+                    {c.assignedTo && <span className="text-[11px] font-bold text-brand-700 truncate" title={`Assigned to ${c.assignedTo}`}><span className="sr-only">Assigned to </span>@{mine ? "You" : c.assignedTo}</span>}
+                  </div>
                 )}
               </div>
             </button>
@@ -1439,71 +1403,54 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
       {/* ── Middle: thread ── */}
       <section aria-label={conv ? `Chat with ${contactDisplayName(conv)}` : "Chat"} className="flex-1 flex flex-col min-w-0 min-h-0">
         {(() => {
-          // Where this chat stands, as one line of words: the wait (the one
-          // coloured thing) and anything a person must act on first, then which
-          // number it is on — so when the line is cut short, the number goes first.
+          // Where this chat stands, as yesterday's small tags beside the name:
+          // the wait (grey → amber → red against the reply target), anything a
+          // person must act on, the number it's on, LeadSquared and the lead read.
           const wait = conv?.needsReply ? waitInfo(conv.lastInboundAt, refs.replyTarget, now) : null;
-          const chName = conv?.channelId ? channelName(conv.channelId) : null;
-          const status: React.ReactNode[] = [];
-          if (conv) {
-            if (wait) status.push(<WaitText info={wait} />);
-            if (conv.status === "escalated") status.push(<span className="font-medium text-ink-700">Needs a person</span>);
-            if (conv.status === "paused") status.push(<span>Paused</span>);
-            if (!conv.botEnabled) status.push(<span title="The AI won't reply in this chat until it is resumed">AI paused</span>);
-            // Has this conversation landed on the lead's LeadSquared timeline?
-            if (crm) status.push(<CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />);
-            if (conv.lead) status.push(<LeadWord lead={conv.lead} />);
-          }
-          const phoneStatus = [...status];
-          if (conv) {
-            status.push(<span className={subtitleIsPhone(conv) ? "tabular-nums" : ""}>{contactSubtitle(conv)}</span>);
-            if (chName) status.push(<span title={`Replies go out from ${chName}`}><span className="sr-only">on </span>{chName}</span>);
-          }
-          const statusTitle = conv ? [
-            wait ? `${wait.label} (${wait.explain})` : null,
-            conv.status === "escalated" ? "Needs a person" : null,
-            conv.status === "paused" ? "Paused" : null,
-            !conv.botEnabled ? "AI paused" : null,
-            conv.lead ? `${conv.lead.status}${conv.lead.score != null ? ` ${conv.lead.score}` : ""}` : null,
-            contactSubtitle(conv), chName,
-          ].filter(Boolean).join(" · ") : undefined;
-          const iconBtn = "inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full md:rounded-[8px] text-ink-600 hover:text-ink-900 hover:bg-canvas";
-          const toolBtn = "hidden xl:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] border border-line bg-white text-[13px] font-medium text-ink-800 hover:bg-canvas disabled:opacity-50";
+          const tags = conv ? (
+            <>
+              {wait && <WaitChip info={wait} />}
+              {conv.status === "escalated" && <Chip tone="red">Needs a person</Chip>}
+              {conv.status === "paused" && <Chip tone="grey">Paused</Chip>}
+              {!conv.botEnabled && <Chip tone="grey" title="The AI won't reply in this chat until it is resumed">AI paused</Chip>}
+              {conv.channelId && <ChannelNameBadge channelId={conv.channelId} />}
+              {crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
+              <LeadChips lead={conv.lead} />
+            </>
+          ) : null;
+          const iconBtn = "inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full md:rounded-control text-ink-600 hover:text-ink-900 hover:bg-canvas";
           return (
             <div className="shrink-0 border-b border-line bg-white">
-              <div className="min-h-14 px-2 md:px-4 py-2 flex items-center justify-between gap-2">
-                <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-2.5">
+              <div className="min-h-14 px-2 md:px-5 py-2 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-3">
                   {onBack && (
                     <button type="button" onClick={onBack} aria-label="Back to chats"
                       className="shrink-0 w-11 h-11 -ml-1 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
                       <ArrowLeft className="w-5 h-5" aria-hidden />
                     </button>
                   )}
-                  <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={onBack ? 36 : 32} />
+                  <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
+                  {/* The name keeps its room; the tags have a row of their own below. */}
                   <div className="min-w-0">
-                    <h2 className="text-[15px] font-semibold text-ink-900 truncate leading-5">{conv ? contactDisplayName(conv) : "Conversation"}</h2>
-                    {conv && (
-                      <>
-                        {/* Wider screens: one secondary line under the name. */}
-                        <p className="hidden md:line-clamp-2 xl:line-clamp-1 text-[12px] leading-4 text-ink-500" title={statusTitle}><Dotted items={status} /></p>
-                        <p className={`md:hidden truncate text-[12px] leading-4 text-ink-500 ${subtitleIsPhone(conv) ? "tabular-nums" : ""}`}>{contactSubtitle(conv)}</p>
-                      </>
-                    )}
+                    <h2 className="text-sm font-bold text-ink-900 truncate leading-tight">{conv ? contactDisplayName(conv) : "Conversation"}</h2>
+                    {conv && <p className={`text-[11px] text-ink-500 leading-tight truncate ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
                   </div>
                 </div>
                 {conv && (
-                  <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
-                    {/* Wide screens: the two chat switches as quiet toolbar buttons.
-                        Filled blue is kept for Send. */}
+                  <div className="flex items-center gap-2 shrink-0 text-xs">
+                    {/* Wide screens: yesterday's buttons — filled when the AI is paused (the action to take). */}
                     <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
-                      title={conv.botEnabled ? "Pause AI for this chat" : "Let the AI reply in this chat again"} className={toolBtn}>
-                      {conv.botEnabled ? <><CirclePause className="w-3.5 h-3.5 text-ink-500" aria-hidden /> Pause AI</> : <><Bot className="w-3.5 h-3.5 text-brand-700" aria-hidden /> Resume AI</>}
+                      title={conv.botEnabled ? "Pause the AI for this chat" : "Let the AI reply in this chat again"}
+                      className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-control border font-semibold disabled:opacity-60 ${conv.botEnabled ? "border-line text-ink-700 hover:bg-canvas" : "border-brand-700 bg-brand-700 text-white hover:bg-brand-600"}`}>
+                      {conv.botEnabled ? <><CirclePause className="w-3.5 h-3.5" aria-hidden /> Pause AI</> : <><Bot className="w-3.5 h-3.5" aria-hidden /> Resume AI</>}
                     </button>
                     {conv.status !== "escalated"
-                      ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} title="Flag this chat for a person on your team" className={toolBtn}><UserRound className="w-3.5 h-3.5 text-red-600" aria-hidden /> Needs a person</button>
-                      : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} title="A person has it — clear the flag" className={toolBtn}><Check className="w-3.5 h-3.5 text-ink-500" aria-hidden /> Mark handled</button>}
+                      ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} title="Flag this chat for a person on your team"
+                          className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-control border border-red-200 text-red-700 font-semibold hover:bg-red-50 disabled:opacity-60"><UserRound className="w-3.5 h-3.5" aria-hidden /> Needs a person</button>
+                      : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} title="A person has it — clear the flag"
+                          className="hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-control border border-line text-ink-700 font-semibold hover:bg-canvas disabled:opacity-60"><Check className="w-3.5 h-3.5" aria-hidden /> Mark handled</button>}
                     {/* Phones and tablets: the same two switches in a menu, so the name keeps its room. */}
-                    <div className="relative xl:hidden">
+                    <div className="relative lg:hidden">
                       <button type="button" onClick={() => setShowMore(o => !o)} aria-label="Chat actions" aria-haspopup="menu" aria-expanded={showMore} className={iconBtn}>
                         <EllipsisVertical className="w-5 h-5 md:w-4 md:h-4" aria-hidden />
                       </button>
@@ -1538,11 +1485,9 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                   </div>
                 )}
               </div>
-              {/* Phones: the status words get a line of their own under the name. */}
-              {phoneStatus.length > 0 && (
-                <p className="md:hidden px-3 pb-2 -mt-1 text-[12px] leading-5 text-ink-500"><Dotted items={phoneStatus} /></p>
-              )}
-              {conv?.lead?.reason && <div className="px-3 md:pl-[58px] md:pr-4 pb-2 -mt-1"><LeadReason lead={conv.lead} /></div>}
+              {/* Where this chat stands: a row of small tags under the name. */}
+              {tags && <div className="flex flex-wrap items-center gap-1.5 px-3 md:px-5 md:pl-[68px] pb-2 -mt-1">{tags}</div>}
+              {conv?.lead?.reason && <div className="px-3 md:px-5 py-1.5 border-t border-line bg-white"><LeadReason lead={conv.lead} /></div>}
             </div>
           );
         })()}
@@ -1697,7 +1642,11 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
         {/* The reply box stays pinned under the thread, and the thread above
             shrinks for the keyboard. On phones the shell's tab bar below already
             clears the home indicator; elsewhere the box does. */}
-        <div className="shrink-0 px-3 md:px-4 pt-2.5 pb-3 md:pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-line space-y-2 bg-white max-h-[60dvh] overflow-y-auto">
+        {/* The composer. Its optional panels scroll in their own area; the input
+            row is outside any clipping box, so the "+" menu that opens upward is
+            never cut off, and z-10 keeps it above the messages. */}
+        <div className="relative z-10 shrink-0 px-3 md:px-5 pt-2.5 pb-3 md:pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-line bg-white">
+          <div className="max-h-[40dvh] overflow-y-auto space-y-2 [&:not(:empty)]:mb-2">
           {thread === "ok" && threadError && (
             <p role="status" className="flex items-center gap-2 text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
@@ -1757,11 +1706,12 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
               ))}
             </div>
           )}
+          </div>
           <div className="flex items-end gap-2">
             {/* 16px text on phones: smaller makes iOS zoom the page on focus. */}
             <textarea ref={replyBox} aria-label="Reply" aria-keyshortcuts="Meta+Enter Control+Enter"
-              className="flex-1 min-w-0 resize-none min-h-11 md:min-h-9 max-h-40 rounded-[10px] border border-line bg-white px-3 py-[11px] md:py-[7px] text-base md:text-sm leading-5 text-ink-900 placeholder:text-ink-500"
-              rows={1} placeholder={onBack ? "Type a reply…" : "Type a reply… (/ for quick replies)"} value={reply}
+              className="flex-1 min-w-0 resize-none min-h-11 md:min-h-[60px] max-h-40 rounded-control border border-line bg-white px-3 py-[11px] md:py-2 text-base md:text-sm leading-5 text-ink-900 placeholder:text-ink-500"
+              rows={onBack ? 1 : 2} placeholder={onBack ? "Type a reply…" : "Type a reply… (type / for quick replies, ⌘↵ to send)"} value={reply}
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
               onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendReply(); } }} />
             {/* mp3/m4a only for audio — WhatsApp accepts aac/amr/mpeg/mp4/ogg-opus, not wav. */}
@@ -1803,78 +1753,74 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           (opened from the header) everywhere else. Built once, shown in one. ── */}
       {(() => {
       const details = (
-      <div className="text-[13px]">
-        {/* Who this is: a compact header, not a poster. */}
-        <div className="px-4 pt-4 pb-3 border-b border-line">
-          <div className="flex items-center gap-3 min-w-0">
-            <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={48} />
-            <div className="min-w-0">
-              <p className="text-[15px] font-semibold text-ink-900 truncate leading-5">{conv ? contactDisplayName(conv) : "Unknown"}</p>
-              {conv && <p className={`text-[12px] text-ink-500 truncate ${subtitleIsPhone(conv) ? "tabular-nums" : ""}`}>{contactSubtitle(conv)}</p>}
-              {contact?.email && <p className="text-[12px] text-ink-500 truncate" title={contact.email}>{contact.email}</p>}
-            </div>
-          </div>
+      <div className="text-sm">
+        {/* Who this is — yesterday's centred profile. */}
+        <div className="p-5 flex flex-col items-center text-center border-b border-line">
+          <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={64} />
+          <p className="text-[15px] font-bold text-ink-900 mt-2 max-w-full break-words">{conv ? contactDisplayName(conv) : "Unknown"}</p>
+          {conv && <p className={`text-xs text-ink-500 ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
+          {contact?.email && <p className="text-xs text-ink-500 mt-0.5 max-w-full truncate" title={contact.email}>{contact.email}</p>}
           {conv?.phone && (
-            <button onClick={() => setShowProfile(true)} className={`${detailsButton} mt-3`}>
-              <Sparkles className="w-3.5 h-3.5 text-brand-700" aria-hidden /> AI brief &amp; full profile
+            <button onClick={() => setShowProfile(true)} className="mt-3 min-h-11 md:min-h-0 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5" aria-hidden /> AI brief &amp; full profile
             </button>
           )}
         </div>
 
-        <div className="px-4 pb-6 divide-y divide-line/70 [&>*]:py-3">
+        {/* pb-24: the floating support-chat button sits over the bottom-right corner;
+            the last control can always be scrolled clear of it. */}
+        <div className="p-4 pb-24 space-y-4">
           {conv && (
             <>
-              <DetailsSection id="labels" title="Labels">
+              <DetailsSection id="labels" title="Labels" icon={<Tag />}>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(conv.labels ?? []).map(l => (
-                    <span key={l} className="inline-flex items-center gap-0.5 h-7 md:h-6 pl-2 pr-0.5 rounded-full bg-canvas border border-line text-ink-800 text-[12px] font-medium">
+                    <span key={l} className="inline-flex items-center gap-0.5 h-7 md:h-6 pl-2 pr-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold">
                       {l}
-                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} aria-label={`Remove label ${l}`} className="w-6 h-6 md:w-5 md:h-5 flex items-center justify-center rounded-full text-ink-500 hover:text-red-600 hover:bg-white"><X className="w-3 h-3" aria-hidden /></button>
+                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} aria-label={`Remove label ${l}`} className="w-6 h-6 md:w-5 md:h-5 flex items-center justify-center rounded-full text-brand-700/60 hover:text-red-600 hover:bg-white"><X className="w-3 h-3" aria-hidden /></button>
                     </span>
                   ))}
                   <input
                     aria-label="Add a label"
-                    className="h-9 md:h-6 w-24 rounded-full border border-dashed border-line bg-white px-2.5 text-base md:text-[12px] placeholder:text-ink-500 focus:border-solid"
-                    placeholder="+ Label" value={labelInput} onChange={e => setLabelInput(e.target.value)}
+                    className="h-9 md:h-6 w-24 rounded-full border border-line bg-white px-2.5 text-base md:text-[11px] placeholder:text-ink-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                    placeholder="+ label" value={labelInput} onChange={e => setLabelInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && labelInput.trim()) { act({ action: "labels", labels: [...(conv.labels ?? []), labelInput.trim()] }); setLabelInput(""); } }}
                   />
                 </div>
               </DetailsSection>
 
-              {/* Who handles this customer — one inspector block of label : control rows. */}
-              <CustomerWork phone={conv.phone} conversationId={conv.id} rows={
-                <>
-                  <DetailsRow label="Assigned to" htmlFor={`assign-${conv.id}`}>
-                    <select id={`assign-${conv.id}`} disabled={busy} className={detailsControl}
-                      value={conv.assignedTo ?? ""}
-                      onChange={e => act({ action: "assign", assignedTo: e.target.value || null })}
-                      title={(() => { const m = team.find(x => x.name === conv.assignedTo); return m?.title || undefined; })()}>
-                      <option value="">Unassigned</option>
-                      {/* Keep a legacy free-text assignee selectable until reassigned */}
-                      {conv.assignedTo && !team.some(m => m.name === conv.assignedTo) && (
-                        <option value={conv.assignedTo}>{conv.assignedTo}</option>
-                      )}
-                      {team.map(m => (
-                        <option key={m.email} value={m.name}>{m.name}{m.title ? ` — ${m.title}` : ""}</option>
-                      ))}
-                    </select>
-                  </DetailsRow>
-                  {aiAgents.length > 0 && (
-                    <DetailsRow label="AI assistant" htmlFor={`agent-${conv.id}`}>
-                      <select id={`agent-${conv.id}`} disabled={busy} className={detailsControl}
-                        value={conv.agentId ?? ""}
-                        onChange={e => act({ action: "agent", agentId: e.target.value || null })}>
-                        <option value="">Auto / default{(() => { const a = aiAgents.find(x => x.active); return a ? ` (${a.name})` : ""; })()}</option>
-                        {aiAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                      </select>
-                    </DetailsRow>
-                  )}
-                </>
-              } />
+              <CustomerWork phone={conv.phone} conversationId={conv.id} />
 
               <CustomerAutomations conversationId={conv.id} />
 
               <ChatNotes conversationId={conv.id} />
+
+              <DetailsSection id="assigned" title="Assigned to" icon={<UserCheck />}>
+                <select disabled={busy} className={detailsControl} aria-label="Assigned to"
+                  value={conv.assignedTo ?? ""}
+                  onChange={e => act({ action: "assign", assignedTo: e.target.value || null })}>
+                  <option value="">Unassigned</option>
+                  {/* Keep a legacy free-text assignee selectable until reassigned */}
+                  {conv.assignedTo && !team.some(m => m.name === conv.assignedTo) && (
+                    <option value={conv.assignedTo}>{conv.assignedTo}</option>
+                  )}
+                  {team.map(m => (
+                    <option key={m.email} value={m.name}>{m.name}{m.title ? ` — ${m.title}` : ""}</option>
+                  ))}
+                </select>
+                {(() => { const m = team.find(x => x.name === conv.assignedTo); return m?.title ? <p className="text-[11px] text-ink-500 mt-1">{m.title}</p> : null; })()}
+              </DetailsSection>
+
+              {aiAgents.length > 0 && (
+                <DetailsSection id="ai-assistant" title="AI assistant" icon={<Sparkles />}>
+                  <select disabled={busy} className={detailsControl} aria-label="AI assistant for this chat"
+                    value={conv.agentId ?? ""}
+                    onChange={e => act({ action: "agent", agentId: e.target.value || null })}>
+                    <option value="">Auto / default{(() => { const a = aiAgents.find(x => x.active); return a ? ` (${a.name})` : ""; })()}</option>
+                    {aiAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                </DetailsSection>
+              )}
 
               {/* ── Lead journey: which number owns this lead, and its trail ──
                   Ownership is sticky: the customer can message any of our
@@ -1885,7 +1831,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                 if (owners.length < 2 && !ownerHistory.length) return null;   // single-number workspace — nothing to show
                 const firstTouch = ownerHistory[0];
                 return (
-                  <DetailsSection id="journey" title={`${vocab.lead.one} journey`} collapsible>
+                  <DetailsSection id="journey" title={`${vocab.lead.one} journey`} icon={<History />}>
 
                     {offOwnerChannel && (
                       <div className="mb-2 rounded-[8px] border border-amber-200 bg-amber-50 px-2.5 py-2">
@@ -1951,7 +1897,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                       <p className="mb-2 text-[12px] text-ink-700 bg-canvas rounded-[8px] px-2.5 py-1.5 leading-relaxed">{handNotice}</p>
                     )}
 
-                    <DetailsRow label="Replies from" htmlFor={`owner-${conv.id}`}>
+                    <label htmlFor={`owner-${conv.id}`} className="block text-[11px] text-ink-500 mb-1">Replies go out from</label>
                       <select
                         id={`owner-${conv.id}`}
                         disabled={busy}
@@ -1962,7 +1908,6 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                         {!conv.channelId && <option value="">— not set —</option>}
                         {owners.map(c => <option key={c.id} value={c.id}>{c.name}{c.coex ? " (app+API)" : ""}</option>)}
                       </select>
-                    </DetailsRow>
 
                     {firstTouch && (
                       <p className="text-[12px] text-ink-500 mt-2">
@@ -1992,7 +1937,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
             const utmMedium = contact?.attributes?.utm_medium;
             if (!source && !utmSource && !utmMedium) return null;
             return (
-              <DetailsSection id="source" title="Source">
+              <DetailsSection id="source" title="Source" icon={<Megaphone />}>
                 {source && <p className="text-[13px] font-medium text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>}
                 {(utmSource || utmMedium) && (
                   <p className="text-[12px] text-ink-500 mt-0.5 flex gap-3 flex-wrap">
@@ -2007,7 +1952,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           {/* Broadcast batches. The agent on a live chat is the person who knows
               this lead belongs in "Aug weekend batch" — making them leave, find
               the contact and tick a row is how it never gets done. */}
-          <DetailsSection id="batches" title="Batches" collapsible meta={leadBatches.length || undefined}>
+          <DetailsSection id="batches" title="Batches" icon={<Layers />}>
             {leadBatches.length > 0 && (
               <div className="flex gap-1.5 flex-wrap mb-1.5">
                 {leadBatches.map(b => (
@@ -2042,7 +1987,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           </DetailsSection>
 
           {contact && contact.tags.length > 0 && (
-            <DetailsSection id="tags" title={`${vocab.contact.one} tags`}>
+            <DetailsSection id="tags" title={`${vocab.contact.one} tags`} icon={<Tag />}>
               <div className="flex gap-1.5 flex-wrap">
                 {contact.tags.map(t => <span key={t} className="px-2 h-6 inline-flex items-center rounded-full bg-canvas text-ink-700 text-[12px]">{t}</span>)}
               </div>
@@ -2050,7 +1995,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           )}
 
           {contact && Object.keys(contact.attributes).length > 0 && (
-            <DetailsSection id="collected" title="Details collected" collapsible meta={Object.keys(contact.attributes).length}>
+            <DetailsSection id="collected" title="Details collected" icon={<ClipboardList />}>
               <dl className="divide-y divide-line/70">
                 {Object.entries(contact.attributes).map(([k, v]) => {
                   const value = String(v ?? "");
@@ -2067,7 +2012,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
       </div>
       );
       return detailsColumn
-        ? (detailsHidden ? null : <aside aria-label="Contact details" className="w-[300px] shrink-0 border-l border-line overflow-y-auto overscroll-contain bg-white">{details}</aside>)
+        ? (detailsHidden ? null : <aside aria-label="Contact details" className="w-80 shrink-0 border-l border-line overflow-y-auto overscroll-contain bg-white">{details}</aside>)
         : <Drawer open={showDetails} onClose={() => setShowDetails(false)} title="Contact details" subtitle={conv ? contactDisplayName(conv) : undefined} width="md">
             <div className="-mx-5 -my-4">{details}</div>
           </Drawer>;

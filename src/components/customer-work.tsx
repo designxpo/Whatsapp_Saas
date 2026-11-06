@@ -5,9 +5,9 @@
 // it always has a person and, ideally, a due date. Tasks added here show up in
 // Today for whoever they're given to.
 
-import { useCallback, useEffect, useId, useState } from "react";
-import { Circle, Loader2, Plus } from "lucide-react";
-import { DetailsRow, DetailsSection, detailsControl } from "@/components/details-section";
+import { useCallback, useEffect, useState } from "react";
+import { CalendarClock, Circle, ListTodo, Loader2, Plus, UserRound } from "lucide-react";
+import { DetailsSection, detailsControl } from "@/components/details-section";
 
 type Task = { id: string; title: string; dueAt: string | null; assigneeId: string | null; assigneeName: string | null };
 type Data = {
@@ -25,8 +25,7 @@ function due(iso: string | null): { text: string; late: boolean } {
   return { text: late ? `Overdue · ${text}` : `Due ${text}`, late };
 }
 
-/** `rows` — further label : control rows shown in the same block as "Looks after". */
-export function CustomerWork({ phone, conversationId, rows }: { phone: string; conversationId: string; rows?: React.ReactNode }) {
+export function CustomerWork({ phone, conversationId }: { phone: string; conversationId: string }) {
   const [d, setD] = useState<Data | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -78,35 +77,31 @@ export function CustomerWork({ phone, conversationId, rows }: { phone: string; c
   }
 
   const field = detailsControl;
-  const ownerId = useId();
   return (
     <>
-      <div className="space-y-2">
-      {rows}
-      <DetailsRow label="Looks after" htmlFor={ownerId}>
+      <DetailsSection id="owner" title="Looks after this customer" icon={<UserRound />}>
         {d === null ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-ink-300" aria-label="Loading" /> : d.contact ? (
           d.canManage ? (
-            <select id={ownerId} disabled={busy || d.setupPending} value={d.contact.ownerId ?? ""} onChange={e => void setOwner(e.target.value)} className={field} title="Who looks after this customer">
+            <select disabled={busy || d.setupPending} value={d.contact.ownerId ?? ""} onChange={e => void setOwner(e.target.value)} className={field} aria-label="Who looks after this customer">
               <option value="">Nobody yet</option>
               {d.team.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-          ) : <p id={ownerId} className="text-[13px] text-ink-800 truncate">{d.team.find(t => t.id === d.contact?.ownerId)?.name ?? "Nobody yet"}</p>
-        ) : <p id={ownerId} className="text-[12px] text-ink-500" title="Not saved as a contact yet, so there's no owner. Tasks below still work.">Not a saved contact yet</p>}
-      </DetailsRow>
-      </div>
+          ) : <p className="text-xs text-ink-700">{d.team.find(t => t.id === d.contact?.ownerId)?.name ?? "Nobody yet"}</p>
+        ) : <p className="text-[11px] text-ink-400">Not saved as a contact yet, so there&apos;s no owner. Tasks below still work.</p>}
+      </DetailsSection>
 
-      <DetailsSection id="next-steps" title="Next steps" collapsible meta={d?.tasks.length ? d.tasks.length : undefined}>
+      <DetailsSection id="next-steps" title="Next steps" icon={<ListTodo />}>
         {d && (
-          <ul className="space-y-1 mb-1.5">
-            {!d.tasks.length && <li className="text-[12px] text-ink-500">Nothing planned yet.</li>}
+          <ul className="space-y-1.5 mb-2">
+            {!d.tasks.length && <li className="text-[11px] text-ink-400">Nothing planned. Add the next step so it isn&apos;t forgotten.</li>}
             {d.tasks.map(t => {
               const x = due(t.dueAt);
               return (
-                <li key={t.id} className="flex items-start gap-2 rounded-[8px] px-1 py-1 hover:bg-canvas">
-                  <button onClick={() => void done(t)} disabled={busy} aria-label={`Mark “${t.title}” done`} className="shrink-0 w-7 h-7 -my-1 flex items-center justify-center rounded-full text-ink-400 hover:text-emerald-600 disabled:opacity-50"><Circle className="w-4 h-4" aria-hidden /></button>
+                <li key={t.id} className="flex items-start gap-2 rounded-control border border-line bg-white px-2.5 py-2">
+                  <button onClick={() => void done(t)} disabled={busy} aria-label={`Mark “${t.title}” done`} className="shrink-0 w-9 h-9 md:w-auto md:h-auto -m-2 md:m-0 md:mt-0.5 flex items-center justify-center rounded-full text-ink-400 hover:text-emerald-600 disabled:opacity-50"><Circle className="w-4 h-4" aria-hidden /></button>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] text-ink-900 break-words leading-snug">{t.title}</p>
-                    <p className={`text-[12px] ${x.late ? "text-red-700 font-semibold" : "text-ink-500"}`}>{x.text}{t.assigneeName ? ` · ${t.assigneeName}` : " · nobody assigned"}</p>
+                    <p className="text-[13px] text-ink-900 break-words">{t.title}</p>
+                    <p className={`text-[11px] ${x.late ? "text-red-600 font-semibold" : "text-ink-400"}`}>{x.text}{t.assigneeName ? ` · ${t.assigneeName}` : " · nobody assigned"}</p>
                   </div>
                 </li>
               );
@@ -124,17 +119,17 @@ export function CustomerWork({ phone, conversationId, rows }: { phone: string; c
               </select>
             </div>
             <div className="flex justify-end gap-1.5">
-              <button type="button" onClick={() => setAdding(false)} className="h-11 md:h-8 lg:h-7 px-2.5 rounded-[8px] text-[13px] font-medium text-ink-600 hover:bg-canvas">Cancel</button>
-              <button disabled={busy || !title.trim()} className="h-11 md:h-8 lg:h-7 px-3 rounded-[8px] bg-ink-900 text-[13px] font-semibold text-white disabled:opacity-50">Add</button>
+              <button type="button" onClick={() => setAdding(false)} className="min-h-11 md:min-h-0 px-2 md:py-1 text-[13px] md:text-[11px] font-semibold text-ink-500">Cancel</button>
+              <button disabled={busy || !title.trim()} className="min-h-11 md:min-h-0 rounded-control bg-brand-700 px-2.5 md:py-1 text-[13px] md:text-[11px] font-bold text-white disabled:opacity-50">Add</button>
             </div>
           </form>
         ) : (
-          <button onClick={() => setAdding(true)} disabled={!d || d.setupPending} className="inline-flex items-center gap-1 min-h-11 md:min-h-7 text-[13px] font-medium text-brand-700 hover:underline disabled:opacity-50">
-            <Plus className="w-3.5 h-3.5" aria-hidden /> Add next step
+          <button onClick={() => setAdding(true)} disabled={!d || d.setupPending} className="inline-flex items-center gap-1 min-h-11 md:min-h-0 text-[13px] md:text-[11px] font-semibold text-brand-700 hover:underline disabled:opacity-50">
+            <Plus className="w-3 h-3" aria-hidden /> Add next step <CalendarClock className="w-3 h-3" aria-hidden />
           </button>
         )}
-        {d?.setupPending && <p className="mt-1 text-[12px] text-amber-800">Next steps are still being set up for your workspace.</p>}
-        {err && <p role="alert" className="mt-1 text-[12px] text-red-700">{err}</p>}
+        {d?.setupPending && <p className="mt-1 text-[11px] text-amber-700">Next steps are still being set up for your workspace.</p>}
+        {err && <p role="alert" className="mt-1 text-[11px] text-red-600">{err}</p>}
       </DetailsSection>
     </>
   );
