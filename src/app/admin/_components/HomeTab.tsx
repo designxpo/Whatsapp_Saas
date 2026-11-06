@@ -163,13 +163,13 @@ export function HomeTab({ goTo, me, waiting, today, canOpenTab }: HomeProps) {
                 <h2 id="home-setup" className="text-[15px] font-bold text-ink-900">{progress.done} of {progress.total} setup steps done</h2>
                 <p className="text-[13px] text-ink-500">Finish these and customers can message you while the AI replies.</p>
               </div>
-              <button type="button" onClick={() => goTo("setup")} className="text-[13px] font-bold text-brand-700 hover:underline min-h-10">See all steps</button>
+              <button type="button" onClick={() => goTo("setup")} className="text-[13px] font-bold text-brand-700 hover:underline min-h-10 lg:min-h-8">See all steps</button>
             </div>
             <div className="mt-3 h-2 rounded-full bg-canvas overflow-hidden" role="progressbar" aria-label="Setup progress" aria-valuemin={0} aria-valuemax={progress.total} aria-valuenow={progress.done} aria-valuetext={`${progress.done} of ${progress.total} steps done`}>
               <div className="h-full rounded-full bg-brand-600 transition-[width] duration-500" style={{ width: `${Math.round((progress.done / Math.max(1, progress.total)) * 100)}%` }} />
             </div>
             {progress.next && (
-              <button type="button" onClick={() => goTo((progress.next!.fixTab as Tab) || "setup")} className={`${btnPrimary} mt-4 min-h-11 w-full sm:w-auto justify-center`}>
+              <button type="button" onClick={() => goTo((progress.next!.fixTab as Tab) || "setup")} className={`${btnPrimary} mt-4 min-h-11 lg:min-h-9 w-full sm:w-auto justify-center`}>
                 Next: {progress.next.title} <ArrowRight className="w-4 h-4" aria-hidden />
               </button>
             )}
@@ -216,7 +216,7 @@ function NeedsYou({ loading, waiting, today, items, next, now, onNext, openItem,
         <>
           {next ? (
             <button type="button" onClick={onNext}
-              className={`w-full min-h-12 px-4 py-3 rounded-control text-left text-white font-bold text-[14px] sm:text-[15px] flex items-center gap-3 transition active:scale-[0.99] ${next.urgent ? "bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800" : "bg-ink-900 hover:bg-ink-800"}`}>
+              className={`w-full min-h-12 lg:min-h-10 px-4 py-3 lg:py-2 rounded-control text-left text-white font-semibold text-[14px] sm:text-[15px] lg:text-[14px] flex items-center gap-3 transition active:scale-[0.99] ${next.urgent ? "bg-gradient-to-br from-brand-600 to-brand-900 hover:from-brand-500 hover:to-brand-800" : "bg-ink-900 hover:bg-ink-800"}`}>
               <span className="min-w-0 flex-1">{next.label}</span>
               <ArrowRight className="w-5 h-5 shrink-0" aria-hidden />
             </button>
@@ -228,7 +228,7 @@ function NeedsYou({ loading, waiting, today, items, next, now, onNext, openItem,
                 <p className="text-[13px] text-ink-600">No customer is waiting for a person and nothing is overdue. The AI is answering new chats.</p>
               </div>
               {canOpenTab("livechat") && (
-                <button type="button" onClick={() => goTo("livechat")} className="ml-8 sm:ml-0 min-h-10 px-3 rounded-control border border-line bg-white text-[13px] font-bold text-ink-800 hover:bg-canvas">Open the inbox</button>
+                <button type="button" onClick={() => goTo("livechat")} className="ml-8 sm:ml-0 min-h-10 lg:min-h-8 px-3 rounded-control border border-line bg-white text-[13px] font-bold text-ink-800 hover:bg-canvas">Open the inbox</button>
               )}
             </div>
           )}
@@ -258,14 +258,14 @@ function NeedsYou({ loading, waiting, today, items, next, now, onNext, openItem,
                     </p>
                   </div>
                   <button type="button" onClick={() => openItem(i)} aria-label={`${i.action}: ${i.title}`}
-                    className="ml-4 sm:ml-0 shrink-0 min-h-10 px-3 rounded-control border border-line text-[13px] font-bold text-ink-900 hover:bg-canvas whitespace-nowrap">{i.action}</button>
+                    className="ml-4 sm:ml-0 shrink-0 min-h-10 lg:min-h-8 px-3 rounded-control border border-line text-[13px] font-bold text-ink-900 hover:bg-canvas whitespace-nowrap">{i.action}</button>
                 </li>
               ))}
             </ul>
           )}
 
           {!today.error && canOpenTab("today") && (
-            <button type="button" onClick={() => goTo("today")} className="min-h-10 inline-flex items-center gap-1 text-[13px] font-bold text-brand-700 hover:underline">
+            <button type="button" onClick={() => goTo("today")} className="min-h-10 lg:min-h-8 inline-flex items-center gap-1 text-[13px] font-bold text-brand-700 hover:underline">
               {items.length > top.length + (next?.kind === "today" ? 1 : 0) ? `See all ${items.length} in Today` : "Open Today"} <ArrowRight className="w-3.5 h-3.5" aria-hidden />
             </button>
           )}
@@ -294,7 +294,7 @@ function ErrorLine({ text, onRetry }: { text: string; onRetry: () => void }) {
     <div role="alert" className="flex flex-wrap items-center gap-3 rounded-control border border-red-200 bg-red-50 px-4 py-3">
       <AlertTriangle className="w-4 h-4 text-red-700 shrink-0" aria-hidden />
       <p className="flex-1 min-w-0 text-[13px] text-red-800">{text} Check your connection and try again.</p>
-      <button type="button" onClick={onRetry} className="min-h-10 px-3 rounded-control border border-red-200 bg-white text-[13px] font-bold text-red-800 hover:bg-red-50">Retry</button>
+      <button type="button" onClick={onRetry} className="min-h-10 lg:min-h-8 px-3 rounded-control border border-red-200 bg-white text-[13px] font-bold text-red-800 hover:bg-red-50">Retry</button>
     </div>
   );
 }
@@ -316,7 +316,7 @@ function KeyNumbers({ week, contactsLabel, goTo, canOpenTab }: { week: ReturnTyp
       <div className="flex items-center justify-between gap-3">
         <h2 id="home-week" className="text-[15px] font-bold text-ink-900">Last 7 days</h2>
         {canOpenTab("analytics") && (
-          <button type="button" onClick={() => goTo("analytics")} className="min-h-10 inline-flex items-center gap-1 text-[13px] font-bold text-brand-700 hover:underline">
+          <button type="button" onClick={() => goTo("analytics")} className="min-h-10 lg:min-h-8 inline-flex items-center gap-1 text-[13px] font-bold text-brand-700 hover:underline">
             Analytics <ArrowRight className="w-3.5 h-3.5" aria-hidden />
           </button>
         )}
@@ -354,7 +354,7 @@ function HowTo({ goTo, onHide, contactsLabel, canOpenTab }: { goTo: GoTo; onHide
     <section aria-labelledby="home-howto">
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 id="home-howto" className="text-[15px] font-bold text-ink-900">How to use this platform</h2>
-        <button type="button" onClick={onHide} className="min-h-10 inline-flex items-center gap-1.5 px-2 text-[13px] font-semibold text-ink-600 hover:text-ink-900">
+        <button type="button" onClick={onHide} className="min-h-10 lg:min-h-8 inline-flex items-center gap-1.5 px-2 text-[13px] font-semibold text-ink-600 hover:text-ink-900">
           <EyeOff className="w-4 h-4" aria-hidden /> Hide this guide
         </button>
       </div>
@@ -363,7 +363,7 @@ function HowTo({ goTo, onHide, contactsLabel, canOpenTab }: { goTo: GoTo; onHide
           <div key={g.title} className={`${card} p-4 flex flex-col`}>
             <div className="flex items-center gap-2 text-brand-700 mb-1.5">{g.icon}<h3 className="font-bold text-sm">{g.title}</h3></div>
             <p className="text-[13px] text-ink-600 flex-1">{g.text}</p>
-            <button type="button" onClick={() => goTo(g.tab)} className="mt-2 self-start min-h-10 text-[13px] font-bold text-brand-700 flex items-center gap-1 hover:gap-2 transition-all">{g.cta} <ArrowRight className="w-3.5 h-3.5" aria-hidden /></button>
+            <button type="button" onClick={() => goTo(g.tab)} className="mt-2 self-start min-h-10 lg:min-h-8 text-[13px] font-bold text-brand-700 flex items-center gap-1 hover:gap-2 transition-all">{g.cta} <ArrowRight className="w-3.5 h-3.5" aria-hidden /></button>
           </div>
         ))}
       </div>
@@ -408,7 +408,7 @@ function AiCheckRail({ goTo, canOpenTab }: { goTo: GoTo; canOpenTab: (t: Tab) =>
           <ul className="pt-1.5 mt-1 border-t border-line space-y-0.5">
             {g.flagged.slice(0, 4).map(f => (
               <li key={f.id}>
-                <button type="button" onClick={() => goTo("livechat", f.phone ? { openPhone: f.phone } : undefined)} className="block w-full min-h-10 text-left rounded-md px-1.5 py-1 hover:bg-canvas">
+                <button type="button" onClick={() => goTo("livechat", f.phone ? { openPhone: f.phone } : undefined)} className="block w-full min-h-10 lg:min-h-8 text-left rounded-md px-1.5 py-1 hover:bg-canvas">
                   <span className="block text-[12px] font-semibold text-ink-800 truncate">{f.question || "An AI answer"}</span>
                   {claims(f.unsupportedClaims).length > 0 && (
                     <span className="block text-[12px] text-red-700 truncate"><AlertTriangle className="inline w-3 h-3 mr-0.5 align-[-1px]" aria-hidden />{claims(f.unsupportedClaims)[0]}</span>
@@ -457,7 +457,7 @@ function HomeRail({ goTo, a14, error, onRetry, isAdmin, canOpenTab }: {
         <RailCard title="Quick actions">
           <div className="grid grid-cols-2 gap-1.5">
             {quick.map(([label, tab]) => (
-              <button type="button" key={tab + label} onClick={() => goTo(tab)} className="min-h-10 px-2.5 py-2 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:border-brand-500 hover:text-brand-700 text-left">{label}</button>
+              <button type="button" key={tab + label} onClick={() => goTo(tab)} className="min-h-10 lg:min-h-8 px-2.5 py-2 rounded-control border border-line text-[12px] font-bold text-ink-700 hover:border-brand-500 hover:text-brand-700 text-left">{label}</button>
             ))}
           </div>
         </RailCard>

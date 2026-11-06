@@ -57,3 +57,12 @@ describe("the portal shell", () => {
     expect(editor).toContain(`router.push("/admin?tab=flows")`);
   });
 });
+
+describe("Settings' own part stays with Settings", () => {
+  it("drops ?section= when leaving Settings, keeps it on Settings", () => {
+    expect(searchWithTab("?tab=settings&section=numbers", "livechat", "home")).toBe("?tab=livechat");
+    expect(searchWithTab("?tab=settings&section=numbers", "home", "home")).toBe("");
+    expect(searchWithTab("?section=numbers", "settings", "home")).toBe("?section=numbers&tab=settings");
+    expect(searchWithTab("?tab=settings&section=numbers&wa_signup=1", "contacts", "home")).toBe("?tab=contacts&wa_signup=1");
+  });
+});

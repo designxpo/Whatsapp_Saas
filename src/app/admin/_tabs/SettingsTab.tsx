@@ -4,6 +4,7 @@
 // welcome/away messages, quick replies, LeadSquared CRM + API keys. Extracted
 // from admin/page.tsx, lazy-loaded. Pure relocation.
 import { useBrand } from "@/components/BrandContext";
+import { SETTINGS_SECTION_EVENT } from "../_components/shell-logic";
 import { HandoffOption } from "./HandoffOption";
 import { Notice, useNotice } from "@/components/Notice";
 import { PageInfo } from "@/components/PageInfo";
@@ -1353,7 +1354,7 @@ function OtpServiceCard() {
         const copy = async (text: string, key: string) => { try { await navigator.clipboard.writeText(text); setCopiedKey(key); setTimeout(() => setCopiedKey(k => (k === key ? null : k)), 1500); } catch { /* clipboard blocked */ } };
         const numberRows = [
           { key: "default", label: `${chanName(st.defaultChannelId)} · default`, area: "" },
-          ...st.routes.map(r => ({ key: r.area, label: `${r.area} → ${chanName(r.channelId)}`, area: r.area })),
+          ...(st.routes ?? []).map(r => ({ key: r.area, label: `${r.area} → ${chanName(r.channelId)}`, area: r.area })),
         ];
         return (
           <div className="bg-canvas rounded-control px-3 py-2.5 space-y-2">
@@ -2265,6 +2266,8 @@ function useSettingsSection(isAdmin: boolean): [SettingsSection, (s: SettingsSec
   useEffect(() => {
     if (!isAdmin && SETTINGS_SECTIONS.find(x => x.key === section)?.adminOnly) setState("general");
   }, [isAdmin, section]);
+  // The menu highlights "WhatsApp" while the WhatsApp numbers part is open.
+  useEffect(() => { window.dispatchEvent(new CustomEvent(SETTINGS_SECTION_EVENT, { detail: section })); }, [section]);
   return [section, set];
 }
 

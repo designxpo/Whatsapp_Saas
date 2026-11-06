@@ -4,11 +4,10 @@
 // Extracted from admin/page.tsx, lazy-loaded. ContactProfile is a shared module
 // (also used by the Contacts tab). Pure relocation.
 import { useVocab } from "@/lib/vocab-client";
-import { useState, useEffect, useCallback, useRef, useId, Fragment } from "react";
-import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Tag, UserCheck, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, History, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical } from "lucide-react";
-import { type Conversation, ConvAvatar, statusBadge, inp, type Tab, type ChatIntent, type GoTo, useChannelList, ChannelNameBadge } from "../_shared";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useId, Fragment } from "react";
+import { MessageSquare, Instagram, Search, MessageCircle, Facebook, LayoutTemplate, X, Loader2, Send, Sparkles, Mic, Paperclip, FileText, Bot, Zap, Plus, Check, AlertTriangle, SmilePlus, ArrowRight, ArrowLeft, Clock, Hourglass, CirclePause, Keyboard, RotateCcw, UserRound, PanelRight, EllipsisVertical, ListFilter } from "lucide-react";
+import { type Conversation, ConvAvatar, inp, type Tab, type ChatIntent, type GoTo, useChannelList } from "../_shared";
 import { ContactProfile } from "./ContactProfile";
-import { SegmentedControl } from "@/components/SegmentedControl";
 import { channelShort, type ConversationPlatform } from "@/lib/channel-label";
 import { crmChatKey, type ChatCrmStatus } from "@/lib/crmkey";
 import { TEAM_SHORT, nextTeam, type Team } from "@/lib/team-vocab";
@@ -16,7 +15,8 @@ import { EmptyState } from "../_shared";
 import { ChatNotes } from "@/components/chat-notes";
 import { CustomerWork } from "@/components/customer-work";
 import { CustomerAutomations } from "@/components/customer-automations";
-import { LeadPill, LeadReason, ApprovalCard } from "./LeadInsight";
+import { LeadWord, LeadReason, ApprovalCard } from "./LeadInsight";
+import { DetailsRow, DetailsSection, detailsButton, detailsControl } from "@/components/details-section";
 import { Drawer } from "@/components/overlay";
 import { toast } from "@/components/toast";
 import { fmtAgo, fmtNum, fmtUpdated } from "@/lib/format";
@@ -307,16 +307,15 @@ function CrmChatDot({ status, lastError }: { status: ChatCrmStatus; lastError: s
 }
 
 // Spelled-out version for the open chat's header, where there is room to say
-// which system this is and there is only one conversation to describe.
+// which system this is and there is only one conversation to describe. A dot
+// and words, like the rest of the header's status line.
 function CrmChatPill({ status, lastError }: { status: ChatCrmStatus; lastError: string }) {
   const { tone, label, title } = crmChatCopy(status, lastError);
-  const bg = status.state === "clear" ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-    : status.state === "queued" ? "bg-amber-50 text-amber-800 border-amber-200"
-    : "bg-red-50 text-red-700 border-red-200";
+  const text = status.state === "clear" ? "" : status.state === "queued" ? "text-amber-800" : "font-semibold text-red-700";
   return (
-    <span title={title} className={`shrink-0 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-[12px] font-bold ${bg}`}>
-      <span aria-hidden className={`w-1.5 h-1.5 rounded-full ${tone}`} />
-      LeadSquared · {label}
+    <span title={title} className={text}>
+      <span aria-hidden className={`inline-block w-1.5 h-1.5 mr-1 rounded-full align-middle ${tone}`} />
+      LeadSquared {label.toLowerCase()}
     </span>
   );
 }
@@ -337,6 +336,14 @@ function useMinWidth(px: number): boolean {
     return () => m.removeEventListener?.("change", on);
   }, [query]);
   return ok;
+}
+
+const DETAILS_KEY = "talko-inbox-details";
+function readLocal(key: string): string | null {
+  try { return typeof window !== "undefined" ? window.localStorage.getItem(key) : null; } catch { return null; }
+}
+function writeLocal(key: string, value: string): void {
+  try { window.localStorage.setItem(key, value); } catch { /* private mode: this visit only */ }
 }
 
 function sessionStore(): Storage | null {
@@ -395,38 +402,46 @@ function useInboxRefs(): InboxRefs {
 }
 
 // "Waiting 42 min" with an icon that changes with the level, so lateness is
-// never said by colour alone: a clock, an hourglass, then a warning sign.
-const WAIT_TONE: Record<WaitLevel, string> = {
-  fine: "bg-canvas text-ink-700 border-line",
-  soon: "bg-amber-50 text-amber-900 border-amber-300",
-  late: "bg-red-50 text-red-800 border-red-300",
+// never said by colour alone: a clock, an hourglass, then a warning sign. In a
+// row's quiet status line this is the one coloured thing.
+const WAIT_TEXT: Record<WaitLevel, string> = {
+  fine: "text-ink-700",
+  soon: "text-amber-800",
+  late: "text-red-700",
 };
-function WaitChip({ info }: { info: WaitInfo }) {
+function WaitText({ info }: { info: WaitInfo }) {
   const Icon = info.level === "late" ? AlertTriangle : info.level === "soon" ? Hourglass : Clock;
   return (
     <span title={`${info.label}, ${info.explain}`}
-      className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-semibold tabular-nums ${WAIT_TONE[info.level]}`}>
-      <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden />
+      className={`whitespace-nowrap font-semibold tabular-nums ${WAIT_TEXT[info.level]}`}>
+      <Icon className="inline w-3 h-3 mr-1 -mt-0.5 align-middle" aria-hidden />
       {info.label}
       <span className="sr-only">, {info.explain}</span>
     </span>
   );
 }
 
-// A small labelled status chip for list rows and the chat header.
-function StatusChip({ icon, children, tone = "neutral", title }: { icon: React.ReactNode; children: React.ReactNode; tone?: "neutral" | "red"; title?: string }) {
+// Words separated by " · " — the list row's and the header's status line.
+// The dots are decoration; screen readers hear commas. Items stay plain inline
+// boxes (no inline-flex), so a line cut short ends in a clean ellipsis.
+function Dotted({ items }: { items: React.ReactNode[] }) {
   return (
-    <span title={title} className={`shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px] font-semibold ${tone === "red" ? "bg-red-50 text-red-800 border-red-200" : "bg-canvas text-ink-700 border-line"}`}>
-      <span aria-hidden className="shrink-0 [&>svg]:w-3.5 [&>svg]:h-3.5">{icon}</span>
-      {children}
-    </span>
+    <>
+      {items.map((item, i) => (
+        <Fragment key={i}>
+          {i > 0 && <span aria-hidden className="px-1 text-ink-400">·</span>}
+          {i > 0 && <span className="sr-only">, </span>}
+          {item}
+        </Fragment>
+      ))}
+    </>
   );
 }
 
 // Last touch, short enough for a row: "just now", "42 min", "3 h", "2 days".
 const shortAgo = (iso: string | null, now: number) => (iso ? fmtAgo(iso, now).replace(/ ago$/, "") : "");
 
-// The keys the inbox answers to, shown from the "Shortcuts" button.
+// The keys the inbox answers to, shown from the filter menu's "Keyboard shortcuts".
 const SHORTCUTS: [string, string][] = [
   ["↑ ↓  or  j k", "Move through the chat list"],
   ["Enter", "Open the highlighted chat"],
@@ -435,28 +450,134 @@ const SHORTCUTS: [string, string][] = [
   ["⌘ Enter  or  Ctrl Enter", "Send the reply"],
 ];
 
-function ShortcutsHint() {
+function ShortcutsPanel({ onClose }: { onClose: () => void }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { ref.current?.focus(); }, []);
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} aria-hidden />
+      <div ref={ref} tabIndex={-1} role="dialog" aria-label="Keyboard shortcuts"
+        onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } }}
+        className="absolute right-0 top-full mt-1 z-30 w-72 rounded-[12px] border border-line bg-white shadow-lg p-3 focus:outline-none u-scale-in origin-top-right">
+        <div className="flex items-center justify-between mb-1.5">
+          <p className="text-[13px] font-semibold text-ink-900">Keyboard shortcuts</p>
+          <button type="button" onClick={onClose} aria-label="Close keyboard shortcuts" className="w-7 h-7 -m-1 flex items-center justify-center rounded-md text-ink-500 hover:bg-canvas hover:text-ink-900"><X className="w-3.5 h-3.5" aria-hidden /></button>
+        </div>
+        <dl className="space-y-1">
+          {SHORTCUTS.map(([k, v]) => (
+            <div key={k} className="flex items-start justify-between gap-3 text-[12px]">
+              <dt><kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded border border-line bg-canvas text-ink-800 whitespace-nowrap">{k}</kbd></dt>
+              <dd className="text-ink-600 text-right">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </>
+  );
+}
+
+// A small segmented control for the list pane: a recessed track with one
+// raised segment. Buttons with aria-pressed, because each one filters the list
+// rather than switching to another panel. `value` may match nothing, when the
+// active choice lives in the filter menu instead.
+function Segments<T extends string>({ label, value, options, onChange }: {
+  label: string;
+  value: T | null;
+  options: { value: T; label: React.ReactNode; count?: number; sr?: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex gap-0.5 p-0.5 rounded-[9px] bg-canvas">
+      {options.map(o => {
+        const on = o.value === value;
+        return (
+          <button key={o.value} type="button" aria-pressed={on} onClick={() => onChange(o.value)}
+            className={`flex-1 min-w-0 h-9 md:h-8 lg:h-7 px-2 rounded-[7px] inline-flex items-center justify-center gap-1 text-[13px] md:text-[12px] whitespace-nowrap transition-colors ${on ? "bg-white shadow-sm text-ink-900 font-semibold" : "text-ink-600 font-medium hover:text-ink-900"}`}>
+            <span className="truncate">{o.label}{o.sr && <span className="sr-only">{o.sr}</span>}</span>
+            {typeof o.count === "number" && <span className={`tabular-nums text-[11px] ${on ? "text-ink-500" : "text-ink-400"}`}>{fmtNum(o.count)}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── The list's filter menu ──────────────────────────────────────────────────
+// Everything that narrows the list but isn't used every minute: the rarer
+// "who needs to act" filters, the channel, one number, the pipeline stage and
+// the sort. One button in the header instead of four rows of chips.
+
+type PlatformKey = "all" | "whatsapp" | "instagram" | "messenger" | "webchat";
+const PLATFORMS: { key: PlatformKey; label: string; pill: string; icon: React.ReactNode }[] = [
+  { key: "all", label: "All channels", pill: "All channels", icon: null },
+  { key: "whatsapp", label: "WhatsApp", pill: "WhatsApp", icon: <MessageCircle className="w-3.5 h-3.5 text-green-600" /> },
+  { key: "instagram", label: "Instagram", pill: "Instagram", icon: <Instagram className="w-3.5 h-3.5 text-pink-600" /> },
+  // Every channel always shows, so a connected one is visible before its first chat lands.
+  { key: "messenger", label: "Facebook", pill: "Facebook", icon: <Facebook className="w-3.5 h-3.5 text-blue-600" /> },
+  { key: "webchat", label: "Web chat", pill: "Web chat", icon: <MessageSquare className="w-3.5 h-3.5 text-brand-700" /> },
+];
+/** The two filters that live in the quick segmented control; the rest are in the menu. */
+const QUICK_FILTERS: readonly InboxFilter[] = ["all", "waiting", "mine"];
+
+function MenuHeading({ children }: { children: React.ReactNode }) {
+  return <div role="presentation" className="px-2 pt-2 pb-0.5 text-[11px] font-semibold uppercase tracking-[0.05em] text-ink-500">{children}</div>;
+}
+function MenuRadio({ checked, onSelect, icon, label, count }: { checked: boolean; onSelect: () => void; icon?: React.ReactNode; label: React.ReactNode; count?: number | null }) {
+  return (
+    <button type="button" role="menuitemradio" aria-checked={checked} onClick={onSelect}
+      className="w-full flex items-center gap-2 min-h-11 md:min-h-8 lg:min-h-7 pl-1.5 pr-2 rounded-[6px] text-left text-[14px] md:text-[13px] text-ink-800 hover:bg-canvas focus-visible:bg-canvas">
+      <span aria-hidden className="w-4 shrink-0 flex justify-center">{checked && <Check className="w-3.5 h-3.5 text-brand-700" />}</span>
+      {icon && <span aria-hidden className="shrink-0 flex">{icon}</span>}
+      <span className="flex-1 min-w-0 truncate">{label}</span>
+      {count != null && <span className="tabular-nums text-[12px] text-ink-500">{fmtNum(count)}</span>}
+    </button>
+  );
+}
+
+function FilterMenu({ active, children, onShortcuts }: { active: boolean; children: (close: () => void) => React.ReactNode; onShortcuts: () => void }) {
   const [open, setOpen] = useState(false);
   const id = useId();
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const menu = useRef<HTMLDivElement | null>(null);
+  const close = useCallback((refocus = true) => { setOpen(false); if (refocus) trigger.current?.focus(); }, []);
+  // Opening puts focus on the first ticked item, the way a Mac menu does.
+  useEffect(() => {
+    if (!open) return;
+    const items = menu.current ? Array.from(menu.current.querySelectorAll<HTMLElement>("[role^='menuitem']")) : [];
+    (items.find(i => i.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+  }, [open]);
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const items = menu.current ? Array.from(menu.current.querySelectorAll<HTMLElement>("[role^='menuitem']")) : [];
+    const at = items.indexOf(document.activeElement as HTMLElement);
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === "Tab") close(false);
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = e.key === "ArrowDown" ? (at + 1) % items.length : (at - 1 + items.length) % items.length;
+      items[next]?.focus();
+    } else if (e.key === "Home" || e.key === "End") { e.preventDefault(); items[e.key === "Home" ? 0 : items.length - 1]?.focus(); }
+  };
   return (
-    <div className="relative hidden md:block">
-      <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} aria-controls={id} aria-label="Keyboard shortcuts" title="Keyboard shortcuts"
-        className="inline-flex items-center justify-center w-8 h-8 rounded-control text-ink-500 hover:text-ink-900 hover:bg-canvas">
-        <Keyboard className="w-4 h-4" aria-hidden />
+    <div className="relative">
+      <button ref={trigger} type="button" onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+        aria-label={active ? "Filters (some are on)" : "Filters"} title="Filter and sort"
+        className={`relative inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 lg:w-7 lg:h-7 rounded-[8px] hover:bg-canvas ${open || active ? "text-brand-700" : "text-ink-600 hover:text-ink-900"} ${open ? "bg-canvas" : ""}`}>
+        <ListFilter className="w-[18px] h-[18px] md:w-4 md:h-4" aria-hidden />
+        {active && <span aria-hidden className="absolute top-2 right-2 md:top-1 md:right-1 w-1.5 h-1.5 rounded-full bg-brand-700 ring-2 ring-white" />}
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden />
-          <div id={id} role="note" className="absolute right-0 top-full mt-1 z-20 w-72 rounded-card border border-line bg-white shadow-lg p-3">
-            <p className="text-[12px] font-bold text-ink-900 mb-1.5">Keyboard shortcuts</p>
-            <dl className="space-y-1">
-              {SHORTCUTS.map(([k, v]) => (
-                <div key={k} className="flex items-start justify-between gap-3 text-[12px]">
-                  <dt><kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded border border-line bg-canvas text-ink-800 whitespace-nowrap">{k}</kbd></dt>
-                  <dd className="text-ink-600 text-right">{v}</dd>
-                </div>
-              ))}
-            </dl>
+          <div className="fixed inset-0 z-20" onClick={() => close(false)} aria-hidden />
+          <div ref={menu} id={id} role="menu" aria-label="Filter and sort chats" onKeyDown={onKeyDown}
+            className="absolute right-0 top-full mt-1 z-30 w-64 max-h-[min(70dvh,560px)] overflow-y-auto rounded-[12px] border border-line bg-white shadow-lg p-1 u-scale-in origin-top-right">
+            {children(() => close())}
+            <div role="separator" className="hidden md:block my-1 h-px bg-line" />
+            <button type="button" role="menuitem" onClick={() => { close(false); onShortcuts(); }}
+              className="hidden md:flex w-full items-center gap-2 min-h-8 lg:min-h-7 pl-1.5 pr-2 rounded-[6px] text-left text-[13px] text-ink-800 hover:bg-canvas focus-visible:bg-canvas">
+              <span aria-hidden className="w-4 shrink-0" />
+              <Keyboard className="w-3.5 h-3.5 text-ink-500" aria-hidden />
+              <span className="flex-1">Keyboard shortcuts</span>
+            </button>
           </div>
         </>
       )}
@@ -471,12 +592,12 @@ function ListSkeleton() {
     <div aria-busy="true" aria-live="polite">
       <span className="sr-only">Loading conversations…</span>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} aria-hidden className="flex items-start gap-3 px-4 py-3 border-b border-line/60 animate-pulse motion-reduce:animate-none">
-          <div className="w-9 h-9 rounded-full bg-canvas shrink-0" />
-          <div className="flex-1 space-y-2 py-0.5">
+        <div key={i} aria-hidden className="flex items-start gap-2.5 pl-6 pr-3 py-2.5 animate-pulse motion-reduce:animate-none">
+          <div className="w-10 h-10 md:w-8 md:h-8 rounded-full bg-canvas shrink-0" />
+          <div className="flex-1 space-y-1.5 py-0.5">
             <div className="h-3 w-2/5 rounded bg-canvas" />
             <div className="h-3 w-4/5 rounded bg-canvas" />
-            <div className="h-4 w-24 rounded-full bg-canvas" />
+            <div className="h-2.5 w-1/3 rounded bg-canvas" />
           </div>
         </div>
       ))}
@@ -507,7 +628,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const [filter, setFilter] = useState<InboxFilter>(() => readSavedView(sessionStore()).filter);
   const [sort, setSort] = useState<InboxSort>(() => readSavedView(sessionStore()).sort);
   useEffect(() => { saveView(sessionStore(), { filter, sort }); }, [filter, sort]);
-  const [platform, setPlatform] = useState<"all" | "whatsapp" | "instagram" | "messenger" | "webchat">("all");
+  const [platform, setPlatform] = useState<PlatformKey>("all");
   // Narrow further to ONE number/account/Page of the selected platform — only
   // shown when that platform has 2+ connected channels.
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
@@ -522,6 +643,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const channelList = useChannelList();
   const [view, setView] = useState<"chats" | "comments">("chats");
   const [search, setSearch] = useState("");
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [pendingPhone, setPendingPhone] = useState<string | null>(null);   // deep-link: open this person once loaded
   // Chats the alerts endpoint says are waiting for a person (ready to pay,
   // approvals, or all of them while the AI is off) — joined into "Waiting for
@@ -709,6 +831,17 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
   const showList = twoPane || !selected;
   const showThread = twoPane || !!selected;
   const filterLabel = INBOX_FILTERS.find(f => f.key === filter)?.label ?? "All";
+  const platformCount: Record<PlatformKey, number> = { all: inView.length, whatsapp: waCount, instagram: igCount, messenger: fbCount, webchat: wcCount };
+  const channelNoun = platform === "instagram" ? "account" : platform === "messenger" ? "Page" : platform === "webchat" ? "site" : "number";
+
+  // What the filter menu has narrowed the list to, each as one removable pill
+  // under the search. The quick All / Waiting / Mine choice shows itself in its
+  // own control, so it never needs a pill.
+  const pills: { key: string; label: string; clear: () => void }[] = [];
+  if (!QUICK_FILTERS.includes(filter)) pills.push({ key: "filter", label: filterLabel, clear: () => setFilter("all") });
+  if (platform !== "all") pills.push({ key: "platform", label: PLATFORMS.find(p => p.key === platform)?.pill ?? platform, clear: () => { setPlatform("all"); setChannelFilter(null); } });
+  if (channelFilter) pills.push({ key: "channel", label: channelList.find(c => c.id === channelFilter)?.name ?? `One ${channelNoun}`, clear: () => setChannelFilter(null) });
+  if (stageFilter) pills.push({ key: "stage", label: stageFilter === "__none" ? "No stage set" : `Stage: ${stageFilter}`, clear: () => setStageFilter("") });
 
   return (
     // Fills the screen between the shell's header and (on phones) its bottom tab
@@ -717,102 +850,116 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
       <CrmStatusBar />
       <div className="flex-1 flex min-h-0">
       {/* Conversation list */}
-      <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-80 shrink-0 md:border-r border-line flex-col min-h-0`}>
-        <div className="px-4 pt-3 pb-2 space-y-2.5 border-b border-line">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-[15px] font-bold text-ink-900 whitespace-nowrap">{view === "comments" ? "Comments" : "Live Chat"} <span className="text-xs font-normal text-ink-500">({fmtNum(visible.length)})</span></h2>
-            <div className="flex items-center gap-1">
-              <ShortcutsHint />
-              <label className="sr-only" htmlFor="inbox-sort">Sort chats</label>
-              <select id="inbox-sort" value={sort} onChange={e => setSort(normalizeSort(e.target.value))}
-                className="h-8 rounded-control border border-line bg-white pl-2 pr-7 text-[12px] font-semibold text-ink-700">
-                {INBOX_SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
-            </div>
+      <aside aria-label="Conversations" className={`${showList ? "flex" : "hidden"} w-full md:w-[300px] xl:w-[320px] shrink-0 md:border-r border-line flex-col min-h-0`}>
+        <div className="px-3 pt-2.5 md:pt-3 pb-2 space-y-2">
+          {/* One header row: the title and its count, and one Filter button. */}
+          <div className="relative flex items-center justify-between gap-2 pl-1">
+            <h2 className="min-w-0 truncate text-[17px] md:text-[15px] font-semibold text-ink-900">
+              {view === "comments" ? "Comments" : "Live Chat"}
+              <span className="ml-1.5 text-[13px] md:text-[12px] font-normal text-ink-500 tabular-nums">{loaded ? fmtNum(visible.length) : ""}<span className="sr-only"> shown</span></span>
+            </h2>
+            <FilterMenu active={pills.length > 0} onShortcuts={() => setShowShortcuts(true)}>
+              {close => (
+                <>
+                  <MenuHeading>Show</MenuHeading>
+                  <div role="group" aria-label="Show">
+                    {INBOX_FILTERS.map(f => (
+                      <MenuRadio key={f.key} checked={filter === f.key} label={f.label} count={loaded ? counts[f.key] : null}
+                        onSelect={() => { setFilter(f.key); close(); }} />
+                    ))}
+                  </div>
+                  {view === "chats" && (
+                    <>
+                      <div role="separator" className="my-1 h-px bg-line" />
+                      <MenuHeading>Channel</MenuHeading>
+                      <div role="group" aria-label="Channel">
+                        {PLATFORMS.map(p => (
+                          <MenuRadio key={p.key} checked={platform === p.key} icon={p.icon} label={p.label} count={loaded ? platformCount[p.key] : null}
+                            onSelect={() => { setPlatform(p.key); setChannelFilter(null); close(); }} />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {/* Which number/account/Page — once a platform with 2+ connected channels is chosen. */}
+                  {platformChannels.length > 1 && (
+                    <>
+                      <div role="separator" className="my-1 h-px bg-line" />
+                      <MenuHeading>{channelNoun === "number" ? "WhatsApp number" : channelNoun === "Page" ? "Facebook Page" : channelNoun === "site" ? "Web-chat site" : "Instagram account"}</MenuHeading>
+                      <div role="group" aria-label={`Filter by ${channelNoun}`}>
+                        <MenuRadio checked={!channelFilter} label={`All ${channelNoun}s`} onSelect={() => { setChannelFilter(null); close(); }} />
+                        {platformChannels.map(c => <MenuRadio key={c.id} checked={channelFilter === c.id} label={c.name} onSelect={() => { setChannelFilter(c.id); close(); }} />)}
+                      </div>
+                    </>
+                  )}
+                  {/* Pipeline stage — the "where is this lead" axis. */}
+                  {stageNames.length > 0 && (
+                    <>
+                      <div role="separator" className="my-1 h-px bg-line" />
+                      <MenuHeading>{vocab.pipeline.one} stage</MenuHeading>
+                      <div role="group" aria-label={`Show only ${vocab.lead.many.toLowerCase()} at one ${vocab.pipeline.one.toLowerCase()} stage`}>
+                        <MenuRadio checked={!stageFilter} label="All stages" onSelect={() => { setStageFilter(""); close(); }} />
+                        {stageNames.map(n => <MenuRadio key={n} checked={stageFilter === n} label={n} onSelect={() => { setStageFilter(n); setSelected(null); close(); }} />)}
+                        <MenuRadio checked={stageFilter === "__none"} label="No stage set" onSelect={() => { setStageFilter("__none"); setSelected(null); close(); }} />
+                      </div>
+                    </>
+                  )}
+                  <div role="separator" className="my-1 h-px bg-line" />
+                  <MenuHeading>Sort by</MenuHeading>
+                  <div role="group" aria-label="Sort chats">
+                    {INBOX_SORTS.map(o => <MenuRadio key={o.key} checked={sort === o.key} label={o.label} onSelect={() => { setSort(normalizeSort(o.key)); close(); }} />)}
+                  </div>
+                </>
+              )}
+            </FilterMenu>
+            {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
           </div>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-2.5 top-1/2 -translate-y-1/2" aria-hidden />
+            <input type="search" aria-label="Search chats by name or number"
+              className="w-full h-11 md:h-8 rounded-[8px] border border-transparent bg-canvas pl-8 pr-3 text-base md:text-[13px] text-ink-900 placeholder:text-ink-500 focus:bg-white focus:border-line"
+              placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          {pills.length > 0 && (
+            <div className="flex flex-wrap gap-1.5" aria-label="Filters on">
+              {pills.map(p => (
+                <button key={p.key} type="button" onClick={p.clear} aria-label={`Remove filter: ${p.label}`} title="Remove this filter"
+                  className="inline-flex items-center gap-1 min-h-9 md:min-h-6 pl-2.5 pr-1.5 rounded-full bg-brand-50 text-brand-800 text-[12px] font-medium hover:bg-brand-100">
+                  <span className="truncate max-w-[180px]">{p.label}</span>
+                  <X className="w-3 h-3 shrink-0" aria-hidden />
+                </button>
+              ))}
+            </div>
+          )}
           {/* Chats vs Comments — comment threads (IG comment → AI reply) live in
               their own section so they don't clutter real DM conversations. */}
-          <SegmentedControl
-            ariaLabel="Conversation type"
-            value={view}
-            onChange={(v) => { setView(v); setSelected(null); setPlatform("all"); }}
+          <Segments label="Conversation type" value={view}
+            onChange={v => { setView(v); setSelected(null); setPlatform("all"); setChannelFilter(null); }}
             options={[
-              { value: "chats", label: "Chats", count: chatsCount, icon: <MessageSquare className="w-3 h-3" /> },
-              { value: "comments", label: "Comments", count: commentsCount, icon: <MessageCircle className="w-3 h-3 text-ink-500" /> },
-            ]}
-          />
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden />
-            <input type="search" aria-label="Search chats by name or number" className="w-full border border-line rounded-control pl-8 pr-3 py-2 text-base md:text-sm bg-canvas text-ink-900 placeholder:text-ink-500" placeholder="Search name or number" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
-          {/* Platform toggle — only for Chats; comments are Instagram-only. One
-              scrolling row on a phone, so the list keeps its room. */}
-          {view === "chats" && (
-          <div role="group" aria-label="Channel" className="flex gap-1 p-0.5 bg-canvas rounded-control overflow-x-auto md:flex-wrap [scrollbar-width:none]">
-            {([
-              ["all", "All", inView.length],
-              ["whatsapp", "WhatsApp", waCount],
-              ["instagram", "Instagram", igCount],
-              // All channels always show (like WhatsApp/Instagram) so a connected
-              // channel is visible even before its first conversation lands.
-              ["messenger", "Facebook", fbCount],
-              ["webchat", "Web chat", wcCount],
-            ] as const).map(([k, label, n]) => (
-              <button key={k} aria-pressed={platform === k} onClick={() => { setPlatform(k); setChannelFilter(null); }} className={`shrink-0 md:flex-1 min-w-[68px] min-h-8 px-2 py-1 rounded-[7px] text-[12px] font-bold flex items-center justify-center gap-1 whitespace-nowrap transition-colors ${platform === k ? "bg-white shadow-sm text-ink-900" : "text-ink-500 hover:text-ink-800"}`}>
-                {k === "whatsapp" && <MessageCircle className="w-3 h-3 text-green-600" aria-hidden />}
-                {k === "instagram" && <Instagram className="w-3 h-3 text-pink-600" aria-hidden />}
-                {k === "messenger" && <Facebook className="w-3 h-3 text-blue-600" aria-hidden />}
-                {k === "webchat" && <MessageSquare className="w-3 h-3 text-brand-600" aria-hidden />}
-                {label} <span className="opacity-70 tabular-nums">{fmtNum(n)}</span>
-              </button>
-            ))}
-          </div>
-          )}
-          {/* Which specific number/account/Page — appears once a platform with
-              2+ connected channels is selected ("which number is this on?"). */}
-          {platformChannels.length > 1 && (
-            <select className={`${inp} w-full !py-1.5 text-xs`} value={channelFilter ?? ""} onChange={e => setChannelFilter(e.target.value || null)}
-              aria-label={platform === "instagram" ? "Filter by Instagram account" : platform === "messenger" ? "Filter by Facebook Page" : platform === "webchat" ? "Filter by web-chat site" : "Filter by WhatsApp number"}>
-              <option value="">{platform === "instagram" ? "All accounts" : platform === "messenger" ? "All Pages" : platform === "webchat" ? "All sites" : "All numbers"}</option>
-              {platformChannels.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          )}
+              { value: "chats", label: "Chats", count: chatsCount },
+              { value: "comments", label: "Comments", count: commentsCount },
+            ]} />
+          {/* Who needs to act, the three views used all day. The rest are in Filters. */}
+          <Segments label="Quick view" value={QUICK_FILTERS.includes(filter) ? filter : null} onChange={setFilter}
+            options={[
+              { value: "all", label: "All", count: loaded ? counts.all : undefined },
+              { value: "waiting", label: "Waiting", sr: " for you", count: loaded ? counts.waiting : undefined },
+              { value: "mine", label: "Mine", count: loaded ? counts.mine : undefined },
+            ]} />
           {/* A pinned member's inbox is a subset by design. Saying so stops it
               reading as missing data — the failure mode this whole split risks. */}
           {scopedTeam && (
-            <p className="text-[12px] text-blue-800 bg-blue-50 rounded-control px-2.5 py-1.5">
-              Showing the <b>{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only. Other teams&apos; chats are handled in their own inbox.
+            <p className="text-[12px] text-ink-600 px-1">
+              Showing the <b className="font-semibold text-ink-800">{TEAM_SHORT[scopedTeam]}</b> team&apos;s numbers only.
             </p>
           )}
-          {/* Pipeline stage — the "where is this lead" axis, next to the "which
-              number" one. Stages come from the Pipeline tab, so this needs no
-              configuration of its own. */}
-          {stageNames.length > 0 && (
-            <select className={`${inp} w-full !py-1.5 text-xs`} value={stageFilter} onChange={e => { setStageFilter(e.target.value); setSelected(null); }}
-              aria-label={`Show only ${vocab.lead.many.toLowerCase()} sitting at one ${vocab.pipeline.one.toLowerCase()} stage`}>
-              <option value="">All stages</option>
-              {stageNames.map(n => <option key={n} value={n}>Stage: {n}</option>)}
-              <option value="__none">No stage set</option>
-            </select>
-          )}
-          {/* Who needs to act. One scrolling row on a phone. */}
-          <div role="group" aria-label="Show" className="flex gap-1.5 overflow-x-auto md:flex-wrap -mx-1 px-1 pb-0.5 [scrollbar-width:none]">
-            {INBOX_FILTERS.map(f => (
-              <button key={f.key} aria-pressed={filter === f.key} onClick={() => setFilter(f.key)}
-                className={`shrink-0 inline-flex items-center gap-1 min-h-8 px-3 rounded-full text-[12px] font-bold whitespace-nowrap border transition-colors ${filter === f.key ? "bg-ink-950 border-ink-950 text-white" : "bg-white border-line text-ink-600 hover:text-ink-900 hover:border-ink-300"}`}>
-                {f.label}
-                {loaded && <span className={`tabular-nums ${filter === f.key ? "text-white/75" : "text-ink-400"}`}>{fmtNum(counts[f.key])}</span>}
-              </button>
-            ))}
-          </div>
         </div>
-        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain">
+        <div ref={listRef} className="flex-1 overflow-y-auto overscroll-contain border-t border-line px-1.5 py-1">
           {/* A refresh that failed after the list had loaded: keep what we had, say so. */}
           {loaded && listError && (
-            <div role="alert" className="flex items-center gap-2 px-4 py-2 text-[12px] text-amber-900 bg-amber-50 border-b border-amber-200">
+            <div role="alert" className="flex items-center gap-2 mx-0.5 my-1 px-3 py-1.5 rounded-[8px] text-[12px] text-amber-900 bg-amber-50 border border-amber-200">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
               <span className="flex-1">Couldn&apos;t refresh the list. {fmtUpdated(updatedAt, now)}.</span>
-              <button onClick={() => void retryList()} disabled={retrying} className="shrink-0 min-h-8 px-2.5 rounded-control border border-amber-300 bg-white font-bold hover:bg-amber-100 disabled:opacity-60">{retrying ? "Retrying…" : "Retry"}</button>
+              <button onClick={() => void retryList()} disabled={retrying} className="shrink-0 min-h-8 md:min-h-7 px-2.5 rounded-[8px] border border-amber-300 bg-white font-semibold hover:bg-amber-100 disabled:opacity-60">{retrying ? "Retrying…" : "Retry"}</button>
             </div>
           )}
           {!loaded && !listError && <ListSkeleton />}
@@ -820,10 +967,10 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             <div role="alert" className="flex flex-col items-center text-center gap-3 px-6 py-12">
               <div className="w-12 h-12 rounded-full bg-red-50 text-red-700 flex items-center justify-center"><AlertTriangle className="w-5 h-5" aria-hidden /></div>
               <div>
-                <p className="text-sm font-bold text-ink-900">Couldn&apos;t load your chats</p>
+                <p className="text-sm font-semibold text-ink-900">Couldn&apos;t load your chats</p>
                 <p className="text-[13px] text-ink-600 mt-1">{listError}</p>
               </div>
-              <button onClick={() => void retryList()} disabled={retrying} className="min-h-10 px-4 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 inline-flex items-center gap-1.5">
+              <button onClick={() => void retryList()} disabled={retrying} className="min-h-10 md:min-h-8 px-4 rounded-[8px] bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold disabled:opacity-60 inline-flex items-center gap-1.5">
                 {retrying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <RotateCcw className="w-4 h-4" aria-hidden />} Retry
               </button>
             </div>
@@ -833,20 +980,39 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             const wait = awaiting ? waitInfo(c.lastInboundAt, refs.replyTarget, now) : null;
             const mine = isMine(c.assignedTo, refs.me);
             const name = contactDisplayName(c);
+            const on = selected === c.id;
+            const stage = stages[c.phone];
+            // One quiet line of words, not pills. The wait comes first and is the
+            // only coloured thing; everything after it is secondary grey.
+            const status: React.ReactNode[] = [];
+            if (wait) status.push(<WaitText info={wait} />);
+            else if (awaiting) status.push(<span className="font-medium text-ink-700"><Clock className="inline w-3 h-3 mr-1 -mt-0.5 align-middle" aria-hidden />Awaiting reply</span>);
+            if (c.status === "escalated") status.push(<span className="font-medium text-ink-700">Needs a person</span>);
+            if (!c.botEnabled) status.push(<span title="The AI won't reply in this chat until it is resumed">AI paused</span>);
+            if (c.assignedTo) status.push(<span title={`Assigned to ${c.assignedTo}`}><span className="sr-only">Assigned to </span>{mine ? "You" : c.assignedTo}</span>);
+            if (c.lead) status.push(<LeadWord lead={c.lead} />);
+            if (stage) status.push(
+              <span title={`${vocab.pipeline.one} stage: ${stage.name}`}>
+                <span aria-hidden className="inline-block w-1.5 h-1.5 mr-1 rounded-full align-middle" style={{ backgroundColor: stage.color ?? "#64748b" }} />{stage.name}
+              </span>,
+            );
             return (
             <button key={c.id} data-inbox-row data-id={c.id} onClick={() => openChat(c.id)}
-              aria-current={selected === c.id ? "true" : undefined}
-              className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-line/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 ${selected === c.id ? "bg-brand-50" : "hover:bg-canvas"}`}>
+              aria-current={on ? "true" : undefined}
+              className={`relative w-full flex items-start gap-2.5 pl-0.5 pr-2.5 py-2.5 text-left rounded-[10px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500 after:content-[''] after:absolute after:bottom-0 after:right-2.5 after:left-[74px] md:after:left-[66px] after:h-px after:bg-line/70 ${on ? "bg-brand-50 after:hidden" : "hover:bg-canvas"}`}>
+              {/* Awaiting a reply: a blue dot in the gutter (and a bold name), like unread mail. */}
+              <span aria-hidden className="w-3 shrink-0 flex justify-center pt-1.5">
+                {awaiting && <span className="w-2 h-2 rounded-full bg-brand-700" />}
+              </span>
               <div className="relative shrink-0 mt-0.5">
-                <ConvAvatar url={c.avatarUrl} label={name} size={40} />
-                <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 rounded-full bg-white border border-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
-                  {c.platform === "instagram" ? <Instagram className="w-2.5 h-2.5 text-pink-600" aria-hidden /> : c.platform === "messenger" ? <Facebook className="w-2.5 h-2.5 text-blue-600" aria-hidden /> : c.platform === "webchat" ? <MessageSquare className="w-2.5 h-2.5 text-brand-600" aria-hidden /> : <MessageCircle className="w-2.5 h-2.5 text-green-600" aria-hidden />}
+                <ConvAvatar url={c.avatarUrl} label={name} size={twoPane ? 32 : 40} />
+                <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white ring-1 ring-line flex items-center justify-center" title={c.platform === "instagram" ? "Instagram" : c.platform === "messenger" ? "Messenger" : c.platform === "webchat" ? "Web chat" : "WhatsApp"}>
+                  {c.platform === "instagram" ? <Instagram className="w-2 h-2 text-pink-600" aria-hidden /> : c.platform === "messenger" ? <Facebook className="w-2 h-2 text-blue-600" aria-hidden /> : c.platform === "webchat" ? <MessageSquare className="w-2 h-2 text-brand-700" aria-hidden /> : <MessageCircle className="w-2 h-2 text-green-600" aria-hidden />}
                 </span>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className={`text-[14px] truncate ${awaiting ? "font-bold text-ink-950" : "font-medium text-ink-800"}`}>
-                    {awaiting && <span aria-hidden className="inline-block w-2 h-2 rounded-full bg-brand-600 mr-1.5 align-middle" />}
+                <div className="flex items-center gap-2">
+                  <p className={`flex-1 min-w-0 truncate text-[14px] lg:text-[13px] leading-5 ${awaiting ? "font-semibold text-ink-950" : "font-medium text-ink-800"}`}>
                     {name}
                     <span className="sr-only">{awaiting ? ", awaiting a reply" : ""}, on {channelShort(contactChannel(c))}</span>
                   </p>
@@ -854,26 +1020,12 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
                       entirely when LeadSquared isn't configured, so a workspace
                       that doesn't use it sees no unexplained dots. */}
                   {crmOn && <CrmChatDot status={crmStatusFor(c, crmChats)} lastError={crmErr} />}
-                  <span className="text-[12px] text-ink-500 shrink-0 tabular-nums">{shortAgo(lastTouch(c), now)}</span>
+                  <span className={`text-[12px] shrink-0 tabular-nums ${awaiting ? "text-brand-800 font-medium" : "text-ink-500"}`}>{shortAgo(lastTouch(c), now)}</span>
                 </div>
-                <p className={`text-[13px] truncate ${awaiting ? "text-ink-800" : "text-ink-500"}`}>{c.lastMessage ?? "—"}</p>
-                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                  {wait && <WaitChip info={wait} />}
-                  {awaiting && !wait && <StatusChip icon={<Clock />}>Awaiting reply</StatusChip>}
-                  {c.status === "escalated" && <StatusChip tone="red" icon={<UserRound />}>Needs a person</StatusChip>}
-                  {!c.botEnabled && <StatusChip icon={<CirclePause />} title="The AI won't reply in this chat until it is resumed">AI paused</StatusChip>}
-                  <LeadPill lead={c.lead} compact />
-                  {stages[c.phone] && (
-                    <span className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
-                      style={{ backgroundColor: `${stages[c.phone].color ?? "#64748b"}1a`, color: stages[c.phone].color ?? "#475569" }}
-                      title={`${vocab.pipeline.one} stage: ${stages[c.phone].name}`}>{stages[c.phone].name}</span>
-                  )}
-                  {c.assignedTo && (
-                    <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-brand-800 min-w-0" title={`Assigned to ${c.assignedTo}`}>
-                      <UserCheck className="w-3.5 h-3.5 shrink-0" aria-hidden /><span className="sr-only">Assigned to </span><span className="truncate">{mine ? "You" : c.assignedTo}</span>
-                    </span>
-                  )}
-                </div>
+                <p className={`text-[13px] leading-[18px] truncate ${awaiting ? "text-ink-700" : "text-ink-500"}`}>{c.lastMessage ?? "—"}</p>
+                {status.length > 0 && (
+                  <p className="mt-0.5 text-[12px] leading-4 text-ink-500 truncate"><Dotted items={status} /></p>
+                )}
               </div>
             </button>
             );
@@ -882,7 +1034,7 @@ function LiveChatTab({ goTo, intent, clearIntent }: { goTo: GoTo; intent: ChatIn
             (q || filter !== "all" || platform !== "all" || stageFilter || channelFilter)
               ? <EmptyState mood="searching" title={filter === "waiting" && !q ? "Nobody is waiting for you" : "No conversations match"}
                   body={filter !== "all" ? `Nothing under “${filterLabel}” right now. Clear the search or switch back to All.` : "Try clearing the search, or switch back to All."}
-                  action={<button onClick={() => { setSearch(""); setFilter("all"); setPlatform("all"); setStageFilter(""); setChannelFilter(null); }} className="min-h-10 px-4 rounded-control border border-line bg-white text-sm font-bold text-ink-800 hover:bg-canvas">Show all chats</button>} />
+                  action={<button onClick={() => { setSearch(""); setFilter("all"); setPlatform("all"); setStageFilter(""); setChannelFilter(null); }} className="min-h-10 md:min-h-8 px-4 rounded-[8px] border border-line bg-white text-[13px] font-semibold text-ink-800 hover:bg-canvas">Show all chats</button>} />
               : <EmptyState mood="sleeping" title="No conversations yet"
                   body="When someone messages one of your connected channels, the chat lands here." />
           )}
@@ -953,7 +1105,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
   const filled = varCount === 0 || vars.slice(0, varCount).every(v => v.trim());
 
   return (
-    <div className="border border-line rounded-control bg-canvas/60 p-3 space-y-2">
+    <div className="border border-line rounded-[10px] bg-canvas/60 p-3 space-y-2">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-bold text-ink-600 uppercase tracking-[0.06em] flex items-center gap-1.5"><LayoutTemplate className="w-3.5 h-3.5" /> Send approved template</p>
         <button onClick={onClose} aria-label="Close templates" className="w-8 h-8 -m-1.5 flex items-center justify-center rounded-full text-ink-500 hover:text-ink-900 hover:bg-white"><X className="w-4 h-4" aria-hidden /></button>
@@ -981,7 +1133,7 @@ function TemplateComposer({ channelId, busy, onSend, onClose }: {
             <button
               onClick={() => selected && onSend({ templateName: selected.name, languageCode: selected.language, bodyParams: vars.slice(0, varCount).map(v => v.trim()), preview: preview() })}
               disabled={busy || !selected || !filled}
-              className="px-3.5 py-2 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center gap-1.5">
+              className="h-11 md:h-8 px-3 rounded-[8px] bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold disabled:opacity-60 flex items-center gap-1.5">
               {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /> Send template</>}
             </button>
           </div>
@@ -1007,6 +1159,9 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
   const [threadError, setThreadError] = useState("");
   const [retryingThread, setRetryingThread] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  // Wide screens can fold the details column away; remembered in this browser.
+  const [detailsHidden, setDetailsHidden] = useState(() => readLocal(DETAILS_KEY) === "0");
+  const toggleDetailsColumn = () => { const next = !detailsHidden; setDetailsHidden(next); writeLocal(DETAILS_KEY, next ? "0" : "1"); };
   const [showMore, setShowMore] = useState(false);
   const [pending, setPending] = useState<PendingReply[]>([]);
   const pendingRef = useRef(pending);
@@ -1065,6 +1220,14 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
   const [crmSourceSnap, setCrmSourceSnap] = useState<{ configured: boolean; lead: { source: string | null } | null } | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  // The reply box starts one line tall and grows with what is typed (to ~8 lines).
+  const replyBox = useRef<HTMLTextAreaElement | null>(null);
+  useLayoutEffect(() => {
+    const el = replyBox.current;
+    if (!el) return;
+    el.style.height = "auto";
+    if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight + 2, 160)}px`;
+  }, [reply]);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef(0);
 
@@ -1275,86 +1438,114 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
     <>
       {/* ── Middle: thread ── */}
       <section aria-label={conv ? `Chat with ${contactDisplayName(conv)}` : "Chat"} className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="shrink-0 border-b border-line bg-white">
-          <div className="min-h-14 px-2 md:px-5 py-2 flex items-center justify-between gap-2">
-            <div className="min-w-0 flex items-center gap-2 md:gap-3">
-              {onBack && (
-                <button type="button" onClick={onBack} aria-label="Back to chats"
-                  className="shrink-0 w-11 h-11 -ml-1 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
-                  <ArrowLeft className="w-5 h-5" aria-hidden />
-                </button>
-              )}
-              <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={36} />
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold text-ink-900 truncate leading-tight">{conv ? contactDisplayName(conv) : "Conversation"}</h2>
-                {conv && <p className={`text-[12px] text-ink-500 leading-tight truncate ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
-              </div>
-            </div>
-            {conv && (
-              <div className="flex items-center gap-1.5 shrink-0 text-xs">
-                {/* Wide screens: the two chat switches as buttons. */}
-                <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
-                  className={`hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border font-semibold ${conv.botEnabled ? "border-line text-ink-700 hover:bg-canvas" : "border-brand-700 bg-brand-700 text-white"}`}>
-                  {conv.botEnabled ? <><CirclePause className="w-3.5 h-3.5" aria-hidden /> Pause AI for this chat</> : <><Bot className="w-3.5 h-3.5" aria-hidden /> Resume AI</>}
-                </button>
-                {conv.status !== "escalated"
-                  ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} title="Flag this chat for a person on your team" className="hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border border-red-200 text-red-700 font-semibold hover:bg-red-50"><UserRound className="w-3.5 h-3.5" aria-hidden /> Needs a person</button>
-                  : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} title="A person has it — clear the flag" className="hidden xl:inline-flex items-center gap-1.5 min-h-9 px-2.5 rounded-control border border-line text-ink-700 font-semibold hover:bg-canvas"><Check className="w-3.5 h-3.5" aria-hidden /> Mark handled</button>}
-                {/* Phones and tablets: the same two switches in a menu, so the name keeps its room. */}
-                <div className="relative xl:hidden">
-                  <button type="button" onClick={() => setShowMore(o => !o)} aria-label="Chat actions" aria-haspopup="menu" aria-expanded={showMore}
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
-                    <EllipsisVertical className="w-5 h-5" aria-hidden />
-                  </button>
-                  {showMore && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowMore(false)} aria-hidden />
-                      <div role="menu" aria-label="Chat actions" className="absolute right-0 top-full mt-1 z-20 w-60 bg-white border border-line rounded-card shadow-lg p-1">
-                        <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "bot", enabled: !conv.botEnabled }); }}
-                          className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg text-sm text-ink-800 hover:bg-canvas text-left">
-                          {conv.botEnabled ? <><CirclePause className="w-4 h-4 text-ink-500" aria-hidden /> Pause AI for this chat</> : <><Bot className="w-4 h-4 text-ink-500" aria-hidden /> Resume AI</>}
-                        </button>
-                        <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "status", status: conv.status === "escalated" ? "active" : "escalated" }); }}
-                          className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg text-sm text-ink-800 hover:bg-canvas text-left">
-                          {conv.status === "escalated" ? <><Check className="w-4 h-4 text-ink-500" aria-hidden /> Mark handled</> : <><UserRound className="w-4 h-4 text-red-600" aria-hidden /> Needs a person</>}
-                        </button>
-                      </div>
-                    </>
+        {(() => {
+          // Where this chat stands, as one line of words: the wait (the one
+          // coloured thing) and anything a person must act on first, then which
+          // number it is on — so when the line is cut short, the number goes first.
+          const wait = conv?.needsReply ? waitInfo(conv.lastInboundAt, refs.replyTarget, now) : null;
+          const chName = conv?.channelId ? channelName(conv.channelId) : null;
+          const status: React.ReactNode[] = [];
+          if (conv) {
+            if (wait) status.push(<WaitText info={wait} />);
+            if (conv.status === "escalated") status.push(<span className="font-medium text-ink-700">Needs a person</span>);
+            if (conv.status === "paused") status.push(<span>Paused</span>);
+            if (!conv.botEnabled) status.push(<span title="The AI won't reply in this chat until it is resumed">AI paused</span>);
+            // Has this conversation landed on the lead's LeadSquared timeline?
+            if (crm) status.push(<CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />);
+            if (conv.lead) status.push(<LeadWord lead={conv.lead} />);
+          }
+          const phoneStatus = [...status];
+          if (conv) {
+            status.push(<span className={subtitleIsPhone(conv) ? "tabular-nums" : ""}>{contactSubtitle(conv)}</span>);
+            if (chName) status.push(<span title={`Replies go out from ${chName}`}><span className="sr-only">on </span>{chName}</span>);
+          }
+          const statusTitle = conv ? [
+            wait ? `${wait.label} (${wait.explain})` : null,
+            conv.status === "escalated" ? "Needs a person" : null,
+            conv.status === "paused" ? "Paused" : null,
+            !conv.botEnabled ? "AI paused" : null,
+            conv.lead ? `${conv.lead.status}${conv.lead.score != null ? ` ${conv.lead.score}` : ""}` : null,
+            contactSubtitle(conv), chName,
+          ].filter(Boolean).join(" · ") : undefined;
+          const iconBtn = "inline-flex items-center justify-center w-11 h-11 md:w-8 md:h-8 rounded-full md:rounded-[8px] text-ink-600 hover:text-ink-900 hover:bg-canvas";
+          const toolBtn = "hidden xl:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[8px] border border-line bg-white text-[13px] font-medium text-ink-800 hover:bg-canvas disabled:opacity-50";
+          return (
+            <div className="shrink-0 border-b border-line bg-white">
+              <div className="min-h-14 px-2 md:px-4 py-2 flex items-center justify-between gap-2">
+                <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-2.5">
+                  {onBack && (
+                    <button type="button" onClick={onBack} aria-label="Back to chats"
+                      className="shrink-0 w-11 h-11 -ml-1 rounded-full flex items-center justify-center text-ink-700 hover:bg-canvas">
+                      <ArrowLeft className="w-5 h-5" aria-hidden />
+                    </button>
                   )}
+                  <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={onBack ? 36 : 32} />
+                  <div className="min-w-0">
+                    <h2 className="text-[15px] font-semibold text-ink-900 truncate leading-5">{conv ? contactDisplayName(conv) : "Conversation"}</h2>
+                    {conv && (
+                      <>
+                        {/* Wider screens: one secondary line under the name. */}
+                        <p className="hidden md:line-clamp-2 xl:line-clamp-1 text-[12px] leading-4 text-ink-500" title={statusTitle}><Dotted items={status} /></p>
+                        <p className={`md:hidden truncate text-[12px] leading-4 text-ink-500 ${subtitleIsPhone(conv) ? "tabular-nums" : ""}`}>{contactSubtitle(conv)}</p>
+                      </>
+                    )}
+                  </div>
                 </div>
-                {!detailsColumn && (
-                  <button type="button" onClick={() => setShowDetails(true)} aria-label="Contact details" aria-expanded={showDetails}
-                    className="inline-flex items-center justify-center gap-1.5 w-11 h-11 md:w-auto md:h-auto md:min-h-9 md:px-2.5 rounded-full md:rounded-control md:border md:border-line text-ink-700 font-semibold hover:bg-canvas">
-                    <PanelRight className="w-5 h-5 md:w-3.5 md:h-3.5" aria-hidden /><span className="hidden md:inline">Details</span>
-                  </button>
+                {conv && (
+                  <div className="flex items-center gap-1 md:gap-1.5 shrink-0">
+                    {/* Wide screens: the two chat switches as quiet toolbar buttons.
+                        Filled blue is kept for Send. */}
+                    <button disabled={busy} onClick={() => act({ action: "bot", enabled: !conv.botEnabled })}
+                      title={conv.botEnabled ? "Pause AI for this chat" : "Let the AI reply in this chat again"} className={toolBtn}>
+                      {conv.botEnabled ? <><CirclePause className="w-3.5 h-3.5 text-ink-500" aria-hidden /> Pause AI</> : <><Bot className="w-3.5 h-3.5 text-brand-700" aria-hidden /> Resume AI</>}
+                    </button>
+                    {conv.status !== "escalated"
+                      ? <button disabled={busy} onClick={() => act({ action: "status", status: "escalated" })} title="Flag this chat for a person on your team" className={toolBtn}><UserRound className="w-3.5 h-3.5 text-red-600" aria-hidden /> Needs a person</button>
+                      : <button disabled={busy} onClick={() => act({ action: "status", status: "active" })} title="A person has it — clear the flag" className={toolBtn}><Check className="w-3.5 h-3.5 text-ink-500" aria-hidden /> Mark handled</button>}
+                    {/* Phones and tablets: the same two switches in a menu, so the name keeps its room. */}
+                    <div className="relative xl:hidden">
+                      <button type="button" onClick={() => setShowMore(o => !o)} aria-label="Chat actions" aria-haspopup="menu" aria-expanded={showMore} className={iconBtn}>
+                        <EllipsisVertical className="w-5 h-5 md:w-4 md:h-4" aria-hidden />
+                      </button>
+                      {showMore && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setShowMore(false)} aria-hidden />
+                          <div role="menu" aria-label="Chat actions" className="absolute right-0 top-full mt-1 z-20 w-56 bg-white border border-line rounded-[12px] shadow-lg p-1 u-scale-in origin-top-right">
+                            <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "bot", enabled: !conv.botEnabled }); }}
+                              className="w-full min-h-11 md:min-h-8 flex items-center gap-2.5 px-2.5 rounded-[6px] text-[14px] md:text-[13px] text-ink-800 hover:bg-canvas text-left">
+                              {conv.botEnabled ? <><CirclePause className="w-4 h-4 text-ink-500" aria-hidden /> Pause AI for this chat</> : <><Bot className="w-4 h-4 text-ink-500" aria-hidden /> Resume AI</>}
+                            </button>
+                            <button role="menuitem" disabled={busy} onClick={() => { setShowMore(false); void act({ action: "status", status: conv.status === "escalated" ? "active" : "escalated" }); }}
+                              className="w-full min-h-11 md:min-h-8 flex items-center gap-2.5 px-2.5 rounded-[6px] text-[14px] md:text-[13px] text-ink-800 hover:bg-canvas text-left">
+                              {conv.status === "escalated" ? <><Check className="w-4 h-4 text-ink-500" aria-hidden /> Mark handled</> : <><UserRound className="w-4 h-4 text-red-600" aria-hidden /> Needs a person</>}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    {/* The details: a column that can be hidden on wide screens, a side panel elsewhere. */}
+                    {detailsColumn ? (
+                      <button type="button" onClick={() => toggleDetailsColumn()} aria-label="Contact details" aria-pressed={!detailsHidden}
+                        title={detailsHidden ? "Show contact details" : "Hide contact details"}
+                        className={`${iconBtn} ${!detailsHidden ? "text-brand-700 bg-brand-50 hover:bg-brand-50 hover:text-brand-800" : ""}`}>
+                        <PanelRight className="w-4 h-4" aria-hidden />
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => setShowDetails(true)} aria-label="Contact details" aria-expanded={showDetails} title="Contact details" className={iconBtn}>
+                        <PanelRight className="w-5 h-5 md:w-4 md:h-4" aria-hidden />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-          {/* Where this chat stands, in words: waiting time, who it needs, which
-              number it is on, CRM sync, the AI's read of the lead. */}
-          {conv && (() => {
-            const wait = conv.needsReply ? waitInfo(conv.lastInboundAt, refs.replyTarget, now) : null;
-            return (
-              <div className="px-3 md:px-5 pb-2 flex items-center gap-1.5 overflow-x-auto md:flex-wrap [scrollbar-width:none] [&>*]:shrink-0">
-                {wait && <WaitChip info={wait} />}
-                {conv.status === "escalated" && <StatusChip tone="red" icon={<UserRound />}>Needs a person</StatusChip>}
-                {conv.status === "paused" && <StatusChip icon={<CirclePause />}>Paused</StatusChip>}
-                {!conv.botEnabled && <StatusChip icon={<CirclePause />} title="The AI won't reply in this chat until it is resumed">AI paused</StatusChip>}
-                {/* Which number/account/Page this chat lives on — replies always
-                    leave from it, so the agent should see it at a glance. */}
-                {conv.channelId && <ChannelNameBadge channelId={conv.channelId} />}
-                {/* Has this specific conversation landed on the lead's LeadSquared
-                    timeline? The bar above answers it for the whole inbox; sales
-                    asks it about the person they're looking at. */}
-                {crm && <CrmChatPill status={crmStatusFor(conv, crm)} lastError={crmError ?? ""} />}
-                <LeadPill lead={conv.lead} />
-              </div>
-            );
-          })()}
-        </div>
-
-        {conv?.lead?.reason && <div className="px-3 md:px-5 py-1.5 border-b border-line bg-white"><LeadReason lead={conv.lead} /></div>}
+              {/* Phones: the status words get a line of their own under the name. */}
+              {phoneStatus.length > 0 && (
+                <p className="md:hidden px-3 pb-2 -mt-1 text-[12px] leading-5 text-ink-500"><Dotted items={phoneStatus} /></p>
+              )}
+              {conv?.lead?.reason && <div className="px-3 md:pl-[58px] md:pr-4 pb-2 -mt-1"><LeadReason lead={conv.lead} /></div>}
+            </div>
+          );
+        })()}
         {conv && <ApprovalCard conversationId={conv.id} onDecided={() => { load(); onChanged(); }} />}
 
         <div className="flex-1 overflow-y-auto overscroll-contain px-3 md:px-6 py-4 space-y-1.5 bg-canvas/60">
@@ -1433,7 +1624,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
               {dateDivider}
               <div className={`group flex items-end gap-1 ${m.role === "user" ? "justify-start" : "justify-end"}`}>
                 {m.role !== "user" && reactButton}
-                <div className={`max-w-[78%] sm:max-w-[68%] min-w-[2.75rem] px-3.5 py-2 text-sm shadow-sm rounded-2xl ${m.role === "user" ? "rounded-bl-md" : "rounded-br-md"} ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
+                <div className={`max-w-[78%] sm:max-w-[68%] xl:max-w-[min(68%,36rem)] min-w-[2.75rem] px-3.5 py-2 text-sm shadow-sm rounded-2xl ${m.role === "user" ? "rounded-bl-md" : "rounded-br-md"} ${submitted ? "bg-emerald-50 border border-emerald-200 text-ink-900" : isComment ? (commentIsFb ? "bg-blue-50 border border-blue-200 text-ink-900" : "bg-pink-50 border border-pink-200 text-ink-900") : m.role === "user" ? "bg-white border border-line text-ink-900" : "bg-brand-100 text-ink-900"}`}>
                   {isComment && <p className={`text-[11px] font-bold mb-0.5 flex items-center gap-1 ${commentIsFb ? "text-blue-600" : "text-pink-600"}`}>{commentIsFb ? <Facebook className="w-3 h-3" /> : <Instagram className="w-3 h-3" />} {m.role === "user" ? "comment" : "comment reply"}</p>}
                   {isMedia ? (
                     <div className="space-y-1.5">
@@ -1484,7 +1675,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           <div aria-live="polite" className="space-y-1.5">
             {pending.filter(p => !messages.some(m => m.role === "assistant" && m.source === "agent" && m.body.startsWith(p.body) && Date.parse(m.createdAt) >= Date.parse(p.createdAt) - 60_000)).map(p => (
               <div key={p.tempId} className="flex justify-end">
-                <div className={`max-w-[78%] sm:max-w-[68%] px-3.5 py-2 text-sm shadow-sm rounded-2xl rounded-br-md text-ink-900 ${p.state === "failed" ? "bg-red-50 border border-red-200" : "bg-brand-100/70"}`}>
+                <div className={`max-w-[78%] sm:max-w-[68%] xl:max-w-[min(68%,36rem)] px-3.5 py-2 text-sm shadow-sm rounded-2xl rounded-br-md text-ink-900 ${p.state === "failed" ? "bg-red-50 border border-red-200" : "bg-brand-100/70"}`}>
                   <p className="whitespace-pre-wrap break-words">{p.body}</p>
                   {p.buttons.length > 0 && <p className="mt-1 text-[12px] text-ink-600">Buttons: {p.buttons.join(" · ")}</p>}
                   {p.state === "sending" ? (
@@ -1506,23 +1697,26 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
         {/* The reply box stays pinned under the thread, and the thread above
             shrinks for the keyboard. On phones the shell's tab bar below already
             clears the home indicator; elsewhere the box does. */}
-        <div className="shrink-0 px-3 md:px-5 pt-3 pb-3 md:pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-line space-y-2 bg-white max-h-[60dvh] overflow-y-auto">
+        <div className="shrink-0 px-3 md:px-4 pt-2.5 pb-3 md:pb-[max(0.625rem,env(safe-area-inset-bottom))] border-t border-line space-y-2 bg-white max-h-[60dvh] overflow-y-auto">
           {thread === "ok" && threadError && (
-            <p role="status" className="flex items-center gap-2 text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-1.5">
+            <p role="status" className="flex items-center gap-2 text-[12px] text-amber-900 bg-amber-50 border border-amber-200 rounded-[10px] px-3 py-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" aria-hidden />
               <span className="flex-1">Couldn&apos;t refresh this chat. New messages may be missing.</span>
-              <button onClick={() => void retryThread()} disabled={retryingThread} className="shrink-0 min-h-8 px-2.5 rounded-control border border-amber-300 bg-white font-bold hover:bg-amber-100 disabled:opacity-60">{retryingThread ? "Retrying…" : "Retry"}</button>
+              <button onClick={() => void retryThread()} disabled={retryingThread} className="shrink-0 min-h-8 md:min-h-7 px-2.5 rounded-[8px] border border-amber-300 bg-white font-semibold hover:bg-amber-100 disabled:opacity-60">{retryingThread ? "Retrying…" : "Retry"}</button>
             </p>
           )}
           {actError && (
-            <p className="flex items-start gap-1.5 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-control px-3 py-2">
+            <p className="flex items-start gap-1.5 text-[12px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded-[10px] px-3 py-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> <span>{actError}{/Invalid OAuth|access token|credentials not configured/i.test(actError) ? " — WhatsApp (Meta) credentials are not set yet, so messages can't actually send." : ""}</span>
             </p>
           )}
           {windowClosed && (
-            <div className="text-[12px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-control px-3 py-2 flex items-center justify-between gap-2">
-              <span>⏱ Outside WhatsApp&apos;s 24-hour window — free-form replies won&apos;t deliver. Send an approved template to re-open the chat (a paid, business-initiated message).</span>
-              {!showTemplate && <button onClick={() => setShowTemplate(true)} className="shrink-0 min-h-8 px-2.5 rounded-control bg-amber-700 text-white font-bold hover:bg-amber-800">Send template</button>}
+            <div className="flex items-center gap-2 text-[13px] text-amber-900 bg-amber-50 border border-amber-200 rounded-[10px] pl-3 pr-1.5 py-1">
+              <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+              <p className="flex-1 min-w-0 py-0.5 lg:truncate" title="Outside WhatsApp's 24-hour window, free-form replies won't deliver. An approved template re-opens the chat (a paid, business-initiated message).">
+                24-hour window closed — free-form replies won&apos;t deliver. Send an approved template (paid) to reopen.
+              </p>
+              {!showTemplate && <button onClick={() => setShowTemplate(true)} className="shrink-0 h-11 md:h-7 px-2.5 rounded-[8px] border border-amber-300 bg-white text-[12px] font-semibold text-amber-900 hover:bg-amber-100">Send template</button>}
             </div>
           )}
           {showTemplate && conv && (
@@ -1531,7 +1725,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           {showQuick && quickReplies.length > 0 && (
             <div className="flex gap-1.5 flex-wrap max-h-24 overflow-y-auto">
               {quickReplies.map(q => (
-                <button key={q.id} onClick={() => { setReply(q.body); setShowQuick(false); }} title={q.body} className="min-h-8 px-2.5 rounded-full border border-line text-[12px] font-bold text-ink-700 hover:border-brand-700">/{q.shortcut}</button>
+                <button key={q.id} onClick={() => { setReply(q.body); setShowQuick(false); }} title={q.body} className="min-h-9 md:min-h-7 px-2.5 rounded-full border border-line text-[12px] font-medium text-ink-700 hover:border-brand-700">/{q.shortcut}</button>
               ))}
             </div>
           )}
@@ -1539,7 +1733,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
             <div className="flex gap-1.5 flex-wrap">
               {aiPrompts.length === 0 && <p className="text-[12px] text-ink-500">No AI prompts yet — add them in the AI Hub tab.</p>}
               {aiPrompts.map(p => (
-                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="inline-flex items-center gap-1 min-h-8 px-2.5 rounded-full border border-brand-100 text-[12px] font-bold text-brand-700 hover:bg-brand-50 disabled:opacity-40"><Sparkles className="w-3 h-3" aria-hidden /> {p.name}</button>
+                <button key={p.id} onClick={() => applyAssist(p.id)} disabled={assisting || !reply.trim()} className="inline-flex items-center gap-1 min-h-9 md:min-h-7 px-2.5 rounded-full border border-brand-100 text-[12px] font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-40"><Sparkles className="w-3 h-3" aria-hidden /> {p.name}</button>
               ))}
             </div>
           )}
@@ -1557,7 +1751,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
               {canned.map(c => (
                 <button key={c.id} disabled={busy} onClick={() => act({ action: "canned", cannedId: c.id })}
                   title={`Send the "${c.label}" template from this number${c.stage ? ` and set the CRM stage to ${c.stage}` : ""}`}
-                  className="min-h-8 px-2.5 rounded-full border border-brand-700 text-brand-700 text-[12px] font-bold hover:bg-brand-50 disabled:opacity-60">
+                  className="min-h-9 md:min-h-7 px-2.5 rounded-full border border-brand-700 text-brand-700 text-[12px] font-semibold hover:bg-brand-50 disabled:opacity-60">
                   {c.label}{c.stage ? ` · ${c.stage}` : ""}
                 </button>
               ))}
@@ -1565,20 +1759,22 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           )}
           <div className="flex items-end gap-2">
             {/* 16px text on phones: smaller makes iOS zoom the page on focus. */}
-            <textarea aria-label="Reply" aria-keyshortcuts="Meta+Enter Control+Enter" className={`${inp} flex-1 min-w-0 resize-none !text-base md:!text-sm`} rows={2} placeholder="Type a reply… (/ for quick replies)" value={reply}
+            <textarea ref={replyBox} aria-label="Reply" aria-keyshortcuts="Meta+Enter Control+Enter"
+              className="flex-1 min-w-0 resize-none min-h-11 md:min-h-9 max-h-40 rounded-[10px] border border-line bg-white px-3 py-[11px] md:py-[7px] text-base md:text-sm leading-5 text-ink-900 placeholder:text-ink-500"
+              rows={1} placeholder={onBack ? "Type a reply…" : "Type a reply… (/ for quick replies)"} value={reply}
               onChange={e => { setReply(e.target.value); if (e.target.value === "/") setShowQuick(true); }}
               onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void sendReply(); } }} />
             {/* mp3/m4a only for audio — WhatsApp accepts aac/amr/mpeg/mp4/ogg-opus, not wav. */}
             <input ref={fileRef} type="file" accept="image/*,video/*,audio/mpeg,audio/mp4,.mp3,.m4a,.pdf,.doc,.docx,.xls,.xlsx" hidden onChange={onPickFile} />
             {/* All composer tools live in one menu so the reply box stays roomy. */}
             <div className="relative">
-              <button onClick={() => setShowTools(s => !s)} aria-label="Reply tools" aria-haspopup="menu" aria-expanded={showTools} className={`w-11 h-11 md:w-10 md:h-10 flex items-center justify-center rounded-control border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-500 hover:bg-canvas"}`}>
+              <button onClick={() => setShowTools(s => !s)} aria-label="Reply tools" aria-haspopup="menu" aria-expanded={showTools} className={`w-11 h-11 md:w-9 md:h-9 flex items-center justify-center rounded-[10px] border text-sm font-bold ${showTools ? "border-ink-950 bg-ink-950 text-white" : "border-line text-ink-500 hover:bg-canvas hover:text-ink-900"}`}>
                 {drafting || assisting || uploading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" aria-hidden /> : <Plus className={`w-4 h-4 motion-safe:transition-transform ${showTools ? "rotate-45" : ""}`} aria-hidden />}
               </button>
               {showTools && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setShowTools(false)} />
-                  <div role="menu" aria-label="Reply tools" className="absolute bottom-full right-0 mb-2 w-60 bg-white border border-line rounded-card shadow-lg p-1 z-20 u-scale-in origin-bottom-right">
+                  <div role="menu" aria-label="Reply tools" className="absolute bottom-full right-0 mb-2 w-60 bg-white border border-line rounded-[12px] shadow-lg p-1 z-20 u-scale-in origin-bottom-right">
                     {[
                       { icon: <Zap className="w-4 h-4" />, label: "Quick replies", on: () => setShowQuick(s => !s) },
                       { icon: <Bot className="w-4 h-4" />, label: "Draft from knowledge base", on: draftReply },
@@ -1587,7 +1783,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                       ...(conv?.platform === "whatsapp" ? [{ icon: <LayoutTemplate className="w-4 h-4" />, label: "Send template", on: () => setShowTemplate(s => !s) }] : []),
                       { icon: <Paperclip className="w-4 h-4" />, label: "Attach photo, file or voice note", on: () => fileRef.current?.click() },
                     ].map(t => (
-                      <button key={t.label} role="menuitem" onClick={() => { setShowTools(false); t.on(); }} className="w-full min-h-11 md:min-h-9 flex items-center gap-2.5 px-2.5 rounded-lg text-sm text-ink-700 hover:bg-canvas text-left">
+                      <button key={t.label} role="menuitem" onClick={() => { setShowTools(false); t.on(); }} className="w-full min-h-11 md:min-h-8 flex items-center gap-2.5 px-2.5 rounded-[6px] text-[14px] md:text-[13px] text-ink-800 hover:bg-canvas text-left">
                         <span className="text-ink-500 w-4 flex justify-center" aria-hidden>{t.icon}</span> {t.label}
                       </button>
                     ))}
@@ -1596,7 +1792,7 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
               )}
             </div>
             <button onClick={() => void sendReply()} disabled={!reply.trim() || thread !== "ok"} aria-label="Send reply"
-              className="min-w-11 h-11 md:h-10 px-3 md:px-3.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-sm font-bold disabled:opacity-60 flex items-center justify-center gap-1.5">
+              className="min-w-11 h-11 md:h-9 px-3 rounded-[10px] bg-brand-700 hover:bg-brand-600 text-white text-[13px] font-semibold disabled:opacity-50 flex items-center justify-center gap-1.5">
               <Send className="w-4 h-4" aria-hidden /><span className="hidden md:inline">Send</span>
             </button>
           </div>
@@ -1607,80 +1803,78 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
           (opened from the header) everywhere else. Built once, shown in one. ── */}
       {(() => {
       const details = (
-      <div>
-        <div className="p-5 flex flex-col items-center text-center border-b border-line">
-          <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={64} />
-          <p className="text-[15px] font-bold text-ink-900 mt-2">{conv ? contactDisplayName(conv) : "Unknown"}</p>
-          {conv && <p className={`text-xs text-ink-400 ${subtitleIsPhone(conv) ? "font-mono" : ""}`}>{contactSubtitle(conv)}</p>}
-          {contact?.email && <p className="text-xs text-ink-400 mt-0.5">{contact.email}</p>}
+      <div className="text-[13px]">
+        {/* Who this is: a compact header, not a poster. */}
+        <div className="px-4 pt-4 pb-3 border-b border-line">
+          <div className="flex items-center gap-3 min-w-0">
+            <ConvAvatar url={conv?.avatarUrl} label={conv ? contactDisplayName(conv) : "?"} size={48} />
+            <div className="min-w-0">
+              <p className="text-[15px] font-semibold text-ink-900 truncate leading-5">{conv ? contactDisplayName(conv) : "Unknown"}</p>
+              {conv && <p className={`text-[12px] text-ink-500 truncate ${subtitleIsPhone(conv) ? "tabular-nums" : ""}`}>{contactSubtitle(conv)}</p>}
+              {contact?.email && <p className="text-[12px] text-ink-500 truncate" title={contact.email}>{contact.email}</p>}
+            </div>
+          </div>
           {conv?.phone && (
-            <button onClick={() => setShowProfile(true)} className="mt-3 px-3 py-1.5 rounded-control bg-brand-700 hover:bg-brand-600 text-white text-xs font-bold flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" /> AI brief &amp; full profile
+            <button onClick={() => setShowProfile(true)} className={`${detailsButton} mt-3`}>
+              <Sparkles className="w-3.5 h-3.5 text-brand-700" aria-hidden /> AI brief &amp; full profile
             </button>
           )}
         </div>
 
-        <div className="p-4 space-y-4 text-sm">
+        <div className="px-4 pb-6 divide-y divide-line/70 [&>*]:py-3">
           {conv && (
             <>
-              <div>
-                <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><Tag className="w-3.5 h-3.5" /> Labels</p>
+              <DetailsSection id="labels" title="Labels">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(conv.labels ?? []).map(l => (
-                    <span key={l} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brand-50 text-brand-700 text-[11px] font-bold">
+                    <span key={l} className="inline-flex items-center gap-0.5 h-7 md:h-6 pl-2 pr-0.5 rounded-full bg-canvas border border-line text-ink-800 text-[12px] font-medium">
                       {l}
-                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} aria-label={`Remove label ${l}`} className="w-6 h-6 -my-1 -mr-1.5 flex items-center justify-center rounded-full text-brand-700/70 hover:text-red-600 hover:bg-white">×</button>
+                      <button disabled={busy} onClick={() => act({ action: "labels", labels: (conv.labels ?? []).filter(x => x !== l) })} aria-label={`Remove label ${l}`} className="w-6 h-6 md:w-5 md:h-5 flex items-center justify-center rounded-full text-ink-500 hover:text-red-600 hover:bg-white"><X className="w-3 h-3" aria-hidden /></button>
                     </span>
                   ))}
                   <input
                     aria-label="Add a label"
-                    className="border border-line rounded-full px-2.5 py-1 text-base md:text-[12px] w-28"
-                    placeholder="+ label" value={labelInput} onChange={e => setLabelInput(e.target.value)}
+                    className="h-9 md:h-6 w-24 rounded-full border border-dashed border-line bg-white px-2.5 text-base md:text-[12px] placeholder:text-ink-500 focus:border-solid"
+                    placeholder="+ Label" value={labelInput} onChange={e => setLabelInput(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter" && labelInput.trim()) { act({ action: "labels", labels: [...(conv.labels ?? []), labelInput.trim()] }); setLabelInput(""); } }}
                   />
                 </div>
-              </div>
+              </DetailsSection>
 
-              <CustomerWork phone={conv.phone} conversationId={conv.id} />
+              {/* Who handles this customer — one inspector block of label : control rows. */}
+              <CustomerWork phone={conv.phone} conversationId={conv.id} rows={
+                <>
+                  <DetailsRow label="Assigned to" htmlFor={`assign-${conv.id}`}>
+                    <select id={`assign-${conv.id}`} disabled={busy} className={detailsControl}
+                      value={conv.assignedTo ?? ""}
+                      onChange={e => act({ action: "assign", assignedTo: e.target.value || null })}
+                      title={(() => { const m = team.find(x => x.name === conv.assignedTo); return m?.title || undefined; })()}>
+                      <option value="">Unassigned</option>
+                      {/* Keep a legacy free-text assignee selectable until reassigned */}
+                      {conv.assignedTo && !team.some(m => m.name === conv.assignedTo) && (
+                        <option value={conv.assignedTo}>{conv.assignedTo}</option>
+                      )}
+                      {team.map(m => (
+                        <option key={m.email} value={m.name}>{m.name}{m.title ? ` — ${m.title}` : ""}</option>
+                      ))}
+                    </select>
+                  </DetailsRow>
+                  {aiAgents.length > 0 && (
+                    <DetailsRow label="AI assistant" htmlFor={`agent-${conv.id}`}>
+                      <select id={`agent-${conv.id}`} disabled={busy} className={detailsControl}
+                        value={conv.agentId ?? ""}
+                        onChange={e => act({ action: "agent", agentId: e.target.value || null })}>
+                        <option value="">Auto / default{(() => { const a = aiAgents.find(x => x.active); return a ? ` (${a.name})` : ""; })()}</option>
+                        {aiAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </DetailsRow>
+                  )}
+                </>
+              } />
 
               <CustomerAutomations conversationId={conv.id} />
 
               <ChatNotes conversationId={conv.id} />
-
-              <div>
-                <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><UserCheck className="w-3.5 h-3.5" /> Assigned to</p>
-                <select
-                  disabled={busy}
-                  className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs focus:outline-none bg-white"
-                  value={conv.assignedTo ?? ""}
-                  onChange={e => act({ action: "assign", assignedTo: e.target.value || null })}
-                >
-                  <option value="">Unassigned</option>
-                  {/* Keep a legacy free-text assignee selectable until reassigned */}
-                  {conv.assignedTo && !team.some(m => m.name === conv.assignedTo) && (
-                    <option value={conv.assignedTo}>{conv.assignedTo}</option>
-                  )}
-                  {team.map(m => (
-                    <option key={m.email} value={m.name}>{m.name}{m.title ? ` — ${m.title}` : ""}</option>
-                  ))}
-                </select>
-                {(() => { const m = team.find(x => x.name === conv.assignedTo); return m?.title ? <p className="text-[11px] text-ink-400 mt-1">{m.title}</p> : null; })()}
-              </div>
-
-              {aiAgents.length > 0 && (
-                <div>
-                  <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" aria-hidden /> AI assistant</p>
-                  <select
-                    disabled={busy}
-                    className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs focus:outline-none bg-white"
-                    value={conv.agentId ?? ""}
-                    onChange={e => act({ action: "agent", agentId: e.target.value || null })}
-                  >
-                    <option value="">Auto / default{(() => { const a = aiAgents.find(x => x.active); return a ? ` (${a.name})` : ""; })()}</option>
-                    {aiAgents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                  </select>
-                </div>
-              )}
 
               {/* ── Lead journey: which number owns this lead, and its trail ──
                   Ownership is sticky: the customer can message any of our
@@ -1691,19 +1885,18 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                 if (owners.length < 2 && !ownerHistory.length) return null;   // single-number workspace — nothing to show
                 const firstTouch = ownerHistory[0];
                 return (
-                  <div>
-                    <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5 flex items-center gap-1.5"><History className="w-3.5 h-3.5" /> {vocab.lead.one} journey</p>
+                  <DetailsSection id="journey" title={`${vocab.lead.one} journey`} collapsible>
 
                     {offOwnerChannel && (
-                      <div className="mb-2 rounded-control border border-amber-200 bg-amber-50 px-2.5 py-2">
-                        <p className="text-[11px] text-amber-900 leading-relaxed">
-                          <AlertTriangle className="w-3 h-3 inline -mt-0.5 mr-1" />
+                      <div className="mb-2 rounded-[8px] border border-amber-200 bg-amber-50 px-2.5 py-2">
+                        <p className="text-[12px] text-amber-900 leading-relaxed">
+                          <AlertTriangle className="w-3 h-3 inline -mt-0.5 mr-1" aria-hidden />
                           Their latest message came in on <b>{channelName(offOwnerChannel) ?? "another number"}</b>, but replies still go out from <b>{channelName(conv.channelId) ?? "the owner"}</b>.
                         </p>
                         <button
                           disabled={busy}
                           onClick={() => act({ action: "reassignChannel", channelId: offOwnerChannel, reason: "Customer moved to this number" })}
-                          className="mt-1.5 px-2 py-1 rounded-control bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold disabled:opacity-60">
+                          className="mt-1.5 h-11 md:h-7 px-2.5 rounded-[8px] bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-semibold disabled:opacity-60">
                           Hand over to {channelName(offOwnerChannel) ?? "that number"}
                         </button>
                       </div>
@@ -1726,15 +1919,16 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                               disabled={busy}
                               onClick={() => handToTeam(to)}
                               title={`Move this ${vocab.lead.one.toLowerCase()} onto ${targets[0].name}, the ${TEAM_SHORT[to]} number. Replies then go out from there.`}
-                              className="w-full px-2.5 py-1.5 rounded-control bg-ink-900 hover:bg-ink-800 text-white text-[11px] font-bold disabled:opacity-60">
+                              className={`${detailsButton} w-full`}>
                               Hand to {TEAM_SHORT[to]} → {targets[0].name}
                             </button>
                           ) : (
                             <select
                               disabled={busy}
                               defaultValue=""
+                              aria-label={`Hand to ${TEAM_SHORT[to]}`}
                               onChange={e => { if (e.target.value) { void handToTeam(to, e.target.value); e.target.value = ""; } }}
-                              className="w-full border border-ink-900 rounded-control px-2.5 py-1.5 text-xs font-bold text-ink-900 bg-white focus:outline-none">
+                              className={`${detailsControl} font-medium`}>
                               <option value="">Hand to {TEAM_SHORT[to]} …</option>
                               {targets.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
@@ -1748,43 +1942,45 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
                         disabled={busy}
                         onClick={() => void syncCrmOwner()}
                         title={`Read this ${vocab.lead.one.toLowerCase()}'s owner from LeadSquared and move the chat onto that person's number.`}
-                        className="mb-2 w-full px-2.5 py-1.5 rounded-control border border-line text-[11px] font-semibold text-ink-600 hover:bg-canvas disabled:opacity-60">
+                        className={`${detailsButton} w-full mb-2`}>
                         Sync owner from LeadSquared
                       </button>
                     )}
 
                     {handNotice && (
-                      <p className="mb-2 text-[11px] text-ink-600 bg-canvas border border-line rounded-control px-2.5 py-1.5 leading-relaxed">{handNotice}</p>
+                      <p className="mb-2 text-[12px] text-ink-700 bg-canvas rounded-[8px] px-2.5 py-1.5 leading-relaxed">{handNotice}</p>
                     )}
 
-                    <label className="text-[11px] text-ink-400">Replies go out from</label>
-                    <select
-                      disabled={busy}
-                      className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs focus:outline-none bg-white mt-0.5"
-                      value={conv.channelId ?? ""}
-                      onChange={e => e.target.value && act({ action: "reassignChannel", channelId: e.target.value, reason: "Reassigned from Live Chat" })}
-                    >
-                      {!conv.channelId && <option value="">— not set —</option>}
-                      {owners.map(c => <option key={c.id} value={c.id}>{c.name}{c.coex ? " (app+API)" : ""}</option>)}
-                    </select>
+                    <DetailsRow label="Replies from" htmlFor={`owner-${conv.id}`}>
+                      <select
+                        id={`owner-${conv.id}`}
+                        disabled={busy}
+                        className={detailsControl}
+                        value={conv.channelId ?? ""}
+                        onChange={e => e.target.value && act({ action: "reassignChannel", channelId: e.target.value, reason: "Reassigned from Live Chat" })}
+                      >
+                        {!conv.channelId && <option value="">— not set —</option>}
+                        {owners.map(c => <option key={c.id} value={c.id}>{c.name}{c.coex ? " (app+API)" : ""}</option>)}
+                      </select>
+                    </DetailsRow>
 
                     {firstTouch && (
-                      <p className="text-[11px] text-ink-400 mt-2">
-                        Came in via <span className="font-semibold text-ink-600">{channelName(firstTouch.channelId) ?? "unknown number"}</span> · {stampShort(firstTouch.createdAt)}
+                      <p className="text-[12px] text-ink-500 mt-2">
+                        Came in via <span className="font-medium text-ink-700">{channelName(firstTouch.channelId) ?? "unknown number"}</span> · {stampShort(firstTouch.createdAt)}
                       </p>
                     )}
                     {ownerHistory.length > 1 && (
                       <div className="mt-1.5 border-l border-line pl-2.5 space-y-1">
                         {ownerHistory.slice(1).map(h => (
-                          <p key={h.id} className="text-[11px] text-ink-400 leading-snug">
-                            <ArrowRight className="w-3 h-3 inline -mt-0.5 mr-0.5" />
-                            <span className="font-semibold text-ink-600">{channelName(h.channelId) ?? "unknown number"}</span>
+                          <p key={h.id} className="text-[12px] text-ink-500 leading-snug">
+                            <ArrowRight className="w-3 h-3 inline -mt-0.5 mr-0.5" aria-hidden />
+                            <span className="font-medium text-ink-700">{channelName(h.channelId) ?? "unknown number"}</span>
                             {h.changedBy !== "system" && <> by {h.changedBy}</>} · {stampShort(h.createdAt)}
                           </p>
                         ))}
                       </div>
                     )}
-                  </div>
+                  </DetailsSection>
                 );
               })()}
             </>
@@ -1796,33 +1992,31 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
             const utmMedium = contact?.attributes?.utm_medium;
             if (!source && !utmSource && !utmMedium) return null;
             return (
-              <div>
-                <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Source</p>
-                {source && <p className="text-xs font-semibold text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>}
+              <DetailsSection id="source" title="Source">
+                {source && <p className="text-[13px] font-medium text-ink-900" title={crmSourceSnap?.lead?.source ? "From LeadSquared" : "From this chat's captured attribution"}>{source}</p>}
                 {(utmSource || utmMedium) && (
-                  <p className="text-[11px] text-ink-400 mt-1 flex gap-3 flex-wrap">
-                    {utmSource && <span>utm_source: <span className="font-semibold text-ink-600">{utmSource}</span></span>}
-                    {utmMedium && <span>utm_medium: <span className="font-semibold text-ink-600">{utmMedium}</span></span>}
+                  <p className="text-[12px] text-ink-500 mt-0.5 flex gap-3 flex-wrap">
+                    {utmSource && <span>utm_source: <span className="font-medium text-ink-700">{utmSource}</span></span>}
+                    {utmMedium && <span>utm_medium: <span className="font-medium text-ink-700">{utmMedium}</span></span>}
                   </p>
                 )}
-              </div>
+              </DetailsSection>
             );
           })()}
 
           {/* Broadcast batches. The agent on a live chat is the person who knows
               this lead belongs in "Aug weekend batch" — making them leave, find
               the contact and tick a row is how it never gets done. */}
-          <div>
-            <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Batches</p>
+          <DetailsSection id="batches" title="Batches" collapsible meta={leadBatches.length || undefined}>
             {leadBatches.length > 0 && (
               <div className="flex gap-1.5 flex-wrap mb-1.5">
                 {leadBatches.map(b => (
-                  <span key={b.id} className="pl-2 pr-1 py-0.5 rounded-full bg-brand-100 text-brand-700 text-[11px] font-semibold inline-flex items-center gap-1">
+                  <span key={b.id} className="inline-flex items-center gap-0.5 h-7 md:h-6 pl-2 pr-0.5 rounded-full bg-canvas border border-line text-ink-800 text-[12px] font-medium">
                     {b.name}
                     <button disabled={batchBusy} onClick={() => leadBatchAction("removeFromBatch", b.id, b.name)}
                       title={`Remove from ${b.name}`}
                       aria-label={`Remove from ${b.name}`}
-                      className="w-6 h-6 -my-1 flex items-center justify-center rounded-full hover:bg-black/10 leading-none disabled:opacity-40">×</button>
+                      className="w-6 h-6 md:w-5 md:h-5 flex items-center justify-center rounded-full text-ink-500 hover:bg-white hover:text-red-600 disabled:opacity-40"><X className="w-3 h-3" aria-hidden /></button>
                   </span>
                 ))}
               </div>
@@ -1831,51 +2025,49 @@ function ChatView({ id, onChanged, goTo, crm, crmError, refs, now, onBack, detai
               // Only static batches — a dynamic one's membership is its filter,
               // so adding one person would do nothing at send time.
               const addable = allBatches.filter(b => b.kind === "static" && !leadBatches.some(x => x.id === b.id));
-              if (!allBatches.length) return <p className="text-[11px] text-ink-400">No batches yet — create one under {vocab.contact.many} › Batches.</p>;
-              if (!addable.length) return <p className="text-[11px] text-ink-400">In every batch available.</p>;
+              if (!allBatches.length) return <p className="text-[12px] text-ink-500">No batches yet — create one under {vocab.contact.many} › Batches.</p>;
+              if (!addable.length) return <p className="text-[12px] text-ink-500">In every batch available.</p>;
               return (
-                <select disabled={batchBusy} value=""
+                <select disabled={batchBusy} value="" aria-label={`Add this ${vocab.lead.one.toLowerCase()} to a batch`}
                   onChange={e => {
                     const b = addable.find(x => x.id === e.target.value);
                     if (b) leadBatchAction("addToBatch", b.id, b.name);
                   }}
-                  className="w-full px-2 py-1.5 rounded-lg border border-line text-xs text-ink-600 disabled:opacity-50">
-                  <option value="">{batchBusy ? "Saving…" : `Add this ${vocab.lead.one.toLowerCase()} to a batch…`}</option>
+                  className={detailsControl}>
+                  <option value="">{batchBusy ? "Saving…" : `Add to a batch…`}</option>
                   {addable.map(b => <option key={b.id} value={b.id}>{b.name} · {b.size.toLocaleString()}</option>)}
                 </select>
               );
             })()}
-          </div>
+          </DetailsSection>
 
           {contact && contact.tags.length > 0 && (
-            <div>
-              <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">{vocab.contact.one} tags</p>
+            <DetailsSection id="tags" title={`${vocab.contact.one} tags`}>
               <div className="flex gap-1.5 flex-wrap">
-                {contact.tags.map(t => <span key={t} className="px-2 py-0.5 rounded-full bg-canvas text-ink-600 text-[11px] font-semibold">{t}</span>)}
+                {contact.tags.map(t => <span key={t} className="px-2 h-6 inline-flex items-center rounded-full bg-canvas text-ink-700 text-[12px]">{t}</span>)}
               </div>
-            </div>
+            </DetailsSection>
           )}
 
           {contact && Object.keys(contact.attributes).length > 0 && (
-            <div>
-              <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-1.5">Details collected</p>
-              <div className="border border-line rounded-control divide-y divide-line">
+            <DetailsSection id="collected" title="Details collected" collapsible meta={Object.keys(contact.attributes).length}>
+              <dl className="divide-y divide-line/70">
                 {Object.entries(contact.attributes).map(([k, v]) => {
                   const value = String(v ?? "");
                   const ownLine = value.length > 48 || (!/\s/.test(value) && value.length > 28);
-                  return <div key={k} className={`px-3 py-1.5 gap-3 ${ownLine ? "" : "flex items-start justify-between"}`}>
-                    <span className="text-[11px] text-ink-400 capitalize shrink-0">{k.replaceAll("_", " ")}</span>
-                    <span className={ownLine ? "mt-0.5 block max-h-32 overflow-y-auto whitespace-pre-wrap break-all text-[12px] text-ink-900 font-medium" : "min-w-0 text-[12px] text-ink-900 font-medium text-right break-words"}>{value}</span>
+                  return <div key={k} className={`py-1.5 gap-3 ${ownLine ? "" : "flex items-start justify-between"}`}>
+                    <dt className="text-[12px] text-ink-500 capitalize shrink-0">{k.replaceAll("_", " ")}</dt>
+                    <dd className={ownLine ? "mt-0.5 block max-h-32 overflow-y-auto whitespace-pre-wrap break-all text-[13px] text-ink-900" : "min-w-0 text-[13px] text-ink-900 text-right break-words"}>{value}</dd>
                   </div>;
                 })}
-              </div>
-            </div>
+              </dl>
+            </DetailsSection>
           )}
         </div>
       </div>
       );
       return detailsColumn
-        ? <aside aria-label="Contact details" className="w-80 shrink-0 border-l border-line overflow-y-auto bg-white">{details}</aside>
+        ? (detailsHidden ? null : <aside aria-label="Contact details" className="w-[300px] shrink-0 border-l border-line overflow-y-auto overscroll-contain bg-white">{details}</aside>)
         : <Drawer open={showDetails} onClose={() => setShowDetails(false)} title="Contact details" subtitle={conv ? contactDisplayName(conv) : undefined} width="md">
             <div className="-mx-5 -my-4">{details}</div>
           </Drawer>;

@@ -23,7 +23,7 @@ import { useProductTour, TourButton } from "@/components/ProductTour";
 import { HoverHelp } from "@/components/HoverHelp";
 import { VocabProvider, useVocab } from "@/lib/vocab-client";
 import type { Vocab } from "@/lib/vocab";
-import { NAV_GROUPS, TAB_TITLES, WHATSAPP_SECTION, navItemState, canOpen, paletteEntries, attentionLabels, badgeText, type NavKey, type PaletteEntry } from "./_components/shell-logic";
+import { NAV_GROUPS, TAB_TITLES, WHATSAPP_SECTION, SETTINGS_SECTION_EVENT, activeNavKey, navItemState, canOpen, paletteEntries, attentionLabels, badgeText, type NavKey, type PaletteEntry } from "./_components/shell-logic";
 import { useMediaQuery, useDrawerFocus, useTodaySummary, DESKTOP_QUERY } from "./_components/shell-hooks";
 import { NavIconFor } from "./_components/nav-icons";
 import { CommandPalette } from "./_components/CommandPalette";
@@ -205,6 +205,7 @@ function AdminShell() {
   };
   const openSettings = useCallback((section: string | null) => {
     setSectionParam(section);
+    setSettingsSection(section);
     setSettingsNonce(n => n + 1);
     goTo("settings");
   }, [goTo]);
@@ -247,8 +248,16 @@ function AdminShell() {
   // The sidebar's active pill glides to the section picked; the top bar's
   // edge shows once the page scrolls under it (lib/use-nav-motion.ts).
   const navList = useRef<HTMLDivElement>(null);
-  // Results is a view inside Analytics, so Analytics stays highlighted for it.
-  const navTab: Tab = tab === "results" ? "analytics" : tab;
+  // Which part of Settings is open (Settings announces it), so the menu can
+  // highlight WhatsApp for WhatsApp numbers. Results highlights Analytics.
+  const [settingsSection, setSettingsSection] = useState<string | null>(null);
+  useEffect(() => {
+    try { setSettingsSection(new URLSearchParams(window.location.search).get("section")); } catch { /* none */ }
+    const on = (e: Event) => setSettingsSection(typeof (e as CustomEvent).detail === "string" ? (e as CustomEvent).detail : null);
+    window.addEventListener(SETTINGS_SECTION_EVENT, on);
+    return () => window.removeEventListener(SETTINGS_SECTION_EVENT, on);
+  }, []);
+  const navTab = activeNavKey(tab, settingsSection);
   // "More tools" stays folded unless opened (remembered) or one of its screens is open.
   const [moreOpen, setMoreOpen] = useState(false);
   useEffect(() => { try { setMoreOpen(localStorage.getItem("talko-nav-more") === "1"); } catch { /* default folded */ } }, []);
@@ -293,7 +302,7 @@ function AdminShell() {
       {navOpen && !isDesktop && <div className="fixed inset-0 z-40 bg-ink-950/40 u-fade-in lg:hidden" onClick={closeNav} aria-hidden />}
       <aside ref={asideRef} id="portal-nav" aria-label="Menu"
         {...(navOpen && !isDesktop ? { role: "dialog", "aria-modal": true } : {})}
-        className={`fixed inset-y-0 left-0 z-50 w-[min(20rem,86vw)] lg:sticky lg:top-0 lg:z-auto lg:w-64 shrink-0 bg-white border-r border-line flex flex-col h-[100dvh] lg:h-screen transition-[transform,visibility] duration-300 ease-out motion-reduce:transition-none ${navOpen ? "translate-x-0 visible shadow-2xl" : "-translate-x-full invisible lg:translate-x-0 lg:visible lg:shadow-none"}`}>
+        className={`fixed inset-y-0 left-0 z-50 w-[min(20rem,86vw)] lg:sticky lg:top-0 lg:z-auto lg:w-60 shrink-0 bg-white border-r border-line flex flex-col h-[100dvh] lg:h-screen transition-[transform,visibility] duration-300 ease-out motion-reduce:transition-none ${navOpen ? "translate-x-0 visible shadow-2xl" : "-translate-x-full invisible lg:translate-x-0 lg:visible lg:shadow-none"}`}>
         {/* Logo block */}
         <div className="px-5 py-4 flex items-start justify-between gap-2">
           <div className="min-w-0">
@@ -333,36 +342,36 @@ function AdminShell() {
             hidden; until /api/admin/me answers they show as placeholders. */}
         <nav aria-label="Workspace navigation" className="flex-1 px-3 py-2 overflow-y-auto overscroll-contain">
           <div ref={navList} className="relative">
-          <span aria-hidden className="nav-pill absolute left-0 top-0 rounded-[20px] lg:rounded-full bg-ink-950" style={pill.style} data-ready={pill.ready || undefined} />
+          <span aria-hidden className="nav-pill absolute left-0 top-0 rounded-[20px] lg:rounded-lg bg-ink-950" style={pill.style} data-ready={pill.ready || undefined} />
           {NAV_GROUPS.map(g => {
             const items = g.items.map(n => ({ n, state: navItemState(n.key, ent, me?.role, meLoaded) })).filter(x => x.state !== "hide");
             if (!items.length) return null;
             const folding = g.group === "More tools";
             const shown = !folding || moreOpen || items.some(x => x.n.key === navTab);
             return (
-            <div key={g.group} className="mb-4">
+            <div key={g.group} className="mb-4 lg:mb-3">
               {folding
-                ? <button type="button" onClick={toggleMore} aria-expanded={shown} className="w-full min-h-10 lg:min-h-0 flex items-center justify-between px-3 mb-1.5 text-[12px] font-medium text-ink-500 uppercase tracking-[0.06em] hover:text-ink-700">
+                ? <button type="button" onClick={toggleMore} aria-expanded={shown} className="w-full min-h-10 lg:min-h-0 flex items-center justify-between px-3 mb-1.5 lg:mb-1 text-[12px] lg:text-[11px] font-medium text-ink-500 uppercase tracking-[0.06em] hover:text-ink-700">
                     {g.group}<ChevronDown className={`w-3.5 h-3.5 transition-transform ${shown ? "rotate-180" : ""}`} aria-hidden />
                   </button>
-                : <p className="px-3 mb-1.5 text-[12px] font-medium text-ink-500 uppercase tracking-[0.06em]">{g.group}</p>}
+                : <p className="px-3 mb-1.5 lg:mb-1 text-[12px] lg:text-[11px] font-medium text-ink-500 uppercase tracking-[0.06em]">{g.group}</p>}
               {shown && <div className="space-y-0.5">
                 {items.map(({ n, state }) => {
-                  if (state === "pending") return <div key={n.key} aria-hidden className="h-10 mx-1 rounded-full bg-slate-100 animate-pulse" />;
+                  if (state === "pending") return <div key={n.key} aria-hidden className="h-10 lg:h-8 mx-1 rounded-full bg-slate-100 animate-pulse" />;
                   const active = navTab === n.key;
                   const label = n.key === "whatsapp" ? n.label : tabLabel(n.key, vocab);
                   return (
                     <button type="button" key={n.key} data-tour-nav={n.key} data-tour-title={label} data-help-title={label} data-nav-key={n.key} aria-current={active ? "page" : undefined} data-help={n.hint}
                       onClick={() => openNav(n.key)}
                       onMouseEnter={() => n.key !== "whatsapp" && preloadTab(n.key)} onFocus={() => n.key !== "whatsapp" && preloadTab(n.key)}
-                      className={`nav-item relative w-full flex items-center gap-3 min-h-12 lg:min-h-0 lg:h-10 px-3 py-2 lg:py-0 rounded-[20px] lg:rounded-full text-[14px] lg:text-[13px] font-medium text-left ${active ? "text-white" : "text-ink-600 hover:bg-canvas"}`}>
-                      <NavIconFor icon={n.icon} />
+                      className={`nav-item relative w-full flex items-center gap-3 min-h-12 lg:min-h-0 lg:h-8 px-3 py-2 lg:py-0 rounded-[20px] lg:rounded-lg text-[14px] lg:text-[13px] lg:gap-2.5 font-medium text-left ${active ? "text-white" : "text-ink-600 hover:bg-canvas"}`}>
+                      <NavIconFor icon={n.icon} className="w-[18px] h-[18px] lg:w-4 lg:h-4 shrink-0" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate">{label}</span>
                         <span className={`lg:hidden block text-[12px] font-normal leading-snug ${active ? "text-white/80" : "text-ink-500"}`}>{n.hint}</span>
                       </span>
                       {n.key === "livechat" && alerts.count > 0 && <>
-                        <span aria-hidden className="ml-auto min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold leading-[22px] text-center tabular-nums">{badgeText(alerts.count)}</span>
+                        <span aria-hidden className="ml-auto min-w-[22px] lg:min-w-[18px] h-[22px] lg:h-[18px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold leading-[22px] lg:leading-[18px] text-center tabular-nums">{badgeText(alerts.count)}</span>
                         <span className="sr-only">, {words.waiting}</span>
                       </>}
                     </button>
@@ -398,7 +407,7 @@ function AdminShell() {
               <ShieldCheck className="w-4 h-4" aria-hidden /> Exit to Owner Portal
             </button>
           )}
-          <button type="button" onClick={logout} className="w-full flex items-center gap-3 min-h-11 lg:min-h-0 lg:h-10 px-3 rounded-full text-[13px] font-medium text-ink-600 hover:bg-red-50 hover:text-red-600 transition-colors">
+          <button type="button" onClick={logout} className="w-full flex items-center gap-3 lg:gap-2.5 min-h-11 lg:min-h-0 lg:h-8 px-3 rounded-full lg:rounded-lg text-[13px] font-medium text-ink-600 hover:bg-red-50 hover:text-red-600 transition-colors">
             <LogOut className="w-[18px] h-[18px]" aria-hidden /> Log out
           </button>
         </div>
@@ -431,7 +440,7 @@ function AdminShell() {
           </div>
         )}
         {/* Topbar */}
-        <header className="glass-bar h-14 sm:h-16 shrink-0 border-b flex items-center gap-2 px-2 sm:px-6 sticky top-0 z-20" data-scrolled={scrolled || undefined}>
+        <header className="glass-bar h-14 sm:h-16 lg:h-14 shrink-0 border-b flex items-center gap-2 px-2 sm:px-6 sticky top-0 z-20" data-scrolled={scrolled || undefined}>
           <button type="button" onClick={() => setNavOpen(true)} aria-label="Open menu" aria-expanded={navOpen} aria-controls="portal-nav"
             className="lg:hidden w-11 h-11 shrink-0 inline-flex items-center justify-center rounded-full text-ink-700 hover:bg-canvas">
             <Menu className="w-5 h-5" aria-hidden />
@@ -443,15 +452,15 @@ function AdminShell() {
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button type="button" onClick={() => setSearchOpen(true)} aria-label="Search" aria-keyshortcuts="Meta+K Control+K"
               data-help="Jump to any screen, setting or action by typing its name."
-              className="h-10 w-10 lg:w-auto lg:px-3 inline-flex items-center justify-center lg:justify-start gap-2 rounded-full border border-line bg-white text-ink-600 hover:bg-canvas">
+              className="h-10 w-10 lg:h-8 lg:w-auto lg:px-2.5 lg:min-w-[150px] xl:min-w-[200px] inline-flex items-center justify-center lg:justify-start gap-2 rounded-full lg:rounded-lg border border-line bg-white lg:bg-canvas text-ink-600 hover:bg-canvas lg:hover:bg-slate-100">
               <Search className="w-4 h-4" aria-hidden />
               <span className="hidden lg:inline text-[13px]">Search</span>
-              <kbd className="hidden lg:inline ml-3 px-1.5 rounded border border-line bg-canvas text-[12px] font-sans text-ink-500">{shortcut}</kbd>
+              <kbd className="hidden lg:inline ml-auto px-1.5 rounded border border-line bg-canvas text-[12px] font-sans text-ink-500">{shortcut}</kbd>
             </button>
             {me && (
               <button type="button" onClick={() => goTo("today")} aria-current={tab === "today" ? "page" : undefined}
                 data-help-title="Today" data-help="Everything waiting for a person — who should do it and by when. Overdue first."
-                className={`relative inline-flex items-center justify-center gap-1.5 h-10 min-w-10 px-2.5 sm:px-3 rounded-full border text-[13px] font-semibold ${tab === "today" ? "border-ink-950 bg-ink-950 text-white" : "border-line bg-white text-ink-700 hover:bg-canvas"}`}>
+                className={`relative inline-flex items-center justify-center gap-1.5 h-10 lg:h-8 min-w-10 lg:min-w-8 px-2.5 sm:px-3 lg:px-2.5 rounded-full lg:rounded-lg border text-[13px] font-semibold lg:font-medium ${tab === "today" ? "border-ink-950 bg-ink-950 text-white" : "border-line bg-white text-ink-700 hover:bg-canvas"}`}>
                 <ListTodo className="w-4 h-4" aria-hidden /> <span className="sr-only sm:not-sr-only">Today</span>
                 {today.overdue > 0 && <>
                   <span aria-hidden className="absolute -top-1 -right-1 sm:static min-w-[20px] h-5 px-1 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center tabular-nums">{badgeText(today.overdue)}</span>
@@ -460,9 +469,9 @@ function AdminShell() {
               </button>
             )}
             <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} onOpenReview={openReviewAlert} onOpenAll={() => goTo("livechat", { filter: "waiting" })} />
-            {me && <TourButton onStart={startTour} blocked={tourBlocked} className="hidden lg:inline-flex" />}
+            {me && <TourButton onStart={startTour} blocked={tourBlocked} className="hidden xl:inline-flex" />}
             {canBroadcast && (
-              <button type="button" data-help="Choose an approved template and audience, review the message, then send or schedule your broadcast." onClick={() => goTo("broadcast")} className={`${btnPrimary} hidden md:flex h-10`}>
+              <button type="button" data-help="Choose an approved template and audience, review the message, then send or schedule your broadcast." onClick={() => goTo("broadcast")} className={`${btnPrimary} hidden md:flex h-10 lg:h-8 lg:px-3`}>
                 <Send className="w-4 h-4" aria-hidden /> New broadcast
               </button>
             )}

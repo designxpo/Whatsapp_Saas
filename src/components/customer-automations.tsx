@@ -5,8 +5,9 @@
 // anything stopped, and a Stop button for each (automations.ts).
 
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Loader2, Square, Zap } from "lucide-react";
+import { Loader2, Square } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { DetailsSection } from "@/components/details-section";
 
 type State = "running" | "waiting" | "stopped" | "finished" | "off";
 type Automation = {
@@ -15,11 +16,11 @@ type Automation = {
 };
 
 const STATE: Record<State, { label: string; cls: string }> = {
-  running: { label: "Running", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  waiting: { label: "Waiting", cls: "bg-blue-50 text-blue-700 border-blue-200" },
-  stopped: { label: "Stopped", cls: "bg-canvas text-ink-600 border-line" },
-  finished: { label: "Finished", cls: "bg-canvas text-ink-600 border-line" },
-  off: { label: "Off", cls: "bg-canvas text-ink-400 border-line" },
+  running: { label: "Running", cls: "text-emerald-700" },
+  waiting: { label: "Waiting", cls: "text-blue-700" },
+  stopped: { label: "Stopped", cls: "text-ink-500" },
+  finished: { label: "Finished", cls: "text-ink-500" },
+  off: { label: "Off", cls: "text-ink-500" },
 };
 
 function when(iso: string): string {
@@ -66,43 +67,37 @@ export function CustomerAutomations({ conversationId }: { conversationId: string
   const shown = showAll ? [...live, ...rest] : live;
 
   return (
-    <div>
-      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-0.5 flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" /> Automations</p>
-      <p className="text-[11px] text-ink-400 mb-2">What runs for this customer, and what happens next.</p>
-      {list === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+    <DetailsSection id="automations" title="Automations" collapsible meta={list && live.length ? `${live.length} running` : undefined}>
+      {list === null ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-ink-300" aria-label="Loading automations" /> : (
         <>
-          {!shown.length && <p className="text-[11px] text-ink-500 mb-1">Nothing is running for this customer.</p>}
+          {!shown.length && <p className="text-[12px] text-ink-500">Nothing is running for this customer.</p>}
           <ul className="space-y-1.5">
             {shown.map(a => (
-              <li key={a.key} className="rounded-control border border-line bg-white px-2.5 py-2">
+              <li key={a.key} className="rounded-[8px] border border-line bg-white px-2.5 py-2">
                 <div className="flex items-start gap-2">
-                  <Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ink-400" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <p className="text-[12.5px] font-semibold text-ink-900 break-words">{a.title}</p>
-                      <span className={`rounded-full border px-2 py-0.5 text-[12px] font-bold ${STATE[a.state].cls}`}>{STATE[a.state].label}</span>
-                    </div>
-                    {a.next && <p className="text-[11.5px] text-ink-800">Next: {a.next.what}{a.next.at ? ` — ${when(a.next.at)}` : ""}</p>}
-                    <p className="text-[11px] text-ink-500">{a.why}{a.stoppedAt && a.state === "stopped" ? ` · ${new Date(a.stoppedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}</p>
-                  </div>
+                  <p className="flex-1 min-w-0 text-[13px] font-medium text-ink-900 break-words leading-snug">
+                    {a.title} <span className={`text-[12px] font-semibold ${STATE[a.state].cls}`}>· {STATE[a.state].label}</span>
+                  </p>
                   {a.canStop && (
                     <button onClick={() => void stop(a)} disabled={busy === a.key} aria-label={`Stop ${a.title}`}
-                      className="shrink-0 inline-flex items-center gap-1 min-h-8 rounded-control border border-line px-2 text-[12px] font-bold text-ink-700 hover:bg-canvas disabled:opacity-50">
-                      {busy === a.key ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-2.5 w-2.5" />} Stop
+                      className="shrink-0 -my-0.5 inline-flex items-center gap-1 h-11 md:h-6 rounded-[6px] border border-line px-1.5 text-[12px] font-medium text-ink-700 hover:bg-canvas disabled:opacity-50">
+                      {busy === a.key ? <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden /> : <Square className="h-2.5 w-2.5" aria-hidden />} Stop
                     </button>
                   )}
                 </div>
+                {a.next && <p className="mt-0.5 text-[12px] text-ink-700">Next: {a.next.what}{a.next.at ? ` — ${when(a.next.at)}` : ""}</p>}
+                <p className="text-[12px] text-ink-500">{a.why}{a.stoppedAt && a.state === "stopped" ? ` · ${new Date(a.stoppedAt).toLocaleDateString(undefined, { day: "numeric", month: "short" })}` : ""}</p>
               </li>
             ))}
           </ul>
           {rest.length > 0 && (
-            <button onClick={() => setShowAll(s => !s)} className="mt-1.5 text-[11px] font-semibold text-brand-700 hover:underline">
+            <button onClick={() => setShowAll(s => !s)} className="mt-1 min-h-11 md:min-h-7 text-[12px] font-medium text-brand-700 hover:underline">
               {showAll ? "Hide stopped and finished" : `Show stopped and finished (${rest.length})`}
             </button>
           )}
         </>
       )}
-      {err && <p role="alert" className="mt-1 text-[11px] text-red-600">{err}</p>}
-    </div>
+      {err && <p role="alert" className="mt-1 text-[12px] text-red-700">{err}</p>}
+    </DetailsSection>
   );
 }

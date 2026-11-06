@@ -16,6 +16,9 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 const PARAM = "tab";
 
+/** Query parameters that belong to one screen, and that screen. */
+const TAB_SCOPED: Record<string, string> = { section: "settings" };
+
 /** The section a query string names, if it is one of `valid`. Pure. */
 export function tabFromSearch<T extends string>(search: string, valid: readonly T[]): T | null {
   const v = new URLSearchParams(search).get(PARAM);
@@ -30,6 +33,9 @@ export function tabFromSearch<T extends string>(search: string, valid: readonly 
 export function searchWithTab(search: string, tab: string, home: string): string {
   const q = new URLSearchParams(search);
   if (tab === home) q.delete(PARAM); else q.set(PARAM, tab);
+  // A parameter that belongs to one screen leaves with it (?section= is
+  // Settings' own), so another screen's address never carries it along.
+  for (const [param, owner] of Object.entries(TAB_SCOPED)) if (tab !== owner) q.delete(param);
   const s = q.toString();
   return s ? `?${s}` : "";
 }

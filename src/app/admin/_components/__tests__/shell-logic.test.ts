@@ -161,3 +161,14 @@ describe("key numbers against the week before", () => {
     expect(rows[3].trend.dir).toBe("down");
   });
 });
+
+describe("which menu entry is highlighted", () => {
+  it("is WhatsApp while Settings shows WhatsApp numbers, Settings otherwise, Analytics for Results", async () => {
+    const { activeNavKey } = await import("../shell-logic");
+    expect(activeNavKey("settings", "numbers")).toBe("whatsapp");
+    expect(activeNavKey("settings", "team")).toBe("settings");
+    expect(activeNavKey("settings", null)).toBe("settings");
+    expect(activeNavKey("livechat", "numbers")).toBe("livechat");
+    expect(activeNavKey("results", null)).toBe("analytics");
+  });
+});

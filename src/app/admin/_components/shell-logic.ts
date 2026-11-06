@@ -102,6 +102,14 @@ export const TAB_TITLES: Record<Tab, string> = {
 
 /** The Settings section the WhatsApp menu item opens (SettingsTab's ?section= key). */
 export const WHATSAPP_SECTION = "numbers";
+/** Settings fires this (detail = the open part) so the menu can highlight WhatsApp. */
+export const SETTINGS_SECTION_EVENT = "talko:settings-section";
+
+/** The menu entry to highlight: WhatsApp while Settings shows WhatsApp numbers; Analytics for Results. Pure. */
+export function activeNavKey(tab: Tab, settingsSection: string | null): NavKey {
+  if (tab === "settings" && settingsSection === WHATSAPP_SECTION) return "whatsapp";
+  return tab === "results" ? "analytics" : tab;
+}
 
 // Settings' own sections (mirrors SETTINGS_SECTIONS in _tabs/SettingsTab.tsx —
 // keep the keys in step; SettingsTab reads ?section= when it opens).

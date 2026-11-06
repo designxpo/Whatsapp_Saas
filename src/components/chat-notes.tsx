@@ -9,8 +9,9 @@
 // so, and the notes are tinted so nobody mistakes one for a message.
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, StickyNote, Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useConfirm } from "@/components/confirm-dialog";
+import { DetailsSection } from "@/components/details-section";
 
 type Note = { id: string; authorEmail: string; authorName: string; body: string; createdAt: string };
 const MAX = 2000;
@@ -67,20 +68,19 @@ export function ChatNotes({ conversationId }: { conversationId: string }) {
   const canDelete = (n: Note) => !!viewer && (viewer.isAdmin || viewer.email === n.authorEmail);
 
   return (
-    <div>
-      <p className="text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] mb-0.5 flex items-center gap-1.5"><StickyNote className="w-3.5 h-3.5" /> Team notes</p>
-      <p className="text-[11px] text-ink-400 mb-2">Only your team sees these. Never sent to the customer or read by the AI.</p>
+    <DetailsSection id="notes" title="Team notes" collapsible meta={notes?.length ? notes.length : undefined}>
+      <p className="text-[12px] text-ink-500 mb-2">Only your team sees these. Never sent to the customer or read by the AI.</p>
 
-      {notes === null ? <Loader2 className="w-4 h-4 animate-spin text-slate-300" /> : (
+      {notes === null ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none text-ink-300" aria-label="Loading notes" /> : notes.length > 0 && (
         <ul className="space-y-1.5 mb-2">
           {notes.map(n => (
-            <li key={n.id} className="group rounded-control bg-amber-50 border border-amber-200 px-2.5 py-2">
-              <p className="text-[12.5px] text-ink-900 whitespace-pre-wrap break-words">{n.body}</p>
-              <div className="flex items-center gap-1.5 mt-1">
-                <span className="text-[11px] text-ink-400 truncate">{n.authorName || n.authorEmail} · {when(n.createdAt)}</span>
+            <li key={n.id} className="group rounded-[8px] bg-amber-50 border border-amber-200/80 px-2.5 py-1.5">
+              <p className="text-[13px] text-ink-900 whitespace-pre-wrap break-words">{n.body}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[11px] text-ink-500 truncate">{n.authorName || n.authorEmail} · {when(n.createdAt)}</span>
                 {canDelete(n) && (
-                  <button onClick={() => void remove(n)} aria-label="Delete note" className="ml-auto p-0.5 rounded text-ink-400 hover:text-red-600 opacity-60 group-hover:opacity-100 focus-visible:opacity-100">
-                    <Trash2 className="w-3.5 h-3.5" />
+                  <button onClick={() => void remove(n)} aria-label="Delete note" className="ml-auto w-7 h-7 -my-1 -mr-1 flex items-center justify-center rounded-md text-ink-400 hover:text-red-600 hover:bg-white md:opacity-60 group-hover:opacity-100 focus-visible:opacity-100">
+                    <Trash2 className="w-3.5 h-3.5" aria-hidden />
                   </button>
                 )}
               </div>
@@ -92,14 +92,16 @@ export function ChatNotes({ conversationId }: { conversationId: string }) {
       <textarea value={draft} onChange={e => setDraft(e.target.value.slice(0, MAX))} rows={2}
         onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void add(); } }}
         placeholder="Add a note for your team…" aria-label="Add a team note"
-        className="w-full border border-line rounded-control px-2.5 py-1.5 text-xs resize-y bg-white" />
-      <div className="flex items-center gap-2 mt-1">
-        <button onClick={() => void add()} disabled={busy || !draft.trim()} className="px-3 py-1.5 rounded-control bg-ink-900 hover:bg-ink-950 text-white text-xs font-bold disabled:opacity-40">
-          {busy ? "Saving…" : "Add note"}
-        </button>
-        <span className="text-[11px] text-ink-400">Ctrl/⌘ + Enter</span>
-      </div>
-      {err && <p className="text-[11px] font-semibold text-amber-800 mt-1.5">{err}</p>}
-    </div>
+        className="w-full border border-line rounded-[8px] px-2.5 py-1.5 text-base md:text-[13px] resize-y bg-white placeholder:text-ink-400" />
+      {draft.trim() && (
+        <div className="flex items-center gap-2 mt-1.5">
+          <button onClick={() => void add()} disabled={busy || !draft.trim()} className="h-11 md:h-8 lg:h-[30px] px-3 rounded-[8px] bg-ink-900 hover:bg-ink-950 text-white text-[13px] font-semibold disabled:opacity-40">
+            {busy ? "Saving…" : "Add note"}
+          </button>
+          <span className="text-[11px] text-ink-500">⌘/Ctrl + Enter</span>
+        </div>
+      )}
+      {err && <p className="text-[12px] font-semibold text-amber-800 mt-1.5">{err}</p>}
+    </DetailsSection>
   );
 }
