@@ -18,6 +18,8 @@ import { BlogLeadCta } from "../../_components/blog-lead-cta";
 import { TemplateChecker } from "../../_components/template-checker";
 import { SupportHandoffPlanner } from "../../_components/support-handoff-planner";
 import { SITE_URL } from "@/lib/siteurl";
+import { ArticleChecklist } from "../../_components/article-checklist";
+import { ArticleNavigator } from "../../_components/article-navigator";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,7 @@ function BlockRenderer({ blocks }: { blocks: PostBlock[] }) {
       {blocks.map((b, i) => {
         if (b.type === "h2") return <h2 id={`section-${i}`} key={i} className="!mt-10 scroll-mt-32 text-xl font-extrabold text-slate-900">{renderInline(b.text)}</h2>;
         if (b.type === "h3") return <h3 key={i} className="text-base font-bold text-slate-900">{renderInline(b.text)}</h3>;
+        if (b.type === "checklist") return <ArticleChecklist key={`${i}-${b.title}`} title={b.title} items={b.items} />;
         if (b.type === "tool") {
           // Interactive widgets are keyed by id so _content/site.ts stays pure
           // data — no JSX, no client imports in the content layer.
@@ -152,10 +155,17 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 
 export default async function PostPage(props: Props) {
   const { slug, post, preview, overrides } = await resolvePost(props);
-  const more = getPublishedPosts(Date.now(), overrides).filter(p => p.slug !== slug).slice(0, 2);
+  const more = getPublishedPosts(Date.now(), overrides).filter(p => p.slug !== slug)
+    .sort((a, b) => {
+      const relevance = (candidate: typeof post) => (post.relatedSlugs?.includes(candidate.slug) ? 10 : 0) + (candidate.category === post.category ? 2 : 0);
+      return relevance(b) - relevance(a);
+    }).slice(0, 2);
+  const sections = post.body.flatMap((block, index) => block.type === "h2" ? [{ id: `section-${index}`, title: block.text }] : []);
+  if (post.faqs?.length) sections.push({ id: `faq-${slug}`, title: "Frequently asked questions" });
+  if (post.sources?.length) sections.push({ id: "article-sources", title: "Research and sources" });
 
   // BlogPosting schema — lets AI engines attribute and cite the article, and
-  // enables article rich results. `date` is a human string ("June 12, 2026");
+  // helps search engines understand article metadata; appearance is not guaranteed. `date` is a human string ("June 12, 2026");
   // Date.parse handles it, and we emit an ISO date when parseable.
   const parsed = Date.parse(post.publishAt ?? post.date);
   const parsedMod = Date.parse(post.dateModified ?? post.publishAt ?? post.date);
@@ -167,6 +177,8 @@ export default async function PostPage(props: Props) {
     ...(Number.isFinite(parsed) ? { datePublished: new Date(parsed).toISOString() } : {}),
     ...(Number.isFinite(parsedMod) ? { dateModified: new Date(parsedMod).toISOString() } : {}),
     articleSection: post.category,
+    inLanguage: "en",
+    ...(post.sources?.length ? { citation: post.sources.map(source => source.href) } : {}),
     image: `${SITE_URL}${blogShareImage(post)}`,
     url: `${SITE_URL}/blog/${post.slug}`,
     mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
@@ -205,21 +217,24 @@ export default async function PostPage(props: Props) {
         </Container>
       </section>
 
-      <Container className="py-12">
-        <article className="mx-auto max-w-2xl space-y-6">
-          {post.showContents && <nav aria-label="In this article" className="rounded-2xl border border-slate-200 bg-white p-5">
-            <details><summary className="cursor-pointer text-sm font-bold text-slate-700">In this article</summary>
-            <ul className="mt-3 space-y-2 text-sm">{post.body.map((block, index) => block.type === "h2" ? <li key={index}><a href={`#section-${index}`} className="text-[#026cd4] hover:underline">{block.text}</a></li> : null)}</ul>
-            </details>
-          </nav>}
+      <Container className="py-10 sm:py-12">
+        <div className={`mx-auto max-w-6xl ${post.showContents ? "grid gap-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-12" : ""}`}>
+          {post.showContents && <ArticleNavigator sections={sections} />}
+          <div id="article-reading-region" className="min-w-0">
+        <article id="article-content" className="mx-auto max-w-2xl scroll-mt-28 space-y-6">
+          {!!post.takeaways?.length && <aside aria-label="At a glance" className="rounded-2xl border border-blue-100 bg-blue-50/60 p-5 sm:p-6">
+            <p className="text-xs font-bold uppercase tracking-wide text-[#026cd4]">At a glance</p>
+            <ul className="mt-3 space-y-2 text-sm leading-relaxed text-slate-700">{post.takeaways.map(item => <li key={item} className="flex gap-3"><span aria-hidden className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#0783fd]" /><span>{item}</span></li>)}</ul>
+            {post.researchCheckedAt && <p className="mt-4 text-xs text-slate-500">Sources checked <time dateTime={post.researchCheckedAt}>{new Date(`${post.researchCheckedAt}T00:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}</time>. Platform details can change; verify them before rollout.</p>}
+          </aside>}
           <BlockRenderer blocks={post.body} />
           {post.leadCta && <BlogLeadCta slug={post.slug} {...post.leadCta} />}
         </article>
 
         {(post.faqs?.length || post.sources?.length) ? (
           <div className="mx-auto mt-16 max-w-2xl border-t border-slate-200 pt-10">
-            {!!post.faqs?.length && <PageFaq items={post.faqs} path={`/blog/${post.slug}`} id={`faq-${post.slug}`} />}
-            {!!post.sources?.length && <SourceList items={post.sources} className={post.faqs?.length ? "mt-14" : ""} />}
+            {!!post.faqs?.length && <PageFaq withSchema={false} items={post.faqs} path={`/blog/${post.slug}`} id={`faq-${post.slug}`} />}
+            {!!post.sources?.length && <section id="article-sources" className="scroll-mt-32"><SourceList items={post.sources} className={post.faqs?.length ? "mt-14" : ""} /></section>}
           </div>
         ) : null}
 
@@ -243,6 +258,8 @@ export default async function PostPage(props: Props) {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </Container>
 
       <CtaBand />

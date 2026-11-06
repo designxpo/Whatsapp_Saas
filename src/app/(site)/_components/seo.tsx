@@ -77,11 +77,11 @@ export function LastUpdated({ iso, className = "" }: { iso: string; className?: 
 // behind a click; this variant is for pages where extractability matters more
 // than compactness.
 export function PageFaq({
-  items, path, title = "Frequently asked questions", id = "faq",
-}: { items: FaqItem[]; path: string; title?: string; id?: string }) {
+  items, path, title = "Frequently asked questions", id = "faq", withSchema = true,
+}: { items: FaqItem[]; path: string; title?: string; id?: string; withSchema?: boolean }) {
   return (
     <>
-      <JsonLd data={faqPageSchema(items, path)} />
+      {withSchema && <JsonLd data={faqPageSchema(items, path)} />}
       <div className="mx-auto max-w-2xl">
         <h2 id={id} className="scroll-mt-24 text-lg font-extrabold text-slate-900">{title}</h2>
         <dl className="mt-5 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200 bg-white">

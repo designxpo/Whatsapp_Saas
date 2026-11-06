@@ -3,6 +3,7 @@
 import { AI_CUSTOMER_SERVICE_POST } from "./ai-customer-service-post";
 import { SCHEDULED_POSTS } from "./scheduled-posts";
 import { WINTER_FEATURE_POSTS } from "./winter-feature-posts";
+import { OPERATIONS_POSTS } from "./operations-posts";
 
 export const SITE = {
   name: "Talko AI",
@@ -173,6 +174,7 @@ export type PostBlock =
   // Mounts a named interactive widget. Kept as an id rather than a component so
   // this file stays pure data with no JSX and no client imports.
   | { type: "tool"; id: "template-checker" | "support-handoff-planner" }
+  | { type: "checklist"; title: string; items: string[] }
   | { type: "image"; src: string; alt: string; caption: string; width: number; height: number }
   | { type: "table"; caption: string; headers: string[]; rows: string[][] };
 const p = (text: string): PostBlock => ({ type: "p", text });
@@ -187,6 +189,9 @@ export type Post = {
   shareImage?: string;
   coverCaption?: string;
   showContents?: boolean;
+  takeaways?: string[];
+  researchCheckedAt?: string;
+  relatedSlugs?: string[];
   body: PostBlock[];
   faqs?: Faq[];                                            // rendered with PageFaq (adds FAQPage schema)
   sources?: { label: string; href: string; note?: string }[]; // rendered with SourceList
@@ -207,6 +212,7 @@ export const AUTHOR = {
 } as const;
 
 export const POSTS: Post[] = [
+  ...OPERATIONS_POSTS,
   ...WINTER_FEATURE_POSTS,
   ...SCHEDULED_POSTS,
   AI_CUSTOMER_SERVICE_POST,
