@@ -16,7 +16,7 @@ import { useTabInUrl } from "@/lib/tab-url";
 import { TabErrorBoundary } from "@/components/tab-error-boundary";
 import { type Tab, type ChatIntent, type GoTo, DEFAULT_TENANT_ID, inp, btnPrimary, railLoading, ChannelSelect, type AnalyticsData, ImageUpload, ConvAvatar, ImgFallback, RailCard, StatRow, RailBar, useAnalytics } from "./_shared";
 import { type Entitlements, type AccountState, tabAllowed, tabRoleAllowed, accountState } from "@/lib/entitlement-registry";
-import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, ListTodo, CalendarDays, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
+import { Send, Users, History, Zap, Ban, LogOut, Bot, MessageSquare, Facebook, Youtube, Globe, Database, Sparkles, ShieldCheck, ArrowRight, BarChart3, LayoutTemplate, FlaskConical, Home, Settings, ClipboardList, Megaphone, Instagram, Workflow, ShoppingBag, TrendingUp, ListChecks, ListTodo, CalendarDays, ChevronDown, Plug, KanbanSquare, AtSign, Star, AlertTriangle, Eye, CreditCard } from "lucide-react";
 import { ConfirmProvider } from "@/components/confirm-dialog";
 import { ProductTour } from "@/components/ProductTour";
 import { HoverHelp } from "@/components/HoverHelp";
@@ -117,14 +117,9 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
     group: "Home & Inbox",
     items: [
       { key: "home", label: "Home", icon: <Home className="w-[18px] h-[18px]" />, hint: "Your dashboard and setup progress" },
-      { key: "today", label: "Today", icon: <ListTodo className="w-[18px] h-[18px]" />, hint: "Everything waiting for a person — who should do it and by when" },
-      { key: "bookings", label: "Bookings", icon: <CalendarDays className="w-[18px] h-[18px]" />, hint: "Appointments by day — confirm, remind, take deposits, mark who came" },
       { key: "livechat", label: "Live Chat", icon: <MessageSquare className="w-[18px] h-[18px]" />, hint: "Every conversation from every channel, in one inbox" },
       { key: "contacts", label: "Contacts", icon: <Users className="w-[18px] h-[18px]" />, hint: "Everyone who has ever messaged you" },
-      { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
       { key: "analytics", label: "Analytics", icon: <BarChart3 className="w-[18px] h-[18px]" />, hint: "See what's working — messages, replies, sales" },
-      // Admins only (tabRoleAllowed): it shows revenue.
-      { key: "results", label: "Results", icon: <TrendingUp className="w-[18px] h-[18px]" />, hint: "Paid orders and revenue by where customers came from" },
       // Only a team lead or an admin ever sees this (tabRoleAllowed filters the nav).
       { key: "team", label: "Team Progress", icon: <Users className="w-[18px] h-[18px]" />, hint: "Is your team keeping up, and who is behind" },
     ],
@@ -174,6 +169,14 @@ const NAV_GROUPS: { group: string; items: { key: Tab; label: string; icon: React
       { key: "optouts", label: "Do Not Contact", icon: <Ban className="w-[18px] h-[18px]" />, hint: "People who asked to stop receiving messages" },
       { key: "settings", label: "Settings", icon: <Settings className="w-[18px] h-[18px]" />, hint: "WhatsApp numbers, your team, and billing" },
       { key: "security", label: "Sign-in security", icon: <ShieldCheck className="w-[18px] h-[18px]" />, hint: "Your passkeys and authenticator app" },
+    ],
+  },
+  {
+    // Useful but not core: folded away at the bottom until someone opens it.
+    group: "More tools",
+    items: [
+      { key: "bookings", label: "Bookings", icon: <CalendarDays className="w-[18px] h-[18px]" />, hint: "Appointments by day — confirm, remind, take deposits, mark who came" },
+      { key: "pipeline", label: "Sales Pipeline", icon: <KanbanSquare className="w-[18px] h-[18px]" />, hint: "Drag leads from new enquiry to won" },
     ],
   },
 ];
@@ -261,7 +264,14 @@ function AdminShell() {
   // The sidebar's active pill glides to the section picked; the top bar's
   // edge shows once the page scrolls under it (lib/use-nav-motion.ts).
   const navList = useRef<HTMLDivElement>(null);
-  const pill = useSlidingPill(navList, tab, [ent, me?.role]);
+  // Results is a view inside Analytics, so Analytics stays highlighted for it.
+  const navTab: Tab = tab === "results" ? "analytics" : tab;
+  // "More tools" stays folded unless opened (remembered) or one of its screens is open.
+  const [moreOpen, setMoreOpen] = useState(false);
+  useEffect(() => { try { setMoreOpen(localStorage.getItem("talko-nav-more") === "1"); } catch { /* default folded */ } }, []);
+  const toggleMore = () => setMoreOpen(o => { const n = !o; try { localStorage.setItem("talko-nav-more", n ? "1" : "0"); } catch { /* this visit only */ } return n; });
+  const todayCount = useTodayCount(!!me);
+  const pill = useSlidingPill(navList, navTab, [ent, me?.role, moreOpen]);
   const scrolled = useScrolled();
   // Chats waiting for a person: the bell, the tab title, a chime and desktop
   // notifications, on every screen (lib/use-inbox-alerts.ts).
@@ -307,12 +317,18 @@ function AdminShell() {
           {NAV_GROUPS.map(g => {
             const items = g.items.filter(n => tabAllowed(n.key, ent) && tabRoleAllowed(n.key, me?.role));
             if (!items.length) return null;
+            const folding = g.group === "More tools";
+            const shown = !folding || moreOpen || items.some(n => n.key === navTab);
             return (
             <div key={g.group} className="mb-4">
-              <p className="px-3 mb-1.5 text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{g.group}</p>
-              <div className="space-y-0.5">
+              {folding
+                ? <button onClick={toggleMore} aria-expanded={shown} className="w-full flex items-center justify-between px-3 mb-1.5 text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em] hover:text-ink-700">
+                    {g.group}<ChevronDown className={`w-3.5 h-3.5 transition-transform ${shown ? "rotate-180" : ""}`} />
+                  </button>
+                : <p className="px-3 mb-1.5 text-[11px] font-medium text-ink-400 uppercase tracking-[0.06em]">{g.group}</p>}
+              {shown && <div className="space-y-0.5">
                 {items.map(n => {
-                  const active = tab === n.key;
+                  const active = navTab === n.key;
                   return (
                     <button key={n.key} data-tour-nav={n.key} data-nav-key={n.key} aria-current={active ? "page" : undefined} data-help={n.hint + ". Select this screen to open it and use the available controls."} onClick={() => goTo(n.key)}
                       onMouseEnter={() => preloadTab(n.key)} onFocus={() => preloadTab(n.key)}
@@ -324,7 +340,7 @@ function AdminShell() {
                     </button>
                   );
                 })}
-              </div>
+              </div>}
             </div>
             );
           })}
@@ -391,6 +407,14 @@ function AdminShell() {
             {brand.name} <span className="mx-1">/</span> <span className="text-ink-900 font-medium">{tabLabel(tab, vocab)}</span>
           </p>
           <div className="flex items-center gap-2">
+          {me && (
+            <button onClick={() => goTo("today")} aria-current={tab === "today" ? "page" : undefined}
+              data-help="Everything waiting for a person — who should do it and by when. Overdue first."
+              className={`relative inline-flex items-center gap-1.5 h-10 px-3 rounded-full border text-[13px] font-semibold ${tab === "today" ? "border-ink-950 bg-ink-950 text-white" : "border-line bg-white text-ink-700 hover:bg-canvas"}`}>
+              <ListTodo className="w-4 h-4" /> Today
+              {todayCount > 0 && <span aria-label={`${todayCount} overdue`} className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold leading-[18px] text-center tabular-nums">{todayCount > 99 ? "99+" : todayCount}</span>}
+            </button>
+          )}
           <AlertsBell alerts={alerts} onOpen={chat => goTo("livechat", { openPhone: chat.phone })} onOpenReview={openReviewAlert} />
           {me && <ProductTour tenantId={me.tenantId ?? DEFAULT_TENANT_ID} email={me.email} activeTab={tab}
             blocked={!paywallDismissed && !me.isPlatformOwner && !accountState(ent).active} impersonating={impersonating} />}
@@ -425,6 +449,7 @@ function AdminShell() {
           {tab === "aihub" && <AiHubTab goTo={goTo} />}
           {tab === "templates" && <TemplatesTab />}
           {tab === "forms" && <FormsTab goTo={goTo} />}
+          {(tab === "analytics" || tab === "results") && me?.role === "admin" && <InsightsSwitch tab={tab} goTo={goTo} />}
           {tab === "analytics" && <AnalyticsTab isAdmin={me?.role === "admin"} />}
           {tab === "contacts" && <ContactsTab goTo={goTo} />}
           {tab === "pipeline" && <PipelineTab goTo={goTo} />}
@@ -693,4 +718,32 @@ function HomeRail({ goTo }: { goTo: GoTo }) {
       </RailCard>
     </aside>
   );
+}
+
+// Analytics has two views: activity (messages, chats, team) and Results
+// (revenue by source — admins only). One menu entry, a switch on the page.
+function InsightsSwitch({ tab, goTo }: { tab: Tab; goTo: GoTo }) {
+  return (
+    <div role="tablist" aria-label="Analytics view" className="mb-4 inline-flex rounded-full border border-line bg-white p-0.5">
+      {([["analytics", "Activity"], ["results", "Results"]] as const).map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={tab === k} onClick={() => goTo(k)}
+          className={`rounded-full px-4 py-1.5 text-xs font-bold ${tab === k ? "bg-ink-950 text-white" : "text-ink-600 hover:bg-canvas"}`}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+// How many things in Today are overdue, for the header button. Checked on load
+// and every five minutes — Today itself refreshes every minute when it's open.
+function useTodayCount(enabled: boolean): number {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    const load = () => fetch("/api/admin/today").then(r => (r.ok ? r.json() : null)).then(d => { if (live && d?.counts) setN(d.counts.overdue ?? 0); }).catch(() => {});
+    load();
+    const t = setInterval(load, 5 * 60_000);
+    return () => { live = false; clearInterval(t); };
+  }, [enabled]);
+  return n;
 }

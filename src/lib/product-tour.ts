@@ -11,7 +11,7 @@ export function workspaceTourSteps(): DriveStep[] {
     title: "Welcome to Talko AI",
     description: "Let's find your conversations, customer records and setup tools. This tour only explains the controls; it won't send messages or change your settings.",
   } }];
-  for (const key of ["home", "livechat", "contacts", "pipeline", "assistant", "broadcast", "setup", "settings"]) {
+  for (const key of ["home", "livechat", "contacts", "analytics", "assistant", "broadcast", "setup", "settings"]) {
     const element = document.querySelector<HTMLElement>(`[data-tour-nav="${key}"]`);
     if (!element || !element.getClientRects().length) continue;
     steps.push({ element, popover: {
