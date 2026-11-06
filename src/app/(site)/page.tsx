@@ -15,6 +15,7 @@ import { PricingTiers, RenewalNote } from "./_components/pricing";
 import { AgentCanvas } from "./_components/canvas";
 import { FlowShowcase } from "./_components/flowshowcase";
 import { PlatformGlimpse } from "./_components/glimpse";
+import { ResponsiveShowcase } from "./_components/responsive-showcase";
 import { Hero } from "./_components/hero";
 import { GlobalConversations } from "./_components/global-conversations";
 import { IndustryStrip } from "./_components/industries";
@@ -123,6 +124,19 @@ export default function HomePage() {
       <div className="marketing-overview">
         <PlatformGlimpse />
       </div>
+      <section aria-labelledby="any-screen-heading">
+        <Container className="py-16">
+          <SectionTitle
+            id="any-screen-heading"
+            eyebrow="Works on every screen"
+            title="Your whole inbox, from your desk to your pocket"
+            subtitle="Talko AI is built for your phone as much as your laptop. Reply to customers, take over from the AI and see who has paid, on any screen."
+          />
+          <div className="mt-10">
+            <ResponsiveShowcase />
+          </div>
+        </Container>
+      </section>
 
       <section
         className="marketing-container marketing-library"
